@@ -23,7 +23,7 @@ impl AvgPool2d {
 	///
 	/// Returns an error when `kernel_size` is zero.
 	pub fn new(kernel_size: usize) -> Result<Self> {
-		Self::with_options(kernel_size, kernel_size, 0)
+		Self::new_with_options(kernel_size, kernel_size, 0)
 	}
 
 	/// Construct AvgPool2d with explicit square-kernel geometry.
@@ -31,7 +31,7 @@ impl AvgPool2d {
 	/// # Errors
 	///
 	/// Returns an error when `kernel_size` or `stride` is zero.
-	pub fn with_options(kernel_size: usize, stride: usize, padding: usize) -> Result<Self> {
+	pub fn new_with_options(kernel_size: usize, stride: usize, padding: usize) -> Result<Self> {
 		if kernel_size == 0 || stride == 0 {
 			return Err(Error::invalid_argument(
 				"AvgPool2d kernel size and stride must be nonzero",
@@ -97,7 +97,7 @@ impl MaxPool2d {
 	///
 	/// Returns an error when `kernel_size` is zero.
 	pub fn new(kernel_size: usize) -> Result<Self> {
-		Self::with_options(kernel_size, kernel_size, 0)
+		Self::new_with_options(kernel_size, kernel_size, 0)
 	}
 
 	/// Construct MaxPool2d with explicit square-kernel geometry.
@@ -105,7 +105,7 @@ impl MaxPool2d {
 	/// # Errors
 	///
 	/// Returns an error when `kernel_size` or `stride` is zero.
-	pub fn with_options(kernel_size: usize, stride: usize, padding: usize) -> Result<Self> {
+	pub fn new_with_options(kernel_size: usize, stride: usize, padding: usize) -> Result<Self> {
 		if kernel_size == 0 || stride == 0 {
 			return Err(Error::invalid_argument(
 				"MaxPool2d kernel size and stride must be nonzero",
@@ -170,7 +170,7 @@ impl AdaptiveAvgPool2d {
 	///
 	/// Returns an error when `output_size` is zero.
 	pub fn new(output_size: usize) -> Result<Self> {
-		Self::with_output_size(output_size, output_size)
+		Self::new_with_output_size(output_size, output_size)
 	}
 
 	/// Construct AdaptiveAvgPool2d with independent output height and width.
@@ -178,7 +178,7 @@ impl AdaptiveAvgPool2d {
 	/// # Errors
 	///
 	/// Returns an error when either output extent is zero.
-	pub fn with_output_size(output_height: usize, output_width: usize) -> Result<Self> {
+	pub fn new_with_output_size(output_height: usize, output_width: usize) -> Result<Self> {
 		if output_height == 0 || output_width == 0 {
 			return Err(Error::invalid_argument(
 				"AdaptiveAvgPool2d output extents must be nonzero",

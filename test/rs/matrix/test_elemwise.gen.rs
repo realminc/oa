@@ -25,7 +25,7 @@ test_vk!(
 	generated_elementwise_dtype_variants_match_schema_oracles,
 	engine,
 	{
-		let add_f32_left = oa::Matrix::from_slice(
+		let add_f32_left = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -34,7 +34,7 @@ test_vk!(
 				f32::from_bits(0x40800000),
 			]),
 		)?;
-		let add_f32_right = oa::Matrix::from_slice(
+		let add_f32_right = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -54,20 +54,20 @@ test_vk!(
 			f32::from_bits(0x38d1b717),
 		);
 
-		let add_i32_left = oa::Matrix::from_slice(
+		let add_i32_left = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[2147483647_i32, -2147483648_i32, -2_i32]),
 		)?;
 		let add_i32_right =
-			oa::Matrix::from_slice(&engine, [ELEMENT_COUNT], &repeated(&[1_i32, -1_i32, 7_i32]))?;
+			oa::Matrix::new_from_slice(&engine, [ELEMENT_COUNT], &repeated(&[1_i32, -1_i32, 7_i32]))?;
 		let add_i32_actual: Vec<i32> = oa::matrix::add(&add_i32_left, &add_i32_right)?.read()?;
 		assert_eq!(
 			add_i32_actual,
 			repeated(&[-2147483648_i32, 2147483647_i32, 5_i32])
 		);
 
-		let sub_f32_left = oa::Matrix::from_slice(
+		let sub_f32_left = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -76,7 +76,7 @@ test_vk!(
 				f32::from_bits(0x40800000),
 			]),
 		)?;
-		let sub_f32_right = oa::Matrix::from_slice(
+		let sub_f32_right = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -96,7 +96,7 @@ test_vk!(
 			f32::from_bits(0x38d1b717),
 		);
 
-		let mul_f32_left = oa::Matrix::from_slice(
+		let mul_f32_left = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -105,7 +105,7 @@ test_vk!(
 				f32::from_bits(0x40800000),
 			]),
 		)?;
-		let mul_f32_right = oa::Matrix::from_slice(
+		let mul_f32_right = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -125,7 +125,7 @@ test_vk!(
 			f32::from_bits(0x38d1b717),
 		);
 
-		let div_f32_left = oa::Matrix::from_slice(
+		let div_f32_left = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -134,7 +134,7 @@ test_vk!(
 				f32::from_bits(0x40800000),
 			]),
 		)?;
-		let div_f32_right = oa::Matrix::from_slice(
+		let div_f32_right = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -154,7 +154,7 @@ test_vk!(
 			f32::from_bits(0x38d1b717),
 		);
 
-		let scale_f32_input = oa::Matrix::from_slice(
+		let scale_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -175,7 +175,7 @@ test_vk!(
 			f32::from_bits(0x38d1b717),
 		);
 
-		let neg_f32_input = oa::Matrix::from_slice(
+		let neg_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -195,7 +195,7 @@ test_vk!(
 			f32::from_bits(0x38d1b717),
 		);
 
-		let abs_f32_input = oa::Matrix::from_slice(
+		let abs_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -215,7 +215,7 @@ test_vk!(
 			f32::from_bits(0x38d1b717),
 		);
 
-		let log_f32_input = oa::Matrix::from_slice(
+		let log_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -235,7 +235,7 @@ test_vk!(
 			f32::from_bits(0x3a83126f),
 		);
 
-		let sqrt_f32_input = oa::Matrix::from_slice(
+		let sqrt_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -255,7 +255,7 @@ test_vk!(
 			f32::from_bits(0x3a83126f),
 		);
 
-		let pow_f32_input = oa::Matrix::from_slice(
+		let pow_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -276,7 +276,7 @@ test_vk!(
 			f32::from_bits(0x3a83126f),
 		);
 
-		let add_scalar_f32_input = oa::Matrix::from_slice(
+		let add_scalar_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -297,7 +297,7 @@ test_vk!(
 			f32::from_bits(0x38d1b717),
 		);
 
-		let sub_scalar_f32_input = oa::Matrix::from_slice(
+		let sub_scalar_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -318,7 +318,7 @@ test_vk!(
 			f32::from_bits(0x38d1b717),
 		);
 
-		let div_scalar_f32_input = oa::Matrix::from_slice(
+		let div_scalar_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -339,7 +339,7 @@ test_vk!(
 			f32::from_bits(0x38d1b717),
 		);
 
-		let exp_f32_input = oa::Matrix::from_slice(
+		let exp_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -359,7 +359,7 @@ test_vk!(
 			f32::from_bits(0x3a83126f),
 		);
 
-		let sin_f32_input = oa::Matrix::from_slice(
+		let sin_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -379,7 +379,7 @@ test_vk!(
 			f32::from_bits(0x3a83126f),
 		);
 
-		let cos_f32_input = oa::Matrix::from_slice(
+		let cos_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -399,7 +399,7 @@ test_vk!(
 			f32::from_bits(0x3a83126f),
 		);
 
-		let reciprocal_f32_input = oa::Matrix::from_slice(
+		let reciprocal_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -419,7 +419,7 @@ test_vk!(
 			f32::from_bits(0x3a83126f),
 		);
 
-		let clamp_max_f32_input = oa::Matrix::from_slice(
+		let clamp_max_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -440,7 +440,7 @@ test_vk!(
 			f32::from_bits(0x38d1b717),
 		);
 
-		let clamp_min_f32_input = oa::Matrix::from_slice(
+		let clamp_min_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -461,7 +461,7 @@ test_vk!(
 			f32::from_bits(0x38d1b717),
 		);
 
-		let copy_f32_input = oa::Matrix::from_slice(
+		let copy_f32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[
@@ -482,11 +482,11 @@ test_vk!(
 		);
 
 		let copy_u8_input =
-			oa::Matrix::from_slice(&engine, [ELEMENT_COUNT], &repeated(&[0_u8, 17_u8, 255_u8]))?;
+			oa::Matrix::new_from_slice(&engine, [ELEMENT_COUNT], &repeated(&[0_u8, 17_u8, 255_u8]))?;
 		let copy_u8_actual: Vec<u8> = oa::matrix::copy(&copy_u8_input)?.read()?;
 		assert_eq!(copy_u8_actual, repeated(&[0_u8, 17_u8, 255_u8]));
 
-		let copy_i32_input = oa::Matrix::from_slice(
+		let copy_i32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[-2147483648_i32, 0_i32, 2147483647_i32]),
@@ -497,7 +497,7 @@ test_vk!(
 			repeated(&[-2147483648_i32, 0_i32, 2147483647_i32])
 		);
 
-		let copy_u32_input = oa::Matrix::from_slice(
+		let copy_u32_input = oa::Matrix::new_from_slice(
 			&engine,
 			[ELEMENT_COUNT],
 			&repeated(&[0_u32, 17_u32, 4294967295_u32]),
@@ -533,10 +533,10 @@ test_vk!(
 	generated_elementwise_dtype_variants_preserve_zero_extent,
 	engine,
 	{
-		let empty_f32 = oa::Matrix::from_slice::<f32>(&engine, [0], &[])?;
-		let empty_i32 = oa::Matrix::from_slice::<i32>(&engine, [0], &[])?;
-		let empty_u32 = oa::Matrix::from_slice::<u32>(&engine, [0], &[])?;
-		let empty_u8 = oa::Matrix::from_slice::<u8>(&engine, [0], &[])?;
+		let empty_f32 = oa::Matrix::new_from_slice::<f32>(&engine, [0], &[])?;
+		let empty_i32 = oa::Matrix::new_from_slice::<i32>(&engine, [0], &[])?;
+		let empty_u32 = oa::Matrix::new_from_slice::<u32>(&engine, [0], &[])?;
+		let empty_u8 = oa::Matrix::new_from_slice::<u8>(&engine, [0], &[])?;
 		let add_f32_output = oa::matrix::add(&empty_f32, &empty_f32)?;
 		assert_eq!(add_f32_output.shape(), [0]);
 		assert_eq!(add_f32_output.dtype(), oa::DType::F32);

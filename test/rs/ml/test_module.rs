@@ -12,10 +12,10 @@ struct CharRnn {
 
 impl CharRnn {
 	fn new(engine: &oa::Engine) -> oa::Result<Self> {
-		let embedding = Rc::new(oa::ml::nn::Embedding::with_seed(engine, 3, 2, 11)?);
-		let recurrent = Rc::new(oa::ml::nn::Rnn::with_seed(engine, 2, 2, 1, 12)?);
-		let head = Rc::new(oa::ml::nn::Linear::with_seed(engine, 2, 3, 13)?);
-		let alphabet = oa::Matrix::from_slice(
+		let embedding = Rc::new(oa::ml::nn::Embedding::new_with_seed(engine, 3, 2, 11)?);
+		let recurrent = Rc::new(oa::ml::nn::Rnn::new_with_seed(engine, 2, 2, 1, 12)?);
+		let head = Rc::new(oa::ml::nn::Linear::new_with_seed(engine, 2, 3, 13)?);
+		let alphabet = oa::Matrix::new_from_slice(
 			engine,
 			[3],
 			&[u32::from(b'a'), u32::from(b'b'), u32::from(b'c')],
@@ -132,8 +132,8 @@ test_vk!(
 
 		let parameters = model.all_parameters()?;
 		let mut optimizer = oa::ml::AdamW::new(parameters.clone(), 0.01)?;
-		let indices = oa::Matrix::from_slice(&engine, [1, 3], &[0_u32, 1, 2])?;
-		let targets = oa::Matrix::from_slice(&engine, [3], &[1_u32, 2, 0])?;
+		let indices = oa::Matrix::new_from_slice(&engine, [1, 3], &[0_u32, 1, 2])?;
+		let targets = oa::Matrix::new_from_slice(&engine, [3], &[1_u32, 2, 0])?;
 		let tape = oa::ml::GradientTape::new();
 		let logits = model.forward(&indices)?;
 		let loss = oa::ml::loss::cross_entropy(&logits, &targets)?;
@@ -152,7 +152,7 @@ test_vk!(
 );
 
 test_vk!(module_registration_rejects_ambiguous_ownership, engine, {
-	let parameter = Parameter::new("shared", oa::Matrix::from_f32(&engine, [1], &[1.0])?)?;
+	let parameter = Parameter::new("shared", oa::Matrix::new_from_f32(&engine, [1], &[1.0])?)?;
 	let mut direct = ModuleRegistry::new();
 	direct.register_parameter("value", parameter.clone())?;
 	assert_eq!(
@@ -166,7 +166,7 @@ test_vk!(module_registration_rejects_ambiguous_ownership, engine, {
 		direct
 			.register_buffer(
 				"invalid.name",
-				oa::Matrix::from_f32(&engine, [1], &[0.0])?,
+				oa::Matrix::new_from_f32(&engine, [1], &[0.0])?,
 				false,
 			)
 			.expect_err("dotted local name was accepted")
@@ -204,8 +204,8 @@ test_vk!(module_registration_rejects_ambiguous_ownership, engine, {
 });
 
 test_vk!(dropout_module_obeys_train_and_eval_modes, engine, {
-	let dropout = oa::ml::nn::Dropout::with_seed(0.5, 0x4452_4f50)?;
-	let input = oa::Matrix::from_f32(&engine, [257], &[1.0; 257])?;
+	let dropout = oa::ml::nn::Dropout::new_with_seed(0.5, 0x4452_4f50)?;
+	let input = oa::Matrix::new_from_f32(&engine, [257], &[1.0; 257])?;
 	let training = dropout.forward(&input)?.read_f32()?;
 	assert!(training.contains(&0.0));
 	assert!(training.contains(&2.0));
@@ -230,7 +230,7 @@ test_vk!(
 	utility_modules_preserve_views_and_validate_dimensions,
 	engine,
 	{
-		let input = oa::Matrix::from_f32(
+		let input = oa::Matrix::new_from_f32(
 			&engine,
 			[2, 3, 4],
 			&(0..24).map(|value| value as f32).collect::<Vec<_>>(),
@@ -279,7 +279,7 @@ test_vk!(
 	engine,
 	{
 		let flatten = Rc::new(oa::ml::nn::Flatten::default());
-		let head = Rc::new(oa::ml::nn::Linear::with_seed(&engine, 12, 2, 991)?);
+		let head = Rc::new(oa::ml::nn::Linear::new_with_seed(&engine, 12, 2, 991)?);
 		let relu = Rc::new(oa::ml::nn::Relu::new());
 		let mut sequence = oa::ml::nn::Sequential::new();
 		assert!(sequence.is_empty());
@@ -296,7 +296,7 @@ test_vk!(
 			["head.weight", "head.bias"]
 		);
 
-		let input = oa::Matrix::from_f32(&engine, [2, 3, 4], &[0.25; 24])?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 3, 4], &[0.25; 24])?;
 		let output = sequence.forward(&input)?;
 		assert_eq!(output.shape(), [2, 2]);
 		assert!(output.read_f32()?.iter().all(|value| *value >= 0.0));

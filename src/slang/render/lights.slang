@@ -1,4 +1,4 @@
-// Punctual light types and evaluation loop — shared by Standard Surface.
+// Punctual light types and evaluation loop — shared by Surface.
 //
 // Supports up to MAX_DIRECTIONAL_LIGHTS directional lights and
 // MAX_POINT_LIGHTS point/spot lights stored in a uniform buffer bound at

@@ -336,7 +336,7 @@
 		packed.extend_from_slice(&[section.b0, section.b1, section.b2, section.a1, section.a2]);
 	}
 	let coefficient_matrix =
-		Matrix::from_slice_handle(input.engine_handle(), vec![sections.len(), 5], &packed)?;
+		Matrix::new_from_slice_handle(input.engine_handle(), vec![sections.len(), 5], &packed)?;
 	let output_matrix = Matrix::allocate(
 		input.engine_handle(),
 		input.as_matrix().shape().to_vec(),
@@ -431,28 +431,28 @@
 	)?;
 	Ok(output)
 // @operation mix
-	if a.sample_rate() != b.sample_rate()
-		|| a.layout() != b.layout()
-		|| a.as_matrix().shape() != b.as_matrix().shape()
-		|| !a.engine_handle().same_as(b.engine_handle())
-		|| !gain_a.is_finite()
-		|| !gain_b.is_finite()
+	if left.sample_rate() != right.sample_rate()
+		|| left.layout() != right.layout()
+		|| left.as_matrix().shape() != right.as_matrix().shape()
+		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !gain_left.is_finite()
+		|| !gain_right.is_finite()
 	{
 		return Err(Error::invalid_argument(
 			"audio::mix requires matching ownership, rate, layout, and shape plus finite gains",
 		));
 	}
-	let count = element_count_u32(a, "audio::mix")?;
-	let output = wrap_like(allocate_like(a)?, a)?;
+	let count = element_count_u32(left, "audio::mix")?;
+	let output = wrap_like(allocate_like(left)?, left)?;
 	{{bindings:0}}
 	{{push:0}}
 	let attributes = [{{attributes}}];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	a.engine_handle().record_audio_semantic(
+	left.engine_handle().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[a, b],
+			inputs: &[left, right],
 			outputs: &outputs,
 			attributes: &attributes,
 		},

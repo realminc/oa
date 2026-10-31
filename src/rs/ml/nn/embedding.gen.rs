@@ -23,7 +23,7 @@ impl Embedding {
 	///
 	/// Returns an error when either dimension is zero, shape arithmetic overflows,
 	/// or allocation/upload fails.
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		num_embeddings: usize,
 		embedding_dim: usize,
@@ -39,8 +39,8 @@ impl Embedding {
 			.ok_or_else(|| Error::invalid_argument("embedding weight size overflows usize"))?;
 		let limit = 1.0_f32 / (embedding_dim as f32).sqrt();
 		let values = random::symmetric_uniform(count, limit, seed);
-		let weight = Matrix::from_f32(engine, [num_embeddings, embedding_dim], &values)?;
-		Self::from_matrix(weight)
+		let weight = Matrix::new_from_f32(engine, [num_embeddings, embedding_dim], &values)?;
+		Self::new_from_matrix(weight)
 	}
 
 	/// Construct an embedding from an exact FP32 table shaped `[V, D]`.
@@ -48,7 +48,7 @@ impl Embedding {
 	/// # Errors
 	///
 	/// Returns an error unless `weight` is a nonempty rank-two FP32 matrix.
-	pub fn from_matrix(weight: Matrix) -> Result<Self> {
+	pub fn new_from_matrix(weight: Matrix) -> Result<Self> {
 		let [num_embeddings, embedding_dim] = weight.shape() else {
 			return Err(Error::invalid_argument(
 				"embedding weight must have rank two",

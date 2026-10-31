@@ -295,7 +295,7 @@ class CryptoPqcTest(unittest.TestCase):
 	def test_public_key_to_bytes_roundtrip(self) -> None:
 		pk = self.keypair.public_key
 		raw = pk.to_bytes()
-		pk2 = oa.cryptography.PublicKey.from_bytes(raw)
+		pk2 = oa.cryptography.PublicKey.new_from_bytes(raw)
 		self.assertEqual(pk.to_bytes(), pk2.to_bytes())
 
 	def test_sign_returns_signature(self) -> None:
@@ -309,7 +309,7 @@ class CryptoPqcTest(unittest.TestCase):
 	def test_signature_to_bytes_roundtrip(self) -> None:
 		sig = self.keypair.sign(b"data")
 		raw = sig.to_bytes()
-		sig2 = oa.cryptography.Signature.from_bytes(raw)
+		sig2 = oa.cryptography.Signature.new_from_bytes(raw)
 		self.assertEqual(sig.to_bytes(), sig2.to_bytes())
 
 	def test_pqc_verify_valid_signature(self) -> None:

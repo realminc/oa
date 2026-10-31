@@ -104,6 +104,6 @@ fn upload_packed(
 			planar[channel * pixels + pixel] = f32::from(packed[pixel * channels + channel]) / 255.0;
 		}
 	}
-	let matrix = Matrix::from_slice(engine, [1, channels, height, width], &planar)?;
+	let matrix = Matrix::new_from_slice(engine, [1, channels, height, width], &planar)?;
 	Image::new(matrix, ImageLayout::Nchw, format)
 }

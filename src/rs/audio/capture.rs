@@ -11,11 +11,11 @@ use std::{
 
 use cpal::{
 	Data, FromSample, Sample, SampleFormat, SizedSample, Stream,
-	traits::{DeviceTrait, HostTrait, StreamTrait},
+	traits::{DeviceTrait, StreamTrait},
 };
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 
-use super::player::{cpal_error, ring_capacity, select_config};
+use super::player::{cpal_error, ring_capacity};
 use crate::{Engine, Error, Result, runtime::EngineHandle};
 
 static MONOTONIC_EPOCH: OnceLock<Instant> = OnceLock::new();
@@ -104,13 +104,13 @@ impl AudioCapture {
 		});
 
 		let host = cpal::default_host();
-		let device = host
-			.default_input_device()
-			.ok_or_else(|| Error::no_suitable_device("AudioCapture found no default input device"))?;
-		let ranges = device
-			.supported_input_configs()
-			.map_err(|error| cpal_error("input configuration query", error))?;
-		let stream_config = select_config(ranges, config.sample_rate, config.channel_count, "input")?;
+		let (device, stream_config) = super::device::select_device(
+			engine,
+			&host,
+			super::device::Direction::Input,
+			config.sample_rate,
+			config.channel_count,
+		)?;
 		let sample_format = stream_config.sample_format();
 		let callback_shared = Arc::clone(&shared);
 		let error_shared = Arc::clone(&shared);

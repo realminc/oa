@@ -50,11 +50,11 @@ impl EnvironmentExecution {
 		Ok(())
 	}
 
-	fn submit(&mut self) -> Result<Event> {
+	fn submit(&mut self, timed: bool) -> Result<Event> {
 		let recording = self.recording.take().ok_or_else(|| {
 			Error::failed_precondition("environment submit requires an active recording")
 		})?;
-		let event = recording.submit()?;
+		let event = recording.submit(timed)?;
 		self.submission_count = self
 			.submission_count
 			.checked_add(1)
@@ -254,16 +254,19 @@ pub trait Environment {
 	/// Returns an error without active work or when plan construction/queue
 	/// submission fails. Host metadata is committed only after acceptance.
 	fn submit(&mut self) -> Result<Event> {
-		match self.execution_mut().submit() {
-			Ok(event) => {
-				self.commit_recorded_state();
-				Ok(event)
-			}
-			Err(error) => {
-				self.rollback_recorded_state();
-				Err(error)
-			}
-		}
+		submit_environment(self, false)
+	}
+
+	/// Submit the active transaction with device timestamps around its complete
+	/// command batch. The returned Event exposes the exact device duration;
+	/// explicit `wait` still releases this environment's pending lifecycle state.
+	///
+	/// # Errors
+	///
+	/// Returns the errors from `submit`, including unavailable device timestamps.
+	/// Failed submission rolls back host metadata just like untimed submission.
+	fn submit_timed(&mut self) -> Result<Event> {
+		submit_environment(self, true)
 	}
 
 	/// Wait for this environment's exact pending event.
@@ -295,5 +298,18 @@ pub trait Environment {
 		self.execution_mut().close()?;
 		self.rollback_recorded_state();
 		Ok(())
+	}
+}
+
+fn submit_environment(environment: &mut (impl Environment + ?Sized), timed: bool) -> Result<Event> {
+	match environment.execution_mut().submit(timed) {
+		Ok(event) => {
+			environment.commit_recorded_state();
+			Ok(event)
+		}
+		Err(error) => {
+			environment.rollback_recorded_state();
+			Err(error)
+		}
 	}
 }

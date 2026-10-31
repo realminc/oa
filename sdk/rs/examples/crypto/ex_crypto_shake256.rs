@@ -7,7 +7,7 @@ fn main() -> oa::Result<()> {
 	// Three 5-byte messages packed into a [3, 5] u8 matrix.
 	let rows: &[&[u8]] = &[b"alpha", b"bravo", b"crypt"];
 	let flat: Vec<u8> = rows.iter().flat_map(|r| r.iter().copied()).collect();
-	let messages = Matrix::from_slice::<u8>(&engine, [3, 5], &flat)?;
+	let messages = Matrix::new_from_slice::<u8>(&engine, [3, 5], &flat)?;
 
 	let digests = cryptography::hash::shake256(&messages, 32)?;
 

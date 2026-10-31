@@ -45,7 +45,7 @@ impl Swiglu {
 	///
 	/// Returns an error when dimensions are zero, shape arithmetic overflows, or
 	/// parameter allocation and registration fail.
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		input_features: usize,
 		intermediate_size: usize,
@@ -189,7 +189,7 @@ fn xavier_parameter(
 	let limit = (6.0_f32 / denominator as f32).sqrt();
 	Parameter::new(
 		name,
-		Matrix::from_f32(
+		Matrix::new_from_f32(
 			engine,
 			[output_features, input_features],
 			&random::symmetric_uniform(count, limit, seed),
@@ -203,7 +203,7 @@ fn projection_bias(
 	size: usize,
 	trainable: bool,
 ) -> Result<ProjectionBias> {
-	let value = Matrix::from_f32(engine, [size], &vec![0.0; size])?;
+	let value = Matrix::new_from_f32(engine, [size], &vec![0.0; size])?;
 	if trainable {
 		Ok(ProjectionBias::Parameter(Parameter::new(name, value)?))
 	} else {

@@ -1,11 +1,16 @@
+// OA donor: source/cpp/lib/oa/crypto/shader/compute/merkle/merkleReduce.slang.
+// Odd-level policy: source/cpp/lib/oa/crypto/hash.cpp, merkleRoot/buildMerkleTree.
+// Adaptation: existing paired-word permutation, checked ABI, duplicate-last tail.
+// One invocation owns a complete 32-byte parent; no packed-word write overlap.
 import attributes;
-import keccak;
+import merkle_pair;
 
 struct PushConstants {
 	uint input_index;
 	uint output_index;
 	uint count;
 	uint hash_bytes;
+	uint leaf_count;
 };
 
 [[vk::push_constant]] PushConstants push;
@@ -21,23 +26,19 @@ struct PushConstants {
 void main(uint3 dispatch_thread_id : SV_DispatchThreadID) {
 	uint index = dispatch_thread_id.x;
 	if (index >= push.count) return;
-	uint2 state[25];
-	for (uint lane = 0; lane < 25; ++lane) state[lane] = uint2(0, 0);
-	uint children_base = index * push.hash_bytes * 2;
-	for (uint lane = 0; lane < 8; ++lane) {
-		uint address = children_base + lane * 8;
-		state[lane] = uint2(
-			storage_buffers[push.input_index].Load<uint>(address),
-			storage_buffers[push.input_index].Load<uint>(address + 4)
-		);
-	}
-	state[8].x ^= 0x1fu;
-	state[16].y ^= 0x80000000u;
-	keccak_f1600_u32(state);
-	uint output_base = index * push.hash_bytes;
-	for (uint lane = 0; lane < 4; ++lane) {
-		uint address = output_base + lane * 8;
-		storage_buffers[push.output_index].Store<uint>(address, state[lane].x);
-		storage_buffers[push.output_index].Store<uint>(address + 4, state[lane].y);
-	}
+	uint input_extent, output_extent;
+	storage_buffers[push.input_index].GetDimensions(input_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	if (push.hash_bytes != 32u || push.leaf_count == 0u
+		|| push.count != push.leaf_count / 2u + (push.leaf_count & 1u)
+		|| push.leaf_count > input_extent / 32u || push.count > output_extent / 32u) return;
+	uint left = index * 2u;
+	uint right = min(left + 1u, push.leaf_count - 1u);
+	uint current[8];
+	for (uint word = 0u; word < 8u; ++word)
+		current[word] = storage_buffers[push.input_index].Load(left * 32u + word * 4u);
+	merkle_hash_pair(current, storage_buffers[push.input_index], right * 32u, false);
+	uint output_base = index * 32u;
+	for (uint word = 0u; word < 8u; ++word)
+		storage_buffers[push.output_index].Store<uint>(output_base + word * 4u, current[word]);
 }

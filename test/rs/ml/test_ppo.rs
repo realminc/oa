@@ -15,9 +15,9 @@ test_vk!(
 	engine,
 	{
 		let ratios = [1.3_f32, 0.5, 1.1, 0.9];
-		let new_log = oa::Matrix::from_f32(&engine, [4], &ratios.map(f32::ln))?;
-		let old_log = oa::Matrix::from_f32(&engine, [4], &[0.0; 4])?;
-		let advantage = oa::Matrix::from_f32(&engine, [4], &[1.0, -1.0, 2.0, -2.0])?;
+		let new_log = oa::Matrix::new_from_f32(&engine, [4], &ratios.map(f32::ln))?;
+		let old_log = oa::Matrix::new_from_f32(&engine, [4], &[0.0; 4])?;
+		let advantage = oa::Matrix::new_from_f32(&engine, [4], &[1.0, -1.0, 2.0, -2.0])?;
 		let (plan, loss) =
 			engine.capture(|| ppo_clipped_policy(&new_log, &old_log, &advantage, 0.2))?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
@@ -41,25 +41,25 @@ test_vk!(
 	ppo_composition_and_reverse_match_independent_oracle,
 	engine,
 	{
-		let new_log_parameter = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+		let new_log_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 			&engine,
 			[1, 4],
 			&[1.3_f32.ln(), 0.5_f32.ln(), 1.1_f32.ln(), 0.9_f32.ln()],
 		)?)?;
-		let value_parameter = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+		let value_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 			&engine,
 			[1, 4],
 			&[0.5, -0.5, 1.0, -1.0],
 		)?)?;
-		let entropy_parameter = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+		let entropy_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 			&engine,
 			[1, 4],
 			&[0.2, 0.4, 0.6, 0.8],
 		)?)?;
-		let row = oa::Matrix::from_slice(&engine, [1], &[0_u32])?;
-		let old_log = oa::Matrix::from_f32(&engine, [1, 4], &[0.0; 4])?;
-		let advantage = oa::Matrix::from_f32(&engine, [1, 4], &[1.0, -1.0, 2.0, -2.0])?;
-		let target_return = oa::Matrix::from_f32(&engine, [1, 4], &[0.0; 4])?;
+		let row = oa::Matrix::new_from_slice(&engine, [1], &[0_u32])?;
+		let old_log = oa::Matrix::new_from_f32(&engine, [1, 4], &[0.0; 4])?;
+		let advantage = oa::Matrix::new_from_f32(&engine, [1, 4], &[1.0, -1.0, 2.0, -2.0])?;
+		let target_return = oa::Matrix::new_from_f32(&engine, [1, 4], &[0.0; 4])?;
 		let tape = oa::ml::GradientTape::new();
 		let new_log = new_log_parameter.forward(&row)?;
 		let value = value_parameter.forward(&row)?;
@@ -122,8 +122,8 @@ test_vk!(
 );
 
 test_vk!(ppo_rejects_invalid_contracts, engine, {
-	let values = oa::Matrix::from_f32(&engine, [2], &[0.0; 2])?;
-	let short = oa::Matrix::from_f32(&engine, [1], &[0.0])?;
+	let values = oa::Matrix::new_from_f32(&engine, [2], &[0.0; 2])?;
+	let short = oa::Matrix::new_from_f32(&engine, [1], &[0.0])?;
 	assert!(ppo_clipped_policy(&values, &short, &values, 0.2).is_err());
 	assert!(ppo_clipped_policy(&values, &values, &values, 1.0).is_err());
 	assert!(

@@ -199,8 +199,8 @@ test_vk!(moe_route_weights_matches_the_donor_vector, engine, {
 	];
 	let expert_indices = [3_i32, 1, 2, 0, -1, 7];
 	let expected = host_route_weights(&probabilities, &expert_indices, 3, 4, 2);
-	let probabilities = oa::Matrix::from_f32(&engine, [3, 4], &probabilities)?;
-	let expert_indices = oa::Matrix::from_slice(&engine, [3, 2], &expert_indices)?;
+	let probabilities = oa::Matrix::new_from_f32(&engine, [3, 4], &probabilities)?;
+	let expert_indices = oa::Matrix::new_from_slice(&engine, [3, 2], &expert_indices)?;
 	let (plan, output) =
 		engine.capture(|| oa::ml::matrix::moe_route_weights(&probabilities, &expert_indices))?;
 	assert_eq!(output.shape(), [3, 2]);
@@ -230,9 +230,9 @@ test_vk!(grouped_gemm_m_matches_variable_expert_row_oracle, engine, {
 	];
 	let offsets = [0_u32, 2, 2, 3];
 	let expected = host_grouped_gemm_m(&input, &weight, &offsets, 3, 2, 2);
-	let input = oa::Matrix::from_f32(&engine, [3, 2], &input)?;
-	let weight = oa::Matrix::from_f32(&engine, [3, 2, 2], &weight)?;
-	let offsets = oa::Matrix::from_slice(&engine, [4], &offsets)?;
+	let input = oa::Matrix::new_from_f32(&engine, [3, 2], &input)?;
+	let weight = oa::Matrix::new_from_f32(&engine, [3, 2, 2], &weight)?;
+	let offsets = oa::Matrix::new_from_slice(&engine, [4], &offsets)?;
 	let (plan, output) =
 		engine.capture(|| oa::ml::matrix::grouped_gemm_m(&input, &weight, &offsets))?;
 	assert_eq!(output.shape(), [3, 2]);
@@ -253,23 +253,23 @@ test_vk!(grouped_gemm_m_reverse_matches_closed_form, engine, {
 	];
 	let offsets = [0_u32, 2, 2, 3];
 	let target = [0.5_f32, -1.0, 1.0, 2.0, -0.25, 0.75];
-	let input_parameter = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+	let input_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 		&engine,
 		[1, input_values.len()],
 		&input_values,
 	)?)?;
-	let weight_parameter = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+	let weight_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 		&engine,
 		[1, weight_values.len()],
 		&weight_values,
 	)?)?;
-	let index = oa::Matrix::from_slice(&engine, [], &[0_u32])?;
-	let offsets_matrix = oa::Matrix::from_slice(&engine, [4], &offsets)?;
+	let index = oa::Matrix::new_from_slice(&engine, [], &[0_u32])?;
+	let offsets_matrix = oa::Matrix::new_from_slice(&engine, [4], &offsets)?;
 	let tape = oa::ml::GradientTape::new();
 	let input = input_parameter.forward(&index)?.reshape([3, 2])?;
 	let weight = weight_parameter.forward(&index)?.reshape([3, 2, 2])?;
 	let output = oa::ml::matrix::grouped_gemm_m(&input, &weight, &offsets_matrix)?;
-	let target_matrix = oa::Matrix::from_f32(&engine, [3, 2], &target)?;
+	let target_matrix = oa::Matrix::new_from_f32(&engine, [3, 2], &target)?;
 	let loss = oa::ml::loss::mse(&output, &target_matrix)?;
 	tape.backward(&loss)?;
 
@@ -318,12 +318,12 @@ test_vk!(grouped_gemm_m_reverse_matches_closed_form, engine, {
 
 test_vk!(grouped_gemm_m_rejects_invalid_contracts, engine, {
 	let other_engine = oa::Engine::new()?;
-	let input = oa::Matrix::from_f32(&engine, [3, 2], &[1.0; 6])?;
-	let weight = oa::Matrix::from_f32(&engine, [3, 2, 2], &[1.0; 12])?;
-	let offsets = oa::Matrix::from_slice(&engine, [4], &[0_u32, 1, 2, 3])?;
-	let foreign_offsets = oa::Matrix::from_slice(&other_engine, [4], &[0_u32, 1, 2, 3])?;
-	let signed_offsets = oa::Matrix::from_slice(&engine, [4], &[0_i32, 1, 2, 3])?;
-	let bad_weight = oa::Matrix::from_f32(&engine, [3, 2, 3], &[1.0; 18])?;
+	let input = oa::Matrix::new_from_f32(&engine, [3, 2], &[1.0; 6])?;
+	let weight = oa::Matrix::new_from_f32(&engine, [3, 2, 2], &[1.0; 12])?;
+	let offsets = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 1, 2, 3])?;
+	let foreign_offsets = oa::Matrix::new_from_slice(&other_engine, [4], &[0_u32, 1, 2, 3])?;
+	let signed_offsets = oa::Matrix::new_from_slice(&engine, [4], &[0_i32, 1, 2, 3])?;
+	let bad_weight = oa::Matrix::new_from_f32(&engine, [3, 2, 3], &[1.0; 18])?;
 	for result in [
 		oa::ml::matrix::grouped_gemm_m(&input, &weight, &foreign_offsets),
 		oa::ml::matrix::grouped_gemm_m(&input, &weight, &signed_offsets),
@@ -347,15 +347,18 @@ test_vk!(
 		let probabilities = [0.15_f32, 0.2, 0.35, 0.3, 0.4, 0.1, 0.2, 0.3];
 		let expert_indices = [2_i32, 0, 3, 1];
 		let target = [0.6_f32, 0.4, 0.7, 0.3];
-		let parameter =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 4], &probabilities)?)?;
-		let rows = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
-		let expert_indices_matrix = oa::Matrix::from_slice(&engine, [2, 2], &expert_indices)?;
+		let parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[2, 4],
+			&probabilities,
+		)?)?;
+		let rows = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
+		let expert_indices_matrix = oa::Matrix::new_from_slice(&engine, [2, 2], &expert_indices)?;
 		let tape = oa::ml::GradientTape::new();
 		let probability_values = parameter.forward(&rows)?;
 		let route_weights =
 			oa::ml::matrix::moe_route_weights(&probability_values, &expert_indices_matrix)?;
-		let target_matrix = oa::Matrix::from_f32(&engine, [2, 2], &target)?;
+		let target_matrix = oa::Matrix::new_from_f32(&engine, [2, 2], &target)?;
 		let loss = oa::ml::loss::mse(&route_weights, &target_matrix)?;
 		tape.backward(&loss)?;
 		let actual = parameter
@@ -388,12 +391,12 @@ test_vk!(
 
 test_vk!(moe_route_weights_rejects_invalid_contracts, engine, {
 	let other_engine = oa::Engine::new()?;
-	let probabilities = oa::Matrix::from_f32(&engine, [2, 4], &[0.25; 8])?;
-	let rank_one = oa::Matrix::from_f32(&engine, [8], &[0.25; 8])?;
-	let indices = oa::Matrix::from_slice(&engine, [2, 2], &[0_i32, 1, 2, 3])?;
-	let too_many = oa::Matrix::from_slice(&engine, [2, 5], &[0_i32; 10])?;
-	let unsigned = oa::Matrix::from_slice(&engine, [2, 2], &[0_u32, 1, 2, 3])?;
-	let foreign = oa::Matrix::from_slice(&other_engine, [2, 2], &[0_i32, 1, 2, 3])?;
+	let probabilities = oa::Matrix::new_from_f32(&engine, [2, 4], &[0.25; 8])?;
+	let rank_one = oa::Matrix::new_from_f32(&engine, [8], &[0.25; 8])?;
+	let indices = oa::Matrix::new_from_slice(&engine, [2, 2], &[0_i32, 1, 2, 3])?;
+	let too_many = oa::Matrix::new_from_slice(&engine, [2, 5], &[0_i32; 10])?;
+	let unsigned = oa::Matrix::new_from_slice(&engine, [2, 2], &[0_u32, 1, 2, 3])?;
+	let foreign = oa::Matrix::new_from_slice(&other_engine, [2, 2], &[0_i32, 1, 2, 3])?;
 	for result in [
 		oa::ml::matrix::moe_route_weights(&rank_one, &indices),
 		oa::ml::matrix::moe_route_weights(&probabilities, &too_many),
@@ -412,8 +415,8 @@ test_vk!(moe_route_weights_rejects_invalid_contracts, engine, {
 });
 
 test_vk!(moe_pack_and_combine_match_stable_route_oracle, engine, {
-	let input = oa::Matrix::from_f32(&engine, [3, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
-	let expert_indices = oa::Matrix::from_slice(&engine, [3, 2], &[2_i32, 0, 1, 2, 0, 1])?;
+	let input = oa::Matrix::new_from_f32(&engine, [3, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
+	let expert_indices = oa::Matrix::new_from_slice(&engine, [3, 2], &[2_i32, 0, 1, 2, 0, 1])?;
 	let plan = oa::matrix::moe_expert_plan(&expert_indices, 3)?;
 	let packed = oa::ml::matrix::moe_gather(&input, &plan.packed_token, &plan.inverse)?;
 	assert_eq!(packed.shape(), [6, 2]);
@@ -421,7 +424,7 @@ test_vk!(moe_pack_and_combine_match_stable_route_oracle, engine, {
 		packed.read_f32()?,
 		vec![1.0, 2.0, 5.0, 6.0, 3.0, 4.0, 5.0, 6.0, 1.0, 2.0, 3.0, 4.0]
 	);
-	let gates = oa::Matrix::from_f32(&engine, [3, 2], &[0.25, 0.75, 0.6, 0.4, 0.1, 0.9])?;
+	let gates = oa::Matrix::new_from_f32(&engine, [3, 2], &[0.25, 0.75, 0.6, 0.4, 0.1, 0.9])?;
 	let output = oa::ml::matrix::moe_combine(&packed, &gates, &plan.inverse, &plan.packed_slot)?;
 	assert_eq!(output.shape(), [3, 2]);
 	assert_close(&output.read_f32()?, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 1.0e-6);
@@ -432,19 +435,25 @@ test_vk!(moe_pack_and_combine_reverse_matches_closed_form, engine, {
 	let input_values = [1.0_f32, -2.0, 0.5, 3.0, -1.0, 2.0];
 	let gate_values = [0.2_f32, 0.8, 0.6, 0.4, 0.3, 0.7];
 	let target = [0.0_f32, 1.0, -1.0, 2.0, 0.5, -0.5];
-	let input_parameter =
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [3, 2], &input_values)?)?;
-	let gate_parameter =
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [3, 2], &gate_values)?)?;
-	let rows = oa::Matrix::from_slice(&engine, [3], &[0_u32, 1, 2])?;
-	let expert_indices = oa::Matrix::from_slice(&engine, [3, 2], &[2_i32, 0, 1, 2, 0, 1])?;
+	let input_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+		&engine,
+		[3, 2],
+		&input_values,
+	)?)?;
+	let gate_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+		&engine,
+		[3, 2],
+		&gate_values,
+	)?)?;
+	let rows = oa::Matrix::new_from_slice(&engine, [3], &[0_u32, 1, 2])?;
+	let expert_indices = oa::Matrix::new_from_slice(&engine, [3, 2], &[2_i32, 0, 1, 2, 0, 1])?;
 	let plan = oa::matrix::moe_expert_plan(&expert_indices, 3)?;
 	let tape = oa::ml::GradientTape::new();
 	let input = input_parameter.forward(&rows)?;
 	let gates = gate_parameter.forward(&rows)?;
 	let packed = oa::ml::matrix::moe_gather(&input, &plan.packed_token, &plan.inverse)?;
 	let output = oa::ml::matrix::moe_combine(&packed, &gates, &plan.inverse, &plan.packed_slot)?;
-	let target_matrix = oa::Matrix::from_f32(&engine, [3, 2], &target)?;
+	let target_matrix = oa::Matrix::new_from_f32(&engine, [3, 2], &target)?;
 	let loss = oa::ml::loss::mse(&output, &target_matrix)?;
 	tape.backward(&loss)?;
 
@@ -486,11 +495,11 @@ test_vk!(moe_pack_and_combine_reverse_matches_closed_form, engine, {
 });
 
 test_vk!(moe_pack_and_combine_reject_invalid_contracts, engine, {
-	let input = oa::Matrix::from_f32(&engine, [2, 3], &[1.0; 6])?;
-	let packed_token = oa::Matrix::from_slice(&engine, [4], &[0_u32, 1, 0, 1])?;
-	let inverse = oa::Matrix::from_slice(&engine, [4], &[0_u32, 2, 1, 3])?;
-	let wrong_map = oa::Matrix::from_slice(&engine, [3], &[0_u32, 1, 2])?;
-	let signed_map = oa::Matrix::from_slice(&engine, [4], &[0_i32, 1, 0, 1])?;
+	let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0; 6])?;
+	let packed_token = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 1, 0, 1])?;
+	let inverse = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 2, 1, 3])?;
+	let wrong_map = oa::Matrix::new_from_slice(&engine, [3], &[0_u32, 1, 2])?;
+	let signed_map = oa::Matrix::new_from_slice(&engine, [4], &[0_i32, 1, 0, 1])?;
 	for result in [
 		oa::ml::matrix::moe_gather(&input, &signed_map, &inverse),
 		oa::ml::matrix::moe_gather(&input, &packed_token, &wrong_map),
@@ -504,10 +513,10 @@ test_vk!(moe_pack_and_combine_reject_invalid_contracts, engine, {
 		);
 	}
 
-	let packed = oa::Matrix::from_f32(&engine, [4, 3], &[1.0; 12])?;
-	let gates = oa::Matrix::from_f32(&engine, [2, 2], &[0.5; 4])?;
-	let packed_slot = oa::Matrix::from_slice(&engine, [4], &[0_u32, 2, 1, 3])?;
-	let bad_gates = oa::Matrix::from_f32(&engine, [2, 3], &[1.0 / 3.0; 6])?;
+	let packed = oa::Matrix::new_from_f32(&engine, [4, 3], &[1.0; 12])?;
+	let gates = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.5; 4])?;
+	let packed_slot = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 2, 1, 3])?;
+	let bad_gates = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0 / 3.0; 6])?;
 	for result in [
 		oa::ml::matrix::moe_combine(&packed, &bad_gates, &inverse, &packed_slot),
 		oa::ml::matrix::moe_combine(&packed, &gates, &wrong_map, &packed_slot),
@@ -536,10 +545,10 @@ test_vk!(
 		let bias = [0.1_f32, -0.2, 0.3, 0.0, 0.25, -0.5];
 		let offsets = [0_u32, 2, 3, 6];
 		let expected = host_grouped_linear_m(&input, &weight, &bias, &offsets, 6, 2, 2);
-		let input = oa::Matrix::from_f32(&engine, [6, 2], &input)?;
-		let weight = oa::Matrix::from_f32(&engine, [3, 2, 2], &weight)?;
-		let bias = oa::Matrix::from_f32(&engine, [3, 2], &bias)?;
-		let offsets = oa::Matrix::from_slice(&engine, [4], &offsets)?;
+		let input = oa::Matrix::new_from_f32(&engine, [6, 2], &input)?;
+		let weight = oa::Matrix::new_from_f32(&engine, [3, 2, 2], &weight)?;
+		let bias = oa::Matrix::new_from_f32(&engine, [3, 2], &bias)?;
+		let offsets = oa::Matrix::new_from_slice(&engine, [4], &offsets)?;
 		let (plan, output) =
 			engine.capture(|| oa::ml::matrix::grouped_linear_m(&input, &weight, &bias, &offsets))?;
 		assert_eq!(output.shape(), [6, 2]);
@@ -566,15 +575,24 @@ test_vk!(grouped_linear_m_reverse_matches_closed_form, engine, {
 		0.0_f32, 1.0, -1.0, 2.0, 0.5, -0.5, 1.5, 0.25, -0.75, 0.5, 1.0, -1.0,
 	];
 	let offsets_values = [0_u32, 2, 3, 6];
-	let input_parameter =
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [6, 2], &input_values)?)?;
-	let weight_parameter =
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [3, 4], &weight_values)?)?;
-	let bias_parameter =
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [3, 2], &bias_values)?)?;
-	let row_indices = oa::Matrix::from_slice(&engine, [6], &[0_u32, 1, 2, 3, 4, 5])?;
-	let expert_indices = oa::Matrix::from_slice(&engine, [3], &[0_u32, 1, 2])?;
-	let offsets = oa::Matrix::from_slice(&engine, [4], &offsets_values)?;
+	let input_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+		&engine,
+		[6, 2],
+		&input_values,
+	)?)?;
+	let weight_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+		&engine,
+		[3, 4],
+		&weight_values,
+	)?)?;
+	let bias_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+		&engine,
+		[3, 2],
+		&bias_values,
+	)?)?;
+	let row_indices = oa::Matrix::new_from_slice(&engine, [6], &[0_u32, 1, 2, 3, 4, 5])?;
+	let expert_indices = oa::Matrix::new_from_slice(&engine, [3], &[0_u32, 1, 2])?;
+	let offsets = oa::Matrix::new_from_slice(&engine, [4], &offsets_values)?;
 	let tape = oa::ml::GradientTape::new();
 	let input = input_parameter.forward(&row_indices)?;
 	let weight = weight_parameter
@@ -582,7 +600,7 @@ test_vk!(grouped_linear_m_reverse_matches_closed_form, engine, {
 		.reshape([3, 2, 2])?;
 	let bias = bias_parameter.forward(&expert_indices)?;
 	let output = oa::ml::matrix::grouped_linear_m(&input, &weight, &bias, &offsets)?;
-	let target_matrix = oa::Matrix::from_f32(&engine, [6, 2], &target)?;
+	let target_matrix = oa::Matrix::new_from_f32(&engine, [6, 2], &target)?;
 	let loss = oa::ml::loss::mse(&output, &target_matrix)?;
 	tape.backward(&loss)?;
 
@@ -645,13 +663,13 @@ test_vk!(grouped_linear_m_reverse_matches_closed_form, engine, {
 });
 
 test_vk!(grouped_linear_m_rejects_invalid_contracts, engine, {
-	let input = oa::Matrix::from_f32(&engine, [4, 2], &[1.0; 8])?;
-	let weight = oa::Matrix::from_f32(&engine, [2, 3, 2], &[0.5; 12])?;
-	let bias = oa::Matrix::from_f32(&engine, [2, 3], &[0.0; 6])?;
-	let offsets = oa::Matrix::from_slice(&engine, [3], &[0_u32, 2, 4])?;
-	let wrong_weight = oa::Matrix::from_f32(&engine, [2, 3, 4], &[0.5; 24])?;
-	let wrong_bias = oa::Matrix::from_f32(&engine, [2, 2], &[0.0; 4])?;
-	let signed_offsets = oa::Matrix::from_slice(&engine, [3], &[0_i32, 2, 4])?;
+	let input = oa::Matrix::new_from_f32(&engine, [4, 2], &[1.0; 8])?;
+	let weight = oa::Matrix::new_from_f32(&engine, [2, 3, 2], &[0.5; 12])?;
+	let bias = oa::Matrix::new_from_f32(&engine, [2, 3], &[0.0; 6])?;
+	let offsets = oa::Matrix::new_from_slice(&engine, [3], &[0_u32, 2, 4])?;
+	let wrong_weight = oa::Matrix::new_from_f32(&engine, [2, 3, 4], &[0.5; 24])?;
+	let wrong_bias = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.0; 4])?;
+	let signed_offsets = oa::Matrix::new_from_slice(&engine, [3], &[0_i32, 2, 4])?;
 	for result in [
 		oa::ml::matrix::grouped_linear_m(&input, &wrong_weight, &bias, &offsets),
 		oa::ml::matrix::grouped_linear_m(&input, &weight, &wrong_bias, &offsets),
@@ -706,22 +724,22 @@ test_vk!(sparse_moe_matches_independent_cpu_oracle, engine, {
 		ROUTES,
 		EPSILON,
 	);
-	let moe = oa::ml::nn::Moe::from_matrices(
-		oa::Matrix::from_f32(&engine, [MODEL_WIDTH], &norm_weight)?,
-		oa::Matrix::from_f32(&engine, [EXPERTS, MODEL_WIDTH], &router_weight)?,
-		oa::Matrix::from_f32(&engine, [EXPERTS], &router_bias)?,
-		oa::Matrix::from_f32(
+	let moe = oa::ml::nn::Moe::new_from_matrices(
+		oa::Matrix::new_from_f32(&engine, [MODEL_WIDTH], &norm_weight)?,
+		oa::Matrix::new_from_f32(&engine, [EXPERTS, MODEL_WIDTH], &router_weight)?,
+		oa::Matrix::new_from_f32(&engine, [EXPERTS], &router_bias)?,
+		oa::Matrix::new_from_f32(
 			&engine,
 			[EXPERTS, 2 * HIDDEN_WIDTH, MODEL_WIDTH],
 			&gate_up_weight,
 		)?,
-		oa::Matrix::from_f32(&engine, [EXPERTS, 2 * HIDDEN_WIDTH], &gate_up_bias)?,
-		oa::Matrix::from_f32(&engine, [EXPERTS, MODEL_WIDTH, HIDDEN_WIDTH], &down_weight)?,
-		oa::Matrix::from_f32(&engine, [EXPERTS, MODEL_WIDTH], &down_bias)?,
+		oa::Matrix::new_from_f32(&engine, [EXPERTS, 2 * HIDDEN_WIDTH], &gate_up_bias)?,
+		oa::Matrix::new_from_f32(&engine, [EXPERTS, MODEL_WIDTH, HIDDEN_WIDTH], &down_weight)?,
+		oa::Matrix::new_from_f32(&engine, [EXPERTS, MODEL_WIDTH], &down_bias)?,
 		ROUTES,
 		EPSILON,
 	)?;
-	let input = oa::Matrix::from_f32(&engine, [TOKENS, MODEL_WIDTH], &input)?;
+	let input = oa::Matrix::new_from_f32(&engine, [TOKENS, MODEL_WIDTH], &input)?;
 	let output = moe.forward(&input)?;
 	assert_close(&output.read_f32()?, &expected, 3.0e-5);
 	let mask = moe
@@ -785,31 +803,31 @@ test_vk!(
 			.0;
 			host_mse(&output, &target)
 		};
-		let input_parameter = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+		let input_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 			&engine,
 			[TOKENS, MODEL_WIDTH],
 			&input_values,
 		)?)?;
-		let rows = oa::Matrix::from_slice(&engine, [TOKENS], &[0_u32, 1, 2])?;
-		let moe = oa::ml::nn::Moe::from_matrices(
-			oa::Matrix::from_f32(&engine, [MODEL_WIDTH], &norm_weight)?,
-			oa::Matrix::from_f32(&engine, [EXPERTS, MODEL_WIDTH], &router_weight)?,
-			oa::Matrix::from_f32(&engine, [EXPERTS], &router_bias)?,
-			oa::Matrix::from_f32(
+		let rows = oa::Matrix::new_from_slice(&engine, [TOKENS], &[0_u32, 1, 2])?;
+		let moe = oa::ml::nn::Moe::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [MODEL_WIDTH], &norm_weight)?,
+			oa::Matrix::new_from_f32(&engine, [EXPERTS, MODEL_WIDTH], &router_weight)?,
+			oa::Matrix::new_from_f32(&engine, [EXPERTS], &router_bias)?,
+			oa::Matrix::new_from_f32(
 				&engine,
 				[EXPERTS, 2 * HIDDEN_WIDTH, MODEL_WIDTH],
 				&gate_up_weight,
 			)?,
-			oa::Matrix::from_f32(&engine, [EXPERTS, 2 * HIDDEN_WIDTH], &gate_up_bias)?,
-			oa::Matrix::from_f32(&engine, [EXPERTS, MODEL_WIDTH, HIDDEN_WIDTH], &down_weight)?,
-			oa::Matrix::from_f32(&engine, [EXPERTS, MODEL_WIDTH], &down_bias)?,
+			oa::Matrix::new_from_f32(&engine, [EXPERTS, 2 * HIDDEN_WIDTH], &gate_up_bias)?,
+			oa::Matrix::new_from_f32(&engine, [EXPERTS, MODEL_WIDTH, HIDDEN_WIDTH], &down_weight)?,
+			oa::Matrix::new_from_f32(&engine, [EXPERTS, MODEL_WIDTH], &down_bias)?,
 			ROUTES,
 			EPSILON,
 		)?;
 		let tape = oa::ml::GradientTape::new();
 		let input = input_parameter.forward(&rows)?;
 		let output = moe.forward(&input)?;
-		let target_matrix = oa::Matrix::from_f32(&engine, [TOKENS, MODEL_WIDTH], &target)?;
+		let target_matrix = oa::Matrix::new_from_f32(&engine, [TOKENS, MODEL_WIDTH], &target)?;
 		let loss = oa::ml::loss::mse(&output, &target_matrix)?;
 		tape.backward(&loss)?;
 
@@ -952,17 +970,17 @@ test_vk!(
 	{
 		use oa::ml::Module as _;
 
-		let moe = oa::ml::nn::Moe::with_seed(&engine, 4, 3, 3, 2, 1.0e-5, 731)?;
+		let moe = oa::ml::nn::Moe::new_with_seed(&engine, 4, 3, 3, 2, 1.0e-5, 731)?;
 		assert!(moe.sparse_execution());
 		let optimizer = oa::ml::Sgd::new(moe.all_parameters()?, 0.0, 0.0, 0.0)?;
-		let input = oa::Matrix::from_f32(
+		let input = oa::Matrix::new_from_f32(
 			&engine,
 			[7, 4],
 			&(0..28)
 				.map(|index| 0.07 * ((index % 11) as f32 - 5.0))
 				.collect::<Vec<_>>(),
 		)?;
-		let target = oa::Matrix::from_f32(
+		let target = oa::Matrix::new_from_f32(
 			&engine,
 			[7, 4],
 			&(0..28)
@@ -1022,11 +1040,17 @@ test_vk!(
 	{
 		let left_values = [1.0_f32, 2.0, 3.0, 4.0];
 		let right_values = [2.0_f32, 1.0, 1.0, 3.0];
-		let rows = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
-		let left =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 2], &left_values)?)?;
-		let right =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 2], &right_values)?)?;
+		let rows = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
+		let left = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[2, 2],
+			&left_values,
+		)?)?;
+		let right = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[2, 2],
+			&right_values,
+		)?)?;
 		let tape = oa::ml::GradientTape::new();
 		let left_matrix = left.forward(&rows)?;
 		let right_matrix = right.forward(&rows)?;
@@ -1077,12 +1101,12 @@ test_vk!(
 	moe_configuration_clamps_routes_and_rejects_invalid_layouts,
 	engine,
 	{
-		let low = oa::ml::nn::Moe::with_seed(&engine, 4, 3, 3, 0, 1.0e-5, 7)?;
-		let high = oa::ml::nn::Moe::with_seed(&engine, 4, 3, 3, 99, 1.0e-5, 7)?;
+		let low = oa::ml::nn::Moe::new_with_seed(&engine, 4, 3, 3, 0, 1.0e-5, 7)?;
+		let high = oa::ml::nn::Moe::new_with_seed(&engine, 4, 3, 3, 99, 1.0e-5, 7)?;
 		assert_eq!(low.experts_per_token(), 1);
 		assert_eq!(high.experts_per_token(), 3);
 		assert_eq!(
-			oa::ml::nn::Moe::with_seed(&engine, 0, 3, 3, 1, 1.0e-5, 7)
+			oa::ml::nn::Moe::new_with_seed(&engine, 0, 3, 3, 1, 1.0e-5, 7)
 				.err()
 				.expect("zero-width MoE was accepted")
 				.kind(),
@@ -1093,14 +1117,14 @@ test_vk!(
 );
 
 test_vk!(moe_route_stats_reduce_only_expert_vectors, engine, {
-	let moe = oa::ml::nn::Moe::from_matrices(
-		oa::Matrix::from_f32(&engine, [2], &[1.0, 1.0])?,
-		oa::Matrix::from_f32(&engine, [4, 2], &[0.0; 8])?,
-		oa::Matrix::from_f32(&engine, [4], &[0.0; 4])?,
-		oa::Matrix::from_f32(&engine, [4, 4, 2], &[0.0; 32])?,
-		oa::Matrix::from_f32(&engine, [4, 4], &[0.0; 16])?,
-		oa::Matrix::from_f32(&engine, [4, 2, 2], &[0.0; 16])?,
-		oa::Matrix::from_f32(&engine, [4, 2], &[0.0; 8])?,
+	let moe = oa::ml::nn::Moe::new_from_matrices(
+		oa::Matrix::new_from_f32(&engine, [2], &[1.0, 1.0])?,
+		oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0; 8])?,
+		oa::Matrix::new_from_f32(&engine, [4], &[0.0; 4])?,
+		oa::Matrix::new_from_f32(&engine, [4, 4, 2], &[0.0; 32])?,
+		oa::Matrix::new_from_f32(&engine, [4, 4], &[0.0; 16])?,
+		oa::Matrix::new_from_f32(&engine, [4, 2, 2], &[0.0; 16])?,
+		oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0; 8])?,
 		2,
 		1.0e-5,
 	)?;
@@ -1111,7 +1135,7 @@ test_vk!(moe_route_stats_reduce_only_expert_vectors, engine, {
 	assert_eq!(empty.entropy(), 0.0);
 	assert_eq!(empty.max_load_ratio(), 0.0);
 
-	let input = oa::Matrix::from_f32(&engine, [3, 2], &[1.0, 0.0, 0.0, 1.0, -1.0, 2.0])?;
+	let input = oa::Matrix::new_from_f32(&engine, [3, 2], &[1.0, 0.0, 0.0, 1.0, -1.0, 2.0])?;
 	let _output = moe.forward(&input)?;
 	let stats = moe.route_stats()?;
 	assert_close(stats.load_fraction(), &[0.5, 0.5, 0.0, 0.0], 1.0e-7);
@@ -1128,14 +1152,14 @@ test_vk!(
 	{
 		use oa::ml::Module as _;
 
-		let moe = oa::ml::nn::Moe::from_matrices(
-			oa::Matrix::from_f32(&engine, [2], &[1.0, 1.0])?,
-			oa::Matrix::from_f32(&engine, [4, 2], &[0.0; 8])?,
-			oa::Matrix::from_f32(&engine, [4], &[0.0; 4])?,
-			oa::Matrix::from_f32(&engine, [4, 4, 2], &[0.0; 32])?,
-			oa::Matrix::from_f32(&engine, [4, 4], &[0.0; 16])?,
-			oa::Matrix::from_f32(&engine, [4, 2, 2], &[0.0; 16])?,
-			oa::Matrix::from_f32(&engine, [4, 2], &[0.0; 8])?,
+		let moe = oa::ml::nn::Moe::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [2], &[1.0, 1.0])?,
+			oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0; 8])?,
+			oa::Matrix::new_from_f32(&engine, [4], &[0.0; 4])?,
+			oa::Matrix::new_from_f32(&engine, [4, 4, 2], &[0.0; 32])?,
+			oa::Matrix::new_from_f32(&engine, [4, 4], &[0.0; 16])?,
+			oa::Matrix::new_from_f32(&engine, [4, 2, 2], &[0.0; 16])?,
+			oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0; 8])?,
 			2,
 			1.0e-5,
 		)?;
@@ -1150,7 +1174,7 @@ test_vk!(
 		assert_eq!(moe.balance_rate(), 0.0);
 
 		moe.set_balance_rate(0.1);
-		let input = oa::Matrix::from_f32(&engine, [3, 2], &[1.0, 0.0, 0.0, 1.0, -1.0, 2.0])?;
+		let input = oa::Matrix::new_from_f32(&engine, [3, 2], &[1.0, 0.0, 0.0, 1.0, -1.0, 2.0])?;
 		let _first = moe.forward(&input)?;
 		assert_eq!(
 			moe
@@ -1187,23 +1211,23 @@ test_vk!(
 );
 
 test_vk!(broadcast_add_adjoint_reduces_to_each_input_shape, engine, {
-	let left_parameter = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+	let left_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 		&engine,
 		[2, 3],
 		&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
 	)?)?;
-	let right_parameter = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+	let right_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 		&engine,
 		[1, 3],
 		&[10.0, 20.0, 30.0],
 	)?)?;
-	let left_rows = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
-	let right_rows = oa::Matrix::from_slice(&engine, [1], &[0_u32])?;
+	let left_rows = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
+	let right_rows = oa::Matrix::new_from_slice(&engine, [1], &[0_u32])?;
 	let tape = oa::ml::GradientTape::new();
 	let left = left_parameter.forward(&left_rows)?;
 	let right = right_parameter.forward(&right_rows)?;
 	let output = oa::matrix::add(&left, &right)?;
-	let target = oa::Matrix::from_f32(&engine, [2, 3], &[0.0; 6])?;
+	let target = oa::Matrix::new_from_f32(&engine, [2, 3], &[0.0; 6])?;
 	let loss = oa::ml::loss::mse(&output, &target)?;
 	tape.backward(&loss)?;
 
@@ -1244,14 +1268,14 @@ test_vk!(
 	{
 		use oa::ml::Module as _;
 
-		let moe = oa::ml::nn::Moe::from_matrices(
-			oa::Matrix::from_f32(&engine, [2], &[1.0, 1.0])?,
-			oa::Matrix::from_f32(&engine, [4, 2], &[0.0; 8])?,
-			oa::Matrix::from_f32(&engine, [4], &[0.0; 4])?,
-			oa::Matrix::from_f32(&engine, [4, 4, 2], &[0.0; 32])?,
-			oa::Matrix::from_f32(&engine, [4, 4], &[0.0; 16])?,
-			oa::Matrix::from_f32(&engine, [4, 2, 2], &[0.0; 16])?,
-			oa::Matrix::from_f32(&engine, [4, 2], &[0.0; 8])?,
+		let moe = oa::ml::nn::Moe::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [2], &[1.0, 1.0])?,
+			oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0; 8])?,
+			oa::Matrix::new_from_f32(&engine, [4], &[0.0; 4])?,
+			oa::Matrix::new_from_f32(&engine, [4, 4, 2], &[0.0; 32])?,
+			oa::Matrix::new_from_f32(&engine, [4, 4], &[0.0; 16])?,
+			oa::Matrix::new_from_f32(&engine, [4, 2, 2], &[0.0; 16])?,
+			oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0; 8])?,
 			2,
 			1.0e-5,
 		)?;
@@ -1262,7 +1286,7 @@ test_vk!(
 
 		moe.set_aux_loss_alpha(0.01);
 		moe.set_router_z_loss_beta(0.001);
-		let input = oa::Matrix::from_f32(&engine, [3, 2], &[1.0, 0.0, 0.0, 1.0, -1.0, 2.0])?;
+		let input = oa::Matrix::new_from_f32(&engine, [3, 2], &[1.0, 0.0, 0.0, 1.0, -1.0, 2.0])?;
 		let tape = oa::ml::GradientTape::new();
 		let _output = moe.forward(&input)?;
 		let aux_loss = moe.aux_loss();
@@ -1310,9 +1334,9 @@ test_vk!(
 	{
 		use oa::ml::Module as _;
 
-		let base = oa::ml::nn::Moe::with_seed(&engine, 4, 6, 4, 1, 1.0e-5, 303)?;
+		let base = oa::ml::nn::Moe::new_with_seed(&engine, 4, 6, 4, 1, 1.0e-5, 303)?;
 		let shared =
-			oa::ml::nn::Moe::with_seed_and_shared_experts(&engine, 4, 6, 4, 1, 1.0e-5, 1, 303)?;
+			oa::ml::nn::Moe::new_with_seed_and_shared_experts(&engine, 4, 6, 4, 1, 1.0e-5, 1, 303)?;
 		assert_eq!(base.num_shared_experts(), 0);
 		assert_eq!(shared.num_shared_experts(), 1);
 		let named = shared.all_named_parameters()?;
@@ -1329,7 +1353,7 @@ test_vk!(
 				"missing shared-expert parameter {path}"
 			);
 		}
-		let input = oa::Matrix::from_f32(
+		let input = oa::Matrix::new_from_f32(
 			&engine,
 			[4, 4],
 			&[
@@ -1338,14 +1362,14 @@ test_vk!(
 		)?;
 		let base_output = base.forward(&input)?;
 		let oracle_norm = oa::ml::nn::RmsNorm::new(&engine, 4, 1.0e-5)?;
-		let oracle_expert = oa::ml::nn::Swiglu::with_seed(&engine, 4, 6, true, 306)?;
+		let oracle_expert = oa::ml::nn::Swiglu::new_with_seed(&engine, 4, 6, true, 306)?;
 		let oracle_output = oa::matrix::add(
 			&base_output,
 			&oracle_expert.forward(&oracle_norm.forward(&input)?)?,
 		)?;
 		let tape = oa::ml::GradientTape::new();
 		let shared_output = shared.forward(&input)?;
-		let target = oa::Matrix::from_f32(&engine, [4, 4], &[0.0; 16])?;
+		let target = oa::Matrix::new_from_f32(&engine, [4, 4], &[0.0; 16])?;
 		let loss = oa::ml::loss::mse(&shared_output, &target)?;
 		tape.backward(&loss)?;
 		let base_values = base_output.read_f32()?;

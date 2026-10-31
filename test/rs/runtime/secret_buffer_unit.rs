@@ -40,14 +40,91 @@ fn signing_erasure_witness_requires_entropy_staging_and_workspace() {
 
 // Disposable instrumentation lives only in test/rs. The shipping constructor
 // has no transfer-source usage or native-resource exposure.
+/// Only this test-owned type can observe a fixture allocation. Its private
+/// field prevents constructing it from a production secret owner.
+pub(in crate::runtime) struct FixtureSecret {
+	secret: Arc<SecretBuffer>,
+}
+
+impl FixtureSecret {
+	pub(in crate::runtime) fn owner(&self) -> &Arc<SecretBuffer> {
+		&self.secret
+	}
+
+	pub(in crate::runtime) fn into_owner(self) -> Arc<SecretBuffer> {
+		self.secret
+	}
+
+	/// Disposable fixture allocations only: the shipping constructor never adds
+	/// TRANSFER_SRC. Callers retain the public probe through the returned event.
+	pub(in crate::runtime) fn test_record_fixture_snapshot(
+		&self,
+		probe: &crate::runtime::Buffer,
+	) -> Result<RecordedCommandBuffer> {
+		let secret = &self.secret;
+		assert!(probe.belongs_to(&secret.device));
+		assert_eq!(probe.size(), secret.size);
+		let mut command = secret.device.record_compute_commands(|command| {
+			let ready = vk::BufferMemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+				.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+				.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.buffer(secret.handle)
+				.size(secret.size);
+			let host = vk::MemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+				.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT);
+			// SAFETY: exclusively test_new fixture storage supplies TRANSFER_SRC;
+			// equal live ranges and barriers cover preceding device writes and host reads.
+			unsafe {
+				secret.device.sync_commands().pipeline_barrier(
+					secret.device.raw(),
+					command,
+					&vk::DependencyInfo::default()
+						.buffer_memory_barriers(std::slice::from_ref(&ready))
+						.map_err(Error::from)?,
+				)?;
+				secret.device.raw().cmd_copy_buffer(
+					command,
+					secret.handle,
+					probe.raw(),
+					&[vk::BufferCopy::default().size(secret.size)],
+				)?;
+				secret.device.sync_commands().pipeline_barrier(
+					secret.device.raw(),
+					command,
+					&vk::DependencyInfo::default()
+						.memory_barriers(std::slice::from_ref(&host))
+						.map_err(Error::from)?,
+				)?;
+			}
+			Ok(())
+		})?;
+		command.retain_secret_use(Arc::clone(secret));
+		command.retain_secret_public_resources(std::iter::once(probe.clone()), None)?;
+		Ok(command)
+	}
+}
+
 impl SecretBuffer {
+	pub(in crate::runtime) fn test_fixture(device: &Arc<Device>) -> Result<FixtureSecret> {
+		Ok(FixtureSecret {
+			secret: Arc::new(Self::test_new(device, 32)?),
+		})
+	}
+
 	pub(in crate::runtime) fn test_new(device: &Arc<Device>, bytes: usize) -> Result<Self> {
 		Self::allocate(
 			device,
 			bytes,
-			ash::vk::BufferUsageFlags::STORAGE_BUFFER
-				| ash::vk::BufferUsageFlags::TRANSFER_DST
-				| ash::vk::BufferUsageFlags::TRANSFER_SRC,
+			vk::BufferUsageFlagBits::STORAGE_BUFFER_BIT
+				| vk::BufferUsageFlagBits::TRANSFER_DST_BIT
+				| vk::BufferUsageFlagBits::TRANSFER_SRC_BIT,
 		)
 	}
 
@@ -62,29 +139,33 @@ impl SecretBuffer {
 				self
 					.device
 					.raw()
-					.cmd_fill_buffer(command, self.handle, 0, self.size, 0xa5a5a5a5);
+					.cmd_fill_buffer(command, self.handle, 0, self.size, 0xa5a5a5a5)?;
 			}
-			self.encode_erasure(command);
-			self.record_test_readback(command, probe);
+			self.encode_erasure(command)?;
+			self.record_test_readback(command, probe)?;
 			Ok(())
 		})?;
 		Ok(self.retain_erasure(command))
 	}
-	fn record_test_readback(&self, command: ash::vk::CommandBuffer, probe: &crate::runtime::Buffer) {
-		let barrier = ash::vk::BufferMemoryBarrier2::default()
-			.src_stage_mask(ash::vk::PipelineStageFlags2::CLEAR)
-			.src_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-			.dst_stage_mask(ash::vk::PipelineStageFlags2::COPY)
-			.dst_access_mask(ash::vk::AccessFlags2::TRANSFER_READ)
-			.src_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
-			.dst_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+	fn record_test_readback(
+		&self,
+		command: vk::CommandBuffer,
+		probe: &crate::runtime::Buffer,
+	) -> Result<()> {
+		let barrier = vk::BufferMemoryBarrier2::default()
+			.src_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
+			.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+			.dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+			.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+			.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+			.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
 			.buffer(self.handle)
 			.size(self.size);
-		let host = ash::vk::MemoryBarrier2::default()
-			.src_stage_mask(ash::vk::PipelineStageFlags2::COPY)
-			.src_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-			.dst_stage_mask(ash::vk::PipelineStageFlags2::HOST)
-			.dst_access_mask(ash::vk::AccessFlags2::HOST_READ);
+		let host = vk::MemoryBarrier2::default()
+			.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+			.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+			.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+			.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT);
 		// SAFETY: the secret is command-retained and the test keeps the probe
 		// alive through completion. Both buffers have the
 		// required transfer usage and exact equal ranges. No production secrets.
@@ -92,20 +173,25 @@ impl SecretBuffer {
 			self.device.sync_commands().pipeline_barrier(
 				self.device.raw(),
 				command,
-				&ash::vk::DependencyInfo::default().buffer_memory_barriers(std::slice::from_ref(&barrier)),
-			);
+				&vk::DependencyInfo::default()
+					.buffer_memory_barriers(std::slice::from_ref(&barrier))
+					.map_err(Error::from)?,
+			)?;
 			self.device.raw().cmd_copy_buffer(
 				command,
 				self.handle,
 				probe.raw(),
-				&[ash::vk::BufferCopy::default().size(self.size)],
-			);
+				&[vk::BufferCopy::default().size(self.size)],
+			)?;
 			self.device.sync_commands().pipeline_barrier(
 				self.device.raw(),
 				command,
-				&ash::vk::DependencyInfo::default().memory_barriers(std::slice::from_ref(&host)),
-			);
+				&vk::DependencyInfo::default()
+					.memory_barriers(std::slice::from_ref(&host))
+					.map_err(Error::from)?,
+			)?;
 		}
+		Ok(())
 	}
 }
 
@@ -124,18 +210,20 @@ impl SecretBuffer {
 					command,
 					input.raw(),
 					probe.raw(),
-					&[ash::vk::BufferCopy::default().size(probe.size())],
-				);
-				let host = ash::vk::MemoryBarrier2::default()
-					.src_stage_mask(ash::vk::PipelineStageFlags2::COPY)
-					.src_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-					.dst_stage_mask(ash::vk::PipelineStageFlags2::HOST)
-					.dst_access_mask(ash::vk::AccessFlags2::HOST_READ);
+					&[vk::BufferCopy::default().size(probe.size())],
+				)?;
+				let host = vk::MemoryBarrier2::default()
+					.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+					.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+					.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+					.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT);
 				device.sync_commands().pipeline_barrier(
 					device.raw(),
 					command,
-					&ash::vk::DependencyInfo::default().memory_barriers(std::slice::from_ref(&host)),
-				);
+					&vk::DependencyInfo::default()
+						.memory_barriers(std::slice::from_ref(&host))
+						.map_err(Error::from)?,
+				)?;
 			}
 			Ok(())
 		})

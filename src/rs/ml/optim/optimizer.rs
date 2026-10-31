@@ -125,7 +125,7 @@ pub(super) struct MuonParameterState {
 pub(super) fn next_optimizer_id() -> Result<u64> {
 	static NEXT_OPTIMIZER_ID: AtomicU64 = AtomicU64::new(1);
 	NEXT_OPTIMIZER_ID
-		.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+		.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
 			(value != u64::MAX).then_some(value + 1)
 		})
 		.map_err(|_| Error::resource_exhausted("optimizer identity exhausted"))

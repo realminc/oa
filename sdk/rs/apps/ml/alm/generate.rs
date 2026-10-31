@@ -239,7 +239,7 @@ fn caption_feature(
 		));
 	}
 	let start = cfg.caption_index * width;
-	Ok(oa::Matrix::from_f32(
+	Ok(oa::Matrix::new_from_f32(
 		engine,
 		[1, width],
 		&features[start..start + width],

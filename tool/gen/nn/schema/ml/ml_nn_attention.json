@@ -4,7 +4,7 @@
 	"imports": [
 		"use std::{ cell::{Cell, RefCell}, rc::Rc, };",
 		"use crate::{DType, Engine, Error, Matrix, Result, matrix as core_matrix};",
-		"use super::super::{ Module, ModuleRegistry, matrix::{ bmm, bmm_nt, flash_attention_causal, merge_heads, scaled_dot_product_attention, softmax_scaled_masked, split_heads, }, };",
+		"use super::super::{ Module, ModuleRegistry, matrix::{ bmm, bmm_nt, bmm_tn, flash_attention_causal, merge_heads, scaled_dot_product_attention, softmax_scaled_masked, split_heads, }, };",
 		"use super::Linear;"
 	],
 	"helper": "",
@@ -16,7 +16,9 @@
 			"values": {
 				"backend_type": "AttentionBackend",
 				"mode_type": "AttentionMode",
-				"projection_constructor": "Linear::with_seed_and_bias",
+				"linear_name": "CausalLinearAttention",
+				"linear_mode_type": "LinearAttentionMode",
+				"projection_constructor": "Linear::new_with_seed_and_bias",
 				"split_operation": "split_heads",
 				"merge_operation": "merge_heads",
 				"score_operation": "bmm_nt",
@@ -25,13 +27,20 @@
 				"standard_operation": "scaled_dot_product_attention",
 				"softmax_operation": "softmax_scaled_masked",
 				"dropout_operation": "core_matrix::dropout",
+				"kv_operation": "bmm_tn",
+				"linear_operation": "super::super::matrix::causal_linear_attention",
+				"add_operation": "core_matrix::add",
+				"sum_operation": "core_matrix::sum",
+				"div_operation": "core_matrix::div",
+				"slice_operation": "core_matrix::slice",
+				"concat_operation": "core_matrix::concat",
 				"query_name": "q_proj",
 				"key_name": "k_proj",
 				"value_name": "v_proj",
 				"output_name": "out_proj"
 			},
 			"donor": "source/cpp/lib/oa/ml/nn/attention/multiheadattention/multiHeadAttention.cpp",
-			"adaptation": "Complete generation of established Rust composition, explicit policy enums, replay-safe dropout and geometry-keyed mask cache; retains donor Standard/Flash separation and Rust checked ownership"
+			"adaptation": "Complete generation of established Rust composition, explicit policy enums, replay-safe dropout and geometry-keyed mask cache; adds Katharopoulos linear attention as CausalLinearAttention with ELU+1 feature map — bidirectional composition and fused bounded-state causal forward/adjoints share projections with MultiHeadAttention"
 		}
 	]
 }

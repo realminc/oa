@@ -7,6 +7,49 @@
   "retired_stable_ids": [39, 115],
   "port_provenance": [
     {
+      "family": "compiled_ppo_updates",
+      "operations": [
+        "minibatch_cursor",
+        "training_accumulate",
+        "append_cursor",
+        "sample_categorical_cursor",
+        "trading_reset_cursor",
+        "trading_step_cursor",
+        "trading_cursor_advance"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/rollout/rlRolloutAppend.slang",
+        "source/cpp/lib/oa/core/shader/compute/flat/add.gen.slang",
+        "source/cpp/lib/oa/ml/ppoTrainer.cpp"
+      ],
+      "reason": "Retains checked contiguous typed rollout copies and elementwise sum. A read-only U32 cursor selects the current minibatch and explicit first-batch overwrite, allowing bounded backward/gradient accumulation replay without changing parameters between minibatches or retaining a whole-epoch tape."
+    },
+    {
+      "family": "rollout_minibatch",
+      "operations": [
+        "minibatch"
+      ],
+      "classification": "mechanical_adaptation",
+      "donors": [
+        "source/cpp/lib/oa/ml/shader/compute/rollout/rlRolloutAppend.slang",
+        "source/cpp/lib/oa/core/shader/compute/flat/matrixCopyRegion.slang",
+        "source/cpp/lib/oa/ml/ppoTrainer.cpp"
+      ],
+      "reason": "Preserves donor checked contiguous-copy coordinate mapping and separate typed F32 observation/statistic and I32 action loads/stores. Packs the five aligned PPO inputs in one device dispatch because the current generic Matrix Slice admits only F32; no action host readback or float conversion is introduced."
+    },
+    {
+      "family": "causal_linear_attention",
+      "operations": [
+        "causal_linear_attention",
+        "causal_linear_attention_backward",
+        "causal_linear_attention_backward_kv"
+      ],
+      "classification": "new",
+      "donors": [],
+      "reason": "Audited C++ attention schema, fnmatrix/attention, autograd, shaders and tests: no kernel-trick linear attention donor exists. Implements the existing Rust Katharopoulos composition as bounded per-head forward and deterministic prefix/suffix adjoints, with stable exp negative branch and denominator floor. No sequence of saved KV prefixes is retained."
+    },
+    {
       "family": "channel_norm",
       "operations": [
         "channel_norm", "channel_norm_backward",
@@ -761,6 +804,16 @@
         "source/cpp/lib/oa/ml/shader/compute/loss/rlSacTarget.slang"
       ],
       "reason": "Preserves the donor detached entropy-regularized twin-Q Bellman target, termination-only bootstrap suppression, truncation bootstrap, twin MSE critic objective, differentiable actor minimum, scalar means, coefficients, and adjoints while adapting packed U8 loads, naming, storage helpers, and bindless ABI spelling."
+    },
+    {
+      "family": "trading_environment",
+      "operations": [
+        "trading_reset",
+        "trading_step"
+      ],
+      "classification": "new",
+      "donors": [],
+      "reason": "New parameterized unlevered trading research environment requested by the Trade consumer. Audit of tradecpp/lib/oa/ml/cuda/trainer.cu and Trade Decimal Account rejects close-to-close fills, changing quantity on hold, single-cost reversals, implicit free episode exits and excess-return labels as actual PnL. No OA C++ trading provider exists. Reset preserves the SDK CartPole seed/lane/episode mix32 schedule with checked episode exhaustion; typed cursors, final-before-reset observations, explicit liquidation versus bootstrap boundaries and status flags replace the donor unsafe lifecycle."
     }
   ],
   "composite_contracts": [
@@ -8705,6 +8758,1891 @@
         ["rows", "uint32"], ["code_dim", "uint32"], ["num_codes", "uint32"],
         ["decay", "float32"], ["epsilon", "float32"], ["dead_threshold", "float32"],
         ["seed", "uint32"], ["normalize", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 600,
+      "name": "trading_reset",
+      "semantic_domain": "ml::environment",
+      "kernel_id": "MlTradingResetF32",
+      "source": "src/slang/ml/environment/trading/reset.slang",
+      "variant": "vectorized",
+      "differentiation": "none",
+      "semantic_attributes": [
+        [
+          "config_identity",
+          "unsigned_integer"
+        ],
+        [
+          "seed",
+          "unsigned_integer"
+        ],
+        [
+          "only_completed",
+          "boolean"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 5,
+            "domain": "rows",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 6,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [],
+        "shape_rule": "explicit",
+        "dtype_rule": "explicit",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [],
+        "output_alias_inputs": [],
+        "lowering": "compute_dispatch",
+        "variadic_input": {
+          "kind": "matrix",
+          "minimum": 4
+        },
+        "variadic_output": {
+          "kind": "matrix",
+          "minimum": 4
+        },
+        "aligned_variadic_aliases": true
+      },
+      "test": {
+        "oracle": "independent_decimal_trading_ledger",
+        "shapes": [
+          [
+            3,
+            20
+          ]
+        ],
+        "tolerance": 0.0001
+      },
+      "push_fields": [
+        [
+          "market_index",
+          "uint32"
+        ],
+        [
+          "features_index",
+          "uint32"
+        ],
+        [
+          "bounds_index",
+          "uint32"
+        ],
+        [
+          "ledger_index",
+          "uint32"
+        ],
+        [
+          "meta_index",
+          "uint32"
+        ],
+        [
+          "done_index",
+          "uint32"
+        ],
+        [
+          "observation_index",
+          "uint32"
+        ],
+        [
+          "environments",
+          "uint32"
+        ],
+        [
+          "window",
+          "uint32"
+        ],
+        [
+          "feature_width",
+          "uint32"
+        ],
+        [
+          "horizon",
+          "uint32"
+        ],
+        [
+          "seed_low",
+          "uint32"
+        ],
+        [
+          "seed_high",
+          "uint32"
+        ],
+        [
+          "only_done",
+          "uint32"
+        ],
+        [
+          "capital",
+          "float32"
+        ],
+        [
+          "market_width",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 601,
+      "name": "trading_step",
+      "semantic_domain": "ml::environment",
+      "kernel_id": "MlTradingStepF32",
+      "source": "src/slang/ml/environment/trading/step.slang",
+      "variant": "next_open",
+      "differentiation": "none",
+      "semantic_attributes": [
+        [
+          "config_identity",
+          "unsigned_integer"
+        ],
+        [
+          "force_end",
+          "boolean"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 5,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 6,
+            "domain": "rows",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 7,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 8,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 9,
+            "domain": "rows",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 10,
+            "domain": "rows",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [],
+        "shape_rule": "explicit",
+        "dtype_rule": "explicit",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [],
+        "output_alias_inputs": [],
+        "lowering": "compute_dispatch",
+        "variadic_input": {
+          "kind": "matrix",
+          "minimum": 7
+        },
+        "variadic_output": {
+          "kind": "matrix",
+          "minimum": 7
+        },
+        "aligned_variadic_aliases": true
+      },
+      "test": {
+        "oracle": "independent_decimal_trading_ledger",
+        "shapes": [
+          [
+            3,
+            20
+          ]
+        ],
+        "tolerance": 0.0001
+      },
+      "push_fields": [
+        [
+          "market_index",
+          "uint32"
+        ],
+        [
+          "features_index",
+          "uint32"
+        ],
+        [
+          "bounds_index",
+          "uint32"
+        ],
+        [
+          "action_index",
+          "uint32"
+        ],
+        [
+          "ledger_index",
+          "uint32"
+        ],
+        [
+          "meta_index",
+          "uint32"
+        ],
+        [
+          "done_index",
+          "uint32"
+        ],
+        [
+          "observation_index",
+          "uint32"
+        ],
+        [
+          "reward_index",
+          "uint32"
+        ],
+        [
+          "terminated_index",
+          "uint32"
+        ],
+        [
+          "truncated_index",
+          "uint32"
+        ],
+        [
+          "rules_index",
+          "uint32"
+        ],
+        [
+          "environments",
+          "uint32"
+        ],
+        [
+          "window",
+          "uint32"
+        ],
+        [
+          "feature_width",
+          "uint32"
+        ],
+        [
+          "horizon",
+          "uint32"
+        ],
+        [
+          "perpetual",
+          "uint32"
+        ],
+        [
+          "liquidate_at_horizon",
+          "uint32"
+        ],
+        [
+          "force_end",
+          "uint32"
+        ],
+        [
+          "capital",
+          "float32"
+        ],
+        [
+          "exposure",
+          "float32"
+        ],
+        [
+          "taker_fee",
+          "float32"
+        ],
+        [
+          "slippage",
+          "float32"
+        ],
+        [
+          "max_drawdown",
+          "float32"
+        ],
+        [
+          "market_width",
+          "uint32"
+        ],
+        [
+          "book_slippage",
+          "float32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 602,
+      "name": "causal_linear_attention",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlCausalLinearAttentionF32",
+      "source": "src/slang/ml/nn/attention/linear_causal.slang",
+      "variant": "scan_d64",
+      "workgroup_size": [
+        64,
+        1,
+        1
+      ],
+      "dispatch_tile_size": [
+        1,
+        1,
+        1
+      ],
+      "differentiation": "reverse",
+      "semantic_attributes": [
+        [
+          "epsilon",
+          "float"
+        ]
+      ],
+      "autograd": {
+        "mode": "manual",
+        "family": "matrix/attention"
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [
+          "matrix",
+          "matrix"
+        ],
+        "shape_rule": "equal_qkv_bhsd_to_context_and_denominator",
+        "dtype_rule": "all_f32",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [],
+        "output_alias_inputs": [
+          -1,
+          -1
+        ],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_f64_kernel_attention",
+        "shapes": [
+          [
+            2,
+            5,
+            3
+          ]
+        ],
+        "tolerance": 4e-05
+      },
+      "push_fields": [
+        [
+          "query_index",
+          "uint32"
+        ],
+        [
+          "key_index",
+          "uint32"
+        ],
+        [
+          "value_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "denominator_index",
+          "uint32"
+        ],
+        [
+          "batch_heads",
+          "uint32"
+        ],
+        [
+          "sequence_length",
+          "uint32"
+        ],
+        [
+          "head_dim",
+          "uint32"
+        ],
+        [
+          "epsilon",
+          "float32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 603,
+      "name": "causal_linear_attention_backward",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlCausalLinearAttentionBackwardQF32",
+      "source": "src/slang/ml/nn/attention/linear_causal_backward_q.slang",
+      "variant": "scan_d64_q",
+      "workgroup_size": [
+        64,
+        1,
+        1
+      ],
+      "dispatch_tile_size": [
+        1,
+        1,
+        1
+      ],
+      "differentiation": "none",
+      "semantic_attributes": [
+        [
+          "epsilon",
+          "float"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 6,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "shape_rule": "qkv_context_denominator_adjoint_to_qkv_adjoint",
+        "dtype_rule": "all_f32",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [],
+        "output_alias_inputs": [
+          -1,
+          -1,
+          -1
+        ],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_f64_finite_differences",
+        "shapes": [
+          [
+            2,
+            5,
+            3
+          ]
+        ],
+        "tolerance": 0.0002
+      },
+      "push_fields": [
+        [
+          "query_index",
+          "uint32"
+        ],
+        [
+          "key_index",
+          "uint32"
+        ],
+        [
+          "value_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "denominator_index",
+          "uint32"
+        ],
+        [
+          "output_gradient_index",
+          "uint32"
+        ],
+        [
+          "query_gradient_index",
+          "uint32"
+        ],
+        [
+          "batch_heads",
+          "uint32"
+        ],
+        [
+          "sequence_length",
+          "uint32"
+        ],
+        [
+          "head_dim",
+          "uint32"
+        ],
+        [
+          "epsilon",
+          "float32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 604,
+      "name": "causal_linear_attention_backward_kv",
+      "kernel_id": "MlCausalLinearAttentionBackwardKvF32",
+      "lowering_only": true,
+      "semantic_operation": "causal_linear_attention_backward",
+      "source": "src/slang/ml/nn/attention/linear_causal_backward_kv.slang",
+      "variant": "scan_d64_kv",
+      "workgroup_size": [
+        64,
+        1,
+        1
+      ],
+      "dispatch_tile_size": [
+        1,
+        1,
+        1
+      ],
+      "differentiation": "none",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 6,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 7,
+            "domain": "rows",
+            "partition": "exclusive_per_workgroup",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "test": {
+        "oracle": "independent_f64_finite_differences",
+        "shapes": [
+          [
+            2,
+            5,
+            3
+          ]
+        ],
+        "tolerance": 0.0002
+      },
+      "push_fields": [
+        [
+          "query_index",
+          "uint32"
+        ],
+        [
+          "key_index",
+          "uint32"
+        ],
+        [
+          "value_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "denominator_index",
+          "uint32"
+        ],
+        [
+          "output_gradient_index",
+          "uint32"
+        ],
+        [
+          "key_gradient_index",
+          "uint32"
+        ],
+        [
+          "value_gradient_index",
+          "uint32"
+        ],
+        [
+          "batch_heads",
+          "uint32"
+        ],
+        [
+          "sequence_length",
+          "uint32"
+        ],
+        [
+          "head_dim",
+          "uint32"
+        ],
+        [
+          "epsilon",
+          "float32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 605,
+      "name": "minibatch",
+      "semantic_domain": "ml::rollout",
+      "kernel_id": "MlRolloutMinibatchF32",
+      "source": "src/slang/ml/rollout/minibatch.slang",
+      "variant": "categorical_contiguous",
+      "differentiation": "none",
+      "semantic_attributes": [
+        [
+          "start",
+          "unsigned_integer"
+        ],
+        [
+          "count",
+          "unsigned_integer"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 5,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 6,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 7,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 8,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 9,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "shape_rule": "contiguous_categorical_rollout_minibatch",
+        "dtype_rule": "f32_observation_i32_action_f32_statistics_preserve_dtype",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [],
+        "output_alias_inputs": [
+          -1,
+          -1,
+          -1,
+          -1,
+          -1
+        ],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_rollout_minibatch_and_weighted_ppo_update",
+        "shapes": [
+          [
+            6,
+            2
+          ]
+        ],
+        "tolerance": 0.0
+      },
+      "push_fields": [
+        [
+          "observation_index",
+          "uint32"
+        ],
+        [
+          "action_index",
+          "uint32"
+        ],
+        [
+          "old_log_probability_index",
+          "uint32"
+        ],
+        [
+          "advantage_index",
+          "uint32"
+        ],
+        [
+          "returns_index",
+          "uint32"
+        ],
+        [
+          "output_observation_index",
+          "uint32"
+        ],
+        [
+          "output_action_index",
+          "uint32"
+        ],
+        [
+          "output_old_log_probability_index",
+          "uint32"
+        ],
+        [
+          "output_advantage_index",
+          "uint32"
+        ],
+        [
+          "output_returns_index",
+          "uint32"
+        ],
+        [
+          "start",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "observation_elements",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 606,
+      "name": "minibatch_cursor",
+      "semantic_domain": "ml::rollout",
+      "kernel_id": "MlRolloutMinibatchCursorF32",
+      "source": "src/slang/ml/rollout/minibatch_cursor.slang",
+      "variant": "categorical_cursor",
+      "differentiation": "none",
+      "semantic_attributes": [
+        [
+          "count",
+          "unsigned_integer"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 5,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 6,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 7,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 8,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 9,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "shape_rule": "contiguous_categorical_rollout_minibatch_with_u32_cursor",
+        "dtype_rule": "f32_observation_i32_action_f32_statistics_preserve_dtype",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [],
+        "output_alias_inputs": [
+          -1,
+          -1,
+          -1,
+          -1,
+          -1
+        ],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_rollout_minibatch_and_weighted_ppo_update",
+        "shapes": [
+          [
+            6,
+            2
+          ]
+        ],
+        "tolerance": 0.0
+      },
+      "push_fields": [
+        [
+          "observation_index",
+          "uint32"
+        ],
+        [
+          "action_index",
+          "uint32"
+        ],
+        [
+          "old_log_probability_index",
+          "uint32"
+        ],
+        [
+          "advantage_index",
+          "uint32"
+        ],
+        [
+          "returns_index",
+          "uint32"
+        ],
+        [
+          "output_observation_index",
+          "uint32"
+        ],
+        [
+          "output_action_index",
+          "uint32"
+        ],
+        [
+          "output_old_log_probability_index",
+          "uint32"
+        ],
+        [
+          "output_advantage_index",
+          "uint32"
+        ],
+        [
+          "output_returns_index",
+          "uint32"
+        ],
+        [
+          "cursor_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "observation_elements",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 607,
+      "name": "training_accumulate",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlTrainingAccumulateF32",
+      "source": "src/slang/ml/training/accumulate.slang",
+      "variant": "cursor_reset",
+      "differentiation": "none",
+      "semantic_attributes": [
+        [
+          "scale",
+          "float"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 0,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [
+          "matrix"
+        ],
+        "shape_rule": "same_f32_shape_u32_cursor_2",
+        "dtype_rule": "f32_accumulator_f32_value_u32_cursor",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [
+          0
+        ],
+        "output_alias_inputs": [
+          0
+        ],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_weighted_reset_accumulate",
+        "shapes": [
+          [
+            17
+          ]
+        ],
+        "tolerance": 1e-06
+      },
+      "push_fields": [
+        [
+          "target_index",
+          "uint32"
+        ],
+        [
+          "value_index",
+          "uint32"
+        ],
+        [
+          "cursor_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "scale",
+          "float32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 608,
+      "name": "append_cursor",
+      "semantic_domain": "ml::rollout",
+      "kernel_id": "MlRolloutAppendCursorF32",
+      "source": "src/slang/ml/rollout/append_cursor.slang",
+      "variant": "categorical_cursor",
+      "differentiation": "none",
+      "semantic_attributes": [
+        [
+          "step",
+          "unsigned_integer"
+        ],
+        [
+          "environments",
+          "unsigned_integer"
+        ],
+        [
+          "observation_elements",
+          "unsigned_integer"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 8,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 9,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 10,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 11,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 12,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 13,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 14,
+            "domain": "output_elements",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 15,
+            "domain": "output_elements",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 16,
+            "domain": "output_elements",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 17,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [],
+        "variadic_input": {
+          "kind": "matrix",
+          "minimum": 10
+        },
+        "variadic_output": {
+          "kind": "matrix",
+          "minimum": 10
+        },
+        "aligned_variadic_aliases": true,
+        "shape_rule": "categorical_transition_into_fixed_time_major_rollout_u32_replay_cursor",
+        "dtype_rule": "categorical_rollout_sources_and_time_major_storage",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [],
+        "output_alias_inputs": [],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_time_major_rollout_append",
+        "shapes": [
+          [
+            3,
+            2,
+            4
+          ]
+        ],
+        "tolerance": 1e-06
+      },
+      "push_fields": [
+        [
+          "observation_index",
+          "uint32"
+        ],
+        [
+          "action_index",
+          "uint32"
+        ],
+        [
+          "reward_index",
+          "uint32"
+        ],
+        [
+          "value_index",
+          "uint32"
+        ],
+        [
+          "next_value_index",
+          "uint32"
+        ],
+        [
+          "log_probability_index",
+          "uint32"
+        ],
+        [
+          "terminated_index",
+          "uint32"
+        ],
+        [
+          "truncated_index",
+          "uint32"
+        ],
+        [
+          "output_observation_index",
+          "uint32"
+        ],
+        [
+          "output_action_index",
+          "uint32"
+        ],
+        [
+          "output_reward_index",
+          "uint32"
+        ],
+        [
+          "output_value_index",
+          "uint32"
+        ],
+        [
+          "output_next_value_index",
+          "uint32"
+        ],
+        [
+          "output_log_probability_index",
+          "uint32"
+        ],
+        [
+          "output_terminated_index",
+          "uint32"
+        ],
+        [
+          "output_truncated_index",
+          "uint32"
+        ],
+        [
+          "output_valid_index",
+          "uint32"
+        ],
+        [
+          "cursor_index",
+          "uint32"
+        ],
+        [
+          "step",
+          "uint32"
+        ],
+        [
+          "environments",
+          "uint32"
+        ],
+        [
+          "observation_elements",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 610,
+      "name": "trading_reset_cursor",
+      "semantic_domain": "ml::environment",
+      "kernel_id": "MlTradingResetCursorF32",
+      "source": "src/slang/ml/environment/trading/reset_cursor.slang",
+      "variant": "vectorized_cursor",
+      "differentiation": "none",
+      "semantic_attributes": [
+        [
+          "config_identity",
+          "unsigned_integer"
+        ],
+        [
+          "only_completed",
+          "boolean"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 5,
+            "domain": "rows",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 6,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [],
+        "shape_rule": "explicit_u32_replay_cursor",
+        "dtype_rule": "explicit",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [],
+        "output_alias_inputs": [],
+        "lowering": "compute_dispatch",
+        "variadic_input": {
+          "kind": "matrix",
+          "minimum": 4
+        },
+        "variadic_output": {
+          "kind": "matrix",
+          "minimum": 4
+        },
+        "aligned_variadic_aliases": true
+      },
+      "test": {
+        "oracle": "independent_decimal_trading_ledger",
+        "shapes": [
+          [
+            3,
+            20
+          ]
+        ],
+        "tolerance": 0.0001
+      },
+      "push_fields": [
+        [
+          "market_index",
+          "uint32"
+        ],
+        [
+          "features_index",
+          "uint32"
+        ],
+        [
+          "bounds_index",
+          "uint32"
+        ],
+        [
+          "ledger_index",
+          "uint32"
+        ],
+        [
+          "meta_index",
+          "uint32"
+        ],
+        [
+          "done_index",
+          "uint32"
+        ],
+        [
+          "observation_index",
+          "uint32"
+        ],
+        [
+          "cursor_index",
+          "uint32"
+        ],
+        [
+          "environments",
+          "uint32"
+        ],
+        [
+          "window",
+          "uint32"
+        ],
+        [
+          "feature_width",
+          "uint32"
+        ],
+        [
+          "horizon",
+          "uint32"
+        ],
+        [
+          "only_done",
+          "uint32"
+        ],
+        [
+          "capital",
+          "float32"
+        ],
+        [
+          "market_width",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 611,
+      "name": "trading_step_cursor",
+      "semantic_domain": "ml::environment",
+      "kernel_id": "MlTradingStepCursorF32",
+      "source": "src/slang/ml/environment/trading/step_cursor.slang",
+      "variant": "next_open_cursor",
+      "differentiation": "none",
+      "semantic_attributes": [
+        [
+          "config_identity",
+          "unsigned_integer"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 4,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 5,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 6,
+            "domain": "rows",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 7,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 8,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 9,
+            "domain": "rows",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 10,
+            "domain": "rows",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [],
+        "shape_rule": "explicit_u32_replay_cursor",
+        "dtype_rule": "explicit",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [],
+        "output_alias_inputs": [],
+        "lowering": "compute_dispatch",
+        "variadic_input": {
+          "kind": "matrix",
+          "minimum": 7
+        },
+        "variadic_output": {
+          "kind": "matrix",
+          "minimum": 7
+        },
+        "aligned_variadic_aliases": true
+      },
+      "test": {
+        "oracle": "independent_decimal_trading_ledger",
+        "shapes": [
+          [
+            3,
+            20
+          ]
+        ],
+        "tolerance": 0.0001
+      },
+      "push_fields": [
+        [
+          "market_index",
+          "uint32"
+        ],
+        [
+          "features_index",
+          "uint32"
+        ],
+        [
+          "bounds_index",
+          "uint32"
+        ],
+        [
+          "action_index",
+          "uint32"
+        ],
+        [
+          "ledger_index",
+          "uint32"
+        ],
+        [
+          "meta_index",
+          "uint32"
+        ],
+        [
+          "done_index",
+          "uint32"
+        ],
+        [
+          "observation_index",
+          "uint32"
+        ],
+        [
+          "reward_index",
+          "uint32"
+        ],
+        [
+          "terminated_index",
+          "uint32"
+        ],
+        [
+          "truncated_index",
+          "uint32"
+        ],
+        [
+          "cursor_index",
+          "uint32"
+        ],
+        [
+          "rules_index",
+          "uint32"
+        ],
+        [
+          "environments",
+          "uint32"
+        ],
+        [
+          "window",
+          "uint32"
+        ],
+        [
+          "feature_width",
+          "uint32"
+        ],
+        [
+          "horizon",
+          "uint32"
+        ],
+        [
+          "perpetual",
+          "uint32"
+        ],
+        [
+          "liquidate_at_horizon",
+          "uint32"
+        ],
+        [
+          "capital",
+          "float32"
+        ],
+        [
+          "exposure",
+          "float32"
+        ],
+        [
+          "taker_fee",
+          "float32"
+        ],
+        [
+          "slippage",
+          "float32"
+        ],
+        [
+          "max_drawdown",
+          "float32"
+        ],
+        [
+          "market_width",
+          "uint32"
+        ],
+        [
+          "book_slippage",
+          "float32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 609,
+      "name": "sample_categorical_cursor",
+      "semantic_domain": "ml::matrix",
+      "kernel_id": "MlSampleCategoricalCursorF32",
+      "source": "src/slang/ml/training/sample_categorical_cursor.slang",
+      "variant": "philox_exact_categorical",
+      "differentiation": "none",
+      "semantic_attributes": [],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [
+          "matrix"
+        ],
+        "shape_rule": "f32_logits_rows_u32_replay_cursor_to_i32_actions",
+        "dtype_rule": "f32_logits_u32_cursor_i32_actions",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [],
+        "output_alias_inputs": [
+          -1
+        ],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "eager_sample_categorical_exact_seed",
+        "shapes": [
+          [
+            10
+          ]
+        ],
+        "tolerance": 0.0
+      },
+      "push_fields": [
+        [
+          "logits_index",
+          "uint32"
+        ],
+        [
+          "cursor_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "rows",
+          "uint32"
+        ],
+        [
+          "vocabulary",
+          "uint32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 612,
+      "name": "trading_cursor_advance",
+      "semantic_domain": "ml::environment",
+      "kernel_id": "MlTradingCursorAdvanceU32",
+      "source": "src/slang/ml/training/trading_cursor_advance.slang",
+      "variant": "generic",
+      "dtype": "u32",
+      "workgroup_size": [
+        1,
+        1,
+        1
+      ],
+      "differentiation": "none",
+      "semantic_attributes": [
+        [
+          "horizon",
+          "unsigned_integer"
+        ],
+        [
+          "continuing",
+          "boolean"
+        ]
+      ],
+      "contract": {
+        "input_kinds": [
+          "matrix"
+        ],
+        "output_kinds": [
+          "matrix"
+        ],
+        "shape_rule": "advance_trading_collection_cursor",
+        "dtype_rule": "u32_state",
+        "effects": [
+          "read_inputs",
+          "write_output"
+        ],
+        "mutated_inputs": [
+          0
+        ],
+        "output_alias_inputs": [
+          0
+        ],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "exact_u64_seed_and_step_advancement",
+        "shapes": [
+          [
+            7
+          ]
+        ],
+        "tolerance": 0.0
+      },
+      "push_fields": [
+        [
+          "cursor_index",
+          "uint32"
+        ],
+        [
+          "horizon",
+          "uint32"
+        ],
+        [
+          "continuing",
+          "uint32"
+        ]
       ]
     }
   ]

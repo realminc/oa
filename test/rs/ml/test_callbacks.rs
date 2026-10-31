@@ -29,12 +29,12 @@ test_vk!(
 	validation_feeds_early_stop_and_does_not_suppress_later_callbacks,
 	engine,
 	{
-		let weight = oa::Matrix::from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
-		let bias = oa::Matrix::from_f32(&engine, [2], &[0.0, 0.0])?;
-		let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+		let weight = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.01)?;
-		let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
-		let targets = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
+		let targets = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
 		let evaluations = Rc::new(Cell::new(0_u64));
 		let evaluator_count = Rc::clone(&evaluations);
 		let mut validation = oa::ml::Validation::new(
@@ -51,7 +51,7 @@ test_vk!(
 			0,
 		)?;
 		let validation_metric = validation.metric();
-		let mut early_stop = oa::ml::EarlyStopping::with_validation_metric(
+		let mut early_stop = oa::ml::EarlyStopping::new_with_validation_metric(
 			1,
 			0.0,
 			oa::ml::EarlyStopMode::Min,
@@ -118,12 +118,12 @@ test_vk!(
 	step_only_validation_runs_at_interval_without_duplicate_final_evaluation,
 	engine,
 	{
-		let weight = oa::Matrix::from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
-		let bias = oa::Matrix::from_f32(&engine, [2], &[0.0, 0.0])?;
-		let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+		let weight = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.01)?;
-		let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
-		let targets = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
+		let targets = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
 		let evaluations = Rc::new(Cell::new(0_u64));
 		let evaluator_count = Rc::clone(&evaluations);
 		let mut validation = oa::ml::Validation::new(
@@ -169,12 +169,12 @@ test_vk!(
 	phase_schedule_uses_the_existing_optimizer_and_epoch_map,
 	engine,
 	{
-		let weight = oa::Matrix::from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
-		let bias = oa::Matrix::from_f32(&engine, [2], &[0.0, 0.0])?;
-		let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+		let weight = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.01)?;
-		let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
-		let targets = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
+		let targets = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
 		let transitions = Rc::new(RefCell::new(Vec::<(usize, String)>::new()));
 		let recorded = Rc::clone(&transitions);
 		let mut phases = oa::ml::PhaseSchedule::new();
@@ -248,12 +248,12 @@ test_vk!(
 				.expect("system clock predates Unix epoch")
 				.as_nanos()
 		));
-		let weight = oa::Matrix::from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
-		let bias = oa::Matrix::from_f32(&engine, [2], &[0.0, 0.0])?;
-		let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+		let weight = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.01)?;
-		let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
-		let targets = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
+		let targets = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
 		let validation_losses = [3.0, 2.0, 2.5];
 		let mut validation = oa::ml::Validation::new(
 			move |snapshot| {

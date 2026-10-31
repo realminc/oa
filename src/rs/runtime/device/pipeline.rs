@@ -11,8 +11,8 @@ pub(crate) const GRAPHICS_PUSH_CONSTANT_SIZE: u32 = 80;
 pub(crate) const FLAT_COLOR_PUSH_SIZE: u32 = 96;
 // Push size for unlit: 64 (MVP) + 16 (tint) + 16 (uv_scale+uv_offset) = 96 bytes.
 pub(crate) const UNLIT_PUSH_SIZE: u32 = 96;
-// Push size for standard surface: 64 (MVP) + 64 (model matrix) = 128 bytes.
-pub(crate) const STANDARD_SURFACE_PUSH_SIZE: u32 = 128;
+// Push size for surface: 64 (MVP) + 64 (model matrix) = 128 bytes.
+pub(crate) const SURFACE_PUSH_SIZE: u32 = 128;
 
 /// Embedded SPIR-V for the vertex-color lit vertex shader.
 static RENDER_VERT_SPV: &[u8] = include_bytes!(concat!(
@@ -37,21 +37,17 @@ static UNLIT_VERT_SPV: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/render_
 /// Embedded SPIR-V for the unlit fragment shader.
 static UNLIT_FRAG_SPV: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/render_unlit_frag.spv"));
 
-/// Embedded SPIR-V for the standard-surface vertex shader.
-static STANDARD_SURFACE_VERT_SPV: &[u8] = include_bytes!(concat!(
-	env!("OUT_DIR"),
-	"/render_standard_surface_vert.spv"
-));
-/// Embedded SPIR-V for the standard-surface fragment shader.
-static STANDARD_SURFACE_FRAG_SPV: &[u8] = include_bytes!(concat!(
-	env!("OUT_DIR"),
-	"/render_standard_surface_frag.spv"
-));
+/// Embedded SPIR-V for the surface vertex shader.
+static SURFACE_VERT_SPV: &[u8] =
+	include_bytes!(concat!(env!("OUT_DIR"), "/render_surface_vert.spv"));
+/// Embedded SPIR-V for the surface fragment shader.
+static SURFACE_FRAG_SPV: &[u8] =
+	include_bytes!(concat!(env!("OUT_DIR"), "/render_surface_frag.spv"));
 
 /// R8G8B8A8_UNORM color attachment format used by all render targets.
-pub(in crate::runtime) const RENDER_COLOR_FORMAT: ash::vk::Format = ash::vk::Format::R8G8B8A8_UNORM;
+pub(in crate::runtime) const RENDER_COLOR_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 /// D32_SFLOAT depth attachment format used by all render targets.
-pub(in crate::runtime) const RENDER_DEPTH_FORMAT: ash::vk::Format = ash::vk::Format::D32_SFLOAT;
+pub(in crate::runtime) const RENDER_DEPTH_FORMAT: vk::Format = vk::Format::D32_SFLOAT;
 
 /// Graphics pipeline for the vertex-color lit 3D renderer.
 ///
@@ -59,9 +55,9 @@ pub(in crate::runtime) const RENDER_DEPTH_FORMAT: ash::vk::Format = ash::vk::For
 /// and scissor, depth test/write with LESS comparison, and an 80-byte push
 /// constant block (row-major Mat4 view-projection + Vec4 light/ambient).
 pub(crate) struct GraphicsPipeline {
-	handle: ash::vk::Pipeline,
-	layout: ash::vk::PipelineLayout,
-	device: ash::Device,
+	handle: vk::Pipeline,
+	layout: vk::PipelineLayout,
+	device: std::sync::Arc<vk::Device>,
 }
 
 impl GraphicsPipeline {
@@ -73,45 +69,50 @@ impl GraphicsPipeline {
 	/// pipeline creation fails, or when the device push-constant limit is
 	/// below 80 bytes.
 	#[allow(private_interfaces)]
-	pub(in crate::runtime) fn new(device: &ash::Device, limits: DeviceLimits) -> Result<Self> {
+	pub(in crate::runtime) fn new(
+		device: std::sync::Arc<vk::Device>,
+		limits: DeviceLimits,
+		cache: vk::PipelineCache,
+	) -> Result<Self> {
 		if limits.max_push_constants_size < GRAPHICS_PUSH_CONSTANT_SIZE {
 			return Err(Error::missing_capability(
 				"graphics pipeline requires 80 bytes of push constants",
 			));
 		}
 
-		let push_range = ash::vk::PushConstantRange::default()
-			.stage_flags(ash::vk::ShaderStageFlags::VERTEX)
+		let push_range = vk::PushConstantRange::default()
+			.stage_flags(vk::ShaderStageFlagBits::VERTEX_BIT)
 			.offset(0)
 			.size(GRAPHICS_PUSH_CONSTANT_SIZE);
-		let layout_info = ash::vk::PipelineLayoutCreateInfo::default()
+		let layout_info = vk::PipelineLayoutCreateInfo::default()
 			.push_constant_ranges(std::slice::from_ref(&push_range));
-		let layout = unsafe { device.create_pipeline_layout(&layout_info, None) }
-			.map_err(|s| Error::backend_failure("Vulkan", "graphics pipeline-layout creation", s))?;
+		let layout =
+			unsafe { device.create_pipeline_layout(&(layout_info).map_err(Error::from)?, None) }
+				.map_err(|s| Error::backend_failure("Vulkan", "graphics pipeline-layout creation", s))?;
 
 		let vert_words = decode_spirv_bytes(RENDER_VERT_SPV)
-			.inspect_err(|_| destroy_pipeline_layout(device, layout))?;
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
 		let frag_words = decode_spirv_bytes(RENDER_FRAG_SPV)
-			.inspect_err(|_| destroy_pipeline_layout(device, layout))?;
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
 
-		let vert_module = create_shader_module(device, &vert_words)
-			.inspect_err(|_| destroy_pipeline_layout(device, layout))?;
-		let frag_module = match create_shader_module(device, &frag_words) {
+		let vert_module = create_shader_module(&device, &vert_words)
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
+		let frag_module = match create_shader_module(&device, &frag_words) {
 			Ok(m) => m,
 			Err(e) => {
-				unsafe { device.destroy_shader_module(vert_module, None) };
-				destroy_pipeline_layout(device, layout);
+				unsafe { device.destroy_shader_module(vert_module, None) }?;
+				destroy_pipeline_layout(&device, layout);
 				return Err(e);
 			}
 		};
 
 		let stages = [
-			ash::vk::PipelineShaderStageCreateInfo::default()
-				.stage(ash::vk::ShaderStageFlags::VERTEX)
+			vk::PipelineShaderStageCreateInfo::default()
+				.stage(vk::ShaderStageFlagBits::VERTEX_BIT)
 				.module(vert_module)
 				.name(c"main"),
-			ash::vk::PipelineShaderStageCreateInfo::default()
-				.stage(ash::vk::ShaderStageFlags::FRAGMENT)
+			vk::PipelineShaderStageCreateInfo::default()
+				.stage(vk::ShaderStageFlagBits::FRAGMENT_BIT)
 				.module(frag_module)
 				.name(c"main"),
 		];
@@ -120,65 +121,73 @@ impl GraphicsPipeline {
 		// uv (vec2, offset 24), color (vec4, offset 32) — stride 48 bytes.
 		// The graphics pipeline only binds position (loc 0), normal (loc 1), and
 		// color (loc 2); uv is present in the struct but not consumed by this shader.
-		let binding = ash::vk::VertexInputBindingDescription::default()
+		let binding = vk::VertexInputBindingDescription::default()
 			.binding(0)
 			.stride(48)
-			.input_rate(ash::vk::VertexInputRate::VERTEX);
+			.input_rate(vk::VertexInputRate::VERTEX);
 		let attributes = [
-			ash::vk::VertexInputAttributeDescription::default()
+			vk::VertexInputAttributeDescription::default()
 				.location(0)
 				.binding(0)
-				.format(ash::vk::Format::R32G32B32_SFLOAT)
+				.format(vk::Format::R32G32B32_SFLOAT)
 				.offset(0), // position
-			ash::vk::VertexInputAttributeDescription::default()
+			vk::VertexInputAttributeDescription::default()
 				.location(1)
 				.binding(0)
-				.format(ash::vk::Format::R32G32B32_SFLOAT)
+				.format(vk::Format::R32G32B32_SFLOAT)
 				.offset(12), // normal
-			ash::vk::VertexInputAttributeDescription::default()
+			vk::VertexInputAttributeDescription::default()
 				.location(2)
 				.binding(0)
-				.format(ash::vk::Format::R32G32B32A32_SFLOAT)
+				.format(vk::Format::R32G32B32A32_SFLOAT)
 				.offset(32), // color
 		];
-		let vertex_input = ash::vk::PipelineVertexInputStateCreateInfo::default()
+		let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
 			.vertex_binding_descriptions(std::slice::from_ref(&binding))
-			.vertex_attribute_descriptions(&attributes);
-		let assembly = ash::vk::PipelineInputAssemblyStateCreateInfo::default()
-			.topology(ash::vk::PrimitiveTopology::TRIANGLE_LIST);
-		let viewport_state = ash::vk::PipelineViewportStateCreateInfo::default()
+			.map_err(Error::from)?
+			.vertex_attribute_descriptions(&attributes)
+			.map_err(Error::from)?;
+		let assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
+			.topology(vk::PrimitiveTopology::TRIANGLE_LIST);
+		let viewport_state = vk::PipelineViewportStateCreateInfo::default()
 			.viewport_count(1)
 			.scissor_count(1);
-		let raster = ash::vk::PipelineRasterizationStateCreateInfo::default()
-			.polygon_mode(ash::vk::PolygonMode::FILL)
-			.cull_mode(ash::vk::CullModeFlags::NONE)
-			.front_face(ash::vk::FrontFace::COUNTER_CLOCKWISE)
+		let raster = vk::PipelineRasterizationStateCreateInfo::default()
+			.polygon_mode(vk::PolygonMode::FILL)
+			.cull_mode(vk::CullModeFlagBits::NONE)
+			.front_face(vk::FrontFace::COUNTER_CLOCKWISE)
 			.line_width(1.0);
-		let multisample = ash::vk::PipelineMultisampleStateCreateInfo::default()
-			.rasterization_samples(ash::vk::SampleCountFlags::TYPE_1);
-		let depth_stencil = ash::vk::PipelineDepthStencilStateCreateInfo::default()
-			.depth_test_enable(true)
-			.depth_write_enable(true)
-			.depth_compare_op(ash::vk::CompareOp::LESS)
+		let multisample = vk::PipelineMultisampleStateCreateInfo::default()
+			.rasterization_samples(vk::SampleCountFlagBits::_1_BIT);
+		let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
+			.depth_test_enable(u32::from(true))
+			.depth_write_enable(u32::from(true))
+			.depth_compare_op(vk::CompareOp::LESS)
 			.min_depth_bounds(0.0)
 			.max_depth_bounds(1.0);
-		let blend_attachment = ash::vk::PipelineColorBlendAttachmentState::default()
-			.color_write_mask(ash::vk::ColorComponentFlags::RGBA);
-		let blend = ash::vk::PipelineColorBlendStateCreateInfo::default()
-			.attachments(std::slice::from_ref(&blend_attachment));
-		let dynamic_states = [
-			ash::vk::DynamicState::VIEWPORT,
-			ash::vk::DynamicState::SCISSOR,
-		];
-		let dynamic =
-			ash::vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+		let blend_attachment = vk::PipelineColorBlendAttachmentState::default().color_write_mask(
+			vk::ColorComponentFlagBits::R_BIT
+				| vk::ColorComponentFlagBits::G_BIT
+				| vk::ColorComponentFlagBits::B_BIT
+				| vk::ColorComponentFlagBits::A_BIT,
+		);
+		let blend = vk::PipelineColorBlendStateCreateInfo::default()
+			.attachments(std::slice::from_ref(&blend_attachment))
+			.map_err(Error::from)?;
+		let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+		let dynamic = vk::PipelineDynamicStateCreateInfo::default()
+			.dynamic_states(&dynamic_states)
+			.map_err(Error::from)?;
 		let color_formats = [RENDER_COLOR_FORMAT];
-		let mut rendering = ash::vk::PipelineRenderingCreateInfo::default()
+		let mut rendering = vk::PipelineRenderingCreateInfo::default()
 			.color_attachment_formats(&color_formats)
+			.map_err(Error::from)?
 			.depth_attachment_format(RENDER_DEPTH_FORMAT);
-		let pipeline_info = ash::vk::GraphicsPipelineCreateInfo::default()
+		let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
 			.push_next(&mut rendering)
+			.map_err(Error::from)?
 			.stages(&stages)
+			.map_err(Error::from)?
 			.vertex_input_state(&vertex_input)
 			.input_assembly_state(&assembly)
 			.viewport_state(&viewport_state)
@@ -189,51 +198,50 @@ impl GraphicsPipeline {
 			.dynamic_state(&dynamic)
 			.layout(layout);
 
+		let mut pipelines = [vk::Pipeline::default(); 1];
+		// SAFETY: the create-info chain and output buffer remain live and
+		// writable for the call; partial output is destroyed on failure.
 		let result = unsafe {
 			device.create_graphics_pipelines(
-				ash::vk::PipelineCache::null(),
+				cache,
 				std::slice::from_ref(&pipeline_info),
 				None,
+				&mut pipelines,
 			)
 		};
 		unsafe {
-			device.destroy_shader_module(vert_module, None);
-			device.destroy_shader_module(frag_module, None);
+			let _ = device.destroy_shader_module(vert_module, None);
+			let _ = device.destroy_shader_module(frag_module, None);
 		}
-		let pipelines = match result {
-			Ok(pipelines) => pipelines,
-			Err((partial, source)) => {
-				for p in partial {
-					destroy_pipeline(device, p);
+		let handle = match result {
+			Ok(vk::Result::SUCCESS) => pipelines[0],
+			result => {
+				for handle in pipelines
+					.into_iter()
+					.filter(|handle| *handle != vk::Pipeline::default())
+				{
+					destroy_pipeline(&device, handle);
 				}
-				destroy_pipeline_layout(device, layout);
-				return Err(Error::backend_failure(
+				destroy_pipeline_layout(&device, layout);
+				return Err(Error::backend_dispatch_failure(
 					"Vulkan",
 					"graphics-pipeline creation",
-					source,
+					result,
 				));
 			}
-		};
-		let Some(handle) = pipelines.first().copied() else {
-			destroy_pipeline_layout(device, layout);
-			return Err(Error::backend_failure(
-				"Vulkan",
-				"graphics-pipeline creation",
-				std::io::Error::other("Vulkan returned no pipeline after successful creation"),
-			));
 		};
 		Ok(Self {
 			handle,
 			layout,
-			device: device.clone(),
+			device,
 		})
 	}
 
-	pub(crate) const fn raw(&self) -> ash::vk::Pipeline {
+	pub(crate) const fn raw(&self) -> vk::Pipeline {
 		self.handle
 	}
 
-	pub(crate) const fn layout(&self) -> ash::vk::PipelineLayout {
+	pub(crate) const fn layout(&self) -> vk::PipelineLayout {
 		self.layout
 	}
 }
@@ -252,70 +260,76 @@ impl Drop for GraphicsPipeline {
 /// Push constants: 96 bytes (MVP Mat4 + material_color Vec4 + opacity float + pad).
 /// No descriptor sets. Depth test disabled; premultiplied alpha blend enabled.
 pub(crate) struct FlatColorPipeline {
-	handle: ash::vk::Pipeline,
-	layout: ash::vk::PipelineLayout,
-	device: ash::Device,
+	handle: vk::Pipeline,
+	layout: vk::PipelineLayout,
+	device: std::sync::Arc<vk::Device>,
 }
 
 impl FlatColorPipeline {
 	/// Create the flat-color pipeline for one logical device.
 	#[allow(private_interfaces)]
-	pub(in crate::runtime) fn new(device: &ash::Device, limits: DeviceLimits) -> Result<Self> {
+	pub(in crate::runtime) fn new(
+		device: std::sync::Arc<vk::Device>,
+		limits: DeviceLimits,
+		cache: vk::PipelineCache,
+	) -> Result<Self> {
 		if limits.max_push_constants_size < FLAT_COLOR_PUSH_SIZE {
 			return Err(Error::missing_capability(
 				"flat-color pipeline requires 96 bytes of push constants",
 			));
 		}
-		let push_range = ash::vk::PushConstantRange::default()
-			.stage_flags(ash::vk::ShaderStageFlags::VERTEX | ash::vk::ShaderStageFlags::FRAGMENT)
+		let push_range = vk::PushConstantRange::default()
+			.stage_flags(vk::ShaderStageFlagBits::VERTEX_BIT | vk::ShaderStageFlagBits::FRAGMENT_BIT)
 			.offset(0)
 			.size(FLAT_COLOR_PUSH_SIZE);
-		let layout_info = ash::vk::PipelineLayoutCreateInfo::default()
+		let layout_info = vk::PipelineLayoutCreateInfo::default()
 			.push_constant_ranges(std::slice::from_ref(&push_range));
-		let layout = unsafe { device.create_pipeline_layout(&layout_info, None) }
-			.map_err(|s| Error::backend_failure("Vulkan", "flat-color pipeline-layout creation", s))?;
+		let layout =
+			unsafe { device.create_pipeline_layout(&(layout_info).map_err(Error::from)?, None) }
+				.map_err(|s| Error::backend_failure("Vulkan", "flat-color pipeline-layout creation", s))?;
 
 		let vert_words = decode_spirv_bytes(FLAT_COLOR_VERT_SPV)
-			.inspect_err(|_| destroy_pipeline_layout(device, layout))?;
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
 		let frag_words = decode_spirv_bytes(FLAT_COLOR_FRAG_SPV)
-			.inspect_err(|_| destroy_pipeline_layout(device, layout))?;
-		let vert_module = create_shader_module(device, &vert_words)
-			.inspect_err(|_| destroy_pipeline_layout(device, layout))?;
-		let frag_module = match create_shader_module(device, &frag_words) {
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
+		let vert_module = create_shader_module(&device, &vert_words)
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
+		let frag_module = match create_shader_module(&device, &frag_words) {
 			Ok(m) => m,
 			Err(e) => {
-				unsafe { device.destroy_shader_module(vert_module, None) };
-				destroy_pipeline_layout(device, layout);
+				unsafe { device.destroy_shader_module(vert_module, None) }?;
+				destroy_pipeline_layout(&device, layout);
 				return Err(e);
 			}
 		};
 
 		let handle = match create_graphics_pipeline_inner(
-			device,
+			&device,
 			layout,
 			vert_module,
 			frag_module,
 			PipelineDepth::Disabled,
 			PipelineBlend::PremultipliedAlpha,
+			cache,
 		) {
 			Ok(h) => h,
 			Err(e) => {
-				destroy_pipeline_layout(device, layout);
+				destroy_pipeline_layout(&device, layout);
 				return Err(e);
 			}
 		};
 		Ok(Self {
 			handle,
 			layout,
-			device: device.clone(),
+			device,
 		})
 	}
 
-	pub(crate) const fn raw(&self) -> ash::vk::Pipeline {
+	pub(crate) const fn raw(&self) -> vk::Pipeline {
 		self.handle
 	}
 
-	pub(crate) const fn layout(&self) -> ash::vk::PipelineLayout {
+	pub(crate) const fn layout(&self) -> vk::PipelineLayout {
 		self.layout
 	}
 }
@@ -335,9 +349,9 @@ impl Drop for FlatColorPipeline {
 /// Descriptor set 0, binding 0: base-color sampler.
 /// Depth test optional (disabled here for fullscreen quads); alpha blend enabled.
 pub(crate) struct UnlitPipeline {
-	handle: ash::vk::Pipeline,
-	layout: ash::vk::PipelineLayout,
-	device: ash::Device,
+	handle: vk::Pipeline,
+	layout: vk::PipelineLayout,
+	device: std::sync::Arc<vk::Device>,
 }
 
 impl UnlitPipeline {
@@ -347,67 +361,71 @@ impl UnlitPipeline {
 	/// image sampler at binding 0).
 	#[allow(private_interfaces)]
 	pub(in crate::runtime) fn new(
-		device: &ash::Device,
-		sampler_layout: ash::vk::DescriptorSetLayout,
+		device: std::sync::Arc<vk::Device>,
+		sampler_layout: vk::DescriptorSetLayout,
 		limits: DeviceLimits,
+		cache: vk::PipelineCache,
 	) -> Result<Self> {
 		if limits.max_push_constants_size < UNLIT_PUSH_SIZE {
 			return Err(Error::missing_capability(
 				"unlit pipeline requires 96 bytes of push constants",
 			));
 		}
-		let push_range = ash::vk::PushConstantRange::default()
-			.stage_flags(ash::vk::ShaderStageFlags::VERTEX | ash::vk::ShaderStageFlags::FRAGMENT)
+		let push_range = vk::PushConstantRange::default()
+			.stage_flags(vk::ShaderStageFlagBits::VERTEX_BIT | vk::ShaderStageFlagBits::FRAGMENT_BIT)
 			.offset(0)
 			.size(UNLIT_PUSH_SIZE);
 		let set_layouts = [sampler_layout];
-		let layout_info = ash::vk::PipelineLayoutCreateInfo::default()
+		let layout_info = vk::PipelineLayoutCreateInfo::default()
 			.set_layouts(&set_layouts)
+			.map_err(Error::from)?
 			.push_constant_ranges(std::slice::from_ref(&push_range));
-		let layout = unsafe { device.create_pipeline_layout(&layout_info, None) }
-			.map_err(|s| Error::backend_failure("Vulkan", "unlit pipeline-layout creation", s))?;
+		let layout =
+			unsafe { device.create_pipeline_layout(&(layout_info).map_err(Error::from)?, None) }
+				.map_err(|s| Error::backend_failure("Vulkan", "unlit pipeline-layout creation", s))?;
 
 		let vert_words = decode_spirv_bytes(UNLIT_VERT_SPV)
-			.inspect_err(|_| destroy_pipeline_layout(device, layout))?;
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
 		let frag_words = decode_spirv_bytes(UNLIT_FRAG_SPV)
-			.inspect_err(|_| destroy_pipeline_layout(device, layout))?;
-		let vert_module = create_shader_module(device, &vert_words)
-			.inspect_err(|_| destroy_pipeline_layout(device, layout))?;
-		let frag_module = match create_shader_module(device, &frag_words) {
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
+		let vert_module = create_shader_module(&device, &vert_words)
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
+		let frag_module = match create_shader_module(&device, &frag_words) {
 			Ok(m) => m,
 			Err(e) => {
-				unsafe { device.destroy_shader_module(vert_module, None) };
-				destroy_pipeline_layout(device, layout);
+				unsafe { device.destroy_shader_module(vert_module, None) }?;
+				destroy_pipeline_layout(&device, layout);
 				return Err(e);
 			}
 		};
 
 		let handle = match create_graphics_pipeline_inner(
-			device,
+			&device,
 			layout,
 			vert_module,
 			frag_module,
 			PipelineDepth::Disabled,
 			PipelineBlend::PremultipliedAlpha,
+			cache,
 		) {
 			Ok(h) => h,
 			Err(e) => {
-				destroy_pipeline_layout(device, layout);
+				destroy_pipeline_layout(&device, layout);
 				return Err(e);
 			}
 		};
 		Ok(Self {
 			handle,
 			layout,
-			device: device.clone(),
+			device,
 		})
 	}
 
-	pub(crate) const fn raw(&self) -> ash::vk::Pipeline {
+	pub(crate) const fn raw(&self) -> vk::Pipeline {
 		self.handle
 	}
 
-	pub(crate) const fn layout(&self) -> ash::vk::PipelineLayout {
+	pub(crate) const fn layout(&self) -> vk::PipelineLayout {
 		self.layout
 	}
 }
@@ -419,153 +437,155 @@ impl Drop for UnlitPipeline {
 	}
 }
 
-// ── StandardSurfacePipeline ───────────────────────────────────────────────────
+// ── SurfacePipeline ───────────────────────────────────────────────────
 
-/// Graphics pipeline for the Standard Surface PBR material (Tier 3).
+/// Graphics pipeline for the Surface PBR material (Tier 3).
 ///
 /// Push constants: 128 bytes (MVP Mat4 + model Mat4).
 /// Descriptor set 0: scene-lights UBO.
 /// Descriptor set 1: base-color, ORM, normal, material-params bindings.
 /// Depth test/write enabled (LESS). Opaque blend (no alpha).
-pub(crate) struct StandardSurfacePipeline {
-	handle: ash::vk::Pipeline,
-	layout: ash::vk::PipelineLayout,
-	device: ash::Device,
+pub(crate) struct SurfacePipeline {
+	handle: vk::Pipeline,
+	layout: vk::PipelineLayout,
+	device: std::sync::Arc<vk::Device>,
 }
 
-impl StandardSurfacePipeline {
-	/// Create the standard-surface opaque pipeline.
+impl SurfacePipeline {
+	/// Create the surface opaque pipeline.
 	///
 	/// `scene_layout` is set 0 (scene lights UBO).
 	/// `material_layout` is set 1 (textures + material params).
 	#[allow(private_interfaces)]
 	pub(in crate::runtime) fn new(
-		device: &ash::Device,
-		scene_layout: ash::vk::DescriptorSetLayout,
-		material_layout: ash::vk::DescriptorSetLayout,
+		device: std::sync::Arc<vk::Device>,
+		scene_layout: vk::DescriptorSetLayout,
+		material_layout: vk::DescriptorSetLayout,
 		limits: DeviceLimits,
+		cache: vk::PipelineCache,
 	) -> Result<Self> {
-		if limits.max_push_constants_size < STANDARD_SURFACE_PUSH_SIZE {
+		if limits.max_push_constants_size < SURFACE_PUSH_SIZE {
 			return Err(Error::missing_capability(
-				"standard-surface pipeline requires 128 bytes of push constants",
+				"surface pipeline requires 128 bytes of push constants",
 			));
 		}
-		let push_range = ash::vk::PushConstantRange::default()
-			.stage_flags(ash::vk::ShaderStageFlags::VERTEX)
+		let push_range = vk::PushConstantRange::default()
+			.stage_flags(vk::ShaderStageFlagBits::VERTEX_BIT)
 			.offset(0)
-			.size(STANDARD_SURFACE_PUSH_SIZE);
+			.size(SURFACE_PUSH_SIZE);
 		let set_layouts = [scene_layout, material_layout];
-		let layout_info = ash::vk::PipelineLayoutCreateInfo::default()
+		let layout_info = vk::PipelineLayoutCreateInfo::default()
 			.set_layouts(&set_layouts)
+			.map_err(Error::from)?
 			.push_constant_ranges(std::slice::from_ref(&push_range));
-		let layout = unsafe { device.create_pipeline_layout(&layout_info, None) }.map_err(|s| {
-			Error::backend_failure("Vulkan", "standard-surface pipeline-layout creation", s)
-		})?;
+		let layout =
+			unsafe { device.create_pipeline_layout(&(layout_info).map_err(Error::from)?, None) }
+				.map_err(|s| Error::backend_failure("Vulkan", "surface pipeline-layout creation", s))?;
 
-		let vert_words = decode_spirv_bytes(STANDARD_SURFACE_VERT_SPV)
-			.inspect_err(|_| destroy_pipeline_layout(device, layout))?;
-		let frag_words = decode_spirv_bytes(STANDARD_SURFACE_FRAG_SPV)
-			.inspect_err(|_| destroy_pipeline_layout(device, layout))?;
-		let vert_module = create_shader_module(device, &vert_words)
-			.inspect_err(|_| destroy_pipeline_layout(device, layout))?;
-		let frag_module = match create_shader_module(device, &frag_words) {
+		let vert_words = decode_spirv_bytes(SURFACE_VERT_SPV)
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
+		let frag_words = decode_spirv_bytes(SURFACE_FRAG_SPV)
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
+		let vert_module = create_shader_module(&device, &vert_words)
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
+		let frag_module = match create_shader_module(&device, &frag_words) {
 			Ok(m) => m,
 			Err(e) => {
-				unsafe { device.destroy_shader_module(vert_module, None) };
-				destroy_pipeline_layout(device, layout);
+				unsafe { device.destroy_shader_module(vert_module, None) }?;
+				destroy_pipeline_layout(&device, layout);
 				return Err(e);
 			}
 		};
 
 		let handle = match create_graphics_pipeline_inner(
-			device,
+			&device,
 			layout,
 			vert_module,
 			frag_module,
 			PipelineDepth::WriteAndTest,
 			PipelineBlend::Opaque,
+			cache,
 		) {
 			Ok(h) => h,
 			Err(e) => {
-				destroy_pipeline_layout(device, layout);
+				destroy_pipeline_layout(&device, layout);
 				return Err(e);
 			}
 		};
 		Ok(Self {
 			handle,
 			layout,
-			device: device.clone(),
+			device,
 		})
 	}
 
-	pub(crate) const fn raw(&self) -> ash::vk::Pipeline {
+	pub(crate) const fn raw(&self) -> vk::Pipeline {
 		self.handle
 	}
 
-	pub(crate) const fn layout(&self) -> ash::vk::PipelineLayout {
+	pub(crate) const fn layout(&self) -> vk::PipelineLayout {
 		self.layout
 	}
 }
 
-impl Drop for StandardSurfacePipeline {
+impl Drop for SurfacePipeline {
 	fn drop(&mut self) {
 		destroy_pipeline(&self.device, self.handle);
 		destroy_pipeline_layout(&self.device, self.layout);
 	}
 }
 
-// ── StandardSurfaceBlendPipeline ─────────────────────────────────────────────
+// ── SurfaceBlendPipeline ─────────────────────────────────────────────
 
-/// Transparent variant of the Standard Surface pipeline.
+/// Transparent variant of the Surface pipeline.
 ///
-/// Identical shader modules and descriptor layout as [`StandardSurfacePipeline`]
+/// Identical shader modules and descriptor layout as [`SurfacePipeline`]
 /// but uses `PipelineDepth::TestOnly` (depth test on, write off) and
 /// `PipelineBlend::PremultipliedAlpha`. Used for the back-to-front transparent
 /// pass in scene rendering.
-pub(crate) struct StandardSurfaceBlendPipeline {
-	handle: ash::vk::Pipeline,
-	device: ash::Device,
+pub(crate) struct SurfaceBlendPipeline {
+	handle: vk::Pipeline,
+	device: std::sync::Arc<vk::Device>,
 }
 
-impl StandardSurfaceBlendPipeline {
-	/// Create the standard-surface alpha-blend pipeline.
+impl SurfaceBlendPipeline {
+	/// Create the surface alpha-blend pipeline.
 	///
 	/// Shares the same `layout` (and therefore the same push range and
-	/// descriptor set layouts) as the opaque [`StandardSurfacePipeline`].
+	/// descriptor set layouts) as the opaque [`SurfacePipeline`].
 	pub(in crate::runtime) fn new(
-		device: &ash::Device,
-		layout: ash::vk::PipelineLayout,
+		device: std::sync::Arc<vk::Device>,
+		layout: vk::PipelineLayout,
+		cache: vk::PipelineCache,
 	) -> Result<Self> {
-		let vert_words = decode_spirv_bytes(STANDARD_SURFACE_VERT_SPV)?;
-		let frag_words = decode_spirv_bytes(STANDARD_SURFACE_FRAG_SPV)?;
-		let vert_module = create_shader_module(device, &vert_words)?;
-		let frag_module = match create_shader_module(device, &frag_words) {
+		let vert_words = decode_spirv_bytes(SURFACE_VERT_SPV)?;
+		let frag_words = decode_spirv_bytes(SURFACE_FRAG_SPV)?;
+		let vert_module = create_shader_module(&device, &vert_words)?;
+		let frag_module = match create_shader_module(&device, &frag_words) {
 			Ok(m) => m,
 			Err(e) => {
-				unsafe { device.destroy_shader_module(vert_module, None) };
+				unsafe { device.destroy_shader_module(vert_module, None) }?;
 				return Err(e);
 			}
 		};
 		let handle = create_graphics_pipeline_inner(
-			device,
+			&device,
 			layout,
 			vert_module,
 			frag_module,
 			PipelineDepth::TestOnly,
 			PipelineBlend::PremultipliedAlpha,
+			cache,
 		)?;
-		Ok(Self {
-			handle,
-			device: device.clone(),
-		})
+		Ok(Self { handle, device })
 	}
 
-	pub(crate) const fn raw(&self) -> ash::vk::Pipeline {
+	pub(crate) const fn raw(&self) -> vk::Pipeline {
 		self.handle
 	}
 }
 
-impl Drop for StandardSurfaceBlendPipeline {
+impl Drop for SurfaceBlendPipeline {
 	fn drop(&mut self) {
 		destroy_pipeline(&self.device, self.handle);
 	}
@@ -578,31 +598,32 @@ impl Drop for StandardSurfaceBlendPipeline {
 /// Binding 0: combined-image-sampler (base-color texture), fragment stage.
 pub(crate) struct UnlitDescriptorLayouts {
 	/// Set 0 layout (base-color sampler).
-	pub(crate) sampler_layout: ash::vk::DescriptorSetLayout,
-	device: ash::Device,
+	pub(crate) sampler_layout: vk::DescriptorSetLayout,
+	device: std::sync::Arc<vk::Device>,
 }
 
 impl UnlitDescriptorLayouts {
-	pub(in crate::runtime) fn new(device: &ash::Device) -> Result<Self> {
-		let sampler_binding = ash::vk::DescriptorSetLayoutBinding::default()
+	pub(in crate::runtime) fn new(device: std::sync::Arc<vk::Device>) -> Result<Self> {
+		let sampler_binding = vk::DescriptorSetLayoutBinding::default()
 			.binding(0)
-			.descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+			.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
 			.descriptor_count(1)
-			.stage_flags(ash::vk::ShaderStageFlags::FRAGMENT);
+			.stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT);
 		let bindings = [sampler_binding];
-		let info = ash::vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
-		let layout = unsafe { device.create_descriptor_set_layout(&info, None) }
-			.map_err(|s| Error::backend_failure("Vulkan", "unlit descriptor-set-layout creation", s))?;
+		let info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
+		let layout =
+			unsafe { device.create_descriptor_set_layout(&(info).map_err(Error::from)?, None) }
+				.map_err(|s| Error::backend_failure("Vulkan", "unlit descriptor-set-layout creation", s))?;
 		Ok(Self {
 			sampler_layout: layout,
-			device: device.clone(),
+			device,
 		})
 	}
 }
 
 impl Drop for UnlitDescriptorLayouts {
 	fn drop(&mut self) {
-		unsafe {
+		let _ = unsafe {
 			self
 				.device
 				.destroy_descriptor_set_layout(self.sampler_layout, None)
@@ -616,56 +637,59 @@ impl Drop for UnlitDescriptorLayouts {
 /// updated only after that slot's producer has completed, so descriptors are
 /// never mutated while a submitted draw can still consume them.
 pub(crate) struct UnlitDescriptorArena {
-	device: ash::Device,
-	pool: ash::vk::DescriptorPool,
-	sampler: ash::vk::Sampler,
-	sets: Vec<ash::vk::DescriptorSet>,
+	device: std::sync::Arc<vk::Device>,
+	pool: vk::DescriptorPool,
+	sampler: vk::Sampler,
+	sets: Vec<vk::DescriptorSet>,
 }
 
 impl UnlitDescriptorArena {
 	pub(in crate::runtime) fn new(
-		device: &ash::Device,
-		layout: ash::vk::DescriptorSetLayout,
+		device: std::sync::Arc<vk::Device>,
+		layout: vk::DescriptorSetLayout,
 		set_count: u32,
 	) -> Result<Self> {
-		let sampler_info = ash::vk::SamplerCreateInfo::default()
-			.mag_filter(ash::vk::Filter::LINEAR)
-			.min_filter(ash::vk::Filter::LINEAR)
-			.mipmap_mode(ash::vk::SamplerMipmapMode::NEAREST)
-			.address_mode_u(ash::vk::SamplerAddressMode::CLAMP_TO_EDGE)
-			.address_mode_v(ash::vk::SamplerAddressMode::CLAMP_TO_EDGE)
-			.address_mode_w(ash::vk::SamplerAddressMode::CLAMP_TO_EDGE)
+		let sampler_info = vk::SamplerCreateInfo::default()
+			.mag_filter(vk::Filter::LINEAR)
+			.min_filter(vk::Filter::LINEAR)
+			.mipmap_mode(vk::SamplerMipmapMode::NEAREST)
+			.address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+			.address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+			.address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
 			.min_lod(0.0)
 			.max_lod(0.0);
 		let sampler = unsafe { device.create_sampler(&sampler_info, None) }
 			.map_err(|source| Error::backend_failure("Vulkan", "unlit sampler creation", source))?;
-		let pool_size = ash::vk::DescriptorPoolSize::default()
-			.ty(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+		let pool_size = vk::DescriptorPoolSize::default()
+			.r#type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
 			.descriptor_count(set_count);
-		let pool_info = ash::vk::DescriptorPoolCreateInfo::default()
+		let pool_info = vk::DescriptorPoolCreateInfo::default()
 			.max_sets(set_count)
 			.pool_sizes(std::slice::from_ref(&pool_size));
-		let pool = match unsafe { device.create_descriptor_pool(&pool_info, None) } {
-			Ok(pool) => pool,
-			Err(source) => {
-				unsafe { device.destroy_sampler(sampler, None) };
-				return Err(Error::backend_failure(
-					"Vulkan",
-					"unlit descriptor-pool creation",
-					source,
-				));
-			}
-		};
+		let pool =
+			match unsafe { device.create_descriptor_pool(&(pool_info).map_err(Error::from)?, None) } {
+				Ok(pool) => pool,
+				Err(source) => {
+					unsafe { device.destroy_sampler(sampler, None) }?;
+					return Err(Error::backend_failure(
+						"Vulkan",
+						"unlit descriptor-pool creation",
+						source,
+					));
+				}
+			};
 		let layouts = vec![layout; set_count as usize];
-		let allocate_info = ash::vk::DescriptorSetAllocateInfo::default()
+		let allocate_info = vk::DescriptorSetAllocateInfo::default()
 			.descriptor_pool(pool)
 			.set_layouts(&layouts);
-		let sets = match unsafe { device.allocate_descriptor_sets(&allocate_info) } {
-			Ok(sets) => sets,
+		let allocate_info = allocate_info.map_err(Error::from)?;
+		let mut sets = vec![vk::DescriptorSet::default(); layouts.len()];
+		let sets = match unsafe { device.allocate_descriptor_sets(&allocate_info, &mut sets) } {
+			Ok(()) => sets,
 			Err(source) => {
 				unsafe {
-					device.destroy_descriptor_pool(pool, None);
-					device.destroy_sampler(sampler, None);
+					device.destroy_descriptor_pool(pool, None)?;
+					device.destroy_sampler(sampler, None)?;
 				}
 				return Err(Error::backend_failure(
 					"Vulkan",
@@ -675,7 +699,7 @@ impl UnlitDescriptorArena {
 			}
 		};
 		Ok(Self {
-			device: device.clone(),
+			device,
 			pool,
 			sampler,
 			sets,
@@ -685,22 +709,26 @@ impl UnlitDescriptorArena {
 	pub(crate) fn write_sampled_image(
 		&self,
 		set_index: usize,
-		view: ash::vk::ImageView,
-	) -> Result<ash::vk::DescriptorSet> {
+		view: vk::ImageView,
+	) -> Result<vk::DescriptorSet> {
 		let set = *self
 			.sets
 			.get(set_index)
 			.ok_or_else(|| Error::internal("unlit descriptor-set index is out of range"))?;
-		let image = ash::vk::DescriptorImageInfo::default()
+		let image = vk::DescriptorImageInfo::default()
 			.sampler(self.sampler)
 			.image_view(view)
-			.image_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-		let write = ash::vk::WriteDescriptorSet::default()
+			.image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+		let write = vk::WriteDescriptorSet::default()
 			.dst_set(set)
 			.dst_binding(0)
-			.descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+			.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
 			.image_info(std::slice::from_ref(&image));
-		unsafe { self.device.update_descriptor_sets(&[write], &[]) };
+		unsafe {
+			self
+				.device
+				.update_descriptor_sets(&[(write).map_err(Error::from)?], &[])
+		}?;
 		Ok(set)
 	}
 }
@@ -708,183 +736,185 @@ impl UnlitDescriptorArena {
 impl Drop for UnlitDescriptorArena {
 	fn drop(&mut self) {
 		unsafe {
-			self.device.destroy_descriptor_pool(self.pool, None);
-			self.device.destroy_sampler(self.sampler, None);
+			let _ = self.device.destroy_descriptor_pool(self.pool, None);
+			let _ = self.device.destroy_sampler(self.sampler, None);
 		}
 	}
 }
 
-/// Owned descriptor set layouts for the Standard Surface PBR pipeline.
+/// Owned descriptor set layouts for the Surface PBR pipeline.
 ///
 /// Set 0, binding 0: scene lights UBO (`SceneLights`), fragment stage.
 /// Set 1, binding 0: base-color combined-image-sampler, fragment stage.
 /// Set 1, binding 1: ORM combined-image-sampler, fragment stage.
 /// Set 1, binding 2: normal combined-image-sampler, fragment stage.
 /// Set 1, binding 3: material params UBO (`MaterialParams`), fragment stage.
-pub(crate) struct StandardSurfaceDescriptorLayouts {
+pub(crate) struct SurfaceDescriptorLayouts {
 	/// Set 0 layout (scene lights UBO).
-	pub(crate) scene_layout: ash::vk::DescriptorSetLayout,
+	pub(crate) scene_layout: vk::DescriptorSetLayout,
 	/// Set 1 layout (3 samplers + material params UBO).
-	pub(crate) material_layout: ash::vk::DescriptorSetLayout,
-	device: ash::Device,
+	pub(crate) material_layout: vk::DescriptorSetLayout,
+	device: std::sync::Arc<vk::Device>,
 }
 
-impl StandardSurfaceDescriptorLayouts {
-	pub(in crate::runtime) fn new(device: &ash::Device) -> Result<Self> {
+impl SurfaceDescriptorLayouts {
+	pub(in crate::runtime) fn new(device: std::sync::Arc<vk::Device>) -> Result<Self> {
 		// Set 0: scene lights UBO.
-		let scene_binding = ash::vk::DescriptorSetLayoutBinding::default()
+		let scene_binding = vk::DescriptorSetLayoutBinding::default()
 			.binding(0)
-			.descriptor_type(ash::vk::DescriptorType::UNIFORM_BUFFER)
+			.descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
 			.descriptor_count(1)
-			.stage_flags(ash::vk::ShaderStageFlags::FRAGMENT);
+			.stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT);
 		let scene_bindings = [scene_binding];
-		let scene_info = ash::vk::DescriptorSetLayoutCreateInfo::default().bindings(&scene_bindings);
+		let scene_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&scene_bindings);
 		let scene_layout =
-			unsafe { device.create_descriptor_set_layout(&scene_info, None) }.map_err(|s| {
-				Error::backend_failure(
-					"Vulkan",
-					"standard-surface scene descriptor-set-layout creation",
-					s,
-				)
-			})?;
+			unsafe { device.create_descriptor_set_layout(&(scene_info).map_err(Error::from)?, None) }
+				.map_err(|s| {
+					Error::backend_failure("Vulkan", "surface scene descriptor-set-layout creation", s)
+				})?;
 
 		// Set 1: base-color / ORM / normal samplers + material params UBO.
 		let mat_bindings = [
-			ash::vk::DescriptorSetLayoutBinding::default()
+			vk::DescriptorSetLayoutBinding::default()
 				.binding(0)
-				.descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
 				.descriptor_count(1)
-				.stage_flags(ash::vk::ShaderStageFlags::FRAGMENT),
-			ash::vk::DescriptorSetLayoutBinding::default()
+				.stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT),
+			vk::DescriptorSetLayoutBinding::default()
 				.binding(1)
-				.descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
 				.descriptor_count(1)
-				.stage_flags(ash::vk::ShaderStageFlags::FRAGMENT),
-			ash::vk::DescriptorSetLayoutBinding::default()
+				.stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT),
+			vk::DescriptorSetLayoutBinding::default()
 				.binding(2)
-				.descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
 				.descriptor_count(1)
-				.stage_flags(ash::vk::ShaderStageFlags::FRAGMENT),
-			ash::vk::DescriptorSetLayoutBinding::default()
+				.stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT),
+			vk::DescriptorSetLayoutBinding::default()
 				.binding(3)
-				.descriptor_type(ash::vk::DescriptorType::UNIFORM_BUFFER)
+				.descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
 				.descriptor_count(1)
-				.stage_flags(ash::vk::ShaderStageFlags::FRAGMENT),
+				.stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT),
 		];
-		let mat_info = ash::vk::DescriptorSetLayoutCreateInfo::default().bindings(&mat_bindings);
-		let material_layout = match unsafe { device.create_descriptor_set_layout(&mat_info, None) } {
-			Ok(l) => l,
-			Err(s) => {
-				unsafe { device.destroy_descriptor_set_layout(scene_layout, None) };
-				return Err(Error::backend_failure(
-					"Vulkan",
-					"standard-surface material descriptor-set-layout creation",
-					s,
-				));
-			}
-		};
+		let mat_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&mat_bindings);
+		let material_layout =
+			match unsafe { device.create_descriptor_set_layout(&(mat_info).map_err(Error::from)?, None) }
+			{
+				Ok(l) => l,
+				Err(s) => {
+					unsafe { device.destroy_descriptor_set_layout(scene_layout, None) }?;
+					return Err(Error::backend_failure(
+						"Vulkan",
+						"surface material descriptor-set-layout creation",
+						s,
+					));
+				}
+			};
 
 		Ok(Self {
 			scene_layout,
 			material_layout,
-			device: device.clone(),
+			device,
 		})
 	}
 }
 
-impl Drop for StandardSurfaceDescriptorLayouts {
+impl Drop for SurfaceDescriptorLayouts {
 	fn drop(&mut self) {
 		unsafe {
-			self
+			let _ = self
 				.device
 				.destroy_descriptor_set_layout(self.material_layout, None);
-			self
+			let _ = self
 				.device
 				.destroy_descriptor_set_layout(self.scene_layout, None);
 		}
 	}
 }
 
-/// Per-frame uniform + sampled-image descriptors for the Standard Surface pipeline.
+/// Per-frame uniform + sampled-image descriptors for the Surface pipeline.
 ///
 /// Allocates `slot_count` scene sets (set 0) and
 /// `slot_count × max_materials_per_slot` material sets (set 1). Owns a shared
 /// linear sampler used for all texture bindings; callers supply a white-texture
 /// fallback view when a material has no texture assigned.
-pub(crate) struct StandardSurfaceDescriptorArena {
-	device: ash::Device,
-	pool: ash::vk::DescriptorPool,
-	sampler: ash::vk::Sampler,
-	scene_sets: Vec<ash::vk::DescriptorSet>,
+pub(crate) struct SurfaceDescriptorArena {
+	device: std::sync::Arc<vk::Device>,
+	pool: vk::DescriptorPool,
+	sampler: vk::Sampler,
+	scene_sets: Vec<vk::DescriptorSet>,
 	/// Flat `[slot_count × max_materials_per_slot]` material sets.
-	material_sets: Vec<ash::vk::DescriptorSet>,
+	material_sets: Vec<vk::DescriptorSet>,
 	/// Number of material set slots per render slot.
 	max_materials: usize,
 }
 
-impl StandardSurfaceDescriptorArena {
+impl SurfaceDescriptorArena {
 	pub(in crate::runtime) fn new(
-		device: &ash::Device,
-		scene_layout: ash::vk::DescriptorSetLayout,
-		material_layout: ash::vk::DescriptorSetLayout,
+		device: std::sync::Arc<vk::Device>,
+		scene_layout: vk::DescriptorSetLayout,
+		material_layout: vk::DescriptorSetLayout,
 		set_count: u32,
 		max_materials_per_slot: u32,
 	) -> Result<Self> {
 		let max_materials_per_slot = max_materials_per_slot.max(1);
-		let sampler_info = ash::vk::SamplerCreateInfo::default()
-			.mag_filter(ash::vk::Filter::LINEAR)
-			.min_filter(ash::vk::Filter::LINEAR)
-			.mipmap_mode(ash::vk::SamplerMipmapMode::NEAREST)
-			.address_mode_u(ash::vk::SamplerAddressMode::REPEAT)
-			.address_mode_v(ash::vk::SamplerAddressMode::REPEAT)
-			.address_mode_w(ash::vk::SamplerAddressMode::REPEAT)
+		let sampler_info = vk::SamplerCreateInfo::default()
+			.mag_filter(vk::Filter::LINEAR)
+			.min_filter(vk::Filter::LINEAR)
+			.mipmap_mode(vk::SamplerMipmapMode::NEAREST)
+			.address_mode_u(vk::SamplerAddressMode::REPEAT)
+			.address_mode_v(vk::SamplerAddressMode::REPEAT)
+			.address_mode_w(vk::SamplerAddressMode::REPEAT)
 			.min_lod(0.0)
 			.max_lod(0.0);
-		let sampler = unsafe { device.create_sampler(&sampler_info, None) }.map_err(|source| {
-			Error::backend_failure("Vulkan", "standard-surface sampler creation", source)
-		})?;
+		let sampler = unsafe { device.create_sampler(&sampler_info, None) }
+			.map_err(|source| Error::backend_failure("Vulkan", "surface sampler creation", source))?;
 		let mat_set_total = set_count.saturating_mul(max_materials_per_slot);
 		let pool_sizes = [
-			ash::vk::DescriptorPoolSize::default()
-				.ty(ash::vk::DescriptorType::UNIFORM_BUFFER)
+			vk::DescriptorPoolSize::default()
+				.r#type(vk::DescriptorType::UNIFORM_BUFFER)
 				// 1 scene UBO per slot + 1 material UBO per material set
 				.descriptor_count(set_count.saturating_add(mat_set_total)),
-			ash::vk::DescriptorPoolSize::default()
-				.ty(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+			vk::DescriptorPoolSize::default()
+				.r#type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
 				// 3 texture bindings per material set
 				.descriptor_count(mat_set_total.saturating_mul(3)),
 		];
-		let pool_info = ash::vk::DescriptorPoolCreateInfo::default()
+		let pool_info = vk::DescriptorPoolCreateInfo::default()
 			.max_sets(set_count.saturating_add(mat_set_total))
 			.pool_sizes(&pool_sizes);
-		let pool = match unsafe { device.create_descriptor_pool(&pool_info, None) } {
-			Ok(p) => p,
-			Err(source) => {
-				unsafe { device.destroy_sampler(sampler, None) };
-				return Err(Error::backend_failure(
-					"Vulkan",
-					"standard-surface descriptor-pool creation",
-					source,
-				));
-			}
-		};
-		let allocate_n = |layout: ash::vk::DescriptorSetLayout, n: u32| {
+		let pool =
+			match unsafe { device.create_descriptor_pool(&(pool_info).map_err(Error::from)?, None) } {
+				Ok(p) => p,
+				Err(source) => {
+					unsafe { device.destroy_sampler(sampler, None) }?;
+					return Err(Error::backend_failure(
+						"Vulkan",
+						"surface descriptor-pool creation",
+						source,
+					));
+				}
+			};
+		let allocate_n = |layout: vk::DescriptorSetLayout, n: u32| -> Result<Vec<vk::DescriptorSet>> {
 			let layouts = vec![layout; n as usize];
-			let info = ash::vk::DescriptorSetAllocateInfo::default()
+			let info = vk::DescriptorSetAllocateInfo::default()
 				.descriptor_pool(pool)
-				.set_layouts(&layouts);
-			unsafe { device.allocate_descriptor_sets(&info) }
+				.set_layouts(&layouts)
+				.map_err(Error::from)?;
+			let mut sets = vec![vk::DescriptorSet::default(); layouts.len()];
+			unsafe { device.allocate_descriptor_sets(&info, &mut sets) }.map_err(Error::from)?;
+			Ok(sets)
 		};
 		let scene_sets = match allocate_n(scene_layout, set_count) {
 			Ok(sets) => sets,
 			Err(source) => {
 				unsafe {
-					device.destroy_descriptor_pool(pool, None);
-					device.destroy_sampler(sampler, None);
+					device.destroy_descriptor_pool(pool, None)?;
+					device.destroy_sampler(sampler, None)?;
 				}
 				return Err(Error::backend_failure(
 					"Vulkan",
-					"standard-surface scene descriptor allocation",
+					"surface scene descriptor allocation",
 					source,
 				));
 			}
@@ -893,18 +923,18 @@ impl StandardSurfaceDescriptorArena {
 			Ok(sets) => sets,
 			Err(source) => {
 				unsafe {
-					device.destroy_descriptor_pool(pool, None);
-					device.destroy_sampler(sampler, None);
+					device.destroy_descriptor_pool(pool, None)?;
+					device.destroy_sampler(sampler, None)?;
 				}
 				return Err(Error::backend_failure(
 					"Vulkan",
-					"standard-surface material descriptor allocation",
+					"surface material descriptor allocation",
 					source,
 				));
 			}
 		};
 		Ok(Self {
-			device: device.clone(),
+			device,
 			pool,
 			sampler,
 			scene_sets,
@@ -917,22 +947,26 @@ impl StandardSurfaceDescriptorArena {
 	pub(crate) fn write_scene_slot(
 		&self,
 		slot_index: usize,
-		scene_buffer: ash::vk::Buffer,
+		scene_buffer: vk::Buffer,
 		scene_size: u64,
-	) -> Result<ash::vk::DescriptorSet> {
+	) -> Result<vk::DescriptorSet> {
 		let scene_set = *self
 			.scene_sets
 			.get(slot_index)
-			.ok_or_else(|| Error::internal("standard-surface scene set index is out of range"))?;
-		let scene_info = ash::vk::DescriptorBufferInfo::default()
+			.ok_or_else(|| Error::internal("surface scene set index is out of range"))?;
+		let scene_info = vk::DescriptorBufferInfo::default()
 			.buffer(scene_buffer)
 			.range(scene_size);
-		let write = ash::vk::WriteDescriptorSet::default()
+		let write = vk::WriteDescriptorSet::default()
 			.dst_set(scene_set)
 			.dst_binding(0)
-			.descriptor_type(ash::vk::DescriptorType::UNIFORM_BUFFER)
+			.descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
 			.buffer_info(std::slice::from_ref(&scene_info));
-		unsafe { self.device.update_descriptor_sets(&[write], &[]) };
+		unsafe {
+			self
+				.device
+				.update_descriptor_sets(&[(write).map_err(Error::from)?], &[])
+		}?;
 		Ok(scene_set)
 	}
 
@@ -951,53 +985,56 @@ impl StandardSurfaceDescriptorArena {
 		&self,
 		slot_index: usize,
 		material_index: usize,
-		material_buffer: ash::vk::Buffer,
+		material_buffer: vk::Buffer,
 		material_size: u64,
-		base_view: Option<ash::vk::ImageView>,
-		orm_view: Option<ash::vk::ImageView>,
-		normal_view: Option<ash::vk::ImageView>,
-		white_view: ash::vk::ImageView,
-	) -> Result<ash::vk::DescriptorSet> {
+		base_view: Option<vk::ImageView>,
+		orm_view: Option<vk::ImageView>,
+		normal_view: Option<vk::ImageView>,
+		white_view: vk::ImageView,
+	) -> Result<vk::DescriptorSet> {
 		let flat = slot_index * self.max_materials + material_index;
 		let mat_set = *self
 			.material_sets
 			.get(flat)
-			.ok_or_else(|| Error::internal("standard-surface material set index is out of range"))?;
-		let sampler_image = |view: Option<ash::vk::ImageView>| {
-			ash::vk::DescriptorImageInfo::default()
+			.ok_or_else(|| Error::internal("surface material set index is out of range"))?;
+		let sampler_image = |view: Option<vk::ImageView>| {
+			vk::DescriptorImageInfo::default()
 				.sampler(self.sampler)
 				.image_view(view.unwrap_or(white_view))
-				.image_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+				.image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
 		};
 		let base_img = sampler_image(base_view);
 		let orm_img = sampler_image(orm_view);
 		let normal_img = sampler_image(normal_view);
-		let mat_buf_info = ash::vk::DescriptorBufferInfo::default()
+		let mat_buf_info = vk::DescriptorBufferInfo::default()
 			.buffer(material_buffer)
 			.range(material_size);
 		let writes = [
-			ash::vk::WriteDescriptorSet::default()
+			vk::WriteDescriptorSet::default()
 				.dst_set(mat_set)
 				.dst_binding(0)
-				.descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
 				.image_info(std::slice::from_ref(&base_img)),
-			ash::vk::WriteDescriptorSet::default()
+			vk::WriteDescriptorSet::default()
 				.dst_set(mat_set)
 				.dst_binding(1)
-				.descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
 				.image_info(std::slice::from_ref(&orm_img)),
-			ash::vk::WriteDescriptorSet::default()
+			vk::WriteDescriptorSet::default()
 				.dst_set(mat_set)
 				.dst_binding(2)
-				.descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
 				.image_info(std::slice::from_ref(&normal_img)),
-			ash::vk::WriteDescriptorSet::default()
+			vk::WriteDescriptorSet::default()
 				.dst_set(mat_set)
 				.dst_binding(3)
-				.descriptor_type(ash::vk::DescriptorType::UNIFORM_BUFFER)
+				.descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
 				.buffer_info(std::slice::from_ref(&mat_buf_info)),
-		];
-		unsafe { self.device.update_descriptor_sets(&writes, &[]) };
+		]
+		.into_iter()
+		.collect::<std::result::Result<Vec<_>, _>>()
+		.map_err(Error::from)?;
+		unsafe { self.device.update_descriptor_sets(&writes, &[]) }?;
 		Ok(mat_set)
 	}
 
@@ -1008,11 +1045,11 @@ impl StandardSurfaceDescriptorArena {
 	}
 }
 
-impl Drop for StandardSurfaceDescriptorArena {
+impl Drop for SurfaceDescriptorArena {
 	fn drop(&mut self) {
 		unsafe {
-			self.device.destroy_descriptor_pool(self.pool, None);
-			self.device.destroy_sampler(self.sampler, None);
+			let _ = self.device.destroy_descriptor_pool(self.pool, None);
+			let _ = self.device.destroy_sampler(self.sampler, None);
 		}
 	}
 }
@@ -1034,113 +1071,128 @@ enum PipelineBlend {
 /// Create a graphics pipeline and immediately destroy its shader modules.
 /// Vertex input layout matches MeshVertex (stride 48, locations 0–3).
 fn create_graphics_pipeline_inner(
-	device: &ash::Device,
-	layout: ash::vk::PipelineLayout,
-	vert_module: ash::vk::ShaderModule,
-	frag_module: ash::vk::ShaderModule,
+	device: &vk::Device,
+	layout: vk::PipelineLayout,
+	vert_module: vk::ShaderModule,
+	frag_module: vk::ShaderModule,
 	depth: PipelineDepth,
 	blend: PipelineBlend,
-) -> Result<ash::vk::Pipeline> {
+	cache: vk::PipelineCache,
+) -> Result<vk::Pipeline> {
 	let stages = [
-		ash::vk::PipelineShaderStageCreateInfo::default()
-			.stage(ash::vk::ShaderStageFlags::VERTEX)
+		vk::PipelineShaderStageCreateInfo::default()
+			.stage(vk::ShaderStageFlagBits::VERTEX_BIT)
 			.module(vert_module)
 			.name(c"main"),
-		ash::vk::PipelineShaderStageCreateInfo::default()
-			.stage(ash::vk::ShaderStageFlags::FRAGMENT)
+		vk::PipelineShaderStageCreateInfo::default()
+			.stage(vk::ShaderStageFlagBits::FRAGMENT_BIT)
 			.module(frag_module)
 			.name(c"main"),
 	];
 
 	// MeshVertex layout: position(0,f3,off0), normal(1,f3,off12),
 	// uv(2,f2,off24), color(3,f4,off32) — stride 48.
-	let binding = ash::vk::VertexInputBindingDescription::default()
+	let binding = vk::VertexInputBindingDescription::default()
 		.binding(0)
 		.stride(48)
-		.input_rate(ash::vk::VertexInputRate::VERTEX);
+		.input_rate(vk::VertexInputRate::VERTEX);
 	let attributes = [
-		ash::vk::VertexInputAttributeDescription::default()
+		vk::VertexInputAttributeDescription::default()
 			.location(0)
 			.binding(0)
-			.format(ash::vk::Format::R32G32B32_SFLOAT)
+			.format(vk::Format::R32G32B32_SFLOAT)
 			.offset(0),
-		ash::vk::VertexInputAttributeDescription::default()
+		vk::VertexInputAttributeDescription::default()
 			.location(1)
 			.binding(0)
-			.format(ash::vk::Format::R32G32B32_SFLOAT)
+			.format(vk::Format::R32G32B32_SFLOAT)
 			.offset(12),
-		ash::vk::VertexInputAttributeDescription::default()
+		vk::VertexInputAttributeDescription::default()
 			.location(2)
 			.binding(0)
-			.format(ash::vk::Format::R32G32_SFLOAT)
+			.format(vk::Format::R32G32_SFLOAT)
 			.offset(24),
-		ash::vk::VertexInputAttributeDescription::default()
+		vk::VertexInputAttributeDescription::default()
 			.location(3)
 			.binding(0)
-			.format(ash::vk::Format::R32G32B32A32_SFLOAT)
+			.format(vk::Format::R32G32B32A32_SFLOAT)
 			.offset(32),
 	];
-	let vertex_input = ash::vk::PipelineVertexInputStateCreateInfo::default()
+	let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
 		.vertex_binding_descriptions(std::slice::from_ref(&binding))
-		.vertex_attribute_descriptions(&attributes);
+		.map_err(Error::from)?
+		.vertex_attribute_descriptions(&attributes)
+		.map_err(Error::from)?;
 
-	let assembly = ash::vk::PipelineInputAssemblyStateCreateInfo::default()
-		.topology(ash::vk::PrimitiveTopology::TRIANGLE_LIST);
-	let viewport_state = ash::vk::PipelineViewportStateCreateInfo::default()
+	let assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
+		.topology(vk::PrimitiveTopology::TRIANGLE_LIST);
+	let viewport_state = vk::PipelineViewportStateCreateInfo::default()
 		.viewport_count(1)
 		.scissor_count(1);
-	let raster = ash::vk::PipelineRasterizationStateCreateInfo::default()
-		.polygon_mode(ash::vk::PolygonMode::FILL)
-		.cull_mode(ash::vk::CullModeFlags::NONE)
-		.front_face(ash::vk::FrontFace::COUNTER_CLOCKWISE)
+	let raster = vk::PipelineRasterizationStateCreateInfo::default()
+		.polygon_mode(vk::PolygonMode::FILL)
+		.cull_mode(vk::CullModeFlagBits::NONE)
+		.front_face(vk::FrontFace::COUNTER_CLOCKWISE)
 		.line_width(1.0);
-	let multisample = ash::vk::PipelineMultisampleStateCreateInfo::default()
-		.rasterization_samples(ash::vk::SampleCountFlags::TYPE_1);
+	let multisample = vk::PipelineMultisampleStateCreateInfo::default()
+		.rasterization_samples(vk::SampleCountFlagBits::_1_BIT);
 
 	let depth_stencil = match depth {
-		PipelineDepth::Disabled => ash::vk::PipelineDepthStencilStateCreateInfo::default(),
-		PipelineDepth::WriteAndTest => ash::vk::PipelineDepthStencilStateCreateInfo::default()
-			.depth_test_enable(true)
-			.depth_write_enable(true)
-			.depth_compare_op(ash::vk::CompareOp::LESS)
+		PipelineDepth::Disabled => vk::PipelineDepthStencilStateCreateInfo::default(),
+		PipelineDepth::WriteAndTest => vk::PipelineDepthStencilStateCreateInfo::default()
+			.depth_test_enable(u32::from(true))
+			.depth_write_enable(u32::from(true))
+			.depth_compare_op(vk::CompareOp::LESS)
 			.min_depth_bounds(0.0)
 			.max_depth_bounds(1.0),
-		PipelineDepth::TestOnly => ash::vk::PipelineDepthStencilStateCreateInfo::default()
-			.depth_test_enable(true)
-			.depth_write_enable(false)
-			.depth_compare_op(ash::vk::CompareOp::LESS)
+		PipelineDepth::TestOnly => vk::PipelineDepthStencilStateCreateInfo::default()
+			.depth_test_enable(u32::from(true))
+			.depth_write_enable(u32::from(false))
+			.depth_compare_op(vk::CompareOp::LESS)
 			.min_depth_bounds(0.0)
 			.max_depth_bounds(1.0),
 	};
 
 	let blend_attachment = match blend {
-		PipelineBlend::Opaque => ash::vk::PipelineColorBlendAttachmentState::default()
-			.color_write_mask(ash::vk::ColorComponentFlags::RGBA),
-		PipelineBlend::PremultipliedAlpha => ash::vk::PipelineColorBlendAttachmentState::default()
-			.blend_enable(true)
-			.src_color_blend_factor(ash::vk::BlendFactor::ONE)
-			.dst_color_blend_factor(ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-			.color_blend_op(ash::vk::BlendOp::ADD)
-			.src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
-			.dst_alpha_blend_factor(ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-			.alpha_blend_op(ash::vk::BlendOp::ADD)
-			.color_write_mask(ash::vk::ColorComponentFlags::RGBA),
+		PipelineBlend::Opaque => vk::PipelineColorBlendAttachmentState::default().color_write_mask(
+			vk::ColorComponentFlagBits::R_BIT
+				| vk::ColorComponentFlagBits::G_BIT
+				| vk::ColorComponentFlagBits::B_BIT
+				| vk::ColorComponentFlagBits::A_BIT,
+		),
+		PipelineBlend::PremultipliedAlpha => vk::PipelineColorBlendAttachmentState::default()
+			.blend_enable(u32::from(true))
+			.src_color_blend_factor(vk::BlendFactor::ONE)
+			.dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+			.color_blend_op(vk::BlendOp::ADD)
+			.src_alpha_blend_factor(vk::BlendFactor::ONE)
+			.dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+			.alpha_blend_op(vk::BlendOp::ADD)
+			.color_write_mask(
+				vk::ColorComponentFlagBits::R_BIT
+					| vk::ColorComponentFlagBits::G_BIT
+					| vk::ColorComponentFlagBits::B_BIT
+					| vk::ColorComponentFlagBits::A_BIT,
+			),
 	};
-	let color_blend = ash::vk::PipelineColorBlendStateCreateInfo::default()
-		.attachments(std::slice::from_ref(&blend_attachment));
+	let color_blend = vk::PipelineColorBlendStateCreateInfo::default()
+		.attachments(std::slice::from_ref(&blend_attachment))
+		.map_err(Error::from)?;
 
-	let dynamic_states = [
-		ash::vk::DynamicState::VIEWPORT,
-		ash::vk::DynamicState::SCISSOR,
-	];
-	let dynamic = ash::vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+	let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+	let dynamic = vk::PipelineDynamicStateCreateInfo::default()
+		.dynamic_states(&dynamic_states)
+		.map_err(Error::from)?;
 	let color_formats = [RENDER_COLOR_FORMAT];
-	let mut rendering = ash::vk::PipelineRenderingCreateInfo::default()
+	let mut rendering = vk::PipelineRenderingCreateInfo::default()
 		.color_attachment_formats(&color_formats)
+		.map_err(Error::from)?
 		.depth_attachment_format(RENDER_DEPTH_FORMAT);
-	let pipeline_info = ash::vk::GraphicsPipelineCreateInfo::default()
+	let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
 		.push_next(&mut rendering)
+		.map_err(Error::from)?
 		.stages(&stages)
+		.map_err(Error::from)?
 		.vertex_input_state(&vertex_input)
 		.input_assembly_state(&assembly)
 		.viewport_state(&viewport_state)
@@ -1151,33 +1203,34 @@ fn create_graphics_pipeline_inner(
 		.dynamic_state(&dynamic)
 		.layout(layout);
 
+	let mut pipelines = [vk::Pipeline::default(); 1];
+	// SAFETY: the create-info chain and output buffer remain live and writable
+	// for the call; partial output is destroyed on failure.
 	let result = unsafe {
 		device.create_graphics_pipelines(
-			ash::vk::PipelineCache::null(),
+			cache,
 			std::slice::from_ref(&pipeline_info),
 			None,
+			&mut pipelines,
 		)
 	};
 	unsafe {
-		device.destroy_shader_module(vert_module, None);
-		device.destroy_shader_module(frag_module, None);
+		let _ = device.destroy_shader_module(vert_module, None);
+		let _ = device.destroy_shader_module(frag_module, None);
 	}
 	match result {
-		Ok(pipelines) => pipelines.first().copied().ok_or_else(|| {
-			Error::backend_failure(
-				"Vulkan",
-				"graphics-pipeline creation",
-				std::io::Error::other("Vulkan returned no pipeline after successful creation"),
-			)
-		}),
-		Err((partial, source)) => {
-			for p in partial {
-				destroy_pipeline(device, p);
+		Ok(vk::Result::SUCCESS) => Ok(pipelines[0]),
+		result => {
+			for handle in pipelines
+				.into_iter()
+				.filter(|handle| *handle != vk::Pipeline::default())
+			{
+				destroy_pipeline(device, handle);
 			}
-			Err(Error::backend_failure(
+			Err(Error::backend_dispatch_failure(
 				"Vulkan",
 				"graphics-pipeline creation",
-				source,
+				result,
 			))
 		}
 	}
@@ -1203,59 +1256,204 @@ fn decode_spirv_bytes(bytes: &[u8]) -> Result<Vec<u32>> {
 	)
 }
 
-fn create_shader_module(device: &ash::Device, words: &[u32]) -> Result<ash::vk::ShaderModule> {
-	let info = ash::vk::ShaderModuleCreateInfo::default().code(words);
+fn create_shader_module(device: &vk::Device, words: &[u32]) -> Result<vk::ShaderModule> {
+	let info = vk::ShaderModuleCreateInfo::default().code(words);
 	unsafe { device.create_shader_module(&info, None) }
 		.map_err(|s| Error::backend_failure("Vulkan", "graphics shader-module creation", s))
 }
 
+// ── Pipeline cache persistence ────────────────────────────────────────────────
+
+/// File name of the persisted Vulkan pipeline cache below `var/vk`.
+const PIPELINE_CACHE_FILE: &str = "pipeline.vcache";
+
+/// Directory holding the persisted Vulkan pipeline cache.
+fn pipeline_cache_dir() -> crate::Path {
+	crate::Path::var().join("vk")
+}
+
+/// Path of the persisted Vulkan pipeline cache.
+pub(in crate::runtime) fn pipeline_cache_path() -> crate::Path {
+	pipeline_cache_dir().join(PIPELINE_CACHE_FILE)
+}
+
+/// Owned `VkPipelineCache` optionally seeded with persisted driver data.
+///
+/// Vulkan requires external synchronization for every host access to one
+/// pipeline cache. Serialized single-pipeline creation shares this cache under
+/// the device creation lock; parallel preload gives each worker its own cache
+/// and merges worker caches back only after every worker has joined.
+pub(super) struct PipelineCache {
+	handle: vk::PipelineCache,
+	device: std::sync::Arc<vk::Device>,
+	initial_data_bytes: usize,
+}
+
+impl PipelineCache {
+	/// Create a pipeline cache seeded with `initial_data` (empty means cold).
+	///
+	/// # Errors
+	/// Returns an error when `vkCreatePipelineCache` rejects the seed data or
+	/// fails on the device.
+	pub(super) fn new(device: std::sync::Arc<vk::Device>, initial_data: &[u8]) -> Result<Self> {
+		let info = vk::PipelineCacheCreateInfo::default()
+			.initial_data(initial_data)
+			.map_err(Error::from)?;
+		// SAFETY: the seed slice outlives the call, and the retained device
+		// outlives the returned cache.
+		let handle = unsafe { device.create_pipeline_cache(&info, None) }
+			.map_err(|s| Error::backend_failure("Vulkan", "pipeline-cache creation", s))?;
+		Ok(Self {
+			handle,
+			device,
+			initial_data_bytes: initial_data.len(),
+		})
+	}
+
+	/// Open a pipeline cache seeded with `var/vk/pipeline.vcache` when present.
+	///
+	/// An absent or empty file still produces a live cold cache so new
+	/// pipelines are captured and persisted at teardown. Returns `None` only
+	/// when the driver cannot create any cache; callers then run uncached.
+	pub(super) fn open(device: &std::sync::Arc<vk::Device>) -> Option<Self> {
+		let path = pipeline_cache_path();
+		let initial_data = crate::Filesystem::read_binary(&path).unwrap_or_default();
+		match Self::new(std::sync::Arc::clone(device), &initial_data) {
+			Ok(cache) => {
+				if !initial_data.is_empty() {
+					crate::log_info!(
+						crate::LogComponent::COMPUTE,
+						"pipeline cache: loaded {} bytes from {}",
+						initial_data.len(),
+						path.display()
+					);
+				}
+				Some(cache)
+			}
+			Err(_) if !initial_data.is_empty() => {
+				crate::log_warn!(
+					crate::LogComponent::COMPUTE,
+					"pipeline cache: driver rejected persisted data; starting cold"
+				);
+				Self::new(std::sync::Arc::clone(device), &[]).ok()
+			}
+			Err(_) => None,
+		}
+	}
+
+	/// Persist the merged driver blob back to `var/vk/pipeline.vcache`.
+	///
+	/// Best-effort during teardown: query or I/O failure keeps the previously
+	/// persisted state rather than failing device destruction.
+	pub(super) fn save(&self) {
+		let data = match self.data() {
+			Ok(data) if !data.is_empty() => data,
+			_ => return,
+		};
+		let dir = pipeline_cache_dir();
+		let path = dir.join(PIPELINE_CACHE_FILE);
+		if crate::Filesystem::create_directories(&dir).is_err()
+			|| crate::Filesystem::write_binary(&path, &data).is_err()
+		{
+			return;
+		}
+		crate::log_info!(
+			crate::LogComponent::COMPUTE,
+			"pipeline cache: saved {} bytes to {}",
+			data.len(),
+			path.display()
+		);
+	}
+
+	/// Serialize the driver-owned cache blob.
+	pub(super) fn data(&self) -> Result<Vec<u8>> {
+		// SAFETY: `handle` is a live cache created on this device.
+		unsafe { self.device.get_pipeline_cache_data(self.handle) }
+			.map_err(|s| Error::backend_failure("Vulkan", "pipeline-cache data query", s))
+	}
+
+	/// Merge externally synchronized worker caches into this cache.
+	///
+	/// Callers must have joined every thread that produced `sources`; no host
+	/// may touch source or destination concurrently with the merge.
+	pub(super) fn merge(&self, sources: &[vk::PipelineCache]) -> Result<()> {
+		if sources.is_empty() {
+			return Ok(());
+		}
+		// SAFETY: the caller joins all producer threads before merging, so
+		// sources and destination are externally synchronized.
+		unsafe { self.device.merge_pipeline_caches(self.handle, sources) }
+			.map_err(|s| Error::backend_failure("Vulkan", "pipeline-cache merge", s))
+	}
+
+	pub(super) const fn raw(&self) -> vk::PipelineCache {
+		self.handle
+	}
+
+	pub(super) const fn initial_data_bytes(&self) -> usize {
+		self.initial_data_bytes
+	}
+}
+
+impl Drop for PipelineCache {
+	fn drop(&mut self) {
+		// SAFETY: the handle belongs to `device` and is destroyed at most once.
+		let _ = unsafe { self.device.destroy_pipeline_cache(self.handle, None) };
+	}
+}
+
+// ── Compute pipeline ──────────────────────────────────────────────────────────
+
 pub(super) struct ComputePipeline {
-	handle: ash::vk::Pipeline,
-	layout: ash::vk::PipelineLayout,
+	handle: vk::Pipeline,
+	layout: vk::PipelineLayout,
 	max_dispatch_group_count: [u32; 3],
 	push_constant_size: u32,
 }
 
 impl ComputePipeline {
 	pub(super) fn new(
-		device: &ash::Device,
-		descriptor_layout: ash::vk::DescriptorSetLayout,
+		device: std::sync::Arc<vk::Device>,
+		descriptor_layout: vk::DescriptorSetLayout,
 		artifact: &'static ShaderArtifact,
 		limits: DeviceLimits,
+		cache: vk::PipelineCache,
 	) -> Result<Self> {
 		let push_constant_size = artifact.push_constant_size()?;
 		validate_artifact_limits(artifact.workgroup_size, push_constant_size, limits)?;
 
 		let descriptor_layouts = [descriptor_layout];
-		let push_range = ash::vk::PushConstantRange::default()
-			.stage_flags(ash::vk::ShaderStageFlags::COMPUTE)
+		let push_range = vk::PushConstantRange::default()
+			.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT)
 			.offset(0)
 			.size(push_constant_size);
 		let push_ranges = [push_range];
-		let layout_info = ash::vk::PipelineLayoutCreateInfo::default()
+		let layout_info = vk::PipelineLayoutCreateInfo::default()
 			.set_layouts(&descriptor_layouts)
+			.map_err(Error::from)?
 			.push_constant_ranges(&push_ranges);
 		// SAFETY: the shared descriptor layout is live and the reflected push range
 		// fits the queried device limit and Vulkan's four-byte alignment requirements.
 		let layout =
-			unsafe { device.create_pipeline_layout(&layout_info, None) }.map_err(|source| {
-				Error::backend_failure("Vulkan", "compute pipeline-layout creation", source)
-			})?;
+			unsafe { device.create_pipeline_layout(&(layout_info).map_err(Error::from)?, None) }
+				.map_err(|source| {
+					Error::backend_failure("Vulkan", "compute pipeline-layout creation", source)
+				})?;
 
 		let words = match artifact.spirv_words() {
 			Ok(words) => words,
 			Err(error) => {
-				destroy_pipeline_layout(device, layout);
+				destroy_pipeline_layout(&device, layout);
 				return Err(error);
 			}
 		};
-		let module_info = ash::vk::ShaderModuleCreateInfo::default().code(&words);
+		let module_info = vk::ShaderModuleCreateInfo::default().code(&words);
 		// SAFETY: build-time spirv-val and runtime word validation proved a complete
 		// SPIR-V word stream; the device remains live through pipeline creation.
 		let module = match unsafe { device.create_shader_module(&module_info, None) } {
 			Ok(module) => module,
 			Err(source) => {
-				destroy_pipeline_layout(device, layout);
+				destroy_pipeline_layout(&device, layout);
 				return Err(Error::backend_failure(
 					"Vulkan",
 					"compute shader-module creation",
@@ -1264,43 +1462,38 @@ impl ComputePipeline {
 			}
 		};
 
-		let stage = ash::vk::PipelineShaderStageCreateInfo::default()
-			.stage(ash::vk::ShaderStageFlags::COMPUTE)
+		let stage = vk::PipelineShaderStageCreateInfo::default()
+			.stage(vk::ShaderStageFlagBits::COMPUTE_BIT)
 			.module(module)
 			.name(c"main");
-		let pipeline_info = ash::vk::ComputePipelineCreateInfo::default()
+		let pipeline_info = vk::ComputePipelineCreateInfo::default()
 			.stage(stage)
 			.layout(layout);
 		// SAFETY: the module contains the reflected compute entry point, and the
 		// pipeline layout exactly matches its validated descriptor and push ABI.
-		let pipeline_result = unsafe {
-			device.create_compute_pipelines(ash::vk::PipelineCache::null(), &[pipeline_info], None)
-		};
+		let mut pipelines = [vk::Pipeline::default(); 1];
+		let pipeline_result =
+			unsafe { device.create_compute_pipelines(cache, &[pipeline_info], None, &mut pipelines) };
 		// The module is no longer needed after pipeline creation, successful or not.
 		unsafe {
-			device.destroy_shader_module(module, None);
+			let _ = device.destroy_shader_module(module, None);
 		}
-		let pipelines = match pipeline_result {
-			Ok(pipelines) => pipelines,
-			Err((partial, source)) => {
-				for pipeline in partial {
-					destroy_pipeline(device, pipeline);
+		let handle = match pipeline_result {
+			Ok(vk::Result::SUCCESS) => pipelines[0],
+			result => {
+				for pipeline in pipelines
+					.into_iter()
+					.filter(|handle| *handle != vk::Pipeline::default())
+				{
+					destroy_pipeline(&device, pipeline);
 				}
-				destroy_pipeline_layout(device, layout);
-				return Err(Error::backend_failure(
+				destroy_pipeline_layout(&device, layout);
+				return Err(Error::backend_dispatch_failure(
 					"Vulkan",
 					"compute-pipeline creation",
-					source,
+					result,
 				));
 			}
-		};
-		let Some(handle) = pipelines.first().copied() else {
-			destroy_pipeline_layout(device, layout);
-			return Err(Error::backend_failure(
-				"Vulkan",
-				"compute-pipeline creation",
-				std::io::Error::other("Vulkan returned no pipeline after successful creation"),
-			));
 		};
 
 		Ok(Self {
@@ -1311,16 +1504,16 @@ impl ComputePipeline {
 		})
 	}
 
-	pub(super) fn destroy(&mut self, device: &ash::Device) {
+	pub(super) fn destroy(&mut self, device: &vk::Device) {
 		destroy_pipeline(device, self.handle);
 		destroy_pipeline_layout(device, self.layout);
 	}
 
-	pub(super) const fn raw(&self) -> ash::vk::Pipeline {
+	pub(super) const fn raw(&self) -> vk::Pipeline {
 		self.handle
 	}
 
-	pub(super) const fn layout(&self) -> ash::vk::PipelineLayout {
+	pub(super) const fn layout(&self) -> vk::PipelineLayout {
 		self.layout
 	}
 
@@ -1333,7 +1526,7 @@ impl ComputePipeline {
 	}
 }
 
-fn validate_artifact_limits(
+pub(super) fn validate_artifact_limits(
 	workgroup_size: [u32; 3],
 	push_constant_size: u32,
 	limits: DeviceLimits,
@@ -1356,12 +1549,12 @@ fn validate_artifact_limits(
 	Ok(())
 }
 
-fn destroy_pipeline(device: &ash::Device, pipeline: ash::vk::Pipeline) {
+fn destroy_pipeline(device: &vk::Device, pipeline: vk::Pipeline) {
 	// SAFETY: the handle belongs to `device` and is destroyed at most once after use.
-	unsafe { device.destroy_pipeline(pipeline, None) }
+	let _ = unsafe { device.destroy_pipeline(pipeline, None) };
 }
 
-fn destroy_pipeline_layout(device: &ash::Device, layout: ash::vk::PipelineLayout) {
+fn destroy_pipeline_layout(device: &vk::Device, layout: vk::PipelineLayout) {
 	// SAFETY: the layout belongs to `device` and no live pipeline uses it.
-	unsafe { device.destroy_pipeline_layout(layout, None) }
+	let _ = unsafe { device.destroy_pipeline_layout(layout, None) };
 }

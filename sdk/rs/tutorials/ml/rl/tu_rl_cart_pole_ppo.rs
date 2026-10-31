@@ -95,7 +95,7 @@ fn main() -> oa::Result<()> {
 			seed: TRAINING_SEED,
 		},
 	)?;
-	let mut optimizer = AdamW::with_hyperparameters(
+	let mut optimizer = AdamW::new_with_hyperparameters(
 		model.all_parameters()?,
 		LEARNING_RATE,
 		0.9,
@@ -178,7 +178,7 @@ fn main() -> oa::Result<()> {
 			seed: TRAINING_SEED,
 		},
 	)?;
-	let mut restored_optimizer = AdamW::with_hyperparameters(
+	let mut restored_optimizer = AdamW::new_with_hyperparameters(
 		restored_model.all_parameters()?,
 		LEARNING_RATE,
 		0.9,

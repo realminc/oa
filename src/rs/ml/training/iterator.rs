@@ -519,6 +519,7 @@ pub struct ItTraining<'engine, 'hooks> {
 	program_capture_fallback_count: u64,
 	last_program_capture_fallback: Option<String>,
 	stable_resource_frame_open: bool,
+	retain_eager_resources: bool,
 	stable_resource_inputs_sealed: bool,
 	step_count: u64,
 	last_epoch_started: u64,
@@ -556,7 +557,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		optimizer: &'engine mut AdamW,
 		config: ItTrainingConfig,
 	) -> Result<Self> {
-		Self::with_optimizer(engine, TrainingOptimizer::AdamW(optimizer), config)
+		Self::new_with_optimizer(engine, TrainingOptimizer::AdamW(optimizer), config)
 	}
 
 	/// Construct an eager-only training lifecycle around any optimizer.
@@ -574,7 +575,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		optimizer: &'engine mut dyn Optimizer,
 		config: ItTrainingConfig,
 	) -> Result<Self> {
-		Self::with_optimizer(engine, TrainingOptimizer::Eager(optimizer), config)
+		Self::new_with_optimizer(engine, TrainingOptimizer::Eager(optimizer), config)
 	}
 
 	/// Construct an eager lifecycle with native checkpoint capability.
@@ -591,10 +592,10 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		optimizer: &'engine mut dyn CheckpointOptimizer,
 		config: ItTrainingConfig,
 	) -> Result<Self> {
-		Self::with_optimizer(engine, TrainingOptimizer::Checkpointable(optimizer), config)
+		Self::new_with_optimizer(engine, TrainingOptimizer::Checkpointable(optimizer), config)
 	}
 
-	fn with_optimizer(
+	fn new_with_optimizer(
 		engine: &'engine Engine,
 		optimizer: TrainingOptimizer<'engine>,
 		mut config: ItTrainingConfig,
@@ -635,6 +636,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 			program_capture_fallback_count: 0,
 			last_program_capture_fallback: None,
 			stable_resource_frame_open: false,
+			retain_eager_resources: true,
 			stable_resource_inputs_sealed: false,
 			step_count: initial_step,
 			last_epoch_started: 0,
@@ -799,7 +801,8 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		// A restored absolute step does not replace this process's eager warm-up.
 		// Stable-resource allocation ordinals are learned locally, so the first
 		// post-restore step must establish them before reuse begins.
-		if self.training_loss_count > 0
+		if self.retain_eager_resources
+			&& self.training_loss_count > 0
 			&& matches!(
 				self.execution_mode,
 				Some(ExecutionMode::Eager | ExecutionMode::Automatic)
@@ -838,6 +841,13 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		}
 	}
 
+	// Split PPO epochs submit and release several tapes within one optimizer
+	// step. Allocation-ordinal retention across that entire step defeats the
+	// minibatch memory bound; other eager/captured consumers keep their policy.
+	pub(super) fn disable_eager_resource_reuse(&mut self) {
+		self.retain_eager_resources = false;
+	}
+
 	/// Complete one eagerly authored forward/backward step.
 	///
 	/// This records AdamW, submits the complete eager batch, waits for its exact
@@ -848,14 +858,24 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 	/// Returns an error for an unmatched begin, invalid loss, optimizer/runtime
 	/// failure, timestamp failure, metric accounting overflow, or callback failure.
 	pub fn complete_step(&mut self, loss: &Matrix) -> Result<()> {
+		self.complete_step_with_device_prefix(loss, Duration::ZERO)
+	}
+
+	/// Internal composition of disjoint, already-completed device submissions
+	/// with this step's final optimizer submission. Never a host wall duration.
+	pub(super) fn complete_step_with_device_prefix(
+		&mut self,
+		loss: &Matrix,
+		device_prefix: Duration,
+	) -> Result<()> {
 		self.require_pending()?;
 		if let Err(error) = self.select_execution_mode(ExecutionMode::Eager) {
 			return self.fail(error);
 		}
-		self.complete_eager_step(loss)
+		self.complete_eager_step(loss, device_prefix)
 	}
 
-	fn complete_eager_step(&mut self, loss: &Matrix) -> Result<()> {
+	fn complete_eager_step(&mut self, loss: &Matrix, device_prefix: Duration) -> Result<()> {
 		if let Err(error) = self.seal_stable_resources() {
 			return self.fail(error);
 		}
@@ -883,7 +903,10 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		};
 		let gpu_time = if self.config.enable_gpu_timing {
 			match event.device_duration() {
-				Ok(value) => Some(value),
+				Ok(value) => match value.checked_add(device_prefix) {
+					Some(total) => Some(total),
+					None => return self.fail(Error::resource_exhausted("training device time overflow")),
+				},
 				Err(error) => return self.fail(error),
 			}
 		} else {
@@ -946,7 +969,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 				Ok(loss) => loss,
 				Err(error) => return self.fail(error),
 			};
-			self.complete_eager_step(&loss)?;
+			self.complete_eager_step(&loss, Duration::ZERO)?;
 			return Ok(true);
 		}
 
@@ -957,7 +980,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 				Ok(loss) => loss,
 				Err(error) => return self.fail(error),
 			};
-			self.complete_eager_step(&loss)?;
+			self.complete_eager_step(&loss, Duration::ZERO)?;
 			return Ok(true);
 		}
 		if self.program.is_none() {
@@ -1140,6 +1163,18 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 	///
 	/// Returns an unmatched-begin, replay, completion, accounting, or callback error.
 	pub fn complete_program_step(&mut self, program: &mut TrainingProgram) -> Result<()> {
+		self.complete_program_step_with_device_prefix(program, Duration::ZERO)
+	}
+
+	pub(super) fn adamw_mut(&mut self) -> Result<&mut AdamW> {
+		self.optimizer.adamw_mut()
+	}
+
+	pub(super) fn complete_program_step_with_device_prefix(
+		&mut self,
+		program: &mut TrainingProgram,
+		prefix: Duration,
+	) -> Result<()> {
 		self.require_pending()?;
 		if let Err(error) = self.select_execution_mode(ExecutionMode::Captured) {
 			return self.fail(error);
@@ -1162,7 +1197,15 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 				.map(|loss| (loss, None))
 		};
 		match completed {
-			Ok((loss, time)) => self.complete(loss, time),
+			Ok((loss, time)) => {
+				let time = time
+					.map(|t| {
+						t.checked_add(prefix)
+							.ok_or_else(|| Error::resource_exhausted("compiled update timing overflow"))
+					})
+					.transpose()?;
+				self.complete(loss, time)
+			}
 			Err(error) => self.fail(error),
 		}
 	}
@@ -1612,3 +1655,7 @@ fn normalize_epoch_schedule(config: &mut ItTrainingConfig) -> Result<Vec<u64>> {
 	config.total_steps = sum;
 	Ok(offsets)
 }
+
+#[cfg(test)]
+#[path = "../../../../test/rs/ml/training_timing_unit.rs"]
+mod timing_tests;

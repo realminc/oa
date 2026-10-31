@@ -177,7 +177,7 @@ pub fn train_tokenizer_with_validation<T: AsRef<[f32]>>(
 				config.batch_size,
 				config.sequence_len,
 			)?;
-			let input = Matrix::from_slice(
+			let input = Matrix::new_from_slice(
 				engine,
 				[
 					config.batch_size,
@@ -190,7 +190,7 @@ pub fn train_tokenizer_with_validation<T: AsRef<[f32]>>(
 		}
 	}
 
-	let mut optimizer = AdamW::with_hyperparameters(
+	let mut optimizer = AdamW::new_with_hyperparameters(
 		tokenizer.all_parameters()?,
 		config.learning_rate,
 		0.9,
@@ -317,7 +317,7 @@ pub fn train_tokenizer_with_validation<T: AsRef<[f32]>>(
 			config.sequence_len,
 		)?;
 		debug_assert_eq!(values.len(), batch_values);
-		let input = Matrix::from_slice(
+		let input = Matrix::new_from_slice(
 			engine,
 			[
 				config.batch_size,

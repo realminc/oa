@@ -74,7 +74,7 @@ impl AudioEncoder {
 	///
 	/// Returns an error unless the profile has a nonzero sample rate, one to
 	/// eight channels, a nonzero packet size, and an addressable packet shape.
-	pub fn create(profile: AudioEncodeProfile) -> Result<Self> {
+	pub fn new(profile: AudioEncodeProfile) -> Result<Self> {
 		if profile.sample_rate == 0
 			|| !(1..=8).contains(&profile.channel_count)
 			|| profile.frames_per_packet == 0

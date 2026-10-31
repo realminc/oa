@@ -1,3 +1,4 @@
+use super::NativeFlagBits;
 use super::features::{DeviceFeatures, ExecutionProfile};
 use std::{cmp::Reverse, ffi::CStr};
 
@@ -25,14 +26,14 @@ pub(in crate::runtime) struct DeviceLimits {
 	pub(in crate::runtime) max_compute_work_group_invocations: u32,
 	pub(in crate::runtime) max_compute_shared_memory_size: u32,
 	pub(in crate::runtime) subgroup_size: u32,
-	pub(in crate::runtime) subgroup_supported_stages: ash::vk::ShaderStageFlags,
-	pub(in crate::runtime) subgroup_supported_operations: ash::vk::SubgroupFeatureFlags,
+	pub(in crate::runtime) subgroup_supported_stages: vk::ShaderStageFlags,
+	pub(in crate::runtime) subgroup_supported_operations: vk::SubgroupFeatureFlags,
 	pub(in crate::runtime) timestamp_period_ns: f64,
 	pub(in crate::runtime) compute_timestamp_valid_bits: u32,
 }
 
 pub(in crate::runtime) struct DevicePhysical {
-	pub(in crate::runtime) handle: ash::vk::PhysicalDevice,
+	pub(in crate::runtime) handle: vk::PhysicalDevice,
 	pub(in crate::runtime) api_version: u32,
 	pub(in crate::runtime) profile: ExecutionProfile,
 	pub(in crate::runtime) compute_queue_family: u32,
@@ -64,22 +65,22 @@ pub(in crate::runtime) struct VideoPhysicalCapabilities {
 	pub(in crate::runtime) av1_encode: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::runtime) struct CooperativeMatrixTuple {
 	pub(in crate::runtime) m: u32,
 	pub(in crate::runtime) n: u32,
 	pub(in crate::runtime) k: u32,
-	pub(in crate::runtime) a_type: ash::vk::ComponentTypeKHR,
-	pub(in crate::runtime) b_type: ash::vk::ComponentTypeKHR,
-	pub(in crate::runtime) accumulator_type: ash::vk::ComponentTypeKHR,
-	pub(in crate::runtime) result_type: ash::vk::ComponentTypeKHR,
-	pub(in crate::runtime) scope: ash::vk::ScopeKHR,
+	pub(in crate::runtime) a_type: vk::ComponentTypeKHR,
+	pub(in crate::runtime) b_type: vk::ComponentTypeKHR,
+	pub(in crate::runtime) accumulator_type: vk::ComponentTypeKHR,
+	pub(in crate::runtime) result_type: vk::ComponentTypeKHR,
+	pub(in crate::runtime) scope: vk::ScopeKHR,
 	pub(in crate::runtime) saturating_accumulation: bool,
 }
 
 #[derive(Clone, Debug, Default)]
 pub(in crate::runtime) struct CooperativeMatrixCapabilities {
-	pub(in crate::runtime) supported_stages: ash::vk::ShaderStageFlags,
+	pub(in crate::runtime) supported_stages: vk::ShaderStageFlags,
 	pub(in crate::runtime) tuples: Vec<CooperativeMatrixTuple>,
 }
 
@@ -91,9 +92,9 @@ struct LocalMemoryFacts {
 }
 
 struct DeviceIdentityProperties<'a> {
-	physical: &'a ash::vk::PhysicalDeviceProperties,
-	driver: &'a ash::vk::PhysicalDeviceDriverProperties<'a>,
-	id: &'a ash::vk::PhysicalDeviceIDProperties<'a>,
+	physical: &'a vk::PhysicalDeviceProperties,
+	driver: &'a vk::PhysicalDeviceDriverProperties<'a>,
+	id: &'a vk::PhysicalDeviceIDProperties<'a>,
 }
 
 /// Pareto comparison of queried resource limits, not a throughput estimate.
@@ -133,7 +134,7 @@ impl DeviceCapacityKey {
 			cooperative_matrix_compute: device
 				.cooperative_matrix
 				.supported_stages
-				.contains(ash::vk::ShaderStageFlags::COMPUTE)
+				.contains(vk::ShaderStageFlagBits::COMPUTE_BIT)
 				&& !device.cooperative_matrix.tuples.is_empty(),
 			shared_memory_bytes: device.limits.max_compute_shared_memory_size,
 			workgroup_invocations: device.limits.max_compute_work_group_invocations,
@@ -240,27 +241,26 @@ impl DevicePhysical {
 	) -> Result<Vec<crate::runtime::DeviceSummary>> {
 		let handles = unsafe { instance.raw().enumerate_physical_devices() }
 			.map_err(|source| Error::backend_failure("Vulkan", "physical-device enumeration", source))?;
-		Ok(
-			handles
-				.into_iter()
-				.enumerate()
-				.map(|(index, handle)| {
-					// SAFETY: each handle belongs to the retained instance; this query
-					// writes only an initialized, caller-owned property record.
-					let properties = unsafe { instance.raw().get_physical_device_properties(handle) };
-					// SAFETY: Vulkan guarantees a NUL-terminated device_name.
-					let name = unsafe { CStr::from_ptr(properties.device_name.as_ptr()) }
-						.to_string_lossy()
-						.into_owned();
-					crate::runtime::DeviceSummary {
-						index,
-						name,
-						kind: device_kind(properties.device_type),
-						api_version: format_api_version(properties.api_version),
-					}
+		handles
+			.into_iter()
+			.enumerate()
+			.map(|(index, handle)| -> Result<crate::runtime::DeviceSummary> {
+				// SAFETY: each handle belongs to the retained instance; this query
+				// writes only an initialized, caller-owned property record.
+				let properties =
+					unsafe { instance.raw().get_physical_device_properties(handle) }.map_err(Error::from)?;
+				// SAFETY: Vulkan guarantees a NUL-terminated device_name.
+				let name = unsafe { CStr::from_ptr(properties.device_name.as_ptr()) }
+					.to_string_lossy()
+					.into_owned();
+				Ok(crate::runtime::DeviceSummary {
+					index,
+					name,
+					kind: device_kind(properties.device_type),
+					api_version: format_api_version(properties.api_version),
 				})
-				.collect(),
-		)
+			})
+			.collect::<Result<Vec<_>>>()
 	}
 
 	pub(in crate::runtime) fn select(
@@ -294,19 +294,24 @@ impl DevicePhysical {
 
 			// SAFETY: `handle` was returned by this live instance. Both queries only read
 			// immutable physical-device properties.
-			let mut subgroup_properties = ash::vk::PhysicalDeviceSubgroupProperties::default();
-			let mut driver_properties = ash::vk::PhysicalDeviceDriverProperties::default();
-			let mut id_properties = ash::vk::PhysicalDeviceIDProperties::default();
-			let mut properties12 = ash::vk::PhysicalDeviceVulkan12Properties::default();
-			let mut properties2 = ash::vk::PhysicalDeviceProperties2::default()
+			let mut subgroup_properties = vk::PhysicalDeviceSubgroupProperties::default();
+			let mut driver_properties = vk::PhysicalDeviceDriverProperties::default();
+			let mut id_properties = vk::PhysicalDeviceIDProperties::default();
+			let mut properties12 = vk::PhysicalDeviceVulkan12Properties::default();
+			let mut properties2 = vk::PhysicalDeviceProperties2::default()
 				.push_next(&mut properties12)
+				.map_err(Error::from)?
 				.push_next(&mut subgroup_properties)
+				.map_err(Error::from)?
 				.push_next(&mut driver_properties)
-				.push_next(&mut id_properties);
+				.map_err(Error::from)?
+				.push_next(&mut id_properties)
+				.map_err(Error::from)?;
 			unsafe {
 				instance
 					.raw()
-					.get_physical_device_properties2(handle, &mut properties2);
+					.get_physical_device_properties2(handle, &mut properties2)
+					.map_err(Error::from)?;
 			}
 			let properties = properties2.properties;
 			// SAFETY: Vulkan guarantees both queried fixed arrays are NUL-terminated
@@ -321,15 +326,17 @@ impl DevicePhysical {
 				.to_string_lossy()
 				.into_owned();
 			let memory_budget_extension =
-				has_device_extension(instance, handle, ash::ext::memory_budget::NAME)?;
-			let local_memory = query_local_memory(instance, handle, memory_budget_extension);
+				has_device_extension(instance, handle, vk::EXT_MEMORY_BUDGET_EXTENSION_NAME)?;
+			let local_memory = query_local_memory(instance, handle, memory_budget_extension)?;
 			let queue_families = unsafe {
 				instance
 					.raw()
 					.get_physical_device_queue_family_properties(handle)
-			};
+			}
+			.map_err(Error::from)?;
 			let video = query_video_capabilities(instance, handle, &queue_families)?;
-			let swapchain_supported = has_device_extension(instance, handle, ash::khr::swapchain::NAME)?;
+			let swapchain_supported =
+				has_device_extension(instance, handle, vk::KHR_SWAPCHAIN_EXTENSION_NAME)?;
 
 			// Exact selection includes software Vulkan, with the same capability
 			// admission as hardware. Automatic never silently falls back to CPU.
@@ -354,16 +361,35 @@ impl DevicePhysical {
 				continue;
 			};
 			let graphics_queue_family = select_graphics_queue_family(&queue_families);
+			// Presentation composes compute sources and the image on one queue.
+			// Keep exclusive resources in that family without transfers or host waits;
+			// compute-only engines retain their dedicated-compute preference.
+			let (compute_queue_family, compute_timestamp_valid_bits) = if requirements.presentation {
+				graphics_queue_family
+					.and_then(|family| {
+						let properties = &queue_families[family as usize];
+						properties
+							.queue_flags
+							.contains(vk::QueueFlagBits::COMPUTE_BIT)
+							.then_some((family, properties.timestamp_valid_bits))
+					})
+					.unwrap_or((compute_queue_family, compute_timestamp_valid_bits))
+			} else {
+				(compute_queue_family, compute_timestamp_valid_bits)
+			};
 			let transfer_queue_family = select_transfer_queue_family(&queue_families);
 
 			let cooperative_matrix_extension =
-				has_device_extension(instance, handle, ash::khr::cooperative_matrix::NAME)?;
+				has_device_extension(instance, handle, vk::KHR_COOPERATIVE_MATRIX_EXTENSION_NAME)?;
 			let synchronization2_extension =
-				has_device_extension(instance, handle, ash::khr::synchronization2::NAME)?;
+				has_device_extension(instance, handle, vk::KHR_SYNCHRONIZATION_2_EXTENSION_NAME)?;
 			let dynamic_rendering_extension =
-				has_device_extension(instance, handle, ash::khr::dynamic_rendering::NAME)?;
-			let integer_dot_product_extension =
-				has_device_extension(instance, handle, ash::khr::shader_integer_dot_product::NAME)?;
+				has_device_extension(instance, handle, vk::KHR_DYNAMIC_RENDERING_EXTENSION_NAME)?;
+			let integer_dot_product_extension = has_device_extension(
+				instance,
+				handle,
+				vk::KHR_SHADER_INTEGER_DOT_PRODUCT_EXTENSION_NAME,
+			)?;
 			let features = DeviceFeatures::query(
 				instance,
 				handle,
@@ -372,8 +398,8 @@ impl DevicePhysical {
 				synchronization2_extension,
 				dynamic_rendering_extension,
 				integer_dot_product_extension,
-			);
-			let profile = if properties.api_version >= ash::vk::API_VERSION_1_3
+			)?;
+			let profile = if properties.api_version >= vk::API_VERSION_1_3
 				&& features
 					.missing_requirements(ExecutionProfile::Strict)
 					.is_none()
@@ -382,7 +408,7 @@ impl DevicePhysical {
 			} else {
 				ExecutionProfile::Compatibility
 			};
-			if properties.api_version < ash::vk::API_VERSION_1_2 {
+			if properties.api_version < vk::API_VERSION_1_2 {
 				rejections.push(format!("[{index}] {name}: Vulkan version below 1.2"));
 				continue;
 			}
@@ -588,11 +614,6 @@ impl DevicePhysical {
 		instance: &Instance,
 		requirements: &EngineRequirements,
 	) -> Result<Option<String>> {
-		if requirements.graphics && self.profile == ExecutionProfile::Compatibility {
-			return Ok(Some(
-				"graphics is not yet qualified on the bounded Compatibility profile".to_owned(),
-			));
-		}
 		if requirements.graphics && self.graphics_queue_family.is_none() {
 			return Ok(Some("has no graphics-capable queue family".to_owned()));
 		}
@@ -747,13 +768,17 @@ impl StableHash {
 
 fn has_device_extension(
 	instance: &Instance,
-	handle: ash::vk::PhysicalDevice,
+	handle: vk::PhysicalDevice,
 	name: &CStr,
 ) -> Result<bool> {
 	// SAFETY: the physical device belongs to the live instance and enumeration
 	// writes only extension records owned by the caller.
-	let extensions = unsafe { instance.raw().enumerate_device_extension_properties(handle) }
-		.map_err(|source| Error::backend_failure("Vulkan", "device-extension enumeration", source))?;
+	let extensions = unsafe {
+		instance
+			.raw()
+			.enumerate_device_extension_properties(handle, None)
+	}
+	.map_err(|source| Error::backend_failure("Vulkan", "device-extension enumeration", source))?;
 	Ok(extensions.iter().any(|property| {
 		// SAFETY: Vulkan guarantees a NUL-terminated extension_name array.
 		(unsafe { CStr::from_ptr(property.extension_name.as_ptr()) }) == name
@@ -762,13 +787,13 @@ fn has_device_extension(
 
 fn query_local_memory(
 	instance: &Instance,
-	handle: ash::vk::PhysicalDevice,
+	handle: vk::PhysicalDevice,
 	memory_budget_extension: bool,
-) -> LocalMemoryFacts {
-	let mut budget = ash::vk::PhysicalDeviceMemoryBudgetPropertiesEXT::default();
-	let properties2 = ash::vk::PhysicalDeviceMemoryProperties2::default();
+) -> Result<LocalMemoryFacts> {
+	let mut budget = vk::PhysicalDeviceMemoryBudgetPropertiesEXT::default();
+	let properties2 = vk::PhysicalDeviceMemoryProperties2::default();
 	let mut properties2 = if memory_budget_extension {
-		properties2.push_next(&mut budget)
+		properties2.push_next(&mut budget).map_err(Error::from)?
 	} else {
 		properties2
 	};
@@ -777,7 +802,8 @@ fn query_local_memory(
 	unsafe {
 		instance
 			.raw()
-			.get_physical_device_memory_properties2(handle, &mut properties2);
+			.get_physical_device_memory_properties2(handle, &mut properties2)
+			.map_err(Error::from)?;
 	}
 	let memory = properties2.memory_properties;
 	let heap_count = memory
@@ -787,7 +813,9 @@ fn query_local_memory(
 	let mut budget_bytes = 0_u64;
 	let mut usage_bytes = 0_u64;
 	for (index, heap) in memory.memory_heaps[..heap_count].iter().enumerate() {
-		if !heap.flags.contains(ash::vk::MemoryHeapFlags::DEVICE_LOCAL) {
+		if (heap.flags & vk::MemoryHeapFlagBits::DEVICE_LOCAL_BIT)
+			!= vk::MemoryHeapFlagBits::DEVICE_LOCAL_BIT
+		{
 			continue;
 		}
 		capacity_bytes = capacity_bytes.saturating_add(heap.size);
@@ -796,49 +824,58 @@ fn query_local_memory(
 			usage_bytes = usage_bytes.saturating_add(budget.heap_usage[index]);
 		}
 	}
-	LocalMemoryFacts {
+	Ok(LocalMemoryFacts {
 		capacity_bytes,
 		budget_bytes: memory_budget_extension.then_some(budget_bytes),
 		usage_bytes: memory_budget_extension.then_some(usage_bytes),
-	}
+	})
 }
 
 fn query_cooperative_matrix_capabilities(
 	instance: &Instance,
-	handle: ash::vk::PhysicalDevice,
+	handle: vk::PhysicalDevice,
 	available: bool,
 ) -> Result<CooperativeMatrixCapabilities> {
 	if !available {
 		return Ok(CooperativeMatrixCapabilities::default());
 	}
 
-	let mut properties = ash::vk::PhysicalDeviceCooperativeMatrixPropertiesKHR::default();
-	let mut properties2 = ash::vk::PhysicalDeviceProperties2::default().push_next(&mut properties);
+	let mut properties = vk::PhysicalDeviceCooperativeMatrixPropertiesKHR::default();
+	let mut properties2 = vk::PhysicalDeviceProperties2::default()
+		.push_next(&mut properties)
+		.map_err(Error::from)?;
 	// SAFETY: the feature and extension were queried from `handle`; the output
 	// chain is initialized and remains live for this call.
 	unsafe {
 		instance
 			.raw()
-			.get_physical_device_properties2(handle, &mut properties2);
+			.get_physical_device_properties2(handle, &mut properties2)
+			.map_err(Error::from)?;
 	}
 	let supported_stages = properties.cooperative_matrix_supported_stages;
-	if !supported_stages.contains(ash::vk::ShaderStageFlags::COMPUTE) {
+	if (supported_stages & vk::ShaderStageFlagBits::COMPUTE_BIT)
+		!= vk::ShaderStageFlagBits::COMPUTE_BIT
+	{
 		return Ok(CooperativeMatrixCapabilities {
 			supported_stages,
 			tuples: Vec::new(),
 		});
 	}
 
-	let loader = ash::khr::cooperative_matrix::Instance::new(instance.entry(), instance.raw());
-	let enumerate = loader
-		.fp()
-		.get_physical_device_cooperative_matrix_properties_khr;
 	let mut count = 0_u32;
 	// SAFETY: the count pointer is valid and a null properties pointer requests
 	// only the number of records.
-	let first = unsafe { enumerate(handle, &mut count, std::ptr::null_mut()) };
-	if first != ash::vk::Result::SUCCESS && first != ash::vk::Result::INCOMPLETE {
-		return Err(Error::backend_failure(
+	let first = unsafe {
+		instance
+			.raw()
+			.get_physical_device_cooperative_matrix_properties_khr(
+				handle,
+				&mut count,
+				std::ptr::null_mut(),
+			)
+	};
+	if !matches!(first, Ok(vk::Result::SUCCESS | vk::Result::INCOMPLETE)) {
+		return Err(Error::backend_dispatch_failure(
 			"Vulkan",
 			"cooperative-matrix property count query",
 			first,
@@ -852,12 +889,22 @@ fn query_cooperative_matrix_capabilities(
 	}
 
 	for _ in 0..3 {
-		let mut raw = vec![ash::vk::CooperativeMatrixPropertiesKHR::default(); count as usize];
+		let mut raw = std::iter::repeat_with(vk::CooperativeMatrixPropertiesKHR::default)
+			.take(count as usize)
+			.collect::<Vec<_>>();
 		let mut written = count;
 		// SAFETY: every output record has its required structure type, `written`
 		// describes the initialized allocation, and Vulkan writes at most that many.
-		let result = unsafe { enumerate(handle, &mut written, raw.as_mut_ptr()) };
-		if result == ash::vk::Result::SUCCESS {
+		let result = unsafe {
+			instance
+				.raw()
+				.get_physical_device_cooperative_matrix_properties_khr(
+					handle,
+					&mut written,
+					raw.as_mut_ptr(),
+				)
+		};
+		if matches!(result, Ok(vk::Result::SUCCESS)) {
 			raw.truncate((written as usize).min(raw.len()));
 			let mut tuples = raw
 				.into_iter()
@@ -870,18 +917,18 @@ fn query_cooperative_matrix_capabilities(
 					accumulator_type: property.c_type,
 					result_type: property.result_type,
 					scope: property.scope,
-					saturating_accumulation: property.saturating_accumulation == ash::vk::TRUE,
+					saturating_accumulation: property.saturating_accumulation == vk::TRUE,
 				})
 				.collect::<Vec<_>>();
-			tuples.sort_unstable();
+			tuples.sort_unstable_by_key(|tuple| (tuple.m, tuple.n, tuple.k));
 			tuples.dedup();
 			return Ok(CooperativeMatrixCapabilities {
 				supported_stages,
 				tuples,
 			});
 		}
-		if result != ash::vk::Result::INCOMPLETE {
-			return Err(Error::backend_failure(
+		if !matches!(result, Ok(vk::Result::INCOMPLETE)) {
+			return Err(Error::backend_dispatch_failure(
 				"Vulkan",
 				"cooperative-matrix property query",
 				result,
@@ -889,9 +936,17 @@ fn query_cooperative_matrix_capabilities(
 		}
 		let mut required = 0_u32;
 		// SAFETY: same count-only query contract as above.
-		let retry = unsafe { enumerate(handle, &mut required, std::ptr::null_mut()) };
-		if retry != ash::vk::Result::SUCCESS && retry != ash::vk::Result::INCOMPLETE {
-			return Err(Error::backend_failure(
+		let retry = unsafe {
+			instance
+				.raw()
+				.get_physical_device_cooperative_matrix_properties_khr(
+					handle,
+					&mut required,
+					std::ptr::null_mut(),
+				)
+		};
+		if retry != Ok(vk::Result::SUCCESS) && retry != Ok(vk::Result::INCOMPLETE) {
+			return Err(Error::backend_dispatch_failure(
 				"Vulkan",
 				"cooperative-matrix property recount",
 				retry,
@@ -909,15 +964,19 @@ fn query_cooperative_matrix_capabilities(
 
 fn query_video_capabilities(
 	instance: &Instance,
-	handle: ash::vk::PhysicalDevice,
-	queue_families: &[ash::vk::QueueFamilyProperties],
+	handle: vk::PhysicalDevice,
+	queue_families: &[vk::QueueFamilyProperties],
 ) -> Result<VideoPhysicalCapabilities> {
 	// SAFETY: the physical device belongs to the live instance and enumeration
 	// only writes immutable extension records owned by the caller.
-	let extensions = unsafe { instance.raw().enumerate_device_extension_properties(handle) }
-		.map_err(|source| {
-			Error::backend_failure("Vulkan", "video device-extension enumeration", source)
-		})?;
+	let extensions = unsafe {
+		instance
+			.raw()
+			.enumerate_device_extension_properties(handle, None)
+	}
+	.map_err(|source| {
+		Error::backend_failure("Vulkan", "video device-extension enumeration", source)
+	})?;
 	let has_extension = |name: &[u8]| {
 		extensions.iter().any(|property| {
 			// SAFETY: Vulkan guarantees a NUL-terminated extension_name array.
@@ -926,7 +985,7 @@ fn query_video_capabilities(
 	};
 	let video_queue = has_extension(b"VK_KHR_video_queue");
 	let result_status_support = if video_queue {
-		query_video_result_status_support(instance, handle, queue_families.len())
+		query_video_result_status_support(instance, handle, queue_families.len())?
 	} else {
 		vec![false; queue_families.len()]
 	};
@@ -934,15 +993,17 @@ fn query_video_capabilities(
 		queue_families
 			.iter()
 			.enumerate()
-			.filter(|(_, properties)| properties.queue_count > 0 && properties.queue_flags.contains(flag))
+			.filter(|(_, properties)| {
+				properties.queue_count > 0 && (properties.queue_flags & flag) == flag
+			})
 			.min_by_key(|(index, _)| (!result_status_support[*index], *index))
 			.and_then(|(index, _)| u32::try_from(index).ok())
 	};
 	let decode_queue_family = (video_queue && has_extension(b"VK_KHR_video_decode_queue"))
-		.then(|| queue_family(ash::vk::QueueFlags::VIDEO_DECODE_KHR))
+		.then(|| queue_family(vk::QueueFlagBits::VIDEO_DECODE_BIT_KHR))
 		.flatten();
 	let encode_queue_family = (video_queue && has_extension(b"VK_KHR_video_encode_queue"))
-		.then(|| queue_family(ash::vk::QueueFlags::VIDEO_ENCODE_KHR))
+		.then(|| queue_family(vk::QueueFlagBits::VIDEO_ENCODE_BIT_KHR))
 		.flatten();
 	Ok(VideoPhysicalCapabilities {
 		decode_queue_family,
@@ -967,69 +1028,76 @@ fn query_video_capabilities(
 
 fn query_video_result_status_support(
 	instance: &Instance,
-	handle: ash::vk::PhysicalDevice,
+	handle: vk::PhysicalDevice,
 	queue_family_count: usize,
-) -> Vec<bool> {
-	let mut status =
-		vec![ash::vk::QueueFamilyQueryResultStatusPropertiesKHR::default(); queue_family_count];
+) -> Result<Vec<bool>> {
+	let mut status = std::iter::repeat_with(vk::QueueFamilyQueryResultStatusPropertiesKHR::default)
+		.take(queue_family_count)
+		.collect::<Vec<_>>();
 	let mut properties = status
 		.iter_mut()
-		.map(|status| ash::vk::QueueFamilyProperties2::default().push_next(status))
-		.collect::<Vec<_>>();
+		.map(|status| vk::QueueFamilyProperties2::default().push_next(status))
+		.collect::<std::result::Result<Vec<_>, _>>()
+		.map_err(Error::from)?;
 	// SAFETY: `handle` belongs to the live instance. Every output structure and
 	// its result-status pNext record is initialized and remains live for the call.
 	unsafe {
 		instance
 			.raw()
-			.get_physical_device_queue_family_properties2(handle, &mut properties);
+			.get_physical_device_queue_family_properties2(
+				handle,
+				&mut (properties.len() as u32),
+				Some(properties.as_mut_slice()),
+			)
+			.map_err(Error::from)?;
 	}
 	drop(properties);
-	status
-		.into_iter()
-		.map(|properties| properties.query_result_status_support != ash::vk::FALSE)
-		.collect()
+	Ok(
+		status
+			.into_iter()
+			.map(|properties| properties.query_result_status_support != vk::FALSE)
+			.collect(),
+	)
 }
 
 fn format_api_version(version: u32) -> String {
 	format!(
 		"{}.{}.{}",
-		ash::vk::api_version_major(version),
-		ash::vk::api_version_minor(version),
-		ash::vk::api_version_patch(version)
+		vk::api_version_major(version),
+		vk::api_version_minor(version),
+		vk::api_version_patch(version)
 	)
 }
 
-fn device_type_label(device_type: ash::vk::PhysicalDeviceType) -> &'static str {
+fn device_type_label(device_type: vk::PhysicalDeviceType) -> &'static str {
 	match device_type {
-		ash::vk::PhysicalDeviceType::DISCRETE_GPU => "discrete GPU",
-		ash::vk::PhysicalDeviceType::INTEGRATED_GPU => "integrated GPU",
-		ash::vk::PhysicalDeviceType::VIRTUAL_GPU => "virtual GPU",
-		ash::vk::PhysicalDeviceType::CPU => "CPU",
-		ash::vk::PhysicalDeviceType::OTHER => "other",
+		vk::PhysicalDeviceType::DISCRETE_GPU => "discrete GPU",
+		vk::PhysicalDeviceType::INTEGRATED_GPU => "integrated GPU",
+		vk::PhysicalDeviceType::VIRTUAL_GPU => "virtual GPU",
+		vk::PhysicalDeviceType::CPU => "CPU",
+		vk::PhysicalDeviceType::OTHER => "other",
 		_ => "unknown",
 	}
 }
 
-fn device_kind(device_type: ash::vk::PhysicalDeviceType) -> DeviceKind {
+fn device_kind(device_type: vk::PhysicalDeviceType) -> DeviceKind {
 	match device_type {
-		ash::vk::PhysicalDeviceType::INTEGRATED_GPU => DeviceKind::Integrated,
-		ash::vk::PhysicalDeviceType::DISCRETE_GPU => DeviceKind::Discrete,
-		ash::vk::PhysicalDeviceType::VIRTUAL_GPU => DeviceKind::Virtual,
-		ash::vk::PhysicalDeviceType::CPU => DeviceKind::Cpu,
+		vk::PhysicalDeviceType::INTEGRATED_GPU => DeviceKind::Integrated,
+		vk::PhysicalDeviceType::DISCRETE_GPU => DeviceKind::Discrete,
+		vk::PhysicalDeviceType::VIRTUAL_GPU => DeviceKind::Virtual,
+		vk::PhysicalDeviceType::CPU => DeviceKind::Cpu,
 		_ => DeviceKind::Other,
 	}
 }
 
-fn select_compute_queue_family(
-	queue_families: &[ash::vk::QueueFamilyProperties],
-) -> Option<(u32, u32)> {
+fn select_compute_queue_family(queue_families: &[vk::QueueFamilyProperties]) -> Option<(u32, u32)> {
 	let mut shared_compute = None;
 
 	for (index, properties) in queue_families.iter().enumerate() {
 		if properties.queue_count == 0
 			|| !properties
 				.queue_flags
-				.contains(ash::vk::QueueFlags::COMPUTE)
+				.contains(vk::QueueFlagBits::COMPUTE_BIT)
 		{
 			continue;
 		}
@@ -1037,7 +1105,7 @@ fn select_compute_queue_family(
 		let index = u32::try_from(index).ok()?;
 		if !properties
 			.queue_flags
-			.contains(ash::vk::QueueFlags::GRAPHICS)
+			.contains(vk::QueueFlagBits::GRAPHICS_BIT)
 		{
 			return Some((index, properties.timestamp_valid_bits));
 		}
@@ -1047,7 +1115,7 @@ fn select_compute_queue_family(
 	shared_compute
 }
 
-fn select_graphics_queue_family(queue_families: &[ash::vk::QueueFamilyProperties]) -> Option<u32> {
+fn select_graphics_queue_family(queue_families: &[vk::QueueFamilyProperties]) -> Option<u32> {
 	queue_families
 		.iter()
 		.enumerate()
@@ -1055,13 +1123,13 @@ fn select_graphics_queue_family(queue_families: &[ash::vk::QueueFamilyProperties
 			properties.queue_count > 0
 				&& properties
 					.queue_flags
-					.contains(ash::vk::QueueFlags::GRAPHICS)
+					.contains(vk::QueueFlagBits::GRAPHICS_BIT)
 		})
 		.min_by_key(|(index, properties)| {
 			(
 				!properties
 					.queue_flags
-					.contains(ash::vk::QueueFlags::COMPUTE),
+					.contains(vk::QueueFlagBits::COMPUTE_BIT),
 				*index,
 			)
 		})
@@ -1070,7 +1138,7 @@ fn select_graphics_queue_family(queue_families: &[ash::vk::QueueFamilyProperties
 
 /// Prefer a transfer-only family (no COMPUTE/GRAPHICS) for the DMA queue; fall
 /// back to any family that can transfer if no dedicated one exists.
-fn select_transfer_queue_family(queue_families: &[ash::vk::QueueFamilyProperties]) -> Option<u32> {
+fn select_transfer_queue_family(queue_families: &[vk::QueueFamilyProperties]) -> Option<u32> {
 	let dedicated = queue_families
 		.iter()
 		.enumerate()
@@ -1078,13 +1146,13 @@ fn select_transfer_queue_family(queue_families: &[ash::vk::QueueFamilyProperties
 			properties.queue_count > 0
 				&& properties
 					.queue_flags
-					.contains(ash::vk::QueueFlags::TRANSFER)
+					.contains(vk::QueueFlagBits::TRANSFER_BIT)
 				&& !properties
 					.queue_flags
-					.contains(ash::vk::QueueFlags::COMPUTE)
+					.contains(vk::QueueFlagBits::COMPUTE_BIT)
 				&& !properties
 					.queue_flags
-					.contains(ash::vk::QueueFlags::GRAPHICS)
+					.contains(vk::QueueFlagBits::GRAPHICS_BIT)
 		})
 		.and_then(|(index, _)| u32::try_from(index).ok());
 	if dedicated.is_some() {
@@ -1099,18 +1167,18 @@ fn select_transfer_queue_family(queue_families: &[ash::vk::QueueFamilyProperties
 			properties.queue_count > 0
 				&& properties
 					.queue_flags
-					.contains(ash::vk::QueueFlags::TRANSFER)
+					.contains(vk::QueueFlagBits::TRANSFER_BIT)
 		})
 		.and_then(|(index, _)| u32::try_from(index).ok())
 }
 
-fn is_hardware_device(device_type: ash::vk::PhysicalDeviceType) -> bool {
+fn is_hardware_device(device_type: vk::PhysicalDeviceType) -> bool {
 	matches!(
 		device_type,
-		ash::vk::PhysicalDeviceType::DISCRETE_GPU
-			| ash::vk::PhysicalDeviceType::INTEGRATED_GPU
-			| ash::vk::PhysicalDeviceType::VIRTUAL_GPU
-			| ash::vk::PhysicalDeviceType::OTHER
+		vk::PhysicalDeviceType::DISCRETE_GPU
+			| vk::PhysicalDeviceType::INTEGRATED_GPU
+			| vk::PhysicalDeviceType::VIRTUAL_GPU
+			| vk::PhysicalDeviceType::OTHER
 	)
 }
 

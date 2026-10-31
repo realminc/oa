@@ -154,7 +154,7 @@ fn run_lunar_vector_episode_differential(
 				transition.contact.foot_contact_occurred || transition.contact.body_contact_occurred;
 		}
 
-		let action = Matrix::from_slice(engine, [ENVIRONMENTS], &actions)?;
+		let action = Matrix::new_from_slice(engine, [ENVIRONMENTS], &actions)?;
 		let transition = vector.step(&action)?;
 		let event = vector.submit()?;
 		vector.wait(&event)?;
@@ -836,7 +836,7 @@ test_vk!(
 		}
 
 		let actions = [0_i32, 1, 2, 7];
-		let action = Matrix::from_slice(&engine, [config.environments as usize], &actions)?;
+		let action = Matrix::new_from_slice(&engine, [config.environments as usize], &actions)?;
 		let transition = vector.step(&action)?;
 		let event = vector.submit()?;
 		vector.wait(&event)?;
@@ -887,8 +887,8 @@ test_vk!(
 		let event = vector.submit()?;
 		vector.wait(&event)?;
 		let initial = vector.observation().read_f32()?;
-		let action = Matrix::from_slice(&engine, [3], &[0_i32, 8, 0])?;
-		let external_stop = Matrix::from_slice(&engine, [3], &[1_u8, 0, 0])?;
+		let action = Matrix::new_from_slice(&engine, [3], &[0_i32, 8, 0])?;
+		let external_stop = Matrix::new_from_slice(&engine, [3], &[1_u8, 0, 0])?;
 		let transition = vector.step_with_external_stop(&action, &external_stop)?;
 		assert!(vector.copy_episode_telemetry().is_err());
 		let event = vector.submit()?;
@@ -986,7 +986,7 @@ test_vk!(
 			let actions: Vec<i32> = (0..ENVIRONMENTS)
 				.map(|lane| ((step_index + lane as u32 * 3) % 8) as i32)
 				.collect();
-			let action = Matrix::from_slice(&engine, [ENVIRONMENTS], &actions)?;
+			let action = Matrix::new_from_slice(&engine, [ENVIRONMENTS], &actions)?;
 			let transition = vector.step(&action)?;
 			let event = vector.submit()?;
 			vector.wait(&event)?;
@@ -1034,7 +1034,7 @@ test_vk!(
 		};
 		let mut cancelled = LunarLander3dVector::flat(&engine, config)?;
 		cancelled.cancel()?;
-		let actions = Matrix::from_slice(&engine, [2], &[0_i32, 0])?;
+		let actions = Matrix::new_from_slice(&engine, [2], &[0_i32, 0])?;
 		assert_eq!(
 			result_error_kind(cancelled.step(&actions)),
 			ErrorKind::FailedPrecondition
@@ -1087,7 +1087,7 @@ test_vk!(
 			for lane in (reuse..ENVIRONMENTS).step_by(31) {
 				actions[lane] = if lane & 1 == 0 { i32::MIN } else { i32::MAX };
 			}
-			let action = Matrix::from_slice(&engine, [ENVIRONMENTS], &actions)?;
+			let action = Matrix::new_from_slice(&engine, [ENVIRONMENTS], &actions)?;
 			let transition = vector.step(&action)?;
 			let event = vector.submit()?;
 			vector.wait(&event)?;
@@ -1196,7 +1196,7 @@ test_vk!(
 			},
 		)?;
 		let mut optimizer =
-			AdamW::with_hyperparameters(model.all_parameters()?, 2.5e-4, 0.9, 0.999, 1.0e-8, 0.0)?;
+			AdamW::new_with_hyperparameters(model.all_parameters()?, 2.5e-4, 0.9, 0.999, 1.0e-8, 0.0)?;
 		let teacher = pretrain_scripted_teacher(
 			&engine,
 			&model,
@@ -1279,7 +1279,7 @@ test_vk!(
 				seed: SEED,
 			},
 		)?;
-		let mut restored_optimizer = AdamW::with_hyperparameters(
+		let mut restored_optimizer = AdamW::new_with_hyperparameters(
 			restored_model.all_parameters()?,
 			2.5e-4,
 			0.9,

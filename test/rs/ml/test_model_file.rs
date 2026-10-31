@@ -11,18 +11,18 @@ impl CheckpointModule {
 	fn new(engine: &oa::Engine, weight: f32, persistent: u32, scratch: i32) -> oa::Result<Self> {
 		let parameter = Parameter::new(
 			"value",
-			oa::Matrix::from_f32(engine, [1, 2], &[weight, weight + 1.0])?,
+			oa::Matrix::new_from_f32(engine, [1, 2], &[weight, weight + 1.0])?,
 		)?;
 		let mut registry = ModuleRegistry::new();
 		registry.register_parameter("value", parameter.clone())?;
 		registry.register_buffer(
 			"alphabet",
-			oa::Matrix::from_slice(engine, [1], &[persistent])?,
+			oa::Matrix::new_from_slice(engine, [1], &[persistent])?,
 			true,
 		)?;
 		registry.register_buffer(
 			"scratch",
-			oa::Matrix::from_slice(engine, [1], &[scratch])?,
+			oa::Matrix::new_from_slice(engine, [1], &[scratch])?,
 			false,
 		)?;
 		Ok(Self {
@@ -189,39 +189,39 @@ test_vk!(
 				.as_nanos()
 		));
 		std::fs::create_dir_all(&directory).expect("create optimizer checkpoint directory");
-		let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
-		let targets = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
+		let targets = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
 
-		let adam_source = oa::ml::nn::Linear::with_seed(&engine, 2, 2, 0x4144_414d)?;
+		let adam_source = oa::ml::nn::Linear::new_with_seed(&engine, 2, 2, 0x4144_414d)?;
 		let mut adam = Adam::new(adam_source.all_parameters()?, 0.025)?;
 		train_linear_once(&adam_source, &input, &targets, &mut adam)?;
 		let adam_path = directory.join("adam.oam");
 		oa::ml::save_checkpoint(&adam_path, &adam_source, &adam)?;
-		let adam_destination = oa::ml::nn::Linear::with_seed(&engine, 2, 2, 7)?;
+		let adam_destination = oa::ml::nn::Linear::new_with_seed(&engine, 2, 2, 7)?;
 		let mut restored_adam = Adam::new(adam_destination.all_parameters()?, 0.5)?;
 		oa::ml::load_checkpoint(&engine, &adam_path, &adam_destination, &mut restored_adam)?;
 		assert_eq!(restored_adam.step_count(), 1);
 		assert_eq!(restored_adam.learning_rate(), 0.025);
 		assert_module_parameters_equal(&adam_source, &adam_destination)?;
 
-		let sgd_source = oa::ml::nn::Linear::with_seed(&engine, 2, 2, 0x5347_4400)?;
+		let sgd_source = oa::ml::nn::Linear::new_with_seed(&engine, 2, 2, 0x5347_4400)?;
 		let mut sgd = Sgd::new(sgd_source.all_parameters()?, 0.05, 0.0, 0.01)?;
 		train_linear_once(&sgd_source, &input, &targets, &mut sgd)?;
 		let sgd_path = directory.join("sgd.oam");
 		oa::ml::save_checkpoint(&sgd_path, &sgd_source, &sgd)?;
-		let sgd_destination = oa::ml::nn::Linear::with_seed(&engine, 2, 2, 11)?;
+		let sgd_destination = oa::ml::nn::Linear::new_with_seed(&engine, 2, 2, 11)?;
 		let mut restored_sgd = Sgd::new(sgd_destination.all_parameters()?, 0.5, 0.0, 0.0)?;
 		oa::ml::load_checkpoint(&engine, &sgd_path, &sgd_destination, &mut restored_sgd)?;
 		assert_eq!(restored_sgd.step_count(), 1);
 		assert_eq!(restored_sgd.learning_rate(), 0.05);
 		assert_module_parameters_equal(&sgd_source, &sgd_destination)?;
 
-		let muon_source = oa::ml::nn::Linear::with_seed(&engine, 2, 2, 0x4d55_4f4e)?;
+		let muon_source = oa::ml::nn::Linear::new_with_seed(&engine, 2, 2, 0x4d55_4f4e)?;
 		let mut muon = Muon::new(muon_source.all_parameters()?, 0.02)?;
 		train_linear_once(&muon_source, &input, &targets, &mut muon)?;
 		let muon_path = directory.join("muon.oam");
 		oa::ml::save_checkpoint(&muon_path, &muon_source, &muon)?;
-		let muon_destination = oa::ml::nn::Linear::with_seed(&engine, 2, 2, 13)?;
+		let muon_destination = oa::ml::nn::Linear::new_with_seed(&engine, 2, 2, 13)?;
 		let mut restored_muon = Muon::new(muon_destination.all_parameters()?, 0.5)?;
 		oa::ml::load_checkpoint(&engine, &muon_path, &muon_destination, &mut restored_muon)?;
 		assert_eq!(restored_muon.step_count(), 1);
@@ -231,7 +231,7 @@ test_vk!(
 		train_linear_once(&muon_destination, &input, &targets, &mut restored_muon)?;
 		assert_module_parameters_equal(&muon_source, &muon_destination)?;
 
-		let momentum_model = oa::ml::nn::Linear::with_seed(&engine, 2, 2, 0x4d4f_4d45)?;
+		let momentum_model = oa::ml::nn::Linear::new_with_seed(&engine, 2, 2, 0x4d4f_4d45)?;
 		let mut momentum = Sgd::new(momentum_model.all_parameters()?, 0.05, 0.9, 0.0)?;
 		train_linear_once(&momentum_model, &input, &targets, &mut momentum)?;
 		let error = oa::ml::save_checkpoint(directory.join("momentum.oam"), &momentum_model, &momentum)

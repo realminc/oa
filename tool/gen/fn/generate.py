@@ -27,7 +27,14 @@ DEFAULT_ML_SCHEMA = Path("tool/gen/fn/schema/ml/ml_training.json")
 DEFAULT_ML_ACTIVATION_SCHEMA = Path("tool/gen/fn/schema/ml/ml_activation.json")
 DEFAULT_AUDIO_SCHEMA = Path("tool/gen/fn/schema/audio/audio.json")
 DEFAULT_CRYPTOGRAPHY_HASH_SCHEMA = Path("tool/gen/fn/schema/cryptography/cryptography_hash.json")
+DEFAULT_CRYPTOGRAPHY_MERKLE_SCHEMA = Path("tool/gen/fn/schema/cryptography/cryptography_merkle.json")
+DEFAULT_CRYPTOGRAPHY_NTT_SCHEMA = Path("tool/gen/fn/schema/cryptography/cryptography_ntt.json")
 DEFAULT_CRYPTOGRAPHY_PQC_SCHEMA = Path("tool/gen/fn/schema/cryptography/cryptography_pqc.json")
+DEFAULT_SESSIONS_SCHEMA = Path("tool/gen/fn/schema/sessions.json")
+DEFAULT_EXPORTS_SCHEMA = Path("tool/gen/fn/schema/exports.json")
+DEFAULT_CODECS_SCHEMA = Path("tool/gen/fn/schema/codecs.json")
+DEFAULT_ML_PARITY_SCHEMA = Path("tool/gen/fn/schema/ml_parity.json")
+DEFAULT_CRYPTOGRAPHY_BIGINT_SCHEMA = Path("tool/gen/fn/schema/cryptography/cryptography_bigint.json")
 DEFAULT_IMAGE_SCHEMA = Path("tool/gen/fn/schema/image/image.json")
 DEFAULT_VISION_SCHEMA = Path("tool/gen/fn/schema/vision/vision_detection.json")
 IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -211,6 +218,1148 @@ def load_cryptography_hash_schema(path: Path) -> tuple[dict[str, Any], str]:
 	return load_validated_schema(path, validate_cryptography_hash_schema)
 
 
+NTT_SHADER_BODIES = {
+'ntt_twiddles': '''	uint forward_extent, inverse_extent;
+	storage_buffers[push.forward_index].GetDimensions(forward_extent);
+	storage_buffers[push.inverse_index].GetDimensions(inverse_extent);
+	if (push.count > forward_extent / 8u || push.count > inverse_extent / 8u) return;
+	uint2 one = uint2(push.one_low, push.one_high);
+	uint2 forward = prime62_power(uint2(push.root_low, push.root_high), index, modulus, push.negative_inverse, one);
+	uint2 inverse = prime62_power(uint2(push.inverse_root_low, push.inverse_root_high), index, modulus, push.negative_inverse, one);
+	storage_buffers[push.forward_index].Store<uint2>(index * 8u, forward);
+	storage_buffers[push.inverse_index].Store<uint2>(index * 8u, inverse);''',
+'ntt_reorder': '''	if (push.length < 4u || push.log_length < 2u || push.log_length > 24u || push.length != (1u << push.log_length)
+		|| push.count % push.length != 0u) return;
+	uint input_extent, output_extent;
+	storage_buffers[push.input_index].GetDimensions(input_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	if (push.count > input_extent / 8u || push.count > output_extent / 8u) return;
+	uint row = index / push.length;
+	uint coefficient = index % push.length;
+	uint reversed = reversebits(coefficient) >> (32u - push.log_length);
+	uint2 value = prime62_normalize(storage_buffers[push.input_index].Load<uint2>((row * push.length + reversed) * 8u), modulus);
+	if (push.montgomery == 0u) value = prime62_multiply(value, uint2(push.r2_low, push.r2_high), modulus, push.negative_inverse);
+	storage_buffers[push.output_index].Store<uint2>(index * 8u, value);''',
+'ntt_stage': '''	if (push.length < 4u || push.length > (1u << 24u) || (push.length & (push.length - 1u)) != 0u
+		|| push.span < 2u || push.span > push.length || (push.span & (push.span - 1u)) != 0u
+		|| push.count % (push.length / 2u) != 0u) return;
+	uint input_extent, output_extent, twiddle_extent;
+	storage_buffers[push.input_index].GetDimensions(input_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	storage_buffers[push.twiddles_index].GetDimensions(twiddle_extent);
+	if (push.count > input_extent / 16u || push.count > output_extent / 16u || push.length / 2u > twiddle_extent / 8u) return;
+	uint half_span = push.span / 2u;
+	uint row = index / (push.length / 2u);
+	uint butterfly = index % (push.length / 2u);
+	uint offset = butterfly % half_span;
+	uint left = row * push.length + (butterfly / half_span) * push.span + offset;
+	uint right = left + half_span;
+	uint2 a = storage_buffers[push.input_index].Load<uint2>(left * 8u);
+	uint2 b = storage_buffers[push.input_index].Load<uint2>(right * 8u);
+	uint2 twiddle = storage_buffers[push.twiddles_index].Load<uint2>(offset * (push.length / push.span) * 8u);
+	b = prime62_multiply(b, twiddle, modulus, push.negative_inverse);
+	uint2 sum = prime62_add(a, b, modulus);
+	uint2 difference = prime62_difference(a, b, modulus);
+	if (push.span == push.length) {
+		uint2 normalization = uint2(push.normalization_low, push.normalization_high);
+		sum = prime62_multiply(sum, normalization, modulus, push.negative_inverse);
+		difference = prime62_multiply(difference, normalization, modulus, push.negative_inverse);
+		if (push.montgomery == 0u) {
+			sum = prime62_multiply(sum, uint2(1u, 0u), modulus, push.negative_inverse);
+			difference = prime62_multiply(difference, uint2(1u, 0u), modulus, push.negative_inverse);
+		}
+	}
+	storage_buffers[push.output_index].Store<uint2>(left * 8u, sum);
+	storage_buffers[push.output_index].Store<uint2>(right * 8u, difference);''',
+'ntt_pointwise': '''	uint left_extent, right_extent, output_extent;
+	storage_buffers[push.left_index].GetDimensions(left_extent);
+	storage_buffers[push.right_index].GetDimensions(right_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	if (push.count > left_extent / 8u || push.count > right_extent / 8u || push.count > output_extent / 8u) return;
+	uint2 a = prime62_normalize(storage_buffers[push.left_index].Load<uint2>(index * 8u), modulus);
+	uint2 b = prime62_normalize(storage_buffers[push.right_index].Load<uint2>(index * 8u), modulus);
+	if (push.montgomery == 0u) {
+		uint2 r2 = uint2(push.r2_low, push.r2_high);
+		a = prime62_multiply(a, r2, modulus, push.negative_inverse);
+		b = prime62_multiply(b, r2, modulus, push.negative_inverse);
+	}
+	uint2 result = prime62_multiply(a, b, modulus, push.negative_inverse);
+	if (push.montgomery == 0u) result = prime62_multiply(result, uint2(1u, 0u), modulus, push.negative_inverse);
+	storage_buffers[push.output_index].Store<uint2>(index * 8u, result);''',
+}
+
+
+def generate_ntt_cooperative(kernel: dict[str, Any], mark: str) -> str:
+	capacity = kernel['shared_coefficients']
+	fields = '\n'.join(f'\tuint {n};' for n, _ in kernel['push_fields'])
+	return mark + f'''// Complete shared-memory cyclic NTT; one workgroup owns each output row.
+// Radix-two butterfly identities; no OA C++ generic NTT donor exists.
+import attributes;
+import prime62;
+struct PushConstants {{
+{fields}
+}};
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+groupshared uint2 coefficients[{capacity}];
+[kernel_name("{kernel['name']}")]
+[domain("cryptography")]
+[variant("generic")]
+[dtype("u32")]
+[status("experimental")]
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void main(uint3 group : SV_GroupID, uint lane : SV_GroupIndex) {{
+	uint row = group.x + group.y * push.grid_width;
+	// Every early exit is uniform across the workgroup, before any barrier.
+	if (row >= push.count || push.length < 4u || push.length > {capacity}u
+		|| push.log_length < 2u || push.log_length > 24u || push.length != (1u << push.log_length)
+		|| (push.modulus_low & 1u) == 0u || push.modulus_high >= 0x40000000u) return;
+	uint input_extent, output_extent, twiddle_extent;
+	storage_buffers[push.input_index].GetDimensions(input_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	storage_buffers[push.twiddles_index].GetDimensions(twiddle_extent);
+	uint row_bytes = push.length * 8u;
+	if (push.count > input_extent / row_bytes || push.count > output_extent / row_bytes
+		|| push.length / 2u > twiddle_extent / 8u) return;
+	uint2 modulus = uint2(push.modulus_low, push.modulus_high);
+	for (uint i = lane; i < push.length; i += 128u) {{
+		uint reversed = reversebits(i) >> (32u - push.log_length);
+		uint2 value = prime62_normalize(storage_buffers[push.input_index].Load<uint2>(row * row_bytes + reversed * 8u), modulus);
+		if (push.montgomery == 0u) value = prime62_multiply(value, uint2(push.r2_low, push.r2_high), modulus, push.negative_inverse);
+		coefficients[i] = value;
+	}}
+	GroupMemoryBarrierWithGroupSync();
+	for (uint span = 2u; span <= push.length; span *= 2u) {{
+		uint half_span = span / 2u;
+		for (uint i = lane; i < push.length / 2u; i += 128u) {{
+			uint offset = i % half_span;
+			uint left = (i / half_span) * span + offset;
+			uint right = left + half_span;
+			uint2 a = coefficients[left];
+			uint2 twiddle = storage_buffers[push.twiddles_index].Load<uint2>(offset * (push.length / span) * 8u);
+			uint2 b = prime62_multiply(coefficients[right], twiddle, modulus, push.negative_inverse);
+			coefficients[left] = prime62_add(a, b, modulus);
+			coefficients[right] = prime62_difference(a, b, modulus);
+		}}
+		GroupMemoryBarrierWithGroupSync();
+	}}
+	uint2 normalization = uint2(push.normalization_low, push.normalization_high);
+	for (uint i = lane; i < push.length; i += 128u) {{
+		uint2 value = prime62_multiply(coefficients[i], normalization, modulus, push.negative_inverse);
+		if (push.montgomery == 0u) value = prime62_multiply(value, uint2(1u, 0u), modulus, push.negative_inverse);
+		storage_buffers[push.output_index].Store<uint2>(row * row_bytes + i * 8u, value);
+	}}
+}}\n'''
+
+
+MERKLE_SHADER_BODIES = {
+'merkle_tree_reduce': '''	uint input_extent, output_extent;
+	storage_buffers[push.input_index].GetDimensions(input_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	if (push.leaf_count == 0u || push.count != (push.leaf_count + 1u) / 2u
+		|| push.leaf_count > input_extent / bytes || push.count > output_extent / bytes) return;
+	uint current[16], sibling[16];
+	uint left = index * 2u, right = min(left + 1u, push.leaf_count - 1u);
+	for (uint i = 0u; i < 16u; ++i) { current[i] = 0u; sibling[i] = 0u; }
+	for (uint i = 0u; i < bytes / 4u; ++i) {
+		current[i] = storage_buffers[push.input_index].Load(left * bytes + i * 4u);
+		sibling[i] = storage_buffers[push.input_index].Load(right * bytes + i * 4u);
+	}
+	merkle_general_pair(current, sibling, false, push.algorithm);
+	for (uint i = 0u; i < bytes / 4u; ++i) storage_buffers[push.output_index].Store(index * bytes + i * 4u, current[i]);''',
+'merkle_frame_init': '''	uint indices_extent, output_extent;
+	storage_buffers[push.indices_index].GetDimensions(indices_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	if (push.frame_bytes != MERKLE_HEADER_BYTES + merkle_depth(push.leaf_count) * bytes
+		|| push.count > indices_extent / 4u || push.count > output_extent / push.frame_bytes) return;
+	uint leaf_index = storage_buffers[push.indices_index].Load(index * 4u);
+	uint base = index * push.frame_bytes;
+	for (uint i = 0u; i < push.frame_bytes; i += 4u) storage_buffers[push.output_index].Store(base + i, 0u);
+	storage_buffers[push.output_index].Store(base, MERKLE_FRAME_VERSION);
+	storage_buffers[push.output_index].Store(base + 4u, push.leaf_count);
+	storage_buffers[push.output_index].Store(base + 8u, leaf_index);
+	storage_buffers[push.output_index].Store(base + 12u, push.algorithm);
+	storage_buffers[push.output_index].Store(base + 16u, uint(leaf_index < push.leaf_count));''',
+'merkle_frame_append': '''	uint level_extent, indices_extent, previous_extent, output_extent;
+	storage_buffers[push.level_index].GetDimensions(level_extent);
+	storage_buffers[push.indices_index].GetDimensions(indices_extent);
+	storage_buffers[push.previous_index].GetDimensions(previous_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	uint depth = merkle_depth(push.leaf_count);
+	uint expected_count = push.leaf_count;
+	for (uint i = 0u; i < push.level && i < MERKLE_MAX_DEPTH; ++i) expected_count = (expected_count + 1u) / 2u;
+	if (push.level >= depth || push.source_count != expected_count
+		|| push.frame_bytes != MERKLE_HEADER_BYTES + depth * bytes
+		|| push.count > indices_extent / 4u || push.source_count > level_extent / bytes
+		|| push.count > previous_extent / push.frame_bytes || push.count > output_extent / push.frame_bytes) return;
+	uint leaf_index = storage_buffers[push.indices_index].Load(index * 4u);
+	// Rust's schema declares previous/output as the same private physical frame
+	// with a fresh semantic version; only this invocation mutates its own row.
+	if (leaf_index >= push.leaf_count) return;
+	uint source_index = leaf_index >> push.level;
+	uint sibling = source_index ^ 1u;
+	if (sibling >= push.source_count) sibling = source_index;
+	uint target = index * push.frame_bytes + MERKLE_HEADER_BYTES + push.level * bytes;
+	for (uint i = 0u; i < bytes; i += 4u)
+		storage_buffers[push.output_index].Store(target + i, storage_buffers[push.level_index].Load(sibling * bytes + i));''',
+'merkle_frame_verify': '''	uint leaves_extent, frames_extent, roots_extent, output_extent;
+	storage_buffers[push.leaves_index].GetDimensions(leaves_extent);
+	storage_buffers[push.frames_index].GetDimensions(frames_extent);
+	storage_buffers[push.roots_index].GetDimensions(roots_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	uint depth = merkle_depth(push.leaf_count);
+	if (push.frame_bytes != MERKLE_HEADER_BYTES + depth * bytes
+		|| push.count > leaves_extent / bytes || push.count > frames_extent / push.frame_bytes
+		|| (push.root_count != 1u && push.root_count != push.count)
+		|| push.root_count > roots_extent / bytes || push.count > output_extent / 4u) return;
+	uint base = index * push.frame_bytes;
+	uint leaf_index = storage_buffers[push.frames_index].Load(base + 8u);
+	bool valid = storage_buffers[push.frames_index].Load(base) == MERKLE_FRAME_VERSION
+		&& storage_buffers[push.frames_index].Load(base + 4u) == push.leaf_count
+		&& storage_buffers[push.frames_index].Load(base + 12u) == push.algorithm
+		&& storage_buffers[push.frames_index].Load(base + 16u) == 1u && leaf_index < push.leaf_count;
+	uint current[16], sibling[16];
+	for (uint i = 0u; i < 16u; ++i) { current[i] = 0u; sibling[i] = 0u; }
+	for (uint i = 0u; i < bytes / 4u; ++i) current[i] = storage_buffers[push.leaves_index].Load(index * bytes + i * 4u);
+	uint source_count = push.leaf_count;
+	for (uint level = 0u; level < depth && valid; ++level) {
+		for (uint i = 0u; i < bytes / 4u; ++i)
+			sibling[i] = storage_buffers[push.frames_index].Load(base + MERKLE_HEADER_BYTES + level * bytes + i * 4u);
+		if ((leaf_index & 1u) == 0u && leaf_index + 1u >= source_count)
+			for (uint i = 0u; i < bytes / 4u; ++i) valid = valid && sibling[i] == current[i];
+		merkle_general_pair(current, sibling, (leaf_index & 1u) != 0u, push.algorithm);
+		leaf_index >>= 1u; source_count = (source_count + 1u) / 2u;
+	}
+	uint root_base = (push.root_count == 1u ? 0u : index) * bytes;
+	for (uint i = 0u; i < bytes / 4u; ++i) valid = valid && current[i] == storage_buffers[push.roots_index].Load(root_base + i * 4u);
+	storage_buffers[push.output_index].Store(index * 4u, uint(valid));''',
+}
+
+
+def load_merkle_schema() -> tuple[dict[str, Any], str]:
+	return load_validated_schema(Path(__file__).resolve().parents[3] / DEFAULT_CRYPTOGRAPHY_MERKLE_SCHEMA, validate_merkle_schema)
+
+
+def validate_merkle_schema(schema: dict[str, Any]) -> None:
+	require(set(schema) <= {'schema_version', 'family', 'domain', 'dtype', 'algorithms', 'proof_layout', 'contracts', 'kernels', 'signature_records'} and {'schema_version', 'family', 'domain', 'dtype', 'algorithms', 'proof_layout', 'contracts', 'kernels'} <= set(schema)
+		and schema['schema_version'] == 1 and schema['family'] == 'cryptography_merkle' and schema['domain'] == 'cryptography::merkle' and schema['dtype'] == 'u32', 'General Merkle schema identity differs')
+	require(schema['proof_layout'] == {'version': 2, 'header_bytes': 20, 'max_depth': 24}, 'General Merkle frame layout differs')
+	names = ['sha256', 'sha512', 'sha3_256', 'sha3_512', 'shake128', 'shake256', 'poseidon2_babybear16', 'poseidon2_babybear24', 'poseidon2_koalabear16', 'poseidon2_koalabear24']
+	require(isinstance(schema['algorithms'], list) and len(schema['algorithms']) == len(names), 'General Merkle algorithm inventory differs')
+	for index, algorithm in enumerate(schema['algorithms']):
+		require(set(algorithm) == {'name', 'variant', 'identifier', 'digest_bytes', 'dtype'} and algorithm['name'] == names[index]
+			and type(algorithm['identifier']) is int and algorithm['identifier'] == index
+			and algorithm['digest_bytes'] == (64 if index in {1, 3} else 32) and algorithm['dtype'] == ('u32' if index >= 6 else 'u8')
+			and isinstance(algorithm['variant'], str) and IDENTIFIER.fullmatch(algorithm['variant']), 'General Merkle algorithm framing differs')
+	expected_fields = {
+		'merkle_tree_reduce': ['input_index', 'output_index', 'count', 'grid_width', 'leaf_count', 'algorithm'],
+		'merkle_frame_init': ['indices_index', 'output_index', 'count', 'grid_width', 'leaf_count', 'algorithm', 'frame_bytes'],
+		'merkle_frame_append': ['level_index', 'indices_index', 'previous_index', 'output_index', 'count', 'grid_width', 'leaf_count', 'source_count', 'algorithm', 'frame_bytes', 'level'],
+		'merkle_frame_verify': ['leaves_index', 'frames_index', 'roots_index', 'output_index', 'count', 'grid_width', 'leaf_count', 'algorithm', 'frame_bytes', 'root_count'],
+	}
+	require(len(schema['kernels']) == 4 and len(schema['contracts']) == 4, 'General Merkle operation inventory differs')
+	seen = set()
+	for kernel in schema['kernels']:
+		name = kernel['name']; require(name in expected_fields, 'General Merkle kernel is unknown'); validate_unique(name, seen, 'General Merkle kernel')
+		require(kernel['push_fields'] == [[n, 'uint32'] for n in expected_fields[name]] and kernel['workgroup_size'] == [128, 1, 1]
+			and kernel['semantic_operation'] == name and kernel['source'] == f'src/slang/cryptography/merkle/{name}.gen.slang'
+			and kernel['kernel_id'] == 'Cryptography' + ''.join(w.title() for w in name.split('_')) + 'U32', 'General Merkle ABI differs')
+		validate_physical_write(kernel['physical_write'], 'General Merkle', required=True)
+		inputs = 1 if name in {'merkle_tree_reduce', 'merkle_frame_init'} else 3
+		contract = next((c for c in schema['contracts'] if c['name'] == name), None)
+		attrs = ['leaf_count', 'algorithm'] + (['level'] if name == 'merkle_frame_append' else [])
+		require(contract == {'name': name, 'input_kinds': ['matrix'] * inputs, 'output_kinds': ['matrix'], 'shape_rule': 'explicit', 'dtype_rule': 'explicit', 'attributes': [[n, 'unsigned_integer'] for n in attrs], 'mutated_inputs': [2] if name == 'merkle_frame_append' else [], 'output_alias_inputs': [2] if name == 'merkle_frame_append' else [-1]}, 'General Merkle semantic mutation contract differs')
+		require(kernel['physical_write'] == {'writes': [{'binding': inputs, 'domain': 'rows', 'partition': 'exclusive_per_invocation', 'extent': 'one_scalar' if name == 'merkle_frame_verify' else 'row_width', 'collision': 'exclusive', 'tail': 'bounds_checked'}], 'workspace': 'none'}, 'General Merkle output ownership differs')
+
+
+def merkle_outputs(root: Path, schema: dict[str, Any], schema_hash: str, hash_schema: dict[str, Any]) -> dict[Path, str]:
+	mark = banner(schema_hash, '//', 'cryptography_merkle.json')
+	algorithms = '/// Selected parent-hash identity; digest sizes are part of the contract.\n#[derive(Clone, Copy, Debug, PartialEq, Eq)]\n#[repr(u32)]\npub enum MerkleAlgorithm {\n'
+	for a in schema['algorithms']:
+		algorithms += f"\t{a['variant']} = {a['identifier']},\n"
+	algorithms += '}\n\nimpl MerkleAlgorithm {\n\t/// Exact digest byte extent.\n\tpub const fn digest_bytes(self) -> usize {\n\t\tmatch self {\n'
+	for a in schema['algorithms']: algorithms += f"\t\t\tSelf::{a['variant']} => {a['digest_bytes']},\n"
+	algorithms += '\t\t}\n\t}\n\t/// Storage type of supplied leaf and root rows.\n\tpub const fn dtype(self) -> DType {\n\t\tmatch self {\n'
+	for a in schema['algorithms']: algorithms += f"\t\t\tSelf::{a['variant']} => DType::{a['dtype'].upper()},\n"
+	algorithms += '\t\t}\n\t}\n\t/// Stable API hash spelling.\n\tpub const fn name(self) -> &\'static str {\n\t\tmatch self {\n'
+	for a in schema['algorithms']: algorithms += f"\t\t\tSelf::{a['variant']} => \"{a['name']}\",\n"
+	algorithms += '\t\t}\n\t}\n}\n'
+	template = (Path(__file__).parent / 'template/cryptography/merkle/operations.rs.in').read_text()
+	values = dict(algorithms=algorithms, header_bytes=str(schema['proof_layout']['header_bytes']))
+	require(set(re.findall(r'\{\{([^{}]+)\}\}', template)) == set(values), 'General Merkle operation template differs')
+	outputs = {root / 'src/rs/cryptography/merkle/operations.gen.rs': format_rust(mark + re.sub(r'\{\{([^{}]+)\}\}', lambda m: values[m[1]], template), root)}
+	poseidon = mark + '// Pinned Plonky3 permutation; OA Merkle domain is distinct from field XOF.\nimport prime31;\nimport poseidon2;\n\nvoid merkle_poseidon2_pair(uint message[32], uint algorithm, out uint result[16]) {\n'
+	for algorithm in schema['algorithms'][6:]:
+		index = algorithm['identifier']
+		p = next(p for p in hash_schema['poseidon2_profiles'] if 'poseidon2_' + p['name'] == algorithm['name'])
+		prime, rate, name = p['prime'], p['width'] - p['capacity'], p['name']
+		factor = (-pow(prime, -1, 1 << 32)) % (1 << 32); r2 = (1 << 64) % prime; one = (1 << 32) % prime
+		poseidon += f'''\tif (algorithm == {index}u) {{
+		uint state[24]; for (uint i = 0u; i < 24u; ++i) state[i] = 0u;
+		const uint prime = {prime}u, factor = {factor}u;
+		state[{rate}u] = prime31_multiply(0x4f414d32u, {r2}u, prime, factor);
+		state[{rate+1}u] = prime31_multiply(16u, {r2}u, prime, factor);
+		uint cursor = 0u;
+		for (uint i = 0u; i < 16u; ++i) {{
+			state[cursor] = prime31_add(state[cursor], prime31_multiply(message[i] % prime, {r2}u, prime, factor), prime);
+			if (++cursor == {rate}u) {{ poseidon2_{name}_permutation(state); cursor = 0u; }}
+		}}
+		state[cursor] = prime31_add(state[cursor], {one}u, prime);
+		poseidon2_{name}_permutation(state);
+		for (uint i = 0u; i < 16u; ++i) result[i] = 0u;
+		for (uint i = 0u; i < 8u; ++i) result[i] = prime31_multiply(state[i], 1u, prime, factor);
+		return;
+	}}\n'''
+	poseidon += '\tfor (uint i = 0u; i < 16u; ++i) result[i] = 0u;\n}\n'
+	outputs[root / 'src/slang/core/math/merkle_poseidon2.slang'] = poseidon
+	for kernel in schema['kernels']:
+		fields = '\n'.join(f'\tuint {n};' for n, _ in kernel['push_fields'])
+		body = mark + f'''// Selected-hash public Merkle graph operation, no host digest copies.
+import attributes;
+import merkle_general;
+static const uint MERKLE_FRAME_VERSION = {schema['proof_layout']['version']}u;
+static const uint MERKLE_HEADER_BYTES = {schema['proof_layout']['header_bytes']}u;
+static const uint MERKLE_MAX_DEPTH = {schema['proof_layout']['max_depth']}u;
+uint merkle_depth(uint count) {{
+	uint depth = 0u;
+	while (count > 1u) {{ count = (count + 1u) / 2u; ++depth; }}
+	return depth;
+}}
+struct PushConstants {{
+{fields}
+}};
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+[kernel_name("{kernel['name']}")]
+[domain("cryptography")]
+[variant("generic")]
+[dtype("u32")]
+[status("experimental")]
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void main(uint3 tid : SV_DispatchThreadID) {{
+	uint index = tid.x + tid.y * push.grid_width;
+	if (index >= push.count || push.algorithm >= 10u || push.leaf_count == 0u || push.leaf_count > (1u << MERKLE_MAX_DEPTH)) return;
+	uint bytes = merkle_digest_bytes(push.algorithm);
+{MERKLE_SHADER_BODIES[kernel['name']]}
+}}\n'''
+		outputs[root / kernel['source']] = body
+	bindings = (Path(__file__).parent / 'template/cryptography/merkle/binding.rs.in').read_text()
+	arms = '\n'.join(f'\t\t"{a["name"]}" => Ok(oa::cryptography::merkle::MerkleAlgorithm::{a["variant"]}),' for a in schema['algorithms'])
+	outputs[root / 'src/py/pyo3/cryptography/merkle.gen.rs'] = format_rust(mark + bindings.replace('{{algorithms}}', arms), root)
+	stub = banner(schema_hash, '#', 'cryptography_merkle.json') + 'from .._native import Matrix\n\nclass DeviceMerkleTree:\n    @property\n    def root(self) -> Matrix: ...\n    @property\n    def leaf_count(self) -> int: ...\n    @property\n    def algorithm(self) -> str: ...\n\ndef crypto_merkle_build(leaves: Matrix, hash: str) -> DeviceMerkleTree: ...\ndef crypto_merkle_subtree_roots(leaves: Matrix, hash: str, subtree_leaves: int) -> Matrix: ...\ndef crypto_merkle_proofs(tree: DeviceMerkleTree, indices: Matrix) -> Matrix: ...\ndef crypto_merkle_verify(leaves: Matrix, frames: Matrix, roots: Matrix, hash: str, leaf_count: int) -> Matrix: ...\n'
+	outputs[root / 'src/py/oa/_gen/cryptography_merkle_native.pyi'] = stub
+	outputs[root / 'src/py/oa/_gen/cryptography_merkle.py'] = banner(schema_hash, '#', 'cryptography_merkle.json') + 'from .._native import (DeviceMerkleTree, crypto_merkle_build as merkle_build, crypto_merkle_subtree_roots as merkle_subtree_roots, crypto_merkle_proofs as merkle_proofs, crypto_merkle_verify as merkle_verify)\n'
+	return outputs
+
+
+def load_ntt_schema() -> tuple[dict[str, Any], str]:
+	return load_validated_schema(Path(__file__).resolve().parents[3] / DEFAULT_CRYPTOGRAPHY_NTT_SCHEMA, validate_ntt_schema)
+
+
+def validate_ntt_schema(schema: dict[str, Any]) -> None:
+	require(set(schema) <= {'schema_version', 'family', 'domain', 'dtype', 'coefficient_layout', 'field_bits', 'min_log_length', 'max_log_length', 'contracts', 'kernels', 'signature_records'} and {'schema_version', 'family', 'domain', 'dtype', 'coefficient_layout', 'field_bits', 'min_log_length', 'max_log_length', 'contracts', 'kernels'} <= set(schema), 'NTT schema fields differ')
+	require(schema['schema_version'] == 1 and schema['family'] == 'cryptography_ntt' and schema['domain'] == 'cryptography::ntt' and schema['dtype'] == 'u32'
+		and schema['coefficient_layout'] == {'word_bits': 32, 'words': 2, 'order': 'little_endian'} and (schema['field_bits'], schema['min_log_length'], schema['max_log_length']) == (62, 2, 24), 'NTT schema identity differs')
+	expected_fields = {
+		'ntt_twiddles': ['forward_index', 'inverse_index', 'count', 'grid_width', 'modulus_low', 'modulus_high', 'negative_inverse', 'root_low', 'root_high', 'inverse_root_low', 'inverse_root_high', 'one_low', 'one_high'],
+		'ntt_reorder': ['input_index', 'output_index', 'count', 'grid_width', 'length', 'log_length', 'modulus_low', 'modulus_high', 'negative_inverse', 'r2_low', 'r2_high', 'montgomery'],
+		'ntt_stage': ['input_index', 'twiddles_index', 'output_index', 'count', 'grid_width', 'length', 'span', 'modulus_low', 'modulus_high', 'negative_inverse', 'normalization_low', 'normalization_high', 'montgomery'],
+		'ntt_pointwise': ['left_index', 'right_index', 'output_index', 'count', 'grid_width', 'modulus_low', 'modulus_high', 'negative_inverse', 'r2_low', 'r2_high', 'montgomery'],
+	}
+	require(len(schema['kernels']) == 8 and len(schema['contracts']) == 5, 'NTT operation inventory differs')
+	seen = set()
+	for kernel in schema['kernels']:
+		name = kernel['name']; validate_unique(name, seen, 'NTT kernel')
+		if name.startswith('ntt_cooperative_'):
+			cap = kernel.get('shared_coefficients')
+			require(cap in {256, 1024, 4096, 8192} and name == f'ntt_cooperative_{cap}'
+				and kernel['kernel_id'] == f'CryptographyNttCooperative{cap}U32' and kernel['source'] == f'src/slang/cryptography/ntt/{name}.gen.slang'
+				and kernel['semantic_operation'] == 'ntt_transform' and kernel['workgroup_size'] == [128, 1, 1]
+				and kernel['push_fields'] == [[f, 'uint32'] for f in ['input_index', 'twiddles_index', 'output_index', 'count', 'grid_width', 'length', 'log_length', 'modulus_low', 'modulus_high', 'negative_inverse', 'r2_low', 'r2_high', 'normalization_low', 'normalization_high', 'montgomery']], 'Cooperative NTT ABI differs')
+			require(kernel['physical_write'] == {'writes': [{'binding': 2, 'domain': 'rows', 'partition': 'exclusive_per_workgroup', 'extent': 'row_width', 'collision': 'exclusive', 'tail': 'bounds_checked'}], 'workspace': 'none'}, 'Cooperative NTT ownership differs')
+			continue
+		require(name in expected_fields, 'Unknown NTT kernel')
+		require(kernel['push_fields'] == [[n, 'uint32'] for n in expected_fields[name]] and kernel['semantic_operation'] == name
+			and kernel['workgroup_size'] == [128, 1, 1] and kernel['source'] == f'src/slang/cryptography/ntt/{name}.gen.slang'
+			and kernel['kernel_id'] == 'Cryptography' + ''.join(w.title() for w in name.split('_')) + 'U32', 'NTT ABI differs')
+		contract = next((c for c in schema['contracts'] if c['name'] == name), None)
+		inputs = 0 if name == 'ntt_twiddles' else 1 if name == 'ntt_reorder' else 2
+		outputs = 2 if name == 'ntt_twiddles' else 1
+		attrs = ['modulus', 'length'] + (['span', 'inverse'] if name == 'ntt_stage' else []) + ([] if name == 'ntt_twiddles' else ['montgomery'])
+		require(contract == {'name': name, 'input_kinds': ['matrix'] * inputs, 'output_kinds': ['matrix'] * outputs, 'shape_rule': 'explicit', 'dtype_rule': 'u32', 'attributes': [[n, 'unsigned_integer'] for n in attrs]}, 'NTT semantic contract differs')
+		validate_physical_write(kernel['physical_write'], 'NTT', required=True)
+		writes = [{'binding': inputs + i, 'domain': 'output_elements' if name == 'ntt_stage' else 'rows', 'partition': 'exclusive_per_invocation', 'extent': 'up_to_two_elements' if name == 'ntt_stage' else 'row_width', 'collision': 'exclusive', 'tail': 'bounds_checked'} for i in range(outputs)]
+		require(kernel['physical_write'] == {'writes': writes, 'workspace': 'none'}, 'NTT ownership differs')
+
+
+	transform = next((c for c in schema['contracts'] if c['name'] == 'ntt_transform'), None)
+	require(transform == {'name': 'ntt_transform', 'input_kinds': ['matrix', 'matrix'], 'output_kinds': ['matrix'], 'shape_rule': 'explicit', 'dtype_rule': 'u32', 'attributes': [[n, 'unsigned_integer'] for n in ['modulus', 'length', 'inverse', 'montgomery']]}, 'Cooperative NTT semantic contract differs')
+	require(len({k['stable_id'] for k in schema['kernels']}) == 8 and all(type(k['stable_id']) is int and 0 < k['stable_id'] <= 65535 for k in schema['kernels']), 'NTT stable IDs must be unique positive u16 values')
+
+def ntt_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> dict[Path, str]:
+	mark = banner(schema_hash, '//', 'cryptography_ntt.json')
+	directory = Path(__file__).parent / 'template/cryptography/ntt'
+	direction = (directory / 'direction.rs.in').read_text()
+	transforms = []
+	for name in ('forward', 'inverse'):
+		values = dict(name=name, normalization='parameters.inverse_length' if name == 'inverse' else '((1_u128 << 64) % u128::from(modulus)) as u64', inverse_flag='1' if name == 'inverse' else '0')
+		require(set(re.findall(r'\{\{([^{}]+)\}\}', direction)) == set(values), 'NTT direction template differs')
+		transforms.append(re.sub(r'\{\{([^{}]+)\}\}', lambda m: values[m[1]], direction))
+	body = (directory / 'transform.rs.in').read_text().replace('{{transforms}}', '\n'.join(transforms))
+	outputs = {root / 'src/rs/cryptography/ntt/transform.gen.rs': format_rust(mark + body, root)}
+	for kernel in schema['kernels']:
+		if 'shared_coefficients' in kernel:
+			outputs[root / kernel['source']] = generate_ntt_cooperative(kernel, mark)
+			continue
+		fields = '\n'.join(f'\tuint {n};' for n, _ in kernel['push_fields'])
+		body = mark + f'''// Public generic cyclic NTT; radix-two identities, portable paired words.
+// No OA C++ generic NTT donor exists; fixed PQC transforms are distinct.
+import attributes;
+import prime62;
+struct PushConstants {{
+{fields}
+}};
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+[kernel_name("{kernel['name']}")]
+[domain("cryptography")]
+[variant("generic")]
+[dtype("u32")]
+[status("experimental")]
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void main(uint3 tid : SV_DispatchThreadID) {{
+	uint index = tid.x + tid.y * push.grid_width;
+	if (index >= push.count || (push.modulus_low & 1u) == 0u || push.modulus_high >= 0x40000000u) return;
+	uint2 modulus = uint2(push.modulus_low, push.modulus_high);
+{NTT_SHADER_BODIES[kernel['name']]}
+}}\n'''
+		outputs[root / kernel['source']] = body
+	python = (directory / 'binding.rs.in').read_text()
+	operations, registration = [], []
+	stub = banner(schema_hash, '#', 'cryptography_ntt.json') + 'from .._native import Engine, Matrix\n\nclass NttConfig:\n    def __init__(self, modulus: int, root: int, length: int, representation: str = "standard") -> None: ...\n    @property\n    def modulus(self) -> int: ...\n    @property\n    def root(self) -> int: ...\n    @property\n    def length(self) -> int: ...\n\nclass NttParameters:\n    @property\n    def config(self) -> NttConfig: ...\n\ndef crypto_ntt_prepare(engine: Engine, config: NttConfig) -> NttParameters: ...\n'
+	facade = banner(schema_hash, '#', 'cryptography_ntt.json') + 'from .._native import NttConfig, NttParameters, crypto_ntt_prepare as ntt_prepare\n'
+	for name in ('forward', 'inverse', 'pointwise_multiply'):
+		arguments = ['left', 'right'] if name == 'pointwise_multiply' else ['input']
+		parameters = ', '.join(a + ': &PythonMatrix' for a in arguments) + ', parameters: &PythonNttParameters'
+		call = ', '.join('&' + a + '.inner' for a in arguments) + ', &parameters.inner'
+		operations.append(f'#[pyfunction]\nfn crypto_ntt_{name}({parameters}) -> PyResult<PythonMatrix> {{\n\toa::cryptography::ntt::{name}({call}).map(PythonMatrix::wrap).map_err(python_error)\n}}\n')
+		registration.append(f'\tmodule.add_function(wrap_pyfunction!(crypto_ntt_{name}, module)?)?;')
+		stub += f'def crypto_ntt_{name}(' + ', '.join(a + ': Matrix' for a in arguments) + ', parameters: NttParameters) -> Matrix: ...\n'
+		facade += f'from .._native import crypto_ntt_{name} as ntt_{name}\n'
+	outputs[root / 'src/py/pyo3/cryptography/ntt.gen.rs'] = format_rust(mark + python.replace('{{operations}}', '\n'.join(operations)).replace('{{registration}}', '\n'.join(registration)), root)
+	outputs[root / 'src/py/oa/_gen/cryptography_ntt_native.pyi'] = stub
+	outputs[root / 'src/py/oa/_gen/cryptography_ntt.py'] = facade
+	return outputs
+
+
+def validate_sessions_schema(schema: dict[str, Any]) -> None:
+	records = schema.get("signature_records")
+	require(isinstance(records, list) and records and all(
+		isinstance(r, dict) and isinstance(r.get("name"), str) and isinstance(r.get("signature"), dict)
+		for r in records), "Sessions schema must carry signature_records")
+
+
+def load_sessions_schema() -> tuple[dict[str, Any], str]:
+	return load_validated_schema(DEFAULT_SESSIONS_SCHEMA, validate_sessions_schema)
+
+
+def load_codecs_schema() -> tuple[dict[str, Any], str]:
+	return load_validated_schema(DEFAULT_CODECS_SCHEMA, validate_sessions_schema)
+
+
+def load_ml_parity_schema() -> tuple[dict[str, Any], str]:
+	return load_validated_schema(DEFAULT_ML_PARITY_SCHEMA, validate_sessions_schema)
+
+
+SESSION_TYPE_PATHS = {
+	"MediaPlayer": "crate::media", "MediaPlayerConfig": "crate::media",
+	"SdlWindow": "crate::runtime", "LogComponent": "crate::runtime", "LogOptions": "crate::runtime",
+	"EngineBuilder": "crate::runtime", "DeviceSummary": "crate::runtime",
+	"TcpStream": "crate::network", "TcpListener": "crate::network",
+	"VideoCodec": "crate::video", "VideoContainerInfo": "crate::video", "VideoDecoder": "crate::video",
+	"VideoMuxerConfig": "crate::video",
+	"AudioEncodeProfile": "crate::audio", "AudioEncoder": "crate::audio",
+	"DataFrame": "crate::data", "DataFrameView": "crate::data", "DataLoader": "crate::data",
+	"DataLoaderConfig": "crate::data", "Dataset": "crate::data", "DsOhlcv": "crate::data",
+	"OhlcvView": "crate::data", "OhlcvWindowConfig": "crate::data", "OhlcvWindows": "crate::data",
+	"Subset": "crate::data", "UnixTimeUnit": "crate::data",
+	"EnvironmentExecution": "crate::ml::environment",
+	"TradingConfig": "crate::ml::environment", "TradingEnvironment": "crate::ml::environment",
+	"TradingSeries": "crate::ml::environment",
+	"CheckpointManager": "crate::ml::checkpoint", "CheckpointManagerConfig": "crate::ml::checkpoint",
+}
+
+
+def validate_exports_schema(schema: dict[str, Any]) -> None:
+	names = schema.get("native_classes")
+	submodules = schema.get("submodules")
+	require(isinstance(names, list) and names and all(
+		isinstance(n, str) and IDENTIFIER.fullmatch(n) for n in names),
+		"Exports schema must carry native_classes")
+	require(isinstance(submodules, list) and submodules and all(
+		isinstance(n, str) and IDENTIFIER.fullmatch(n) for n in submodules),
+		"Exports schema must carry submodules")
+	require(len(names) == len(set(names)) and len(submodules) == len(set(submodules)),
+		"Exports schema entries must be unique")
+
+
+def load_exports_schema() -> tuple[dict[str, Any], str]:
+	return load_validated_schema(DEFAULT_EXPORTS_SCHEMA, validate_exports_schema)
+
+
+def load_bigint_schema(path: Path) -> tuple[dict[str, Any], str]:
+	return load_validated_schema(path, validate_bigint_schema)
+
+
+BIGINT_EXTENDED = {
+	"div_rem_wide", "div_rem_narrow", "div_rem_mixed",
+	"add_scalar", "subtract_scalar", "multiply_scalar", "compare_scalar", "div_rem_scalar",
+	"from_u32", "from_u64", "to_u32", "to_u64", "reduce_montgomery",
+}
+
+BIGINT_NAMES = {
+	"add", "subtract", "multiply_low", "multiply_wide", "bit_and", "bit_or",
+	"bit_xor", "compare", "div_rem", "shift_left", "shift_right",
+	"multiply_high", "square_wide", "bit_not", "leading_zeros",
+}
+BIGINT_MODULAR_HELPERS = {
+	"reduce_mod": "bigint_reduce", "add_mod": "bigint_add_mod",
+	"subtract_mod": "bigint_subtract_mod", "multiply_mod": "bigint_multiply_mod",
+	"square_mod": "bigint_multiply_mod", "inverse_mod": "bigint_inverse_mod",
+	"pow_mod": "bigint_pow_mod", "to_montgomery": "bigint_to_montgomery",
+	"from_montgomery": "bigint_from_montgomery",
+	"montgomery_multiply": "bigint_montgomery_multiply",
+	"barrett_multiply": "bigint_barrett_multiply",
+}
+BIGINT_MODULAR_UNARY = {"reduce_mod", "square_mod", "inverse_mod", "to_montgomery", "from_montgomery"}
+BIGINT_PREPARED = {"setup_barrett", "reduce_barrett"}
+BIGINT_NAMES |= BIGINT_MODULAR_HELPERS.keys() | BIGINT_EXTENDED | BIGINT_PREPARED
+BIGINT_UNARY = BIGINT_MODULAR_UNARY | {"square_wide", "bit_not", "leading_zeros"}
+
+
+def bigint_extended_inputs(name: str) -> list[str]:
+	return ['left', 'right'] if name.startswith('div_rem_') and name != 'div_rem_scalar' else ['left', 'modulus'] if name == 'reduce_montgomery' else ['left']
+
+
+def bigint_extended_parameters(name: str) -> list[str]:
+	return ['quotient_words'] if name == 'div_rem_mixed' else ['output_words'] if name.startswith('from_') else ['scalar'] if name.endswith('_scalar') else []
+
+
+def bigint_extended_results(name: str) -> list[dict[str, str]]:
+	if name.startswith('div_rem_'):
+		return [{'name': 'quotient', 'extent': 'wide' if name == 'div_rem_wide' else 'quotient' if name == 'div_rem_mixed' else 'row'}, {'name': 'remainder', 'extent': 'scalar' if name == 'div_rem_scalar' else 'row'}, {'name': 'status', 'extent': 'scalar'}]
+	return [{'name': 'output', 'extent': 'scalar' if name in {'to_u32', 'compare_scalar'} else 'pair' if name == 'to_u64' else 'row'}] + ([{'name': 'status', 'extent': 'scalar'}] if name.startswith('to_') or name == 'reduce_montgomery' else [])
+
+
+def validate_bigint_extended(kernel: dict[str, Any], contracts: list[dict[str, Any]]) -> None:
+	name = kernel['name']
+	inputs, parameters, outputs = bigint_extended_inputs(name), bigint_extended_parameters(name), bigint_extended_results(name)
+	fields = [n + '_index' for n in inputs] + [o['name'] + '_index' for o in outputs] + ['count', 'words', 'input_words'] + parameters + (['right_count'] if len(inputs) == 2 else [])
+	attributes = [['width_bits', 'unsigned_integer']] + [[n if n != 'words' else 'output_words', 'unsigned_integer'] for n in parameters]
+	expected = {'name': name, 'input_kinds': ['matrix'] * len(inputs), 'output_kinds': ['matrix'] * len(outputs), 'shape_rule': 'explicit', 'dtype_rule': 'u32', 'attributes': attributes}
+	writes = [{'binding': len(inputs) + i, 'domain': 'rows', 'partition': 'exclusive_per_invocation', 'extent': 'one_scalar' if o['extent'] == 'scalar' else 'row_width', 'collision': 'exclusive', 'tail': 'bounds_checked'} for i, o in enumerate(outputs)]
+	require(kernel['outputs'] == outputs and kernel['push_fields'] == [[f, 'uint32'] for f in fields]
+		and kernel['kernel_id'] == 'CryptographyBigInt' + ''.join(w.title() for w in name.split('_')) + 'U32'
+		and kernel['source'] == f'src/slang/cryptography/bigint/{name}.gen.slang'
+		and kernel['semantic_operation'] == name and kernel['workgroup_size'] == [32, 1, 1], 'BigInt extended ABI differs')
+	validate_physical_write(kernel['physical_write'], 'BigInt', required=True)
+	require(kernel['physical_write'] == {'writes': writes, 'workspace': 'none'}, 'BigInt extended ownership differs')
+	require(sum(c == expected for c in contracts) == 1, 'BigInt extended contract differs')
+
+
+def bigint_extended_output(kernel: dict[str, Any]) -> tuple[str, str]:
+	name = kernel['name']
+	inputs, parameters, results = bigint_extended_inputs(name), bigint_extended_parameters(name), kernel['outputs']
+	division = name in {'div_rem_wide', 'div_rem_narrow', 'div_rem_mixed'}
+	conversion = name.startswith('from_')
+	# Each generated operation owns validation, allocation, ABI and recording.
+	dimensions = '''	let [rows, input_words] = match left.shape() {
+		[rows, words] => [*rows, *words],
+		_ => return Err(Error::invalid_argument(format!("{operation} requires rank-two U32 rows"))),
+	};'''
+	validation = 'left.dtype() != DType::U32 || !(1..=128).contains(&input_words)'
+	if division or name == 'reduce_montgomery':
+		right = 'right' if division else 'modulus'
+		dimensions += f'''
+	let words = match {right}.shape() {{
+		[_, words] => *words,
+		_ => return Err(Error::invalid_argument(format!("{{operation}} requires rank-two divisors"))),
+	}};'''
+		validation = f'left.dtype() != DType::U32 || !(1..=256).contains(&input_words) || !(1..=128).contains(&words)\n\t\t|| {right}.dtype() != DType::U32 || ({right}.shape()[0] != 1 && {right}.shape()[0] != rows)\n\t\t|| !left.engine_handle().same_as({right}.engine_handle())'
+		if name != 'div_rem_mixed':
+			validation += '\n\t\t|| input_words != words * 2'
+		else:
+			validation += '\n\t\t|| !(1..=256).contains(&quotient_words)'
+	elif conversion:
+		dimensions += '\n\tlet words = output_words as usize;'
+		validation = f'left.dtype() != DType::U32 || input_words != {2 if name == "from_u64" else 1} || !({2 if name == "from_u64" else 1}..=128).contains(&words)'
+	else:
+		dimensions += '\n\tlet words = input_words;'
+	widths = {'row': 'words', 'wide': 'input_words', 'quotient': 'quotient_words as usize', 'scalar': '1', 'pair': '2'}
+	allocation = []
+	for result in results:
+		n, extent = result['name'], result['extent']; w = widths[extent]
+		shape = 'vec![rows]' if extent == 'scalar' else f'vec![rows, {w}]'
+		allocation.append(f'''	let {n}_elements = rows.checked_mul({w})
+		.ok_or_else(|| Error::invalid_argument(format!("{{operation}} output extent overflows usize")))?;
+	let {n}_bytes = {n}_elements.checked_mul(4)
+		.ok_or_else(|| Error::invalid_argument(format!("{{operation}} output byte extent overflows usize")))?;
+	u32::try_from({n}_bytes).map_err(|_| Error::invalid_argument(format!("{{operation}} output byte extent exceeds u32")))?;
+	let {n} = Matrix::allocate_output(engine, {shape}, {n}_elements, DType::U32)?;''')
+	result = '(' + ', '.join(o['name'] for o in results) + ')' if len(results) > 1 else 'output'
+	return_type = '(' + ', '.join(['Matrix'] * len(results)) + ')' if len(results) > 1 else 'Matrix'
+	behavior = ('Division returns (quotient, remainder, status): 1 success, 0 zero divisor, 2 quotient overflow.\n/// Invalid rows have completely zero outputs. The divisor may be one shared row.\n/// Mixed division accepts independent dividend (1..=256), divisor (1..=128)\n/// and quotient (1..=256) word counts; wide/narrow division takes a double-width dividend.' if division else
+		'Returns (output, status); 1 means exact conversion, 0 means overflow with zero output.\n/// U64 values use two little-endian U32 words per row, without shaderInt64.' if name.startswith('to_') else
+		'Zero-extends one-word U32 or two-word U64 rows into the requested word width.' if conversion else
+		'Returns (output, status). Computes T * R^-1 mod m for a double-width T.\n/// R = 2^(32*words); odd nonzero m is required. Invalid rows are zero.' if name == 'reduce_montgomery' else
+		'Returns (quotient, remainder, status). Scalar zero yields status 0 and zero outputs; valid status is 1.' if name == 'div_rem_scalar' else
+		'Returns U32 order codes: 0 less, 1 equal, 2 greater.' if name == 'compare_scalar' else
+		'Unsigned scalar arithmetic wraps within the complete declared limb width.')
+	bindings = '\n'.join([f'\t\t\tBufferBinding::read({n}.storage()),' for n in inputs] + [f"\t\t\tBufferBinding::write({o['name']}.storage())," for o in results])
+	push = '\n'.join([f'\t\t\tPushConstant::U32({n}' + (' as u32' if n == 'words' else '') + '),' for n in parameters] + ([f'\t\t\tPushConstant::U32({inputs[1]}.shape()[0] as u32),'] if len(inputs) == 2 else []))
+	attrs = '\n'.join(f'\t\t\tOpAttribute::UnsignedInteger {{ name: "{n if n != "words" else "output_words"}".into(), value: {n} as u64 }},' for n in parameters)
+	arguments = ', '.join([n + ': &Matrix' for n in inputs] + [n + ': u32' for n in parameters])
+	function = bigint_template('bigint_extended.rs.in', dict(name=name, arguments=arguments, return_type=return_type,
+		constant=rust_const_name(name), behavior=behavior, dimensions=dimensions, validation=validation,
+		allocations='\n'.join(allocation), bindings=bindings, push=push, attributes=attrs, kernel_id=kernel['kernel_id'],
+		inputs=', '.join(inputs), outputs=', '.join('&' + o['name'] for o in results), result=result))
+	fields = '\n'.join(f'\tuint {f};' for f, _ in kernel['push_fields'])
+	bounds = ['\tuint left_extent; storage_buffers[push.left_index].GetDimensions(left_extent);\n\tif (push.count > left_extent / (push.input_words * 4u)) return;']
+	if len(inputs) == 2:
+		n = inputs[1]
+		bounds.append(f'\tuint right_extent; storage_buffers[push.{n}_index].GetDimensions(right_extent);\n\tif ((push.right_count != 1u && push.right_count != push.count) || push.right_count > right_extent / (push.words * 4u)) return;')
+	shader_widths = {'row': 'push.words', 'wide': 'push.input_words', 'quotient': 'push.quotient_words', 'scalar': '1u', 'pair': '2u'}
+	for o in results:
+		n, w = o['name'], shader_widths[o['extent']]
+		bounds.append(f'\tuint {n}_extent; uint {n}_row_bytes = {w} * 4u;\n\tstorage_buffers[push.{n}_index].GetDimensions({n}_extent);\n\tif (push.count > {n}_extent / {n}_row_bytes) return;')
+	guards = 'push.input_words == 0u || push.input_words > 256u'
+	if division or name == 'reduce_montgomery':
+		guards += ' || push.words == 0u || push.words > 128u'
+		guards += ' || push.quotient_words == 0u || push.quotient_words > 256u' if name == 'div_rem_mixed' else ' || push.input_words != push.words * 2u'
+	elif conversion:
+		guards += f' || push.input_words != {2 if name == "from_u64" else 1}u || push.words < {2 if name == "from_u64" else 1}u || push.words > 128u'
+	else:
+		guards += ' || push.input_words != push.words || push.words > 128u'
+	body = []
+	if division:
+		body.append('''	uint a[256], b[128], quotient[256], remainder[128];
+	for (uint i = 0u; i < 256u; ++i) a[i] = 0u;
+	bigint_zero(b);
+	for (uint i = 0u; i < push.input_words; ++i)
+		a[i] = storage_buffers[push.left_index].Load(row * push.input_words * 4u + i * 4u);
+	uint right_base = (push.right_count == 1u ? 0u : row) * push.words * 4u;
+	for (uint i = 0u; i < push.words; ++i)
+		b[i] = storage_buffers[push.right_index].Load(right_base + i * 4u);
+	uint status = uint(bigint_divide_mixed(a, b, push.input_words, push.words, quotient, remainder));''')
+		qw = shader_widths[results[0]['extent']]
+		body.append(f'''	uint quotient_words = {qw};
+	uint overflow = 0u;
+	for (uint i = quotient_words; i < push.input_words; ++i) overflow |= quotient[i];
+	if (status != 0u && overflow != 0u) status = 2u;
+	for (uint i = 0u; i < quotient_words; ++i)
+		storage_buffers[push.quotient_index].Store(row * quotient_row_bytes + i * 4u, status == 1u ? quotient[i] : 0u);
+	for (uint i = 0u; i < push.words; ++i)
+		storage_buffers[push.remainder_index].Store(row * remainder_row_bytes + i * 4u, status == 1u ? remainder[i] : 0u);
+	storage_buffers[push.status_index].Store(row * 4u, status);''')
+	elif conversion:
+		body.append('''	for (uint i = 0u; i < push.words; ++i) {
+		uint value = i < push.input_words ? storage_buffers[push.left_index].Load(row * push.input_words * 4u + i * 4u) : 0u;
+		storage_buffers[push.output_index].Store(row * output_row_bytes + i * 4u, value);
+	}''')
+	elif name.startswith('to_'):
+		w = 1 if name == 'to_u32' else 2
+		body.append(f'''	uint overflow = 0u;
+	for (uint i = {w}u; i < push.words; ++i)
+		overflow |= storage_buffers[push.left_index].Load(row * push.words * 4u + i * 4u);
+	for (uint i = 0u; i < {w}u; ++i) {{
+		uint value = i < push.words ? storage_buffers[push.left_index].Load(row * push.words * 4u + i * 4u) : 0u;
+		storage_buffers[push.output_index].Store(row * output_row_bytes + i * 4u, overflow == 0u ? value : 0u);
+	}}
+	storage_buffers[push.status_index].Store(row * 4u, uint(overflow == 0u));''')
+	elif name == 'reduce_montgomery':
+		body.append('''	uint a[256], modulus[128], result[128];
+	for (uint i = 0u; i < 256u; ++i) a[i] = 0u;
+	bigint_zero(modulus);
+	for (uint i = 0u; i < push.input_words; ++i)
+		a[i] = storage_buffers[push.left_index].Load(row * push.input_words * 4u + i * 4u);
+	uint right_base = (push.right_count == 1u ? 0u : row) * push.words * 4u;
+	for (uint i = 0u; i < push.words; ++i)
+		modulus[i] = storage_buffers[push.modulus_index].Load(right_base + i * 4u);
+	bool valid = bigint_montgomery_reduce_wide(a, modulus, push.words, result);
+	for (uint i = 0u; i < push.words; ++i)
+		storage_buffers[push.output_index].Store(row * output_row_bytes + i * 4u, result[i]);
+	storage_buffers[push.status_index].Store(row * 4u, uint(valid));''')
+	else:
+		body.append('''	uint a[128], b[128], result[128];
+	bigint_zero(a); bigint_zero(b); b[0] = push.scalar;
+	for (uint i = 0u; i < push.words; ++i)
+		a[i] = storage_buffers[push.left_index].Load(row * push.words * 4u + i * 4u);''')
+		if name == 'compare_scalar':
+			body.append('\tstorage_buffers[push.output_index].Store(row * 4u, uint(bigint_compare(a, b, push.words) + 1));')
+		elif name == 'div_rem_scalar':
+			body.append('''	uint remainder[128];
+	bool valid = bigint_divide(a, b, push.words, result, remainder);
+	for (uint i = 0u; i < push.words; ++i)
+		storage_buffers[push.quotient_index].Store(row * quotient_row_bytes + i * 4u, valid ? result[i] : 0u);
+	storage_buffers[push.remainder_index].Store(row * 4u, valid ? remainder[0] : 0u);
+	storage_buffers[push.status_index].Store(row * 4u, uint(valid));''')
+		elif name == 'multiply_scalar':
+			body.append('''	uint carry = 0u;
+	for (uint i = 0u; i < push.words; ++i) {
+		uint2 product = mul32_wide(a[i], push.scalar);
+		uint low = product.x + carry;
+		carry = product.y + uint(low < product.x);
+		storage_buffers[push.output_index].Store(row * output_row_bytes + i * 4u, low);
+	}''')
+		else:
+			helper = 'bigint_add' if name == 'add_scalar' else 'bigint_subtract'
+			body.append(f'''\t{helper}(a, b, push.words, result);
+\tfor (uint i = 0u; i < push.words; ++i)
+\t\tstorage_buffers[push.output_index].Store(row * output_row_bytes + i * 4u, result[i]);''')
+	shader = bigint_template('bigint_extended.slang.in', dict(fields=fields, name=name, guards=guards, bounds='\n'.join(bounds), body='\n'.join(body)))
+	return function, shader
+
+
+def bigint_barrett_output(kernel: dict[str, Any]) -> tuple[str, str]:
+	name = kernel['name']; setup = name == 'setup_barrett'
+	if setup:
+		function = '''/// Prepare a device-owned public Barrett modulus snapshot and reciprocal.
+///
+/// # Errors
+/// Rejects dtype, rank, width, byte extents, allocation or recording failures.
+pub fn setup_barrett(modulus: &Matrix) -> Result<BarrettParameters> {
+	let contract = crate::core::operation::cryptography::bigint::SETUP_BARRETT;
+	let [rows, words] = match modulus.shape() {
+		[rows, words] => [*rows, *words],
+		_ => return Err(Error::invalid_argument("setup_barrett requires rank-two modulus rows")),
+	};
+	if modulus.dtype() != DType::U32 || !(1..=128).contains(&words) {
+		return Err(Error::invalid_argument("setup_barrett requires U32 modulus rows with 1..=128 words"));
+	}
+	let count = u32::try_from(rows).map_err(|_| Error::invalid_argument("setup_barrett batch exceeds u32"))?;
+	let encoded_words = words * 2 + 3;
+	let elements = rows.checked_mul(encoded_words).ok_or_else(|| Error::invalid_argument("setup_barrett extent overflows usize"))?;
+	let bytes = elements.checked_mul(4).ok_or_else(|| Error::invalid_argument("setup_barrett bytes overflow usize"))?;
+	u32::try_from(bytes).map_err(|_| Error::invalid_argument("setup_barrett bytes exceed u32"))?;
+	let engine = modulus.engine_handle();
+	let encoded = Matrix::allocate_output(engine, vec![rows, encoded_words], elements, DType::U32)?;
+	let status = Matrix::allocate_output(engine, vec![rows], rows, DType::U32)?;
+	if rows != 0 {
+		let kernel = KernelId::CryptographyBigIntSetupBarrettU32;
+		let buffers = [BufferBinding::read(modulus.storage()), BufferBinding::write(encoded.storage()), BufferBinding::write(status.storage())];
+		let push_constants = [PushConstant::U32(count), PushConstant::U32(words as u32)];
+		let attributes = [OpAttribute::UnsignedInteger { name: "width_bits".into(), value: (words * 32) as u64 }];
+		engine.record_semantic(
+			ComputeDispatch { kernel, buffers: &buffers, push_constants: &push_constants, workgroups: kernel.linear_workgroups(count) },
+			SemanticDispatch { contract, inputs: &[modulus], outputs: &[&encoded, &status], attributes: &attributes },
+		)?;
+	}
+	Ok(BarrettParameters { encoded, status, words })
+}'''
+	else:
+		function = '''/// Reduce double-width public rows using a prepared immutable Barrett snapshot.
+///
+/// Returns `(output, status)`: one for success, zero for a zero modulus, two
+/// when T is outside the significant-width Barrett bound T < 2^(64*k).
+/// Invalid rows produce zero. The prepared modulus may have one shared row.
+///
+/// # Errors
+/// Rejects dtype, shape, ownership, byte extents, allocation or recording failures.
+pub fn reduce_barrett(left: &Matrix, parameters: &BarrettParameters) -> Result<(Matrix, Matrix)> {
+	let contract = crate::core::operation::cryptography::bigint::REDUCE_BARRETT;
+	let words = parameters.words;
+	let [rows, input_words] = match left.shape() {
+		[rows, input_words] => [*rows, *input_words],
+		_ => return Err(Error::invalid_argument("reduce_barrett requires rank-two double-width rows")),
+	};
+	let prepared = &parameters.encoded;
+	if left.dtype() != DType::U32 || input_words != words * 2
+		|| (prepared.shape()[0] != 1 && prepared.shape()[0] != rows)
+		|| !left.engine_handle().same_as(prepared.engine_handle()) {
+		return Err(Error::invalid_argument("reduce_barrett requires matching Engine and modulus width/batch"));
+	}
+	let count = u32::try_from(rows).map_err(|_| Error::invalid_argument("reduce_barrett batch exceeds u32"))?;
+	let input_bytes = left.num_elements().checked_mul(4).ok_or_else(|| Error::invalid_argument("reduce_barrett input bytes overflow usize"))?;
+	u32::try_from(input_bytes).map_err(|_| Error::invalid_argument("reduce_barrett input bytes exceed u32"))?;
+	let elements = rows.checked_mul(words).ok_or_else(|| Error::invalid_argument("reduce_barrett output extent overflows usize"))?;
+	let engine = left.engine_handle();
+	let output = Matrix::allocate_output(engine, vec![rows, words], elements, DType::U32)?;
+	let status = Matrix::allocate_output(engine, vec![rows], rows, DType::U32)?;
+	if rows != 0 {
+		let kernel = KernelId::CryptographyBigIntReduceBarrettU32;
+		let buffers = [BufferBinding::read(left.storage()), BufferBinding::read(prepared.storage()), BufferBinding::write(output.storage()), BufferBinding::write(status.storage())];
+		let push_constants = [PushConstant::U32(count), PushConstant::U32(words as u32), PushConstant::U32(prepared.shape()[0] as u32)];
+		let attributes = [OpAttribute::UnsignedInteger { name: "width_bits".into(), value: (words * 32) as u64 }];
+		engine.record_semantic(
+			ComputeDispatch { kernel, buffers: &buffers, push_constants: &push_constants, workgroups: kernel.linear_workgroups(count) },
+			SemanticDispatch { contract, inputs: &[left, prepared], outputs: &[&output, &status], attributes: &attributes },
+		)?;
+	}
+	Ok((output, status))
+}'''
+	fields = '\n'.join(f'\tuint {f};' for f, _ in kernel['push_fields'])
+	shader = f'''// Prepared public Barrett data is an immutable typed snapshot (see Rust API).
+import attributes;
+import bigint_words;
+import bigint_barrett;
+struct PushConstants {{
+{fields}
+}};
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+[kernel_name("{name}")]
+[domain("cryptography")]
+[variant("generic")]
+[dtype("u32")]
+[status("experimental")]
+[shader("compute")]
+[numthreads(32, 1, 1)]
+void main(uint3 tid : SV_DispatchThreadID) {{
+	uint row = tid.x;
+	if (row >= push.count || push.words == 0u || push.words > 128u) return;
+	uint row_bytes = push.words * 4u;
+	uint prepared_bytes = (push.words * 2u + 3u) * 4u;
+	uint status_extent; storage_buffers[push.status_index].GetDimensions(status_extent);
+	if (push.count > status_extent / 4u) return;
+'''
+	if setup:
+		shader += '''	uint modulus_extent, encoded_extent;
+	storage_buffers[push.modulus_index].GetDimensions(modulus_extent);
+	storage_buffers[push.encoded_index].GetDimensions(encoded_extent);
+	if (push.count > modulus_extent / row_bytes || push.count > encoded_extent / prepared_bytes) return;
+	uint modulus[128], mu[130], k;
+	bigint_zero(modulus);
+	for (uint i = 0u; i < push.words; ++i)
+		modulus[i] = storage_buffers[push.modulus_index].Load(row * row_bytes + i * 4u);
+	bool valid = bigint_barrett_reciprocal(modulus, push.words, mu, k);
+	for (uint i = 0u; i < push.words; ++i)
+		storage_buffers[push.encoded_index].Store(row * prepared_bytes + i * 4u, modulus[i]);
+	for (uint i = 0u; i < push.words + 2u; ++i)
+		storage_buffers[push.encoded_index].Store(row * prepared_bytes + (i + push.words) * 4u, mu[i]);
+	storage_buffers[push.encoded_index].Store(row * prepared_bytes + (push.words * 2u + 2u) * 4u, k);
+	storage_buffers[push.status_index].Store(row * 4u, uint(valid));
+}\n'''
+	else:
+		shader += '''	uint left_extent, encoded_extent, output_extent;
+	storage_buffers[push.left_index].GetDimensions(left_extent);
+	storage_buffers[push.encoded_index].GetDimensions(encoded_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	if (push.count > left_extent / (row_bytes * 2u) || push.count > output_extent / row_bytes
+		|| (push.prepared_count != 1u && push.prepared_count != push.count)
+		|| push.prepared_count > encoded_extent / prepared_bytes) return;
+	uint base = (push.prepared_count == 1u ? 0u : row) * prepared_bytes;
+	uint modulus[128], mu[130], input[256], result[128];
+	bigint_zero(modulus); bigint_zero(result);
+	for (uint i = 0u; i < 130u; ++i) mu[i] = 0u;
+	for (uint i = 0u; i < 256u; ++i) input[i] = 0u;
+	for (uint i = 0u; i < push.words; ++i)
+		modulus[i] = storage_buffers[push.encoded_index].Load(base + i * 4u);
+	for (uint i = 0u; i < push.words + 2u; ++i)
+		mu[i] = storage_buffers[push.encoded_index].Load(base + (i + push.words) * 4u);
+	uint k = storage_buffers[push.encoded_index].Load(base + (push.words * 2u + 2u) * 4u);
+	uint overflow = 0u;
+	for (uint i = 0u; i < push.words * 2u; ++i) {
+		input[i] = storage_buffers[push.left_index].Load(row * row_bytes * 2u + i * 4u);
+		if (i >= k * 2u) overflow |= input[i];
+	}
+	uint status = k == 0u ? 0u : (k > push.words || overflow != 0u ? 2u : 1u);
+	if (status == 1u) bigint_barrett_reduce(input, modulus, mu, k, result);
+	for (uint i = 0u; i < push.words; ++i)
+		storage_buffers[push.output_index].Store(row * row_bytes + i * 4u, result[i]);
+	storage_buffers[push.status_index].Store(row * 4u, status);
+}\n'''
+	return function, shader
+
+
+def validate_bigint_prepared(kernel: dict[str, Any], contracts: list[dict[str, Any]]) -> None:
+	setup = kernel['name'] == 'setup_barrett'
+	inputs = ['modulus'] if setup else ['left', 'encoded']
+	outputs = [{'name': 'encoded', 'extent': 'prepared'}, {'name': 'status', 'extent': 'scalar'}] if setup else [{'name': 'output', 'extent': 'row'}, {'name': 'status', 'extent': 'scalar'}]
+	fields = [n + '_index' for n in inputs] + [o['name'] + '_index' for o in outputs] + ['count', 'words'] + ([] if setup else ['prepared_count'])
+	writes = [{'binding': len(inputs) + i, 'domain': 'rows', 'partition': 'exclusive_per_invocation', 'extent': 'one_scalar' if o['extent'] == 'scalar' else 'row_width', 'collision': 'exclusive', 'tail': 'bounds_checked'} for i, o in enumerate(outputs)]
+	expected = {'name': kernel['name'], 'input_kinds': ['matrix'] * len(inputs), 'output_kinds': ['matrix', 'matrix'], 'shape_rule': 'explicit', 'dtype_rule': 'u32', 'attributes': [['width_bits', 'unsigned_integer']]}
+	require(kernel['outputs'] == outputs and kernel['push_fields'] == [[n, 'uint32'] for n in fields] and kernel['workgroup_size'] == [32, 1, 1]
+		and kernel['kernel_id'] == 'CryptographyBigInt' + ''.join(w.title() for w in kernel['name'].split('_')) + 'U32'
+		and kernel['source'] == f"src/slang/cryptography/bigint/{kernel['name']}.gen.slang" and kernel['semantic_operation'] == kernel['name'], 'Prepared Barrett ABI differs')
+	validate_physical_write(kernel['physical_write'], 'prepared Barrett', required=True)
+	require(kernel['physical_write'] == {'writes': writes, 'workspace': 'none'} and sum(c == expected for c in contracts) == 1, 'Prepared Barrett ownership or contract differs')
+
+
+def validate_bigint_schema(schema: dict[str, Any]) -> None:
+	require(set(schema) <= {"schema_version", "family", "domain", "dtype", "limb_layout", "contracts", "kernels", "signature_records"} and {"schema_version", "family", "domain", "dtype", "limb_layout", "contracts", "kernels"} <= set(schema), "BigInt schema fields differ")
+	require(type(schema["schema_version"]) is int and schema["schema_version"] == 1 and schema["family"] == "cryptography_bigint"
+		and schema["domain"] == "cryptography::bigint" and schema["dtype"] == "u32", "BigInt schema identity differs")
+	layout = schema["limb_layout"]
+	require(layout == {"word_bits": 32, "min_words": 1, "max_words": 128, "order": "little_endian"}
+		and all(type(layout.get(k)) is int for k in ("word_bits", "min_words", "max_words")), "BigInt limb layout differs")
+	kernels, contracts = schema["kernels"], schema["contracts"]
+	require(isinstance(kernels, list) and len(kernels) == len(BIGINT_NAMES)
+		and isinstance(contracts, list) and len(contracts) == len(kernels), "BigInt operation inventory differs")
+	names, ids = set(), set()
+	for kernel in kernels:
+		require(isinstance(kernel, dict) and set(kernel) == {"name", "stable_id", "kernel_id", "source", "workgroup_size", "push_fields", "semantic_operation", "outputs", "physical_write"}, "BigInt kernel fields differ")
+		name = kernel["name"]
+		require(isinstance(name, str) and name in BIGINT_NAMES, "BigInt operation is unknown")
+		validate_unique(name, names, "BigInt name")
+		require(type(kernel["stable_id"]) is int and 0 < kernel["stable_id"] <= 65535, "BigInt stable ID is invalid")
+		validate_unique(kernel["stable_id"], ids, "BigInt stable ID")
+		if name in BIGINT_PREPARED:
+			validate_bigint_prepared(kernel, contracts)
+			continue
+		if name in BIGINT_EXTENDED:
+			validate_bigint_extended(kernel, contracts)
+			continue
+		shift, modular = name.startswith("shift_"), name in BIGINT_MODULAR_HELPERS
+		unary = shift or name in BIGINT_UNARY
+		outputs = [{"name": "output", "extent": "row"}, {"name": "status", "extent": "scalar"}] if modular else [{"name": "quotient", "extent": "row"}, {"name": "remainder", "extent": "row"}, {"name": "status", "extent": "scalar"}] if name == "div_rem" else [{"name": "output", "extent": "wide" if name in {"multiply_wide", "square_wide"} else "scalar" if name in {"compare", "leading_zeros"} else "row"}]
+		fields = ["left_index"] + ([] if unary else ["right_index"]) + (["modulus_index"] if modular else []) + [o["name"] + "_index" for o in outputs] + ["count", "words"] + (["shift"] if shift else ["modulus_count"] if modular else [])
+		require(kernel["kernel_id"] == "CryptographyBigInt" + ''.join(w.title() for w in name.split('_')) + "U32"
+			and kernel["source"] == f"src/slang/cryptography/bigint/{name}.gen.slang"
+			and kernel["semantic_operation"] == name and kernel["outputs"] == outputs
+			and kernel["push_fields"] == [[f, "uint32"] for f in fields], "BigInt ABI differs")
+		wg = kernel["workgroup_size"]
+		require(isinstance(wg, list) and len(wg) == 3 and all(type(n) is int and n > 0 for n in wg)
+			and wg[1:] == [1, 1] and wg[0] <= 1024, "BigInt workgroup geometry differs")
+		input_count = (1 if unary else 2) + int(modular)
+		writes = [{"binding": input_count + i, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "one_scalar" if o["extent"] == "scalar" else "row_width", "collision": "exclusive", "tail": "bounds_checked"} for i, o in enumerate(outputs)]
+		validate_physical_write(kernel["physical_write"], "BigInt", required=True)
+		require(all(type(w["binding"]) is int for w in kernel["physical_write"]["writes"]), "BigInt output binding must be an integer")
+		require(kernel["physical_write"] == {"writes": writes, "workspace": "none"}, "BigInt output ownership differs")
+		expected = {"name": name, "input_kinds": ["matrix"] * input_count, "output_kinds": ["matrix"] * len(outputs), "shape_rule": "explicit", "dtype_rule": "u32", "attributes": [["width_bits", "unsigned_integer"]] + ([["shift", "unsigned_integer"]] if shift else [])}
+		require(sum(c == expected for c in contracts) == 1, "BigInt semantic contract differs")
+
+
+def bigint_template(name: str, values: dict[str, str]) -> str:
+	path = Path(__file__).parent / "template/cryptography" / name
+	body = path.read_text(encoding="utf-8")
+	require(set(re.findall(r"\{\{([^{}]+)\}\}", body)) == set(values), "BigInt template substitution differs")
+	return re.sub(r"\{\{([^{}]+)\}\}", lambda m: values[m[1]], body)
+
+
+def bigint_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> dict[Path, str]:
+	mark = banner(schema_hash, "//", "cryptography_bigint.json")
+	api = mark + 'use crate::{DType, Error, Matrix, OpAttribute, Result, runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch}};\n\n'
+	python = mark + 'use pyo3::prelude::*;\nuse crate::{error::python_error, matrix::PythonMatrix};\n\n'
+	stub = banner(schema_hash, "#", "cryptography_bigint.json") + 'from .._native import Matrix\n\n'
+	facade = banner(schema_hash, "#", "cryptography_bigint.json") + '"""Public-data fixed-width device arithmetic."""\nfrom .._native import (\n'
+	api += bigint_template('barrett_types.rs.in', {}) + '\n'
+	python += '#[pyclass(name = "BarrettParameters", unsendable)]\nstruct PythonBarrettParameters { inner: oa::cryptography::bigint::BarrettParameters }\n#[pymethods]\nimpl PythonBarrettParameters {\n\t#[getter]\n\tfn words(&self) -> usize { self.inner.words() }\n\t#[getter]\n\tfn status(&self) -> PythonMatrix { PythonMatrix::wrap(self.inner.status().clone()) }\n}\n\n'
+	stub += 'class BarrettParameters:\n    @property\n    def words(self) -> int: ...\n    @property\n    def status(self) -> Matrix: ...\n\n'
+	facade += '    BarrettParameters,\n'
+	outputs, names = {}, []
+	for kernel in schema["kernels"]:
+		name, results = kernel["name"], kernel["outputs"]
+		shift, div = name.startswith("shift_"), name == "div_rem"
+		modular = name in BIGINT_MODULAR_HELPERS
+		unary = shift or name in BIGINT_UNARY
+		multiple = len(results) > 1
+		names.append(name)
+		if name in BIGINT_PREPARED:
+			function, shader = bigint_barrett_output(kernel)
+			api += function + '\n\n'
+			outputs[root / kernel['source']] = mark + shader
+			if name == 'setup_barrett':
+				python += '#[pyfunction]\nfn crypto_bigint_setup_barrett(modulus: &PythonMatrix) -> PyResult<PythonBarrettParameters> {\n\tlet inner = oa::cryptography::bigint::setup_barrett(&modulus.inner).map_err(python_error)?;\n\tOk(PythonBarrettParameters { inner })\n}\n\n'
+				stub += 'def crypto_bigint_setup_barrett(modulus: Matrix) -> BarrettParameters: ...\n'
+			else:
+				python += '#[pyfunction]\nfn crypto_bigint_reduce_barrett(left: &PythonMatrix, parameters: &PythonBarrettParameters) -> PyResult<(PythonMatrix, PythonMatrix)> {\n\tlet (output, status) = oa::cryptography::bigint::reduce_barrett(&left.inner, &parameters.inner).map_err(python_error)?;\n\tOk((PythonMatrix::wrap(output), PythonMatrix::wrap(status)))\n}\n\n'
+				stub += 'def crypto_bigint_reduce_barrett(left: Matrix, parameters: BarrettParameters) -> tuple[Matrix, Matrix]: ...\n'
+			facade += f'    crypto_bigint_{name} as bigint_{name},\n'
+			continue
+		input_names = ['left'] + ([] if unary else ['right']) + (['modulus'] if modular else [])
+		if name in BIGINT_EXTENDED:
+			input_names = bigint_extended_inputs(name)
+		parameters = bigint_extended_parameters(name) if name in BIGINT_EXTENDED else (["shift"] if shift else [])
+		arguments = ', '.join([n + ': &Matrix' for n in input_names] + [n + ': u32' for n in parameters])
+		allocation = []
+		for out in results:
+			key, extent = out["name"], out["extent"]
+			width = 'words * 2' if extent == 'wide' else '1' if extent == 'scalar' else 'words'
+			shape = 'vec![rows]' if extent == 'scalar' else f'vec![rows, {width}]'
+			allocation.append(f'''\tlet {key}_elements = rows.checked_mul({width})
+\t\t.ok_or_else(|| Error::invalid_argument(format!("{{operation}} output extent overflows usize")))?;
+\tlet {key}_bytes = {key}_elements.checked_mul(4)
+\t\t.ok_or_else(|| Error::invalid_argument(format!("{{operation}} output byte extent overflows usize")))?;
+\tu32::try_from({key}_bytes)
+\t\t.map_err(|_| Error::invalid_argument(format!("{{operation}} output byte extent exceeds u32")))?;
+\tlet {key} = Matrix::allocate_output(engine, {shape}, {key}_elements, DType::U32)?;''')
+		result = '(' + ', '.join(o['name'] for o in results) + ')' if multiple else 'output'
+		return_type = '(' + ', '.join(['Matrix'] * len(results)) + ')' if multiple else 'Matrix'
+		summary = f"Compute batched unsigned limb {name.replace('_', ' ')}."
+		behavior = ('Returns `(quotient, remainder, status)`; status is U32 `[batch]`.\n/// A zero divisor produces status 0, quotient 0 and remainder equal to the dividend.\n/// Otherwise status is 1 and division is exact.' if div else
+			'Returns U32 `[batch]` order codes: 0 less, 1 equal, 2 greater.' if name == 'compare' else
+			'Returns exact double-width rows (up to 8192 output bits).' if name in {'multiply_wide', 'square_wide'} else
+			'Returns the upper half of the exact double-width product, with all low-half carries retained.' if name == 'multiply_high' else
+			'Returns U32 `[batch]` leading-zero counts in the complete operand width; zero returns width_bits.' if name == 'leading_zeros' else
+			'Returns the complement within the complete fixed operand width.' if name == 'bit_not' else
+			'Shifts at or beyond the operand width produce zero; discarded bits are lost.' if shift else
+			'Returns same-width rows; arithmetic overflow/underflow wraps modulo 2^width.')
+		if modular:
+			behavior = 'Returns `(output, status)` with U32 `[batch]` status flags.\n/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.\n/// A zero modulus returns status 0 and zero output; valid rows return status 1.'
+			if name == 'inverse_mod':
+				behavior += '\n/// Non-invertible values also return status 0 and zero output. Odd/even and composite moduli are accepted.'
+			elif name in {'to_montgomery', 'from_montgomery', 'montgomery_multiply'}:
+				behavior += '\n/// Montgomery operations require an odd modulus; even moduli return status 0 and zero output.\n/// R = 2^(32*words). Conversion multiplies by R or R^-1; multiplication computes a*b*R^-1 modulo m.'
+			elif name == 'pow_mod':
+				behavior += '\n/// `right` is the unsigned exponent; zero exponents yield 1 modulo m, including 0^0.'
+		validation = '' if unary else '\n\t\t|| right.dtype() != DType::U32 || right.shape() != left.shape()\n\t\t|| !left.engine_handle().same_as(right.engine_handle())'
+		if modular:
+			validation += '\n\t\t|| modulus.dtype() != DType::U32 || modulus.shape().len() != 2\n\t\t|| modulus.shape()[1] != words\n\t\t|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)\n\t\t|| !left.engine_handle().same_as(modulus.engine_handle())'
+		if name in BIGINT_EXTENDED:
+			function, shader = bigint_extended_output(kernel)
+			api += function + "\n"
+			outputs[root/kernel["source"]] = mark + shader
+		else:
+			api += bigint_template('bigint.rs.in', dict(summary=summary, behavior=behavior, name=name, arguments=arguments, return_type=return_type,
+				constant=rust_const_name(name), validation=validation, allocations='\n'.join(allocation), kernel_id=kernel['kernel_id'],
+				bindings='\n'.join([f'\t\t\tBufferBinding::read({n}.storage()),' for n in input_names] + [f"\t\t\tBufferBinding::write({o['name']}.storage())," for o in results]),
+				push='\t\t\tPushConstant::U32(shift),' if shift else '\t\t\tPushConstant::U32(modulus.shape()[0] as u32),' if modular else '', inputs=', '.join(input_names), outputs=', '.join('&'+o['name'] for o in results),
+				attributes='\t\t\tOpAttribute::UnsignedInteger { name: "shift".into(), value: u64::from(shift) },' if shift else '', result=result)) + '\n'
+			fields = '\n'.join(f'\tuint {field};' for field, _ in kernel['push_fields'])
+			bounds = ['\tuint left_extent;\n\tstorage_buffers[push.left_index].GetDimensions(left_extent);\n\tif (push.count > left_extent / input_row_bytes) return;']
+			if not unary:
+				bounds.append('\tuint right_extent;\n\tstorage_buffers[push.right_index].GetDimensions(right_extent);\n\tif (push.count > right_extent / input_row_bytes) return;')
+			if modular:
+				bounds.append('\tuint modulus_extent;\n\tstorage_buffers[push.modulus_index].GetDimensions(modulus_extent);\n\tif ((push.modulus_count != 1u && push.modulus_count != push.count)\n\t\t|| push.modulus_count > modulus_extent / input_row_bytes) return;')
+			for o in results:
+				key = o['name']
+				stride = 'input_row_bytes * 2u' if o['extent'] == 'wide' else '4u' if o['extent'] == 'scalar' else 'input_row_bytes'
+				bounds.append(f'\tuint {key}_extent;\n\tuint {key}_row_bytes = {stride};\n\tstorage_buffers[push.{key}_index].GetDimensions({key}_extent);\n\tif (push.count > {key}_extent / {key}_row_bytes) return;')
+			body = []
+			if modular:
+				body.append('''\tuint a[128], modulus[128];
+	\tbigint_zero(a); bigint_zero(modulus);
+	\tuint modulus_base = (push.modulus_count == 1u ? 0u : row) * input_row_bytes;
+	\t[loop]
+	\tfor (uint i = 0u; i < push.words; ++i) {
+	\t\ta[i] = storage_buffers[push.left_index].Load(input_base + i * 4u);
+	\t\tmodulus[i] = storage_buffers[push.modulus_index].Load(modulus_base + i * 4u);
+	\t}''')
+				if not unary:
+					body.append('''\tuint b[128];
+	\tbigint_zero(b);
+	\t[loop]
+	\tfor (uint i = 0u; i < push.words; ++i)
+	\t\tb[i] = storage_buffers[push.right_index].Load(input_base + i * 4u);''')
+				args = 'a, a, modulus' if name == 'square_mod' else 'a, modulus' if unary else 'a, b, modulus'
+				body.append(f'''\tuint result[128];
+	\tbool valid = {BIGINT_MODULAR_HELPERS[name]}({args}, push.words, result);
+	\t[loop]
+	\tfor (uint i = 0u; i < push.words; ++i)
+	\t\tstorage_buffers[push.output_index].Store(input_base + i * 4u, result[i]);
+	\tstorage_buffers[push.status_index].Store(row * 4u, uint(valid));''')
+			elif name == 'bit_not':
+				body.append('''\t[loop]
+	\tfor (uint i = 0u; i < push.words; ++i) {
+	\t\tuint address = input_base + i * 4u;
+	\t\tstorage_buffers[push.output_index].Store(address, ~storage_buffers[push.left_index].Load(address));
+	\t}''')
+			elif name == 'leading_zeros':
+				body.append('''\tuint a[128];
+	\tbigint_zero(a);
+	\t[loop]
+	\tfor (uint i = 0u; i < push.words; ++i)
+	\t\ta[i] = storage_buffers[push.left_index].Load(input_base + i * 4u);
+	\tstorage_buffers[push.output_index].Store(row * 4u, bigint_leading_zeros(a, push.words));''')
+			elif name.startswith('bit_'):
+				operator = {'bit_and':'&', 'bit_or':'|', 'bit_xor':'^'}[name]
+				body.append(f'''\t[loop]
+	\tfor (uint i = 0u; i < push.words; ++i) {{
+	\t\tuint address = input_base + i * 4u;
+	\t\tuint value = storage_buffers[push.left_index].Load(address) {operator} storage_buffers[push.right_index].Load(address);
+	\t\tstorage_buffers[push.output_index].Store(address, value);
+	\t}}''')
+			elif shift:
+				body.append('''\tuint word_shift = push.shift / 32u;
+	\tuint bit_shift = push.shift % 32u;
+	\t[loop]
+	\tfor (uint i = 0u; i < push.words; ++i) {
+	\t\tuint value = 0u;''')
+				if name == 'shift_left':
+					body.append('''\t\tif (push.shift < push.words * 32u && i >= word_shift) {
+	\t\t\tuint source = i - word_shift;
+	\t\t\tvalue = storage_buffers[push.left_index].Load(input_base + source * 4u) << bit_shift;
+	\t\t\tif (bit_shift != 0u && source != 0u)
+	\t\t\t\tvalue |= storage_buffers[push.left_index].Load(input_base + (source - 1u) * 4u) >> (32u - bit_shift);
+	\t\t}''')
+				else:
+					body.append('''\t\tif (push.shift < push.words * 32u && i + word_shift < push.words) {
+	\t\t\tuint source = i + word_shift;
+	\t\t\tvalue = storage_buffers[push.left_index].Load(input_base + source * 4u) >> bit_shift;
+	\t\t\tif (bit_shift != 0u && source + 1u < push.words)
+	\t\t\t\tvalue |= storage_buffers[push.left_index].Load(input_base + (source + 1u) * 4u) << (32u - bit_shift);
+	\t\t}''')
+				body.append('\t\tstorage_buffers[push.output_index].Store(input_base + i * 4u, value);\n\t}')
+			elif name == 'square_wide':
+				body.append('''\tuint a[128];
+	\tbigint_zero(a);
+	\t[loop]
+	\tfor (uint i = 0u; i < push.words; ++i)
+	\t\ta[i] = storage_buffers[push.left_index].Load(input_base + i * 4u);
+	\tuint product[256];
+	\tbigint_multiply(a, a, push.words, push.words * 2u, product);
+	\t[loop]
+	\tfor (uint i = 0u; i < push.words * 2u; ++i)
+	\t\tstorage_buffers[push.output_index].Store(row * output_row_bytes + i * 4u, product[i]);''')
+			else:
+				right = 'push.right_index'
+				body.append(f'''\tuint a[128], b[128];
+	\tbigint_zero(a); bigint_zero(b);
+	\t[loop]
+	\tfor (uint i = 0u; i < push.words; ++i) {{
+	\t\ta[i] = storage_buffers[push.left_index].Load(input_base + i * 4u);
+	\t\tb[i] = storage_buffers[{right}].Load(input_base + i * 4u);
+	\t}}''')
+				if name == 'compare':
+					body.append('\tstorage_buffers[push.output_index].Store(row * 4u, uint(bigint_compare(a, b, push.words) + 1));')
+				elif div:
+					body.append('''\tuint quotient[128], remainder[128];
+	\tbool valid = bigint_divide(a, b, push.words, quotient, remainder);
+	\t[loop]
+	\tfor (uint i = 0u; i < push.words; ++i) {
+	\t\tstorage_buffers[push.quotient_index].Store(input_base + i * 4u, quotient[i]);
+	\t\tstorage_buffers[push.remainder_index].Store(input_base + i * 4u, remainder[i]);
+	\t}
+	\tstorage_buffers[push.status_index].Store(row * 4u, uint(valid));''')
+				elif name.startswith('multiply_') or name == 'square_wide':
+					wide = name in {'multiply_wide', 'square_wide'}
+					width = 'push.words * 2u' if wide else 'push.words'
+					product_width = 'push.words * 2u' if wide or name == 'multiply_high' else 'push.words'
+					index = 'i + push.words' if name == 'multiply_high' else 'i'
+					body.append(f'''\tuint product[256];
+	\tbigint_multiply(a, b, push.words, {product_width}, product);
+	\t[loop]
+	\tfor (uint i = 0u; i < {width}; ++i)
+	\t\tstorage_buffers[push.output_index].Store(row * output_row_bytes + i * 4u, product[{index}]);''')
+				else:
+					helper = 'bigint_add' if name == 'add' else 'bigint_subtract'
+					body.append(f'''\tuint result[128];
+	\t{helper}(a, b, push.words, result);
+	\t[loop]
+	\tfor (uint i = 0u; i < push.words; ++i)
+	\t\tstorage_buffers[push.output_index].Store(input_base + i * 4u, result[i]);''')
+			imports = 'import bigint_words;' + ('\nimport bigint_barrett;' if name == 'barrett_multiply' else '\nimport bigint_modular;' if modular else '')
+			outputs[root/kernel['source']] = mark + bigint_template('bigint.slang.in', dict(imports=imports, fields=fields, name=name, workgroup=', '.join(map(str,kernel['workgroup_size'])), bounds='\n'.join(bounds), body='\n'.join(body)))
+		if name in BIGINT_EXTENDED:
+			behavior = 'Mixed/wide/scalar division statuses: 1 success, 0 zero divisor, 2 quotient overflow; invalid rows are zero. Conversion to U32/U64 returns exact-value status 1, or overflow status 0 with a zero result.' if name.startswith('div_rem') or name in {'to_u32', 'to_u64'} else 'Public fixed-width scalar/word conversion or arithmetic; no secret execution contract.'
+		py_args = ', '.join([n + ': &PythonMatrix' for n in input_names] + [n + ': u32' for n in parameters])
+		py_return = '(' + ', '.join(['PythonMatrix'] * len(results)) + ')' if multiple else 'PythonMatrix'
+		call = ', '.join(['&'+n+'.inner' for n in input_names] + parameters)
+		py_result = 'let '+result+' = value;\n\tOk(('+', '.join('PythonMatrix::wrap('+o['name']+')' for o in results)+'))' if multiple else 'Ok(PythonMatrix::wrap(value))'
+		python += f'/// {summary}\n///\n/// Public U32 limb rows, 32..=4096 bits; no secret-execution contract.\n/// {behavior}\n#[pyfunction]\nfn crypto_bigint_{name}({py_args}) -> PyResult<{py_return}> {{\n\tlet value = oa::cryptography::bigint::{name}({call}).map_err(python_error)?;\n\t{py_result}\n}}\n\n'
+		stub_args = ', '.join([n+': Matrix' for n in input_names] + [n+': int' for n in parameters])
+		stub_return = 'tuple['+', '.join(['Matrix']*len(results))+']' if multiple else 'Matrix'
+		stub += f'def crypto_bigint_{name}({stub_args}) -> {stub_return}: ...\n'
+		facade += f'    crypto_bigint_{name} as bigint_{name},\n'
+	python += 'pub(super) fn register(module: &Bound<\'_, PyModule>) -> PyResult<()> {\n\tmodule.add_class::<PythonBarrettParameters>()?;\n' + ''.join(f'\tmodule.add_function(wrap_pyfunction!(crypto_bigint_{n}, module)?)?;\n' for n in names) + '\tOk(())\n}\n'
+	facade += ')\n\n__all__ = '+repr(['BarrettParameters'] + ['bigint_'+n for n in names])+'\n'
+	outputs.update({root/'src/rs/cryptography/bigint/arithmetic.gen.rs':format_rust(api,root), root/'src/rs/cryptography/bigint/exports.gen.rs':format_rust(mark+'pub use arithmetic::{BarrettParameters, '+', '.join(names)+'};\n',root), root/'src/py/pyo3/cryptography/bigint.gen.rs':format_rust(python,root), root/'src/py/oa/_gen/cryptography_bigint.py':facade, root/'src/py/oa/_gen/cryptography_bigint_native.pyi':stub})
+	return outputs
+
+
 def load_cryptography_pqc_schema(path: Path) -> tuple[dict[str, Any], str]:
 	return load_validated_schema(path, validate_cryptography_pqc_schema)
 
@@ -263,6 +1412,7 @@ def validate_schema(schema: dict[str, Any]) -> None:
 		validate_unique(name, seen_names, f"{where}.name")
 		kind = operation.get("kind")
 		require(kind in KINDS, f"{where}.kind must be one of {sorted(KINDS)}")
+		require("signature" not in operation, f"{where}.signature is derived from kind metadata")
 		require(
 			operation.get("differentiation", "none") in {"none", "reverse"},
 			f"{where}.differentiation is unsupported",
@@ -384,6 +1534,7 @@ def validate_blas_schema(schema: dict[str, Any]) -> None:
 		)
 		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
 		require(operation.get("kind") == "mat_mul_nt", f"{where}.kind must be mat_mul_nt")
+		require("signature" not in operation, f"{where}.signature is derived from kind metadata")
 		validate_dnn_role(operation.get("dnn"), where)
 		require(operation.get("variant") == "tiled", f"{where}.variant must be tiled")
 		require(
@@ -484,7 +1635,7 @@ def validate_reduce_schema(schema: dict[str, Any]) -> None:
 				and operation["semantic_operation"] in operation_names,
 				f"{where} must be the private Sum axis lowering",
 			)
-			for forbidden in ("differentiation", "semantic_attributes", "contract", "test"):
+			for forbidden in ("differentiation", "semantic_attributes", "contract", "test", "signature"):
 				require(forbidden not in operation, f"{where}.{forbidden} is invalid for lowering-only work")
 		else:
 			require(
@@ -529,6 +1680,20 @@ def validate_reduce_schema(schema: dict[str, Any]) -> None:
 			require(
 				operation["contract"]["input_kinds"] == expected_inputs,
 				f"{where} input kinds are invalid",
+			)
+			signature = operation_signature(
+				"matrix", operation, where, allowed_types={"&Matrix", "i32"}
+			)
+			require(signature is not None, f"{where}.signature is required for an emitted operation")
+			require(
+				len([kind for _, kind in signature["parameters"] if kind == "&Matrix"])
+				== len(expected_inputs),
+				f"{where}.signature matrix parameters differ from contract inputs",
+			)
+			require(
+				[name for name, kind in signature["parameters"] if kind != "&Matrix"]
+				== [name for name, _ in operation["semantic_attributes"]],
+				f"{where}.signature scalar parameters differ from semantic attributes",
 			)
 			fields = operation.get("push_fields")
 			expected_field_count = {
@@ -719,7 +1884,7 @@ def validate_audio_schema(schema: dict[str, Any]) -> None:
 		where = f"Audio contracts[{index}]"
 		require(isinstance(contract, dict), f"{where} must be an object")
 		require(
-			set(contract)
+			(set(contract) - {"python"})
 			== {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes", "rust"},
 			f"{where} fields are incomplete or unknown",
 		)
@@ -785,11 +1950,154 @@ def validate_audio_schema(schema: dict[str, Any]) -> None:
 	validate_generated_types(schema)
 
 
+# Checked helper ABIs for FIPS 180-4 / FIPS 202 fixed digests. Formula bodies
+# remain in their existing Slang modules; schemas own adapters and public APIs.
+FIXED_HASH_HELPERS = {
+	"sha224": ("sha2_u32", "sha2_224", 28, "uint"),
+	"sha256": ("sha2_u32", "sha2_256", 32, "uint"),
+	"sha384": ("sha2_u32_pair", "sha2_384", 48, "uint"),
+	"sha512": ("sha2_u32_pair", "sha2_512", 64, "uint"),
+	"sha512_224": ("sha2_u32_pair", "sha2_512_224", 28, "uint"),
+	"sha512_256": ("sha2_u32_pair", "sha2_512_256", 32, "uint"),
+	"sha3_224": ("sha3", "sha3_224", 28, "uint"),
+	"sha3_256": ("sha3", "sha3_256", 32, "uint2"),
+	"sha3_384": ("sha3", "sha3_384", 48, "uint2"),
+	"sha3_512": ("sha3", "sha3_512", 64, "uint2"),
+}
+
+
+def validate_poseidon2_profiles(schema: dict[str, Any]) -> None:
+	profiles = schema.get('poseidon2_profiles')
+	require(isinstance(profiles, list) and len(profiles) == 4, 'Poseidon2 needs four pinned profiles')
+	expected = {'babybear16': (2013265921, 16, 7, 13), 'babybear24': (2013265921, 24, 7, 21),
+		'koalabear16': (2130706433, 16, 3, 20), 'koalabear24': (2130706433, 24, 3, 23)}
+	seen = set()
+	for p in profiles:
+		require(isinstance(p, dict) and set(p) == {'name', 'prime', 'width', 'sbox_degree', 'capacity', 'half_full_rounds', 'initial_constants', 'final_constants', 'internal_constants', 'diagonal'}, 'Poseidon2 profile fields differ')
+		require(p['name'] in expected, 'Poseidon2 profile is unknown'); validate_unique(p['name'], seen, 'Poseidon2 profile')
+		prime, width, degree, partial = expected[p['name']]
+		require((p['prime'], p['width'], p['sbox_degree'], p['capacity'], p['half_full_rounds']) == (prime, width, degree, 8, 4), 'Poseidon2 parameters differ')
+		for k in ('initial_constants', 'final_constants'):
+			require(isinstance(p[k], list) and len(p[k]) == 4 and all(isinstance(r, list) and len(r) == width for r in p[k]), 'Poseidon2 full round dimensions differ')
+		require(isinstance(p['internal_constants'], list) and len(p['internal_constants']) == partial and isinstance(p['diagonal'], list) and len(p['diagonal']) == width, 'Poseidon2 partial round dimensions differ')
+		values = p['internal_constants'] + p['diagonal'] + sum(p['initial_constants'] + p['final_constants'], [])
+		require(all(type(v) is int and 0 <= v < prime for v in values), 'Poseidon2 constants must be canonical field elements')
+	provenance = schema.get('poseidon2_provenance')
+	require(isinstance(provenance, dict) and provenance.get('commit') == 'f98331687e47106a64ab82a77e2e1d0d66c9161b'
+		and provenance.get('license') == 'MIT' and provenance.get('sponge') == 'oa_poseidon2_field_xof_v1', 'Poseidon2 reference identity differs')
+
+
+def generate_poseidon2_constants(schema: dict[str, Any], schema_hash: str) -> str:
+	body = banner(schema_hash, '//', 'cryptography_hash.json') + '// Pinned Plonky3 constants and round schedule (MIT; see NOTICE.md).\nimport prime31;\nimport poseidon2_field;\n\n'
+	for p in schema['poseidon2_profiles']:
+		prime, width, name = p['prime'], p['width'], p['name']
+		factor = (-pow(prime, -1, 1 << 32)) % (1 << 32)
+		def array(label: str, values: list[int]) -> str:
+			words = [(v << 32) % prime for v in values]
+			return f'static const uint POSEIDON2_{name.upper()}_{label}[{len(words)}] = {{\n' + ''.join('\t' + ', '.join(str(v)+'u' for v in words[i:i+8]) + ',\n' for i in range(0, len(words), 8)) + '};\n'
+		body += array('INITIAL', sum(p['initial_constants'], [])) + array('FINAL', sum(p['final_constants'], [])) + array('PARTIAL', p['internal_constants']) + array('DIAGONAL', p['diagonal'] + [0]*(24-width))
+		body += f'''\nvoid poseidon2_{name}_permutation(inout uint state[24]) {{
+	const uint prime = {prime}u;
+	const uint factor = {factor}u;
+	poseidon2_external(state, {width}u, prime);
+	for (uint round = 0u; round < 4u; ++round) {{
+		for (uint i = 0u; i < {width}u; ++i)
+			state[i] = poseidon2_sbox(prime31_add(state[i], POSEIDON2_{name.upper()}_INITIAL[round * {width}u + i], prime), {p['sbox_degree']}u, prime, factor);
+		poseidon2_external(state, {width}u, prime);
+	}}
+	uint diagonal[24];
+	for (uint i = 0u; i < 24u; ++i) diagonal[i] = POSEIDON2_{name.upper()}_DIAGONAL[i];
+	for (uint round = 0u; round < {len(p['internal_constants'])}u; ++round) {{
+		state[0] = poseidon2_sbox(prime31_add(state[0], POSEIDON2_{name.upper()}_PARTIAL[round], prime), {p['sbox_degree']}u, prime, factor);
+		poseidon2_internal(state, diagonal, {width}u, prime, factor);
+	}}
+	for (uint round = 0u; round < 4u; ++round) {{
+		for (uint i = 0u; i < {width}u; ++i)
+			state[i] = poseidon2_sbox(prime31_add(state[i], POSEIDON2_{name.upper()}_FINAL[round * {width}u + i], prime), {p['sbox_degree']}u, prime, factor);
+		poseidon2_external(state, {width}u, prime);
+	}}
+}}\n\n'''
+	return body.rstrip() + '\n'
+
+
+def generate_poseidon2_shader(kernel: dict[str, Any], schema: dict[str, Any], schema_hash: str) -> str:
+	profile = next(p for p in schema['poseidon2_profiles'] if p['name'] == kernel['poseidon2']['profile'])
+	prime, width, name = profile['prime'], profile['width'], profile['name']
+	permutation = kernel['poseidon2']['permutation']
+	factor = (-pow(prime, -1, 1 << 32)) % (1 << 32)
+	r2 = (1 << 64) % prime; one = (1 << 32) % prime; rate = width - profile['capacity']
+	fields = '\n'.join(f'\tuint {n};' for n, _ in kernel['push_fields'])
+	output = f'{width}u' if permutation else 'push.output_elements'
+	guard = f'push.input_elements != {width}u' if permutation else 'push.input_elements > 0x3fffffffu || push.output_elements == 0u || push.output_elements > 0x3fffffffu'
+	body = banner(schema_hash, '//', 'cryptography_hash.json') + f'''// Public field data only. Pinned permutation; OA's explicitly framed field XOF.
+import attributes;
+import prime31;
+import poseidon2;
+struct PushConstants {{
+{fields}
+}};
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+[kernel_name("{kernel['name']}")]
+[domain("cryptography")]
+[variant("generic")]
+[dtype("u32")]
+[status("experimental")]
+[shader("compute")]
+[numthreads(32, 1, 1)]
+void main(uint3 tid : SV_DispatchThreadID) {{
+	uint row = tid.x;
+	if (row >= push.count || {guard}) return;
+	uint input_extent, output_extent;
+	storage_buffers[push.input_index].GetDimensions(input_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	uint input_stride = push.input_elements * 4u;
+	uint output_stride = {output} * 4u;
+	if ((input_stride != 0u && push.count > input_extent / input_stride) || push.count > output_extent / output_stride) return;
+	const uint prime = {prime}u;
+	const uint factor = {factor}u;
+	const uint r2 = {r2}u;
+	uint state[24];
+	for (uint i = 0u; i < 24u; ++i) state[i] = 0u;
+'''
+	if permutation:
+		body += f'''\tfor (uint i = 0u; i < {width}u; ++i)
+		state[i] = prime31_multiply(storage_buffers[push.input_index].Load(row * input_stride + i * 4u) % prime, r2, prime, factor);
+	poseidon2_{name}_permutation(state);
+	for (uint i = 0u; i < {width}u; ++i)
+		storage_buffers[push.output_index].Store(row * output_stride + i * 4u, prime31_multiply(state[i], 1u, prime, factor));
+}}\n'''
+	else:
+		body += f'''\t// Capacity: explicit OA-P2 domain and original field-element length.
+	state[{rate}u] = prime31_multiply(0x4f415032u, r2, prime, factor);
+	state[{rate+1}u] = prime31_multiply(push.input_elements, r2, prime, factor);
+	uint cursor = 0u;
+	for (uint i = 0u; i < push.input_elements; ++i) {{
+		uint value = storage_buffers[push.input_index].Load(row * input_stride + i * 4u) % prime;
+		state[cursor] = prime31_add(state[cursor], prime31_multiply(value, r2, prime, factor), prime);
+		if (++cursor == {rate}u) {{ poseidon2_{name}_permutation(state); cursor = 0u; }}
+	}}
+	// A mandatory delimiter block distinguishes every input length, including
+	// empty and exact-rate messages. Longer outputs preserve shorter prefixes.
+	state[cursor] = prime31_add(state[cursor], {one}u, prime);
+	poseidon2_{name}_permutation(state);
+	cursor = 0u;
+	for (uint i = 0u; i < push.output_elements; ++i) {{
+		if (cursor == {rate}u) {{ poseidon2_{name}_permutation(state); cursor = 0u; }}
+		storage_buffers[push.output_index].Store(row * output_stride + i * 4u, prime31_multiply(state[cursor++], 1u, prime, factor));
+	}}
+}}\n'''
+	return body
+
+
 def validate_cryptography_hash_schema(schema: dict[str, Any]) -> None:
 	require(schema.get("schema_version") == 1, "Cryptography Hash schema_version must be 1")
 	require(schema.get("family") == "cryptography_hash", "Cryptography Hash family is invalid")
 	require(schema.get("domain") == "cryptography::hash", "Cryptography Hash domain is invalid")
 	require(schema.get("dtype") == "u8", "Cryptography Hash dtype must be u8")
+	validate_poseidon2_profiles(schema)
+	require(schema.get("proof_layout") == {"version": 1, "header_bytes": 16, "hash_bytes": 32, "max_depth": 32}
+		and all(type(v) is int for v in schema["proof_layout"].values()), "Merkle proof wire layout mismatch")
 	contracts = schema.get("contracts")
 	require(isinstance(contracts, list) and contracts, "Cryptography Hash contracts must be non-empty")
 	contract_names: set[str] = set()
@@ -803,10 +2111,11 @@ def validate_cryptography_hash_schema(schema: dict[str, Any]) -> None:
 		name = contract["name"]
 		require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.name is invalid")
 		validate_unique(name, contract_names, f"{where}.name")
-		require(contract["input_kinds"] == ["matrix"], f"{where}.input_kinds must contain one Matrix")
+		expected_inputs = 2 if name == "merkle_proofs" else 3 if name == "verify_merkle_proofs" else 1
+		require(contract["input_kinds"] == ["matrix"] * expected_inputs, f"{where}.input_kinds differs from operation")
 		require(contract["output_kinds"] == ["matrix"], f"{where}.output_kinds must contain one Matrix")
 		require(contract["shape_rule"] in {"match_input", "explicit"}, f"{where}.shape_rule is invalid")
-		require(contract["dtype_rule"] == "u8", f"{where}.dtype_rule must be u8")
+		require(contract["dtype_rule"] == ("u32" if name == "verify_merkle_proofs" or name.startswith("poseidon2_") else "u8"), f"{where}.dtype_rule is invalid")
 		validate_semantic_attributes(contract["attributes"], where)
 	kernels = schema.get("kernels")
 	require(isinstance(kernels, list) and kernels, "Cryptography Hash kernels must be non-empty")
@@ -825,6 +2134,8 @@ def validate_cryptography_hash_schema(schema: dict[str, Any]) -> None:
 		require(isinstance(stable_id, int) and 0 < stable_id <= 65535, f"{where}.stable_id is invalid")
 		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
 		require(kernel.get("semantic_operation") in contract_names, f"{where}.semantic_operation is unknown")
+		require(kernel.get("auxiliary_operations", []) == (["merkle_proofs"] if kernel["name"] == "merkle_reduce" else []), f"{where} auxiliary ownership differs")
+		require(kernel.get("dtype", "u8") == ("u32" if kernel["name"] == "merkle_proof_verify" or kernel["name"].startswith("poseidon2_") else "u8"), f"{where} kernel dtype differs")
 		workgroup = kernel.get("workgroup_size")
 		require(
 			isinstance(workgroup, list)
@@ -843,6 +2154,41 @@ def validate_cryptography_hash_schema(schema: dict[str, Any]) -> None:
 			validate_unique(name, seen_fields, f"{where}.push field name")
 			require(scalar_type == "uint32", f"{where}.push field type must be uint32")
 		require(len(fields) * 4 <= 128, f"{where}.push constants exceed Vulkan minimum guarantee")
+		if kernel["name"] in {"merkle_proof_gather", "merkle_proof_verify"}:
+			gather = kernel["name"] == "merkle_proof_gather"
+			names = ("level_index", "indices_index", "output_index", "count", "leaf_count", "source_count", "depth", "level", "frame_bytes") if gather else ("leaves_index", "proofs_index", "roots_index", "output_index", "count", "root_count", "frame_bytes", "leaf_count")
+			require(fields == [[name, "uint32"] for name in names], f"{where} Merkle proof ABI differs")
+			validate_physical_write(kernel.get("physical_write"), where, required=True)
+			require(kernel["physical_write"] == {"writes": [{"binding": 2 if gather else 3,
+				"domain": "rows", "partition": "exclusive_per_invocation",
+				"extent": "row_width" if gather else "one_scalar", "collision": "exclusive",
+				"tail": "bounds_checked"}], "workspace": "none"}, f"{where} Merkle proof ownership differs")
+		if kernel['name'].startswith('poseidon2_'):
+			profile = kernel.get('poseidon2')
+			require(isinstance(profile, dict) and set(profile) == {'profile', 'permutation'} and type(profile['permutation']) is bool, 'Poseidon2 kernel profile differs')
+			require(profile['profile'] in {p['name'] for p in schema['poseidon2_profiles']}, 'Poseidon2 kernel profile unknown')
+			require(kernel['name'] == 'poseidon2_' + profile['profile'] + ('_permute' if profile['permutation'] else '')
+				and kernel['semantic_operation'] == kernel['name'] and kernel['source'] == f"src/slang/cryptography/hash/{kernel['name']}.gen.slang"
+				and fields == [[n, 'uint32'] for n in ['input_index', 'output_index', 'count', 'input_elements'] + ([] if profile['permutation'] else ['output_elements'])], 'Poseidon2 ABI differs')
+			validate_physical_write(kernel.get('physical_write'), where, required=True)
+			require(kernel['physical_write'] == {'writes': [{'binding': 1, 'domain': 'rows', 'partition': 'exclusive_per_invocation', 'extent': 'row_width', 'collision': 'exclusive', 'tail': 'bounds_checked'}], 'workspace': 'none'}, 'Poseidon2 ownership differs')
+		if kernel["name"] in FIXED_HASH_HELPERS:
+			module, helper, size, word_type = FIXED_HASH_HELPERS[kernel["name"]]
+			digest = kernel.get("digest")
+			require(isinstance(digest, dict) and type(digest.get("bytes")) is int
+				and digest == {"module": module, "helper": helper, "bytes": size, "word_type": word_type},
+				f"{where}.digest differs from checked helper ABI")
+			require(kernel["semantic_operation"] == kernel["name"]
+				and kernel["source"] == f"src/slang/cryptography/hash/{kernel['name']}.gen.slang"
+				and fields == [[name, "uint32"] for name in ("input_index", "output_index", "count", "message_len")],
+				f"{where} fixed digest adapter ABI differs")
+			validate_physical_write(kernel.get("physical_write"), where, required=True)
+			require(kernel["physical_write"] == {"writes": [{"binding": 1, "domain": "rows",
+				"partition": "exclusive_per_invocation", "extent": "row_width",
+				"collision": "exclusive", "tail": "bounds_checked"}], "workspace": "none"},
+				f"{where} fixed digest write ownership differs")
+		else:
+			require("digest" not in kernel, f"{where} digest helper is unknown")
 
 	validate_cryptography_api(schema, "hash")
 
@@ -861,9 +2207,42 @@ MLDSA_PREHASH_LAYOUTS = [
 ]
 
 
+def validate_pqc_device_api(schema: dict[str, Any]) -> None:
+	api = schema.get("device_api")
+	require(isinstance(api, dict), "PQC device_api must be an object")
+	require(set(api) == {"status", "secret_policy", "capture_policy", "key_import", "mlkem_parameters", "prehash_rust_names", "operations"}, "PQC device API fields mismatch")
+	require(api["status"] == "experimental_candidate", "PQC device status must not imply qualification")
+	require(api["secret_policy"] == "unique_nonmappable_consuming_erasure", "PQC secret ownership mismatch")
+	require(api["capture_policy"] == "reject_ordinary_capture", "PQC capture policy mismatch")
+	require(api["key_import"] == "not_admitted", "PQC key import requires a separate checked secret route")
+	expected = [
+		{"parameter": n, "k": k, "public_key_bytes": 384 * k + 32, "private_key_bytes": 768 * k + 96,
+		 "ciphertext_bytes": 32 * (11 * k + 5 if k == 4 else 10 * k + 4), "shared_secret_bytes": 32}
+		for n, k in ((512, 2), (768, 3), (1024, 4))
+	]
+	require(api["mlkem_parameters"] == expected, "FIPS 203 public device layouts mismatch")
+	require(all(type(value) is int for row in api["mlkem_parameters"] for value in row.values()), "ML-KEM layout fields must be integers")
+	require(api["prehash_rust_names"] == ["Sha256", "Sha384", "Sha512", "Sha224", "Sha512Truncated224", "Sha512Truncated256", "Sha3_224", "Sha3_256", "Sha3_384", "Sha3_512", "Shake128", "Shake256"], "PQC typed hash names mismatch")
+	expected_operations = [
+		{"name": name, "executor": executor, "private_kernel": kernel} for name, executor, kernel in (
+			("mldsa_keygen", "pqc_mldsa_keygen", "ml_dsa_keygen"),
+			("mlkem_keygen", "pqc_mlkem_keygen", "ml_kem_keygen"),
+			("mldsa_sign", "pqc_mldsa_sign", "ml_dsa_sign_message"),
+			("mldsa_sign_hash_message", "pqc_mldsa_sign", "ml_dsa_sign_hash_message"),
+			("mldsa_sign_prehashed", "pqc_mldsa_sign_prehashed", "ml_dsa_sign_prehashed"),
+			("mlkem_encapsulate", "pqc_mlkem_encapsulate", "ml_kem_encaps"),
+			("mlkem_decapsulate", "pqc_mlkem_decapsulate", "ml_kem_decaps"),
+		)
+	]
+	require(api["operations"] == expected_operations, "PQC device operation/executor mismatch")
+	private = {k["name"] for k in schema.get("private_kernels", [])}
+	require(all(op["private_kernel"] in private for op in api["operations"]), "PQC device API references a missing private kernel")
+
+
 def validate_cryptography_pqc_schema(schema: dict[str, Any]) -> None:
 	require(schema.get("schema_version") == 1, "Cryptography PQC schema_version must be 1")
 	require(schema.get("family") == "cryptography_pqc", "Cryptography PQC family is invalid")
+	validate_pqc_device_api(schema)
 	prehashes = schema.get("prehashes")
 	require(isinstance(prehashes, list) and all(isinstance(row, dict)
 		and type(row.get("oid_suffix")) is int and type(row.get("digest_bytes")) is int
@@ -947,9 +2326,9 @@ def validate_cryptography_pqc_schema(schema: dict[str, Any]) -> None:
 	private = schema.get("private_kernels", [])
 	require(isinstance(private, list), "PQC private_kernels must be a list")
 	private_abis = {
-		"ml_kem_keygen": (["seed_index", "private_index", "public_index", "k"], [0, 1], [1, 2]),
-		"ml_kem_encaps": (["seed_index", "public_index", "shared_index", "ciphertext_index", "status_index", "k"], [0, 2], [2, 3, 4]),
-		"ml_kem_decaps": (["private_index", "ciphertext_index", "shared_index", "k"], [0, 2], [2]),
+		"ml_kem_keygen": (["seed_index", "private_index", "public_index", "workspace_index", "k"], [0, 1, 3], [1, 2, 3]),
+		"ml_kem_encaps": (["seed_index", "public_index", "shared_index", "ciphertext_index", "status_index", "workspace_index", "k"], [0, 2, 5], [2, 3, 4, 5]),
+		"ml_kem_decaps": (["private_index", "ciphertext_index", "shared_index", "workspace_index", "k"], [0, 2, 3], [2, 3]),
 	}
 	private_abis["ml_dsa_keygen"] = (["seed_index", "private_index", "public_index", "parameter_set"], [0, 1], [1, 2])
 	private_abis["ml_dsa_sign"] = (["seed_index", "private_index", "mu_index", "signature_index", "status_index", "workspace_index", "parameter_set"], [0, 1, 5], [3, 4, 5])
@@ -958,7 +2337,7 @@ def validate_cryptography_pqc_schema(schema: dict[str, Any]) -> None:
 	private_abis["ml_dsa_sign_hash_message"] = (["seed_index", "private_index", "message_index", "context_index", "signature_index", "status_index", "workspace_index", "parameter_set", "message_length", "context_length", "algorithm"], [0, 1, 6], [4, 5, 6])
 	seen_private: set[str] = set()
 	for kernel in private:
-		require(set(kernel) == ({"stable_id", "name", "kernel_id", "source", "workgroup_size", "push_fields", "physical_write", "secret_bindings"} | ({"parameter_layouts"} if kernel.get("name", "").startswith("ml_dsa_") else set()) | ({"workspace_bytes"} if kernel.get("name", "").startswith("ml_dsa_sign") else set())), "private PQC fields are incomplete or unknown")
+		require(set(kernel) == ({"stable_id", "name", "kernel_id", "source", "workgroup_size", "push_fields", "physical_write", "secret_bindings"} | ({"parameter_layouts"} if kernel.get("name", "").startswith("ml_dsa_") else set()) | ({"workspace_bytes"} if (kernel.get("name", "").startswith("ml_dsa_sign") or kernel.get("name", "").startswith("ml_kem_")) else set())), "private PQC fields are incomplete or unknown")
 		name = kernel["name"]
 		require(name in private_abis, "unknown private PQC kernel")
 		validate_unique(name, seen_private, "private PQC name")
@@ -985,10 +2364,13 @@ def validate_cryptography_pqc_schema(schema: dict[str, Any]) -> None:
 		require(kernel["secret_bindings"] == secrets, "PQC secret storage classification mismatch")
 		validate_physical_write(kernel["physical_write"], f"private PQC {suffix}", required=True)
 		expected_writes = [{"binding": binding, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"} for binding in writes]
-		workspace = "exclusive_per_workgroup" if name.startswith("ml_dsa_sign") else "none"
+		workspace = "exclusive_per_workgroup" if name.startswith("ml_dsa_sign") or name.startswith("ml_kem_") else "none"
 		require(kernel["physical_write"] == {"writes": expected_writes, "workspace": workspace}, "PQC write ownership mismatch")
 		if name.startswith("ml_dsa_sign"):
 			require(type(kernel["workspace_bytes"]) is int and kernel["workspace_bytes"] == (7 + 8 + 8) * 256 * 4, "ML-DSA signing workspace extent mismatch")
+
+		if name.startswith("ml_kem_"):
+			require(type(kernel["workspace_bytes"]) is int and kernel["workspace_bytes"] == 4 * 256 * 4, "ML-KEM workspace extent mismatch")
 
 	validate_cryptography_api(schema, "verify")
 
@@ -1064,7 +2446,7 @@ def validate_image_schema(schema: dict[str, Any]) -> None:
 		where = f"Image contracts[{index}]"
 		require(isinstance(contract, dict), f"{where} must be an object")
 		require(
-			set(contract)
+			(set(contract) - {"python"})
 			== {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes", "rust"},
 			f"{where} fields are incomplete or unknown",
 		)
@@ -1149,7 +2531,7 @@ def validate_vision_schema(schema: dict[str, Any]) -> None:
 		where = f"Vision contracts[{index}]"
 		require(isinstance(contract, dict), f"{where} must be an object")
 		require(
-			set(contract)
+			(set(contract) - {"python"})
 			== {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes", "rust"},
 			f"{where} fields are incomplete or unknown",
 		)
@@ -1715,6 +3097,10 @@ def validate_ml_contract(contract: Any, differentiation: str, where: str) -> Non
 		f"{where}.contract.output_kinds must be non-empty without a variadic output",
 	)
 	require(
+		len(inputs) <= 8 and len(outputs) <= 8,
+		f"{where}.contract fixed arity exceeds OperationContract capacity; use a typed variadic tail",
+	)
+	require(
 		all(isinstance(value, str) and value for value in [*inputs, *outputs]),
 		f"{where}.contract input/output kinds must be strings",
 	)
@@ -1783,6 +3169,9 @@ def validate_ml_contract(contract: Any, differentiation: str, where: str) -> Non
 			"f32_values_i32_indices",
 			"f32_logits_i32_indices",
 			"categorical_rollout_sources_and_time_major_storage",
+            "f32_observation_i32_action_f32_statistics_preserve_dtype",
+            "f32_accumulator_f32_value_u32_cursor",
+            "f32_logits_u32_cursor_i32_actions",
 			"u8_validity_mask",
 			"replay_transition_and_storage",
 			"replay_storage_to_sample_batch",
@@ -2003,6 +3392,47 @@ def require(condition: bool, message: str) -> None:
 		raise SchemaError(message)
 
 
+def _strip_generated_banner(text: str) -> str:
+	return "\n".join(line for line in text.split("\n") if not line.startswith(("// @generated", "// schema", "// schemas", "# @generated", "# schema", "# schemas"))).strip("\n")
+
+
+def merge_python_fragments(outputs: dict[Path, str], root: Path, schema_hashes: list[str], schema_names: str) -> None:
+	"""Fold every generated `oa/_gen/` fragment into `native.pyi` and `cryptography.py`."""
+	import re
+	binding = root / "src/py/oa/_gen"
+	digest = hashlib.sha256("".join(schema_hashes).encode()).hexdigest()
+	stub_fragments = {path: outputs.pop(path) for path in list(outputs) if path.parent == binding and path.suffix == ".pyi"}
+	facade_fragments = {path: outputs.pop(path) for path in list(outputs) if path.parent == binding and path.name.startswith("cryptography_") and path.suffix == ".py"}
+
+	def merge(prefix: str, fragments: dict[Path, str]) -> str:
+		bodies = [_strip_generated_banner(fragments[path]) for path in fragments]
+		import_re = re.compile(r"from \.\._native import(?: \(([^)]*)\)| ([^\n]+))\n?")
+		names: set[str] = set()
+		rest = []
+		for body in bodies:
+			for group in import_re.findall(body):
+				names.update(part.strip() for chunk in group for part in chunk.split(",") if part.strip())
+			rest.append(import_re.sub("", body).strip("\n"))
+		imports = f"from .._native import (\n{''.join(f'\t{name},\n' for name in sorted(names))})\n" if names else ""
+		all_re = re.compile(r"__all__ = \[([^\]]*)\]\n?")
+		exported: set[str] = set()
+		merged_rest = []
+		for body in rest:
+			for group in all_re.findall(body):
+				exported.update(name.strip().strip('"').strip("'") for name in group.split(",") if name.strip())
+			merged_rest.append(all_re.sub("", body).strip("\n"))
+		out = banner(digest, prefix, schema_names).replace(f"{prefix} schema=", f"{prefix} schemas=") + imports
+		out += "\n".join(part for part in merged_rest if part) + "\n"
+		if exported:
+			out += "\n__all__ = [\n" + "".join(f'\t"{name}",\n' for name in sorted(exported)) + "]\n"
+		return out
+
+	if stub_fragments:
+		outputs[binding / "native.pyi"] = merge("#", stub_fragments)
+	if facade_fragments:
+		outputs[binding / "cryptography.py"] = merge("#", facade_fragments)
+
+
 def banner(schema_hash: str, prefix: str, schema_name: str = "matrix_elemwise.json") -> str:
 	return (
 		f"{prefix} @generated by tool/gen/fn/generate.py; DO NOT EDIT.\n"
@@ -2100,6 +3530,641 @@ def rust_broadcast_routes(operation: dict[str, Any]) -> str:
 	) + "]"
 
 
+SIGNATURE_KEYS = {"parameters", "returns", "visibility", "receiver", "doc", "target", "raw_return", "parity"}
+
+
+def normalize_signature(
+	name: Any,
+	parameters: Any,
+	returns: Any,
+	*,
+	visibility: Any = "pub",
+	receiver: Any = None,
+	doc: Any = None,
+	target: Any = None,
+	raw_return: Any = None,
+	parity: Any = None,
+	domain: str,
+	where: str,
+	allowed_types: set[str] | None = None,
+	python: Any = None,
+) -> dict[str, Any]:
+	"""Validate and normalize one operation's public signature record.
+
+	The record is the single source for the emitted free-function declaration;
+	methods and language adapters derive their own surfaces from the same
+	ordered parameters. A leading parameter typed as a reference to the domain
+	value is the method receiver; `"none"` keeps the operation module-only.
+	"""
+	require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where} name is invalid")
+	require(visibility == "pub" or (isinstance(visibility, str) and visibility.startswith("pub(") and visibility.endswith(")")), f"{where} visibility is invalid")
+	require(isinstance(returns, str) and returns.strip() and ";" not in re.sub(r"\[[^\]]*\]", "", returns), f"{where} returns is invalid")
+	require(isinstance(parameters, list) and (parameters or isinstance(target, str)), f"{where} parameters must be a non-empty array")
+	normalized = []
+	names: set[str] = set()
+	for parameter in parameters:
+		require(isinstance(parameter, list) and len(parameter) == 2, f"{where} parameter is invalid")
+		parameter_name, parameter_type = parameter
+		require(isinstance(parameter_name, str) and IDENTIFIER.fullmatch(parameter_name) is not None, f"{where} parameter name is invalid")
+		validate_unique(parameter_name, names, f"{where} parameter")
+		require(
+			isinstance(parameter_type, str) and parameter_type.strip(),
+			f"{where} parameter type is invalid",
+		)
+		if allowed_types is not None:
+			require(parameter_type in allowed_types, f"{where} parameter type is unsupported")
+		normalized.append([parameter_name, parameter_type])
+	receiver_name = normalized[0][0] if normalized and normalized[0][1] == f"&{domain.title()}" else None
+	if receiver is not None:
+		require(
+			receiver == "none" or receiver == receiver_name,
+			f"{where} receiver must be none or the leading domain-value parameter",
+		)
+		receiver_name = None if receiver == "none" else receiver_name
+	doc_lines = None
+	if doc is not None:
+		if isinstance(doc, str):
+			doc_lines = [doc]
+		else:
+			require(
+				isinstance(doc, list) and doc and all(isinstance(line, str) and "\n" not in line for line in doc),
+				f"{where} doc is invalid",
+			)
+			doc_lines = list(doc)
+	result = {
+		"name": name,
+		"visibility": visibility,
+		"parameters": normalized,
+		"returns": returns,
+		"receiver": receiver_name,
+		"doc": doc_lines,
+	}
+	if target is not None:
+		result["target"] = target
+	if raw_return is not None:
+		result["raw_return"] = raw_return
+	if parity is not None:
+		result["parity"] = parity
+	if python is not None:
+		result["python"] = python
+		python_operation(result)
+	return result
+
+
+def operation_signature(
+	domain: str,
+	operation: dict[str, Any],
+	where: str,
+	*,
+	allowed_types: set[str] | None = None,
+) -> dict[str, Any] | None:
+	"""Normalize one operation's public signature from its schema record.
+
+	Precedence: an explicit `signature` record, a complete-generation `rust`
+	record, then mechanical derivation from Matrix kind/scalar metadata.
+	Returns None for records without a public signature, such as
+	lowering-only or metadata-only operations.
+	"""
+	signature = operation.get("signature")
+	if signature is not None:
+		require(
+			isinstance(signature, dict)
+			and set(signature) <= SIGNATURE_KEYS
+			and "parameters" in signature
+			and "returns" in signature,
+			f"{where}.signature fields are incomplete or unknown",
+		)
+		return normalize_signature(
+			operation["name"],
+			signature["parameters"],
+			signature["returns"],
+			visibility=signature.get("visibility", "pub"),
+			receiver=signature.get("receiver"),
+			doc=signature.get("doc"),
+			target=signature.get("target"),
+			raw_return=signature.get("raw_return"),
+			parity=signature.get("parity"),
+			domain=domain,
+			where=f"{where}.signature",
+			allowed_types=allowed_types,
+			python=operation.get("python"),
+		)
+	rust = operation.get("rust")
+	if isinstance(rust, dict) and "parameters" in rust:
+		return normalize_signature(
+			operation["name"],
+			rust["parameters"],
+			rust.get("returns"),
+			receiver=rust.get("receiver"),
+			doc=rust.get("doc"),
+			domain=domain,
+			where=where,
+			allowed_types=allowed_types,
+			python=operation.get("python"),
+		)
+	kind = operation.get("kind")
+	if kind in {"binary", "mat_mul_nt"}:
+		parameters = [["left", "&Matrix"], ["right", "&Matrix"]]
+	elif kind == "unary":
+		parameters = [["input", "&Matrix"]]
+	elif kind == "unary_scalar":
+		parameters = [["input", "&Matrix"], [operation.get("scalar_name"), "f32"]]
+	else:
+		return None
+	return normalize_signature(
+		operation["name"],
+		parameters,
+		"Matrix",
+		doc=operation.get("doc"),
+		domain=domain,
+		where=where,
+	)
+
+
+def api_signature(
+	domain: str,
+	api: dict[str, Any],
+	where: str,
+	*,
+	allowed_types: set[str] | None = None,
+) -> dict[str, Any]:
+	"""Normalize a `rust_api` operation record into the shared signature model."""
+	return normalize_signature(
+		api["name"],
+		api["parameters"],
+		api.get("returns", "Matrix"),
+		visibility=api.get("visibility", "pub"),
+		receiver=api.get("receiver"),
+		doc=api.get("doc"),
+		domain=domain,
+		where=where,
+		allowed_types=allowed_types,
+	)
+
+
+def signature_parameters(signature: dict[str, Any]) -> str:
+	return ", ".join(f"{name}: {kind}" for name, kind in signature["parameters"])
+
+
+def signature_header(signature: dict[str, Any]) -> str:
+	return f"{signature['visibility']} fn {signature['name']}({signature_parameters(signature)}) -> Result<{signature['returns']}>"
+
+
+def signature_method(domain: str, signature: dict[str, Any]) -> str | None:
+	"""Emit a value method delegating to the free operation, or None.
+
+	The method removes the receiver parameter, keeps the remaining ordered
+	parameters, and forwards once to `crate::{domain}::{name}`. Internal
+	operations and records without a domain-value receiver stay module-only.
+	"""
+	receiver = signature["receiver"]
+	if receiver is None or signature["visibility"] != "pub":
+		return None
+	rest = [parameter for parameter in signature["parameters"] if parameter[0] != receiver]
+	require(rest != signature["parameters"], f"{domain.title()} {signature['name']} receiver is not a parameter")
+	parameters = "&self" + (", " + ", ".join(f"{name}: {kind}" for name, kind in rest) if rest else "")
+	returns = "Self" if signature["returns"] == domain.title() else signature["returns"]
+	arguments = ", ".join(["self", *(name for name, _ in rest)])
+	target = f"crate::{domain}::{signature['name']}"
+	doc = f"/// {signature['doc'][0]}\n///\n" if signature["doc"] else ""
+	return f"{doc}/// Delegates to [`{target}`].\npub fn {signature['name']}({parameters}) -> Result<{returns}> {{\n\t{target}({arguments})\n}}"
+
+
+SIGNATURE_PRIMITIVE_TYPES = {
+	"bool", "f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize",
+	"u8", "u16", "u32", "u64", "u128", "usize", "str", "Self", "Vec", "Option", "String", "Box",
+}
+
+
+def signature_named_types(signature: dict[str, Any]) -> set[str]:
+	"""Named Rust types referenced by a signature that need `use` imports."""
+	named = set()
+	kinds = [kind for _, kind in signature["parameters"]]
+	kinds += [kind for _, kind in signature.get("parity") or []]
+	kinds.append(signature["returns"])
+	for kind in kinds:
+		core = re.sub(r"^&\s*(mut\s+)?", "", kind)
+		if core.startswith(("crate::", "std::", "impl ")) or core == "()":
+			continue
+		for part in re.findall(r"[A-Z][A-Za-z0-9_]*", core):
+			if part not in SIGNATURE_PRIMITIVE_TYPES:
+				named.add(part)
+	return named
+
+
+def domain_signatures(domain: str, schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+	"""Normalized public signatures for one value domain, in schema order."""
+	signatures = []
+	for schema in schemas:
+		contracts = schema.get("contracts")
+		records = list(contracts.values()) if isinstance(contracts, dict) else list(contracts or [])
+		records += schema.get("operations", []) + schema.get("signature_records", [])
+		for record in records:
+			if not isinstance(record, dict) or "name" not in record:
+				continue
+			signature = operation_signature(domain, record, f"{domain.title()} {record['name']}")
+			if signature is not None:
+				signatures.append(signature)
+	return signatures
+
+
+def generate_domain_methods(domain: str, signatures: list[dict[str, Any]], schema_hash: str, schema_name: str) -> str:
+	"""Emit the generated value impl delegating each eligible operation."""
+	emitted = [(signature, signature_method(domain, signature)) for signature in signatures]
+	emitted = [(signature, method) for signature, method in emitted if method is not None]
+	require(bool(emitted), f"{domain.title()} has no method-eligible operations")
+	names: set[str] = set()
+	named: set[str] = set()
+	for signature, _ in emitted:
+		validate_unique(signature["name"], names, f"{domain.title()} method")
+		named |= signature_named_types(signature)
+	value = domain.title()
+	named.discard(value)
+	imports = {value, "Result"}
+	if "Matrix" in named:
+		imports.add("Matrix")
+		named.discard("Matrix")
+	use = "use crate::{" + ", ".join(sorted(imports)) + "};"
+	if named:
+		use += f"\nuse crate::{domain}::{{{', '.join(sorted(named))}}};"
+	preamble = banner(schema_hash, "//", schema_name)
+	if "," in schema_name:
+		preamble = preamble.replace("// schema=", "// schemas=")
+	parity = []
+	for signature, _ in emitted:
+		kinds = [kind for _, kind in signature["parameters"]]
+		if any(kind.startswith("impl ") for kind in kinds):
+			continue
+		parameters = ", ".join(kinds)
+		function_type = f"fn({parameters}) -> Result<{signature['returns']}>"
+		parity.extend((
+			f"const _: {function_type} = crate::{domain}::{signature['name']};",
+			f"const _: {function_type} = {value}::{signature['name']};",
+		))
+	return preamble + use + f"\n\nimpl {value} {{\n" + "\n\n".join(method for _, method in emitted) + "\n}\n\n" + "\n".join(parity) + "\n"
+
+
+def generate_signature_parity(
+	module_path: str,
+	signatures: list[dict[str, Any]],
+	schema_hash: str,
+	schema_name: str,
+	import_paths: dict[str, str] | None = None,
+) -> str:
+	"""Compile-time parity checks proving signature records match real fns."""
+	named: set[str] = set()
+	for signature in signatures:
+		named |= signature_named_types(signature)
+	use = "use crate::{" + ", ".join(sorted({"Result"} | (named & {"Matrix", "Engine"}))) + "};"
+	by_path: dict[str, list[str]] = {}
+	for name in sorted(named - {"Matrix", "Engine"}):
+		by_path.setdefault((import_paths or {}).get(name, module_path), []).append(name)
+	for path in sorted(by_path):
+		use += f"\nuse {path}::{{{', '.join(by_path[path])}}};"
+	parity = []
+	for signature in signatures:
+		kinds = [kind for _, kind in signature["parameters"]]
+		target = signature.get("target", f"{module_path}::{signature['name']}")
+		if any(kind.startswith("impl ") for kind in kinds):
+			concrete = signature.get("parity")
+			if not concrete:
+				continue
+			require(
+				isinstance(concrete, list) and len(concrete) == len(kinds) and all(
+					isinstance(pair, list) and len(pair) == 2 and all(isinstance(x, str) for x in pair)
+					for pair in concrete),
+				f"{signature['name']} parity must mirror its parameters",
+			)
+			concrete_kinds = [re.sub(r"'[a-zA-Z_]+", "'static", kind) for _, kind in concrete]
+			args = ", ".join(name for name, _ in concrete)
+			returns = re.sub(r"'[a-zA-Z_]+", "'static", signature["returns"])
+			function_type = (
+				f"fn({', '.join(concrete_kinds)}) -> {returns}"
+				if signature.get("raw_return")
+				else f"fn({', '.join(concrete_kinds)}) -> Result<{returns}>"
+			)
+			parity.append(f"#[allow(clippy::type_complexity)]\nconst _: {function_type} = |{args}| {target}({args});")
+			continue
+		kinds = [re.sub(r"'[a-zA-Z_]+", "'static", kind) for kind in kinds]
+		returns = re.sub(r"'[a-zA-Z_]+", "'static", signature["returns"])
+		function_type = (
+			f"fn({', '.join(kinds)}) -> {returns}"
+			if signature.get("raw_return")
+			else f"fn({', '.join(kinds)}) -> Result<{returns}>"
+		)
+		parity.append(f"#[allow(clippy::type_complexity)]\nconst _: {function_type} = {target};")
+	return banner(schema_hash, "//", schema_name) + use + "\n\n" + "\n".join(parity) + "\n"
+
+
+PYTHON_VALUE_TYPES = {"Matrix": "PythonMatrix", "Audio": "PythonAudio", "Image": "PythonImage"}
+PYTHON_RESULT_TYPES = PYTHON_VALUE_TYPES | {
+	"NmsResult": "PythonNmsResult",
+	"DetectionMetricsResult": "PythonDetectionMetricsResult",
+	"SegmentationMetricsResult": "PythonSegmentationMetricsResult",
+	"TopKResult": "(PythonMatrix, PythonMatrix)",
+	"MoeExpertPlan": "PythonMoeExpertPlan",
+	"()": "()",
+}
+# Owning py-binding module for each Python result class.
+PYTHON_RESULT_MODULES = {
+	"Matrix": "matrix",
+	"Audio": "audio",
+	"Image": "image",
+	"NmsResult": "vision",
+	"DetectionMetricsResult": "vision",
+	"SegmentationMetricsResult": "vision",
+	"MoeExpertPlan": "matrix",
+}
+PYTHON_PRIMITIVE_TYPES = {
+	"f32", "f64", "u8", "u16", "u32", "u64", "u128", "usize",
+	"i8", "i16", "i32", "i64", "i128", "isize", "bool", "[u32; 4]",
+}
+# Token enums adapt through one handwritten str converter per domain enum.
+PYTHON_ENUM_TYPES = {
+	"InterpolationMode": "super::interpolation",
+	"BorderMode": "super::border",
+	"ImageFormat": "super::format",
+	"crate::ImageFormat": "super::format",
+	"NormalizeAudioMode": "super::normalize_mode",
+	"StftWindow": "super::stft_window",
+}
+PYTHON_STUB_TYPES = {
+	"f32": "float", "f64": "float", "bool": "bool", "[u32; 4]": "Sequence[int]",
+	"[f32; 3]": "Sequence[float]", "Vec<[f32; 5]>": "Sequence[Sequence[float]]",
+	"Vec<usize>": "Sequence[int]", "Vec<Matrix>": "Sequence[Matrix]",
+	"&[Matrix]": "Sequence[Matrix]",
+	"u8": "int", "u16": "int", "u32": "int", "u64": "int", "u128": "int",
+	"usize": "int", "i8": "int", "i16": "int", "i32": "int", "i64": "int", "i128": "int", "isize": "int",
+}
+# Native return kinds that spell differently in stubs.
+PYTHON_STUB_RETURNS = {
+	"()": "None",
+	"TopKResult": "tuple[Matrix, Matrix]",
+}
+
+
+def python_operation(
+	signature: dict[str, Any],
+	struct_results: dict[str, list[str]] | None = None,
+) -> tuple[list[tuple[str, str, str]], str, list[str] | None] | None:
+	"""Map a signature to Python adapter parameters, result class, and struct
+	result fields (None for single-value results).
+
+	Returns one `(name, pyo3_type, call_argument)` triple per parameter.
+	Unsupported types (configuration records, engine handles, borrowed slices)
+	keep their handwritten adapters until the schema owns a Python-adaptation
+	record for them.
+	"""
+	struct_results = struct_results or {}
+	adapter = signature.get("python", {})
+	require(isinstance(adapter, dict) and set(adapter) <= {"parameters", "arguments", "defaults"}, f"Python {signature['name']} adaptation fields are invalid")
+	parameters = adapter.get("parameters", signature["parameters"])
+	require(isinstance(parameters, list) and parameters, f"Python {signature['name']} parameters are invalid")
+	names: set[str] = set()
+	mapped: list[tuple[str, str, str]] = []
+	for parameter in parameters:
+		require(isinstance(parameter, list) and len(parameter) == 2, f"Python {signature['name']} parameter is invalid")
+		name, kind = parameter
+		require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"Python {signature['name']} parameter name is invalid")
+		validate_unique(name, names, f"Python {signature['name']} parameter")
+		require(isinstance(kind, str), f"Python {signature['name']} parameter type is invalid")
+		if kind in PYTHON_PRIMITIVE_TYPES or kind in {"[f32; 3]", "Vec<[f32; 5]>", "Vec<usize>", "Vec<f32>"}:
+			mapped.append((name, kind, name))
+		elif kind in {"&[Matrix]", "Vec<Matrix>"}:
+			collect = f"{name}.iter().map(|m| m.inner.clone()).collect::<Vec<_>>()"
+			mapped.append((name, "Vec<PyRef<'_, PythonMatrix>>", f"&{collect}" if kind.startswith("&") else collect))
+		elif kind in PYTHON_ENUM_TYPES:
+			mapped.append((name, "&str", f"{PYTHON_ENUM_TYPES[kind]}({name})?"))
+		elif kind.startswith("&") and kind[1:] in PYTHON_VALUE_TYPES:
+			mapped.append((name, f"&{PYTHON_VALUE_TYPES[kind[1:]]}", f"&{name}.inner"))
+		else:
+			require(not adapter, f"Python {signature['name']} parameter type is unsupported: {kind}")
+			return None
+	defaults = adapter.get("defaults", {})
+	require(isinstance(defaults, dict) and set(defaults) <= names, f"Python {signature['name']} defaults reference unknown parameters")
+	optional = False
+	for name, kind in parameters:
+		if name not in defaults:
+			require(not optional, f"Python {signature['name']} required parameter follows a default")
+			continue
+		optional = True
+		value = defaults[name]
+		if kind in PYTHON_ENUM_TYPES:
+			valid = isinstance(value, str)
+		elif kind == "bool":
+			valid = type(value) is bool
+		elif kind in {"f32", "f64"}:
+			valid = type(value) in {int, float} and math.isfinite(value)
+		elif PYTHON_STUB_TYPES.get(kind) == "int":
+			bits = int(kind[1:]) if kind[1:].isdigit() else 32
+			lower = 0 if kind.startswith("u") else -(1 << (bits - 1))
+			upper = 1 << (bits if kind.startswith("u") else bits - 1)
+			valid = type(value) is int and lower <= value < upper
+		else:
+			valid = False
+		require(valid, f"Python {signature['name']} default type differs from {kind}")
+	receiver = signature["receiver"]
+	if receiver is not None:
+		require(parameters[0] == signature["parameters"][0] and receiver not in defaults, f"Python {signature['name']} receiver differs from the native receiver")
+	# A reviewed conversion replaces a native argument, using $name tokens for
+	# the checked language conversions above. Never maintain a second call order.
+	arguments = adapter.get("arguments", {})
+	native_names = {name for name, _ in signature["parameters"]}
+	require(isinstance(arguments, dict) and set(arguments) <= native_names and receiver not in arguments, f"Python {signature['name']} argument conversion is invalid")
+	used: set[str] = set()
+	for name, kind in signature["parameters"]:
+		if name in arguments:
+			expression = arguments[name]
+			require(isinstance(expression, str) and expression.strip() and ";" not in expression and "\n" not in expression, f"Python {signature['name']} conversion expression is invalid")
+			tokens = set(re.findall(r"\$(\w+)", expression))
+			require(tokens and tokens <= names, f"Python {signature['name']} conversion references unknown parameters")
+			used |= tokens
+		else:
+			require([name, kind] in parameters, f"Python {signature['name']} native argument has no conversion: {name}")
+			used.add(name)
+	require(used == names, f"Python {signature['name']} has unused adaptation parameters")
+	returns = signature["returns"]
+	if returns in struct_results:
+		return mapped, PYTHON_RESULT_TYPES[returns], struct_results[returns]
+	if returns in PYTHON_RESULT_TYPES:
+		return mapped, PYTHON_RESULT_TYPES[returns], None
+	return None
+
+
+def python_default(signature: dict[str, Any], name: str, *, stub: bool = False) -> str | None:
+	defaults = signature.get("python", {}).get("defaults", {})
+	if name not in defaults:
+		return None
+	value = defaults[name]
+	return repr(value) if stub and type(value) is bool else json.dumps(value)
+
+
+def python_stub_parameter(signature: dict[str, Any], name: str, kind: str) -> str:
+	stub_kind = (
+		"str" if kind in PYTHON_ENUM_TYPES
+		else kind.lstrip("&") if kind.lstrip("&") in PYTHON_VALUE_TYPES
+		else PYTHON_STUB_TYPES[kind]
+	)
+	default = python_default(signature, name, stub=True)
+	return f"{name}: {stub_kind}" + (f" = {default}" if default is not None else "")
+
+
+def python_struct_results(schemas: list[dict[str, Any]]) -> dict[str, list[str]]:
+	"""Field names of schema struct types whose fields are all Matrix-typed."""
+	results = {}
+	for schema in schemas:
+		for record in schema.get("types", []):
+			if record.get("kind") == "struct" and record.get("fields") and all(
+				field["type"] == "Matrix" for field in record["fields"]
+			):
+				results[record["name"]] = [field["name"] for field in record["fields"]]
+	return results
+
+
+def generate_python_domain(
+	domain: str,
+	signatures: list[dict[str, Any]],
+	schema_hash: str,
+	schema_name: str,
+	struct_results: dict[str, list[str]] | None = None,
+) -> tuple[str, str, str]:
+	"""Emit the pyfunction adapters, value methods, and stub for one domain.
+
+	Returns (rust_source, native_stub, class_method_stubs). Operations that
+	python_operation cannot map keep their handwritten bindings.
+	"""
+	emitted = []
+	for signature in signatures:
+		if signature["visibility"] != "pub":
+			continue
+		mapped = python_operation(signature, struct_results)
+		require(mapped is not None, f"Python {domain}::{signature['name']} requires a schema-owned adaptation")
+		emitted.append((signature, *mapped))
+	names: set[str] = set()
+	types: set[str] = set()
+	functions = []
+	methods = []
+	stub_defs = []
+	method_stubs = []
+	for signature, parameters, returns, result_fields in emitted:
+		validate_unique(signature["name"], names, f"{domain.title()} python operation")
+		if signature["returns"] in PYTHON_RESULT_MODULES:
+			types.add(signature["returns"])
+		types.update(kind.lstrip("&") for _, kind in signature["parameters"] if kind.lstrip("&") in PYTHON_VALUE_TYPES)
+		target = f"oa::{domain}::{signature['name']}"
+		public_parameters = signature.get("python", {}).get("parameters", signature["parameters"])
+		defaults = {param: python_default(signature, param) for param, _ in public_parameters}
+		needs_signature = any(value is not None for value in defaults.values())
+		python_defaults = signature.get("python", {}).get("defaults", {})
+		text_signature_of = lambda names: "(" + ", ".join(
+			name + (f"={repr(python_defaults[name])}" if name in python_defaults else "")
+			for name in names
+		) + ")"
+		attr = ""
+		if needs_signature:
+			attr_args = ", ".join(
+				name + (f"={defaults[name]}" if defaults[name] is not None else "")
+				for name, _, _ in parameters
+			)
+			text_signature = text_signature_of(name for name, _, _ in parameters)
+			attr = f"#[pyo3(signature = ({attr_args}), text_signature = \"{text_signature}\")]\n"
+		stub_name = f"{domain}_{signature['name']}"
+		stub_returns = PYTHON_STUB_RETURNS.get(signature["returns"], signature["returns"])
+		stub_defs.append(
+			f"def {stub_name}({', '.join(python_stub_parameter(signature, name, kind) for name, kind in public_parameters)}) -> {stub_returns}: ..."
+		)
+		conversions = {name: argument for name, _, argument in parameters}
+		call_arguments = [
+			re.sub(r"\$(\w+)", lambda match: conversions[match[1]], expression)
+			if (expression := signature.get("python", {}).get("arguments", {}).get(name)) is not None
+			else conversions[name]
+			for name, _ in signature["parameters"]
+		]
+		call_arguments = [re.sub(r"\b(\w+): \1\b", r"\1", argument) for argument in call_arguments]
+		allow = "#[allow(clippy::too_many_arguments)]\n" if len(parameters) > 7 else ""
+		docs = "".join("///" + (" " + line if line else "") + "\n" for line in signature["doc"] or [])
+		if returns == "()":
+			result_map = ".map(|_| ())"
+		elif result_fields is None:
+			result_map = f".map({returns}::wrap)"
+		elif returns.startswith("("):
+			result_map = ".map(|r| (" + ", ".join(
+				f"PythonMatrix::wrap(r.{field})" for field in result_fields
+			) + "))"
+		else:
+			result_map = f".map(|r| {returns} {{ " + ", ".join(
+				f"{field}: PythonMatrix::wrap(r.{field})" for field in result_fields
+			) + " })"
+		functions.append(
+			f"{docs}#[pyfunction]\n{attr}{allow}"
+			f"fn {stub_name}({', '.join(f'{name}: {kind}' for name, kind, _ in parameters)}) -> PyResult<{returns}> {{\n"
+			f"\t{target}({', '.join(call_arguments)})\n"
+			f"\t\t{result_map}\n\t\t.map_err(python_error)\n}}"
+		)
+		receiver = signature["receiver"]
+		if receiver is None or signature["visibility"] != "pub":
+			continue
+		rest = [(name, kind, argument) for name, kind, argument in parameters if name != receiver]
+		require(rest != parameters, f"{domain.title()} {signature['name']} receiver is not a parameter")
+		method_attr = ""
+		if needs_signature:
+			method_attr_args = ", ".join(
+				name + (f"={defaults[name]}" if defaults[name] is not None else "")
+				for name, _, _ in rest
+			)
+			method_text_signature = text_signature_of(["self"] + [name for name, _, _ in rest])
+			method_attr = f"#[pyo3(signature = ({method_attr_args}), text_signature = \"{method_text_signature}\")]\n"
+		method_returns = "Self" if signature["returns"] == domain.title() else returns
+		method_arguments = ["&self.inner", *call_arguments[1:]]
+		methods.append(
+			f"{docs}{method_attr}{allow}"
+			f"pub(super) fn {signature['name']}(&self{', ' + ', '.join(f'{name}: {kind}' for name, kind, _ in rest) if rest else ''}) -> PyResult<{method_returns}> {{\n"
+			f"\t{target}({', '.join(method_arguments)})\n"
+			f"\t\t{result_map}\n\t\t.map_err(python_error)\n}}"
+		)
+		stub_rest = ", ".join(
+			python_stub_parameter(signature, name, kind)
+			for name, kind in public_parameters
+			if name != receiver
+		)
+		method_stubs.append(
+			f"\tdef {signature['name']}(self{', ' + stub_rest if stub_rest else ''}) -> {stub_returns}: ..."
+		)
+	imports = sorted(types)
+	use = "use pyo3::prelude::*;\nuse crate::{" + ", ".join(
+		["error::python_error"] + [f"{PYTHON_RESULT_MODULES[kind]}::{PYTHON_RESULT_TYPES[kind]}" for kind in imports]
+	) + "};"
+	rust = banner(schema_hash, "//", schema_name) + use + "\n\n" + "\n\n".join(functions)
+	if methods:
+		rust += f"\n\n#[pymethods]\nimpl {PYTHON_VALUE_TYPES[domain.title()]} {{\n" + "\n\n".join(methods) + "\n}\n"
+	rust += "\n\npub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {\n"
+	rust += "".join(
+		f"\tmodule.add_function(wrap_pyfunction!({domain}_{signature['name']}, module)?)?;\n"
+		for signature, _, _, _ in emitted
+	)
+	rust += "\tOk(())\n}\n"
+	stub = banner(schema_hash, "#", schema_name) + f"from .._native import {', '.join(imports)}\n\n" + "\n".join(stub_defs) + "\n"
+	return rust, stub, "\n".join(method_stubs) + "\n"
+
+
+def generate_native_stub(template: str, methods: dict[str, str], generated: str) -> str:
+	"""Publish independent lifecycle declarations with schema-derived methods.
+
+	The template owns only signatures outside fn generation. Class methods and
+	imports are substituted on every generation, including stale-name removal.
+	"""
+	for domain, declarations in methods.items():
+		token = "{{" + domain + "_methods}}"
+		require(template.count(token) == 1, f"Python native stub requires one {domain} methods insertion")
+		template = template.replace(token, declarations.rstrip())
+	names = sorted(re.findall(r"^(?:def|class) (\w+)[(:]", generated, re.M))
+	imports = "from ._gen.native import (\n" + "".join(f"\t{name} as {name},\n" for name in names) + ")"
+	require(template.count("{{operation_imports}}") == 1, "Python native stub requires one operation import insertion")
+	template = template.replace("{{operation_imports}}", imports)
+	require("{{" not in template, "Python native stub has unresolved insertions")
+	return banner(hashlib.sha256((template + generated).encode()).hexdigest(), "#", "native.pyi.in and operation schemas") + template
+
+
 def matrix_body(template: str, name: str, *, autograd: dict[str, Any] | None = None, **bindings: str) -> str:
 	"""Instantiate a complete operation body; templates own reusable Rust syntax."""
 	path = Path(__file__).parent / "template" / "matrix" / f"{template}.rs.in"
@@ -2174,17 +4239,13 @@ def validate_dispatch_generation(
 		require(isinstance(rust["annotations"], list) and rust["annotations"] in ([], ["allow(clippy::too_many_arguments)"]), f"{where} annotations are invalid")
 		require(rust["returns"] == returns[op["name"]], f"{where} return differs from contract")
 		require(isinstance(rust["doc"], list) and rust["doc"] and all(isinstance(line, str) and "\n" not in line for line in rust["doc"]), f"{where} docs are invalid")
-		require(isinstance(rust["parameters"], list) and rust["parameters"], f"{where} parameters are invalid")
-		names = set()
-		inputs = []
-		for parameter in rust["parameters"]:
-			require(isinstance(parameter, list) and len(parameter) == 2, f"{where} parameter is invalid")
-			name, kind = parameter
-			require(isinstance(name, str) and IDENTIFIER.fullmatch(name), f"{where} parameter name is invalid")
-			validate_unique(name, names, where)
-			require(isinstance(kind, str) and kind in allowed_types, f"{where} parameter type is unsupported")
-			if kind in {"&Image", "&Matrix"}:
-				inputs.append(kind[1:].lower())
+		signature = operation_signature(schema["domain"], op, where, allowed_types=allowed_types)
+		require(signature is not None, f"{where} has no public signature")
+		inputs = [
+			kind[1:].lower()
+			for _, kind in signature["parameters"]
+			if kind in {"&Image", "&Matrix"}
+		]
 		require(inputs == op["input_kinds"], f"{where} semantic inputs differ from signature")
 		sources = rust["attribute_sources"]
 		require(isinstance(sources, dict) and set(sources) == {name for name, _ in op["attributes"]}, f"{where} attribute sources differ from contract")
@@ -2321,12 +4382,13 @@ def generate_vision_api(schema: dict[str, Any], schema_hash: str) -> str:
 	templates = vision_templates()
 	for op in schema["contracts"]:
 		rust = op["rust"]
+		signature = operation_signature("vision", op, f"Vision {op['name']}")
+		require(signature is not None, f"Vision {op['name']} has no public signature")
 		items.extend(generate_type(record) for record in schema["types"] if record["before"] == op["name"])
 		docs = "\n".join("///" + (" " + line if line else "") for line in rust["doc"])
-		parameters = ", ".join(f"{name}: {kind}" for name, kind in rust["parameters"])
 		annotations = "".join(f"#[{annotation}]\n" for annotation in rust["annotations"])
 		body = render_dispatch_body(op, kernels, templates[op["name"]], "vision")
-		items.append(f"{docs}\n{annotations}pub fn {op['name']}({parameters}) -> Result<{rust['returns']}> {{\n{body}\n}}\n")
+		items.append(f"{docs}\n{annotations}{signature_header(signature)} {{\n{body}\n}}\n")
 	return banner(schema_hash, "//", "vision_detection.json") + module.replace("{{items}}", "\n\n".join(items))
 
 
@@ -2394,7 +4456,16 @@ def validate_cryptography_api(schema: dict[str, Any], category: str) -> None:
 		require(isinstance(api["values"], dict) and all(isinstance(key, str) and IDENTIFIER.fullmatch(key) and isinstance(value, str) and value.strip() and ";" not in value for key, value in api["values"].items()), "Cryptography API values are invalid")
 		require(isinstance(api["attributes"], dict), "Cryptography API attributes must be an object")
 		if category == "hash":
-			expected = [["input", "&Matrix"]] + ([["output_length", "usize"]] if name in {"shake128", "shake256"} else [])
+			expected = [["input", "&Matrix"]] + ([["output_length", "usize"]] if name in {"shake128", "shake256"} or (name.startswith("poseidon2_") and not name.endswith("_permute")) else [])
+			if name == "merkle_proofs": expected = [["leaves", "&Matrix"], ["indices", "&Matrix"]]
+			if name == "verify_merkle_proofs": expected = [[arg, "&Matrix"] for arg in ("leaves", "proofs", "roots")] + [["leaf_count", "u32"]]
+			if name in {"merkle_proofs", "verify_merkle_proofs"}:
+				keys = ("header_bytes", "hash_bytes", "max_depth") if name == "verify_merkle_proofs" else ("header_bytes", "hash_bytes")
+				require(api["values"] == {key: str(schema["proof_layout"][key]) for key in keys}, "Merkle API wire layout differs")
+			if name in FIXED_HASH_HELPERS:
+				require(api["values"] == {"digest_bytes": str(FIXED_HASH_HELPERS[name][2])}
+					and api["template"] == "fixed_digest" and api["contracts"] == [name],
+					"Cryptography fixed digest API extent or contract differs")
 		else:
 			expected = [["parameters", "MlDsaParameters"]] + ([["algorithm", "u32"]] if "algorithm" in api["attributes"] else []) + [[arg, "&Matrix"] for arg in ("messages", "msg_offsets", "msg_lengths", "signatures", "public_keys")] + [["context", "std::ops::Range<usize>"]]
 		require(api["parameters"] == expected, "Cryptography API signature differs from template contract")
@@ -2413,14 +4484,14 @@ def validate_cryptography_api(schema: dict[str, Any], category: str) -> None:
 			require(isinstance(stage, dict) and set(stage) == {"kernel", "bindings", "push_constants"} and isinstance(stage["kernel"], str) and stage["kernel"] in kernels, "Cryptography API stage is invalid")
 			kernel = kernels[stage["kernel"]]
 			used.add(stage["kernel"])
-			require(kernel["semantic_operation"] in owned, "Cryptography API kernel belongs to another operation")
+			require(set([kernel["semantic_operation"]] + kernel.get("auxiliary_operations", [])).intersection(owned), "Cryptography API kernel belongs to another operation")
 			buffers, pushes = wire_parts(kernel)
 			require(isinstance(stage["bindings"], dict) and set(stage["bindings"]) == {n for n, _ in buffers}, "Cryptography API bindings differ from ABI")
 			for access in stage["bindings"].values():
 				require(isinstance(access, list) and len(access) == 2 and access[0] in {"read", "write"} and isinstance(access[1], str) and IDENTIFIER.fullmatch(access[1]), "Cryptography API binding expression is invalid")
 			require(isinstance(stage["push_constants"], dict) and set(stage["push_constants"]) == {n for n, _ in pushes} and all(kind == "uint32" for _, kind in pushes), "Cryptography API pushes differ from ABI")
 			require(all(isinstance(v, str) and v.strip() and ";" not in v for v in stage["push_constants"].values()), "Cryptography API push expression is invalid")
-		require(used == {k["kernel_id"] for k in schema["kernels"] if k["semantic_operation"] in owned}, "Cryptography API kernel coverage differs from schema")
+		require(used == {k["kernel_id"] for k in schema["kernels"] if set([k["semantic_operation"]] + k.get("auxiliary_operations", [])).intersection(owned)}, "Cryptography API kernel coverage differs from schema")
 		if category == "verify":
 			require(api["visibility"] == ("pub(crate)" if "algorithm" in api["attributes"] else "pub"), "Cryptography verifier visibility differs from admission")
 			require(len(stages) == 3 and [kernels[s["kernel"]]["semantic_operation"] for s in stages] == owned, "Cryptography verifier route coverage differs")
@@ -2432,15 +4503,109 @@ def validate_cryptography_api(schema: dict[str, Any], category: str) -> None:
 	require({api["template"] for api in apis} == set(cryptography_templates(category)), "Cryptography template coverage differs from schema")
 
 
+def generate_merkle_proof_shader(kernel: dict[str, Any], schema_hash: str, layout: dict[str, Any]) -> str:
+	path = Path(__file__).parent / "template/cryptography" / f"{kernel['name']}.slang.in"
+	values = {"fields": "\n".join(f"\tuint {name};" for name, _ in kernel["push_fields"]),
+		"workgroup": ", ".join(str(v) for v in kernel["workgroup_size"]),
+		"name": kernel["name"], "dtype": kernel.get("dtype", "u8"), **{key: str(value) for key, value in layout.items()}}
+	body = path.read_text()
+	require(set(re.findall(r"\{\{([^{}]+)\}\}", body)) == set(values), "Merkle shader template fields differ")
+	return banner(schema_hash, "//", "cryptography_hash.json") + re.sub(r"\{\{([^{}]+)\}\}", lambda m: values[m[1]], body)
+
+
+def generate_fixed_hash_shader(kernel: dict[str, Any], schema_hash: str) -> str:
+	digest = kernel["digest"]
+	word_bytes = 8 if digest["word_type"] == "uint2" else 4
+	words = digest["bytes"] // word_bytes
+	if word_bytes == 8:
+		store = "storage_buffers[push.output_index].Store<uint>(base + word * 8u, digest[word].x);\n\t\tstorage_buffers[push.output_index].Store<uint>(base + word * 8u + 4u, digest[word].y);"
+	else:
+		store = "storage_buffers[push.output_index].Store<uint>(base + word * 4u, digest[word]);"
+	fields = "\n".join(f"\tuint {name};" for name, _ in kernel["push_fields"])
+	workgroup = ", ".join(str(value) for value in kernel["workgroup_size"])
+	return banner(schema_hash, "//", "cryptography_hash.json") + f'''// No OA C++ fixed SHA-2/SHA-3 batch donor exists (cryptoFnHash.toml).
+// Adaptation: schema-owned ABI adapter over existing checked Slang formulas.
+// Each invocation owns one whole digest row; all rows contain complete words.
+// Input row starts may be unaligned; the imported helpers own packed reads.
+import attributes;
+import {digest['module']};
+
+struct PushConstants {{
+{fields}
+}};
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+
+[kernel_name("{kernel['name']}")]
+[domain("cryptography")]
+[variant("generic")]
+[dtype("u8")]
+[status("experimental")]
+[shader("compute")]
+[numthreads({workgroup})]
+void main(uint3 dispatch_thread_id : SV_DispatchThreadID) {{
+	uint index = dispatch_thread_id.x;
+	if (index >= push.count) return;
+	uint input_extent, output_extent;
+	storage_buffers[push.input_index].GetDimensions(input_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	// Divide before multiplying, including zero-length messages. Host admission
+	// also checks logical byte extents; descriptor extents include word padding.
+	if ((input_extent & 3u) != 0u || (output_extent & 3u) != 0u
+		|| (push.message_len != 0u && push.count > input_extent / push.message_len)
+		|| push.count > output_extent / {digest['bytes']}u) return;
+	{digest['word_type']} digest[{words}];
+	if (!{digest['helper']}(storage_buffers[push.input_index],
+		index * push.message_len, push.message_len, digest)) return;
+	uint base = index * {digest['bytes']}u;
+	[loop]
+	for (uint word = 0u; word < {words}u; ++word) {{
+		{store}
+	}}
+}}
+'''
+
+
+def cryptography_hash_binding_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> dict[Path, str]:
+	apis = schema["rust_api"]
+	rust = banner(schema_hash, "//", "cryptography_hash.json") + 'use pyo3::prelude::*;\nuse crate::{error::python_error, matrix::PythonMatrix};\n\n'
+	stub = banner(schema_hash, "#", "cryptography_hash.json") + 'from .._native import Matrix\n\n'
+	facade = banner(schema_hash, "#", "cryptography_hash.json") + '"""Schema-owned public-data Vulkan batch hashing adapters."""\n\nfrom .._native import (\n'
+	for api in apis:
+		name = api["name"]
+		variable = name in {"shake128", "shake256"} or (name.startswith("poseidon2_") and not name.endswith("_permute"))
+		rust_parameters = ", ".join(f"{arg}: {'&PythonMatrix' if kind == '&Matrix' else kind}" for arg, kind in api["parameters"])
+		arguments = ", ".join(f"&{arg}.inner" if kind == "&Matrix" else arg for arg, kind in api["parameters"])
+		stub_parameters = ", ".join(f"{arg}: {'Matrix' if kind == '&Matrix' else 'int'}" + (" = 0" if arg == "output_length" else "") for arg, kind in api["parameters"])
+		rust += "\n".join("///" + (" " + line if line else "") for line in api["doc"]) + "\n"
+		rust += '#[pyfunction]\n' + ('#[pyo3(signature = (input, output_length=0))]\n' if variable else '')
+		rust += f'pub(crate) fn crypto_hash_{name}({rust_parameters}) -> PyResult<PythonMatrix> {{\n'
+		rust += f'\toa::cryptography::hash::{name}({arguments})\n\t\t.map(PythonMatrix::wrap)\n\t\t.map_err(python_error)\n}}\n\n'
+		stub += f'def crypto_hash_{name}({stub_parameters}) -> Matrix: ...\n'
+		facade += f'\tcrypto_hash_{name} as hash_{name},\n'
+	rust += 'pub(super) fn register(module: &Bound<\'_, PyModule>) -> PyResult<()> {\n'
+	for api in apis:
+		rust += f'\tmodule.add_function(wrap_pyfunction!(crypto_hash_{api["name"]}, module)?)?;\n'
+	rust += '\tOk(())\n}\n'
+	facade += ')\n\n__all__ = [\n' + ''.join(f'\t"hash_{api["name"]}",\n' for api in apis) + ']\n'
+	reexports = 'pub use batch::{\n' + ''.join(f'\t{api["name"]},\n' for api in apis) + '};\n'
+	return {
+		root / 'src/py/pyo3/cryptography/hash.gen.rs': format_rust(rust, root),
+		root / 'src/py/oa/_gen/cryptography_hash.py': facade,
+		root / 'src/py/oa/_gen/cryptography_hash_native.pyi': stub,
+		root / 'src/rs/cryptography/hash/exports.gen.rs': format_rust(banner(schema_hash, "//", "cryptography_hash.json") + reexports, root),
+	}
+
+
 def generate_cryptography_api(schema: dict[str, Any], schema_hash: str, category: str) -> str:
 	module = (Path(__file__).parent / "template/cryptography" / f"{category}_module.rs.in").read_text(encoding="utf-8")
 	require(module.count("{{items}}") == 1, "Cryptography module requires exactly one item insertion")
 	items = []
 	for api in schema["rust_api"]:
+		signature = api_signature("cryptography", api, f"Cryptography {api['name']}")
 		docs = "\n".join("///" + (" " + line if line else "") for line in api["doc"])
 		annotations = "".join(f"#[{line}]\n" for line in api["annotations"])
-		parameters = ", ".join(f"{name}: {kind}" for name, kind in api["parameters"])
-		items.append(f"{docs}\n{annotations}{api['visibility']} fn {api['name']}({parameters}) -> Result<Matrix> {{\n" + cryptography_body(schema, api, category) + "\n}\n")
+		items.append(f"{docs}\n{annotations}{signature_header(signature)} {{\n" + cryptography_body(schema, api, category) + "\n}\n")
 	return banner(schema_hash, "//", "cryptography_hash.json" if category == "hash" else "cryptography_pqc.json") + module.replace("{{items}}", "\n\n".join(items))
 
 
@@ -2453,11 +4618,12 @@ def generate_image_api(schema: dict[str, Any], schema_hash: str, category: str) 
 		rust = op["rust"]
 		if rust["category"] != category:
 			continue
+		signature = operation_signature("image", op, f"Image {op['name']}")
+		require(signature is not None, f"Image {op['name']} has no public signature")
 		items.extend(generate_type(record) for record in schema["types"] if record["before"] == op["name"])
 		docs = "\n".join("///" + (" " + line if line else "") for line in rust["doc"])
-		parameters = ", ".join(f"{name}: {kind}" for name, kind in rust["parameters"])
 		annotations = "".join(f"#[{annotation}]\n" for annotation in rust["annotations"])
-		items.append(f"{docs}\n{annotations}pub fn {op['name']}({parameters}) -> Result<{rust['returns']}> {{\n" + render_image_body(op, kernels) + "\n}\n")
+		items.append(f"{docs}\n{annotations}{signature_header(signature)} {{\n" + render_image_body(op, kernels) + "\n}\n")
 	return banner(schema_hash, "//", "image.json") + module.replace("{{items}}", "\n\n".join(items))
 
 
@@ -2479,16 +4645,17 @@ def validate_audio_generation(schema: dict[str, Any]) -> None:
 		require(isinstance(rust["category"], str) and rust["category"] in {"signal", "transform"}, f"{where}.category is invalid")
 		require(isinstance(rust["doc"], str) and rust["doc"] and "\n" not in rust["doc"], f"{where}.doc must be one summary line")
 		require(rust["returns"] == ("Audio" if op["output_kinds"] == ["audio"] else "Matrix"), f"{where}.returns contradicts semantic output")
-		parameters = rust["parameters"]
-		require(isinstance(parameters, list) and parameters, f"{where}.parameters must be nonempty")
-		names = set()
-		for parameter in parameters:
-			require(isinstance(parameter, list) and len(parameter) == 2, f"{where}.parameter is invalid")
-			name, kind = parameter
-			require(isinstance(name, str) and IDENTIFIER.fullmatch(name), f"{where}.parameter name is invalid")
-			validate_unique(name, names, where)
-			require(isinstance(kind, str) and kind in {"&Audio", "f32", "u32", "u64", "NormalizeAudioConfig", "ResampleConfig", "BiquadCoefficients", "&[BiquadCoefficients]", "StftConfig", "MelConfig", "MfccConfig"}, f"{where}.parameter type is unsupported")
-		require(sum(kind == "&Audio" for _, kind in parameters) == len(op["input_kinds"]), f"{where} Audio input count differs from contract")
+		signature = operation_signature(
+			"audio",
+			op,
+			where,
+			allowed_types={"&Audio", "f32", "u32", "u64", "NormalizeAudioConfig", "ResampleConfig", "BiquadCoefficients", "&[BiquadCoefficients]", "StftConfig", "MelConfig", "MfccConfig"},
+		)
+		require(signature is not None, f"{where} has no public signature")
+		require(
+			sum(kind == "&Audio" for _, kind in signature["parameters"]) == len(op["input_kinds"]),
+			f"{where} Audio input count differs from contract",
+		)
 		require(all(kind in {"float", "unsigned_integer", "boolean"} for _, kind in op["attributes"]), f"{where} attribute kind has no generated encoding")
 		sources = rust["attribute_sources"]
 		require(isinstance(sources, dict) and set(sources) == {name for name, _ in op["attributes"]}, f"{where}.attribute_sources differs from contract")
@@ -2670,8 +4837,9 @@ def generate_audio_api(schema: dict[str, Any], schema_hash: str, category: str) 
 		for record in schema["types"]:
 			if record["before"] == op["name"]:
 				text += "\n" + generate_type(record)
-		parameters = ", ".join(f"{name}: {kind}" for name, kind in rust["parameters"])
-		text += f"\n/// {rust['doc']}\npub fn {op['name']}({parameters}) -> Result<{rust['returns']}> {{\n"
+		signature = operation_signature("audio", op, f"Audio {op['name']}")
+		require(signature is not None, f"Audio {op['name']} has no public signature")
+		text += f"\n/// {rust['doc']}\n{signature_header(signature)} {{\n"
 		text += render_audio_body(op, {kernel["kernel_id"]: kernel for kernel in schema["kernels"]}) + "\n}\n"
 	return banner(schema_hash, "//", "audio.json") + module.replace("{{items}}", text)
 
@@ -2699,30 +4867,15 @@ def generate_api(schema: dict[str, Any], schema_hash: str) -> str:
 				"/// Returns an error when the shape, dtype, ownership, allocation, or recording contract fails.",
 			]
 		)
+		signature = operation_signature("matrix", operation, f"Matrix {name}")
+		require(signature is not None, f"Matrix {name} has no public signature")
 		if operation["kind"] == "binary":
-			lines.extend(
-				[
-					f"pub fn {name}(left: &Matrix, right: &Matrix) -> Result<Matrix> {{",
-					matrix_body("binary", name, autograd=operation.get("autograd"), routes=f"&[{routes}]", broadcast_routes=rust_broadcast_routes(operation)),
-					"}",
-				]
-			)
+			body = matrix_body("binary", name, autograd=operation.get("autograd"), routes=f"&[{routes}]", broadcast_routes=rust_broadcast_routes(operation))
 		elif operation["kind"] == "unary":
-			lines.extend(
-				[
-					f"pub fn {name}(input: &Matrix) -> Result<Matrix> {{",
-					matrix_body("unary", name, autograd=operation.get("autograd"), routes=f"&[{routes}]"),
-					"}",
-				]
-			)
+			body = matrix_body("unary", name, autograd=operation.get("autograd"), routes=f"&[{routes}]")
 		else:
-			lines.extend(
-				[
-					f"pub fn {name}(input: &Matrix, {operation['scalar_name']}: f32) -> Result<Matrix> {{",
-					matrix_body("unary_scalar", name, autograd=operation.get("autograd"), routes=f"&[{routes}]", scalar=operation["scalar_name"]),
-					"}",
-				]
-			)
+			body = matrix_body("unary_scalar", name, autograd=operation.get("autograd"), routes=f"&[{routes}]", scalar=operation["scalar_name"])
+		lines.extend([f"{signature_header(signature)} {{", body, "}"])
 		lines.append("")
 	module = (Path(__file__).parent / "template/matrix/elemwise_module.rs.in").read_text(encoding="utf-8")
 	require(
@@ -2744,6 +4897,7 @@ def registry_entries(
 	cryptography_pqc: dict[str, Any],
 	image: dict[str, Any],
 	vision: dict[str, Any],
+	bigint: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
 	entries = []
 	for operation in elementwise["operations"]:
@@ -2895,7 +5049,7 @@ def registry_entries(
 				"domain": "cryptography",
 				"report_domain": "cryptography.hash",
 				"name": kernel["name"],
-				"dtype": cryptography["dtype"],
+				"dtype": kernel.get("dtype", cryptography["dtype"]),
 				"kernel_id": kernel["kernel_id"],
 				"stable_id": kernel["stable_id"],
 				"workgroup_size": kernel["workgroup_size"],
@@ -2963,7 +5117,29 @@ def registry_entries(
 				"semantic_contract": f"crate::core::operation::vision::{rust_const_name(semantic)}",
 			}
 		)
+	if bigint is not None:
+		for kernel in bigint["kernels"]:
+			entries.append({
+				"domain": "cryptography", "report_domain": "cryptography.bigint",
+				"name": kernel["name"], "dtype": "u32", "kernel_id": kernel["kernel_id"],
+				"stable_id": kernel["stable_id"], "workgroup_size": kernel["workgroup_size"],
+				"dispatch_tile_size": kernel["workgroup_size"], "training_replay_role": "safe",
+				"physical_write": kernel["physical_write"],
+				"semantic_contract": f"crate::core::operation::cryptography::bigint::{rust_const_name(kernel['name'])}",
+			})
+	merkle, _ = load_merkle_schema()
+	for kernel in merkle['kernels']:
+		entries.append({'domain': 'cryptography', 'report_domain': 'cryptography.merkle', 'name': kernel['name'], 'dtype': 'u32',
+			'kernel_id': kernel['kernel_id'], 'stable_id': kernel['stable_id'], 'workgroup_size': kernel['workgroup_size'], 'dispatch_tile_size': kernel['workgroup_size'],
+			'training_replay_role': 'safe', 'physical_write': kernel['physical_write'], 'semantic_contract': f"crate::core::operation::cryptography::merkle::{rust_const_name(kernel['semantic_operation'])}"})
+	ntt, _ = load_ntt_schema()
+	for kernel in ntt['kernels']:
+		entries.append({'domain': 'cryptography', 'report_domain': 'cryptography.ntt', 'name': kernel['name'], 'dtype': 'u32',
+			'kernel_id': kernel['kernel_id'], 'stable_id': kernel['stable_id'], 'workgroup_size': kernel['workgroup_size'], 'dispatch_tile_size': kernel['workgroup_size'],
+			'training_replay_role': 'safe', 'physical_write': kernel['physical_write'], 'semantic_contract': f"crate::core::operation::cryptography::ntt::{rust_const_name(kernel['semantic_operation'])}"})
 	buffer_counts: dict[str, int] = {}
+	for kernel in ntt['kernels'] + merkle['kernels']:
+		buffer_counts[kernel['kernel_id']] = count_buffer_indices(kernel)
 	for operation in elementwise["operations"]:
 		kind = operation["kind"]
 		count = {"binary": 3, "unary": 2, "unary_scalar": 2}[kind]
@@ -2976,6 +5152,9 @@ def registry_entries(
 	for schema in [reduce, rng, index, ml, audio, cryptography, cryptography_pqc, image, vision]:
 		for operation in schema.get("operations", schema.get("kernels", [])) + schema.get("private_kernels", []):
 			buffer_counts[operation["kernel_id"]] = count_buffer_indices(operation)
+	if bigint is not None:
+		for kernel in bigint["kernels"]:
+			buffer_counts[kernel["kernel_id"]] = count_buffer_indices(kernel)
 	for entry in entries:
 		entry["bounded_buffer_count"] = buffer_counts[entry["kernel_id"]]
 	seen_ids = validate_retired_stable_ids(
@@ -3070,8 +5249,10 @@ def generate_registry(
 	image_hash: str,
 	vision: dict[str, Any],
 	vision_hash: str,
+	bigint: dict[str, Any] | None = None,
+	bigint_hash: str | None = None,
 ) -> str:
-	entries = registry_entries(elementwise, blas, reduce, rng, index, ml, audio, cryptography, cryptography_pqc, image, vision)
+	entries = registry_entries(elementwise, blas, reduce, rng, index, ml, audio, cryptography, cryptography_pqc, image, vision, bigint)
 	lines = [
 		registry_banner(
 			elementwise_hash,
@@ -3093,6 +5274,8 @@ def generate_registry(
 		f"pub(crate) const MAX_BOUNDED_STORAGE_BUFFERS: u32 = {max(entry['bounded_buffer_count'] for entry in entries)};",
 		"",
 	]
+	if bigint_hash is not None:
+		lines.insert(1, f"// cryptography_bigint_sha256={bigint_hash}")
 	for entry in entries:
 		domain = entry["domain"]
 		name = entry["name"]
@@ -3154,8 +5337,12 @@ def generate_registry(
 		if kernel["name"] == "ml_dsa_sign":
 			for row in kernel["parameter_layouts"]:
 				lines.append(f"\t\t\t{row['parameter_set']} => Some(({row['seed_bytes']}, {row['private_bytes']}, {row['mu_bytes']}, {row['signature_bytes']})),")
+	lines.extend(["\t\t\t_ => None,", "\t\t}", "\t}"])
+	for name in ("encaps", "decaps"):
+		size = next(kernel["workspace_bytes"] for kernel in cryptography_pqc["private_kernels"] if kernel["name"] == f"ml_kem_{name}")
+		lines.extend([f"\tpub(crate) const fn mlkem_{name}_workspace_bytes() -> usize {{", f"\t\t{size}", "\t}"])
 	workspace = next(kernel["workspace_bytes"] for kernel in cryptography_pqc["private_kernels"] if kernel["name"] == "ml_dsa_sign")
-	lines.extend(["\t\t\t_ => None,", "\t\t}", "\t}", "\tpub(crate) const fn mldsa_sign_workspace_bytes() -> usize {", f"\t\t{workspace}", "\t}", "\tpub(crate) const fn mldsa_prehash_bytes(algorithm: u32) -> Option<u64> {", "\t\tmatch algorithm {"])
+	lines.extend(["\tpub(crate) const fn mldsa_sign_workspace_bytes() -> usize {", f"\t\t{workspace}", "\t}", "\tpub(crate) const fn mlkem_keygen_workspace_bytes() -> usize {", f"\t\t{next(kernel['workspace_bytes'] for kernel in cryptography_pqc['private_kernels'] if kernel['name'] == 'ml_kem_keygen')}", "\t}", "\tpub(crate) const fn mldsa_prehash_bytes(algorithm: u32) -> Option<u64> {", "\t\tmatch algorithm {"])
 	for row in cryptography_pqc["prehashes"]:
 		lines.append(f"\t\t\t{row['oid_suffix']} => Some({row['digest_bytes']}),")
 	lines.extend(["\t\t\t_ => None,", "\t\t}", "\t}", "}", "", "impl KernelId {", f"\tpub(crate) const ALL: [Self; {len(entries)}] = ["])
@@ -3397,6 +5584,8 @@ def generate_operation_registry(
 	image_hash: str,
 	vision: dict[str, Any],
 	vision_hash: str,
+	bigint: dict[str, Any] | None = None,
+	bigint_hash: str | None = None,
 ) -> str:
 	lines = [
 		banner(elementwise_hash, "//").rstrip(),
@@ -3545,6 +5734,36 @@ def generate_operation_registry(
 		for line in semantic_contract_lines("cryptography::hash", operation["name"], contract, attributes):
 			lines.append(f"\t\t{line}" if line else "")
 		lines.append("")
+	if bigint is not None:
+		lines.extend(["\t}", "", "\tpub mod bigint {", "\t\tuse super::*;", ""])
+		for operation in bigint["contracts"]:
+			contract = {key: operation[key] for key in ("input_kinds", "output_kinds", "shape_rule", "dtype_rule")}
+			contract.update(effects=["read_inputs", "write_outputs"], mutated_inputs=[], output_alias_inputs=[-1] * len(operation["output_kinds"]), differentiation="none", lowering="compute_dispatch")
+			attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
+			for line in semantic_contract_lines("cryptography::bigint", operation["name"], contract, attributes):
+				lines.append(f"\t\t{line}" if line else "")
+			lines.append("")
+		lines.insert(1, f"// cryptography_bigint_sha256={bigint_hash}")
+	ntt, ntt_hash = load_ntt_schema()
+	lines.extend(["\t}", "", "\tpub mod ntt {", "\t\tuse super::*;", ""])
+	for operation in ntt['contracts']:
+		contract = {key: operation[key] for key in ('input_kinds', 'output_kinds', 'shape_rule', 'dtype_rule')}
+		contract.update(effects=['read_inputs', 'write_outputs'], mutated_inputs=[], output_alias_inputs=[-1] * len(operation['output_kinds']), differentiation='none', lowering='compute_dispatch')
+		attributes = [{'name': name, 'kind': kind} for name, kind in operation['attributes']]
+		for line in semantic_contract_lines('cryptography::ntt', operation['name'], contract, attributes):
+			lines.append(f"\t\t{line}" if line else "")
+		lines.append('')
+	lines.insert(1, f'// cryptography_ntt_sha256={ntt_hash}')
+	merkle, merkle_hash = load_merkle_schema()
+	lines.extend(["\t}", "", "\tpub mod merkle {", "\t\tuse super::*;", ""])
+	for operation in merkle['contracts']:
+		contract = {key: operation[key] for key in ('input_kinds', 'output_kinds', 'shape_rule', 'dtype_rule', 'mutated_inputs', 'output_alias_inputs')}
+		contract.update(effects=['read_inputs', 'write_outputs'], differentiation='none', lowering='compute_dispatch')
+		attributes = [{'name': name, 'kind': kind} for name, kind in operation['attributes']]
+		for line in semantic_contract_lines('cryptography::merkle', operation['name'], contract, attributes):
+			lines.append(f"\t\t{line}" if line else "")
+		lines.append('')
+	lines.insert(1, f'// cryptography_merkle_sha256={merkle_hash}')
 	lines.extend([
 		"\t}",
 		"",
@@ -3908,8 +6127,8 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 				right = ", ".join(rust_value(dtype, value) for value in test["right"])
 				lines.extend(
 					[
-						f"\tlet {label}_left = oa::Matrix::from_slice(&engine, [ELEMENT_COUNT], &repeated(&[{left}]))?;",
-						f"\tlet {label}_right = oa::Matrix::from_slice(&engine, [ELEMENT_COUNT], &repeated(&[{right}]))?;",
+						f"\tlet {label}_left = oa::Matrix::new_from_slice(&engine, [ELEMENT_COUNT], &repeated(&[{left}]))?;",
+						f"\tlet {label}_right = oa::Matrix::new_from_slice(&engine, [ELEMENT_COUNT], &repeated(&[{right}]))?;",
 						f"\tlet {label}_actual: Vec<{rust_type}> = oa::matrix::{name}(&{label}_left, &{label}_right)?.read()?;",
 					]
 				)
@@ -3918,7 +6137,7 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 				values = ", ".join(rust_value(dtype, value) for value in test["input"])
 				lines.extend(
 					[
-						f"\tlet {label}_input = oa::Matrix::from_slice(&engine, [ELEMENT_COUNT], &repeated(&[{values}]))?;",
+						f"\tlet {label}_input = oa::Matrix::new_from_slice(&engine, [ELEMENT_COUNT], &repeated(&[{values}]))?;",
 						f"\tlet {label}_actual: Vec<{rust_type}> = oa::matrix::{name}(&{label}_input)?.read()?;",
 					]
 				)
@@ -3927,7 +6146,7 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 				values = ", ".join(rust_value(dtype, value) for value in test["input"])
 				lines.extend(
 					[
-						f"\tlet {label}_input = oa::Matrix::from_slice(&engine, [ELEMENT_COUNT], &repeated(&[{values}]))?;",
+						f"\tlet {label}_input = oa::Matrix::new_from_slice(&engine, [ELEMENT_COUNT], &repeated(&[{values}]))?;",
 						f"\tlet {label}_actual: Vec<{rust_type}> = oa::matrix::{name}(&{label}_input, {rust_value(dtype, test['scalar'])})?.read()?;",
 					]
 				)
@@ -3999,7 +6218,7 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 	)
 	for dtype in dtypes:
 		rust_type = DTYPES[dtype]["rust_type"]
-		lines.append(f"\tlet empty_{dtype} = oa::Matrix::from_slice::<{rust_type}>(&engine, [0], &[])?;")
+		lines.append(f"\tlet empty_{dtype} = oa::Matrix::new_from_slice::<{rust_type}>(&engine, [0], &[])?;")
 	for operation in schema["operations"]:
 		name = operation["name"]
 		for variant in operation_variants(schema, operation):
@@ -4205,8 +6424,8 @@ test_vk!(generated_mat_mul_nt_matches_schema_oracle, engine, {{
 		let left_values = values(m * k, 3);
 		let right_values = values(n * k, 11);
 		let expected = cpu_mat_mul_nt(&left_values, &right_values, m, n, k);
-		let left = oa::Matrix::from_f32(&engine, [m, k], &left_values)?;
-		let right = oa::Matrix::from_f32(&engine, [n, k], &right_values)?;
+		let left = oa::Matrix::new_from_f32(&engine, [m, k], &left_values)?;
+		let right = oa::Matrix::new_from_f32(&engine, [n, k], &right_values)?;
 		let output = oa::matrix::{operation['name']}(&left, &right)?;
 		assert_eq!(output.shape(), [m, n]);
 		assert_eq!(output.dtype(), oa::DType::F32);
@@ -4217,11 +6436,11 @@ test_vk!(generated_mat_mul_nt_matches_schema_oracle, engine, {{
 
 test_vk!(generated_mat_mul_nt_rejects_invalid_contracts, engine, {{
 	let other_engine = oa::Engine::new()?;
-	let rank_one = oa::Matrix::from_f32(&engine, [6], &[0.0; 6])?;
-	let left = oa::Matrix::from_f32(&engine, [2, 3], &[0.0; 6])?;
-	let wrong_k = oa::Matrix::from_f32(&engine, [2, 4], &[0.0; 8])?;
-	let integer = oa::Matrix::from_slice(&engine, [2, 3], &[0_i32; 6])?;
-	let foreign = oa::Matrix::from_f32(&other_engine, [2, 3], &[0.0; 6])?;
+	let rank_one = oa::Matrix::new_from_f32(&engine, [6], &[0.0; 6])?;
+	let left = oa::Matrix::new_from_f32(&engine, [2, 3], &[0.0; 6])?;
+	let wrong_k = oa::Matrix::new_from_f32(&engine, [2, 4], &[0.0; 8])?;
+	let integer = oa::Matrix::new_from_slice(&engine, [2, 3], &[0_i32; 6])?;
+	let foreign = oa::Matrix::new_from_f32(&other_engine, [2, 3], &[0.0; 6])?;
 
 	for error in [
 		oa::matrix::{operation['name']}(&rank_one, &left).err().expect("rank-one input was accepted"),
@@ -4248,6 +6467,13 @@ def generate_reduce_api(schema: dict[str, Any], schema_hash: str) -> str:
 		accuracy_count,
 		masked_accuracy_count,
 	) = schema["operations"]
+	signatures = {}
+	for operation in schema["operations"]:
+		if operation.get("lowering_only"):
+			continue
+		signature = operation_signature("matrix", operation, f"Reduce {operation['name']}")
+		require(signature is not None, f"Reduce {operation['name']} has no public signature")
+		signatures[operation["name"]] = signature_header(signature)
 	items = f"""
 /// Stable Softmax over `dim`, where `-1` selects the last dimension.
 ///
@@ -4258,15 +6484,11 @@ def generate_reduce_api(schema: dict[str, Any], schema_hash: str) -> str:
 /// Returns an error when the input is empty or not FP32, `dim` is invalid, an
 /// axis extent or dispatch count exceeds the shader ABI, allocation fails, or
 /// runtime recording fails.
-pub fn {softmax['name']}(input: &Matrix, dim: i32) -> Result<Matrix> {{
+{signatures['softmax']} {{
 {matrix_body('axis_normalization', softmax['name'], kernel='KernelId::' + softmax['kernel_id'], node='softmax')}
 }}
 
-pub(crate) fn {softmax_backward['name']}(
-	forward_output: &Matrix,
-	output_gradient: &Matrix,
-	dim: i32,
-) -> Result<Matrix> {{
+{signatures['softmax_backward']} {{
 {matrix_body('axis_normalization_backward', softmax_backward['name'], kernel='KernelId::' + softmax_backward['kernel_id'])}
 }}
 
@@ -4279,15 +6501,11 @@ pub(crate) fn {softmax_backward['name']}(
 /// Returns an error when the input is empty or not FP32, `dim` is invalid, an
 /// axis extent or dispatch count exceeds the shader ABI, allocation fails, or
 /// runtime recording fails.
-pub fn {log_softmax['name']}(input: &Matrix, dim: i32) -> Result<Matrix> {{
+{signatures['log_softmax']} {{
 {matrix_body('axis_normalization', log_softmax['name'], kernel='KernelId::' + log_softmax['kernel_id'], node='log_softmax')}
 }}
 
-pub(crate) fn {log_softmax_backward['name']}(
-	forward_output: &Matrix,
-	output_gradient: &Matrix,
-	dim: i32,
-) -> Result<Matrix> {{
+{signatures['log_softmax_backward']} {{
 {matrix_body('axis_normalization_backward', log_softmax_backward['name'], kernel='KernelId::' + log_softmax_backward['kernel_id'])}
 }}
 
@@ -4300,15 +6518,11 @@ pub(crate) fn {log_softmax_backward['name']}(
 ///
 /// Returns an error when the input is empty or not FP32, `dim` is invalid, a
 /// size exceeds the admitted shader ABI, allocation fails, or recording fails.
-pub fn {sum_operation['name']}(input: &Matrix, dim: i32) -> Result<Matrix> {{
+{signatures['sum']} {{
 {matrix_body('sum', sum_operation['name'])}
 }}
 
-pub(crate) fn {sum_backward['name']}(
-	input: &Matrix,
-	output_gradient: &Matrix,
-	dim: i32,
-) -> Result<Matrix> {{
+{signatures['sum_backward']} {{
 {matrix_body('sum_backward', sum_backward['name'])}
 }}
 
@@ -4323,7 +6537,7 @@ pub(crate) fn {sum_backward['name']}(
 /// Matrix, labels do not match the leading logits shape or use U8/U32/I32,
 /// inputs belong to different engines, a size exceeds the shader ABI,
 /// allocation fails, or recording fails.
-pub fn {accuracy_count['name']}(logits: &Matrix, labels: &Matrix) -> Result<Matrix> {{
+{signatures['categorical_accuracy_count']} {{
 {matrix_body('accuracy', accuracy_count['name'])}
 }}
 
@@ -4337,11 +6551,7 @@ pub fn {accuracy_count['name']}(logits: &Matrix, labels: &Matrix) -> Result<Matr
 /// Returns an error under the same conditions as
 /// [`categorical_accuracy_count`], or when the mask is not FP32, does not match
 /// the labels shape, or belongs to another engine.
-pub fn {masked_accuracy_count['name']}(
-	logits: &Matrix,
-	labels: &Matrix,
-	mask: &Matrix,
-) -> Result<Matrix> {{
+{signatures['masked_categorical_accuracy_count']} {{
 {matrix_body('accuracy', masked_accuracy_count['name'])}
 }}
 """
@@ -4357,6 +6567,9 @@ def generate_blas_api(schema: dict[str, Any], schema_hash: str) -> str:
 	operation = schema["operations"][0]
 	kernel_id = operation["kernel_id"]
 	contract_const = rust_const_name(operation["name"])
+	signature = operation_signature("matrix", operation, "Matrix mat_mul_nt")
+	require(signature is not None, "Matrix mat_mul_nt has no public signature")
+	header = signature_header(signature)
 	body_template = (Path(__file__).parent / "template/matrix/mat_mul_nt.rs.in").read_text(encoding="utf-8")
 	items = f"""
 /// {operation['doc']}
@@ -4372,7 +6585,7 @@ def generate_blas_api(schema: dict[str, Any], schema_hash: str) -> str:
 /// Returns an error when either input is not a rank-two FP32 matrix,
 /// their K extents differ, they belong to different engines, a dimension
 /// exceeds the admitted shader ABI, or allocation or recording fails.
-pub fn {operation['name']}(left: &Matrix, right: &Matrix) -> Result<Matrix> {{
+{header} {{
 \tlet contract = crate::core::operation::matrix::{contract_const};
 \tlet kernel = KernelId::{kernel_id};
 {body_template.rstrip()}
@@ -4636,7 +6849,7 @@ test_vk!(generated_softmax_matches_axis_oracle, engine, {{
 	let values = (0..shape.iter().product::<usize>())
 		.map(|index| ((index * 7 % 17) as f32 - 8.0) * 0.17)
 		.collect::<Vec<_>>();
-	let input = oa::Matrix::from_f32(&engine, shape, &values)?;
+	let input = oa::Matrix::new_from_f32(&engine, shape, &values)?;
 	let expected = softmax_reference(&values, &shape, {dim});
 	let output = oa::matrix::{softmax['name']}(&input, {dim})?;
 	let actual = output.read_f32()?;
@@ -4659,7 +6872,7 @@ test_vk!(generated_log_softmax_matches_axis_oracle, engine, {{
 	let values = (0..shape.iter().product::<usize>())
 		.map(|index| ((index * 7 % 17) as f32 - 8.0) * 0.17)
 		.collect::<Vec<_>>();
-	let input = oa::Matrix::from_f32(&engine, shape, &values)?;
+	let input = oa::Matrix::new_from_f32(&engine, shape, &values)?;
 	let expected = log_softmax_reference(&values, &shape, {dim});
 	let output = oa::matrix::{log_softmax['name']}(&input, {dim})?;
 	for (index, (actual, expected)) in output.read_f32()?.iter().zip(expected).enumerate() {{
@@ -4677,9 +6890,9 @@ test_vk!(generated_log_softmax_matches_axis_oracle, engine, {{
 }});
 
 test_vk!(generated_softmax_rejects_invalid_contracts, engine, {{
-	let empty = oa::Matrix::from_f32(&engine, [0], &[])?;
-	let integer = oa::Matrix::from_slice(&engine, [2], &[1_i32, 2])?;
-	let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 2.0, 3.0, 4.0])?;
+	let empty = oa::Matrix::new_from_f32(&engine, [0], &[])?;
+	let integer = oa::Matrix::new_from_slice(&engine, [2], &[1_i32, 2])?;
+	let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 2.0, 3.0, 4.0])?;
 	for error in [
 		rejected(oa::matrix::{softmax['name']}(&empty, -1), "empty input was accepted"),
 		rejected(oa::matrix::{softmax['name']}(&integer, -1), "I32 input was accepted"),
@@ -4700,7 +6913,7 @@ test_vk!(generated_sum_matches_full_and_axis_oracles, engine, {{
 	let values = (0..shape.iter().product::<usize>())
 		.map(|index| ((index * 11 % 23) as f32 - 11.0) * 0.13)
 		.collect::<Vec<_>>();
-	let input = oa::Matrix::from_f32(&engine, shape, &values)?;
+	let input = oa::Matrix::new_from_f32(&engine, shape, &values)?;
 	let axis = oa::matrix::{sum_operation['name']}(&input, {dim})?;
 	assert_eq!(axis.shape(), [shape[0], 1, shape[2]]);
 	for (actual, expected) in axis.read_f32()?.iter().zip(sum_reference(&values, &shape, {dim})) {{
@@ -4713,7 +6926,7 @@ test_vk!(generated_sum_matches_full_and_axis_oracles, engine, {{
 }});
 
 test_vk!(generated_categorical_accuracy_counts_match_exact_oracles, engine, {{
-	let logits = oa::Matrix::from_f32(
+	let logits = oa::Matrix::new_from_f32(
 		&engine,
 		[4, 3],
 		&[
@@ -4724,17 +6937,17 @@ test_vk!(generated_categorical_accuracy_counts_match_exact_oracles, engine, {{
 		],
 	)?;
 	for labels in [
-		oa::Matrix::from_slice(&engine, [4], &[0_u8, 1, 0, 0])?,
-		oa::Matrix::from_slice(&engine, [4], &[0_u32, 1, 0, 0])?,
-		oa::Matrix::from_slice(&engine, [4], &[0_i32, 1, -1, 0])?,
+		oa::Matrix::new_from_slice(&engine, [4], &[0_u8, 1, 0, 0])?,
+		oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 1, 0, 0])?,
+		oa::Matrix::new_from_slice(&engine, [4], &[0_i32, 1, -1, 0])?,
 	] {{
 		let count = oa::matrix::{accuracy_count['name']}(&logits, &labels)?;
 		assert_eq!(count.shape(), [1]);
 		assert_eq!(count.dtype(), oa::DType::U32);
 		assert_eq!(count.read::<u32>()?, vec![3]);
 	}}
-	let labels = oa::Matrix::from_slice(&engine, [4], &[0_u32, 1, 2, 0])?;
-	let mask = oa::Matrix::from_f32(&engine, [4], &[1.0, 0.0, -2.0, 1.0])?;
+	let labels = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 1, 2, 0])?;
+	let mask = oa::Matrix::new_from_f32(&engine, [4], &[1.0, 0.0, -2.0, 1.0])?;
 	assert_eq!(
 		oa::matrix::{masked_accuracy_count['name']}(&logits, &labels, &mask)?
 			.read::<u32>()?,
@@ -4745,14 +6958,14 @@ test_vk!(generated_categorical_accuracy_counts_match_exact_oracles, engine, {{
 
 test_vk!(generated_categorical_accuracy_count_rejects_invalid_contracts, engine, {{
 	let other_engine = oa::Engine::new()?;
-	let logits = oa::Matrix::from_f32(&engine, [2, 3], &[1.0, 2.0, 3.0, 3.0, 2.0, 1.0])?;
-	let rank_one = oa::Matrix::from_f32(&engine, [6], &[0.0; 6])?;
-	let labels = oa::Matrix::from_slice(&engine, [2], &[2_u32, 0])?;
-	let wrong_shape = oa::Matrix::from_slice(&engine, [1], &[2_u32])?;
-	let float_labels = oa::Matrix::from_f32(&engine, [2], &[2.0, 0.0])?;
-	let foreign_labels = oa::Matrix::from_slice(&other_engine, [2], &[2_u32, 0])?;
-	let mask = oa::Matrix::from_f32(&engine, [2], &[1.0, 1.0])?;
-	let integer_mask = oa::Matrix::from_slice(&engine, [2], &[1_u32, 1])?;
+	let logits = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, 2.0, 3.0, 3.0, 2.0, 1.0])?;
+	let rank_one = oa::Matrix::new_from_f32(&engine, [6], &[0.0; 6])?;
+	let labels = oa::Matrix::new_from_slice(&engine, [2], &[2_u32, 0])?;
+	let wrong_shape = oa::Matrix::new_from_slice(&engine, [1], &[2_u32])?;
+	let float_labels = oa::Matrix::new_from_f32(&engine, [2], &[2.0, 0.0])?;
+	let foreign_labels = oa::Matrix::new_from_slice(&other_engine, [2], &[2_u32, 0])?;
+	let mask = oa::Matrix::new_from_f32(&engine, [2], &[1.0, 1.0])?;
+	let integer_mask = oa::Matrix::new_from_slice(&engine, [2], &[1_u32, 1])?;
 
 	for error in [
 		rejected(oa::matrix::{accuracy_count['name']}(&rank_one, &labels), "rank-one logits were accepted"),
@@ -4775,8 +6988,8 @@ test_vk!(generated_categorical_accuracy_count_rejects_invalid_contracts, engine,
 }});
 
 test_vk!(generated_categorical_accuracy_capture_retains_semantic_and_physical_evidence, engine, {{
-	let logits = oa::Matrix::from_f32(&engine, [2, 3], &[1.0, 2.0, 3.0, 3.0, 2.0, 1.0])?;
-	let labels = oa::Matrix::from_slice(&engine, [2], &[2_u32, 0])?;
+	let logits = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, 2.0, 3.0, 3.0, 2.0, 1.0])?;
+	let labels = oa::Matrix::new_from_slice(&engine, [2], &[2_u32, 0])?;
 	let (plan, count) = engine.capture(|| oa::matrix::{accuracy_count['name']}(&logits, &labels))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
@@ -5196,10 +7409,12 @@ def generate_mlkem_keygen_shader(kernel: dict[str, Any], digest: str) -> str:
 // One workgroup owns all output words; host preflight admits k and exact extents.
 import attributes;
 import mlkem_kem;
+import mlkem_kpke;
 struct PushConstants {{
 	uint seed_index;
 	uint private_index;
 	uint public_index;
+	uint workspace_index;
 	uint k;
 }};
 [[vk::push_constant]] PushConstants push;
@@ -5213,12 +7428,13 @@ struct PushConstants {{
 [numthreads(1, 1, 1)]
 void main(uint3 tid : SV_DispatchThreadID) {{
 	if (any(tid != uint3(0u, 0u, 0u)) || push.k < 2u || push.k > 4u) return;
-	uint seed_size, private_size, public_size;
+	uint seed_size, private_size, public_size, workspace_size;
 	storage_buffers[push.seed_index].GetDimensions(seed_size);
 	storage_buffers[push.private_index].GetDimensions(private_size);
 	storage_buffers[push.public_index].GetDimensions(public_size);
+	storage_buffers[push.workspace_index].GetDimensions(workspace_size);
 	uint el = 384u * push.k + 32u, dl = 768u * push.k + 96u;
-	if (seed_size != 64u || private_size != dl || public_size != el) return;
+	if (seed_size != 64u || private_size != dl || public_size != el || workspace_size != {kernel['workspace_bytes']}u) return;
 	uint d[8], z[32], ek[1568], dk[3168];
 	for (uint i = 0u; i < 1568u; ++i) ek[i] = 0u;
 	for (uint i = 0u; i < 3168u; ++i) dk[i] = 0u;
@@ -5227,7 +7443,7 @@ void main(uint3 tid : SV_DispatchThreadID) {{
 		uint word = storage_buffers[push.seed_index].Load(32u + (i & ~3u));
 		z[i] = (word >> (8u * (i & 3u))) & 255u;
 	}}
-	mlkem_keygen_internal(d, z, push.k, ek, dk);
+	if (!mlkem_keygen_buffer(d, z, push.k, storage_buffers[push.workspace_index], 0u, ek, dk)) return;
 	for (uint i = 0u; i < el; i += 4u)
 		storage_buffers[push.public_index].Store(i, ek[i] | (ek[i+1u] << 8u) | (ek[i+2u] << 16u) | (ek[i+3u] << 24u));
 	for (uint i = 0u; i < dl; i += 4u)
@@ -5243,13 +7459,14 @@ def generate_mlkem_kem_shader(kernel: dict[str, Any], digest: str) -> str:
 	# Public status reports encapsulation-key validity only. Decapsulation has
 	# no rejection status; the FIPS implicit-rejection result stays private.
 	body = """
-	uint seed_size, public_size, shared_size, ciphertext_size, status_size;
+	uint seed_size, public_size, shared_size, ciphertext_size, status_size, workspace_size;
+	storage_buffers[push.workspace_index].GetDimensions(workspace_size);
 	storage_buffers[push.seed_index].GetDimensions(seed_size);
 	storage_buffers[push.public_index].GetDimensions(public_size);
 	storage_buffers[push.shared_index].GetDimensions(shared_size);
 	storage_buffers[push.ciphertext_index].GetDimensions(ciphertext_size);
 	storage_buffers[push.status_index].GetDimensions(status_size);
-	if (seed_size != 32u || public_size != el || shared_size != 32u || ciphertext_size != cl || status_size != 4u) return;
+	if (seed_size != 32u || public_size != el || shared_size != 32u || ciphertext_size != cl || status_size != 4u || workspace_size != 4096u) return;
 	uint ek[1568], message[32], key[32], ciphertext[1568];
 	for (uint i = 0u; i < 1568u; ++i) { ek[i] = 0u; ciphertext[i] = 0u; }
 	for (uint i = 0u; i < el; ++i) {
@@ -5267,15 +7484,16 @@ def generate_mlkem_kem_shader(kernel: dict[str, Any], digest: str) -> str:
 		uint word = storage_buffers[push.seed_index].Load(i & ~3u);
 		message[i] = (word >> (8u * (i & 3u))) & 255u;
 	}
-	mlkem_encaps_internal(ek, message, push.k, key, ciphertext);
+	if (!mlkem_encaps_buffer(ek, message, push.k, storage_buffers[push.workspace_index], 0u, key, ciphertext)) return;
 	for (uint i = 0u; i < cl; i += 4u)
 		storage_buffers[push.ciphertext_index].Store(i, ciphertext[i] | (ciphertext[i+1u] << 8u) | (ciphertext[i+2u] << 16u) | (ciphertext[i+3u] << 24u));
 """ if encaps else """
-	uint private_size, ciphertext_size, shared_size;
+	uint private_size, ciphertext_size, shared_size, workspace_size;
+	storage_buffers[push.workspace_index].GetDimensions(workspace_size);
 	storage_buffers[push.private_index].GetDimensions(private_size);
 	storage_buffers[push.ciphertext_index].GetDimensions(ciphertext_size);
 	storage_buffers[push.shared_index].GetDimensions(shared_size);
-	if (private_size != 768u * push.k + 96u || ciphertext_size != cl || shared_size != 32u) return;
+	if (private_size != 768u * push.k + 96u || ciphertext_size != cl || shared_size != 32u || workspace_size != 4096u) return;
 	// Only internally generated retained keys are admitted by the private owner.
 	uint dk[3168], ciphertext[1568], key[32];
 	for (uint i = 0u; i < 3168u; ++i) dk[i] = 0u;
@@ -5288,8 +7506,9 @@ def generate_mlkem_kem_shader(kernel: dict[str, Any], digest: str) -> str:
 		uint word = storage_buffers[push.ciphertext_index].Load(i & ~3u);
 		ciphertext[i] = (word >> (8u * (i & 3u))) & 255u;
 	}
-	mlkem_decaps_internal(dk, ciphertext, push.k, key);
+	if (!mlkem_decaps_buffer(dk, ciphertext, push.k, storage_buffers[push.workspace_index], 0u, key)) return;
 """
+	body = body.replace("workspace_size != 4096u", f"workspace_size != {kernel['workspace_bytes']}u")
 	return f"""// Generated by tool/gen/fn/generate.py; do not edit.
 // schema_sha256={digest}
 // Private FIPS 203 adapter; C++ oaPqc.md has no live donor.
@@ -5560,6 +7779,51 @@ def matrix_autograd_outputs(root: Path, schemas: list[tuple[dict[str, Any], str]
 	return outputs
 
 
+def pqc_device_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> dict[Path, str]:
+	api = schema["device_api"]
+	lines = ["/// FIPS 203 device-key parameter set.", "#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]", "pub enum MlKemParameters {"]
+	for row in api["mlkem_parameters"]:
+		lines += [f"\t/// ML-KEM-{row['parameter']}.", f"\tMlKem{row['parameter']},"]
+	lines += ["}", "", "impl MlKemParameters {"]
+	for method, field, typ, vis, doc in (
+		("k", "k", "u32", "pub(crate)", "Private polynomial-vector width."),
+		("public_key_size", "public_key_bytes", "usize", "pub", "Encoded encapsulation-key bytes."),
+		("ciphertext_size", "ciphertext_bytes", "usize", "pub", "Encoded ciphertext bytes."),
+	):
+		lines += [f"\t/// {doc}", "\t#[must_use]", f"\t{vis} const fn {method}(self) -> {typ} {{", "\t\tmatch self {"]
+		for row in api["mlkem_parameters"]: lines.append(f"\t\t\tSelf::MlKem{row['parameter']} => {row[field]},")
+		lines += ["\t\t}", "\t}"]
+	lines += ["}", "", "/// FIPS 204 HashML-DSA identity and exact digest extent.", "#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]", "pub enum MlDsaPrehash {"]
+	for name, row in zip(api["prehash_rust_names"], schema["prehashes"]):
+		lines += [f"\t/// {row['name']}, {row['digest_bytes']} digest bytes.", f"\t{name},"]
+	lines += ["}", "", "impl MlDsaPrehash {"]
+	for method, field, typ, vis, doc in (("id", "oid_suffix", "u32", "pub(crate)", "Private NIST OID suffix."), ("digest_bytes", "digest_bytes", "usize", "pub", "Exact encoded digest bytes.")):
+		lines += [f"\t/// {doc}", "\t#[must_use]", f"\t{vis} const fn {method}(self) -> {typ} {{", "\t\tmatch self {"]
+		for name, row in zip(api["prehash_rust_names"], schema["prehashes"]): lines.append(f"\t\t\tSelf::{name} => {row[field]},")
+		lines += ["\t\t}", "\t}"]
+	lines += ["}"]
+	template_root = Path(__file__).resolve().parent / "template/cryptography/pqc"
+	body = (template_root / "device.rs.in").read_text().replace("{{metadata}}", "\n".join(lines))
+	for op in api["operations"]:
+		require(f"pub fn {op['name']}(" in body and f".{op['executor']}(" in body, "PQC full-body template does not implement schema operation")
+	binding = (template_root / "binding.rs.in").read_text()
+	kem_cases = "\n".join(f"\t\t{r['parameter']} => Ok(device::MlKemParameters::MlKem{r['parameter']})," for r in api["mlkem_parameters"])
+	dsa_cases = "\n".join(f"\t\t{p} => Ok(oa::cryptography::pqc::MlDsaParameters::MlDsa{p})," for p in (44,65,87))
+	hash_cases = "\n".join(f"\t\t\"{row['name']}\" => Ok(device::MlDsaPrehash::{name})," for name,row in zip(api["prehash_rust_names"],schema["prehashes"]))
+	binding = binding.replace("{{kem_cases}}", kem_cases).replace("{{dsa_cases}}", dsa_cases).replace("{{hash_cases}}", hash_cases)
+	stub = (template_root / "binding.pyi.in").read_text()
+	aliases = ["DeviceMlDsaKey", "DeviceMlKemKey", "DeviceSharedSecret", "DeviceErasure", "DeviceSignature", "DeviceEncapsulation", "DeviceDecapsulation"]
+	py = "from .._native import " + ", ".join(aliases) + "\n"
+	for op in api["operations"]: py += f"from .._native import crypto_device_{op['name']} as device_{op['name']}\n"
+	for name in ("mldsa_verify_message", "mldsa_verify_hash_message", "mldsa_verify_prehashed"): py += f"from .._native import crypto_device_{name} as device_{name}\n"
+	return {
+		root / "src/rs/cryptography/pqc/device/operations.gen.rs": format_rust(banner(schema_hash, "//", "cryptography_pqc.json") + body, root),
+		root / "src/py/pyo3/cryptography/pqc_device.gen.rs": format_rust(banner(schema_hash, "//", "cryptography_pqc.json") + binding, root),
+		root / "src/py/oa/_gen/cryptography_pqc_device.py": banner(schema_hash, "#", "cryptography_pqc.json") + py,
+		root / "src/py/oa/_gen/cryptography_pqc_device_native.pyi": banner(schema_hash, "#", "cryptography_pqc.json") + stub,
+	}
+
+
 def expected_outputs(
 	root: Path,
 	elementwise: dict[str, Any],
@@ -5588,14 +7852,18 @@ def expected_outputs(
 	vision_hash: str,
 	view: dict[str, Any] | None = None,
 	view_hash: str | None = None,
+	bigint: dict[str, Any] | None = None,
+	bigint_hash: str | None = None,
 ) -> dict[Path, str]:
 	if view is None:
 		view, view_hash = load_view_schema(Path(__file__).resolve().parents[3] / DEFAULT_VIEW_SCHEMA)
 	assert view_hash is not None
+	if bigint is None:
+		bigint, bigint_hash = load_bigint_schema(Path(__file__).resolve().parents[3] / DEFAULT_CRYPTOGRAPHY_BIGINT_SCHEMA)
 	outputs = {
 		root / "src/rs/core/operation/operation.gen.rs": format_rust(
 			generate_operation_registry(
-				elementwise, elementwise_hash, blas, blas_hash, reduce, reduce_hash, rng, rng_hash, index, index_hash, ml, ml_hash, audio, audio_hash, cryptography, cryptography_hash, cryptography_pqc, cryptography_pqc_hash, image, image_hash, vision, vision_hash
+				elementwise, elementwise_hash, blas, blas_hash, reduce, reduce_hash, rng, rng_hash, index, index_hash, ml, ml_hash, audio, audio_hash, cryptography, cryptography_hash, cryptography_pqc, cryptography_pqc_hash, image, image_hash, vision, vision_hash, bigint, bigint_hash
 			),
 			root,
 		),
@@ -5604,8 +7872,17 @@ def expected_outputs(
 		root / "src/rs/matrix/reduce.gen.rs": format_rust(
 			generate_reduce_api(reduce, reduce_hash), root
 		),
+		root / "src/rs/matrix/matrix.gen.rs": format_rust(
+			generate_domain_methods(
+				"matrix",
+				domain_signatures("matrix", [elementwise, blas, reduce, rng, index, view]),
+				hashlib.sha256((elementwise_hash + blas_hash + reduce_hash + rng_hash + index_hash + view_hash).encode()).hexdigest(),
+				"matrix_elemwise.json,matrix_blas.json,matrix_reduce.json,matrix_rng.json,matrix_index.json,matrix_view.json",
+			),
+			root,
+		),
 		root / "src/rs/runtime/shader/registry.gen.rs": format_rust(
-			generate_registry(elementwise, elementwise_hash, blas, blas_hash, reduce, reduce_hash, rng, rng_hash, index, index_hash, ml, ml_hash, audio, audio_hash, cryptography, cryptography_hash, cryptography_pqc, cryptography_pqc_hash, image, image_hash, vision, vision_hash), root
+			generate_registry(elementwise, elementwise_hash, blas, blas_hash, reduce, reduce_hash, rng, rng_hash, index, index_hash, ml, ml_hash, audio, audio_hash, cryptography, cryptography_hash, cryptography_pqc, cryptography_pqc_hash, image, image_hash, vision, vision_hash, bigint, bigint_hash), root
 		),
 		root / "src/rs/runtime/dnn/generated.rs": format_rust(
 			generate_dnn_roles(elementwise, elementwise_hash, blas, blas_hash, reduce, reduce_hash, rng_hash, ml, ml_hash), root
@@ -5628,12 +7905,153 @@ def expected_outputs(
 			generate_ml_matrix_family(ml, ml_hash, family), root
 		)
 	outputs[root / "src/rs/cryptography/hash/batch.gen.rs"] = format_rust(generate_cryptography_api(cryptography, cryptography_hash, "hash"), root)
+	outputs.update(cryptography_hash_binding_outputs(root, cryptography, cryptography_hash))
+	assert bigint_hash is not None
+	outputs.update(bigint_outputs(root, bigint, bigint_hash))
+	outputs[root / "src/rs/cryptography/bigint/parity.gen.rs"] = format_rust(
+		generate_signature_parity(
+			"crate::cryptography::bigint",
+			domain_signatures("cryptography::bigint", [bigint]),
+			bigint_hash,
+			"cryptography_bigint.json",
+		),
+		root,
+	)
+	ntt, ntt_hash = load_ntt_schema()
+	outputs.update(ntt_outputs(root, ntt, ntt_hash))
+	outputs[root / "src/rs/cryptography/ntt/parity.gen.rs"] = format_rust(
+		generate_signature_parity(
+			"crate::cryptography::ntt",
+			domain_signatures("cryptography::ntt", [ntt]),
+			ntt_hash,
+			"cryptography_ntt.json",
+		),
+		root,
+	)
+	merkle, merkle_hash = load_merkle_schema()
+	outputs.update(merkle_outputs(root, merkle, merkle_hash, cryptography))
+	outputs[root / "src/rs/cryptography/merkle/parity.gen.rs"] = format_rust(
+		generate_signature_parity(
+			"crate::cryptography::merkle",
+			domain_signatures("cryptography::merkle", [merkle]),
+			merkle_hash,
+			"cryptography_merkle.json",
+		),
+		root,
+	)
+	outputs[root / "src/rs/ml/matrix/parity.gen.rs"] = format_rust(
+		generate_signature_parity(
+			"crate::ml::matrix",
+			domain_signatures("ml::matrix", [activation]),
+			activation_hash,
+			"ml_activation.json",
+		),
+		root,
+	)
+	pqc_signatures = domain_signatures("cryptography::pqc", [cryptography_pqc])
+	pqc_root = "crate::cryptography::pqc"
+	pqc_imports = {"MlDsaParameters": pqc_root}
+	device_names = {op["name"] for op in cryptography_pqc["device_api"]["operations"]} | {
+		"mldsa_verify_hash_message", "mldsa_verify_prehashed"}
+	outputs[root / "src/rs/cryptography/pqc/device/parity.gen.rs"] = format_rust(
+		generate_signature_parity(
+			f"{pqc_root}::device",
+			[s for s in pqc_signatures if s["name"] in device_names],
+			cryptography_pqc_hash,
+			"cryptography_pqc.json",
+			pqc_imports,
+		),
+		root,
+	)
+	outputs[root / "src/rs/cryptography/pqc/parity.gen.rs"] = format_rust(
+		generate_signature_parity(
+			f"{pqc_root}::verification",
+			[s for s in pqc_signatures if s["name"] not in device_names],
+			cryptography_pqc_hash,
+			"cryptography_pqc.json",
+			pqc_imports,
+		),
+		root,
+	)
+	sessions, sessions_hash = load_sessions_schema()
+	codecs, codecs_hash = load_codecs_schema()
+	ml_parity, ml_parity_hash = load_ml_parity_schema()
+	annex_signatures = domain_signatures("sessions", [sessions, codecs, ml_parity])
+	for parity_domain in ("video", "audio", "data", "ml", "image", "runtime", "network", "media"):
+		domain_sigs = [s for s in annex_signatures
+					   if s.get("target", "").startswith(f"crate::{parity_domain}::")]
+		if not domain_sigs:
+			continue
+		domain_paths = dict(SESSION_TYPE_PATHS)
+		if parity_domain == "ml":
+			domain_paths.update(ml_parity.get("type_paths") or {})
+		outputs[root / f"src/rs/{parity_domain}/parity.gen.rs"] = format_rust(
+			generate_signature_parity(
+				f"crate::{parity_domain}",
+				domain_sigs,
+				hashlib.sha256((sessions_hash + codecs_hash + ml_parity_hash).encode()).hexdigest(),
+				"sessions.json,codecs.json,ml_parity.json",
+				domain_paths,
+			),
+			root,
+		)
+	for kernel in cryptography["kernels"]:
+		if "poseidon2" in kernel:
+			outputs[root / kernel["source"]] = generate_poseidon2_shader(kernel, cryptography, cryptography_hash)
+		elif "digest" in kernel:
+			outputs[root / kernel["source"]] = generate_fixed_hash_shader(kernel, cryptography_hash)
+		elif kernel["name"] in {"merkle_proof_gather", "merkle_proof_verify"}:
+			outputs[root / kernel["source"]] = generate_merkle_proof_shader(kernel, cryptography_hash, cryptography["proof_layout"])
+	outputs[root / "src/slang/core/math/poseidon2.slang"] = generate_poseidon2_constants(cryptography, cryptography_hash)
+	outputs.update(pqc_device_outputs(root, cryptography_pqc, cryptography_pqc_hash))
 	outputs[root / "src/rs/cryptography/pqc/verify.gen.rs"] = format_rust(generate_cryptography_api(cryptography_pqc, cryptography_pqc_hash, "verify"), root)
 	outputs[root / "src/rs/vision/detection.gen.rs"] = format_rust(generate_vision_api(vision, vision_hash), root)
 	for category in ("signal", "transform"):
 		outputs[root / f"src/rs/audio/{category}.gen.rs"] = format_rust(generate_audio_api(audio, audio_hash, category), root)
+	outputs[root / "src/rs/audio/audio.gen.rs"] = format_rust(
+		generate_domain_methods("audio", domain_signatures("audio", [audio]), audio_hash, "audio.json"), root
+	)
 	for category in IMAGE_CATEGORIES:
 		outputs[root / f"src/rs/image/{category}.gen.rs"] = format_rust(generate_image_api(image, image_hash, category), root)
+	outputs[root / "src/rs/image/image.gen.rs"] = format_rust(
+		generate_domain_methods("image", domain_signatures("image", [image]), image_hash, "image.json"), root
+	)
+	matrix_py_rust, matrix_py_stub, matrix_py_methods = generate_python_domain(
+		"matrix",
+		domain_signatures("matrix", [elementwise, blas, reduce, rng, index, view]),
+		hashlib.sha256((elementwise_hash + blas_hash + reduce_hash + rng_hash + index_hash + view_hash).encode()).hexdigest(),
+		"matrix_elemwise.json,matrix_blas.json,matrix_reduce.json,matrix_rng.json,matrix_index.json,matrix_view.json",
+		python_struct_results([index]),
+	)
+	outputs[root / "src/py/pyo3/matrix/matrix.gen.rs"] = format_rust(matrix_py_rust, root)
+	outputs[root / "src/py/oa/_gen/matrix_native.pyi"] = matrix_py_stub
+	audio_py_rust, audio_py_stub, audio_py_methods = generate_python_domain(
+		"audio", domain_signatures("audio", [audio]), audio_hash, "audio.json"
+	)
+	outputs[root / "src/py/pyo3/audio/audio.gen.rs"] = format_rust(audio_py_rust, root)
+	outputs[root / "src/py/oa/_gen/audio_native.pyi"] = audio_py_stub
+	image_py_rust, image_py_stub, image_py_methods = generate_python_domain(
+		"image", domain_signatures("image", [image]), image_hash, "image.json"
+	)
+	outputs[root / "src/py/pyo3/image/image.gen.rs"] = format_rust(image_py_rust, root)
+	outputs[root / "src/py/oa/_gen/image_native.pyi"] = image_py_stub
+	vision_py_rust, vision_py_stub, _ = generate_python_domain(
+		"vision",
+		domain_signatures("vision", [vision]),
+		vision_hash,
+		"vision_detection.json",
+		python_struct_results([vision]),
+	)
+	outputs[root / "src/py/pyo3/vision/vision.gen.rs"] = format_rust(vision_py_rust, root)
+	outputs[root / "src/py/oa/_gen/vision_native.pyi"] = vision_py_stub
+	outputs[root / "src/py/oa/_gen/__init__.py"] = (
+		banner(
+			hashlib.sha256((elementwise_hash + blas_hash + reduce_hash + audio_hash + image_hash + vision_hash).encode()).hexdigest(),
+			"#",
+			"matrix_elemwise.json,matrix_blas.json,matrix_reduce.json,audio.json,image.json,vision_detection.json",
+		).replace("# schema=", "# schemas=")
+		+ '"""Generated binding fragments; handwritten facades import from this package."""\n'
+	)
 	outputs[root / "src/slang/cryptography/pqc/mldsa/mldsa_prehash_layout.slang"] = generate_mldsa_prehash_layout_shader(cryptography_pqc, cryptography_pqc_hash)
 	outputs[root / "src/slang/cryptography/pqc/mldsa/mldsa_prehash_digest.slang"] = generate_mldsa_prehash_digest_shader(cryptography_pqc, cryptography_pqc_hash)
 	outputs[root / "src/slang/cryptography/pqc/mldsa/mldsa_sign_workspace_layout.slang"] = generate_mldsa_sign_workspace_layout_shader(cryptography_pqc, cryptography_pqc_hash)
@@ -5674,6 +8092,51 @@ def expected_outputs(
 		outputs[root / f"src/slang/matrix/blas/{operation['source_stem']}.gen.slang"] = generate_blas_shader(
 			operation, blas, blas_hash
 		)
+	for domain, domain_schemas, domain_hashes, domain_names in (
+		("matrix", [elementwise, blas, reduce, rng, index, view],
+		 [elementwise_hash, blas_hash, reduce_hash, rng_hash, index_hash, view_hash],
+		 "matrix_elemwise.json,matrix_blas.json,matrix_reduce.json,matrix_rng.json,matrix_index.json,matrix_view.json"),
+		("audio", [audio], [audio_hash], "audio.json"),
+		("image", [image], [image_hash], "image.json"),
+		("vision", [vision], [vision_hash], "vision_detection.json"),
+	):
+		domain_ops = [s["name"] for s in domain_signatures(domain, domain_schemas)
+					  if s["visibility"] == "pub"]
+		fragment = banner(
+			hashlib.sha256("".join(domain_hashes).encode()).hexdigest(), "#", domain_names)
+		fragment += f"from .._native import (\n{''.join(f'\t{domain}_{name} as {name},\n' for name in domain_ops)})\n"
+		fragment += "\n__all__ = [\n" + "".join(f'\t"{name}",\n' for name in domain_ops) + "]\n"
+		outputs[root / f"src/py/oa/_gen/{domain}.py"] = fragment
+	exports, exports_hash = load_exports_schema()
+	submodules = exports["submodules"]
+	exports_source = banner(exports_hash, "#", "exports.json")
+	exports_source += '\"\"\"Python bindings for OA\'s Rust semantic API.\"\"\"\n\n'
+	exports_source += "from importlib.metadata import PackageNotFoundError, version\n\n"
+	exports_source += f"from . import {', '.join(submodules)}\n"
+	exports_source += "from ._native import (\n" + "".join(
+		f"\t{name},\n" for name in exports["native_classes"]) + ")\n\n"
+	exports_source += "__all__ = [\n" + "".join(
+		f'\t"{name}",\n' for name in exports["native_classes"] + submodules) + "]\n"
+	exports_source += '''
+try:
+	__version__ = version("oapython")
+except PackageNotFoundError:
+	# Source-tree contract tests load the built extension without installing a
+	# wheel, so distribution metadata is intentionally absent.
+	__version__ = "0+unknown"
+'''
+	outputs[root / "src/py/oa/__init__.py"] = exports_source
+	merge_python_fragments(
+		outputs,
+		root,
+		[elementwise_hash, blas_hash, reduce_hash, audio_hash, image_hash, vision_hash, cryptography_hash, bigint_hash, ntt_hash, merkle_hash, cryptography_pqc_hash],
+		"matrix_elemwise.json,matrix_blas.json,matrix_reduce.json,audio.json,image.json,vision_detection.json,cryptography_hash.json,cryptography_bigint.json,cryptography_ntt.json,cryptography_merkle.json,cryptography_pqc.json",
+	)
+	outputs[root / "src/py/oa/_native.pyi"] = generate_native_stub(
+		(Path(__file__).parent / "template/python/native.pyi.in").read_text(),
+		{"matrix": matrix_py_methods, "audio": audio_py_methods, "image": image_py_methods},
+		outputs[root / "src/py/oa/_gen/native.pyi"],
+	)
 	return outputs
 
 
@@ -5682,13 +8145,14 @@ OWNERSHIP_BANNERS = {
 	"// Generated by tools/gen/fn/generate.py; do not edit.",
 	"// @generated by tool/gen/fn/generate.py; DO NOT EDIT.",
 	"// Generated by tool/gen/fn/generate.py; do not edit.",
+	"# @generated by tool/gen/fn/generate.py; DO NOT EDIT.",
 }
 
 
 def owned_outputs(root: Path) -> set[Path]:
 	"""Find this authority's outputs only; never infer ownership from a suffix."""
 	owned = set()
-	for relative in ("src/rs", "src/slang", "test/rs"):
+	for relative in ("src/rs", "src/slang", "test/rs", "src/py/pyo3", "src/py/oa"):
 		directory = root / relative
 		if directory.is_symlink() or directory.parent.is_symlink():
 			continue
@@ -5698,7 +8162,7 @@ def owned_outputs(root: Path) -> set[Path]:
 			)
 			for name in sorted(files):
 				path = Path(parent) / name
-				if path.is_symlink() or path.suffix not in {".rs", ".slang"}:
+				if path.is_symlink() or path.suffix not in {".rs", ".slang", ".py", ".pyi"}:
 					continue
 				with path.open(encoding="utf-8") as source:
 					if source.readline().rstrip("\r\n") in OWNERSHIP_BANNERS:
@@ -5712,7 +8176,8 @@ def validate_output_paths(outputs: dict[Path, str], root: Path) -> None:
 	for path in outputs:
 		relative = path.absolute().relative_to(root)
 		require(".." not in relative.parts, f"generated output has parent traversal: {path}")
-		require(relative.parts[:2] in {("src", "rs"), ("src", "slang"), ("test", "rs")},
+		require(relative.parts[:2] in {("src", "rs"), ("src", "slang"), ("test", "rs"), ("src", "py")}
+			or relative.parts[:4] == ("sdk", "py", "binding", "oa"),
 			f"generated output outside owned source trees: {path}")
 		cursor = root
 		for part in relative.parts:
@@ -5808,6 +8273,7 @@ def main() -> int:
 		audio_schema, audio_schema_hash = load_audio_schema(audio_schema_path)
 		cryptography_schema, cryptography_schema_hash = load_cryptography_hash_schema(cryptography_schema_path)
 		cryptography_pqc_schema, cryptography_pqc_schema_hash = load_cryptography_pqc_schema(cryptography_pqc_schema_path)
+		bigint_schema, bigint_schema_hash = load_bigint_schema(root / DEFAULT_CRYPTOGRAPHY_BIGINT_SCHEMA)
 		image_schema, image_schema_hash = load_image_schema(image_schema_path)
 		vision_schema, vision_schema_hash = load_vision_schema(vision_schema_path)
 		registry_entries(
@@ -5822,6 +8288,7 @@ def main() -> int:
 			cryptography_pqc_schema,
 			image_schema,
 			vision_schema,
+			bigint_schema,
 		)
 	except (OSError, SchemaError) as error:
 		print(f"operation generation failed: {error}", file=os.sys.stderr)
@@ -5855,6 +8322,8 @@ def main() -> int:
 			vision_schema_hash,
 			view_schema,
 			view_schema_hash,
+			bigint_schema,
+			bigint_schema_hash,
 		)
 	except (OSError, SchemaError) as error:
 		print(f"operation assembly failed: {error}", file=os.sys.stderr)

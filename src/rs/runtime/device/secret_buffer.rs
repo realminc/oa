@@ -12,8 +12,6 @@ use std::{
 	},
 };
 
-use vk_mem::Alloc;
-
 use crate::{Error, Result, runtime::Event};
 
 use crate::runtime::{Device, RecordedCommandBuffer};
@@ -26,8 +24,8 @@ const GPU_COMPLETE: u8 = 4;
 
 pub(in crate::runtime) struct SecretBuffer {
 	device: Arc<Device>,
-	handle: ash::vk::Buffer,
-	allocation: Option<vk_mem::Allocation>,
+	handle: vk::Buffer,
+	allocation: Option<vk::mem::Allocation>,
 	size: u64,
 	descriptor_index: Option<u32>,
 	state: Arc<AtomicU8>,
@@ -62,7 +60,7 @@ impl SecretBinding<'_> {
 		self.index
 	}
 
-	pub(in crate::runtime) fn raw(&self) -> ash::vk::Buffer {
+	pub(in crate::runtime) fn raw(&self) -> vk::Buffer {
 		self.owner.handle
 	}
 
@@ -82,7 +80,7 @@ unsafe impl Send for HostMapping {}
 unsafe impl Sync for HostMapping {}
 
 /// Completion evidence contains no allocation, native handle, key or entropy.
-pub(in crate::runtime) struct SecretErasure {
+pub(crate) struct SecretErasure {
 	event: Event,
 	witness: ErasureWitness,
 }
@@ -112,22 +110,18 @@ impl SecretBuffer {
 		Self::allocate(
 			device,
 			bytes,
-			ash::vk::BufferUsageFlags::STORAGE_BUFFER | ash::vk::BufferUsageFlags::TRANSFER_DST,
+			vk::BufferUsageFlagBits::STORAGE_BUFFER_BIT | vk::BufferUsageFlagBits::TRANSFER_DST_BIT,
 		)
 	}
 
-	fn allocate(
-		device: &Arc<Device>,
-		bytes: usize,
-		usage: ash::vk::BufferUsageFlags,
-	) -> Result<Self> {
+	fn allocate(device: &Arc<Device>, bytes: usize, usage: vk::BufferUsageFlags) -> Result<Self> {
 		Self::allocate_with_memory(device, bytes, usage, SecretMemory::DeviceLocal)
 	}
 
 	fn allocate_with_memory(
 		device: &Arc<Device>,
 		bytes: usize,
-		usage: ash::vk::BufferUsageFlags,
+		usage: vk::BufferUsageFlags,
 		memory: SecretMemory,
 	) -> Result<Self> {
 		let host = memory == SecretMemory::HostStaging;
@@ -137,30 +131,35 @@ impl SecretBuffer {
 				"secret storage extent exceeds the device descriptor range",
 			));
 		}
-		let info = ash::vk::BufferCreateInfo::default()
+		let info = vk::BufferCreateInfo::default()
 			.size(size)
 			.usage(usage)
-			.sharing_mode(ash::vk::SharingMode::EXCLUSIVE);
-		let allocation_info = vk_mem::AllocationCreateInfo {
-			flags: vk_mem::AllocationCreateFlags::DEDICATED_MEMORY
-				| if host {
-					vk_mem::AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE
-				} else {
-					vk_mem::AllocationCreateFlags::empty()
-				},
-			usage: vk_mem::MemoryUsage::AutoPreferDevice,
-			required_flags: if host {
-				ash::vk::MemoryPropertyFlags::HOST_VISIBLE
+			.sharing_mode(vk::SharingMode::EXCLUSIVE);
+		let allocation_info = vk::mem::AllocationCreateInfo {
+			dedicated_memory: true,
+			host_access: if host {
+				vk::mem::HostAccess::SequentialWrite
 			} else {
-				ash::vk::MemoryPropertyFlags::DEVICE_LOCAL
+				vk::mem::HostAccess::None
+			},
+			usage: vk::mem::MemoryUsage::PreferDevice,
+			required_flags: if host {
+				vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT
+			} else {
+				vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT
 			},
 			..Default::default()
 		};
 		// SAFETY: this live engine device owns the allocator. Device-local secrets have
 		// no host access; the separate staging allocation requests host visibility.
 		// Dedicated memory avoids pools. Neither allocation requests export flags.
-		let (handle, allocation) = unsafe { device.allocator().create_buffer(&info, &allocation_info) }
-			.map_err(|source| Error::backend_failure("Vulkan", "secret allocation", source))?;
+		let (handle, allocation) = unsafe {
+			device
+				.allocator()
+				.with_allocator(|a| a.create_buffer_with_options(&info, &allocation_info))
+		}
+		.map_err(|source| Error::backend_failure("Vulkan", "secret allocation", source))?
+		.map_err(|source| Error::backend_failure("Vulkan", "secret allocation", source))?;
 		let descriptor_index = if host {
 			None
 		} else {
@@ -170,7 +169,11 @@ impl SecretBuffer {
 					let mut allocation = allocation;
 					// SAFETY: construction has not exposed, written or submitted this
 					// allocation. No descriptor was acquired and no secret needs wiping.
-					unsafe { device.allocator().destroy_buffer(handle, &mut allocation) };
+					unsafe {
+						device
+							.allocator()
+							.with_allocator(|a| a.destroy_buffer(handle, &mut allocation))
+					}??;
 					return Err(error);
 				}
 			}
@@ -212,7 +215,7 @@ impl SecretBuffer {
 			let mut staging = Self::allocate_with_memory(
 				device,
 				bytes.len(),
-				ash::vk::BufferUsageFlags::TRANSFER_SRC | ash::vk::BufferUsageFlags::TRANSFER_DST,
+				vk::BufferUsageFlagBits::TRANSFER_SRC_BIT | vk::BufferUsageFlagBits::TRANSFER_DST_BIT,
 				SecretMemory::HostStaging,
 			)?;
 			let allocation = staging
@@ -220,18 +223,19 @@ impl SecretBuffer {
 				.as_mut()
 				.expect("new secret staging allocation");
 			// SAFETY: this unique dedicated HOST_VISIBLE allocation is not submitted.
-			let address = unsafe { device.allocator().map_memory(allocation) }
-				.map_err(|e| Error::backend_failure("Vulkan", "secret staging mapping", e))?;
-			let Some(address) = std::ptr::NonNull::new(address) else {
+			let address = unsafe { device.allocator().with_allocator(|a| a.map(allocation)) }
+				.map_err(|e| Error::backend_failure("Vulkan", "secret staging mapping", e))?
+				.map_err(Error::from)?;
+			let Some(address) = std::ptr::NonNull::new(address as *mut u8) else {
 				// SAFETY: release the successful mapping reference before failure.
-				unsafe { device.allocator().unmap_memory(allocation) };
+				unsafe { device.allocator().with_allocator(|a| a.unmap(allocation)) }??;
 				return Err(Error::internal("Vulkan returned a null staging mapping"));
 			};
 			// SAFETY: the mapping is live and owns this complete byte range.
 			if unsafe { libc::mlock(address.as_ptr().cast(), bytes.len()) } != 0 {
 				let error = std::io::Error::last_os_error();
 				// SAFETY: no secret was written and no command refers to the mapping.
-				unsafe { device.allocator().unmap_memory(allocation) };
+				unsafe { device.allocator().with_allocator(|a| a.unmap(allocation)) }??;
 				return Err(Error::backend_failure(
 					"host entropy",
 					"staging page locking",
@@ -245,10 +249,15 @@ impl SecretBuffer {
 			// SAFETY: locked storage is uniquely owned and no GPU operation is pending.
 			unsafe { std::slice::from_raw_parts_mut(address.as_ptr(), bytes.len()) }
 				.copy_from_slice(bytes);
-			device
-				.allocator()
-				.flush_allocation(allocation, 0, staging.size)
-				.map_err(|e| Error::backend_failure("Vulkan", "secret staging flush", e))?;
+			// SAFETY: `allocation` is live, uniquely owned by this staging owner,
+			// and its mapped range covers `staging.size` bytes.
+			unsafe {
+				device
+					.allocator()
+					.with_allocator(|a| a.flush(allocation, 0, staging.size))
+			}
+			.map_err(|e| Error::backend_failure("Vulkan", "secret staging flush", e))?
+			.map_err(|e| Error::backend_failure("Vulkan", "secret staging flush", e))?;
 			Ok(staging)
 		}
 	}
@@ -257,7 +266,7 @@ impl SecretBuffer {
 	pub(in crate::runtime) fn record_entropy_consumer(
 		self,
 		bytes: &[u8],
-		consumer: impl FnOnce(&Arc<Device>, ash::vk::CommandBuffer, SecretBinding<'_>) -> Result<()>,
+		consumer: impl FnOnce(&Arc<Device>, vk::CommandBuffer, SecretBinding<'_>) -> Result<()>,
 	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
 		if u64::try_from(bytes.len()).ok() != Some(self.size) {
 			return Err(Error::invalid_argument(
@@ -273,47 +282,58 @@ impl SecretBuffer {
 					command,
 					staging.handle,
 					self.handle,
-					&[ash::vk::BufferCopy::default().size(self.size)],
-				);
+					&[vk::BufferCopy::default().size(self.size)],
+				)?;
 			}
-			let barrier = ash::vk::BufferMemoryBarrier2::default()
-				.src_stage_mask(ash::vk::PipelineStageFlags2::COPY)
-				.src_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-				.dst_stage_mask(ash::vk::PipelineStageFlags2::ALL_COMMANDS)
-				.dst_access_mask(ash::vk::AccessFlags2::MEMORY_READ | ash::vk::AccessFlags2::MEMORY_WRITE)
-				.src_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
-				.dst_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+			let barrier = vk::BufferMemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+				.dst_access_mask(
+					vk::AccessFlagBits2::MEMORY_READ_BIT | vk::AccessFlagBits2::MEMORY_WRITE_BIT,
+				)
+				.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
 				.buffer(self.handle)
 				.size(self.size);
 			// SAFETY: the copied bytes must be visible to the following consumer.
 			unsafe {
-				self.device.sync_commands().pipeline_barrier(
-					self.device.raw(),
-					command,
-					&ash::vk::DependencyInfo::default()
-						.buffer_memory_barriers(std::slice::from_ref(&barrier)),
-				);
+				self
+					.device
+					.sync_commands()
+					.pipeline_barrier(
+						self.device.raw(),
+						command,
+						&(vk::DependencyInfo::default().buffer_memory_barriers(std::slice::from_ref(&barrier)))
+							.map_err(Error::from)?,
+					)
+					.map_err(Error::from)?;
 			}
 			consumer(&self.device, command, self.binding()?)?;
-			self.encode_erasure(command);
-			staging.encode_erasure(command);
-			let host = ash::vk::BufferMemoryBarrier2::default()
-				.src_stage_mask(ash::vk::PipelineStageFlags2::CLEAR)
-				.src_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-				.dst_stage_mask(ash::vk::PipelineStageFlags2::HOST)
-				.dst_access_mask(ash::vk::AccessFlags2::HOST_WRITE)
-				.src_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
-				.dst_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+			self.encode_erasure(command)?;
+			staging.encode_erasure(command)?;
+			let host = vk::BufferMemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
+				.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+				.dst_access_mask(vk::AccessFlagBits2::HOST_WRITE_BIT)
+				.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
 				.buffer(staging.handle)
 				.size(staging.size);
 			// SAFETY: after exact completion, retirement overwrites the mapped
 			// host cache and flushes it before unmapping or releasing storage.
 			unsafe {
-				self.device.sync_commands().pipeline_barrier(
-					self.device.raw(),
-					command,
-					&ash::vk::DependencyInfo::default().buffer_memory_barriers(std::slice::from_ref(&host)),
-				);
+				self
+					.device
+					.sync_commands()
+					.pipeline_barrier(
+						self.device.raw(),
+						command,
+						&(vk::DependencyInfo::default().buffer_memory_barriers(std::slice::from_ref(&host)))
+							.map_err(Error::from)?,
+					)
+					.map_err(Error::from)?;
 			}
 			Ok(())
 		})?;
@@ -332,15 +352,24 @@ impl SecretBuffer {
 		public: &crate::runtime::Buffer,
 		k: u32,
 	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
+		let workspace = Self::new(
+			&self.device,
+			crate::runtime::shader::KernelId::mlkem_keygen_workspace_bytes(),
+		)?;
 		let mut retention = None;
 		let (mut command, mut witness) =
 			self.record_entropy_consumer(bytes, |device, command, seed| {
-				let prepared = device.prepare_mlkem_keygen(seed, private.binding()?, public, k)?;
-				prepared.encode(command);
+				let prepared =
+					device.prepare_mlkem_keygen(seed, private.binding()?, public, workspace.binding()?, k)?;
+				prepared.encode(command)?;
 				retention = Some(prepared.retention());
-				private.encode_erasure(command);
+				workspace.encode_erasure(command)?;
+				private.encode_erasure(command)?;
 				Ok(())
 			})?;
+		let (next_command, workspace_witness) = workspace.retain_erasure(command);
+		command = next_command;
+		witness.states.extend(workspace_witness.states);
 		let (public, sets) =
 			retention.ok_or_else(|| Error::internal("ML-KEM dispatch retention missing"))?;
 		command.retain_secret_public_output(public, sets)?;
@@ -349,7 +378,7 @@ impl SecretBuffer {
 		Ok((command, witness))
 	}
 
-	/// Retain the generated key for later Engine operations, erasing only entropy.
+	/// Retain the generated key; erase entropy and the polynomial workspace.
 	pub(in crate::runtime) fn record_mlkem_retained_keygen(
 		self,
 		bytes: &[u8],
@@ -357,13 +386,23 @@ impl SecretBuffer {
 		public: &crate::runtime::Buffer,
 		k: u32,
 	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
+		let workspace = Self::new(
+			&self.device,
+			crate::runtime::shader::KernelId::mlkem_keygen_workspace_bytes(),
+		)?;
 		let mut retention = None;
-		let (mut command, witness) = self.record_entropy_consumer(bytes, |device, command, seed| {
-			let prepared = device.prepare_mlkem_keygen(seed, private.binding()?, public, k)?;
-			prepared.encode(command);
-			retention = Some(prepared.retention());
-			Ok(())
-		})?;
+		let (mut command, mut witness) =
+			self.record_entropy_consumer(bytes, |device, command, seed| {
+				let prepared =
+					device.prepare_mlkem_keygen(seed, private.binding()?, public, workspace.binding()?, k)?;
+				prepared.encode(command)?;
+				retention = Some(prepared.retention());
+				workspace.encode_erasure(command)?;
+				Ok(())
+			})?;
+		let (next_command, workspace_witness) = workspace.retain_erasure(command);
+		command = next_command;
+		witness.states.extend(workspace_witness.states);
 		let (public, sets) =
 			retention.ok_or_else(|| Error::internal("ML-KEM dispatch retention missing"))?;
 		command.retain_secret_public_output(public, sets)?;
@@ -382,7 +421,7 @@ impl SecretBuffer {
 		let mut retention = None;
 		let (mut command, witness) = self.record_entropy_consumer(bytes, |device, command, seed| {
 			let prepared = device.prepare_mldsa_keygen(seed, private.binding()?, public, parameter)?;
-			prepared.encode(command);
+			prepared.encode(command)?;
 			retention = Some(prepared.retention());
 			Ok(())
 		})?;
@@ -408,7 +447,7 @@ impl SecretBuffer {
 				parameter,
 			)?;
 			let prepared = device.prepare_secret_consumer(operands)?;
-			prepared.encode(command);
+			prepared.encode(command)?;
 			Ok(prepared.retention())
 		})
 	}
@@ -432,7 +471,7 @@ impl SecretBuffer {
 				algorithm,
 			)?;
 			let prepared = device.prepare_secret_consumer(operands)?;
-			prepared.encode(command);
+			prepared.encode(command)?;
 			Ok(prepared.retention())
 		})
 	}
@@ -456,7 +495,7 @@ impl SecretBuffer {
 				context_length,
 			)?;
 			let prepared = device.prepare_secret_consumer(operands)?;
-			prepared.encode(command);
+			prepared.encode(command)?;
 			Ok(prepared.retention())
 		})
 	}
@@ -470,7 +509,7 @@ impl SecretBuffer {
 		private: &Arc<SecretBuffer>,
 		consumer: impl FnOnce(
 			&Arc<Device>,
-			ash::vk::CommandBuffer,
+			vk::CommandBuffer,
 			SecretBinding<'_>,
 			SecretBinding<'_>,
 		) -> Result<(
@@ -485,7 +524,7 @@ impl SecretBuffer {
 		let mut retention = None;
 		let (command, mut witness) = self.record_entropy_consumer(bytes, |device, command, seed| {
 			retention = Some(consumer(device, command, seed, workspace.binding()?)?);
-			workspace.encode_erasure(command);
+			workspace.encode_erasure(command)?;
 			Ok(())
 		})?;
 		let (mut command, workspace_witness) = workspace.retain_erasure(command);
@@ -506,22 +545,28 @@ impl SecretBuffer {
 		status: &crate::runtime::Buffer,
 		k: u32,
 	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
+		let workspace = Self::new(
+			&self.device,
+			crate::runtime::shader::KernelId::mlkem_encaps_workspace_bytes(),
+		)?;
 		let mut prepared_retention = None;
-		let (mut command, witness) = self.record_entropy_consumer(bytes, |device, command, seed| {
+		let (command, mut witness) = self.record_entropy_consumer(bytes, |device, command, seed| {
 			let operands = crate::runtime::device::pqc::SecretConsumerOperands::encaps(
 				device,
-				seed,
+				[seed, shared.binding()?, workspace.binding()?],
 				public,
-				shared.binding()?,
 				ciphertext,
 				status,
 				k,
 			)?;
 			let prepared = device.prepare_secret_consumer(operands)?;
-			prepared.encode(command);
+			prepared.encode(command)?;
+			workspace.encode_erasure(command)?;
 			prepared_retention = Some(prepared.retention());
 			Ok(())
 		})?;
+		let (mut command, workspace_witness) = workspace.retain_erasure(command);
+		witness.states.extend(workspace_witness.states);
 		let (public_resources, sets) =
 			prepared_retention.ok_or_else(|| Error::internal("ML-KEM dispatch retention missing"))?;
 		command.retain_secret_public_resources(public_resources, sets)?;
@@ -534,23 +579,28 @@ impl SecretBuffer {
 		ciphertext: &crate::runtime::Buffer,
 		shared: &Arc<SecretBuffer>,
 		k: u32,
-	) -> Result<RecordedCommandBuffer> {
+	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
+		let workspace = Self::new(
+			&self.device,
+			crate::runtime::shader::KernelId::mlkem_decaps_workspace_bytes(),
+		)?;
 		let operands = crate::runtime::device::pqc::SecretConsumerOperands::decaps(
 			&self.device,
-			self.binding()?,
+			[self.binding()?, shared.binding()?, workspace.binding()?],
 			ciphertext,
-			shared.binding()?,
 			k,
 		)?;
 		let prepared = self.device.prepare_secret_consumer(operands)?;
 		let mut command = self.device.record_compute_commands(|command| {
-			prepared.encode(command);
+			prepared.encode(command)?;
+			workspace.encode_erasure(command)?;
 			Ok(())
 		})?;
 		prepared.retain(&mut command)?;
+		let (mut command, witness) = workspace.retain_erasure(command);
 		command.retain_secret_use(Arc::clone(self));
 		command.retain_secret_use(Arc::clone(shared));
-		Ok(command)
+		Ok((command, witness))
 	}
 
 	/// Consume the last value owner; older commands keep their own references.
@@ -558,7 +608,7 @@ impl SecretBuffer {
 		self: Arc<Self>,
 	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
 		let mut command = self.device.record_compute_commands(|command| {
-			self.encode_erasure(command);
+			self.encode_erasure(command)?;
 			Ok(())
 		})?;
 		self.state.store(PENDING, Ordering::Release);
@@ -577,7 +627,7 @@ impl SecretBuffer {
 		self,
 	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
 		let command = self.device.record_compute_commands(|command| {
-			self.encode_erasure(command);
+			self.encode_erasure(command)?;
 			Ok(())
 		})?;
 		Ok(self.retain_erasure(command))
@@ -596,14 +646,14 @@ impl SecretBuffer {
 		(command, witness)
 	}
 
-	fn encode_erasure(&self, command: ash::vk::CommandBuffer) {
-		let barrier = ash::vk::BufferMemoryBarrier2::default()
-			.src_stage_mask(ash::vk::PipelineStageFlags2::ALL_COMMANDS)
-			.src_access_mask(ash::vk::AccessFlags2::MEMORY_READ | ash::vk::AccessFlags2::MEMORY_WRITE)
-			.dst_stage_mask(ash::vk::PipelineStageFlags2::CLEAR)
-			.dst_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-			.src_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
-			.dst_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+	fn encode_erasure(&self, command: vk::CommandBuffer) -> Result<()> {
+		let barrier = vk::BufferMemoryBarrier2::default()
+			.src_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+			.src_access_mask(vk::AccessFlagBits2::MEMORY_READ_BIT | vk::AccessFlagBits2::MEMORY_WRITE_BIT)
+			.dst_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
+			.dst_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+			.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+			.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
 			.buffer(self.handle)
 			.offset(0)
 			.size(self.size);
@@ -611,16 +661,23 @@ impl SecretBuffer {
 		// consumer on its ordered timeline. The barrier covers the entire range,
 		// including padding. No family transfer or protected memory is involved.
 		unsafe {
-			self.device.sync_commands().pipeline_barrier(
-				self.device.raw(),
-				command,
-				&ash::vk::DependencyInfo::default().buffer_memory_barriers(std::slice::from_ref(&barrier)),
-			);
+			self
+				.device
+				.sync_commands()
+				.pipeline_barrier(
+					self.device.raw(),
+					command,
+					&(vk::DependencyInfo::default().buffer_memory_barriers(std::slice::from_ref(&barrier)))
+						.map_err(Error::from)?,
+				)
+				.map_err(Error::from)?;
 			self
 				.device
 				.raw()
-				.cmd_fill_buffer(command, self.handle, 0, self.size, 0);
+				.cmd_fill_buffer(command, self.handle, 0, self.size, 0)
+				.map_err(Error::from)?;
 		}
+		Ok(())
 	}
 
 	pub(super) fn confirm_erasure(&self) {
@@ -640,18 +697,21 @@ impl SecretBuffer {
 }
 
 impl SecretErasure {
+	pub(in crate::runtime) fn event(&self) -> &Event {
+		&self.event
+	}
 	pub(in crate::runtime) fn new(event: Event, witness: ErasureWitness) -> Self {
 		Self { event, witness }
 	}
 
-	pub(in crate::runtime) fn try_is_complete(&self) -> Result<bool> {
+	pub(crate) fn try_is_complete(&self) -> Result<bool> {
 		if self.witness.is_unconfirmed() {
 			return Err(Error::failed_precondition("secret erasure is unconfirmed"));
 		}
 		Ok(self.event.is_complete()? && self.witness.is_confirmed())
 	}
 
-	pub(in crate::runtime) fn wait(&self) -> Result<()> {
+	pub(crate) fn wait(&self) -> Result<()> {
 		self.event.wait()?;
 		if !self.witness.is_confirmed() {
 			return Err(Error::failed_precondition("secret erasure is unconfirmed"));
@@ -674,11 +734,13 @@ impl Drop for SecretBuffer {
 			crate::core::memory::zero_secure(unsafe {
 				std::slice::from_raw_parts_mut(mapping.address.as_ptr(), mapping.length)
 			});
-			if self
-				.device
-				.allocator()
-				.flush_allocation(&allocation, 0, self.size)
-				.is_err()
+			if unsafe {
+				self
+					.device
+					.allocator()
+					.with_allocator(|a| a.flush(&allocation, 0, self.size))
+			}
+			.map_or(true, |result| result.is_err())
 			{
 				self.state.store(UNCONFIRMED, Ordering::Release);
 				mem::forget(self.device.clone());
@@ -691,7 +753,10 @@ impl Drop for SecretBuffer {
 			}
 			// SAFETY: CPU erasure is flushed and no GPU access remains.
 			unsafe {
-				self.device.allocator().unmap_memory(&mut allocation);
+				let _ = self
+					.device
+					.allocator()
+					.with_allocator(|a| a.unmap(&allocation));
 			}
 		}
 		if state != CONFIRMED && !can_release_staging {
@@ -707,10 +772,10 @@ impl Drop for SecretBuffer {
 		// SAFETY: successful retirement proves completion, or LIVE host staging
 		// was never submitted. Its host erasure is flushed before reclamation.
 		unsafe {
-			self
+			let _ = self
 				.device
 				.allocator()
-				.destroy_buffer(self.handle, &mut allocation);
+				.with_allocator(|a| a.destroy_buffer(self.handle, &mut allocation));
 		}
 		if let Some(index) = self.descriptor_index.take() {
 			self.device.release_storage_buffer(index);

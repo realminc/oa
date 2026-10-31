@@ -9,9 +9,9 @@ fn linear(
 	output: usize,
 	weights: &[f32],
 ) -> oa::Result<oa::ml::nn::Linear> {
-	oa::ml::nn::Linear::from_matrices(
-		oa::Matrix::from_f32(engine, [output, input], weights)?,
-		oa::Matrix::from_f32(engine, [output], &vec![0.0; output])?,
+	oa::ml::nn::Linear::new_from_matrices(
+		oa::Matrix::new_from_f32(engine, [output, input], weights)?,
+		oa::Matrix::new_from_f32(engine, [output], &vec![0.0; output])?,
 	)
 }
 
@@ -26,12 +26,12 @@ test_vk!(sac_trainer_runs_donor_actor_twin_critic_update, engine, {
 		},
 	)?;
 	replay.append(&ReplayTransition::new(
-		oa::Matrix::from_f32(&engine, [4, 2], &[0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0])?,
-		oa::Matrix::from_f32(&engine, [4, 1], &[-0.5, 0.25, 0.75, -0.25])?,
-		oa::Matrix::from_f32(&engine, [4, 2], &[1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0])?,
-		oa::Matrix::from_f32(&engine, [4], &[0.0, 1.0, 1.0, 0.0])?,
-		oa::Matrix::from_slice(&engine, [4], &[0_u8, 0, 1, 0])?,
-		oa::Matrix::from_slice(&engine, [4], &[0_u8, 0, 0, 1])?,
+		oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0])?,
+		oa::Matrix::new_from_f32(&engine, [4, 1], &[-0.5, 0.25, 0.75, -0.25])?,
+		oa::Matrix::new_from_f32(&engine, [4, 2], &[1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0])?,
+		oa::Matrix::new_from_f32(&engine, [4], &[0.0, 1.0, 1.0, 0.0])?,
+		oa::Matrix::new_from_slice(&engine, [4], &[0_u8, 0, 1, 0])?,
+		oa::Matrix::new_from_slice(&engine, [4], &[0_u8, 0, 0, 1])?,
 	))?;
 
 	let actor = linear(&engine, 2, 2, &[0.1, -0.2, 0.05, 0.1])?;

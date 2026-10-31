@@ -1069,3 +1069,199 @@ fn select_bmm_provider(
 		(generic, generic.linear_workgroups(geometry.output_count))
 	}
 }
+
+/// Causal kernel-trick attention on raw Q/K/V `[BH,S,Dh]`.
+///
+/// Uses `phi(x) = x+1` for nonnegative x and `exp(x)` otherwise, with
+/// `max(dot(phi(Q), prefix_sum(phi(K))), epsilon)` normalization. Values are
+/// not feature-mapped. The fused provider admits `1 <= Dh <= 64`; sequence
+/// length has no provider cap. It saves Q/K/V, context and one denominator per
+/// row for deterministic prefix/suffix reverse mode, never a KV prefix history.
+///
+/// # Errors
+///
+/// Returns an error for unequal/empty shapes, non-F32 or mixed-engine values,
+/// head dimension above 64, nonpositive/nonfinite epsilon, shader ABI overflow,
+/// allocation or recording failure.
+pub fn causal_linear_attention(
+	query: &Matrix,
+	key: &Matrix,
+	value: &Matrix,
+	epsilon: f32,
+) -> Result<Matrix> {
+	let (heads, sequence, dimension) = linear_attention_geometry(query, key, value, epsilon)?;
+	let output = Matrix::allocate(
+		query.engine_handle(),
+		query.shape().to_vec(),
+		query.element_count(),
+		DType::F32,
+	)?;
+	let denominator = Matrix::allocate(
+		query.engine_handle(),
+		vec![query.shape()[0], query.shape()[1]],
+		query.element_count() / query.shape()[2],
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(query.storage()),
+		BufferBinding::read(key.storage()),
+		BufferBinding::read(value.storage()),
+		BufferBinding::write(output.storage()),
+		BufferBinding::write(denominator.storage()),
+	];
+	let push = [
+		PushConstant::U32(heads),
+		PushConstant::U32(sequence),
+		PushConstant::U32(dimension),
+		PushConstant::F32(epsilon),
+	];
+	let attributes = [OpAttribute::Float {
+		name: "epsilon".into(),
+		value: f64::from(epsilon),
+	}];
+	query.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MlCausalLinearAttentionF32,
+			buffers: &buffers,
+			push_constants: &push,
+			workgroups: [heads, 1, 1],
+		},
+		SemanticDispatch {
+			contract: crate::core::operation::ml::CAUSAL_LINEAR_ATTENTION,
+			inputs: &[query, key, value],
+			outputs: &[&output, &denominator],
+			attributes: &attributes,
+		},
+	)?;
+	autograd::record_causal_linear_attention(query, key, value, &output, denominator, epsilon)?;
+	Ok(output)
+}
+
+fn linear_attention_geometry(
+	query: &Matrix,
+	key: &Matrix,
+	value: &Matrix,
+	epsilon: f32,
+) -> Result<(u32, u32, u32)> {
+	const OP: &str = "oa::ml::matrix::causal_linear_attention";
+	let [heads, sequence, dimension] = query.shape() else {
+		return Err(Error::invalid_argument(
+			"linear attention expects Q/K/V [BH,S,Dh]",
+		));
+	};
+	if *heads == 0
+		|| *sequence == 0
+		|| !(1..=64).contains(dimension)
+		|| key.shape() != query.shape()
+		|| value.shape() != query.shape()
+		|| !epsilon.is_finite()
+		|| epsilon <= 0.0
+	{
+		return Err(Error::invalid_argument(
+			"linear attention requires equal nonempty Q/K/V, Dh <= 64 and positive finite epsilon",
+		));
+	}
+	validate_f32_same_engine(OP, &[query, key, value])?;
+	shader_u32(query.element_count(), "element count", OP)?;
+	let dimension = shader_u32(*dimension, "head dimension", OP)?;
+	Ok((
+		shader_u32(*heads, "batch heads", OP)?,
+		shader_u32(*sequence, "sequence", OP)?,
+		dimension,
+	))
+}
+
+pub(in crate::ml) fn causal_linear_attention_backward(
+	query: &Matrix,
+	key: &Matrix,
+	value: &Matrix,
+	output: &Matrix,
+	denominator: &Matrix,
+	output_gradient: &Matrix,
+	epsilon: f32,
+) -> Result<(Matrix, Matrix, Matrix)> {
+	let (heads, sequence, dimension) = linear_attention_geometry(query, key, value, epsilon)?;
+	if output.shape() != query.shape()
+		|| output_gradient.shape() != query.shape()
+		|| denominator.shape() != &query.shape()[..2]
+	{
+		return Err(Error::invalid_argument(
+			"linear attention backward saved-state geometry mismatch",
+		));
+	}
+	validate_f32_same_engine(
+		"linear attention backward",
+		&[query, output, denominator, output_gradient],
+	)?;
+	let dq = Matrix::allocate(
+		query.engine_handle(),
+		query.shape().to_vec(),
+		query.element_count(),
+		DType::F32,
+	)?;
+	let dk = Matrix::allocate(
+		query.engine_handle(),
+		query.shape().to_vec(),
+		query.element_count(),
+		DType::F32,
+	)?;
+	let dv = Matrix::allocate(
+		query.engine_handle(),
+		query.shape().to_vec(),
+		query.element_count(),
+		DType::F32,
+	)?;
+	let q_buffers = [
+		BufferBinding::read(query.storage()),
+		BufferBinding::read(key.storage()),
+		BufferBinding::read(value.storage()),
+		BufferBinding::read(output.storage()),
+		BufferBinding::read(denominator.storage()),
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(dq.storage()),
+	];
+	let kv_buffers = [
+		BufferBinding::read(query.storage()),
+		BufferBinding::read(key.storage()),
+		BufferBinding::read(value.storage()),
+		BufferBinding::read(output.storage()),
+		BufferBinding::read(denominator.storage()),
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(dk.storage()),
+		BufferBinding::write(dv.storage()),
+	];
+	let push = [
+		PushConstant::U32(heads),
+		PushConstant::U32(sequence),
+		PushConstant::U32(dimension),
+		PushConstant::F32(epsilon),
+	];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: KernelId::MlCausalLinearAttentionBackwardQF32,
+			buffers: &q_buffers,
+			push_constants: &push,
+			workgroups: [heads, 1, 1],
+		},
+		ComputeDispatch {
+			kernel: KernelId::MlCausalLinearAttentionBackwardKvF32,
+			buffers: &kv_buffers,
+			push_constants: &push,
+			workgroups: [heads, 1, 1],
+		},
+	];
+	let attributes = [OpAttribute::Float {
+		name: "epsilon".into(),
+		value: f64::from(epsilon),
+	}];
+	query.engine_handle().record_split_semantic(
+		&dispatches,
+		SemanticDispatch {
+			contract: crate::core::operation::ml::CAUSAL_LINEAR_ATTENTION_BACKWARD,
+			inputs: &[query, key, value, output, denominator, output_gradient],
+			outputs: &[&dq, &dk, &dv],
+			attributes: &attributes,
+		},
+	)?;
+	Ok((dq, dk, dv))
+}

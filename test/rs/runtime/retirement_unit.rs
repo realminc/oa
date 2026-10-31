@@ -104,6 +104,7 @@ fn failed_wait_quarantines_queued_and_racing_work_without_another_wait() {
 			}
 			mem::forget(work);
 		},
+		|()| {},
 	);
 	assert_eq!(*waited.lock().unwrap(), [1, 2]);
 	assert_eq!(*retired.lock().unwrap(), [1]);
@@ -174,5 +175,54 @@ fn terminal_failure_preserves_the_first_backend_cause() {
 			.unwrap()
 			.to_string()
 			.contains("first wait failure")
+	);
+}
+
+#[test]
+fn completion_notification_publishes_drained_accounting_before_waiter_join() {
+	let control = Arc::new(WorkerControl::new());
+	control.pending.store(1, Ordering::Release);
+	control.disconnected.store(true, Ordering::Release);
+	let completion = Arc::new(RetirementCompletion::new());
+	let ticket = RetirementTicket {
+		completion: completion.clone(),
+		control: control.clone(),
+	};
+	let (sender, receiver) = mpsc::channel();
+	sender.send(completion).unwrap();
+	drop(sender);
+	let worker_control = control.clone();
+	let (start, started) = mpsc::channel();
+	let drops = Arc::new(AtomicUsize::new(0));
+	let worker_drops = drops.clone();
+	let published_pending = Arc::new(AtomicUsize::new(usize::MAX));
+	let worker_pending = published_pending.clone();
+	let worker = thread::spawn(move || {
+		started.recv().unwrap();
+		let _final_owner = DropProbe(worker_drops);
+		drain_retirement_queue(
+			receiver,
+			&worker_control,
+			|_| Ok(()),
+			|completion| (completion, RetirementState::Retired),
+			|completion| (completion, RetirementState::Failed),
+			|(completion, state)| {
+				worker_pending.store(
+					worker_control.pending.load(Ordering::Acquire),
+					Ordering::Release,
+				);
+				completion.finish(state);
+			},
+		);
+	});
+	control.install(worker);
+	start.send(()).unwrap();
+	ticket.wait().unwrap();
+	assert_eq!(published_pending.load(Ordering::Acquire), 0);
+	assert!(control.worker.lock().unwrap().is_none());
+	assert_eq!(
+		drops.load(Ordering::Acquire),
+		1,
+		"wait left an idle final owner detached"
 	);
 }

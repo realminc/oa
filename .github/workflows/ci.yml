@@ -161,6 +161,22 @@ jobs:
             cryptography::batch_shake_matches_cpu_across_rate_boundaries -- --exact --ignored --nocapture
           OA_TEST_DEVICE_INDEX=0 cargo test --test cryptography --all-features --locked \
             cryptography::batch_hash_chain_replays_and_rebinds_without_host_intermediates -- --exact --ignored --nocapture
+          # Correctness on the explicit software device; no driver-JIT performance claim.
+          OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
+            cargo test --test cryptography --all-features --locked \
+            hash_batch:: -- --ignored --test-threads=1 --nocapture
+          OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
+            cargo test --test cryptography --all-features --locked \
+            merkle_proofs:: -- --ignored --test-threads=1 --nocapture
+          OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
+            cargo test --test cryptography --all-features --locked \
+            bigint:: -- --ignored --test-threads=1 --nocapture
+          OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
+            cargo test --test cryptography --all-features --locked \
+            bigint_modular:: -- --ignored --test-threads=1 --nocapture
+          OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
+            cargo test --test cryptography --all-features --locked \
+            bigint_breadth:: -- --ignored --test-threads=1 --nocapture
           OA_TEST_DEVICE_INDEX=0 cargo test --test cryptography --all-features --locked \
             ml_dsa_ -- --ignored --test-threads=1 --nocapture
           OA_TEST_DEVICE_INDEX=0 cargo test --lib --all-features --locked \

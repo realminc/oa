@@ -37,21 +37,21 @@ fn timestamp_sub_non_negative() {
 
 #[test]
 fn timestamp_from_secs_round_trip() {
-	let t = Timestamp::from_secs_f64(1.5);
+	let t = Timestamp::new_from_secs_f64(1.5);
 	let back = t.to_secs();
 	assert!((back - 1.5).abs() < 1e-6);
 }
 
 #[test]
 fn timestamp_to_ms() {
-	let t = Timestamp::from_secs_f64(2.0);
+	let t = Timestamp::new_from_secs_f64(2.0);
 	assert!((t.to_ms() - 2000.0).abs() < 1.0);
 }
 
 #[test]
 fn timestamp_add_sub() {
-	let a = Timestamp::from_nanos(1_000_000);
-	let b = Timestamp::from_nanos(2_000_000);
+	let a = Timestamp::new_from_nanos(1_000_000);
+	let b = Timestamp::new_from_nanos(2_000_000);
 	let sum = a + b;
 	let diff = b - a;
 	assert_eq!(sum.as_nanos(), 3_000_000);
@@ -60,22 +60,22 @@ fn timestamp_add_sub() {
 
 #[test]
 fn timestamp_add_assign() {
-	let mut t = Timestamp::from_nanos(100);
-	t += Timestamp::from_nanos(50);
+	let mut t = Timestamp::new_from_nanos(100);
+	t += Timestamp::new_from_nanos(50);
 	assert_eq!(t.as_nanos(), 150);
 }
 
 #[test]
 fn timestamp_sub_assign() {
-	let mut t = Timestamp::from_nanos(200);
-	t -= Timestamp::from_nanos(50);
+	let mut t = Timestamp::new_from_nanos(200);
+	t -= Timestamp::new_from_nanos(50);
 	assert_eq!(t.as_nanos(), 150);
 }
 
 #[test]
 fn timestamp_order() {
-	let a = Timestamp::from_nanos(1);
-	let b = Timestamp::from_nanos(2);
+	let a = Timestamp::new_from_nanos(1);
+	let b = Timestamp::new_from_nanos(2);
 	assert!(a < b);
 	assert!(b > a);
 	assert!(a <= a);

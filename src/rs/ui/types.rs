@@ -60,14 +60,23 @@ pub struct UiStyle {
 	pub background: Color,
 	/// Widget surface (button, slider track).
 	pub surface: Color,
+	/// Hovered and held surfaces.
+	pub surface_hover: Color,
+	pub surface_active: Color,
 	/// Active/hovered widget accent.
 	pub accent: Color,
+	/// Hovered/held foreground accent.
+	pub accent_hover: Color,
 	/// Primary text color.
 	pub text: Color,
 	/// Secondary/muted text.
 	pub text_secondary: Color,
+	/// Disabled control text.
+	pub text_disabled: Color,
 	/// Widget border.
 	pub border: Color,
+	/// Strong visualization border.
+	pub border_strong: Color,
 	/// Widget corner radius in pixels.
 	pub corner_radius: f32,
 	/// Inner content padding in pixels.
@@ -82,10 +91,15 @@ impl Default for UiStyle {
 		Self {
 			background: Color::new(0.082, 0.082, 0.090, 1.0),
 			surface: Color::new(0.141, 0.141, 0.161, 1.0),
+			surface_hover: Color::new(0.133, 0.133, 0.133, 1.0),
+			surface_active: Color::new(0.188, 0.188, 0.188, 1.0),
 			accent: Color::new(0.388, 0.400, 0.945, 1.0),
+			accent_hover: Color::new(0.506, 0.549, 0.973, 1.0),
 			text: Color::new(0.961, 0.961, 0.961, 1.0),
 			text_secondary: Color::new(0.600, 0.600, 0.620, 1.0),
+			text_disabled: Color::new(0.400, 0.400, 0.400, 1.0),
 			border: Color::new(0.250, 0.250, 0.280, 1.0),
+			border_strong: Color::new(1.0, 1.0, 1.0, 0.15),
 			corner_radius: 4.0,
 			padding: 8.0,
 			font_size: 14.0,
@@ -94,10 +108,22 @@ impl Default for UiStyle {
 }
 
 impl UiStyle {
-	/// Viewer dark theme — slightly deeper background than the default.
+	/// Donor media viewer palette (`oa::UiStyle::viewerDark`).
 	pub fn viewer_dark() -> Self {
 		Self {
-			background: Color::new(0.055, 0.055, 0.060, 1.0),
+			background: Color::new_from_u32(0x181818FF),
+			surface: Color::new_from_u32(0x303030E8),
+			surface_hover: Color::new_from_u32(0x424242F0),
+			surface_active: Color::new_from_u32(0x505050F5),
+			border: Color::new_from_u32(0xFFFFFF20),
+			border_strong: Color::new_from_u32(0xFFFFFF38),
+			text: Color::new_from_u32(0xFFFFFFFF),
+			text_secondary: Color::new_from_u32(0xE6E6E6FF),
+			text_disabled: Color::new_from_u32(0x777777FF),
+			accent: Color::new_from_u32(0xF5F5F5FF),
+			accent_hover: Color::new_from_u32(0xFFFFFFFF),
+			corner_radius: 15.0,
+			font_size: 15.0,
 			..Self::default()
 		}
 	}
@@ -268,7 +294,7 @@ pub enum UiKey {
 
 impl UiKey {
 	/// Try to convert an SDL3 scancode integer to a `UiKey`.
-	pub fn from_sdl_scancode(scancode: u32) -> Self {
+	pub fn new_from_sdl_scancode(scancode: u32) -> Self {
 		match scancode {
 			4 => Self::A,
 			5 => Self::B,
@@ -1084,43 +1110,95 @@ impl Default for UiHeatmapConfig {
 
 // ── UiGridConfig ─────────────────────────────────────────────────────────────
 
-/// Configuration for a regular axis-aligned background grid.
+/// Decimal grid, optional gradient and radial guide falloff.
 ///
-/// Donor: `oa::UiGridConfig`.
+/// Donor: `oa::UiGridConfig`. Coordinates and thicknesses are target pixels.
+/// Zero-alpha colors select the donor's theme-derived defaults.
 #[derive(Clone, Debug)]
 pub struct UiGridConfig {
-	/// Pixels between minor grid lines.
-	pub minor_spacing: f32,
-	/// Number of minor lines between major lines.
-	pub major_every: i32,
-	/// Number of major lines between super-major lines.
-	pub super_major_every: i32,
-	/// Thickness of minor lines in pixels.
+	pub origin: [f32; 2],
+	pub minor_spacing: [f32; 2],
+	pub major_every: u32,
+	/// Number of minor intervals per super-major interval.
+	pub super_major_every: u32,
 	pub minor_thickness: f32,
-	/// Thickness of major lines in pixels.
 	pub major_thickness: f32,
-	/// Thickness of super-major lines in pixels.
 	pub super_major_thickness: f32,
-	/// Thickness of the axis lines.
 	pub axis_thickness: f32,
-	/// Fill panel background before drawing grid.
+	pub opacity: f32,
+	pub guide_fade_center: [f32; 2],
+	pub guide_fade_inner_radius: f32,
+	pub guide_fade_outer_radius: f32,
+	pub background_top: Color,
+	pub background_bottom: Color,
+	pub minor_color: Color,
+	pub major_color: Color,
+	pub super_major_color: Color,
+	pub axis_color: Color,
 	pub fill_background: bool,
-	/// Draw axis lines through origin.
+	pub draw_grid: bool,
 	pub draw_axes: bool,
+	pub radial_guide_fade: bool,
+	pub dither_background: bool,
 }
 
 impl Default for UiGridConfig {
 	fn default() -> Self {
+		let automatic = Color::new(0.0, 0.0, 0.0, 0.0);
 		Self {
-			minor_spacing: 20.0,
-			major_every: 5,
-			super_major_every: 10,
-			minor_thickness: 0.5,
-			major_thickness: 1.0,
-			super_major_thickness: 1.5,
-			axis_thickness: 1.5,
+			origin: [0.0; 2],
+			minor_spacing: [10.0; 2],
+			major_every: 10,
+			super_major_every: 100,
+			minor_thickness: 0.65,
+			major_thickness: 0.90,
+			super_major_thickness: 1.0,
+			axis_thickness: 1.25,
+			opacity: 1.0,
+			guide_fade_center: [0.0; 2],
+			guide_fade_inner_radius: 0.0,
+			guide_fade_outer_radius: 1.0,
+			background_top: automatic,
+			background_bottom: automatic,
+			minor_color: automatic,
+			major_color: automatic,
+			super_major_color: automatic,
+			axis_color: automatic,
 			fill_background: true,
+			draw_grid: true,
 			draw_axes: true,
+			radial_guide_fade: false,
+			dither_background: false,
+		}
+	}
+}
+
+/// Shared donor timing policy for widget and viewport transitions.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UiMotionSpeed {
+	#[default]
+	Normal,
+	Fast,
+	Fastest,
+	Instant,
+}
+
+impl UiMotionSpeed {
+	pub const fn duration_ms(self, normal: f32) -> f32 {
+		match self {
+			Self::Normal => normal,
+			Self::Fast => normal * 0.65,
+			Self::Fastest => normal * 0.35,
+			Self::Instant => 0.0,
+		}
+	}
+
+	pub const fn next(self) -> Self {
+		match self {
+			Self::Normal => Self::Fast,
+			Self::Fast => Self::Fastest,
+			Self::Fastest => Self::Instant,
+			Self::Instant => Self::Normal,
 		}
 	}
 }

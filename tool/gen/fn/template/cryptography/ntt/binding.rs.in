@@ -1,0 +1,51 @@
+use pyo3::prelude::*;
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+
+#[pyclass(name = "NttConfig", unsendable)]
+struct PythonNttConfig { inner: oa::cryptography::ntt::NttConfig }
+
+#[pymethods]
+impl PythonNttConfig {
+	#[new]
+	#[pyo3(signature = (modulus, root, length, representation="standard"))]
+	fn new(modulus: u64, root: u64, length: usize, representation: &str) -> PyResult<Self> {
+		let representation = match representation {
+			"standard" => oa::cryptography::ntt::NttRepresentation::Standard,
+			"montgomery" => oa::cryptography::ntt::NttRepresentation::Montgomery,
+			_ => return Err(pyo3::exceptions::PyValueError::new_err("NTT representation must be standard or montgomery")),
+		};
+		let inner = oa::cryptography::ntt::NttConfig::new(modulus, root, length).map_err(python_error)?.with_representation(representation);
+		Ok(Self { inner })
+	}
+	#[getter]
+	fn modulus(&self) -> u64 { self.inner.modulus() }
+	#[getter]
+	fn root(&self) -> u64 { self.inner.root() }
+	#[getter]
+	fn length(&self) -> usize { self.inner.length() }
+}
+
+#[pyclass(name = "NttParameters", unsendable)]
+struct PythonNttParameters { inner: oa::cryptography::ntt::NttParameters }
+
+#[pymethods]
+impl PythonNttParameters {
+	#[getter]
+	fn config(&self) -> PythonNttConfig { PythonNttConfig { inner: self.inner.config().clone() } }
+}
+
+#[pyfunction]
+fn crypto_ntt_prepare(engine: &PythonEngine, config: &PythonNttConfig) -> PyResult<PythonNttParameters> {
+	let inner = oa::cryptography::ntt::prepare(&engine.inner, &config.inner).map_err(python_error)?;
+	Ok(PythonNttParameters { inner })
+}
+
+{{operations}}
+
+pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+	module.add_class::<PythonNttConfig>()?;
+	module.add_class::<PythonNttParameters>()?;
+	module.add_function(wrap_pyfunction!(crypto_ntt_prepare, module)?)?;
+{{registration}}
+	Ok(())
+}

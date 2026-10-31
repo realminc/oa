@@ -88,18 +88,18 @@ test_vk!(
 		assert_eq!(features.shape(), [2, 768]);
 		assert!(features.read_f32()?.into_iter().all(f32::is_finite));
 
-		let motion_tokenizer = Rc::new(oa::sdk::ml::alm::AlmTokenizer::with_seed(
+		let motion_tokenizer = Rc::new(oa::sdk::ml::alm::AlmTokenizer::new_with_seed(
 			&engine,
 			tiny_config(),
 			31,
 		)?);
-		let prior = Rc::new(oa::sdk::ml::alm::AlmPrior::with_seed(
+		let prior = Rc::new(oa::sdk::ml::alm::AlmPrior::new_with_seed(
 			&engine,
 			tiny_prior_config(oa::sdk::ml::alm::AlmFfnType::Dense, 768),
 			37,
 		)?);
 		let model =
-			oa::sdk::ml::alm::Alm::from_native_text_parts(motion_tokenizer, prior, clip, &merges)?;
+			oa::sdk::ml::alm::Alm::new_from_native_text_parts(motion_tokenizer, prior, clip, &merges)?;
 		assert!(model.has_native_text_encoder());
 		assert_eq!(
 			model.text_encoder_identity(),
@@ -197,7 +197,7 @@ test_vk!(
 	engine,
 	{
 		let config = tiny_config();
-		let model = oa::sdk::ml::alm::AlmTokenizer::with_seed(&engine, config, 0xC0FFEE)?;
+		let model = oa::sdk::ml::alm::AlmTokenizer::new_with_seed(&engine, config, 0xC0FFEE)?;
 		assert_eq!(model.config(), &config);
 		assert_eq!(model.downsample_factor(), 2);
 		let parameter_paths = model
@@ -214,7 +214,7 @@ test_vk!(
 		let input_values = (0..48)
 			.map(|index| ((index as f32 * 0.173).sin() + index as f32 * 0.01) * 0.5)
 			.collect::<Vec<_>>();
-		let input = oa::Matrix::from_f32(&engine, [2, 8, 3], &input_values)?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 8, 3], &input_values)?;
 		let (encode_plan, latent) = engine.capture(|| model.encode(&input))?;
 		let encode_report = encode_plan.debug_report_json("ALM tokenizer encode");
 		assert!(encode_report.contains("ml.matrix.channel_norm_relu.f32"));
@@ -272,7 +272,7 @@ test_vk!(
 		let checkpoint = directory.join("tokenizer.oam");
 		let source_optimizer = oa::ml::AdamW::new(model.all_parameters()?, 2.0e-4)?;
 		oa::ml::save_checkpoint(&checkpoint, &model, &source_optimizer)?;
-		let restored = oa::sdk::ml::alm::AlmTokenizer::with_seed(&engine, config, 9)?;
+		let restored = oa::sdk::ml::alm::AlmTokenizer::new_with_seed(&engine, config, 9)?;
 		let mut restored_optimizer = oa::ml::AdamW::new(restored.all_parameters()?, 1.0e-3)?;
 		oa::ml::load_checkpoint(&engine, &checkpoint, &restored, &mut restored_optimizer)?;
 		assert_module_state_equal(&model, &restored)?;
@@ -284,13 +284,13 @@ test_vk!(
 
 		assert_eq!(
 			model
-				.encode(&oa::Matrix::from_f32(&engine, [1, 7, 3], &[0.0; 21])?)?
+				.encode(&oa::Matrix::new_from_f32(&engine, [1, 7, 3], &[0.0; 21])?)?
 				.shape(),
 			[3, 4]
 		);
 		assert!(
 			model
-				.encode(&oa::Matrix::from_f32(&engine, [1, 8, 2], &[0.0; 16])?)
+				.encode(&oa::Matrix::new_from_f32(&engine, [1, 8, 2], &[0.0; 16])?)
 				.is_err()
 		);
 		Ok(())
@@ -303,8 +303,8 @@ test_vk!(
 	{
 		use oa::sdk::ml::alm::{AlmFfnType, AlmGenerationOptions, AlmPrior};
 
-		let tokens = oa::Matrix::from_slice(&engine, [2, 3], &[4_i32, 0, 1, 4, 2, 3])?;
-		let dense = AlmPrior::with_seed(&engine, tiny_prior_config(AlmFfnType::Dense, 0), 17)?;
+		let tokens = oa::Matrix::new_from_slice(&engine, [2, 3], &[4_i32, 0, 1, 4, 2, 3])?;
+		let dense = AlmPrior::new_with_seed(&engine, tiny_prior_config(AlmFfnType::Dense, 0), 17)?;
 		let dense_logits = dense.forward(&tokens)?;
 		assert_eq!(dense_logits.shape(), [2, 3, 7]);
 		assert!(dense_logits.read_f32()?.into_iter().all(f32::is_finite));
@@ -330,11 +330,11 @@ test_vk!(
 			assert!(row.iter().all(|token| (0..7).contains(token)));
 		}
 
-		let hybrid = AlmPrior::with_seed(&engine, tiny_prior_config(AlmFfnType::Hybrid, 3), 23)?;
+		let hybrid = AlmPrior::new_with_seed(&engine, tiny_prior_config(AlmFfnType::Hybrid, 3), 23)?;
 		assert!(!hybrid.layer(0).expect("hybrid layer zero").is_moe());
 		assert!(hybrid.layer(1).expect("hybrid layer one").is_moe());
 		assert!(hybrid.forward(&tokens).is_err());
-		let text = oa::Matrix::from_f32(&engine, [2, 3], &[0.5, -0.25, 1.0, -0.5, 0.75, 0.25])?;
+		let text = oa::Matrix::new_from_f32(&engine, [2, 3], &[0.5, -0.25, 1.0, -0.5, 0.75, 0.25])?;
 		let tape = oa::ml::GradientTape::new();
 		let logits = hybrid.forward_conditioned(&tokens, &text)?;
 		assert_eq!(logits.shape(), [2, 3, 7]);
@@ -358,8 +358,9 @@ test_vk!(
 		let generated = hybrid.generate_conditioned(&text, options)?;
 		assert_eq!(generated.shape()[0], 2);
 
-		let tokenizer = oa::sdk::ml::alm::AlmTokenizer::with_seed(&engine, tiny_config(), 31)?;
-		let generated_codes = oa::Matrix::from_slice(&engine, [2, 4], &[4_i32, 0, 1, 5, 4, 2, 3, 5])?;
+		let tokenizer = oa::sdk::ml::alm::AlmTokenizer::new_with_seed(&engine, tiny_config(), 31)?;
+		let generated_codes =
+			oa::Matrix::new_from_slice(&engine, [2, 4], &[4_i32, 0, 1, 5, 4, 2, 3, 5])?;
 		let motion = dense
 			.decode_to_motion(&generated_codes, &tokenizer)?
 			.expect("two motion tokens per row");
@@ -368,13 +369,13 @@ test_vk!(
 		assert!(
 			dense
 				.decode_to_motion(
-					&oa::Matrix::from_slice(&engine, [1, 2], &[4_i32, 5])?,
+					&oa::Matrix::new_from_slice(&engine, [1, 2], &[4_i32, 5])?,
 					&tokenizer,
 				)?
 				.is_none()
 		);
 
-		let bundle = oa::sdk::ml::alm::Alm::with_seed(
+		let bundle = oa::sdk::ml::alm::Alm::new_with_seed(
 			&engine,
 			oa::sdk::ml::alm::AlmConfig {
 				tokenizer: tiny_config(),
@@ -393,7 +394,7 @@ test_vk!(
 		assert_eq!(bundle.forward(&tokens)?.shape(), [2, 3, 7]);
 		assert_eq!(
 			bundle
-				.tokenize(&oa::Matrix::from_f32(&engine, [2, 8, 3], &[0.1; 48])?)?
+				.tokenize(&oa::Matrix::new_from_f32(&engine, [2, 8, 3], &[0.1; 48])?)?
 				.len(),
 			1
 		);
@@ -472,7 +473,7 @@ test_vk!(
 			eos_token: 7,
 			pad_token: 7,
 		};
-		let clip = oa::sdk::ml::alm::ClipText::with_seed(&engine, config, 101)?;
+		let clip = oa::sdk::ml::alm::ClipText::new_with_seed(&engine, config, 101)?;
 		assert_eq!(clip.config(), &config);
 		assert!(
 			clip
@@ -480,20 +481,20 @@ test_vk!(
 				.into_iter()
 				.all(|parameter| !parameter.requires_grad())
 		);
-		let token_ids = oa::Matrix::from_slice(&engine, [2, 4], &[6_i32, 7, 0, 0, 6, 2, 7, 0])?;
-		let eos_rows = oa::Matrix::from_slice(&engine, [2], &[1_i32, 6])?;
+		let token_ids = oa::Matrix::new_from_slice(&engine, [2, 4], &[6_i32, 7, 0, 0, 6, 2, 7, 0])?;
+		let eos_rows = oa::Matrix::new_from_slice(&engine, [2], &[1_i32, 6])?;
 		let explicit = clip.forward_tokens(&token_ids, &eos_rows)?;
 		let fallback = clip.forward(&token_ids)?;
 		assert_eq!(explicit.shape(), [2, 3]);
 		assert_eq!(explicit.read_f32()?, fallback.read_f32()?);
 		assert!(explicit.read_f32()?.into_iter().all(f32::is_finite));
 
-		let prior = oa::sdk::ml::alm::AlmPrior::with_seed(
+		let prior = oa::sdk::ml::alm::AlmPrior::new_with_seed(
 			&engine,
 			tiny_prior_config(oa::sdk::ml::alm::AlmFfnType::Dense, 3),
 			107,
 		)?;
-		let motion_tokens = oa::Matrix::from_slice(&engine, [2, 3], &[4_i32, 0, 1, 4, 2, 3])?;
+		let motion_tokens = oa::Matrix::new_from_slice(&engine, [2, 3], &[4_i32, 0, 1, 4, 2, 3])?;
 		assert_eq!(
 			prior
 				.forward_conditioned(&motion_tokens, &explicit)?

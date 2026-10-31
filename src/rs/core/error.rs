@@ -127,6 +127,24 @@ impl Error {
 		})
 	}
 
+	/// Converts a generated dispatch outcome into a backend failure: a call
+	/// error is propagated directly, and a non-success Vulkan status carries
+	/// its result code.
+	pub(crate) fn backend_dispatch_failure(
+		backend: &'static str,
+		operation: &'static str,
+		result: std::result::Result<vk::Result, vk::CallError>,
+	) -> Self {
+		match result {
+			Err(source) => Self::backend_failure(backend, operation, source),
+			Ok(code) => Self::backend_failure(
+				backend,
+				operation,
+				std::io::Error::other(format!("{code:?}")),
+			),
+		}
+	}
+
 	pub(crate) fn unsupported_backend_version(
 		backend: &'static str,
 		required: &'static str,
@@ -259,3 +277,21 @@ impl StdError for Error {
 
 /// Result returned by fallible OA operations.
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<vk::CallError> for Error {
+	fn from(source: vk::CallError) -> Self {
+		Self::backend_failure("Vulkan", "command dispatch", source)
+	}
+}
+
+impl From<vk::ConstructionError> for Error {
+	fn from(source: vk::ConstructionError) -> Self {
+		Self::backend_failure("Vulkan", "create-info construction", source)
+	}
+}
+
+impl From<vk::mem::AllocError> for Error {
+	fn from(source: vk::mem::AllocError) -> Self {
+		Self::backend_failure("Vulkan", "memory allocation", source)
+	}
+}

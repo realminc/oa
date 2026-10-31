@@ -42,7 +42,7 @@ struct GruLayer {
 }
 
 impl GruLayer {
-	fn with_seed(
+	fn new_with_seed(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
@@ -60,10 +60,10 @@ impl GruLayer {
 			seed.wrapping_add(0x9e37_79b9_7f4a_7c15),
 		)?;
 		let bias_ih = bias
-			.then(|| Matrix::from_f32(engine, [gate_size], &vec![0.0; gate_size]))
+			.then(|| Matrix::new_from_f32(engine, [gate_size], &vec![0.0; gate_size]))
 			.transpose()?;
 		let bias_hh = bias
-			.then(|| Matrix::from_f32(engine, [gate_size], &vec![0.0; gate_size]))
+			.then(|| Matrix::new_from_f32(engine, [gate_size], &vec![0.0; gate_size]))
 			.transpose()?;
 		Self::from_values(weight_ih, weight_hh, bias_ih, bias_hh)
 	}
@@ -262,7 +262,7 @@ impl GruCell {
 	///
 	/// Returns an error when dimensions are zero, hidden size exceeds 1024,
 	/// arithmetic overflows, or parameter allocation fails.
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
@@ -275,7 +275,7 @@ impl GruCell {
 			));
 		}
 		Ok(Self {
-			layer: GruLayer::with_seed(engine, input_size, hidden_size, bias, seed)?,
+			layer: GruLayer::new_with_seed(engine, input_size, hidden_size, bias, seed)?,
 		})
 	}
 
@@ -285,7 +285,7 @@ impl GruCell {
 	///
 	/// Returns an error unless weights use `[3H, I]` and `[3H, H]`, biases use
 	/// `[3H]`, and all values satisfy the F32 engine and hidden-size contract.
-	pub fn from_matrices(
+	pub fn new_from_matrices(
 		weight_ih: Matrix,
 		weight_hh: Matrix,
 		bias_ih: Matrix,
@@ -302,7 +302,7 @@ impl GruCell {
 	///
 	/// Returns an error unless both weights satisfy the F32 engine, shape, and
 	/// hidden-size contract.
-	pub fn from_weights(weight_ih: Matrix, weight_hh: Matrix) -> Result<Self> {
+	pub fn new_from_weights(weight_ih: Matrix, weight_hh: Matrix) -> Result<Self> {
 		Ok(Self {
 			layer: GruLayer::from_values(weight_ih, weight_hh, None, None)?,
 		})
@@ -394,7 +394,7 @@ impl Gru {
 	/// Returns an error when a dimension or layer count is zero, hidden size
 	/// exceeds the 1024-element scan limit, arithmetic overflows, or parameter
 	/// allocation and registration fail.
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
@@ -411,7 +411,7 @@ impl Gru {
 		let mut registry = ModuleRegistry::new();
 		for index in 0..num_layers {
 			let layer_input = if index == 0 { input_size } else { hidden_size };
-			let layer = Rc::new(GruLayer::with_seed(
+			let layer = Rc::new(GruLayer::new_with_seed(
 				engine,
 				layer_input,
 				hidden_size,
@@ -436,7 +436,7 @@ impl Gru {
 	/// Returns an error unless weights use `[3H, I]` and `[3H, H]`, biases use
 	/// `[3H]`, and all values are nonempty same-engine F32 matrices with
 	/// `H <= 1024`.
-	pub fn from_matrices(
+	pub fn new_from_matrices(
 		weight_ih: Matrix,
 		weight_hh: Matrix,
 		bias_ih: Matrix,
@@ -451,7 +451,7 @@ impl Gru {
 	///
 	/// Returns an error unless weights use `[3H, I]` and `[3H, H]` and are
 	/// nonempty same-engine F32 matrices with `H <= 1024`.
-	pub fn from_weights(weight_ih: Matrix, weight_hh: Matrix) -> Result<Self> {
+	pub fn new_from_weights(weight_ih: Matrix, weight_hh: Matrix) -> Result<Self> {
 		Self::from_one_layer(weight_ih, weight_hh, None, None)
 	}
 
@@ -567,7 +567,7 @@ fn xavier_matrix(
 		.checked_add(input_features)
 		.ok_or_else(|| Error::invalid_argument("GRU Xavier extent overflows usize"))?;
 	let limit = (6.0_f32 / denominator as f32).sqrt();
-	Matrix::from_f32(
+	Matrix::new_from_f32(
 		engine,
 		[output_features, input_features],
 		&random::symmetric_uniform(count, limit, seed),

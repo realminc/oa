@@ -16,7 +16,7 @@ use super::{
 use crate::runtime::{Buffer, Device, TimestampPair};
 
 pub(super) struct CommandPool {
-	handle: ash::vk::CommandPool,
+	handle: vk::CommandPool,
 	kind: CommandPoolKind,
 }
 
@@ -30,6 +30,7 @@ pub(super) enum CommandPoolKind {
 pub(in crate::runtime) struct RecordedCommandBuffer {
 	allocation: CommandBufferAllocation,
 	timing: Option<TimestampPair>,
+	brackets: Option<Box<[RecordedCommandBuffer; 2]>>,
 	secret_erasures: Vec<crate::runtime::device::secret_buffer::SecretBuffer>,
 	retained_secret_erasures: Vec<Arc<crate::runtime::device::secret_buffer::SecretBuffer>>,
 	_secret_uses: Vec<Arc<crate::runtime::device::secret_buffer::SecretBuffer>>,
@@ -37,7 +38,7 @@ pub(in crate::runtime) struct RecordedCommandBuffer {
 
 enum CommandBufferAllocation {
 	Owned {
-		handle: ash::vk::CommandBuffer,
+		handle: vk::CommandBuffer,
 		pool: CommandPoolKind,
 		_resources: Vec<Buffer>,
 		_accesses: Vec<BufferAccess>,
@@ -53,7 +54,7 @@ pub(in crate::runtime) struct ReusableCommandBuffer {
 }
 
 struct ReusableCommandBufferInner {
-	handle: ash::vk::CommandBuffer,
+	handle: vk::CommandBuffer,
 	_resources: Vec<Buffer>,
 	_accesses: Vec<BufferAccess>,
 	_bounded_sets: Option<BoundedSets>,
@@ -75,13 +76,9 @@ struct CommandRetention {
 }
 
 impl CommandPool {
-	pub(super) fn new(
-		device: &ash::Device,
-		queue_family: u32,
-		kind: CommandPoolKind,
-	) -> Result<Self> {
-		let create_info = ash::vk::CommandPoolCreateInfo::default()
-			.flags(ash::vk::CommandPoolCreateFlags::TRANSIENT)
+	pub(super) fn new(device: &vk::Device, queue_family: u32, kind: CommandPoolKind) -> Result<Self> {
+		let create_info = vk::CommandPoolCreateInfo::default()
+			.flags(vk::CommandPoolCreateFlagBits::TRANSIENT_BIT)
 			.queue_family_index(queue_family);
 
 		// SAFETY: the queue family was queried from the physical device used to create
@@ -92,8 +89,8 @@ impl CommandPool {
 		Ok(Self { handle, kind })
 	}
 
-	pub(super) fn record_empty(&mut self, device: &ash::Device) -> Result<RecordedCommandBuffer> {
-		let command_buffer = self.begin(device, ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)?;
+	pub(super) fn record_empty(&mut self, device: &vk::Device) -> Result<RecordedCommandBuffer> {
+		let command_buffer = self.begin(device, vk::CommandBufferUsageFlagBits::ONE_TIME_SUBMIT_BIT)?;
 		self.finish(
 			device,
 			command_buffer,
@@ -105,15 +102,15 @@ impl CommandPool {
 
 	pub(super) fn record_custom(
 		&mut self,
-		device: &ash::Device,
-		record: impl FnOnce(ash::vk::CommandBuffer) -> Result<()>,
+		device: &vk::Device,
+		record: impl FnOnce(vk::CommandBuffer) -> Result<()>,
 	) -> Result<RecordedCommandBuffer> {
-		let command_buffer = self.begin(device, ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)?;
+		let command_buffer = self.begin(device, vk::CommandBufferUsageFlagBits::ONE_TIME_SUBMIT_BIT)?;
 		if let Err(error) = record(command_buffer) {
 			// SAFETY: recording failed before submission and this pool exclusively owns
 			// the command buffer, which may be freed from the recording state.
 			unsafe {
-				device.free_command_buffers(self.handle, &[command_buffer]);
+				device.free_command_buffers(self.handle, &[command_buffer])?;
 			}
 			return Err(error);
 		}
@@ -130,7 +127,7 @@ impl CommandPool {
 		&mut self,
 		context: &Arc<Device>,
 		pipelines: &[Option<OnceLock<ComputePipeline>>],
-		descriptor_set: ash::vk::DescriptorSet,
+		descriptor_set: vk::DescriptorSet,
 		graph: &ExecutableGraph,
 		timing: Option<TimestampPair>,
 		reusable_device: Option<Arc<Device>>,
@@ -165,7 +162,7 @@ impl CommandPool {
 					(0..dispatch.node.kernel.bounded_buffer_count() as usize)
 						.map(|slot| {
 							let buffer = dispatch.node.buffers.get(slot).unwrap_or(first);
-							ash::vk::DescriptorBufferInfo::default()
+							vk::DescriptorBufferInfo::default()
 								.buffer(buffer.buffer.raw())
 								.offset(0)
 								.range(buffer.buffer.size())
@@ -178,15 +175,15 @@ impl CommandPool {
 			None
 		};
 		let usage = if reusable_device.is_some() {
-			ash::vk::CommandBufferUsageFlags::SIMULTANEOUS_USE
+			vk::CommandBufferUsageFlagBits::SIMULTANEOUS_USE_BIT
 		} else {
-			ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT
+			vk::CommandBufferUsageFlagBits::ONE_TIME_SUBMIT_BIT
 		};
 		let command_buffer = self.begin(device, usage)?;
 		let mut resources = Vec::new();
 		let mut accesses = Vec::new();
 		if let Some(timing) = &timing {
-			timing.record_begin(command_buffer);
+			timing.record_begin(command_buffer)?;
 		}
 
 		for (node_index, dispatch) in prepared.iter().enumerate() {
@@ -195,11 +192,11 @@ impl CommandPool {
 				sync_commands,
 				command_buffer,
 				graph.barriers_before(node_index),
-			);
+			)?;
 			let set = bounded_sets
 				.as_ref()
 				.map_or(descriptor_set, |sets| sets.set(node_index));
-			record_dispatch(device, command_buffer, set, dispatch);
+			record_dispatch(device, command_buffer, set, dispatch)?;
 			resources.extend(
 				dispatch
 					.node
@@ -209,9 +206,9 @@ impl CommandPool {
 			);
 			accesses.extend(dispatch.node.buffers.iter().map(|usage| usage.access));
 		}
-		record_host_visibility(device, sync_commands, command_buffer, &accesses);
+		record_host_visibility(device, sync_commands, command_buffer, &accesses)?;
 		if let Some(timing) = &timing {
-			timing.record_end(command_buffer);
+			timing.record_end(command_buffer)?;
 		}
 
 		self.finish(
@@ -229,12 +226,12 @@ impl CommandPool {
 
 	fn begin(
 		&mut self,
-		device: &ash::Device,
-		usage: ash::vk::CommandBufferUsageFlags,
-	) -> Result<ash::vk::CommandBuffer> {
-		let allocate_info = ash::vk::CommandBufferAllocateInfo::default()
+		device: &vk::Device,
+		usage: vk::CommandBufferUsageFlags,
+	) -> Result<vk::CommandBuffer> {
+		let allocate_info = vk::CommandBufferAllocateInfo::default()
 			.command_pool(self.handle)
-			.level(ash::vk::CommandBufferLevel::PRIMARY)
+			.level(vk::CommandBufferLevel::PRIMARY)
 			.command_buffer_count(1);
 		// SAFETY: this pool belongs to `device`; the request count is one and the pool
 		// remains live until the returned command buffer is explicitly retired.
@@ -248,14 +245,14 @@ impl CommandPool {
 			));
 		};
 
-		let begin_info = ash::vk::CommandBufferBeginInfo::default().flags(usage);
+		let begin_info = vk::CommandBufferBeginInfo::default().flags(usage);
 		// SAFETY: the primary command buffer is in its initial state and exclusively
 		// owned by this function.
 		if let Err(source) = unsafe { device.begin_command_buffer(command_buffer, &begin_info) } {
 			// SAFETY: allocation succeeded, recording did not begin, and the buffer is not
 			// pending execution.
 			unsafe {
-				device.free_command_buffers(self.handle, &[command_buffer]);
+				device.free_command_buffers(self.handle, &[command_buffer])?;
 			}
 			return Err(Error::backend_failure(
 				"Vulkan",
@@ -269,8 +266,8 @@ impl CommandPool {
 
 	fn finish(
 		&mut self,
-		device: &ash::Device,
-		command_buffer: ash::vk::CommandBuffer,
+		device: &vk::Device,
+		command_buffer: vk::CommandBuffer,
 		retention: CommandRetention,
 		timing: Option<TimestampPair>,
 		reusable_device: Option<Arc<Device>>,
@@ -286,7 +283,7 @@ impl CommandPool {
 			// SAFETY: the buffer is not pending execution. `vkEndCommandBuffer` failure
 			// leaves it invalid and legal to free.
 			unsafe {
-				device.free_command_buffers(self.handle, &[command_buffer]);
+				device.free_command_buffers(self.handle, &[command_buffer])?;
 			}
 			return Err(Error::backend_failure(
 				"Vulkan",
@@ -316,25 +313,26 @@ impl CommandPool {
 		Ok(RecordedCommandBuffer {
 			allocation,
 			timing,
+			brackets: None,
 			secret_erasures: Vec::new(),
 			retained_secret_erasures: Vec::new(),
 			_secret_uses: Vec::new(),
 		})
 	}
 
-	pub(super) fn free_handle(&mut self, device: &ash::Device, handle: ash::vk::CommandBuffer) {
+	pub(super) fn free_handle(&mut self, device: &vk::Device, handle: vk::CommandBuffer) {
 		// SAFETY: the retirement service or final reusable owner transfers a completed
 		// or never-submitted command buffer back to its originating pool exactly once.
 		unsafe {
-			device.free_command_buffers(self.handle, &[handle]);
+			let _ = device.free_command_buffers(self.handle, &[handle]);
 		}
 	}
 
-	pub(super) fn destroy(&mut self, device: &ash::Device) {
+	pub(super) fn destroy(&mut self, device: &vk::Device) {
 		// SAFETY: `DeviceInner` owns this pool, destroys it once after every allocated
 		// command buffer has been freed, and uses the same allocation callbacks.
 		unsafe {
-			device.destroy_command_pool(self.handle, None);
+			let _ = device.destroy_command_pool(self.handle, None);
 		}
 	}
 }
@@ -451,30 +449,32 @@ fn validate_physical_write_accesses(
 }
 
 fn record_barriers(
-	device: &ash::Device,
+	device: &vk::Device,
 	sync_commands: &SyncCommands,
-	command_buffer: ash::vk::CommandBuffer,
+	command_buffer: vk::CommandBuffer,
 	hazards: &[BufferHazard],
-) {
+) -> Result<()> {
 	if hazards.is_empty() {
-		return;
+		return Ok(());
 	}
 	let barriers = hazards
 		.iter()
 		.map(|hazard| {
-			ash::vk::BufferMemoryBarrier2::default()
-				.src_stage_mask(ash::vk::PipelineStageFlags2::COMPUTE_SHADER)
+			vk::BufferMemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
 				.src_access_mask(hazard.source.vk_access())
-				.dst_stage_mask(ash::vk::PipelineStageFlags2::COMPUTE_SHADER)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
 				.dst_access_mask(hazard.destination.vk_access())
-				.src_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
-				.dst_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+				.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
 				.buffer(hazard.buffer.raw())
 				.offset(0)
 				.size(hazard.buffer.size())
 		})
 		.collect::<Vec<_>>();
-	let dependency = ash::vk::DependencyInfo::default().buffer_memory_barriers(&barriers);
+	let dependency = vk::DependencyInfo::default()
+		.buffer_memory_barriers(&barriers)
+		.map_err(Error::from)?;
 
 	// SAFETY: every barrier names a live retained buffer. The producer and consumer
 	// are storage-buffer accesses in compute dispatches recorded on this same queue
@@ -482,8 +482,9 @@ fn record_barriers(
 	// both scopes. The full logical buffer range is valid, no image layout exists,
 	// and QUEUE_FAMILY_IGNORED declares no ownership transfer.
 	unsafe {
-		sync_commands.pipeline_barrier(device, command_buffer, &dependency);
+		sync_commands.pipeline_barrier(device, command_buffer, &dependency)?;
 	}
+	Ok(())
 }
 
 /// Current compute Buffer storage is host-visible. Completion and mapping
@@ -493,33 +494,37 @@ fn record_barriers(
 /// Preserve the donor's single memory-domain edge at the batch boundary, so
 /// exact Event completion permits blocking and nonblocking host observation.
 fn record_host_visibility(
-	device: &ash::Device,
+	device: &vk::Device,
 	sync_commands: &crate::runtime::device::commands::SyncCommands,
-	command_buffer: ash::vk::CommandBuffer,
+	command_buffer: vk::CommandBuffer,
 	accesses: &[BufferAccess],
-) {
+) -> Result<()> {
 	if !accesses.iter().any(|access| *access != BufferAccess::Read) {
-		return;
+		return Ok(());
 	}
-	let barrier = ash::vk::MemoryBarrier2::default()
-		.src_stage_mask(ash::vk::PipelineStageFlags2::COMPUTE_SHADER)
-		.src_access_mask(ash::vk::AccessFlags2::SHADER_STORAGE_WRITE)
-		.dst_stage_mask(ash::vk::PipelineStageFlags2::HOST)
-		.dst_access_mask(ash::vk::AccessFlags2::HOST_READ);
-	let dependency =
-		ash::vk::DependencyInfo::default().memory_barriers(std::slice::from_ref(&barrier));
+	let barrier = vk::MemoryBarrier2::default()
+		.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+		.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+		.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+		.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT);
+	let dependency = vk::DependencyInfo::default()
+		.memory_barriers(std::slice::from_ref(&barrier))
+		.map_err(Error::from)?;
 	// SAFETY: the recording command retains this batch's live host-visible
 	// compute buffers. HOST_READ performs the required memory-domain
 	// operation; CPU access still requires exact completion and invalidation.
-	unsafe { sync_commands.pipeline_barrier(device, command_buffer, &dependency) };
+	unsafe {
+		sync_commands.pipeline_barrier(device, command_buffer, &dependency)?;
+	}
+	Ok(())
 }
 
 fn record_dispatch(
-	device: &ash::Device,
-	command_buffer: ash::vk::CommandBuffer,
-	descriptor_set: ash::vk::DescriptorSet,
+	device: &vk::Device,
+	command_buffer: vk::CommandBuffer,
+	descriptor_set: vk::DescriptorSet,
 	dispatch: &PreparedDispatch<'_>,
-) {
+) -> Result<()> {
 	// SAFETY: the command buffer is recording; pipeline, layout, shared descriptor
 	// set, and every descriptor-backed buffer remain live through retained graph
 	// resources. Preflight proved exact push ABI, legal nonzero workgroups, and
@@ -532,31 +537,32 @@ fn record_dispatch(
 		);
 		device.cmd_bind_pipeline(
 			command_buffer,
-			ash::vk::PipelineBindPoint::COMPUTE,
+			vk::PipelineBindPoint::COMPUTE,
 			dispatch.pipeline.raw(),
-		);
+		)?;
 		device.cmd_bind_descriptor_sets(
 			command_buffer,
-			ash::vk::PipelineBindPoint::COMPUTE,
+			vk::PipelineBindPoint::COMPUTE,
 			dispatch.pipeline.layout(),
 			0,
 			&[descriptor_set],
 			&[],
-		);
+		)?;
 		device.cmd_push_constants(
 			command_buffer,
 			dispatch.pipeline.layout(),
-			ash::vk::ShaderStageFlags::COMPUTE,
+			vk::ShaderStageFlagBits::COMPUTE_BIT,
 			0,
 			&dispatch.push,
-		);
+		)?;
 		device.cmd_dispatch(
 			command_buffer,
 			dispatch.node.workgroups[0],
 			dispatch.node.workgroups[1],
 			dispatch.node.workgroups[2],
-		);
+		)?;
 	}
+	Ok(())
 }
 
 fn encode_push_constants(
@@ -586,6 +592,25 @@ fn encode_push_constants(
 }
 
 impl RecordedCommandBuffer {
+	pub(super) fn with_timing_brackets(
+		mut self,
+		before: Self,
+		after: Self,
+		timing: TimestampPair,
+	) -> Self {
+		self.brackets = Some(Box::new([before, after]));
+		self.timing = Some(timing);
+		self
+	}
+	pub(super) fn submission_handles(&self) -> Vec<vk::CommandBuffer> {
+		match &self.brackets {
+			Some(pair) => vec![pair[0].raw(), self.raw(), pair[1].raw()],
+			None => vec![self.raw()],
+		}
+	}
+	pub(super) fn take_brackets(&mut self) -> Option<Box<[Self; 2]>> {
+		self.brackets.take()
+	}
 	pub(super) fn retain_secret_public_output(
 		&mut self,
 		public: Buffer,
@@ -663,7 +688,7 @@ impl RecordedCommandBuffer {
 		}
 	}
 
-	pub(super) fn raw(&self) -> ash::vk::CommandBuffer {
+	pub(super) fn raw(&self) -> vk::CommandBuffer {
 		match &self.allocation {
 			CommandBufferAllocation::Owned { handle, .. } => *handle,
 			CommandBufferAllocation::Reusable(command) => command.inner.handle,
@@ -690,7 +715,7 @@ impl RecordedCommandBuffer {
 
 	pub(super) fn into_owned_handle(
 		self,
-	) -> Option<(ash::vk::CommandBuffer, CommandPoolKind, Option<BoundedSets>)> {
+	) -> Option<(vk::CommandBuffer, CommandPoolKind, Option<BoundedSets>)> {
 		match self.allocation {
 			CommandBufferAllocation::Owned {
 				handle,
@@ -708,6 +733,7 @@ impl ReusableCommandBuffer {
 		RecordedCommandBuffer {
 			allocation: CommandBufferAllocation::Reusable(self.clone()),
 			timing: None,
+			brackets: None,
 			secret_erasures: Vec::new(),
 			retained_secret_erasures: Vec::new(),
 			_secret_uses: Vec::new(),

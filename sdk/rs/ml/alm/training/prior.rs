@@ -176,7 +176,7 @@ pub fn train_prior_with_validation(
 		.batch_size
 		.checked_mul(config.window_len)
 		.ok_or_else(|| Error::resource_exhausted("ALM prior batch token count overflows usize"))?;
-	let mut optimizer = AdamW::with_hyperparameters(
+	let mut optimizer = AdamW::new_with_hyperparameters(
 		prior.all_parameters()?,
 		config.learning_rate,
 		0.9,
@@ -303,13 +303,13 @@ pub fn train_prior_with_validation(
 			config.window_len,
 			special,
 		)?;
-		let input_ids = Matrix::from_slice(
+		let input_ids = Matrix::new_from_slice(
 			engine,
 			[config.batch_size, config.window_len],
 			&batch.input_ids,
 		)?;
-		let target_ids = Matrix::from_slice(engine, [batch_tokens], &batch.target_ids)?;
-		let loss_mask = Matrix::from_slice(engine, [batch_tokens], &batch.loss_mask)?;
+		let target_ids = Matrix::new_from_slice(engine, [batch_tokens], &batch.target_ids)?;
+		let loss_mask = Matrix::new_from_slice(engine, [batch_tokens], &batch.loss_mask)?;
 		let text_features = conditioning
 			.map(|source| {
 				gather_text_features(
@@ -472,5 +472,5 @@ fn gather_text_features(
 		batch[row * source.feature_dim..(row + 1) * source.feature_dim]
 			.copy_from_slice(&features[start..start + source.feature_dim]);
 	}
-	Matrix::from_slice(engine, [batch_size, source.feature_dim], &batch)
+	Matrix::new_from_slice(engine, [batch_size, source.feature_dim], &batch)
 }

@@ -46,15 +46,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "ash"
-version = "0.38.0+1.3.281"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bb44936d800fea8f016d7f2311c6a4f97aebd5dc86f09906139ec848cf3a46f"
-dependencies = [
- "libloading",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -470,6 +461,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "inventory"
+version = "0.3.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6928282826c822ad91bf1c9a1cb90a30ba1c26770749929b4656cd6be829cd7c"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -778,7 +778,7 @@ dependencies = [
 
 [[package]]
 name = "oa-python"
-version = "0.8.6"
+version = "0.9.0"
 dependencies = [
  "oarust",
  "pyo3",
@@ -786,10 +786,9 @@ dependencies = [
 
 [[package]]
 name = "oarust"
-version = "0.8.6"
+version = "0.9.0"
 dependencies = [
  "anyhow",
- "ash",
  "bitflags",
  "chrono",
  "cpal",
@@ -807,7 +806,7 @@ dependencies = [
  "symphonia",
  "unicode-general-category",
  "unicode-normalization",
- "vk-mem",
+ "vkrust",
  "webp",
 ]
 
@@ -979,6 +978,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab53c047fcd1a1d2a8820fe84f05d6be69e9526be40cb03b73f86b6b03e6d87d"
 dependencies = [
  "indoc",
+ "inventory",
  "libc",
  "memoffset",
  "once_cell",
@@ -1186,7 +1186,6 @@ version = "0.7.1+SDL-3.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c10781cd13b03f18f26af765c9909ac64d362fd645c4fa92db51685c834cf8b"
 dependencies = [
- "ash",
  "cc",
  "cmake",
  "pkg-config",
@@ -1634,14 +1633,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
-name = "vk-mem"
-version = "0.5.0"
+name = "vkrust"
+version = "0.9.0+1.4.365"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d7ba61d9155d2a6eb77693f6e83953c392cda219d2882fb0a95f781c5eb06ec"
+checksum = "ecb5b3c230019fad2279018a9b068ced82ff8112fc026d1cf7bb7bfab389dee5"
 dependencies = [
- "ash",
- "bitflags",
- "cc",
+ "libloading",
 ]
 
 [[package]]

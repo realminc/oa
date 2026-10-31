@@ -170,7 +170,8 @@ impl GradNode {
 					bias.validate_version(version)?;
 				}
 			}
-			GradNode::Matrix(_)
+			GradNode::LinearAttention(_)
+			| GradNode::Matrix(_)
 			| GradNode::Operation(_)
 			| GradNode::FlowLinearState { .. }
 			| GradNode::FlowLinearVelocity { .. }

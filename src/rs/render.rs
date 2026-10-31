@@ -14,8 +14,7 @@ mod texture;
 
 pub use camera::{Camera, CameraProjection};
 pub use material::{
-	AlphaMode, FlatColorMaterial, Material, MaterialId, StandardSurfaceMaterial, TextureHandle,
-	UnlitMaterial,
+	AlphaMode, FlatColorMaterial, Material, MaterialId, SurfaceMaterial, TextureHandle, UnlitMaterial,
 };
 pub use mesh::{
 	Aabb, compute_bounds, create_cube, create_fullscreen_quad, create_quad, flip_uvs_y, scale,
@@ -27,5 +26,6 @@ pub use scene::{
 	SceneNodeId, compile_scene, compile_scene_packets, validate_scene,
 };
 pub use texture::{
-	Texture, blit, clear, save_texture_file, texture_from_image, texture_from_rgba8,
+	Texture, blit, clear, save_texture_file, texture_from_file, texture_from_image,
+	texture_from_rgba8,
 };

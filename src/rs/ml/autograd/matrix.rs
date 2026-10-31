@@ -30,8 +30,9 @@ mod swiglu;
 pub(in crate::ml) use swiglu::{record_silu_mul, record_swiglu};
 
 pub(in crate::ml) use attention::{
-	record_bmm, record_bmm_nt, record_bmm_tn, record_flash_attention, record_merge_heads,
-	record_scaled_dot_product_attention, record_softmax_scaled_masked, record_split_heads,
+	record_bmm, record_bmm_nt, record_bmm_tn, record_causal_linear_attention, record_flash_attention,
+	record_merge_heads, record_scaled_dot_product_attention, record_softmax_scaled_masked,
+	record_split_heads,
 };
 pub(in crate::ml) use batch_norm::record_batch_norm_2d;
 pub(in crate::ml) use channel_norm::record_channel_norm;

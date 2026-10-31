@@ -41,6 +41,7 @@
 //! - `OA_FORCE_COOPMAT=1` — bypass vendor-trust blocklist
 //! - `OA_FORCE_COOPVEC=1` — bypass CoopVec NVIDIA-only routing gate
 //! - `OA_FORCE_DEVICE_INDEX=N` — override device pick
+//! - `OA_SHADER_PRELOAD=1` — compile all admitted pipelines during Engine build
 //! - `OA_SHADER_LOAD_THREADS=0|1|N` — shader preload workers
 //!
 //! ## Diagnostic / opt-in logging

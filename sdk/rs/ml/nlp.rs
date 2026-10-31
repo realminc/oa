@@ -226,8 +226,8 @@ impl CharSampler {
 	pub fn next(&mut self, engine: &Engine) -> Result<(Matrix, Matrix)> {
 		let (input, target) = self.next_values()?;
 		Ok((
-			Matrix::from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &input)?,
-			Matrix::from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &target)?,
+			Matrix::new_from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &input)?,
+			Matrix::new_from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &target)?,
 		))
 	}
 
@@ -294,8 +294,8 @@ impl ByteSampler {
 	pub fn next(&mut self, engine: &Engine) -> Result<(Matrix, Matrix)> {
 		let (input, target) = self.next_values()?;
 		Ok((
-			Matrix::from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &input)?,
-			Matrix::from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &target)?,
+			Matrix::new_from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &input)?,
+			Matrix::new_from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &target)?,
 		))
 	}
 
@@ -370,8 +370,8 @@ impl<'tokenizer> BpeSampler<'tokenizer> {
 	pub fn next(&mut self, engine: &Engine) -> Result<(Matrix, Matrix)> {
 		let (input, target) = self.next_values()?;
 		Ok((
-			Matrix::from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &input)?,
-			Matrix::from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &target)?,
+			Matrix::new_from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &input)?,
+			Matrix::new_from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &target)?,
 		))
 	}
 
@@ -455,20 +455,20 @@ impl CharRnn {
 	///
 	/// Returns an error when parameter allocation or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::with_seed(
+		let embedding = Rc::new(nn::Embedding::new_with_seed(
 			engine,
 			CHAR_VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
-		let recurrent = Rc::new(nn::Rnn::with_seed(
+		let recurrent = Rc::new(nn::Rnn::new_with_seed(
 			engine,
 			MODEL_WIDTH,
 			HIDDEN_WIDTH,
 			1,
 			RNG_SEED.wrapping_add(1),
 		)?);
-		let head = Rc::new(nn::Linear::with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed(
 			engine,
 			HIDDEN_WIDTH,
 			CHAR_VOCAB_SIZE,
@@ -537,15 +537,19 @@ impl ByteRnn {
 	///
 	/// Returns an error when parameter allocation or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::ByteEmbedding::with_seed(engine, MODEL_WIDTH, RNG_SEED)?);
-		let recurrent = Rc::new(nn::Rnn::with_seed(
+		let embedding = Rc::new(nn::ByteEmbedding::new_with_seed(
+			engine,
+			MODEL_WIDTH,
+			RNG_SEED,
+		)?);
+		let recurrent = Rc::new(nn::Rnn::new_with_seed(
 			engine,
 			MODEL_WIDTH,
 			HIDDEN_WIDTH,
 			1,
 			RNG_SEED.wrapping_add(1),
 		)?);
-		let head = Rc::new(nn::ByteHead::with_seed(
+		let head = Rc::new(nn::ByteHead::new_with_seed(
 			engine,
 			HIDDEN_WIDTH,
 			RNG_SEED.wrapping_add(2),
@@ -624,7 +628,7 @@ impl ByteGru {
 			crate::ml::byte::VOCAB_SIZE * MODEL_WIDTH,
 			DType::F32,
 		)?;
-		let embedding = Rc::new(nn::ByteEmbedding::from_matrix(
+		let embedding = Rc::new(nn::ByteEmbedding::new_from_matrix(
 			crate::matrix::philox_normal(
 				&embedding_shape,
 				0.0,
@@ -643,7 +647,7 @@ impl ByteGru {
 		};
 		let input_bound = (1.0 / MODEL_WIDTH as f32).sqrt();
 		let hidden_bound = (1.0 / HIDDEN_WIDTH as f32).sqrt();
-		let recurrent = Rc::new(nn::Gru::from_matrices(
+		let recurrent = Rc::new(nn::Gru::new_from_matrices(
 			initialize_uniform(
 				3 * HIDDEN_WIDTH,
 				MODEL_WIDTH,
@@ -658,10 +662,10 @@ impl ByteGru {
 				hidden_bound,
 				0x77f9_df6a_7a00_98a1,
 			)?,
-			Matrix::from_f32(engine, [3 * HIDDEN_WIDTH], &[0.0; 3 * HIDDEN_WIDTH])?,
-			Matrix::from_f32(engine, [3 * HIDDEN_WIDTH], &[0.0; 3 * HIDDEN_WIDTH])?,
+			Matrix::new_from_f32(engine, [3 * HIDDEN_WIDTH], &[0.0; 3 * HIDDEN_WIDTH])?,
+			Matrix::new_from_f32(engine, [3 * HIDDEN_WIDTH], &[0.0; 3 * HIDDEN_WIDTH])?,
 		)?);
-		let head = Rc::new(nn::Linear::from_matrices(
+		let head = Rc::new(nn::Linear::new_from_matrices(
 			initialize_uniform(
 				crate::ml::byte::VOCAB_SIZE,
 				HIDDEN_WIDTH,
@@ -669,7 +673,7 @@ impl ByteGru {
 				1.0,
 				0x534c_3909_12d0_e37e,
 			)?,
-			Matrix::from_f32(
+			Matrix::new_from_f32(
 				engine,
 				[crate::ml::byte::VOCAB_SIZE],
 				&[0.0; crate::ml::byte::VOCAB_SIZE],
@@ -738,13 +742,13 @@ impl CharGru {
 	///
 	/// Returns an error when parameter allocation or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::with_seed(
+		let embedding = Rc::new(nn::Embedding::new_with_seed(
 			engine,
 			CHAR_VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
-		let recurrent = Rc::new(nn::Gru::with_seed(
+		let recurrent = Rc::new(nn::Gru::new_with_seed(
 			engine,
 			MODEL_WIDTH,
 			HIDDEN_WIDTH,
@@ -752,7 +756,7 @@ impl CharGru {
 			true,
 			RNG_SEED.wrapping_add(1),
 		)?);
-		let head = Rc::new(nn::Linear::with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed(
 			engine,
 			HIDDEN_WIDTH,
 			CHAR_VOCAB_SIZE,
@@ -821,20 +825,20 @@ impl BpeRnn {
 	///
 	/// Returns an error when parameter allocation or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::with_seed(
+		let embedding = Rc::new(nn::Embedding::new_with_seed(
 			engine,
 			BPE_VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
-		let recurrent = Rc::new(nn::Rnn::with_seed(
+		let recurrent = Rc::new(nn::Rnn::new_with_seed(
 			engine,
 			MODEL_WIDTH,
 			HIDDEN_WIDTH,
 			1,
 			RNG_SEED.wrapping_add(1),
 		)?);
-		let head = Rc::new(nn::Linear::with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed(
 			engine,
 			HIDDEN_WIDTH,
 			BPE_VOCAB_SIZE,
@@ -903,13 +907,13 @@ impl BpeGru {
 	///
 	/// Returns an error when parameter allocation or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::with_seed(
+		let embedding = Rc::new(nn::Embedding::new_with_seed(
 			engine,
 			BPE_VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
-		let recurrent = Rc::new(nn::Gru::with_seed(
+		let recurrent = Rc::new(nn::Gru::new_with_seed(
 			engine,
 			MODEL_WIDTH,
 			HIDDEN_WIDTH,
@@ -917,7 +921,7 @@ impl BpeGru {
 			true,
 			RNG_SEED.wrapping_add(1),
 		)?);
-		let head = Rc::new(nn::Linear::with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed(
 			engine,
 			HIDDEN_WIDTH,
 			BPE_VOCAB_SIZE,
@@ -984,7 +988,7 @@ impl ByteTransformer {
 	/// Returns an error when parameter construction or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
 		Ok(Self {
-			inner: nn::Transformer::with_seed(
+			inner: nn::Transformer::new_with_seed(
 				engine,
 				crate::ml::byte::VOCAB_SIZE,
 				CONTEXT_LENGTH,
@@ -1031,7 +1035,7 @@ impl BpeTransformer {
 	/// Returns an error when parameter construction or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
 		Ok(Self {
-			inner: nn::Transformer::with_seed(
+			inner: nn::Transformer::new_with_seed(
 				engine,
 				BPE_VOCAB_SIZE,
 				CONTEXT_LENGTH,
@@ -1083,7 +1087,7 @@ impl ByteMoeTransformer {
 	/// Returns an error when parameter construction or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
 		Ok(Self {
-			inner: nn::Transformer::with_seed_moe(
+			inner: nn::Transformer::new_with_seed_moe(
 				engine,
 				crate::ml::byte::VOCAB_SIZE,
 				CONTEXT_LENGTH,
@@ -1132,7 +1136,7 @@ impl BpeMoeTransformer {
 	/// Returns an error when parameter construction or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
 		Ok(Self {
-			inner: nn::Transformer::with_seed_moe(
+			inner: nn::Transformer::new_with_seed_moe(
 				engine,
 				BPE_VOCAB_SIZE,
 				CONTEXT_LENGTH,
@@ -1174,7 +1178,7 @@ impl Module for BpeMoeTransformer {
 }
 
 fn canonical_mamba3(engine: &Engine, seed: u64) -> Result<nn::Mamba3> {
-	nn::Mamba3::with_seed(
+	nn::Mamba3::new_with_seed(
 		engine,
 		nn::Mamba3Config {
 			model_width: MODEL_WIDTH,
@@ -1209,14 +1213,14 @@ impl ByteMamba3 {
 	///
 	/// Returns an error when parameter construction or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::with_seed(
+		let embedding = Rc::new(nn::Embedding::new_with_seed(
 			engine,
 			crate::ml::byte::VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
 		let mamba = Rc::new(canonical_mamba3(engine, RNG_SEED.wrapping_add(1))?);
-		let head = Rc::new(nn::Linear::with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed(
 			engine,
 			MODEL_WIDTH,
 			crate::ml::byte::VOCAB_SIZE,
@@ -1292,7 +1296,7 @@ impl ByteEmpyrealm {
 	///
 	/// Returns an error when parameter construction or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
-		let core = Rc::new(nn::Empyrealm::with_seed(
+		let core = Rc::new(nn::Empyrealm::new_with_seed(
 			engine,
 			crate::ml::byte::VOCAB_SIZE,
 			nn::Mamba3Config {
@@ -1311,7 +1315,7 @@ impl ByteEmpyrealm {
 			},
 			RNG_SEED,
 		)?);
-		let head = Rc::new(nn::Linear::with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed(
 			engine,
 			MODEL_WIDTH,
 			crate::ml::byte::VOCAB_SIZE,
@@ -1365,14 +1369,14 @@ impl BpeMamba3 {
 	///
 	/// Returns an error when parameter construction or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::with_seed(
+		let embedding = Rc::new(nn::Embedding::new_with_seed(
 			engine,
 			BPE_VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
 		let mamba = Rc::new(canonical_mamba3(engine, RNG_SEED.wrapping_add(1))?);
-		let head = Rc::new(nn::Linear::with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed(
 			engine,
 			MODEL_WIDTH,
 			BPE_VOCAB_SIZE,
@@ -1442,7 +1446,7 @@ impl CharTransformer {
 	///
 	/// Returns an error when parameter construction or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
-		let inner = nn::Transformer::with_seed(
+		let inner = nn::Transformer::new_with_seed(
 			engine,
 			CHAR_VOCAB_SIZE,
 			CONTEXT_LENGTH,
@@ -1488,7 +1492,7 @@ impl CharMoeTransformer {
 	///
 	/// Returns an error when parameter construction or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
-		let inner = nn::Transformer::with_seed_moe(
+		let inner = nn::Transformer::new_with_seed_moe(
 			engine,
 			CHAR_VOCAB_SIZE,
 			CONTEXT_LENGTH,
@@ -1548,14 +1552,14 @@ impl CharMamba3 {
 	///
 	/// Returns an error when parameter construction or registration fails.
 	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::with_seed(
+		let embedding = Rc::new(nn::Embedding::new_with_seed(
 			engine,
 			CHAR_VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
 		let mamba = Rc::new(canonical_mamba3(engine, RNG_SEED.wrapping_add(1))?);
-		let head = Rc::new(nn::Linear::with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed(
 			engine,
 			MODEL_WIDTH,
 			CHAR_VOCAB_SIZE,
@@ -1670,7 +1674,7 @@ pub fn generate_greedy(
 	let mut logit_row = filled - 1;
 	let mut output = prompt.to_owned();
 	for _ in 0..count {
-		let input = Matrix::from_slice(engine, [1, CONTEXT_LENGTH], &context)?;
+		let input = Matrix::new_from_slice(engine, [1, CONTEXT_LENGTH], &context)?;
 		let logits = model.forward(&input)?;
 		if logits.shape() != [CONTEXT_LENGTH, CHAR_VOCAB_SIZE] {
 			return Err(Error::failed_precondition(
@@ -1722,7 +1726,7 @@ pub fn generate_bytes_greedy(
 	let mut logit_row = filled - 1;
 	let mut output = prompt.to_vec();
 	for _ in 0..count {
-		let input = Matrix::from_slice(engine, [1, CONTEXT_LENGTH], &context)?;
+		let input = Matrix::new_from_slice(engine, [1, CONTEXT_LENGTH], &context)?;
 		let logits = model.forward(&input)?;
 		if logits.shape() != [CONTEXT_LENGTH, crate::ml::byte::VOCAB_SIZE] {
 			return Err(Error::failed_precondition(
@@ -1779,7 +1783,7 @@ pub fn generate_bpe_greedy(
 		if generated_bytes >= byte_count {
 			break;
 		}
-		let input = Matrix::from_slice(engine, [1, CONTEXT_LENGTH], &context)?;
+		let input = Matrix::new_from_slice(engine, [1, CONTEXT_LENGTH], &context)?;
 		let logits = model.forward(&input)?;
 		if logits.shape() != [CONTEXT_LENGTH, tokenizer.vocab_size()] {
 			return Err(Error::failed_precondition(

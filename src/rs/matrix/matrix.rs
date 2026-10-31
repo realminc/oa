@@ -72,15 +72,15 @@ impl Matrix {
 	///
 	/// Returns an error when the shape overflows, its element count differs from
 	/// `values`, or storage allocation/upload fails.
-	pub fn from_slice<T: Element>(
+	pub fn new_from_slice<T: Element>(
 		engine: &Engine,
 		shape: impl Into<Vec<usize>>,
 		values: &[T],
 	) -> Result<Self> {
-		Self::from_slice_handle(&engine.handle(), shape.into(), values)
+		Self::new_from_slice_handle(&engine.handle(), shape.into(), values)
 	}
 
-	pub(crate) fn from_slice_handle<T: Element>(
+	pub(crate) fn new_from_slice_handle<T: Element>(
 		engine: &EngineHandle,
 		shape: Vec<usize>,
 		values: &[T],
@@ -128,8 +128,12 @@ impl Matrix {
 	///
 	/// Returns an error when the shape overflows, its element count differs from
 	/// `values`, or storage allocation/upload fails.
-	pub fn from_f32(engine: &Engine, shape: impl Into<Vec<usize>>, values: &[f32]) -> Result<Self> {
-		Self::from_slice(engine, shape, values)
+	pub fn new_from_f32(
+		engine: &Engine,
+		shape: impl Into<Vec<usize>>,
+		values: &[f32],
+	) -> Result<Self> {
+		Self::new_from_slice(engine, shape, values)
 	}
 
 	pub(crate) fn filled_f32(
@@ -139,7 +143,7 @@ impl Matrix {
 	) -> Result<Self> {
 		let shape = shape.into();
 		let element_count = checked_element_count(&shape)?;
-		Self::from_f32(engine, shape, &vec![value; element_count])
+		Self::new_from_f32(engine, shape, &vec![value; element_count])
 	}
 
 	/// Return the matrix shape.
@@ -155,19 +159,6 @@ impl Matrix {
 	/// Return the number of logical dense elements.
 	pub const fn num_elements(&self) -> usize {
 		self.element_count
-	}
-
-	/// Return a zero-copy view with a different dense shape.
-	///
-	/// This creates a distinct semantic value while retaining the same storage and
-	/// readiness state. The element order is unchanged.
-	///
-	/// # Errors
-	///
-	/// Returns an error when the new shape overflows or contains a different
-	/// number of elements.
-	pub fn reshape(&self, shape: impl Into<Vec<usize>>) -> Result<Self> {
-		crate::matrix::reshape(self, shape)
 	}
 
 	/// Return a zero-copy one-dimensional view over all elements.
@@ -227,62 +218,6 @@ impl Matrix {
 		let mut shape = self.shape.clone();
 		shape.remove(dim);
 		crate::matrix::reshape(self, shape)
-	}
-
-	/// Elementwise add, equivalent to [`crate::matrix::add`].
-	///
-	/// # Errors
-	///
-	/// Returns the canonical operation's validation, allocation or recording error.
-	pub fn add(&self, rhs: &Self) -> Result<Self> {
-		crate::matrix::add(self, rhs)
-	}
-
-	/// Elementwise sub, equivalent to [`crate::matrix::sub`].
-	///
-	/// # Errors
-	///
-	/// Returns the canonical operation's validation, allocation or recording error.
-	pub fn sub(&self, rhs: &Self) -> Result<Self> {
-		crate::matrix::sub(self, rhs)
-	}
-
-	/// Elementwise mul, equivalent to [`crate::matrix::mul`].
-	///
-	/// # Errors
-	///
-	/// Returns the canonical operation's validation, allocation or recording error.
-	pub fn mul(&self, rhs: &Self) -> Result<Self> {
-		crate::matrix::mul(self, rhs)
-	}
-
-	/// Elementwise div, equivalent to [`crate::matrix::div`].
-	///
-	/// # Errors
-	///
-	/// Returns the canonical operation's validation, allocation or recording error.
-	pub fn div(&self, rhs: &Self) -> Result<Self> {
-		crate::matrix::div(self, rhs)
-	}
-
-	/// Matrix multiply `self @ rhs.T` — equivalent to `matrix::mat_mul_nt(self, rhs)`.
-	///
-	/// # Errors
-	///
-	/// Returns an error when inputs are not rank-two FP32 matrices, K extents
-	/// disagree, element counts exceed u32, or the runtime recording contract fails.
-	pub fn mat_mul(&self, rhs: &Self) -> Result<Self> {
-		crate::matrix::mat_mul_nt(self, rhs)
-	}
-
-	/// Exchange two axes, equivalent to `matrix::transpose(self, dim0, dim1)`.
-	///
-	/// # Errors
-	///
-	/// Returns an error when either dim is out of range or when the runtime
-	/// recording contract fails.
-	pub fn transpose(&self, dim0: i32, dim1: i32) -> Result<Self> {
-		crate::matrix::transpose(self, dim0, dim1)
 	}
 
 	/// Read all FP32 values back to host memory.
@@ -407,13 +342,17 @@ impl Matrix {
 		// SAFETY: `Element` is sealed to initialized, no-padding OA scalar types and
 		// the checked length covers exactly the supplied slice.
 		let bytes = unsafe { std::slice::from_raw_parts(values.as_ptr().cast(), byte_len) };
-		if self.dtype == DType::U8 {
+		let result = if self.dtype == DType::U8 {
 			let mut padded = vec![0_u8; byte_storage_len(byte_len, self.dtype)?];
 			padded[..byte_len].copy_from_slice(bytes);
 			self.storage.write(&padded)
 		} else {
 			self.storage.write(bytes)
+		};
+		if result.is_ok() {
+			self.storage.mark_host_initialized();
 		}
+		result
 	}
 
 	pub(crate) fn reshape_view(&self, shape: Vec<usize>) -> Result<Self> {
@@ -510,6 +449,35 @@ impl Matrix {
 			_not_send_sync: PhantomData,
 		})
 	}
+
+	/// Construct a semantic value over checked, retained runtime storage.
+	pub(crate) fn from_runtime_storage(
+		engine: &EngineHandle,
+		storage: Storage,
+		shape: Vec<usize>,
+		dtype: DType,
+	) -> Result<Self> {
+		engine.validate_storage_owner(&storage)?;
+		let element_count = checked_element_count(&shape)?;
+		let logical_bytes = element_count
+			.checked_mul(dtype.size_bytes())
+			.ok_or_else(|| Error::invalid_argument("matrix byte extent overflows usize"))?;
+		if byte_storage_len(logical_bytes, dtype)? != storage.byte_len() {
+			return Err(Error::invalid_argument(
+				"runtime output extent does not match Matrix metadata",
+			));
+		}
+		let semantic = matrix_semantic(&shape, dtype, None)?;
+		Ok(Self {
+			engine: engine.clone(),
+			storage,
+			shape,
+			dtype,
+			element_count,
+			semantic,
+			_not_send_sync: PhantomData,
+		})
+	}
 }
 
 fn byte_storage_len(logical_byte_len: usize, dtype: DType) -> Result<usize> {
@@ -540,7 +508,7 @@ fn matrix_semantic(
 fn next_value_id() -> Result<u64> {
 	static NEXT_VALUE_ID: AtomicU64 = AtomicU64::new(1);
 	NEXT_VALUE_ID
-		.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+		.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
 			value.checked_add(1)
 		})
 		.map_err(|_| Error::resource_exhausted("matrix semantic value identity exhausted"))

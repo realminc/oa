@@ -300,9 +300,9 @@ test_vk!(conv_1d_gemm_forward_matches_independent_oracle, engine, {
 		2,
 		2,
 	);
-	let input = oa::Matrix::from_f32(&engine, input_shape, &input_values)?;
-	let weight = oa::Matrix::from_f32(&engine, weight_shape, &weight_values)?;
-	let bias = oa::Matrix::from_f32(&engine, [4], &bias_values)?;
+	let input = oa::Matrix::new_from_f32(&engine, input_shape, &input_values)?;
+	let weight = oa::Matrix::new_from_f32(&engine, weight_shape, &weight_values)?;
+	let bias = oa::Matrix::new_from_f32(&engine, [4], &bias_values)?;
 	let (plan, output) =
 		engine.capture(|| oa::ml::matrix::conv_1d(&input, &weight, &bias, 2, 2, 2))?;
 	assert_eq!(output.shape(), [2, 4, 5]);
@@ -347,17 +347,20 @@ test_vk!(
 			host_loss(&input_values, &weight_values, values)
 		});
 
-		let embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 6], &input_values)?)?;
-		let indices = oa::Matrix::from_slice(&engine, [1, 2], &[0_u32, 1])?;
-		let module = oa::ml::nn::Conv1d::from_matrices(
-			oa::Matrix::from_f32(&engine, weight_shape, &weight_values)?,
-			oa::Matrix::from_f32(&engine, [2], &bias_values)?,
+		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[2, 6],
+			&input_values,
+		)?)?;
+		let indices = oa::Matrix::new_from_slice(&engine, [1, 2], &[0_u32, 1])?;
+		let module = oa::ml::nn::Conv1d::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, weight_shape, &weight_values)?,
+			oa::Matrix::new_from_f32(&engine, [2], &bias_values)?,
 			2,
 			2,
 			2,
 		)?;
-		let target = oa::Matrix::from_f32(&engine, [1, 2, 3], &target_values)?;
+		let target = oa::Matrix::new_from_f32(&engine, [1, 2, 3], &target_values)?;
 		let tape = oa::ml::GradientTape::new();
 		let loss = oa::ml::loss::mse(&module.forward(&embedding.forward(&indices)?)?, &target)?;
 		tape.backward(&loss)?;
@@ -396,7 +399,7 @@ test_vk!(
 	conv_1d_module_contract_and_validation_are_explicit,
 	engine,
 	{
-		let module = oa::ml::nn::Conv1d::with_seed(&engine, 3, 5, 3, 2, 1, 2, 0x434f_4e31)?;
+		let module = oa::ml::nn::Conv1d::new_with_seed(&engine, 3, 5, 3, 2, 1, 2, 0x434f_4e31)?;
 		assert_eq!(module.input_channels(), 3);
 		assert_eq!(module.output_channels(), 5);
 		assert_eq!(module.kernel_size(), 3);
@@ -413,10 +416,10 @@ test_vk!(
 				.collect::<Vec<_>>(),
 			["weight", "bias"]
 		);
-		assert!(oa::ml::nn::Conv1d::with_seed(&engine, 2, 2, 3, 0, 0, 1, 1).is_err());
-		let input = oa::Matrix::from_f32(&engine, [1, 2, 3], &[0.0; 6])?;
-		let weight = oa::Matrix::from_f32(&engine, [2, 2, 5], &[0.0; 20])?;
-		let bias = oa::Matrix::from_f32(&engine, [2], &[0.0; 2])?;
+		assert!(oa::ml::nn::Conv1d::new_with_seed(&engine, 2, 2, 3, 0, 0, 1, 1).is_err());
+		let input = oa::Matrix::new_from_f32(&engine, [1, 2, 3], &[0.0; 6])?;
+		let weight = oa::Matrix::new_from_f32(&engine, [2, 2, 5], &[0.0; 20])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [2], &[0.0; 2])?;
 		assert!(oa::ml::matrix::conv_1d(&input, &weight, &bias, 1, 0, 1).is_err());
 		Ok(())
 	}
@@ -443,8 +446,8 @@ test_vk!(
 			1,
 			2,
 		);
-		let input = oa::Matrix::from_f32(&engine, input_shape, &input_values)?;
-		let weight = oa::Matrix::from_f32(&engine, weight_shape, &weight_values)?;
+		let input = oa::Matrix::new_from_f32(&engine, input_shape, &input_values)?;
+		let weight = oa::Matrix::new_from_f32(&engine, weight_shape, &weight_values)?;
 		let (plan, output) =
 			engine.capture(|| oa::ml::matrix::conv_transpose_1d(&input, &weight, 2, 1, 2))?;
 		assert_eq!(output.shape(), [2, 3, 9]);
@@ -481,15 +484,18 @@ test_vk!(
 		let expected_weight =
 			numerical_gradient(&weight_values, |values| host_loss(&input_values, values));
 
-		let embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 3], &input_values)?)?;
-		let indices = oa::Matrix::from_slice(&engine, [1, 2], &[0_u32, 1])?;
-		let module = oa::ml::nn::ConvTranspose1d::from_matrix(
-			oa::Matrix::from_f32(&engine, weight_shape, &weight_values)?,
+		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[2, 3],
+			&input_values,
+		)?)?;
+		let indices = oa::Matrix::new_from_slice(&engine, [1, 2], &[0_u32, 1])?;
+		let module = oa::ml::nn::ConvTranspose1d::new_from_matrix(
+			oa::Matrix::new_from_f32(&engine, weight_shape, &weight_values)?,
 			2,
 			1,
 		)?;
-		let target = oa::Matrix::from_f32(&engine, [1, 2, 5], &target_values)?;
+		let target = oa::Matrix::new_from_f32(&engine, [1, 2, 5], &target_values)?;
 		let tape = oa::ml::GradientTape::new();
 		let loss = oa::ml::loss::mse(&module.forward(&embedding.forward(&indices)?)?, &target)?;
 		tape.backward(&loss)?;
@@ -519,7 +525,7 @@ test_vk!(
 	conv_transpose_1d_module_contract_and_validation_are_explicit,
 	engine,
 	{
-		let module = oa::ml::nn::ConvTranspose1d::with_seed(&engine, 3, 5, 3, 2, 1, 0x4354_4e31)?;
+		let module = oa::ml::nn::ConvTranspose1d::new_with_seed(&engine, 3, 5, 3, 2, 1, 0x4354_4e31)?;
 		assert_eq!(module.input_channels(), 3);
 		assert_eq!(module.output_channels(), 5);
 		assert_eq!(module.kernel_size(), 3);
@@ -534,9 +540,9 @@ test_vk!(
 				.collect::<Vec<_>>(),
 			["weight"]
 		);
-		assert!(oa::ml::nn::ConvTranspose1d::with_seed(&engine, 2, 2, 3, 0, 0, 1).is_err());
-		let input = oa::Matrix::from_f32(&engine, [1, 2, 1], &[0.0; 2])?;
-		let weight = oa::Matrix::from_f32(&engine, [2, 2, 1], &[0.0; 4])?;
+		assert!(oa::ml::nn::ConvTranspose1d::new_with_seed(&engine, 2, 2, 3, 0, 0, 1).is_err());
+		let input = oa::Matrix::new_from_f32(&engine, [1, 2, 1], &[0.0; 2])?;
+		let weight = oa::Matrix::new_from_f32(&engine, [2, 2, 1], &[0.0; 4])?;
 		assert!(oa::ml::matrix::conv_transpose_1d(&input, &weight, 1, 1, 1).is_err());
 		Ok(())
 	}
@@ -564,9 +570,9 @@ test_vk!(
 			2,
 			1,
 		);
-		let input = oa::Matrix::from_f32(&engine, input_shape, &input_values)?;
-		let weight = oa::Matrix::from_f32(&engine, weight_shape, &weight_values)?;
-		let bias = oa::Matrix::from_f32(&engine, [3], &bias_values)?;
+		let input = oa::Matrix::new_from_f32(&engine, input_shape, &input_values)?;
+		let weight = oa::Matrix::new_from_f32(&engine, weight_shape, &weight_values)?;
+		let bias = oa::Matrix::new_from_f32(&engine, [3], &bias_values)?;
 		let (plan, output) =
 			engine.capture(|| oa::ml::matrix::conv_transpose_2d(&input, &weight, &bias, 2, 1))?;
 		assert_eq!(output.shape(), [1, 3, 2, 4]);
@@ -612,16 +618,19 @@ test_vk!(
 			host_loss(&input_values, &weight_values, values)
 		});
 
-		let embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [4, 2], &input_values)?)?;
-		let indices = oa::Matrix::from_slice(&engine, [1, 2, 2], &[0_u32, 1, 2, 3])?;
-		let module = oa::ml::nn::ConvTranspose2d::from_matrices(
-			oa::Matrix::from_f32(&engine, weight_shape, &weight_values)?,
-			oa::Matrix::from_f32(&engine, [2], &bias_values)?,
+		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[4, 2],
+			&input_values,
+		)?)?;
+		let indices = oa::Matrix::new_from_slice(&engine, [1, 2, 2], &[0_u32, 1, 2, 3])?;
+		let module = oa::ml::nn::ConvTranspose2d::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, weight_shape, &weight_values)?,
+			oa::Matrix::new_from_f32(&engine, [2], &bias_values)?,
 			2,
 			0,
 		)?;
-		let target = oa::Matrix::from_f32(&engine, [1, 2, 4, 4], &target_values)?;
+		let target = oa::Matrix::new_from_f32(&engine, [1, 2, 4, 4], &target_values)?;
 		let tape = oa::ml::GradientTape::new();
 		let loss = oa::ml::loss::mse(&module.forward(&embedding.forward(&indices)?)?, &target)?;
 		tape.backward(&loss)?;
@@ -660,7 +669,7 @@ test_vk!(
 	conv_transpose_2d_module_contract_and_validation_are_explicit,
 	engine,
 	{
-		let module = oa::ml::nn::ConvTranspose2d::with_seed(&engine, 3, 5, 3, 2, 1, 0x4354_4e32)?;
+		let module = oa::ml::nn::ConvTranspose2d::new_with_seed(&engine, 3, 5, 3, 2, 1, 0x4354_4e32)?;
 		assert_eq!(module.input_channels(), 3);
 		assert_eq!(module.output_channels(), 5);
 		assert_eq!(module.kernel_size(), 3);
@@ -676,10 +685,10 @@ test_vk!(
 				.collect::<Vec<_>>(),
 			["weight", "bias"]
 		);
-		assert!(oa::ml::nn::ConvTranspose2d::with_seed(&engine, 2, 2, 3, 0, 0, 1).is_err());
-		let input = oa::Matrix::from_f32(&engine, [1, 2, 1, 1], &[0.0; 2])?;
-		let weight = oa::Matrix::from_f32(&engine, [2, 2, 1, 1], &[0.0; 4])?;
-		let bias = oa::Matrix::from_f32(&engine, [2], &[0.0; 2])?;
+		assert!(oa::ml::nn::ConvTranspose2d::new_with_seed(&engine, 2, 2, 3, 0, 0, 1).is_err());
+		let input = oa::Matrix::new_from_f32(&engine, [1, 2, 1, 1], &[0.0; 2])?;
+		let weight = oa::Matrix::new_from_f32(&engine, [2, 2, 1, 1], &[0.0; 4])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [2], &[0.0; 2])?;
 		assert!(oa::ml::matrix::conv_transpose_2d(&input, &weight, &bias, 1, 1).is_err());
 		Ok(())
 	}
@@ -708,9 +717,9 @@ test_vk!(
 			1,
 			2,
 		);
-		let input = oa::Matrix::from_f32(&engine, input_shape, &input_values)?;
-		let weight = oa::Matrix::from_f32(&engine, weight_shape, &weight_values)?;
-		let bias = oa::Matrix::from_f32(&engine, [4], &bias_values)?;
+		let input = oa::Matrix::new_from_f32(&engine, input_shape, &input_values)?;
+		let weight = oa::Matrix::new_from_f32(&engine, weight_shape, &weight_values)?;
+		let bias = oa::Matrix::new_from_f32(&engine, [4], &bias_values)?;
 		let (plan, output) =
 			engine.capture(|| oa::ml::matrix::conv_2d(&input, &weight, &bias, 2, 1, 2))?;
 		assert_eq!(output.shape(), [1, 4, 2, 3]);
@@ -754,17 +763,20 @@ test_vk!(
 			host_loss(&input_values, &weight_values, values)
 		});
 
-		let embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [6, 3], &input_values)?)?;
-		let indices = oa::Matrix::from_slice(&engine, [1, 2, 3], &[0_u32, 1, 2, 3, 4, 5])?;
-		let module = oa::ml::nn::Conv2d::from_matrices(
-			oa::Matrix::from_f32(&engine, weight_shape, &weight_values)?,
-			oa::Matrix::from_f32(&engine, [2], &bias_values)?,
+		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[6, 3],
+			&input_values,
+		)?)?;
+		let indices = oa::Matrix::new_from_slice(&engine, [1, 2, 3], &[0_u32, 1, 2, 3, 4, 5])?;
+		let module = oa::ml::nn::Conv2d::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, weight_shape, &weight_values)?,
+			oa::Matrix::new_from_f32(&engine, [2], &bias_values)?,
 			1,
 			0,
 			2,
 		)?;
-		let target = oa::Matrix::from_f32(&engine, [1, 2, 2, 2], &target_values)?;
+		let target = oa::Matrix::new_from_f32(&engine, [1, 2, 2, 2], &target_values)?;
 		let tape = oa::ml::GradientTape::new();
 		let output = module.forward(&embedding.forward(&indices)?)?;
 		let loss = oa::ml::loss::mse(&output, &target)?;
@@ -804,7 +816,7 @@ test_vk!(
 	conv_2d_module_contract_and_validation_are_explicit,
 	engine,
 	{
-		let module = oa::ml::nn::Conv2d::with_seed(&engine, 4, 6, 3, 2, 1, 2, 0x434f_4e56)?;
+		let module = oa::ml::nn::Conv2d::new_with_seed(&engine, 4, 6, 3, 2, 1, 2, 0x434f_4e56)?;
 		assert_eq!(module.input_channels(), 4);
 		assert_eq!(module.output_channels(), 6);
 		assert_eq!(module.kernel_size(), 3);
@@ -821,10 +833,10 @@ test_vk!(
 				.collect::<Vec<_>>(),
 			["weight", "bias"]
 		);
-		assert!(oa::ml::nn::Conv2d::with_seed(&engine, 3, 4, 3, 1, 0, 2, 1).is_err());
-		let input = oa::Matrix::from_f32(&engine, [1, 4, 2, 2], &[0.0; 16])?;
-		let weight = oa::Matrix::from_f32(&engine, [4, 2, 5, 5], &[0.0; 200])?;
-		let bias = oa::Matrix::from_f32(&engine, [4], &[0.0; 4])?;
+		assert!(oa::ml::nn::Conv2d::new_with_seed(&engine, 3, 4, 3, 1, 0, 2, 1).is_err());
+		let input = oa::Matrix::new_from_f32(&engine, [1, 4, 2, 2], &[0.0; 16])?;
+		let weight = oa::Matrix::new_from_f32(&engine, [4, 2, 5, 5], &[0.0; 200])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [4], &[0.0; 4])?;
 		assert!(oa::ml::matrix::conv_2d(&input, &weight, &bias, 1, 0, 2).is_err());
 		Ok(())
 	}

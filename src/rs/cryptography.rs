@@ -5,15 +5,11 @@
 //! operations live under [`mod@hash`], and post-quantum algorithms live under
 //! [`pqc`]. Secret keys never enter generic [`crate::Matrix`] storage.
 
-#[cfg_attr(
-	not(test),
-	expect(
-		dead_code,
-		reason = "private entropy boundary; GPU secret operations are not admitted"
-	)
-)]
+pub mod bigint;
 pub(crate) mod entropy;
 pub mod hash;
+pub mod merkle;
+pub mod ntt;
 pub mod pqc;
 mod primitives;
 mod secure_buffer;

@@ -11,21 +11,21 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 }
 
 test_vk!(dqn_matches_donor_boundary_oracle_and_q_adjoint, engine, {
-	let q_parameter = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+	let q_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 		&engine,
 		[3, 2],
 		&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
 	)?)?;
-	let next_q_parameter = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+	let next_q_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 		&engine,
 		[3, 2],
 		&[10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
 	)?)?;
-	let rows = oa::Matrix::from_slice(&engine, [3], &[0_u32, 1, 2])?;
-	let action = oa::Matrix::from_slice(&engine, [3], &[0_i32, 1, 0])?;
-	let reward = oa::Matrix::from_f32(&engine, [3], &[1.0, 2.0, 3.0])?;
-	let terminated = oa::Matrix::from_slice(&engine, [3], &[0_u8, 1, 0])?;
-	let truncated = oa::Matrix::from_slice(&engine, [3], &[0_u8, 0, 1])?;
+	let rows = oa::Matrix::new_from_slice(&engine, [3], &[0_u32, 1, 2])?;
+	let action = oa::Matrix::new_from_slice(&engine, [3], &[0_i32, 1, 0])?;
+	let reward = oa::Matrix::new_from_f32(&engine, [3], &[1.0, 2.0, 3.0])?;
+	let terminated = oa::Matrix::new_from_slice(&engine, [3], &[0_u8, 1, 0])?;
+	let truncated = oa::Matrix::new_from_slice(&engine, [3], &[0_u8, 0, 1])?;
 	let tape = oa::ml::GradientTape::new();
 	let q = q_parameter.forward(&rows)?;
 	let next_q = next_q_parameter.forward(&rows)?;
@@ -75,12 +75,12 @@ test_vk!(dqn_matches_donor_boundary_oracle_and_q_adjoint, engine, {
 });
 
 test_vk!(dqn_rejects_invalid_contracts, engine, {
-	let q = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 2.0, 3.0, 4.0])?;
-	let next_q = oa::Matrix::from_f32(&engine, [2, 2], &[4.0, 3.0, 2.0, 1.0])?;
-	let action = oa::Matrix::from_slice(&engine, [2], &[0_i32, 1])?;
-	let action_f32 = oa::Matrix::from_f32(&engine, [2], &[0.0, 1.0])?;
-	let reward = oa::Matrix::from_f32(&engine, [2], &[1.0, 1.0])?;
-	let boundary = oa::Matrix::from_slice(&engine, [2], &[0_u8, 0])?;
+	let q = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 2.0, 3.0, 4.0])?;
+	let next_q = oa::Matrix::new_from_f32(&engine, [2, 2], &[4.0, 3.0, 2.0, 1.0])?;
+	let action = oa::Matrix::new_from_slice(&engine, [2], &[0_i32, 1])?;
+	let action_f32 = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 1.0])?;
+	let reward = oa::Matrix::new_from_f32(&engine, [2], &[1.0, 1.0])?;
+	let boundary = oa::Matrix::new_from_slice(&engine, [2], &[0_u8, 0])?;
 
 	for invalid in [
 		dqn(

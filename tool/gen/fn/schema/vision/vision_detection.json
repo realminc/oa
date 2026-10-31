@@ -20,11 +20,11 @@
         "category": "detection",
         "parameters": [
           [
-            "boxes_a",
+            "left",
             "&Matrix"
           ],
           [
-            "boxes_b",
+            "right",
             "&Matrix"
           ]
         ],
@@ -32,7 +32,7 @@
         "doc": [
           "Compute every pairwise intersection-over-union for center-coordinate boxes.",
           "",
-          "`boxes_a` and `boxes_b` must be nonempty FP32 matrices shaped `[N, 4]` and",
+          "`left` and `right` must be nonempty FP32 matrices shaped `[N, 4]` and",
           "`[M, 4]`. Each row is `[center_x, center_y, width, height]`; negative widths",
           "and heights are clamped to zero, matching donor OA. A pair with no positive",
           "finite union produces zero. The returned matrix has shape `[N, M]`.",
@@ -53,11 +53,11 @@
             "values": {
               "boxes_a_index": [
                 "read",
-                "boxes_a"
+                "left"
               ],
               "boxes_b_index": [
                 "read",
-                "boxes_b"
+                "right"
               ],
               "output_index": [
                 "write",
@@ -123,6 +123,47 @@
           "boolean"
         ]
       ],
+      "python": {
+        "parameters": [
+          [
+            "boxes",
+            "&Matrix"
+          ],
+          [
+            "scores",
+            "&Matrix"
+          ],
+          [
+            "classes",
+            "&Matrix"
+          ],
+          [
+            "iou_threshold",
+            "f32"
+          ],
+          [
+            "score_threshold",
+            "f32"
+          ],
+          [
+            "max_detections",
+            "i32"
+          ],
+          [
+            "class_agnostic",
+            "bool"
+          ]
+        ],
+        "arguments": {
+          "config": "oa::vision::NmsConfig { iou_threshold: $iou_threshold, score_threshold: $score_threshold, max_detections: $max_detections, class_agnostic: $class_agnostic }"
+        },
+        "defaults": {
+          "iou_threshold": 0.45,
+          "score_threshold": 0.0,
+          "max_detections": 100,
+          "class_agnostic": false
+        }
+      },
       "rust": {
         "category": "detection",
         "parameters": [

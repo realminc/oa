@@ -13,13 +13,18 @@ const RNG_SCHEMA: &str = "tool/gen/fn/schema/matrix/matrix_rng.json";
 const INDEX_SCHEMA: &str = "tool/gen/fn/schema/matrix/matrix_index.json";
 const ML_SCHEMA: &str = "tool/gen/fn/schema/ml/ml_training.json";
 const AUDIO_SCHEMA: &str = "tool/gen/fn/schema/audio/audio.json";
+const CRYPTOGRAPHY_MERKLE_SCHEMA: &str = "tool/gen/fn/schema/cryptography/cryptography_merkle.json";
+const CRYPTOGRAPHY_NTT_SCHEMA: &str = "tool/gen/fn/schema/cryptography/cryptography_ntt.json";
 const CRYPTOGRAPHY_HASH_SCHEMA: &str = "tool/gen/fn/schema/cryptography/cryptography_hash.json";
+const CRYPTOGRAPHY_BIGINT_SCHEMA: &str = "tool/gen/fn/schema/cryptography/cryptography_bigint.json";
 const CRYPTOGRAPHY_PQC_SCHEMA: &str = "tool/gen/fn/schema/cryptography/cryptography_pqc.json";
 const IMAGE_SCHEMA: &str = "tool/gen/fn/schema/image/image.json";
 const VISION_SCHEMA: &str = "tool/gen/fn/schema/vision/vision_detection.json";
 const GENERATOR: &str = "tool/gen/fn/generate.py";
 const STORAGE: &str = "src/slang/core/math/storage.slang";
 const ATTRIBUTES: &str = "src/slang/core/attributes.slang";
+const LINEAR_FEATURES: &str = "src/slang/ml/nn/attention/linear_features.slang";
+const TRADING_COMMON: &str = "src/slang/ml/environment/trading/common.slang";
 const ACTIVATIONS: &str = "src/slang/core/math/activations.slang";
 const SSM_MATH: &str = "src/slang/core/math/ssm_math.slang";
 const PHILOX: &str = "src/slang/core/rng/philox.slang";
@@ -68,8 +73,8 @@ const RENDER_FLAT_COLOR_VERT: &str = "src/slang/render/flat_color.vert.slang";
 const RENDER_FLAT_COLOR_FRAG: &str = "src/slang/render/flat_color.frag.slang";
 const RENDER_UNLIT_VERT: &str = "src/slang/render/unlit.vert.slang";
 const RENDER_UNLIT_FRAG: &str = "src/slang/render/unlit.frag.slang";
-const RENDER_SS_VERT: &str = "src/slang/render/standard_surface.vert.slang";
-const RENDER_SS_FRAG: &str = "src/slang/render/standard_surface.frag.slang";
+const RENDER_SURFACE_VERT: &str = "src/slang/render/surface.vert.slang";
+const RENDER_SURFACE_FRAG: &str = "src/slang/render/surface.frag.slang";
 
 const UI_CLEAR_COMPOSE: &str = "src/slang/ui/clear_compose.slang";
 const UI_BLIT_RGBA: &str = "src/slang/ui/blit_rgba.slang";
@@ -77,6 +82,11 @@ const UI_DRAW_RECT: &str = "src/slang/ui/draw_rect.slang";
 const UI_DRAW_RECT_OUTLINE: &str = "src/slang/ui/draw_rect_outline.slang";
 const UI_DRAW_LINE: &str = "src/slang/ui/draw_line.slang";
 const UI_DRAW_PLOT_LINE: &str = "src/slang/ui/draw_plot_line.slang";
+const UI_MASK_ROUNDED_VIEWPORT: &str = "src/slang/ui/mask_rounded_viewport.slang";
+const UI_DRAW_WAVEFORM: &str = "src/slang/ui/draw_waveform.slang";
+const UI_DRAW_HEATMAP: &str = "src/slang/ui/draw_heatmap.slang";
+const UI_DRAW_TRIANGLE: &str = "src/slang/ui/draw_triangle.slang";
+const UI_DRAW_CANVAS_GRID: &str = "src/slang/ui/draw_canvas_grid.slang";
 const UI_DRAW_GLYPHS: &str = "src/slang/ui/draw_glyphs.slang";
 const UI_COMPOSITOR_COMMON: &str = "src/slang/ui/compositor_common.slang";
 
@@ -90,6 +100,7 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		ML_SCHEMA,
 		AUDIO_SCHEMA,
 		CRYPTOGRAPHY_HASH_SCHEMA,
+		CRYPTOGRAPHY_BIGINT_SCHEMA,
 		CRYPTOGRAPHY_PQC_SCHEMA,
 		IMAGE_SCHEMA,
 		VISION_SCHEMA,
@@ -99,9 +110,12 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		"tool/gen/fn/template/image",
 		"tool/gen/fn/template/vision",
 		"tool/gen/fn/template/cryptography",
+		"tool/gen/fn/template/python",
 		STORAGE,
 		ATTRIBUTES,
 		ACTIVATIONS,
+		LINEAR_FEATURES,
+		TRADING_COMMON,
 		SSM_MATH,
 		PHILOX,
 		DROPOUT_RNG,
@@ -122,8 +136,8 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		RENDER_FLAT_COLOR_FRAG,
 		RENDER_UNLIT_VERT,
 		RENDER_UNLIT_FRAG,
-		RENDER_SS_VERT,
-		RENDER_SS_FRAG,
+		RENDER_SURFACE_VERT,
+		RENDER_SURFACE_FRAG,
 		UI_COMPOSITOR_COMMON,
 		UI_CLEAR_COMPOSE,
 		UI_BLIT_RGBA,
@@ -132,6 +146,11 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		UI_DRAW_LINE,
 		UI_DRAW_PLOT_LINE,
 		UI_DRAW_GLYPHS,
+		UI_DRAW_CANVAS_GRID,
+		UI_DRAW_TRIANGLE,
+		UI_DRAW_WAVEFORM,
+		UI_DRAW_HEATMAP,
+		UI_MASK_ROUNDED_VIEWPORT,
 	] {
 		println!("cargo:rerun-if-changed={source}");
 	}
@@ -139,7 +158,11 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	println!("cargo:rerun-if-env-changed=SPIRV_VAL");
 	println!("cargo:rerun-if-env-changed=PYTHON");
 	println!("cargo:rerun-if-env-changed=OA_SPIRV_TARGET");
-	verify_generated_sources()?;
+	// The published crate ships canonical generated output but excludes src/py;
+	// the freshness gate only applies to a complete development checkout.
+	if Path::new("src/py").is_dir() {
+		verify_generated_sources()?;
+	}
 
 	let schema: Value = serde_json::from_slice(&fs::read(SCHEMA)?)?;
 	let operations = array_at(&schema, "operations")?;
@@ -310,6 +333,38 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		)?;
 	}
 
+	let merkle_schema: Value = serde_json::from_slice(&fs::read(CRYPTOGRAPHY_MERKLE_SCHEMA)?)?;
+	println!("cargo:rerun-if-changed={CRYPTOGRAPHY_MERKLE_SCHEMA}");
+	for kernel in array_at(&merkle_schema, "kernels")? {
+		build_schema_shader(
+			kernel,
+			"cryptography",
+			"u32",
+			&kernel["workgroup_size"],
+			&build,
+		)?;
+	}
+	let ntt_schema: Value = serde_json::from_slice(&fs::read(CRYPTOGRAPHY_NTT_SCHEMA)?)?;
+	println!("cargo:rerun-if-changed={CRYPTOGRAPHY_NTT_SCHEMA}");
+	for kernel in array_at(&ntt_schema, "kernels")? {
+		build_schema_shader(
+			kernel,
+			"cryptography",
+			"u32",
+			&kernel["workgroup_size"],
+			&build,
+		)?;
+	}
+	let bigint_schema: Value = serde_json::from_slice(&fs::read(CRYPTOGRAPHY_BIGINT_SCHEMA)?)?;
+	for kernel in array_at(&bigint_schema, "kernels")? {
+		build_schema_shader(
+			kernel,
+			"cryptography",
+			"u32",
+			&kernel["workgroup_size"],
+			&build,
+		)?;
+	}
 	let cryptography_schema: Value = serde_json::from_slice(&fs::read(CRYPTOGRAPHY_HASH_SCHEMA)?)?;
 	let cryptography_kernels = array_at(&cryptography_schema, "kernels")?;
 	let cryptography_dtype = string_at(&cryptography_schema, "dtype")?;
@@ -320,7 +375,7 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		build_schema_shader(
 			kernel,
 			"cryptography",
-			cryptography_dtype,
+			kernel["dtype"].as_str().unwrap_or(cryptography_dtype),
 			&kernel["workgroup_size"],
 			&build,
 		)?;
@@ -329,6 +384,8 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	// Imported private formulas are build inputs too. Track each family and
 	// directory membership so additions/removals cannot leave stale artifacts.
 	for directory in [
+		"src/slang/cryptography/bigint",
+		"src/slang/cryptography/hash",
 		"src/slang/cryptography/pqc/mlkem",
 		"src/slang/cryptography/pqc/mldsa",
 	] {
@@ -342,6 +399,22 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 				println!("cargo:rerun-if-changed={}", path.display());
 			}
 		}
+	}
+	for helper in [
+		"src/slang/core/math/wide_u32.slang",
+		"src/slang/core/math/bigint_words.slang",
+		"src/slang/core/math/bigint_modular.slang",
+		"src/slang/core/math/bigint_montgomery.slang",
+		"src/slang/core/math/bigint_barrett.slang",
+		"src/slang/core/math/bigint_division.slang",
+		"src/slang/core/math/prime31.slang",
+		"src/slang/core/math/prime62.slang",
+		"src/slang/core/math/poseidon2_field.slang",
+		"src/slang/core/math/poseidon2.slang",
+		"src/slang/core/math/merkle_general.slang",
+		"src/slang/core/math/merkle_poseidon2.slang",
+	] {
+		println!("cargo:rerun-if-changed={helper}");
 	}
 	let cryptography_pqc_schema: Value = serde_json::from_slice(&fs::read(CRYPTOGRAPHY_PQC_SCHEMA)?)?;
 	let cryptography_pqc_kernels = array_at(&cryptography_pqc_schema, "kernels")?;
@@ -407,9 +480,9 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	)?;
 	build_graphics_shader("unlit_vert", RENDER_UNLIT_VERT, "vertex", &build)?;
 	build_graphics_shader("unlit_frag", RENDER_UNLIT_FRAG, "fragment", &build)?;
-	// Standard Surface — opaque base variant (no texture defines).
-	build_graphics_shader("standard_surface_vert", RENDER_SS_VERT, "vertex", &build)?;
-	build_graphics_shader("standard_surface_frag", RENDER_SS_FRAG, "fragment", &build)?;
+	// Surface — opaque base variant (no texture defines).
+	build_graphics_shader("surface_vert", RENDER_SURFACE_VERT, "vertex", &build)?;
+	build_graphics_shader("surface_frag", RENDER_SURFACE_FRAG, "fragment", &build)?;
 	// UI compute shaders.
 	build_ui_shader("clear_compose", UI_CLEAR_COMPOSE, &build)?;
 	build_ui_shader("blit_rgba", UI_BLIT_RGBA, &build)?;
@@ -418,6 +491,11 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	build_ui_shader("draw_line", UI_DRAW_LINE, &build)?;
 	build_ui_shader("draw_plot_line", UI_DRAW_PLOT_LINE, &build)?;
 	build_ui_shader("draw_glyphs", UI_DRAW_GLYPHS, &build)?;
+	build_ui_shader("draw_canvas_grid", UI_DRAW_CANVAS_GRID, &build)?;
+	build_ui_shader("draw_waveform", UI_DRAW_WAVEFORM, &build)?;
+	build_ui_shader("draw_heatmap", UI_DRAW_HEATMAP, &build)?;
+	build_ui_shader("draw_triangle", UI_DRAW_TRIANGLE, &build)?;
+	build_ui_shader("mask_rounded_viewport", UI_MASK_ROUNDED_VIEWPORT, &build)?;
 	Ok(())
 }
 
@@ -426,60 +504,177 @@ fn build_ui_shader(
 	source: &str,
 	build: &ShaderBuild<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let spirv = build.output_directory.join(format!("ui_{stem}.spv"));
-	let output = Command::new(build.slangc)
-		.arg(source)
-		.args([
-			"-entry",
-			"main",
-			"-stage",
-			"compute",
-			"-target",
-			"spirv",
-			"-profile",
-			"glsl_460",
-			"-capability",
-			build.spirv_capability,
-			"-fvk-use-entrypoint-name",
-			"-warnings-as-errors",
-			"all",
-			"-I",
-			"src/slang/core",
-			"-I",
-			"src/slang/core/math",
-			"-I",
-			"src/slang/ui",
-		])
-		.arg("-o")
-		.arg(&spirv)
-		.output()
-		.map_err(|e| format!("could not execute {:?}: {e}", build.slangc))?;
-	if !output.status.success() {
-		return Err(
-			format!(
-				"{:?} failed for ui.{stem} with {}\n{}",
-				build.slangc,
-				output.status,
-				String::from_utf8_lossy(&output.stderr)
-			)
-			.into(),
-		);
-	}
-	let val = Command::new(build.spirv_val)
-		.args(["--target-env", build.vulkan_target])
-		.arg(&spirv)
-		.output()
-		.map_err(|e| format!("could not execute {:?}: {e}", build.spirv_val))?;
-	if !val.status.success() {
-		return Err(
-			format!(
-				"{:?} failed for ui.{stem} with {}\n{}",
-				build.spirv_val,
-				val.status,
-				String::from_utf8_lossy(&val.stderr)
-			)
-			.into(),
-		);
+	let source_text = fs::read_to_string(source)?;
+	let mut strict_reflection = None;
+	for bounded in [false, true] {
+		let artifact = if bounded {
+			format!("ui_{stem}_bounded")
+		} else {
+			format!("ui_{stem}")
+		};
+		let spirv = build.output_directory.join(format!("{artifact}.spv"));
+		let reflection_path = build
+			.output_directory
+			.join(format!("{artifact}.reflection.json"));
+		let source_path = if bounded {
+			let strict: &Value = strict_reflection
+				.as_ref()
+				.ok_or("UI strict reflection missing")?;
+			let parameters = array_at(strict, "parameters")?;
+			let push = named(parameters, "pc")?;
+			let fields = push
+				.pointer("/type/elementType/fields")
+				.and_then(Value::as_array)
+				.ok_or("UI push fields missing")?;
+			let buffer_count = fields
+				.iter()
+				.filter(|field| {
+					field["name"]
+						.as_str()
+						.is_some_and(|name| name.ends_with("_idx") && name != "dst_idx")
+				})
+				.count();
+			const IMAGES: &str = "[[vk::binding(1, 0)]] RWTexture2D<float4> images[];";
+			const BUFFERS: &str = "[[vk::binding(0, 0)]] RWByteAddressBuffer heap[];";
+			if source_text.matches(IMAGES).count() != 1
+				|| source_text.matches(BUFFERS).count() != usize::from(buffer_count != 0)
+			{
+				return Err(format!("{source} has inconsistent UI resource declarations").into());
+			}
+			// Mechanical descriptor adaptation only: retain the donor algorithm and push ABI.
+			let adapted = source_text
+				.replace(
+					IMAGES,
+					"[[vk::binding(1, 0)]] RWTexture2D<float4> images[1];",
+				)
+				.replace(
+					BUFFERS,
+					&format!("[[vk::binding(0, 0)]] RWByteAddressBuffer heap[{buffer_count}];"),
+				);
+			let path = build.output_directory.join(format!("{artifact}.slang"));
+			fs::write(&path, adapted)?;
+			path
+		} else {
+			PathBuf::from(source)
+		};
+		let output = Command::new(build.slangc)
+			.arg(&source_path)
+			.args([
+				"-entry",
+				"main",
+				"-stage",
+				"compute",
+				"-target",
+				"spirv",
+				"-profile",
+				"glsl_460",
+				"-capability",
+				if bounded {
+					"spirv_1_5"
+				} else {
+					build.spirv_capability
+				},
+				"-fvk-use-entrypoint-name",
+				"-warnings-as-errors",
+				"all",
+				"-I",
+				"src/slang/core",
+				"-I",
+				"src/slang/core/math",
+				"-I",
+				"src/slang/ui",
+			])
+			.arg("-reflection-json")
+			.arg(&reflection_path)
+			.arg("-o")
+			.arg(&spirv)
+			.output()?;
+		if !output.status.success() {
+			return Err(
+				format!(
+					"{artifact} Slang compilation failed: {}",
+					String::from_utf8_lossy(&output.stderr)
+				)
+				.into(),
+			);
+		}
+		let reflection: Value = serde_json::from_slice(&fs::read(&reflection_path)?)?;
+		if let Some(strict) = &strict_reflection {
+			let parameters = array_at(&reflection, "parameters")?;
+			let strict_parameters = array_at(strict, "parameters")?;
+			require_equal(
+				named(parameters, "pc")?,
+				named(strict_parameters, "pc")?,
+				"UI bounded push ABI",
+			)?;
+			require_equal(
+				&reflection["entryPoints"],
+				&strict["entryPoints"],
+				"UI bounded entry point ABI",
+			)?;
+			let images = named(parameters, "images")?;
+			require_equal(
+				&images["type"]["elementCount"],
+				&json!(1),
+				"UI bounded image count",
+			)?;
+			require_equal(
+				&images["binding"],
+				&json!({"kind":"descriptorTableSlot","index":1}),
+				"UI image binding",
+			)?;
+			if let Some(heap) = parameters
+				.iter()
+				.find(|parameter| parameter["name"] == "heap")
+			{
+				let count = named(strict_parameters, "pc")?
+					.pointer("/type/elementType/fields")
+					.and_then(Value::as_array)
+					.ok_or("UI push fields missing")?
+					.iter()
+					.filter(|field| {
+						field["name"]
+							.as_str()
+							.is_some_and(|name| name.ends_with("_idx") && name != "dst_idx")
+					})
+					.count();
+				require_equal(
+					&heap["type"]["elementCount"],
+					&json!(count),
+					"UI bounded buffer count",
+				)?;
+				require_equal(
+					&heap["binding"],
+					&json!({"kind":"descriptorTableSlot","index":0}),
+					"UI buffer binding",
+				)?;
+			}
+		} else {
+			strict_reflection = Some(reflection);
+		}
+		let output = Command::new(build.spirv_val)
+			.args([
+				"--target-env",
+				if bounded {
+					"vulkan1.2"
+				} else {
+					build.vulkan_target
+				},
+			])
+			.arg(&spirv)
+			.output()?;
+		if !output.status.success() {
+			return Err(
+				format!(
+					"{artifact} SPIR-V validation failed: {}",
+					String::from_utf8_lossy(&output.stderr)
+				)
+				.into(),
+			);
+		}
+		if bounded {
+			validate_bounded_spirv(&spirv, &artifact)?;
+		}
 	}
 	Ok(())
 }
@@ -737,6 +932,10 @@ fn build_bounded_shader(
 		"-I",
 		"src/slang/cryptography/pqc/mlkem",
 	]);
+	// The bounded source lives in OUT_DIR; retain adjacent module resolution.
+	if let Some(parent) = Path::new(source_path).parent() {
+		command.arg("-I").arg(parent);
+	}
 	if metadata["slang_optimization"].as_str() == Some("O0") {
 		command.arg("-O0");
 	}
@@ -806,7 +1005,11 @@ fn build_bounded_shader(
 			.into(),
 		);
 	}
-	let bytes = fs::read(&spirv)?;
+	validate_bounded_spirv(&spirv, stem)
+}
+
+fn validate_bounded_spirv(spirv: &Path, stem: &str) -> Result<(), Box<dyn std::error::Error>> {
+	let bytes = fs::read(spirv)?;
 	let (words, remainder) = bytes.as_chunks::<4>();
 	if !remainder.is_empty() || words.len() < 5 {
 		return Err(format!("bounded {stem} has malformed SPIR-V words").into());

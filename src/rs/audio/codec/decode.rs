@@ -142,7 +142,7 @@ fn upload_interleaved(
 				interleaved[sample * channel_count + channel];
 		}
 	}
-	Audio::from_planar_f32(
+	Audio::new_from_planar_f32(
 		engine,
 		&planar,
 		channel_count,

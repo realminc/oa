@@ -84,10 +84,15 @@ pub struct Navigation {
 impl Navigation {
 	/// Create with default config.
 	pub fn new() -> Self {
-		Self::with_config(NavigationConfig::default())
+		Self::new_with_config(NavigationConfig::default())
 	}
 
-	pub fn with_config(config: NavigationConfig) -> Self {
+	/// Apply the shared donor motion preset to subsequent viewport transitions.
+	pub fn set_motion_speed(&mut self, speed: crate::ui::UiMotionSpeed) {
+		self.config.animation_duration_ms = speed.duration_ms(200.0);
+	}
+
+	pub fn new_with_config(config: NavigationConfig) -> Self {
 		Self {
 			config,
 			pan_x: 0.0,

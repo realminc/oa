@@ -58,7 +58,7 @@ fn nal_boundaries_are_borrowed_and_malformed_inputs_fail_closed() {
 	assert_eq!(extract_sps(&[0, 0, 1, 0x68]), None);
 	assert_eq!(extract_vps_h265(&[0, 0, 1]), None);
 
-	let error = NalUnit::from_h264_payload(&[]).expect_err("empty payload must fail");
+	let error = NalUnit::new_from_h264_payload(&[]).expect_err("empty payload must fail");
 	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
 
 	let stream = [0, 0, 1, 0x65, 0xaa];

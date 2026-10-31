@@ -12,3 +12,5 @@ mod execution_plan;
 mod semantic_graph;
 #[path = "runtime/test_vk.rs"]
 mod vk;
+#[path = "runtime/test_vk_consumer.rs"]
+mod vk_consumer;

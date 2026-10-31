@@ -29,7 +29,40 @@ pub(super) enum ReadinessSnapshot {
 	Failed,
 }
 
+/// Previous contents of an initialized mutable capture input. No execution occurs
+/// during capture, so an enclosing compiled pipeline may preserve those contents
+/// while recording multiple programs that share the same private state slots.
+pub(crate) struct InitializedReadiness(ReadinessSnapshot);
+impl InitializedReadiness {
+	pub(crate) fn restore(self, storage: &Storage) {
+		storage.restore_readiness(self.0);
+	}
+}
+
 impl Storage {
+	/// Adopt an ordinary output already produced by an exact external submission.
+	/// Secret allocations cannot enter this boundary: Buffer is the ordinary
+	/// allocation type, and its owner and completion are checked together.
+	pub(super) fn from_submitted_buffer(
+		device: &Arc<Device>,
+		buffer: Buffer,
+		event: Event,
+	) -> Result<Self> {
+		if !buffer.belongs_to(device) || !event.comes_from(device) {
+			return Err(Error::invalid_argument(
+				"submitted output ownership mismatch",
+			));
+		}
+		let byte_len = buffer.byte_len();
+		Ok(Self {
+			inner: Rc::new(StorageInner {
+				buffer: Some(buffer),
+				byte_len,
+				device: device.clone(),
+				readiness: RefCell::new(ReadinessSnapshot::Submitted(event)),
+			}),
+		})
+	}
 	/// Allocate a producer-only buffer. Its contents are inaccessible until an
 	/// exhaustive write has been recorded and the producing event completes.
 	pub(super) fn uninitialized(device: &Arc<Device>, byte_len: usize) -> Result<Self> {
@@ -60,7 +93,7 @@ impl Storage {
 		Rc::strong_count(&self.inner)
 	}
 
-	pub(super) fn from_bytes(device: &Arc<Device>, bytes: &[u8]) -> Result<Self> {
+	pub(super) fn new_from_bytes(device: &Arc<Device>, bytes: &[u8]) -> Result<Self> {
 		if bytes.is_empty() {
 			return Ok(Self {
 				inner: Rc::new(StorageInner {
@@ -118,8 +151,20 @@ impl Storage {
 		self.inner.buffer.as_ref()
 	}
 
-	pub(super) fn byte_len(&self) -> usize {
+	pub(crate) fn byte_len(&self) -> usize {
 		self.inner.byte_len
+	}
+
+	pub(crate) fn mark_host_initialized(&self) {
+		let mut readiness = self.inner.readiness.borrow_mut();
+		if matches!(*readiness, ReadinessSnapshot::Uninitialized) {
+			*readiness = ReadinessSnapshot::Ready;
+		}
+	}
+
+	pub(crate) fn initialized_readiness(&self) -> Result<InitializedReadiness> {
+		self.ensure_ready()?;
+		Ok(InitializedReadiness(self.inner.readiness.borrow().clone()))
 	}
 
 	pub(super) fn prepare_reuse(&self, bytes: &[u8]) -> Result<()> {

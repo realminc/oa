@@ -1,13 +1,11 @@
-// GGX microfacet BRDF functions — shared by all Standard Surface shader
-// variants.
+// GGX microfacet BRDF functions for OA surface shading.
 //
-// Follows the Filament / OpenPBR formulation for numerical stability and exact
-// correspondence with the Arnold Standard Surface specification.  All functions
-// operate in world space with normalised input vectors.
+// Cook-Torrance specular uses a Trowbridge-Reitz distribution, separable
+// Smith masking, and Schlick Fresnel. Diffuse uses the Lambertian model.
+// All functions operate in world space with normalised input vectors.
 //
 // Reference:
 //   - Filament PBR white-paper (Google, 2018)
-//   - Autodesk Standard Surface specification (2020)
 //   - "Real Shading in Unreal Engine 4" (Epic Games, SIGGRAPH 2013)
 //
 // Donor: oacpp/source/cpp/lib/oa/render/shader/graphics/brdf.slang
@@ -57,7 +55,7 @@ float ggx_ndf(float n_dot_h, float alpha) {
 	return a2 / max(PI * d * d, EPSILON);
 }
 
-// ── Smith GGX Geometry (height-correlated) ────────────────────────────────────
+// ── Smith GGX Geometry (separable masking) ────────────────────────────────────
 
 // G1(x) = 2(n·x) / ((n·x) + sqrt(α² + (1-α²)(n·x)²))
 float ggx_g1(float n_dot_x, float alpha) {

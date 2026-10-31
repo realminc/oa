@@ -56,7 +56,7 @@ test_vk!(
 		};
 		let model = CategoricalActorCritic::new(&engine, config)?;
 		let input_values = [1.0, -2.0, 0.5, -0.25, 0.75, 2.0];
-		let input = oa::Matrix::from_f32(&engine, [2, 3], &input_values)?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 3], &input_values)?;
 		let output = model.evaluate(&input)?;
 		assert_eq!(output.logits.shape(), [2, 2]);
 		assert_eq!(output.value.shape(), [2]);
@@ -172,12 +172,12 @@ test_vk!(
 		)?;
 		assert!(
 			model
-				.evaluate(&oa::Matrix::from_f32(&engine, [2, 2], &[0.0; 4])?)
+				.evaluate(&oa::Matrix::new_from_f32(&engine, [2, 2], &[0.0; 4])?)
 				.is_err()
 		);
 		assert!(
 			model
-				.evaluate(&oa::Matrix::from_slice(&engine, [2, 3], &[0_i32; 6])?)
+				.evaluate(&oa::Matrix::new_from_slice(&engine, [2, 3], &[0_i32; 6])?)
 				.is_err()
 		);
 		Ok(())

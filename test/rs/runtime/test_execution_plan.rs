@@ -375,15 +375,15 @@ test_vk!(
 	engine,
 	{
 		let input = oa::matrix::ones(&engine, [1024, 32])?;
-		let query = oa::ml::nn::Linear::from_matrices(
+		let query = oa::ml::nn::Linear::new_from_matrices(
 			oa::matrix::ones(&engine, [32, 32])?,
 			oa::matrix::full(&engine, [32], 0.5)?,
 		)?;
-		let key = oa::ml::nn::Linear::from_matrices(
+		let key = oa::ml::nn::Linear::new_from_matrices(
 			oa::matrix::full(&engine, [32, 32], 2.0)?,
 			oa::matrix::full(&engine, [32], 1.0)?,
 		)?;
-		let value = oa::ml::nn::Linear::from_matrices(
+		let value = oa::ml::nn::Linear::new_from_matrices(
 			oa::matrix::full(&engine, [32, 32], 3.0)?,
 			oa::matrix::full(&engine, [32], 1.5)?,
 		)?;
@@ -431,11 +431,11 @@ test_vk!(
 	engine,
 	{
 		let input = oa::matrix::ones(&engine, [1024, 32])?;
-		let gate = oa::ml::nn::Linear::from_matrices(
+		let gate = oa::ml::nn::Linear::new_from_matrices(
 			oa::matrix::full(&engine, [64, 32], 0.01)?,
 			oa::matrix::full(&engine, [64], 0.1)?,
 		)?;
-		let up = oa::ml::nn::Linear::from_matrices(
+		let up = oa::ml::nn::Linear::new_from_matrices(
 			oa::matrix::full(&engine, [64, 32], 0.02)?,
 			oa::matrix::full(&engine, [64], 0.2)?,
 		)?;
@@ -474,11 +474,11 @@ test_vk!(
 	engine,
 	{
 		let input = oa::matrix::ones(&engine, [1024, 32])?;
-		let gate = oa::ml::nn::Linear::from_matrices(
+		let gate = oa::ml::nn::Linear::new_from_matrices(
 			oa::matrix::full(&engine, [64, 32], 0.01)?,
 			oa::matrix::full(&engine, [64], 0.1)?,
 		)?;
-		let up = oa::ml::nn::Linear::from_matrices(
+		let up = oa::ml::nn::Linear::new_from_matrices(
 			oa::matrix::full(&engine, [64, 32], 0.02)?,
 			oa::matrix::full(&engine, [64], 0.2)?,
 		)?;
@@ -552,6 +552,43 @@ test_vk!(
 		assert_eq!(diagnostics.input_rebinding_count(), 0);
 		engine.submit(&plan)?.wait()?;
 		assert_eq!(output.read_f32()?, [3.0; 6]);
+		Ok(())
+	}
+);
+
+test_vk!(
+	timed_replay_reuses_graph_command_and_retains_independent_queries,
+	engine,
+	{
+		let x = oa::matrix::ones(&engine, [17])?;
+		let (plan, y) = engine.capture(|| oa::matrix::scale(&x, 3.))?;
+		let first = engine.submit_timed(&plan)?;
+		let second = engine.submit_timed(&plan)?;
+		let a = first.device_duration()?;
+		let b = second.device_duration()?;
+		assert!(!a.is_zero() && !b.is_zero());
+		assert_eq!(first.device_duration()?, a);
+		assert_eq!(plan.diagnostics().command_recording_count(), 1);
+		assert_eq!(plan.diagnostics().command_cache_hit_count(), 1);
+		assert_eq!(y.read_f32()?, vec![3.; 17]);
+		drop(plan);
+		assert_eq!(second.device_duration()?, b);
+		Ok(())
+	}
+);
+
+test_vk!(
+	dnn_filtered_storage_root_keeps_view_on_source_path,
+	engine,
+	{
+		let scalar = oa::Matrix::new_from_f32(&engine, [], &[3.0])?;
+		let (plan, output) = engine.capture(|| {
+			let view = oa::matrix::reshape(&scalar, [1])?;
+			oa::matrix::add_scalar(&view, 2.0)
+		})?;
+		assert_eq!(plan.diagnostics().dnn_captured_operation_count(), 0);
+		engine.submit(&plan)?.wait()?;
+		assert_eq!(output.read_f32()?, vec![5.0]);
 		Ok(())
 	}
 );

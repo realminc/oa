@@ -61,6 +61,274 @@
       "shape_rule": "explicit",
       "dtype_rule": "u8",
       "attributes": []
+    },
+    {
+      "name": "sha224",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": []
+    },
+    {
+      "name": "sha256",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": []
+    },
+    {
+      "name": "sha384",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": []
+    },
+    {
+      "name": "sha512",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": []
+    },
+    {
+      "name": "sha512_224",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": []
+    },
+    {
+      "name": "sha512_256",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": []
+    },
+    {
+      "name": "sha3_224",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": []
+    },
+    {
+      "name": "sha3_256",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": []
+    },
+    {
+      "name": "sha3_384",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": []
+    },
+    {
+      "name": "sha3_512",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": []
+    },
+    {
+      "name": "merkle_proofs",
+      "input_kinds": [
+        "matrix",
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u8",
+      "attributes": []
+    },
+    {
+      "name": "verify_merkle_proofs",
+      "input_kinds": [
+        "matrix",
+        "matrix",
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u32",
+      "attributes": [
+        [
+          "leaf_count",
+          "unsigned_integer"
+        ]
+      ]
+    },
+    {
+      "name": "poseidon2_babybear16",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u32",
+      "attributes": [
+        [
+          "output_length",
+          "unsigned_integer"
+        ]
+      ]
+    },
+    {
+      "name": "poseidon2_babybear16_permute",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u32",
+      "attributes": []
+    },
+    {
+      "name": "poseidon2_babybear24",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u32",
+      "attributes": [
+        [
+          "output_length",
+          "unsigned_integer"
+        ]
+      ]
+    },
+    {
+      "name": "poseidon2_babybear24_permute",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u32",
+      "attributes": []
+    },
+    {
+      "name": "poseidon2_koalabear16",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u32",
+      "attributes": [
+        [
+          "output_length",
+          "unsigned_integer"
+        ]
+      ]
+    },
+    {
+      "name": "poseidon2_koalabear16_permute",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u32",
+      "attributes": []
+    },
+    {
+      "name": "poseidon2_koalabear24",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u32",
+      "attributes": [
+        [
+          "output_length",
+          "unsigned_integer"
+        ]
+      ]
+    },
+    {
+      "name": "poseidon2_koalabear24_permute",
+      "input_kinds": [
+        "matrix"
+      ],
+      "output_kinds": [
+        "matrix"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "u32",
+      "attributes": []
     }
   ],
   "kernels": [
@@ -193,7 +461,27 @@
         [
           "hash_bytes",
           "uint32"
+        ],
+        [
+          "leaf_count",
+          "uint32"
         ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "auxiliary_operations": [
+        "merkle_proofs"
       ]
     },
     {
@@ -221,6 +509,1019 @@
           "uint32"
         ]
       ]
+    },
+    {
+      "stable_id": 220,
+      "name": "sha224",
+      "kernel_id": "CryptographySha224U8",
+      "source": "src/slang/cryptography/hash/sha224.gen.slang",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "semantic_operation": "sha224",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "message_len",
+          "uint32"
+        ]
+      ],
+      "digest": {
+        "module": "sha2_u32",
+        "helper": "sha2_224",
+        "bytes": 28,
+        "word_type": "uint"
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "stable_id": 221,
+      "name": "sha256",
+      "kernel_id": "CryptographySha256U8",
+      "source": "src/slang/cryptography/hash/sha256.gen.slang",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "semantic_operation": "sha256",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "message_len",
+          "uint32"
+        ]
+      ],
+      "digest": {
+        "module": "sha2_u32",
+        "helper": "sha2_256",
+        "bytes": 32,
+        "word_type": "uint"
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "stable_id": 222,
+      "name": "sha384",
+      "kernel_id": "CryptographySha384U8",
+      "source": "src/slang/cryptography/hash/sha384.gen.slang",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "semantic_operation": "sha384",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "message_len",
+          "uint32"
+        ]
+      ],
+      "digest": {
+        "module": "sha2_u32_pair",
+        "helper": "sha2_384",
+        "bytes": 48,
+        "word_type": "uint"
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "stable_id": 223,
+      "name": "sha512",
+      "kernel_id": "CryptographySha512U8",
+      "source": "src/slang/cryptography/hash/sha512.gen.slang",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "semantic_operation": "sha512",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "message_len",
+          "uint32"
+        ]
+      ],
+      "digest": {
+        "module": "sha2_u32_pair",
+        "helper": "sha2_512",
+        "bytes": 64,
+        "word_type": "uint"
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "stable_id": 224,
+      "name": "sha512_224",
+      "kernel_id": "CryptographySha512224U8",
+      "source": "src/slang/cryptography/hash/sha512_224.gen.slang",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "semantic_operation": "sha512_224",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "message_len",
+          "uint32"
+        ]
+      ],
+      "digest": {
+        "module": "sha2_u32_pair",
+        "helper": "sha2_512_224",
+        "bytes": 28,
+        "word_type": "uint"
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "stable_id": 225,
+      "name": "sha512_256",
+      "kernel_id": "CryptographySha512256U8",
+      "source": "src/slang/cryptography/hash/sha512_256.gen.slang",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "semantic_operation": "sha512_256",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "message_len",
+          "uint32"
+        ]
+      ],
+      "digest": {
+        "module": "sha2_u32_pair",
+        "helper": "sha2_512_256",
+        "bytes": 32,
+        "word_type": "uint"
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "stable_id": 226,
+      "name": "sha3_224",
+      "kernel_id": "CryptographySha3224U8",
+      "source": "src/slang/cryptography/hash/sha3_224.gen.slang",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "semantic_operation": "sha3_224",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "message_len",
+          "uint32"
+        ]
+      ],
+      "digest": {
+        "module": "sha3",
+        "helper": "sha3_224",
+        "bytes": 28,
+        "word_type": "uint"
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "stable_id": 227,
+      "name": "sha3_256",
+      "kernel_id": "CryptographySha3256U8",
+      "source": "src/slang/cryptography/hash/sha3_256.gen.slang",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "semantic_operation": "sha3_256",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "message_len",
+          "uint32"
+        ]
+      ],
+      "digest": {
+        "module": "sha3",
+        "helper": "sha3_256",
+        "bytes": 32,
+        "word_type": "uint2"
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "stable_id": 228,
+      "name": "sha3_384",
+      "kernel_id": "CryptographySha3384U8",
+      "source": "src/slang/cryptography/hash/sha3_384.gen.slang",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "semantic_operation": "sha3_384",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "message_len",
+          "uint32"
+        ]
+      ],
+      "digest": {
+        "module": "sha3",
+        "helper": "sha3_384",
+        "bytes": 48,
+        "word_type": "uint2"
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "stable_id": 229,
+      "name": "sha3_512",
+      "kernel_id": "CryptographySha3512U8",
+      "source": "src/slang/cryptography/hash/sha3_512.gen.slang",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "semantic_operation": "sha3_512",
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "message_len",
+          "uint32"
+        ]
+      ],
+      "digest": {
+        "module": "sha3",
+        "helper": "sha3_512",
+        "bytes": 64,
+        "word_type": "uint2"
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "stable_id": 230,
+      "name": "merkle_proof_gather",
+      "kernel_id": "CryptographyMerkleProofGatherU8",
+      "source": "src/slang/cryptography/hash/merkle_proof_gather.gen.slang",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "semantic_operation": "merkle_proofs",
+      "push_fields": [
+        [
+          "level_index",
+          "uint32"
+        ],
+        [
+          "indices_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "leaf_count",
+          "uint32"
+        ],
+        [
+          "source_count",
+          "uint32"
+        ],
+        [
+          "depth",
+          "uint32"
+        ],
+        [
+          "level",
+          "uint32"
+        ],
+        [
+          "frame_bytes",
+          "uint32"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "stable_id": 231,
+      "name": "merkle_proof_verify",
+      "kernel_id": "CryptographyMerkleProofVerifyU32",
+      "dtype": "u32",
+      "source": "src/slang/cryptography/hash/merkle_proof_verify.gen.slang",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "semantic_operation": "verify_merkle_proofs",
+      "push_fields": [
+        [
+          "leaves_index",
+          "uint32"
+        ],
+        [
+          "proofs_index",
+          "uint32"
+        ],
+        [
+          "roots_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "root_count",
+          "uint32"
+        ],
+        [
+          "frame_bytes",
+          "uint32"
+        ],
+        [
+          "leaf_count",
+          "uint32"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 3,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_scalar",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "name": "poseidon2_babybear16",
+      "stable_id": 517,
+      "kernel_id": "CryptographyPoseidon2Babybear16U32",
+      "source": "src/slang/cryptography/hash/poseidon2_babybear16.gen.slang",
+      "dtype": "u32",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "input_elements",
+          "uint32"
+        ],
+        [
+          "output_elements",
+          "uint32"
+        ]
+      ],
+      "semantic_operation": "poseidon2_babybear16",
+      "poseidon2": {
+        "profile": "babybear16",
+        "permutation": false
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "name": "poseidon2_babybear16_permute",
+      "stable_id": 518,
+      "kernel_id": "CryptographyPoseidon2Babybear16PermuteU32",
+      "source": "src/slang/cryptography/hash/poseidon2_babybear16_permute.gen.slang",
+      "dtype": "u32",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "input_elements",
+          "uint32"
+        ]
+      ],
+      "semantic_operation": "poseidon2_babybear16_permute",
+      "poseidon2": {
+        "profile": "babybear16",
+        "permutation": true
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "name": "poseidon2_babybear24",
+      "stable_id": 519,
+      "kernel_id": "CryptographyPoseidon2Babybear24U32",
+      "source": "src/slang/cryptography/hash/poseidon2_babybear24.gen.slang",
+      "dtype": "u32",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "input_elements",
+          "uint32"
+        ],
+        [
+          "output_elements",
+          "uint32"
+        ]
+      ],
+      "semantic_operation": "poseidon2_babybear24",
+      "poseidon2": {
+        "profile": "babybear24",
+        "permutation": false
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "name": "poseidon2_babybear24_permute",
+      "stable_id": 520,
+      "kernel_id": "CryptographyPoseidon2Babybear24PermuteU32",
+      "source": "src/slang/cryptography/hash/poseidon2_babybear24_permute.gen.slang",
+      "dtype": "u32",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "input_elements",
+          "uint32"
+        ]
+      ],
+      "semantic_operation": "poseidon2_babybear24_permute",
+      "poseidon2": {
+        "profile": "babybear24",
+        "permutation": true
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "name": "poseidon2_koalabear16",
+      "stable_id": 521,
+      "kernel_id": "CryptographyPoseidon2Koalabear16U32",
+      "source": "src/slang/cryptography/hash/poseidon2_koalabear16.gen.slang",
+      "dtype": "u32",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "input_elements",
+          "uint32"
+        ],
+        [
+          "output_elements",
+          "uint32"
+        ]
+      ],
+      "semantic_operation": "poseidon2_koalabear16",
+      "poseidon2": {
+        "profile": "koalabear16",
+        "permutation": false
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "name": "poseidon2_koalabear16_permute",
+      "stable_id": 522,
+      "kernel_id": "CryptographyPoseidon2Koalabear16PermuteU32",
+      "source": "src/slang/cryptography/hash/poseidon2_koalabear16_permute.gen.slang",
+      "dtype": "u32",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "input_elements",
+          "uint32"
+        ]
+      ],
+      "semantic_operation": "poseidon2_koalabear16_permute",
+      "poseidon2": {
+        "profile": "koalabear16",
+        "permutation": true
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "name": "poseidon2_koalabear24",
+      "stable_id": 523,
+      "kernel_id": "CryptographyPoseidon2Koalabear24U32",
+      "source": "src/slang/cryptography/hash/poseidon2_koalabear24.gen.slang",
+      "dtype": "u32",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "input_elements",
+          "uint32"
+        ],
+        [
+          "output_elements",
+          "uint32"
+        ]
+      ],
+      "semantic_operation": "poseidon2_koalabear24",
+      "poseidon2": {
+        "profile": "koalabear24",
+        "permutation": false
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
+    },
+    {
+      "name": "poseidon2_koalabear24_permute",
+      "stable_id": 524,
+      "kernel_id": "CryptographyPoseidon2Koalabear24PermuteU32",
+      "source": "src/slang/cryptography/hash/poseidon2_koalabear24_permute.gen.slang",
+      "dtype": "u32",
+      "workgroup_size": [
+        32,
+        1,
+        1
+      ],
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "count",
+          "uint32"
+        ],
+        [
+          "input_elements",
+          "uint32"
+        ]
+      ],
+      "semantic_operation": "poseidon2_koalabear24_permute",
+      "poseidon2": {
+        "profile": "koalabear24",
+        "permutation": true
+      },
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "rows",
+            "partition": "exclusive_per_invocation",
+            "extent": "row_width",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      }
     }
   ],
   "rust_api": [
@@ -390,7 +1691,9 @@
         ]
       ],
       "doc": [
-        "Reduce 32-byte leaf hashes to one Merkle root.",
+        "Reduce any non-empty batch of 32-byte leaf hashes to one Merkle root.",
+        "",
+        "Duplicates the final node of each odd level, matching the OA CPU tree.",
         "",
         "# Errors",
         "",
@@ -432,7 +1735,8 @@
           },
           "push_constants": {
             "count": "1",
-            "hash_bytes": "32"
+            "hash_bytes": "32",
+            "leaf_count": "2"
           }
         },
         {
@@ -449,12 +1753,2020 @@
           },
           "push_constants": {
             "count": "shader_u32(level.shape()[0], \"level count\", OPERATION)?",
-            "hash_bytes": "32"
+            "hash_bytes": "32",
+            "leaf_count": "shader_u32(source.shape()[0], \"source leaf count\", OPERATION)?"
           }
         }
       ],
       "attributes": {},
       "template": "merkle_root"
+    },
+    {
+      "name": "sha224",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Hash each U8 `[batch, message_bytes]` row with SHA224.",
+        "",
+        "Returns exact 28-byte digest rows without padding. Empty messages are valid.",
+        "Records device work without a host wait. Ordinary Matrix storage is public data;",
+        "secret-bearing hashing requires the separate secret execution boundary.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid rank, dtype, batch size, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "sha224"
+      ],
+      "values": {
+        "digest_bytes": "28"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographySha224U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "message_len": "message_len"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "fixed_digest"
+    },
+    {
+      "name": "sha256",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Hash each U8 `[batch, message_bytes]` row with SHA256.",
+        "",
+        "Returns exact 32-byte digest rows without padding. Empty messages are valid.",
+        "Records device work without a host wait. Ordinary Matrix storage is public data;",
+        "secret-bearing hashing requires the separate secret execution boundary.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid rank, dtype, batch size, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "sha256"
+      ],
+      "values": {
+        "digest_bytes": "32"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographySha256U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "message_len": "message_len"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "fixed_digest"
+    },
+    {
+      "name": "sha384",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Hash each U8 `[batch, message_bytes]` row with SHA384.",
+        "",
+        "Returns exact 48-byte digest rows without padding. Empty messages are valid.",
+        "Records device work without a host wait. Ordinary Matrix storage is public data;",
+        "secret-bearing hashing requires the separate secret execution boundary.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid rank, dtype, batch size, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "sha384"
+      ],
+      "values": {
+        "digest_bytes": "48"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographySha384U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "message_len": "message_len"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "fixed_digest"
+    },
+    {
+      "name": "sha512",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Hash each U8 `[batch, message_bytes]` row with SHA512.",
+        "",
+        "Returns exact 64-byte digest rows without padding. Empty messages are valid.",
+        "Records device work without a host wait. Ordinary Matrix storage is public data;",
+        "secret-bearing hashing requires the separate secret execution boundary.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid rank, dtype, batch size, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "sha512"
+      ],
+      "values": {
+        "digest_bytes": "64"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographySha512U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "message_len": "message_len"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "fixed_digest"
+    },
+    {
+      "name": "sha512_224",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Hash each U8 `[batch, message_bytes]` row with SHA-512/224.",
+        "",
+        "Returns exact 28-byte digest rows without padding. Empty messages are valid.",
+        "Records device work without a host wait. Ordinary Matrix storage is public data;",
+        "secret-bearing hashing requires the separate secret execution boundary.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid rank, dtype, batch size, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "sha512_224"
+      ],
+      "values": {
+        "digest_bytes": "28"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographySha512224U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "message_len": "message_len"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "fixed_digest"
+    },
+    {
+      "name": "sha512_256",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Hash each U8 `[batch, message_bytes]` row with SHA-512/256.",
+        "",
+        "Returns exact 32-byte digest rows without padding. Empty messages are valid.",
+        "Records device work without a host wait. Ordinary Matrix storage is public data;",
+        "secret-bearing hashing requires the separate secret execution boundary.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid rank, dtype, batch size, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "sha512_256"
+      ],
+      "values": {
+        "digest_bytes": "32"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographySha512256U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "message_len": "message_len"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "fixed_digest"
+    },
+    {
+      "name": "sha3_224",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Hash each U8 `[batch, message_bytes]` row with SHA3-224.",
+        "",
+        "Returns exact 28-byte digest rows without padding. Empty messages are valid.",
+        "Records device work without a host wait. Ordinary Matrix storage is public data;",
+        "secret-bearing hashing requires the separate secret execution boundary.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid rank, dtype, batch size, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "sha3_224"
+      ],
+      "values": {
+        "digest_bytes": "28"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographySha3224U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "message_len": "message_len"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "fixed_digest"
+    },
+    {
+      "name": "sha3_256",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Hash each U8 `[batch, message_bytes]` row with SHA3-256.",
+        "",
+        "Returns exact 32-byte digest rows without padding. Empty messages are valid.",
+        "Records device work without a host wait. Ordinary Matrix storage is public data;",
+        "secret-bearing hashing requires the separate secret execution boundary.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid rank, dtype, batch size, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "sha3_256"
+      ],
+      "values": {
+        "digest_bytes": "32"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographySha3256U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "message_len": "message_len"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "fixed_digest"
+    },
+    {
+      "name": "sha3_384",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Hash each U8 `[batch, message_bytes]` row with SHA3-384.",
+        "",
+        "Returns exact 48-byte digest rows without padding. Empty messages are valid.",
+        "Records device work without a host wait. Ordinary Matrix storage is public data;",
+        "secret-bearing hashing requires the separate secret execution boundary.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid rank, dtype, batch size, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "sha3_384"
+      ],
+      "values": {
+        "digest_bytes": "48"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographySha3384U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "message_len": "message_len"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "fixed_digest"
+    },
+    {
+      "name": "sha3_512",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Hash each U8 `[batch, message_bytes]` row with SHA3-512.",
+        "",
+        "Returns exact 64-byte digest rows without padding. Empty messages are valid.",
+        "Records device work without a host wait. Ordinary Matrix storage is public data;",
+        "secret-bearing hashing requires the separate secret execution boundary.",
+        "",
+        "# Errors",
+        "",
+        "Rejects invalid rank, dtype, batch size, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "sha3_512"
+      ],
+      "values": {
+        "digest_bytes": "64"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographySha3512U8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "message_len": "message_len"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "fixed_digest"
+    },
+    {
+      "name": "merkle_proofs",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "leaves",
+          "&Matrix"
+        ],
+        [
+          "indices",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Build selected SHAKE-256 Merkle inclusion proofs entirely on the device.",
+        "",
+        "`leaves` is U8 `[leaf_count, 32]`; `indices` is rank-one U32. Output is U8",
+        "`[proof_count, 16 + depth * 32]`. The little-endian four-word header is",
+        "`[version=1, leaf_count, leaf_index, valid]`, followed by siblings bottom-up.",
+        "Out-of-range device indices set `valid=0` and zero every sibling. Empty",
+        "selections return ready empty storage. No host observation of indices occurs.",
+        "",
+        "# Errors",
+        "",
+        "Rejects metadata, ownership, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "merkle_proofs"
+      ],
+      "values": {
+        "header_bytes": "16",
+        "hash_bytes": "32"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographyMerkleReduceU8",
+          "bindings": {
+            "input_index": [
+              "read",
+              "source"
+            ],
+            "output_index": [
+              "write",
+              "level"
+            ]
+          },
+          "push_constants": {
+            "count": "shader_u32(level.shape()[0], \"parent count\", OPERATION)?",
+            "hash_bytes": "hash_bytes_u32",
+            "leaf_count": "shader_u32(source.shape()[0], \"source count\", OPERATION)?"
+          }
+        },
+        {
+          "kernel": "CryptographyMerkleProofGatherU8",
+          "bindings": {
+            "level_index": [
+              "read",
+              "source"
+            ],
+            "indices_index": [
+              "read",
+              "indices"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "proof_count_u32",
+            "leaf_count": "leaf_count_u32",
+            "source_count": "shader_u32(source.shape()[0], \"source count\", OPERATION)?",
+            "depth": "depth_u32",
+            "level": "shader_u32(index, \"proof level\", OPERATION)?",
+            "frame_bytes": "frame_bytes_u32"
+          }
+        }
+      ],
+      "attributes": {},
+      "template": "merkle_proofs"
+    },
+    {
+      "name": "verify_merkle_proofs",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "leaves",
+          "&Matrix"
+        ],
+        [
+          "proofs",
+          "&Matrix"
+        ],
+        [
+          "roots",
+          "&Matrix"
+        ],
+        [
+          "leaf_count",
+          "u32"
+        ]
+      ],
+      "doc": [
+        "Verify version-one SHAKE-256 inclusion proof frames on the device.",
+        "",
+        "Leaves are U8 `[proof_count, 32]`; proofs have the frame layout returned by",
+        "`leaf_count` must come from trusted tree metadata, not the proof header.",
+        "`merkle_proofs`. Roots are U8 `[1, 32]` or `[proof_count, 32]`.",
+        "Return rank-one U32 flags, exactly zero or one per row. Malformed headers,",
+        "indices, duplicate-last paths, tampered leaves or roots return zero. Empty",
+        "batches return ready empty storage; no input content is read on the host.",
+        "",
+        "# Errors",
+        "",
+        "Rejects metadata, ownership, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "verify_merkle_proofs"
+      ],
+      "values": {
+        "header_bytes": "16",
+        "hash_bytes": "32",
+        "max_depth": "32"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographyMerkleProofVerifyU32",
+          "bindings": {
+            "leaves_index": [
+              "read",
+              "leaves"
+            ],
+            "proofs_index": [
+              "read",
+              "proofs"
+            ],
+            "roots_index": [
+              "read",
+              "roots"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "root_count": "root_count",
+            "frame_bytes": "frame_bytes",
+            "leaf_count": "leaf_count"
+          }
+        }
+      ],
+      "attributes": {
+        "leaf_count": "u64::from(leaf_count)"
+      },
+      "template": "verify_merkle_proofs"
+    },
+    {
+      "name": "poseidon2_babybear16",
+      "template": "poseidon2_hash",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ],
+        [
+          "output_length",
+          "usize"
+        ]
+      ],
+      "doc": [
+        "Apply the pinned Plonky3 babybear16 Poseidon2 field sponge.",
+        "",
+        "U32 rows contain field elements, reduced modulo the named prime.",
+        "The OA sponge has capacity eight and explicit length/domain framing.",
+        "It is not a claim of NVIDIA sponge wire compatibility.",
+        "",
+        "# Errors",
+        "",
+        "Rejects dtype, rank, width, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "poseidon2_babybear16"
+      ],
+      "values": {},
+      "stages": [
+        {
+          "kernel": "CryptographyPoseidon2Babybear16U32",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "input_elements": "input_elements",
+            "output_elements": "output_elements"
+          }
+        }
+      ],
+      "attributes": {
+        "output_length": "output_length as u64"
+      }
+    },
+    {
+      "name": "poseidon2_babybear16_permute",
+      "template": "poseidon2_permute",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Apply the pinned Plonky3 babybear16 Poseidon2 permutation.",
+        "",
+        "U32 rows contain field elements, reduced modulo the named prime.",
+        "The OA sponge has capacity eight and explicit length/domain framing.",
+        "It is not a claim of NVIDIA sponge wire compatibility.",
+        "",
+        "# Errors",
+        "",
+        "Rejects dtype, rank, width, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "poseidon2_babybear16_permute"
+      ],
+      "values": {
+        "width": "16"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographyPoseidon2Babybear16PermuteU32",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "input_elements": "input_elements"
+          }
+        }
+      ],
+      "attributes": {}
+    },
+    {
+      "name": "poseidon2_babybear24",
+      "template": "poseidon2_hash",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ],
+        [
+          "output_length",
+          "usize"
+        ]
+      ],
+      "doc": [
+        "Apply the pinned Plonky3 babybear24 Poseidon2 field sponge.",
+        "",
+        "U32 rows contain field elements, reduced modulo the named prime.",
+        "The OA sponge has capacity eight and explicit length/domain framing.",
+        "It is not a claim of NVIDIA sponge wire compatibility.",
+        "",
+        "# Errors",
+        "",
+        "Rejects dtype, rank, width, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "poseidon2_babybear24"
+      ],
+      "values": {},
+      "stages": [
+        {
+          "kernel": "CryptographyPoseidon2Babybear24U32",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "input_elements": "input_elements",
+            "output_elements": "output_elements"
+          }
+        }
+      ],
+      "attributes": {
+        "output_length": "output_length as u64"
+      }
+    },
+    {
+      "name": "poseidon2_babybear24_permute",
+      "template": "poseidon2_permute",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Apply the pinned Plonky3 babybear24 Poseidon2 permutation.",
+        "",
+        "U32 rows contain field elements, reduced modulo the named prime.",
+        "The OA sponge has capacity eight and explicit length/domain framing.",
+        "It is not a claim of NVIDIA sponge wire compatibility.",
+        "",
+        "# Errors",
+        "",
+        "Rejects dtype, rank, width, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "poseidon2_babybear24_permute"
+      ],
+      "values": {
+        "width": "24"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographyPoseidon2Babybear24PermuteU32",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "input_elements": "input_elements"
+          }
+        }
+      ],
+      "attributes": {}
+    },
+    {
+      "name": "poseidon2_koalabear16",
+      "template": "poseidon2_hash",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ],
+        [
+          "output_length",
+          "usize"
+        ]
+      ],
+      "doc": [
+        "Apply the pinned Plonky3 koalabear16 Poseidon2 field sponge.",
+        "",
+        "U32 rows contain field elements, reduced modulo the named prime.",
+        "The OA sponge has capacity eight and explicit length/domain framing.",
+        "It is not a claim of NVIDIA sponge wire compatibility.",
+        "",
+        "# Errors",
+        "",
+        "Rejects dtype, rank, width, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "poseidon2_koalabear16"
+      ],
+      "values": {},
+      "stages": [
+        {
+          "kernel": "CryptographyPoseidon2Koalabear16U32",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "input_elements": "input_elements",
+            "output_elements": "output_elements"
+          }
+        }
+      ],
+      "attributes": {
+        "output_length": "output_length as u64"
+      }
+    },
+    {
+      "name": "poseidon2_koalabear16_permute",
+      "template": "poseidon2_permute",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Apply the pinned Plonky3 koalabear16 Poseidon2 permutation.",
+        "",
+        "U32 rows contain field elements, reduced modulo the named prime.",
+        "The OA sponge has capacity eight and explicit length/domain framing.",
+        "It is not a claim of NVIDIA sponge wire compatibility.",
+        "",
+        "# Errors",
+        "",
+        "Rejects dtype, rank, width, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "poseidon2_koalabear16_permute"
+      ],
+      "values": {
+        "width": "16"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographyPoseidon2Koalabear16PermuteU32",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "input_elements": "input_elements"
+          }
+        }
+      ],
+      "attributes": {}
+    },
+    {
+      "name": "poseidon2_koalabear24",
+      "template": "poseidon2_hash",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ],
+        [
+          "output_length",
+          "usize"
+        ]
+      ],
+      "doc": [
+        "Apply the pinned Plonky3 koalabear24 Poseidon2 field sponge.",
+        "",
+        "U32 rows contain field elements, reduced modulo the named prime.",
+        "The OA sponge has capacity eight and explicit length/domain framing.",
+        "It is not a claim of NVIDIA sponge wire compatibility.",
+        "",
+        "# Errors",
+        "",
+        "Rejects dtype, rank, width, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "poseidon2_koalabear24"
+      ],
+      "values": {},
+      "stages": [
+        {
+          "kernel": "CryptographyPoseidon2Koalabear24U32",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "input_elements": "input_elements",
+            "output_elements": "output_elements"
+          }
+        }
+      ],
+      "attributes": {
+        "output_length": "output_length as u64"
+      }
+    },
+    {
+      "name": "poseidon2_koalabear24_permute",
+      "template": "poseidon2_permute",
+      "visibility": "pub",
+      "parameters": [
+        [
+          "input",
+          "&Matrix"
+        ]
+      ],
+      "doc": [
+        "Apply the pinned Plonky3 koalabear24 Poseidon2 permutation.",
+        "",
+        "U32 rows contain field elements, reduced modulo the named prime.",
+        "The OA sponge has capacity eight and explicit length/domain framing.",
+        "It is not a claim of NVIDIA sponge wire compatibility.",
+        "",
+        "# Errors",
+        "",
+        "Rejects dtype, rank, width, address limits, allocation or recording failures."
+      ],
+      "annotations": [],
+      "contracts": [
+        "poseidon2_koalabear24_permute"
+      ],
+      "values": {
+        "width": "24"
+      },
+      "stages": [
+        {
+          "kernel": "CryptographyPoseidon2Koalabear24PermuteU32",
+          "bindings": {
+            "input_index": [
+              "read",
+              "input"
+            ],
+            "output_index": [
+              "write",
+              "output"
+            ]
+          },
+          "push_constants": {
+            "count": "count",
+            "input_elements": "input_elements"
+          }
+        }
+      ],
+      "attributes": {}
     }
-  ]
+  ],
+  "proof_layout": {
+    "version": 1,
+    "header_bytes": 16,
+    "hash_bytes": 32,
+    "max_depth": 32
+  },
+  "poseidon2_profiles": [
+    {
+      "name": "babybear16",
+      "prime": 2013265921,
+      "width": 16,
+      "sbox_degree": 7,
+      "capacity": 8,
+      "half_full_rounds": 4,
+      "initial_constants": [
+        [
+          1774958255,
+          1185780729,
+          1621102414,
+          1796380621,
+          588815102,
+          1932426223,
+          1925334750,
+          747903232,
+          89648862,
+          360728943,
+          977184635,
+          1425273457,
+          256487465,
+          1200041953,
+          572403254,
+          448208942
+        ],
+        [
+          1215789478,
+          944884184,
+          953948096,
+          547326025,
+          646827752,
+          889997530,
+          1536873262,
+          86189867,
+          1065944411,
+          32019634,
+          333311454,
+          456061748,
+          1963448500,
+          1827584334,
+          1391160226,
+          1348741381
+        ],
+        [
+          88424255,
+          104111868,
+          1763866748,
+          79691676,
+          1988915530,
+          1050669594,
+          359890076,
+          573163527,
+          222820492,
+          159256268,
+          669703072,
+          763177444,
+          889367200,
+          256335831,
+          704371273,
+          25886717
+        ],
+        [
+          51754520,
+          1833211857,
+          454499742,
+          1384520381,
+          777848065,
+          1053320300,
+          1851729162,
+          344647910,
+          401996362,
+          1046925956,
+          5351995,
+          1212119315,
+          754867989,
+          36972490,
+          751272725,
+          506915399
+        ]
+      ],
+      "final_constants": [
+        [
+          1922082829,
+          1870549801,
+          1502529704,
+          1990744480,
+          1700391016,
+          1702593455,
+          321330495,
+          528965731,
+          183414327,
+          1886297254,
+          1178602734,
+          1923111974,
+          744004766,
+          549271463,
+          1781349648,
+          542259047
+        ],
+        [
+          1536158148,
+          715456982,
+          503426110,
+          340311124,
+          1558555932,
+          1226350925,
+          742828095,
+          1338992758,
+          1641600456,
+          1843351545,
+          301835475,
+          43203215,
+          386838401,
+          1520185679,
+          1235297680,
+          904680097
+        ],
+        [
+          1491801617,
+          1581784677,
+          913384905,
+          247083962,
+          532844013,
+          107190701,
+          213827818,
+          1979521776,
+          1358282574,
+          1681743681,
+          1867507480,
+          1530706910,
+          507181886,
+          695185447,
+          1172395131,
+          1250800299
+        ],
+        [
+          1503161625,
+          817684387,
+          498481458,
+          494676004,
+          1404253825,
+          108246855,
+          59414691,
+          744214112,
+          890862029,
+          1342765939,
+          1417398904,
+          1897591937,
+          1066647396,
+          1682806907,
+          1015795079,
+          1619482808
+        ]
+      ],
+      "internal_constants": [
+        1518359488,
+        1765533241,
+        945325693,
+        422793067,
+        311365592,
+        1311448267,
+        1629555936,
+        1009879353,
+        190525218,
+        786108885,
+        557776863,
+        212616710,
+        605745517
+      ],
+      "diagonal": [
+        2013265919,
+        1,
+        2,
+        1006632961,
+        3,
+        4,
+        1006632960,
+        2013265918,
+        2013265917,
+        2005401601,
+        1509949441,
+        1761607681,
+        2013265906,
+        7864320,
+        125829120,
+        15
+      ]
+    },
+    {
+      "name": "babybear24",
+      "prime": 2013265921,
+      "width": 24,
+      "sbox_degree": 7,
+      "capacity": 8,
+      "half_full_rounds": 4,
+      "initial_constants": [
+        [
+          262278199,
+          127253399,
+          314968988,
+          246143118,
+          157582794,
+          118043943,
+          454905424,
+          815798990,
+          1004040026,
+          1773108264,
+          1066694495,
+          1930780904,
+          1180307149,
+          1464793095,
+          1660766320,
+          1389166148,
+          343354132,
+          1307439985,
+          638242172,
+          525458520,
+          1964135730,
+          1751797115,
+          1421525369,
+          831813382
+        ],
+        [
+          695835963,
+          1845603984,
+          540703332,
+          1333667262,
+          1917861751,
+          1170029417,
+          1989924532,
+          1518763784,
+          1339793538,
+          622609176,
+          686842369,
+          1737016378,
+          1282239129,
+          897025192,
+          716894289,
+          1997503974,
+          395622276,
+          1201063290,
+          1917549072,
+          1150912935,
+          1687379185,
+          1507936940,
+          241306552,
+          989176635
+        ],
+        [
+          1147522062,
+          27129487,
+          1257820264,
+          142102402,
+          217046702,
+          1664590951,
+          855276054,
+          1215259350,
+          946500736,
+          552696906,
+          1424297384,
+          538103555,
+          1608853840,
+          162510541,
+          623051854,
+          1549062383,
+          1908416316,
+          1622328571,
+          1079030649,
+          1584033957,
+          1099252725,
+          1910423126,
+          447555988,
+          862495875
+        ],
+        [
+          128479034,
+          1587822577,
+          608401422,
+          1290028279,
+          342857858,
+          825405577,
+          427731030,
+          1718628547,
+          588764636,
+          204228775,
+          1454563174,
+          1740472809,
+          1338899225,
+          1269493554,
+          53007114,
+          1647670797,
+          306391314,
+          172614232,
+          51256176,
+          1221257987,
+          1239734761,
+          273790406,
+          1781980094,
+          1291790245
+        ]
+      ],
+      "final_constants": [
+        [
+          53041581,
+          723038058,
+          1439947916,
+          1136469704,
+          205609311,
+          1883820770,
+          14387587,
+          720724951,
+          1854174607,
+          1629316321,
+          530151394,
+          1679178250,
+          1549779579,
+          48375137,
+          976057819,
+          463976218,
+          875839332,
+          1946596189,
+          434078361,
+          1878280202,
+          1363837384,
+          1470845646,
+          1792450386,
+          1040977421
+        ],
+        [
+          1209164052,
+          714957516,
+          390340387,
+          1213686459,
+          790726260,
+          117294666,
+          140621810,
+          993455846,
+          1889603648,
+          78845751,
+          925018226,
+          708123747,
+          1647665372,
+          1649953458,
+          942439428,
+          1006235079,
+          238616145,
+          930036496,
+          1401020792,
+          989618631,
+          1545325389,
+          1715719711,
+          755691969,
+          150307788
+        ],
+        [
+          1567618575,
+          1663353317,
+          1950429111,
+          1891637550,
+          192082241,
+          1080533265,
+          1463323727,
+          890243564,
+          158646617,
+          1402624179,
+          59510015,
+          1198261138,
+          1065075039,
+          1150410028,
+          1293938517,
+          76770019,
+          1478577620,
+          1748789933,
+          457372011,
+          1841795381,
+          760115692,
+          1042892522,
+          1507649755,
+          1827572010
+        ],
+        [
+          1206940496,
+          1896271507,
+          1003792297,
+          738091882,
+          1124078057,
+          1889898,
+          813674331,
+          228520958,
+          1832911930,
+          781141772,
+          459826664,
+          202271745,
+          1296144415,
+          1111203133,
+          1090783436,
+          641665156,
+          1393671120,
+          1303271640,
+          809508074,
+          162506101,
+          1262312258,
+          1672219447,
+          1608891156,
+          1380248020
+        ]
+      ],
+      "internal_constants": [
+        497520322,
+        1930103076,
+        1052077299,
+        1540960371,
+        924863639,
+        1365519753,
+        1726563304,
+        440300254,
+        1891545577,
+        822033215,
+        1111544260,
+        308575117,
+        1708681573,
+        1240419708,
+        1199068823,
+        1186174623,
+        1551596046,
+        1886977120,
+        1327682690,
+        1210751726,
+        1810596765
+      ],
+      "diagonal": [
+        2013265919,
+        1,
+        2,
+        1006632961,
+        3,
+        4,
+        1006632960,
+        2013265918,
+        2013265917,
+        2005401601,
+        1509949441,
+        1761607681,
+        1887436801,
+        1997537281,
+        2009333761,
+        2013265906,
+        7864320,
+        503316480,
+        251658240,
+        125829120,
+        62914560,
+        31457280,
+        15728640,
+        15
+      ]
+    },
+    {
+      "name": "koalabear16",
+      "prime": 2130706433,
+      "width": 16,
+      "sbox_degree": 3,
+      "capacity": 8,
+      "half_full_rounds": 4,
+      "initial_constants": [
+        [
+          2128964168,
+          288780357,
+          316938561,
+          2126233899,
+          426817493,
+          1714118888,
+          1045008582,
+          1738510837,
+          889721787,
+          8866516,
+          681576474,
+          419059826,
+          1596305521,
+          1583176088,
+          1584387047,
+          1529751136
+        ],
+        [
+          1863858111,
+          1072044075,
+          517831365,
+          1464274176,
+          1138001621,
+          428001039,
+          245709561,
+          1641420379,
+          1365482496,
+          770454828,
+          693167409,
+          757905735,
+          136670447,
+          436275702,
+          525466355,
+          1559174242
+        ],
+        [
+          1030087950,
+          869864998,
+          322787870,
+          267688717,
+          948964561,
+          740478015,
+          679816114,
+          113662466,
+          2066544572,
+          1744924186,
+          367094720,
+          1380455578,
+          1842483872,
+          416711434,
+          1342291586,
+          1692058446
+        ],
+        [
+          1493348999,
+          1113949088,
+          210900530,
+          1071655077,
+          610242121,
+          1136339326,
+          2020858841,
+          1019840479,
+          678147278,
+          1678413261,
+          1361743414,
+          61132629,
+          1209546658,
+          64412292,
+          1936878279,
+          1980661727
+        ]
+      ],
+      "final_constants": [
+        [
+          1139268644,
+          630873441,
+          669538875,
+          462500858,
+          876500520,
+          1214043330,
+          383937013,
+          375087302,
+          636912601,
+          307200505,
+          390279673,
+          1999916485,
+          1518476730,
+          1606686591,
+          1410677749,
+          1581191572
+        ],
+        [
+          1004269969,
+          143426723,
+          1747283099,
+          1016118214,
+          1749423722,
+          66331533,
+          1177761275,
+          1581069649,
+          1851371119,
+          852520128,
+          1499632627,
+          1820847538,
+          150757557,
+          884787840,
+          619710451,
+          1651711087
+        ],
+        [
+          505263814,
+          212076987,
+          1482432120,
+          1458130652,
+          382871348,
+          417404007,
+          2066495280,
+          1996518884,
+          902934924,
+          582892981,
+          1337064375,
+          1199354861,
+          2102596038,
+          1533193853,
+          1436311464,
+          2012303432
+        ],
+        [
+          839997195,
+          1225781098,
+          2011967775,
+          575084315,
+          1309329169,
+          786393545,
+          995788880,
+          1702925345,
+          1444525226,
+          908073383,
+          1811535085,
+          1531002367,
+          1635653662,
+          1585100155,
+          867006515,
+          879151050
+        ]
+      ],
+      "internal_constants": [
+        1423960925,
+        2101391318,
+        1915532054,
+        275400051,
+        1168624859,
+        1141248885,
+        356546469,
+        1165250474,
+        1320543726,
+        932505663,
+        1204226364,
+        1452576828,
+        1774936729,
+        926808140,
+        1184948056,
+        1186493834,
+        843181003,
+        185193011,
+        452207447,
+        510054082
+      ],
+      "diagonal": [
+        2130706431,
+        1,
+        2,
+        1065353217,
+        3,
+        4,
+        1065353216,
+        2130706430,
+        2130706429,
+        2122383361,
+        1864368129,
+        2130706306,
+        8323072,
+        266338304,
+        133169152,
+        127
+      ]
+    },
+    {
+      "name": "koalabear24",
+      "prime": 2130706433,
+      "width": 24,
+      "sbox_degree": 3,
+      "capacity": 8,
+      "half_full_rounds": 4,
+      "initial_constants": [
+        [
+          487143900,
+          1829048205,
+          1652578477,
+          646002781,
+          1044144830,
+          53279448,
+          1519499836,
+          22697702,
+          1768655004,
+          230479744,
+          1484895689,
+          705130286,
+          1429811285,
+          1695785093,
+          1417332623,
+          1115801016,
+          1048199020,
+          878062617,
+          738518649,
+          249004596,
+          1601837737,
+          24601614,
+          245692625,
+          364803730
+        ],
+        [
+          1857019234,
+          1906668230,
+          1916890890,
+          835590867,
+          557228239,
+          352829675,
+          515301498,
+          973918075,
+          954515249,
+          1142063750,
+          1795549558,
+          608869266,
+          1850421928,
+          2028872854,
+          1197543771,
+          1027240055,
+          1976813168,
+          963257461,
+          652017844,
+          2113212249,
+          213459679,
+          90747280,
+          1540619478,
+          324138382
+        ],
+        [
+          1377377119,
+          294744504,
+          512472871,
+          668081958,
+          907306515,
+          518526882,
+          1907091534,
+          1152942192,
+          1572881424,
+          720020214,
+          729527057,
+          1762035789,
+          86171731,
+          205890068,
+          453077400,
+          1201344594,
+          986483134,
+          125174298,
+          2050269685,
+          1895332113,
+          749706654,
+          40566555,
+          742540942,
+          1735551813
+        ],
+        [
+          162985276,
+          1943496073,
+          1469312688,
+          703013107,
+          1979485151,
+          1278193166,
+          548674995,
+          2118718736,
+          749596440,
+          1476142294,
+          1293606474,
+          918523452,
+          890353212,
+          1691895663,
+          1932240646,
+          1180911992,
+          86098300,
+          1592168978,
+          895077289,
+          724819849,
+          1697986774,
+          1608418116,
+          1083269213,
+          691256798
+        ]
+      ],
+      "final_constants": [
+        [
+          2099454809,
+          949846777,
+          630926956,
+          1168723439,
+          222917504,
+          1527025973,
+          1009157017,
+          2029957881,
+          805977836,
+          1347511739,
+          540019059,
+          589807745,
+          440771316,
+          1530063406,
+          761076336,
+          87974206,
+          1412686751,
+          1230318064,
+          514464425,
+          1469011754,
+          1770970737,
+          1510972858,
+          965357206,
+          209398053
+        ],
+        [
+          778802532,
+          40567006,
+          1984217577,
+          1545851069,
+          879801839,
+          1611910970,
+          1215591048,
+          330802499,
+          1051639108,
+          321036,
+          511927202,
+          591603098,
+          1775897642,
+          115598532,
+          278200718,
+          233743176,
+          525096211,
+          1335507608,
+          830017835,
+          1380629279,
+          560028578,
+          598425701,
+          302162385,
+          567434115
+        ],
+        [
+          1859222575,
+          958294793,
+          1582225556,
+          1781487858,
+          1570246000,
+          1067748446,
+          526608119,
+          1666453343,
+          1786918381,
+          348203640,
+          1860035017,
+          1489902626,
+          1904576699,
+          860033965,
+          1954077639,
+          1685771567,
+          971513929,
+          1877873770,
+          137113380,
+          520695829,
+          806829080,
+          1408699405,
+          1613277964,
+          793223662
+        ],
+        [
+          648443918,
+          893435011,
+          403879071,
+          1363789863,
+          1662900517,
+          2043370,
+          2109755796,
+          931751726,
+          2091644718,
+          606977583,
+          185050397,
+          946157136,
+          1350065230,
+          1625860064,
+          122045240,
+          880989921,
+          145137438,
+          1059782436,
+          1477755661,
+          335465138,
+          1640704282,
+          1757946479,
+          1551204074,
+          681266718
+        ]
+      ],
+      "internal_constants": [
+        328586442,
+        1572520009,
+        1375479591,
+        322991001,
+        967600467,
+        1172861548,
+        1973891356,
+        1503625929,
+        1881993531,
+        40601941,
+        1155570620,
+        571547775,
+        1361622243,
+        1495024047,
+        1733254248,
+        964808915,
+        763558040,
+        1887228519,
+        994888261,
+        718330940,
+        213359415,
+        603124968,
+        1038411577
+      ],
+      "diagonal": [
+        2130706431,
+        1,
+        2,
+        1065353217,
+        3,
+        4,
+        1065353216,
+        2130706430,
+        2130706429,
+        2122383361,
+        1598029825,
+        1864368129,
+        1997537281,
+        2064121857,
+        2097414145,
+        2130706306,
+        8323072,
+        266338304,
+        133169152,
+        66584576,
+        33292288,
+        16646144,
+        4161536,
+        127
+      ]
+    }
+  ],
+  "poseidon2_provenance": {
+    "repository": "https://github.com/Plonky3/Plonky3",
+    "commit": "f98331687e47106a64ab82a77e2e1d0d66c9161b",
+    "license": "MIT",
+    "sources": {
+      "baby-bear/src/poseidon2.rs": "94dd94e267e66922104010624f42ba7836805dc2fafe7482d684cd2e042a7327",
+      "koala-bear/src/poseidon2.rs": "24b781a20423b1523bb3c0bcc8f4939b116765333289dda662177ab2f68cd380",
+      "poseidon2/src/external.rs": "4f2dc9c69280c5a8ecd78cbee84c95a0029f16c8c7a19444c9a9371be115f754",
+      "monty-31/src/poseidon2.rs": "953426ce40ca5ed8c86dfb75bb880d93440b931e45f59dce51a2a0bb5f6c826d"
+    },
+    "sponge": "oa_poseidon2_field_xof_v1"
+  }
 }

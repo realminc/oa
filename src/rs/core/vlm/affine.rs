@@ -179,7 +179,7 @@ impl<T: Float> Mat4<T> {
 			y: -up.dot(eye),
 			z: forward.dot(eye),
 		};
-		let view = Self::from_affine(basis, translation);
+		let view = Self::new_from_affine(basis, translation);
 		view.is_finite().then_some(view)
 	}
 
@@ -209,7 +209,7 @@ impl<T: Float> Mat4<T> {
 		let row_x = x * decomposition.scale.x;
 		let row_y = (y + x * decomposition.shear.x) * decomposition.scale.y;
 		let row_z = (z + x * decomposition.shear.y + y * decomposition.shear.z) * decomposition.scale.z;
-		Some(Self::from_affine(
+		Some(Self::new_from_affine(
 			Mat3 {
 				m: [
 					[row_x.x, row_x.y, row_x.z],
@@ -333,7 +333,7 @@ impl<T: Float> Quat<T> {
 		if !valid_tolerance(tolerance) || !matrix.is_proper_rotation(tolerance) {
 			return None;
 		}
-		quaternion_from_rotation_matrix_unchecked(Mat4::from_affine(matrix, Vec3::default()))
+		quaternion_from_rotation_matrix_unchecked(Mat4::new_from_affine(matrix, Vec3::default()))
 	}
 
 	pub fn try_from_rotation_matrix4(matrix: Mat4<T>, tolerance: T) -> Option<Self> {

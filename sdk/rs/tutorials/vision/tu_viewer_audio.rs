@@ -7,7 +7,12 @@
 // an interactive waveform, spectrum, or Mel-spectrogram visualization and
 // plays the audio through the default CPAL output device.
 //
-// Press Space to play/pause; Q or Esc to quit.
+// Controls:
+//   Space — play/pause; L — loop
+//   W / S / M — waveform / spectrum / Mel
+//   Left / Right — seek backward / forward by 5 seconds
+//   Up / Down — seek forward / backward by 25 seconds
+//   Q / Esc — quit
 //
 // usage:
 //   cargo run --example tu_viewer_audio -- [file.flac]

@@ -49,8 +49,8 @@ fn native_decoder_retains_planes_until_consumer_completion() -> oa::Result<()> {
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_h264_high_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::create(&engine, info)?;
-	let mut foreign_decoder = VideoDecoder::create(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&engine, info)?;
+	let mut foreign_decoder = VideoDecoder::new(&engine, info)?;
 	let mut decoded = 0_usize;
 	let mut decoded_frames = Vec::new();
 	let before_decode = engine.checkpoint()?;
@@ -120,7 +120,7 @@ fn native_h265_decoder_retains_planes_without_host_materialization() -> oa::Resu
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_h265_main_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::create(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&engine, info)?;
 	let mut decoded = 0_usize;
 	let mut decoded_frames = Vec::new();
 	let mut retained = None;
@@ -179,7 +179,7 @@ fn public_decoder_matches_complete_h265_ffmpeg_stream() -> oa::Result<()> {
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_h265_main_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::create(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&engine, info)?;
 	let mut decoded_frames = Vec::new();
 	while let Some(packet) = demuxer.read_next_packet()? {
 		let Some(frame) = decoder.decode(&packet)? else {
@@ -262,7 +262,7 @@ fn public_decoder_matches_complete_av1_ffmpeg_stream() -> oa::Result<()> {
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_av1_main_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::create(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&engine, info)?;
 	let mut decoded_frames = Vec::new();
 	while let Some(packet) = demuxer.read_next_packet()? {
 		if let Some(frame) = decoder.decode(&packet)? {
@@ -301,7 +301,7 @@ fn native_av1_decoder_retains_and_reuses_reference_slots() -> oa::Result<()> {
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_av1_main_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::create(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&engine, info)?;
 	let mut decoded_frames = Vec::new();
 	let mut retained = None;
 	while let Some(packet) = demuxer.read_next_packet()? {
@@ -349,7 +349,7 @@ fn public_decoder_matches_complete_vp9_ffmpeg_stream() -> oa::Result<()> {
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_vp9_profile0_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::create(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&engine, info)?;
 	let mut decoded_frames = Vec::new();
 	while let Some(packet) = demuxer.read_next_packet()? {
 		if let Some(frame) = decoder.decode(&packet)? {
@@ -386,7 +386,7 @@ fn native_vp9_decoder_retains_and_reuses_reference_slots() -> oa::Result<()> {
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_vp9_profile0_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::create(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&engine, info)?;
 	let mut decoded_frames = Vec::new();
 	let mut retained = None;
 	while let Some(packet) = demuxer.read_next_packet()? {
@@ -434,7 +434,7 @@ fn public_decoder_matches_complete_h264_ffmpeg_stream() -> oa::Result<()> {
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_h264_high_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::create(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&engine, info)?;
 	let mut decoded_frames = Vec::new();
 	while let Some(packet) = demuxer.read_next_packet()? {
 		if let Some(frame) = decoder.decode(&packet)? {

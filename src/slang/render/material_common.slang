@@ -24,7 +24,7 @@ struct MeshVertexInput {
 
 // ── Shared vertex output ───────────────────────────────────────────────────────
 
-struct StandardVertexOutput {
+struct SurfaceVertexOutput {
 	float4 sv_position : SV_Position;
 	float3 world_position : TEXCOORD0;
 	float3 world_normal   : TEXCOORD1;

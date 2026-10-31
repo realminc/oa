@@ -234,10 +234,8 @@ impl DpbState {
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn record_h265_picture(
-	device: &ash::Device,
-	loader: &ash::khr::video_queue::Device,
-	decode_loader: &ash::khr::video_decode_queue::Device,
-	command_buffer: ash::vk::CommandBuffer,
+	device: &vk::Device,
+	command_buffer: vk::CommandBuffer,
 	session: &DecodeSession,
 	sps: &video::H265SequenceParameterSet,
 	pps: &video::H265PictureParameterSet,
@@ -265,65 +263,67 @@ pub(super) fn record_h265_picture(
 		// video.xml requires zero when the set is carried inline in the slice.
 		0
 	};
-	let mut std_picture = ash::vk::native::StdVideoDecodeH265PictureInfo {
-		flags: ash::vk::native::StdVideoDecodeH265PictureInfoFlags {
-			_bitfield_align_1: [],
-			_bitfield_1: ash::vk::native::StdVideoDecodeH265PictureInfoFlags::new_bitfield_1(
-				u32::from(slice.is_irap),
-				u32::from(slice.is_idr),
-				u32::from(slice.is_reference),
-				u32::from(slice.short_term_reference_picture_set_sps),
-			),
-			__bindgen_padding_0: [0; 3],
+	let mut std_picture = vk::StdVideoDecodeH265PictureInfo {
+		flags: {
+			let mut flags = vk::StdVideoDecodeH265PictureInfoFlags::default();
+			flags.set_irap_pic_flag(u32::from(slice.is_irap) as _);
+			flags.set_idr_pic_flag(u32::from(slice.is_idr) as _);
+			flags.set_is_reference(u32::from(slice.is_reference) as _);
+			flags.set_short_term_ref_pic_set_sps_flag(u32::from(
+				slice.short_term_reference_picture_set_sps,
+			) as _);
+			flags
 		},
 		sps_video_parameter_set_id: h265_u8(sps.video_parameter_set_id, "picture VPS id")?,
 		pps_seq_parameter_set_id: h265_u8(sps.id, "picture SPS id")?,
 		pps_pic_parameter_set_id: h265_u8(pps.id, "picture PPS id")?,
-		NumDeltaPocsOfRefRpsIdx: u8::try_from(num_delta_pocs)
+		num_delta_pocs_of_ref_rps_idx: u8::try_from(num_delta_pocs)
 			.map_err(|_| Error::data_loss("H.265 reference-set delta count exceeds u8"))?,
-		PicOrderCntVal: plan.picture_order_count,
-		NumBitsForSTRefPicSetInSlice: slice.short_term_reference_picture_set_bits,
+		pic_order_cnt_val: plan.picture_order_count,
+		num_bits_for_st_ref_pic_set_in_slice: slice.short_term_reference_picture_set_bits,
 		reserved: 0,
-		RefPicSetStCurrBefore: [0xff; 8],
-		RefPicSetStCurrAfter: [0xff; 8],
-		RefPicSetLtCurr: [0xff; 8],
+		ref_pic_set_st_curr_before: [0xff; 8],
+		ref_pic_set_st_curr_after: [0xff; 8],
+		ref_pic_set_lt_curr: [0xff; 8],
 	};
 	for (destination, slot) in std_picture
-		.RefPicSetStCurrBefore
+		.ref_pic_set_st_curr_before
 		.iter_mut()
 		.zip(&plan.current_before_slots)
 	{
 		*destination = *slot;
 	}
 	for (destination, slot) in std_picture
-		.RefPicSetStCurrAfter
+		.ref_pic_set_st_curr_after
 		.iter_mut()
 		.zip(&plan.current_after_slots)
 	{
 		*destination = *slot;
 	}
-	let mut h265_picture = ash::vk::VideoDecodeH265PictureInfoKHR::default()
+	let mut h265_picture = vk::VideoDecodeH265PictureInfoKHR::default()
 		.std_picture_info(&std_picture)
-		.slice_segment_offsets(std::slice::from_ref(&slice_offset));
+		.slice_segment_offsets(std::slice::from_ref(&slice_offset))
+		.map_err(Error::from)?;
 
 	let setup_std_reference = h265_reference_info(plan.picture_order_count, !slice.is_reference);
 	let mut setup_h265_slot =
-		ash::vk::VideoDecodeH265DpbSlotInfoKHR::default().std_reference_info(&setup_std_reference);
+		vk::VideoDecodeH265DpbSlotInfoKHR::default().std_reference_info(&setup_std_reference);
 	let (output, output_layer, dpb, dpb_layer) = session.picture_images(plan.setup_slot)?;
-	let extent = ash::vk::Extent2D {
+	let extent = vk::Extent2D {
 		width: session.coded_extent.width,
 		height: session.coded_extent.height,
 	};
-	let setup_resource = ash::vk::VideoPictureResourceInfoKHR::default()
+	let setup_resource = vk::VideoPictureResourceInfoKHR::default()
 		.coded_extent(extent)
 		.base_array_layer(dpb_layer)
 		.image_view_binding(dpb.view);
 	let setup_slot_index =
 		i32::try_from(plan.setup_slot).map_err(|_| Error::internal("H.265 setup slot exceeds i32"))?;
-	let setup_slot = ash::vk::VideoReferenceSlotInfoKHR::default()
+	let setup_slot = vk::VideoReferenceSlotInfoKHR::default()
 		.slot_index(setup_slot_index)
 		.picture_resource(&setup_resource)
-		.push_next(&mut setup_h265_slot);
+		.push_next(&mut setup_h265_slot)
+		.map_err(Error::from)?;
 
 	let mut std_references = Vec::new();
 	let mut h265_reference_slots = Vec::new();
@@ -345,15 +345,15 @@ pub(super) fn record_h265_picture(
 	for reference in &plan.active_references {
 		let (_, _, reference_image, reference_layer) = session.picture_images(reference.slot)?;
 		std_references.push(h265_reference_info(reference.picture_order_count, false));
-		h265_reference_slots.push(ash::vk::VideoDecodeH265DpbSlotInfoKHR::default());
+		h265_reference_slots.push(vk::VideoDecodeH265DpbSlotInfoKHR::default());
 		reference_resources.push(
-			ash::vk::VideoPictureResourceInfoKHR::default()
+			vk::VideoPictureResourceInfoKHR::default()
 				.coded_extent(extent)
 				.base_array_layer(reference_layer)
 				.image_view_binding(reference_image.view),
 		);
 		reference_slots.push(
-			ash::vk::VideoReferenceSlotInfoKHR::default().slot_index(
+			vk::VideoReferenceSlotInfoKHR::default().slot_index(
 				i32::try_from(reference.slot)
 					.map_err(|_| Error::internal("H.265 reference slot exceeds i32"))?,
 			),
@@ -362,28 +362,33 @@ pub(super) fn record_h265_picture(
 	for index in 0..reference_count {
 		h265_reference_slots[index].p_std_reference_info = &std_references[index];
 		reference_slots[index].p_next =
-			(&h265_reference_slots[index] as *const ash::vk::VideoDecodeH265DpbSlotInfoKHR<'_>).cast();
+			(&h265_reference_slots[index] as *const vk::VideoDecodeH265DpbSlotInfoKHR<'_>).cast();
 		reference_slots[index].p_picture_resource = &reference_resources[index];
 	}
-	let mut inactive_setup = setup_slot;
-	inactive_setup.slot_index = -1;
+	let mut inactive_setup = vk::VideoReferenceSlotInfoKHR::default()
+		.slot_index(-1)
+		.picture_resource(&setup_resource);
+	inactive_setup.p_next = setup_slot.p_next;
 	reference_slots.push(inactive_setup);
-	let begin_info = ash::vk::VideoBeginCodingInfoKHR::default()
+	let begin_info = vk::VideoBeginCodingInfoKHR::default()
 		.video_session(session.handle)
 		.video_session_parameters(session.parameters)
-		.reference_slots(&reference_slots);
-	let output_resource = ash::vk::VideoPictureResourceInfoKHR::default()
+		.reference_slots(&reference_slots)
+		.map_err(Error::from)?;
+	let output_resource = vk::VideoPictureResourceInfoKHR::default()
 		.coded_extent(extent)
 		.base_array_layer(output_layer)
 		.image_view_binding(output.view);
-	let decode_info = ash::vk::VideoDecodeInfoKHR::default()
+	let decode_info = vk::VideoDecodeInfoKHR::default()
 		.src_buffer(bitstream.handle)
 		.src_buffer_offset(0)
 		.src_buffer_range(bitstream.range)
 		.dst_picture_resource(output_resource)
 		.setup_reference_slot(&setup_slot)
 		.reference_slots(&reference_slots[..reference_count])
-		.push_next(&mut h265_picture);
+		.map_err(Error::from)?
+		.push_next(&mut h265_picture)
+		.map_err(Error::from)?;
 
 	let mut image_barriers = Vec::new();
 	if initialize_images {
@@ -394,23 +399,23 @@ pub(super) fn record_h265_picture(
 			for image in session.images.iter() {
 				image_barriers.push(decode_image_barrier(
 					image,
-					ash::vk::ImageLayout::VIDEO_DECODE_DPB_KHR,
-					ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-						| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+					vk::ImageLayout::VIDEO_DECODE_DPB_KHR,
+					vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+						| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 				));
 			}
 		} else {
 			image_barriers.push(decode_image_barrier(
 				dpb,
-				ash::vk::ImageLayout::VIDEO_DECODE_DPB_KHR,
-				ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-					| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+				vk::ImageLayout::VIDEO_DECODE_DPB_KHR,
+				vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+					| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 			));
 			if output.handle != dpb.handle {
 				image_barriers.push(decode_image_barrier(
 					output,
-					ash::vk::ImageLayout::VIDEO_DECODE_DST_KHR,
-					ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+					vk::ImageLayout::VIDEO_DECODE_DST_KHR,
+					vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 				));
 			}
 		}
@@ -426,20 +431,20 @@ pub(super) fn record_h265_picture(
 		let compute_family = session.device.physical().compute_queue_family;
 		if decode_family != compute_family {
 			let layout = if session.image_set == DecodeImageSet::DistinctLayered {
-				ash::vk::ImageLayout::VIDEO_DECODE_DST_KHR
+				vk::ImageLayout::VIDEO_DECODE_DST_KHR
 			} else {
-				ash::vk::ImageLayout::VIDEO_DECODE_DPB_KHR
+				vk::ImageLayout::VIDEO_DECODE_DPB_KHR
 			};
 			image_barriers.push(
-				ash::vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(ash::vk::PipelineStageFlags2::NONE)
-					.src_access_mask(ash::vk::AccessFlags2::NONE)
-					.dst_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
+				vk::ImageMemoryBarrier2::default()
+					.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+					.src_access_mask(vk::AccessFlagBits2::NONE)
+					.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
 					.dst_access_mask(
-						ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-							| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+						vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+							| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 					)
-					.old_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+					.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 					.new_layout(layout)
 					.src_queue_family_index(compute_family)
 					.dst_queue_family_index(decode_family)
@@ -448,46 +453,49 @@ pub(super) fn record_h265_picture(
 			);
 		}
 	}
-	let bitstream_barriers = [ash::vk::BufferMemoryBarrier2::default()
-		.src_stage_mask(ash::vk::PipelineStageFlags2::HOST)
-		.src_access_mask(ash::vk::AccessFlags2::HOST_WRITE)
-		.dst_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
-		.dst_access_mask(ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR)
-		.src_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
-		.dst_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+	let bitstream_barriers = [vk::BufferMemoryBarrier2::default()
+		.src_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+		.src_access_mask(vk::AccessFlagBits2::HOST_WRITE_BIT)
+		.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
+		.dst_access_mask(vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR)
+		.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+		.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
 		.buffer(bitstream.handle)
 		.offset(0)
 		.size(bitstream.range)];
 	let memory_barriers = (!initialize_images)
 		.then(|| {
-			ash::vk::MemoryBarrier2::default()
-				.src_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
-				.src_access_mask(ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR)
-				.dst_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
+			vk::MemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
+				.src_access_mask(vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
 				.dst_access_mask(
-					ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-						| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+					vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+						| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 				)
 		})
 		.into_iter()
 		.collect::<Vec<_>>();
-	let dependency = ash::vk::DependencyInfo::default()
+	let dependency = vk::DependencyInfo::default()
 		.memory_barriers(&memory_barriers)
+		.map_err(Error::from)?
 		.buffer_memory_barriers(&bitstream_barriers)
-		.image_memory_barriers(&image_barriers);
+		.map_err(Error::from)?
+		.image_memory_barriers(&image_barriers)
+		.map_err(Error::from)?;
 	// The DPB dependency and layout transitions precede the coding scope. The
 	// result-status query is reused only after the caller has completed and
 	// checked the preceding picture event.
 	unsafe {
-		device.cmd_reset_query_pool(command_buffer, session.result_status_pool, 0, 1);
-		device.cmd_pipeline_barrier2(command_buffer, &dependency);
-		(loader.fp().cmd_begin_video_coding_khr)(command_buffer, &begin_info);
+		device.cmd_reset_query_pool(command_buffer, session.result_status_pool, 0, 1)?;
+		device.cmd_pipeline_barrier2(command_buffer, &dependency)?;
+		device.cmd_begin_video_coding_khr(command_buffer, &begin_info)?;
 	}
 	if plan.reset_dpb {
-		let control = ash::vk::VideoCodingControlInfoKHR::default()
-			.flags(ash::vk::VideoCodingControlFlagsKHR::RESET);
+		let control = vk::VideoCodingControlInfoKHR::default()
+			.flags(vk::VideoCodingControlFlagBitsKHR::RESET_BIT_KHR);
 		unsafe {
-			(loader.fp().cmd_control_video_coding_khr)(command_buffer, &control);
+			device.cmd_control_video_coding_khr(command_buffer, &control)?;
 		}
 	}
 	unsafe {
@@ -495,14 +503,11 @@ pub(super) fn record_h265_picture(
 			command_buffer,
 			session.result_status_pool,
 			0,
-			ash::vk::QueryControlFlags::empty(),
-		);
-		(decode_loader.fp().cmd_decode_video_khr)(command_buffer, &decode_info);
-		device.cmd_end_query(command_buffer, session.result_status_pool, 0);
-		(loader.fp().cmd_end_video_coding_khr)(
-			command_buffer,
-			&ash::vk::VideoEndCodingInfoKHR::default(),
-		);
+			vk::QueryControlFlags::empty(),
+		)?;
+		device.cmd_decode_video_khr(command_buffer, &decode_info)?;
+		device.cmd_end_query(command_buffer, session.result_status_pool, 0)?;
+		device.cmd_end_video_coding_khr(command_buffer, &vk::VideoEndCodingInfoKHR::default())?;
 	}
 	if release_for_readback {
 		let decode_family = session
@@ -514,46 +519,48 @@ pub(super) fn record_h265_picture(
 		let compute_family = session.device.physical().compute_queue_family;
 		let same_family = decode_family == compute_family;
 		let decoded_layout = if output.handle == dpb.handle {
-			ash::vk::ImageLayout::VIDEO_DECODE_DPB_KHR
+			vk::ImageLayout::VIDEO_DECODE_DPB_KHR
 		} else {
-			ash::vk::ImageLayout::VIDEO_DECODE_DST_KHR
+			vk::ImageLayout::VIDEO_DECODE_DST_KHR
 		};
-		let release = ash::vk::ImageMemoryBarrier2::default()
-			.src_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
+		let release = vk::ImageMemoryBarrier2::default()
+			.src_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
 			.src_access_mask(
-				ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-					| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+				vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+					| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 			)
 			.dst_stage_mask(if same_family {
-				ash::vk::PipelineStageFlags2::TRANSFER
+				vk::PipelineStageFlagBits2::TRANSFER_BIT
 			} else {
-				ash::vk::PipelineStageFlags2::NONE
+				vk::PipelineStageFlagBits2::NONE
 			})
 			.dst_access_mask(if same_family {
-				ash::vk::AccessFlags2::TRANSFER_READ
+				vk::AccessFlagBits2::TRANSFER_READ_BIT
 			} else {
-				ash::vk::AccessFlags2::NONE
+				vk::AccessFlagBits2::NONE
 			})
 			.old_layout(decoded_layout)
-			.new_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+			.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 			.src_queue_family_index(if same_family {
-				ash::vk::QUEUE_FAMILY_IGNORED
+				vk::QUEUE_FAMILY_IGNORED
 			} else {
 				decode_family
 			})
 			.dst_queue_family_index(if same_family {
-				ash::vk::QUEUE_FAMILY_IGNORED
+				vk::QUEUE_FAMILY_IGNORED
 			} else {
 				compute_family
 			})
 			.image(output.handle)
 			.subresource_range(decode_image_subresource(output_layer, 1));
 		let release_dependency =
-			ash::vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
-		// SAFETY: decode owns this exact output layer. The caller submits the
+			vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
+		// safety: decode owns this exact output layer. The caller submits the
 		// matching compute-family acquire only after this queue signals completion.
 		unsafe {
-			device.cmd_pipeline_barrier2(command_buffer, &release_dependency);
+			device
+				.cmd_pipeline_barrier2(command_buffer, &(release_dependency).map_err(Error::from)?)
+				.map_err(Error::from)?;
 		}
 	}
 	Ok(())
@@ -562,16 +569,14 @@ pub(super) fn record_h265_picture(
 pub(super) fn h265_reference_info(
 	picture_order_count: i32,
 	unused_for_reference: bool,
-) -> ash::vk::native::StdVideoDecodeH265ReferenceInfo {
-	ash::vk::native::StdVideoDecodeH265ReferenceInfo {
-		flags: ash::vk::native::StdVideoDecodeH265ReferenceInfoFlags {
-			_bitfield_align_1: [],
-			_bitfield_1: ash::vk::native::StdVideoDecodeH265ReferenceInfoFlags::new_bitfield_1(
-				0,
-				u32::from(unused_for_reference),
-			),
-			__bindgen_padding_0: [0; 3],
+) -> vk::StdVideoDecodeH265ReferenceInfo {
+	vk::StdVideoDecodeH265ReferenceInfo {
+		flags: {
+			let mut flags = vk::StdVideoDecodeH265ReferenceInfoFlags::default();
+			flags.set_used_for_long_term_reference(0 as _);
+			flags.set_unused_for_reference(u32::from(unused_for_reference) as _);
+			flags
 		},
-		PicOrderCntVal: picture_order_count,
+		pic_order_cnt_val: picture_order_count,
 	}
 }

@@ -117,8 +117,13 @@ struct MnistClassifier {
 
 impl MnistClassifier {
 	fn new(engine: &Engine) -> oa::Result<Self> {
-		let fc1 = Rc::new(oa::ml::nn::Linear::with_seed(engine, 784, 128, 1)?);
-		let fc2 = Rc::new(oa::ml::nn::Linear::with_seed(engine, 128, NUM_CLASSES, 2)?);
+		let fc1 = Rc::new(oa::ml::nn::Linear::new_with_seed(engine, 784, 128, 1)?);
+		let fc2 = Rc::new(oa::ml::nn::Linear::new_with_seed(
+			engine,
+			128,
+			NUM_CLASSES,
+			2,
+		)?);
 		let relu = oa::ml::nn::Relu::new();
 		let mut registry = ModuleRegistry::new();
 		registry.register_module("fc1", fc1.clone() as Rc<dyn Module>)?;
@@ -239,8 +244,8 @@ fn train_and_predict_grid(
 				}
 				y_u32[bi] = train_raw.labels[si] as u32;
 			}
-			let x = Matrix::from_slice(engine, [BATCH, 784], &x_f32)?;
-			let y = Matrix::from_slice(engine, [BATCH], &y_u32)?;
+			let x = Matrix::new_from_slice(engine, [BATCH, 784], &x_f32)?;
+			let y = Matrix::new_from_slice(engine, [BATCH], &y_u32)?;
 			Ok((x, y))
 		},
 		|(x, y)| {
@@ -261,7 +266,7 @@ fn train_and_predict_grid(
 	for (i, pixel) in test_raw.images[..GRID_N * 784].iter().enumerate() {
 		x_f32[i] = *pixel as f32 / 255.0;
 	}
-	let x_test = Matrix::from_slice(engine, [GRID_N, 784], &x_f32)?;
+	let x_test = Matrix::new_from_slice(engine, [GRID_N, 784], &x_f32)?;
 	let logits = model.forward(&x_test)?;
 	let probs = oa::matrix::softmax(&logits, -1)?;
 	let host_probs = probs.read_f32()?;

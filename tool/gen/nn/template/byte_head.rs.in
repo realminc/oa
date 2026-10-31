@@ -9,7 +9,7 @@ impl {{name}} {
 	/// # Errors
 	///
 	/// Returns an error when `input_features` is zero or initialization fails.
-	pub fn with_seed(engine: &Engine, input_features: usize, seed: u64) -> Result<Self> {
+	pub fn new_with_seed(engine: &Engine, input_features: usize, seed: u64) -> Result<Self> {
 		Ok(Self {
 			inner: {{constructor}}(engine, input_features, {{vocabulary}}, seed)?,
 		})

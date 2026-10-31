@@ -150,7 +150,7 @@ test_vk!(
 	engine,
 	{
 		let forward_values = [-100.0_f32, -3.0, -0.25, 0.0, 0.5, 4.0, 100.0];
-		let forward_input = oa::Matrix::from_f32(&engine, [forward_values.len()], &forward_values)?;
+		let forward_input = oa::Matrix::new_from_f32(&engine, [forward_values.len()], &forward_values)?;
 		for case in &CASES {
 			let expected = forward_values.map(case.host);
 			let actual = (case.device)(&forward_input)?.read_f32()?;
@@ -158,23 +158,23 @@ test_vk!(
 		}
 
 		let gradient_values = [-2.0_f32, -0.7, -0.1, 0.2, 0.8, 1.7];
-		let indices = oa::Matrix::from_slice(&engine, [6], &[0_u32, 1, 2, 3, 4, 5])?;
+		let indices = oa::Matrix::new_from_slice(&engine, [6], &[0_u32, 1, 2, 3, 4, 5])?;
 		let targets = [0_u32, 1, 0, 1, 0, 1];
-		let target_matrix = oa::Matrix::from_slice(&engine, [6], &targets)?;
+		let target_matrix = oa::Matrix::new_from_slice(&engine, [6], &targets)?;
 		let weight = [0.4_f32, -0.6];
 		let bias = [0.1_f32, -0.2];
 		for case in &CASES {
 			let expected = numerical_gradient(&gradient_values, |values| {
 				activation_loss(values, case.host, &weight, &bias, &targets)
 			});
-			let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+			let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 				&engine,
 				[6, 1],
 				&gradient_values,
 			)?)?;
-			let linear = oa::ml::nn::Linear::from_matrices(
-				oa::Matrix::from_f32(&engine, [2, 1], &weight)?,
-				oa::Matrix::from_f32(&engine, [2], &bias)?,
+			let linear = oa::ml::nn::Linear::new_from_matrices(
+				oa::Matrix::new_from_f32(&engine, [2, 1], &weight)?,
+				oa::Matrix::new_from_f32(&engine, [2], &bias)?,
 			)?;
 			let tape = oa::ml::GradientTape::new();
 			let activated = (case.device)(&embedding.forward(&indices)?)?;
@@ -197,7 +197,7 @@ test_vk!(
 	{
 		use oa::ml::Module as _;
 
-		let input = oa::Matrix::from_f32(&engine, [3], &[-1.0, 0.0, 2.0])?;
+		let input = oa::Matrix::new_from_f32(&engine, [3], &[-1.0, 0.0, 2.0])?;
 		let relu = oa::ml::nn::Relu::new();
 		let gelu = oa::ml::nn::Gelu::new();
 		let silu = oa::ml::nn::Silu::new();

@@ -22,23 +22,23 @@ fn video_never_advances_before_its_next_presentation_boundary() {
 	let timing = VideoFrameTiming::new(Duration::from_millis(40), Some(Duration::from_millis(20)))
 		.expect("valid timing");
 	assert!(
-		!MediaTimestamp::from_microseconds(59_000)
+		!MediaTimestamp::new_from_microseconds(59_000)
 			.frame_is_due(timing)
 			.unwrap()
 	);
 	assert!(
-		MediaTimestamp::from_microseconds(60_000)
+		MediaTimestamp::new_from_microseconds(60_000)
 			.frame_is_due(timing)
 			.unwrap()
 	);
 	assert!(
-		MediaTimestamp::from_microseconds(90_000)
+		MediaTimestamp::new_from_microseconds(90_000)
 			.frame_is_due(timing)
 			.unwrap()
 	);
 	let unknown = VideoFrameTiming::new(Duration::ZERO, None).unwrap();
 	assert!(
-		MediaTimestamp::from_microseconds(1_000_000)
+		MediaTimestamp::new_from_microseconds(1_000_000)
 			.frame_is_due(unknown)
 			.is_err()
 	);
@@ -48,20 +48,20 @@ fn video_never_advances_before_its_next_presentation_boundary() {
 fn microsecond_seek_uses_exact_rational_time_base() {
 	let base = VideoTimeBase::new(1, 90_000).unwrap();
 	assert_eq!(
-		MediaTimestamp::from_microseconds(1_000_000)
+		MediaTimestamp::new_from_microseconds(1_000_000)
 			.to_video_ticks(base)
 			.unwrap(),
 		90_000
 	);
 	assert_eq!(
-		MediaTimestamp::from_microseconds(33_333)
+		MediaTimestamp::new_from_microseconds(33_333)
 			.to_video_ticks(base)
 			.unwrap(),
 		2_999
 	);
 	let tiny_unit = VideoTimeBase::new(1, u32::MAX).unwrap();
 	assert!(
-		MediaTimestamp::from_microseconds(u64::MAX)
+		MediaTimestamp::new_from_microseconds(u64::MAX)
 			.to_video_ticks(tiny_unit)
 			.is_err()
 	);

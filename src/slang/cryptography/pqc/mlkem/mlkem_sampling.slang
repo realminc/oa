@@ -8,7 +8,9 @@ import mlkem_field;
 // Caller supplies byte-valued suffix and matching rate (136 or 168).
 void mlkem_seed_xof(uint seed[8], uint suffix, uint suffixBytes, uint rate,
 	out uint2 state[25]) {
+	[loop]
 	for (uint i = 0u; i < 25u; ++i) state[i] = uint2(0u, 0u);
+	[loop]
 	for (uint i = 0u; i < 8u; ++i) {
 		if ((i & 1u) == 0u) state[i / 2u].x = seed[i];
 		else state[i / 2u].y = seed[i];
@@ -60,6 +62,7 @@ void mlkem_sample_noise(uint seed[8], uint nonce, uint eta, out uint poly[256]) 
 	mlkem_seed_xof(seed, nonce, 1u, 136u, state);
 	uint position = 0u, reservoir = 0u, available = 0u;
 	uint mask = (1u << eta) - 1u;
+	[loop]
 	for (uint i = 0u; i < 256u; ++i) {
 		while (available < 2u * eta) {
 			reservoir |= mlkem_xof_next(state, position, 136u) << available;

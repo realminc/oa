@@ -23,6 +23,11 @@
     {
       "stable_id": 118,
       "name": "softmax",
+      "signature": {
+        "parameters": [["input", "&Matrix"], ["dim", "i32"]],
+        "returns": "Matrix",
+        "visibility": "pub"
+      },
       "autograd": {
         "mode": "generated",
         "family": "reduce",
@@ -86,6 +91,11 @@
     {
       "stable_id": 119,
       "name": "softmax_backward",
+      "signature": {
+        "parameters": [["forward_output", "&Matrix"], ["output_gradient", "&Matrix"], ["dim", "i32"]],
+        "returns": "Matrix",
+        "visibility": "pub(crate)"
+      },
       "kernel_id": "MatrixSoftmaxBackwardF32",
       "source": "src/slang/matrix/reduce/softmax_backward.slang",
       "variant": "generic",
@@ -128,6 +138,11 @@
     {
       "stable_id": 270,
       "name": "log_softmax",
+      "signature": {
+        "parameters": [["input", "&Matrix"], ["dim", "i32"]],
+        "returns": "Matrix",
+        "visibility": "pub"
+      },
       "autograd": {
         "mode": "generated",
         "family": "reduce",
@@ -191,6 +206,11 @@
     {
       "stable_id": 271,
       "name": "log_softmax_backward",
+      "signature": {
+        "parameters": [["forward_output", "&Matrix"], ["output_gradient", "&Matrix"], ["dim", "i32"]],
+        "returns": "Matrix",
+        "visibility": "pub(crate)"
+      },
       "kernel_id": "MatrixLogSoftmaxBackwardF32",
       "source": "src/slang/matrix/reduce/log_softmax_backward.slang",
       "variant": "generic",
@@ -233,6 +253,11 @@
     {
       "stable_id": 120,
       "name": "sum",
+      "signature": {
+        "parameters": [["input", "&Matrix"], ["dim", "i32"]],
+        "returns": "Matrix",
+        "visibility": "pub"
+      },
       "autograd": {
         "mode": "generated",
         "family": "reduce",
@@ -316,6 +341,11 @@
     {
       "stable_id": 122,
       "name": "sum_backward",
+      "signature": {
+        "parameters": [["input", "&Matrix"], ["output_gradient", "&Matrix"], ["dim", "i32"]],
+        "returns": "Matrix",
+        "visibility": "pub(crate)"
+      },
       "kernel_id": "MatrixSumBackwardF32",
       "source": "src/slang/matrix/reduce/sum_backward.slang",
       "variant": "generic",
@@ -357,6 +387,11 @@
     {
       "stable_id": 310,
       "name": "categorical_accuracy_count",
+      "signature": {
+        "parameters": [["logits", "&Matrix"], ["labels", "&Matrix"]],
+        "returns": "Matrix",
+        "visibility": "pub"
+      },
       "kernel_id": "MatrixCategoricalAccuracyCountF32",
       "source": "src/slang/matrix/reduce/categorical_accuracy_count.slang",
       "variant": "generic",
@@ -396,6 +431,11 @@
     {
       "stable_id": 234,
       "name": "masked_categorical_accuracy_count",
+      "signature": {
+        "parameters": [["logits", "&Matrix"], ["labels", "&Matrix"], ["mask", "&Matrix"]],
+        "returns": "Matrix",
+        "visibility": "pub"
+      },
       "kernel_id": "MatrixMaskedCategoricalAccuracyCountF32",
       "source": "src/slang/matrix/reduce/masked_categorical_accuracy_count.slang",
       "variant": "generic",

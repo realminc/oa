@@ -68,7 +68,7 @@ impl GradientTape {
 		let mut gradients = HashMap::<u64, Matrix>::new();
 		gradients.insert(
 			root.value_id(),
-			Matrix::from_slice_handle(&engine, vec![], &[1.0_f32])?,
+			Matrix::new_from_slice_handle(&engine, vec![], &[1.0_f32])?,
 		);
 		for entry in nodes.iter().rev() {
 			let node = &entry.node;
@@ -616,6 +616,23 @@ impl GradientTape {
 					accumulate_value_gradient(&mut gradients, key.value_id(), key_gradient)?;
 					accumulate_value_gradient(&mut gradients, value.value_id(), value_gradient)?;
 				}
+				GradNode::LinearAttention(node) => {
+					let Some(output_gradient) = gradients.remove(&node.output.value_id()) else {
+						continue;
+					};
+					let (dq, dk, dv) = ml_matrix::causal_linear_attention_backward(
+						&node.query,
+						&node.key,
+						&node.value,
+						&node.output,
+						&node.denominator,
+						&output_gradient,
+						node.epsilon,
+					)?;
+					accumulate_value_gradient(&mut gradients, node.query.value_id(), dq)?;
+					accumulate_value_gradient(&mut gradients, node.key.value_id(), dk)?;
+					accumulate_value_gradient(&mut gradients, node.value.value_id(), dv)?;
+				}
 				GradNode::FlashAttention {
 					query,
 					key,
@@ -1036,7 +1053,7 @@ fn take_or_zero_gradient(gradients: &mut HashMap<u64, Matrix>, output: &Matrix) 
 	if let Some(gradient) = gradients.remove(&output.value_id()) {
 		return Ok(gradient);
 	}
-	Matrix::from_slice_handle(
+	Matrix::new_from_slice_handle(
 		output.engine_handle(),
 		output.shape().to_vec(),
 		&vec![0.0_f32; output.element_count()],

@@ -94,7 +94,7 @@ impl VideoFrameTiming {
 	/// Construct checked microsecond timing used by OA's current media boundary.
 	///
 	/// A zero `duration_microseconds` means that duration is unknown.
-	pub fn from_microseconds(
+	pub fn new_from_microseconds(
 		presentation_timestamp_microseconds: u64,
 		duration_microseconds: u64,
 	) -> Self {
@@ -172,7 +172,11 @@ impl VideoFrame {
 	///
 	/// Returns an error when `image` has a batch extent other than one or a zero
 	/// spatial extent.
-	pub fn from_image(image: Image, timing: VideoFrameTiming, color: VideoColorInfo) -> Result<Self> {
+	pub fn new_from_image(
+		image: Image,
+		timing: VideoFrameTiming,
+		color: VideoColorInfo,
+	) -> Result<Self> {
 		if image.batch_size() != 1 {
 			return Err(Error::invalid_argument(format!(
 				"video frame requires one image, but the batch extent is {}",
@@ -202,7 +206,7 @@ impl VideoFrame {
 	///
 	/// Returns an error for invalid 4:2:0 geometry, arithmetic overflow, or a
 	/// byte count other than `width * height * 3 / 2`.
-	pub fn from_yuv420p(
+	pub fn new_from_yuv420p(
 		bytes: Vec<u8>,
 		width: usize,
 		height: usize,

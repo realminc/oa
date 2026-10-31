@@ -28,7 +28,7 @@ fn root_muxer_export_is_the_video_session_identity() {
 fn h264_muxer_streams_and_finalizes_a_demuxable_mp4() -> oa::Result<()> {
 	let path = temporary_mp4("h264_roundtrip");
 	let config = VideoMuxerConfig::new(VideoCodec::H264, 320, 240)?;
-	let mut muxer = VideoMuxer::create(&path, config)?;
+	let mut muxer = VideoMuxer::new(&path, config)?;
 	let sps = [0x67, 0x42, 0x00, 0x1e, 0xf4, 0x05, 0x01, 0x7f, 0xca, 0x80];
 	let pps = [0x68, 0xce, 0x38, 0x80];
 	muxer.set_h264_codec_config(&sps, &pps)?;
@@ -77,7 +77,7 @@ fn h264_muxer_streams_and_finalizes_a_demuxable_mp4() -> oa::Result<()> {
 #[test]
 fn close_abandons_without_implicit_finalization() -> oa::Result<()> {
 	let path = temporary_mp4("abandon");
-	let mut muxer = VideoMuxer::create(&path, VideoMuxerConfig::new(VideoCodec::H264, 16, 16)?)?;
+	let mut muxer = VideoMuxer::new(&path, VideoMuxerConfig::new(VideoCodec::H264, 16, 16)?)?;
 	muxer.close();
 	muxer.close();
 	let error = match VideoDemuxer::open(&path) {
@@ -98,7 +98,7 @@ fn optional_pcm_packets_create_a_second_track() -> oa::Result<()> {
 		channel_count: 2,
 		priming_frames: 1,
 	});
-	let mut muxer = VideoMuxer::create(&path, config)?;
+	let mut muxer = VideoMuxer::new(&path, config)?;
 	muxer.set_h264_codec_config(
 		&[0x67, 0x42, 0x00, 0x1e, 0xf4, 0x05, 0x01, 0x7f, 0xca, 0x80],
 		&[0x68, 0xce, 0x38, 0x80],
@@ -122,7 +122,7 @@ fn optional_pcm_packets_create_a_second_track() -> oa::Result<()> {
 #[test]
 fn signed_composition_offsets_preserve_decode_and_display_order() -> oa::Result<()> {
 	let path = temporary_mp4("composition_order");
-	let mut muxer = VideoMuxer::create(&path, VideoMuxerConfig::new(VideoCodec::H264, 16, 16)?)?;
+	let mut muxer = VideoMuxer::new(&path, VideoMuxerConfig::new(VideoCodec::H264, 16, 16)?)?;
 	muxer.set_h264_codec_config(
 		&[0x67, 0x42, 0x00, 0x1e, 0xf4, 0x05, 0x01, 0x7f, 0xca, 0x80],
 		&[0x68, 0xce, 0x38, 0x80],
@@ -133,7 +133,7 @@ fn signed_composition_offsets_preserve_decode_and_display_order() -> oa::Result<
 		(33_333, 66_666, false),
 		(66_666, 99_999, false),
 	] {
-		muxer.write_packet(&EncodedVideoPacket::with_timestamps(
+		muxer.write_packet(&EncodedVideoPacket::new_with_timestamps(
 			vec![0, 0, 1, if keyframe { 0x65 } else { 0x41 }, 0x80],
 			presentation,
 			decode,
@@ -177,7 +177,7 @@ fn muxes_h264_and_h265_donor_packets() -> oa::Result<()> {
 			VideoCodec::H265 => "h265_donor",
 			_ => unreachable!("test only covers AVC and HEVC"),
 		});
-		let mut muxer = VideoMuxer::create(
+		let mut muxer = VideoMuxer::new(
 			&path,
 			VideoMuxerConfig::new(codec, info.width(), info.height())?,
 		)?;
@@ -203,7 +203,7 @@ fn muxes_h264_and_h265_donor_packets() -> oa::Result<()> {
 		for packet in &packets {
 			let bitstream = strip_parameter_sets(packet.data(), codec)?;
 			let time_base = info.time_base();
-			muxer.write_packet(&EncodedVideoPacket::with_timestamps(
+			muxer.write_packet(&EncodedVideoPacket::new_with_timestamps(
 				bitstream,
 				to_micros(packet.presentation_timestamp(), time_base),
 				to_micros(packet.decode_timestamp(), time_base),

@@ -13,7 +13,7 @@ class AudioConstructorTest(unittest.TestCase):
 
 	def _stereo(self) -> oa.Audio:
 		# 4 stereo samples (channels first / planar): L=[0.1, 0.2, 0.3, 0.4] R=[0.5, 0.6, 0.7, 0.8]
-		return oa.Audio.from_planar_f32(
+		return oa.Audio.new_from_planar_f32(
 			self.engine,
 			[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
 			channels=2,
@@ -22,7 +22,7 @@ class AudioConstructorTest(unittest.TestCase):
 		)
 
 	def _mono(self) -> oa.Audio:
-		return oa.Audio.from_planar_f32(
+		return oa.Audio.new_from_planar_f32(
 			self.engine,
 			[0.0, 0.25, 0.5, 0.75, 1.0, 0.75, 0.5, 0.25],
 			channels=1,
@@ -56,7 +56,7 @@ class AudioDspTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
 		cls.engine = oa.Engine()
-		cls.mono = oa.Audio.from_planar_f32(
+		cls.mono = oa.Audio.new_from_planar_f32(
 			cls.engine,
 			[0.0, 0.1, 0.2, 0.3, 0.4, 0.3, 0.2, 0.1],
 			channels=1,
@@ -99,19 +99,19 @@ class AudioDspTest(unittest.TestCase):
 		self.assertEqual(result.samples, self.mono.samples)
 
 	def test_mix_combines_two_signals(self) -> None:
-		other = oa.Audio.from_planar_f32(
+		other = oa.Audio.new_from_planar_f32(
 			self.engine,
 			[0.1] * 8,
 			channels=1,
 			sample_rate=8000,
 			layout="mono",
 		)
-		result = oa.audio.mix(self.mono, other, gain_a=1.0, gain_b=1.0)
+		result = oa.audio.mix(self.mono, other, gain_left=1.0, gain_right=1.0)
 		self.assertIsInstance(result, oa.Audio)
 		self.assertEqual(result.samples, 8)
 
 	def test_normalize_peak_does_not_increase_beyond_target(self) -> None:
-		loud = oa.Audio.from_planar_f32(
+		loud = oa.Audio.new_from_planar_f32(
 			self.engine,
 			[0.01] * 8,
 			channels=1,
@@ -129,7 +129,7 @@ class AudioFeatureTest(unittest.TestCase):
 		# 512 samples of a 440 Hz tone at 8000 Hz sample rate
 		import math as _math
 		samples = [_math.sin(2 * _math.pi * 440 * i / 8000) for i in range(512)]
-		cls.tone = oa.Audio.from_planar_f32(
+		cls.tone = oa.Audio.new_from_planar_f32(
 			cls.engine, samples, channels=1, sample_rate=8000, layout="mono"
 		)
 
@@ -174,7 +174,7 @@ class AudioBiquadTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
 		cls.engine = oa.Engine()
-		cls.mono = oa.Audio.from_planar_f32(
+		cls.mono = oa.Audio.new_from_planar_f32(
 			cls.engine,
 			[0.0, 1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0],
 			channels=1,
@@ -226,7 +226,7 @@ class AudioCodecTest(unittest.TestCase):
 		self.assertGreater(len(result), 44)  # at least WAV header
 
 	def test_encode_wav_f32_roundtrip_length(self) -> None:
-		audio = oa.Audio.from_planar_f32(
+		audio = oa.Audio.new_from_planar_f32(
 			self.engine,
 			[0.0, 0.5, 1.0, 0.5, 0.0],
 			channels=1,

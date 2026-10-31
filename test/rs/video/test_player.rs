@@ -203,7 +203,7 @@ fn player_composes_decode_pacing_eos_seek_and_close() -> oa::Result<()> {
 #[ignore = "requires Vulkan H.264 hardware and OA donor fixture"]
 fn native_player_retains_decoder_frames_without_host_pixels() -> oa::Result<()> {
 	let engine = Engine::new()?;
-	let mut player = VideoPlayer::open_native(
+	let mut player = VideoPlayer::new_native(
 		&engine,
 		donor_h264_fixture(),
 		VideoPlayerConfig {

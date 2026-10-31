@@ -7,7 +7,10 @@
 mod audio;
 mod capture;
 mod codec;
+mod device;
 mod encoder;
+#[path = "audio/audio.gen.rs"]
+mod methods;
 mod player;
 #[path = "audio/signal.gen.rs"]
 mod signal;
@@ -28,3 +31,6 @@ pub use signal::{
 	to_mono, waveform_envelope,
 };
 pub use transform::{MelConfig, MfccConfig, StftConfig, StftWindow, mel_spectrogram, mfcc, stft};
+
+#[path = "audio/parity.gen.rs"]
+mod parity;

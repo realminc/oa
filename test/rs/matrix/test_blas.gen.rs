@@ -44,8 +44,8 @@ test_vk!(generated_mat_mul_nt_matches_schema_oracle, engine, {
 		let left_values = values(m * k, 3);
 		let right_values = values(n * k, 11);
 		let expected = cpu_mat_mul_nt(&left_values, &right_values, m, n, k);
-		let left = oa::Matrix::from_f32(&engine, [m, k], &left_values)?;
-		let right = oa::Matrix::from_f32(&engine, [n, k], &right_values)?;
+		let left = oa::Matrix::new_from_f32(&engine, [m, k], &left_values)?;
+		let right = oa::Matrix::new_from_f32(&engine, [n, k], &right_values)?;
 		let output = oa::matrix::mat_mul_nt(&left, &right)?;
 		assert_eq!(output.shape(), [m, n]);
 		assert_eq!(output.dtype(), oa::DType::F32);
@@ -56,11 +56,11 @@ test_vk!(generated_mat_mul_nt_matches_schema_oracle, engine, {
 
 test_vk!(generated_mat_mul_nt_rejects_invalid_contracts, engine, {
 	let other_engine = oa::Engine::new()?;
-	let rank_one = oa::Matrix::from_f32(&engine, [6], &[0.0; 6])?;
-	let left = oa::Matrix::from_f32(&engine, [2, 3], &[0.0; 6])?;
-	let wrong_k = oa::Matrix::from_f32(&engine, [2, 4], &[0.0; 8])?;
-	let integer = oa::Matrix::from_slice(&engine, [2, 3], &[0_i32; 6])?;
-	let foreign = oa::Matrix::from_f32(&other_engine, [2, 3], &[0.0; 6])?;
+	let rank_one = oa::Matrix::new_from_f32(&engine, [6], &[0.0; 6])?;
+	let left = oa::Matrix::new_from_f32(&engine, [2, 3], &[0.0; 6])?;
+	let wrong_k = oa::Matrix::new_from_f32(&engine, [2, 4], &[0.0; 8])?;
+	let integer = oa::Matrix::new_from_slice(&engine, [2, 3], &[0_i32; 6])?;
+	let foreign = oa::Matrix::new_from_f32(&other_engine, [2, 3], &[0.0; 6])?;
 
 	for error in [
 		oa::matrix::mat_mul_nt(&rank_one, &left)

@@ -17,8 +17,8 @@ pub(super) struct ComposeImage {
 	pub(super) height: u32,
 	engine_handle: crate::runtime::EngineHandle,
 	/// Raw Vulkan image handle retained for barrier commands.
-	raw_image: ash::vk::Image,
-	layout: Cell<ash::vk::ImageLayout>,
+	raw_image: vk::Image,
+	layout: Cell<vk::ImageLayout>,
 }
 
 impl ComposeImage {
@@ -34,19 +34,19 @@ impl ComposeImage {
 			height,
 			engine_handle: engine.clone(),
 			raw_image,
-			layout: Cell::new(ash::vk::ImageLayout::UNDEFINED),
+			layout: Cell::new(vk::ImageLayout::UNDEFINED),
 		})
 	}
 
-	pub(super) const fn raw_image(&self) -> ash::vk::Image {
+	pub(super) const fn raw_image(&self) -> vk::Image {
 		self.raw_image
 	}
 
-	pub(super) fn layout(&self) -> ash::vk::ImageLayout {
+	pub(super) fn layout(&self) -> vk::ImageLayout {
 		self.layout.get()
 	}
 
-	pub(super) fn set_layout(&self, layout: ash::vk::ImageLayout) {
+	pub(super) fn set_layout(&self, layout: vk::ImageLayout) {
 		self.layout.set(layout);
 	}
 }

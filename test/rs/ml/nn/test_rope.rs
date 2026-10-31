@@ -75,7 +75,7 @@ fn numerical_gradient(values: &[f32], loss: impl Fn(&[f32]) -> f32) -> Vec<f32> 
 
 test_vk!(rope_matches_forward_and_reverse_oracles, engine, {
 	let values = [0.2_f32, -0.4, 0.8, 1.1, -0.7, 0.3, 0.5, -0.2];
-	let input = oa::Matrix::from_f32(&engine, [2, 4], &values)?;
+	let input = oa::Matrix::new_from_f32(&engine, [2, 4], &values)?;
 	let output = oa::ml::matrix::rope(&input, 1, 4, 100.0, 3)?;
 	assert_close(
 		&output.read_f32()?,
@@ -90,13 +90,13 @@ test_vk!(rope_matches_forward_and_reverse_oracles, engine, {
 		host_loss(candidate, &linear_weight, &linear_bias, &targets)
 	});
 	let embedding =
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 4], &values)?)?;
-	let linear = oa::ml::nn::Linear::from_matrices(
-		oa::Matrix::from_f32(&engine, [2, 4], &linear_weight)?,
-		oa::Matrix::from_f32(&engine, [2], &linear_bias)?,
+		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(&engine, [2, 4], &values)?)?;
+	let linear = oa::ml::nn::Linear::new_from_matrices(
+		oa::Matrix::new_from_f32(&engine, [2, 4], &linear_weight)?,
+		oa::Matrix::new_from_f32(&engine, [2], &linear_bias)?,
 	)?;
-	let indices = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
-	let target_matrix = oa::Matrix::from_slice(&engine, [2], &targets)?;
+	let indices = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
+	let target_matrix = oa::Matrix::new_from_slice(&engine, [2], &targets)?;
 	let tape = oa::ml::GradientTape::new();
 	let rotated = oa::ml::matrix::rope(&embedding.forward(&indices)?, 1, 4, 100.0, 3)?;
 	let loss = oa::ml::loss::cross_entropy(&linear.forward(&rotated)?, &target_matrix)?;
@@ -134,7 +134,7 @@ test_vk!(rope_rejects_invalid_contracts, engine, {
 			oa::ErrorKind::InvalidArgument
 		);
 	}
-	let wrong_width = oa::Matrix::from_f32(&engine, [2, 3], &[1.0; 6])?;
+	let wrong_width = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0; 6])?;
 	assert_eq!(
 		oa::ml::matrix::rope(&wrong_width, 1, 4, 100.0, 0)
 			.err()

@@ -326,7 +326,7 @@ pub fn rms_norm_gated_backward(
 			DType::F32,
 		)?
 	} else {
-		Matrix::from_slice_handle(input.engine_handle(), vec![1], &[0.0_f32])?
+		Matrix::new_from_slice_handle(input.engine_handle(), vec![1], &[0.0_f32])?
 	};
 	let bias_gradient = match bias {
 		Some(value) => Some(Matrix::allocate(

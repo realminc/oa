@@ -16,7 +16,7 @@ pub(in crate::runtime) struct TimestampPair {
 
 struct TimestampPairInner {
 	device: Arc<Device>,
-	pool: ash::vk::QueryPool,
+	pool: vk::QueryPool,
 	period_ns: f64,
 	valid_bits: u32,
 }
@@ -28,8 +28,8 @@ impl TimestampPair {
 				"selected Vulkan compute queue does not support device timestamps",
 			));
 		}
-		let create_info = ash::vk::QueryPoolCreateInfo::default()
-			.query_type(ash::vk::QueryType::TIMESTAMP)
+		let create_info = vk::QueryPoolCreateInfo::default()
+			.query_type(vk::QueryType::TIMESTAMP)
 			.query_count(QUERY_COUNT);
 		// SAFETY: `device` is live, the timestamp query count is nonzero, and no
 		// allocation callbacks are installed. The returned pool is owned by the
@@ -47,28 +47,30 @@ impl TimestampPair {
 		})
 	}
 
-	pub(super) fn record_begin(&self, command_buffer: ash::vk::CommandBuffer) {
+	pub(super) fn record_begin(&self, command_buffer: vk::CommandBuffer) -> Result<()> {
 		// SAFETY: the command buffer is recording outside a render/video scope and
 		// belongs to the same device and compute-capable queue family as this pool.
 		// The fresh pool's two queries are first reset to unavailable, then query zero
 		// is written at TOP_OF_PIPE, a single stage valid for a compute queue.
 		unsafe {
-			self
-				.inner
-				.device
-				.raw()
-				.cmd_reset_query_pool(command_buffer, self.inner.pool, 0, QUERY_COUNT);
+			self.inner.device.raw().cmd_reset_query_pool(
+				command_buffer,
+				self.inner.pool,
+				0,
+				QUERY_COUNT,
+			)?;
 			self.inner.device.sync_commands().write_timestamp(
 				self.inner.device.raw(),
 				command_buffer,
-				ash::vk::PipelineStageFlags2::TOP_OF_PIPE,
+				vk::PipelineStageFlagBits2::TOP_OF_PIPE_BIT,
 				self.inner.pool,
 				START_QUERY,
-			);
+			)?;
 		}
+		Ok(())
 	}
 
-	pub(super) fn record_end(&self, command_buffer: ash::vk::CommandBuffer) {
+	pub(super) fn record_end(&self, command_buffer: vk::CommandBuffer) -> Result<()> {
 		// SAFETY: the command buffer is still recording on the pool's compute queue;
 		// query one is unavailable and BOTTOM_OF_PIPE is one queue-valid stage after
 		// the recorded graph region.
@@ -76,11 +78,12 @@ impl TimestampPair {
 			self.inner.device.sync_commands().write_timestamp(
 				self.inner.device.raw(),
 				command_buffer,
-				ash::vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
+				vk::PipelineStageFlagBits2::BOTTOM_OF_PIPE_BIT,
 				self.inner.pool,
 				END_QUERY,
-			);
+			)?;
 		}
+		Ok(())
 	}
 
 	pub(in crate::runtime) fn duration(&self) -> Result<Duration> {
@@ -92,23 +95,26 @@ impl TimestampPair {
 			self.inner.device.raw().get_query_pool_results(
 				self.inner.pool,
 				0,
-				&mut results,
-				ash::vk::QueryResultFlags::TYPE_64,
+				QUERY_COUNT,
+				std::slice::from_raw_parts_mut(
+					results.as_mut_ptr() as *mut u8,
+					results.len() * std::mem::size_of::<u64>(),
+				),
+				std::mem::size_of::<u64>() as vk::DeviceSize,
+				vk::QueryResultFlagBits::_64_BIT,
 			)
 		} {
-			Ok(()) => duration_from_ticks(
+			Ok(vk::Result::SUCCESS) => duration_from_ticks(
 				results[START_QUERY as usize],
 				results[END_QUERY as usize],
 				self.inner.valid_bits,
 				self.inner.period_ns,
 			),
-			Err(ash::vk::Result::NOT_READY) => {
-				Err(Error::not_ready("device timestamp results are not ready"))
-			}
-			Err(source) => Err(Error::backend_failure(
+			Ok(vk::Result::NOT_READY) => Err(Error::not_ready("device timestamp results are not ready")),
+			result => Err(Error::backend_dispatch_failure(
 				"Vulkan",
 				"timestamp readback",
-				source,
+				result,
 			)),
 		}
 	}
@@ -119,9 +125,7 @@ impl Drop for TimestampPairInner {
 		// SAFETY: the final Arc uniquely owns this pool. Command retirement and Event
 		// ownership retain an Arc until the submitted timestamp commands complete,
 		// and the embedded Arc<Device> keeps the logical device alive through destruction.
-		unsafe {
-			self.device.raw().destroy_query_pool(self.pool, None);
-		}
+		let _ = unsafe { self.device.raw().destroy_query_pool(self.pool, None) };
 	}
 }
 

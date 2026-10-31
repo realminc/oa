@@ -222,6 +222,19 @@ class MlSchemaTests(unittest.TestCase):
 				"vq_assign",
 				"vq_lookup",
 				"vq_ema_update",
+				"trading_reset",
+				"trading_step",
+				"causal_linear_attention",
+				"causal_linear_attention_backward",
+				"causal_linear_attention_backward_kv",
+				"minibatch",
+				"minibatch_cursor",
+				"training_accumulate",
+				"append_cursor",
+				"trading_reset_cursor",
+				"trading_step_cursor",
+				"sample_categorical_cursor",
+				"trading_cursor_advance",
 			],
 		)
 		covered = {
@@ -1010,6 +1023,17 @@ class MlSchemaTests(unittest.TestCase):
 		)
 		linear["operations"].remove("linear")
 		with self.assertRaisesRegex(generate.SchemaError, "cover every operation"):
+			self.validate_copy(schema)
+
+	def test_trading_uses_checked_variadic_mutation_tail(self) -> None:
+		step = next(op for op in self.schema["operations"] if op["name"] == "trading_step")
+		self.assertEqual(len(step["contract"]["input_kinds"]), 5)
+		self.assertEqual(step["contract"]["variadic_input"]["minimum"], 7)
+		self.assertTrue(step["contract"]["aligned_variadic_aliases"])
+		schema = copy.deepcopy(self.schema)
+		contract = schema["operations"][0]["contract"]
+		contract["input_kinds"] = ["matrix"] * 9
+		with self.assertRaisesRegex(generate.SchemaError, "fixed arity exceeds"):
 			self.validate_copy(schema)
 
 	def test_new_ml_work_cannot_claim_an_oa_donor(self) -> None:

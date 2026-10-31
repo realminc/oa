@@ -56,6 +56,16 @@ impl<const N: usize> Entropy<N> {
 	}
 }
 
+impl Entropy<32> {
+	/// FIPS 204 deterministic rnd; deliberately unavailable for key generation.
+	pub(crate) fn deterministic_signing() -> Result<Self> {
+		Self::from_source(|bytes| {
+			bytes.fill(0);
+			Ok(())
+		})
+	}
+}
+
 fn consume_bytes<T>(bytes: &mut [u8], consumer: impl FnOnce(&[u8]) -> Result<T>) -> Result<T> {
 	// Already locked by the owner; this borrowed guard adds mandatory erasure
 	// across callback success, error and unwind. Owner Drop erases again before

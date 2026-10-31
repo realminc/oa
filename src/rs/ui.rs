@@ -22,6 +22,7 @@
 
 pub(crate) mod command;
 mod compose_image;
+mod icons;
 mod layout;
 pub mod navigation;
 mod pipeline;
@@ -30,20 +31,24 @@ mod text;
 pub mod types;
 
 use crate::Color;
-use crate::{Error, Result, runtime::EngineHandle};
+use crate::{
+	Error, Result,
+	runtime::{EngineHandle, SyncCommands},
+};
 use command::{UiCmd, UiCmdList, clip_words, div_ceil};
 use compose_image::ComposeImage;
 use layout::{LayoutStack, PanelScope, default_item_height, resolve_width, separator_rect};
-use pipeline::UiPipelines;
+use pipeline::{UiFrameBindings, UiPipelines};
 pub use text::{FontId, GlyphInfo, PositionedGlyph, TextAtlas, TextLayout, TextLayoutConfig};
 pub use types::{
 	NodeCanvas, NodeCanvasState, PixelRect, UI_MOD_ALT, UI_MOD_CTRL, UI_MOD_NONE, UI_MOD_SHIFT,
 	UI_MOD_SUPER, UiAccessibilityRole, UiAccessibilitySnapshot, UiAlign, UiChevronDirection,
 	UiDirection, UiDropdownConfig, UiEdge, UiEvent, UiEventKind, UiGridConfig, UiHeatmapConfig,
-	UiIcon, UiIconButtonStyle, UiInputState, UiKey, UiLayout, UiModifiers, UiPinchPhase,
-	UiPopupConfig, UiPropertyRegion, UiPropertyRowConfig, UiScrollConfig, UiScrollGesture,
-	UiScrollRegion, UiSizing, UiSplitConfig, UiSplitRegion, UiStyle, UiTabBarResult, UiTabBarState,
-	UiTabItem, UiTooltipConfig, UiTreeRowConfig, UiTreeRowResult, UiVirtualRange, classify_scroll,
+	UiIcon, UiIconButtonStyle, UiInputState, UiKey, UiLayout, UiModifiers, UiMotionSpeed,
+	UiPinchPhase, UiPopupConfig, UiPropertyRegion, UiPropertyRowConfig, UiScrollConfig,
+	UiScrollGesture, UiScrollRegion, UiSizing, UiSplitConfig, UiSplitRegion, UiStyle, UiTabBarResult,
+	UiTabBarState, UiTabItem, UiTooltipConfig, UiTreeRowConfig, UiTreeRowResult, UiVirtualRange,
+	classify_scroll,
 };
 
 // ── Ui ────────────────────────────────────────────────────────────────────────
@@ -57,15 +62,30 @@ pub struct Ui<'engine> {
 	pub(crate) state: Option<UiState>,
 }
 
+struct WidgetMotion {
+	start: f32,
+	current: f32,
+	target: f32,
+	elapsed_ms: f32,
+	last_seen: u64,
+}
+
 pub(crate) struct UiState {
 	pub(crate) engine_handle: EngineHandle,
-	pipelines: UiPipelines,
-	compose: ComposeImage,
-	text_atlas: TextAtlas,
+	/// Immutable core/KHR dispatch table; Engine retains the device lifetime.
+	sync_commands: SyncCommands,
+	pipelines: std::rc::Rc<UiPipelines>,
+	compose: std::rc::Rc<ComposeImage>,
+	text_atlas: std::rc::Rc<TextAtlas>,
 	style_stack: Vec<UiStyle>,
 	layout: LayoutStack,
 	pub(crate) cmds: UiCmdList,
 	input: UiInputState,
+	content_scale: f32,
+	motion_speed: UiMotionSpeed,
+	frame_delta_ms: f32,
+	frame_index: u64,
+	widget_motion: std::collections::HashMap<u64, WidgetMotion>,
 	/// Interaction state: focused widget id hash.
 	focused: u64,
 	/// Hovered widget id hash (set during begin_frame routing).
@@ -118,10 +138,13 @@ impl<'engine> Ui<'engine> {
 			let device = handle.raw_device();
 			// The pipeline layout is the engine's shared bindless layout.
 			let layout = handle.ui_pipeline_layout();
-			let pipelines = UiPipelines::new(&device, layout)?;
-			let compose = ComposeImage::new(&handle, width, height)?;
-			let text_atlas = TextAtlas::new(&handle)?;
+			let pipelines = std::rc::Rc::new(handle.with_pipeline_cache(|cache| {
+				UiPipelines::new(&device, layout, handle.ui_uses_bounded_bindings(), cache)
+			})?);
+			let compose = std::rc::Rc::new(ComposeImage::new(&handle, width, height)?);
+			let text_atlas = std::rc::Rc::new(TextAtlas::new(&handle)?);
 			UiState {
+				sync_commands: handle.ui_sync_commands(),
 				engine_handle: handle,
 				pipelines,
 				compose,
@@ -130,6 +153,11 @@ impl<'engine> Ui<'engine> {
 				layout: LayoutStack::default(),
 				cmds: UiCmdList::default(),
 				input: UiInputState::default(),
+				content_scale: 1.0,
+				motion_speed: UiMotionSpeed::Normal,
+				frame_delta_ms: 0.0,
+				frame_index: 0,
+				widget_motion: std::collections::HashMap::new(),
 				focused: 0,
 				hovered: 0,
 				pressed: 0,
@@ -163,17 +191,62 @@ impl<'engine> Ui<'engine> {
 			.as_mut()
 			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
 		let new_compose = ComposeImage::new(&state.engine_handle, width, height)?;
-		state.compose = new_compose;
+		state.compose = std::rc::Rc::new(new_compose);
+		Ok(())
+	}
+
+	/// Logical-to-pixel scale used by donor viewer controls.
+	pub fn content_scale(&self) -> f32 {
+		self.state.as_ref().map_or(1.0, |state| state.content_scale)
+	}
+
+	/// Set the logical-to-framebuffer scale for controls and symbolic icons.
+	pub fn set_content_scale(&mut self, scale: f32) -> Result<()> {
+		if !scale.is_finite() || scale <= 0.0 {
+			return Err(Error::invalid_argument(
+				"Ui content scale must be finite and positive",
+			));
+		}
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		state.content_scale = scale;
+		Ok(())
+	}
+
+	/// Select donor widget transition timing without recreating GPU resources.
+	pub fn set_motion_speed(&mut self, speed: UiMotionSpeed) -> Result<()> {
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		if state.motion_speed != speed {
+			state.motion_speed = speed;
+			for motion in state.widget_motion.values_mut() {
+				motion.start = motion.current;
+				motion.elapsed_ms = 0.0;
+			}
+		}
 		Ok(())
 	}
 
 	// ── Per-frame ──────────────────────────────────────────────────────────────
 
 	/// Begin a new frame.  Must be balanced by `end_frame`.
-	pub fn begin_frame(&mut self, _delta_ms: f32) {
+	pub fn begin_frame(&mut self, delta_ms: f32) {
 		let Some(state) = self.state.as_mut() else {
 			return;
 		};
+		state.frame_delta_ms = if delta_ms.is_finite() {
+			delta_ms.clamp(0.0, 1000.0)
+		} else {
+			0.0
+		};
+		state.frame_index = state.frame_index.wrapping_add(1);
+		state
+			.widget_motion
+			.retain(|_, motion| state.frame_index.wrapping_sub(motion.last_seen) <= 600);
 		state.frame_matrices.clear();
 		state.frame_textures.clear();
 		state.frame_storages.clear();
@@ -224,6 +297,8 @@ impl<'engine> Ui<'engine> {
 				}
 			}
 			UiEventKind::MouseUp => {
+				state.input.pointer_x = event.mouse_x;
+				state.input.pointer_y = event.mouse_y;
 				if event.button == 1 {
 					state.input.l_button = false;
 					state.input.pointer_down = false;
@@ -278,6 +353,9 @@ impl<'engine> Ui<'engine> {
 			return;
 		};
 		state.in_frame = false;
+		if state.input.l_released {
+			state.pressed = 0;
+		}
 		state.input.l_pressed = false;
 		state.input.l_released = false;
 		state.input.scroll_x = 0.0;
@@ -1015,7 +1093,7 @@ impl<'engine> Ui<'engine> {
 			state.hovered = widget_id;
 		}
 		let clicked = hovered && was_pressed_and_released(state, widget_id);
-		if hovered && state.input.pointer_down {
+		if hovered && state.input.l_pressed {
 			state.pressed = widget_id;
 		}
 		if clicked {
@@ -1281,7 +1359,7 @@ impl<'engine> Ui<'engine> {
 				"UI line width must be finite and positive",
 			));
 		}
-		let matrix = crate::Matrix::from_f32(self.engine, [values.len()], values)?;
+		let matrix = crate::Matrix::new_from_f32(self.engine, [values.len()], values)?;
 		let descriptor = matrix
 			.engine_handle()
 			.storage_descriptor_index(matrix.storage())?;
@@ -1494,13 +1572,25 @@ impl<'engine> Ui<'engine> {
 		thickness: u32,
 		clip: PixelRect,
 	) {
+		self.rect_outline_rounded_at(rect, color, thickness, clip, 0.0);
+	}
+
+	/// Draw a rounded outline using the retained compositor.
+	pub fn rect_outline_rounded_at(
+		&mut self,
+		rect: PixelRect,
+		color: Color,
+		thickness: u32,
+		clip: PixelRect,
+		radius: f32,
+	) {
 		if let Some(state) = self.state.as_mut() {
 			state.cmds.push(UiCmd::RectOutline {
 				rect,
 				color,
 				thickness,
 				clip,
-				corner_radius: 0.0,
+				corner_radius: radius,
 			});
 		}
 	}
@@ -1551,7 +1641,8 @@ impl<'engine> Ui<'engine> {
 		}
 
 		// Track.
-		let track_h = (rect.h / 3).max(3);
+		let track_h = (4.0 * state.content_scale).round().max(1.0) as u32;
+		let track_h = track_h.min(rect.h);
 		let track_rect = PixelRect {
 			x: rect.x,
 			y: rect.y + (rect.h - track_h) as i32 / 2,
@@ -1560,7 +1651,10 @@ impl<'engine> Ui<'engine> {
 		};
 		state.cmds.push(UiCmd::Rect {
 			rect: track_rect,
-			color: style.surface,
+			color: Color {
+				a: 0.78,
+				..style.surface
+			},
 			clip,
 			corner_radius: track_h as f32 * 0.5,
 		});
@@ -1581,20 +1675,34 @@ impl<'engine> Ui<'engine> {
 			});
 		}
 		// Thumb.
-		let thumb_r = (rect.h / 2 + 1).max(5);
-		let thumb_cx = rect.x + (rect.w as f32 * frac) as i32;
-		let thumb_rect = PixelRect {
-			x: thumb_cx - thumb_r as i32,
-			y: rect.y + rect.h as i32 / 2 - thumb_r as i32,
-			w: thumb_r * 2,
-			h: thumb_r * 2,
-		};
-		let thumb_color = if dragging { style.accent } else { style.text };
+		let base_diameter = ((20.0 * state.content_scale).round().max(1.0) as u32).min(rect.h);
+		let hover_mix = animate_hover(state, widget_id, hovered);
+		let diameter = ((if dragging {
+			18.0
+		} else {
+			20.0 + 4.0 * hover_mix
+		}) * state.content_scale)
+			.round()
+			.max(1.0) as u32;
+		let diameter = diameter.min(rect.h);
+		let thumb_cx = rect.x
+			+ base_diameter as i32 / 2
+			+ (rect.w.saturating_sub(base_diameter) as f32 * frac).round() as i32;
+		let thumb_rect = PixelRect::new(
+			thumb_cx - diameter as i32 / 2,
+			rect.y + (rect.h - diameter) as i32 / 2,
+			diameter,
+			diameter,
+		);
 		state.cmds.push(UiCmd::Rect {
 			rect: thumb_rect,
-			color: thumb_color,
+			color: if dragging || hovered {
+				style.accent_hover
+			} else {
+				style.text
+			},
 			clip,
-			corner_radius: thumb_r as f32,
+			corner_radius: diameter as f32 * 0.5,
 		});
 		changed
 	}
@@ -2085,17 +2193,32 @@ impl<'engine> Ui<'engine> {
 		let anchor = state.popup_anchor;
 		let style = Self::current_style(state).clone();
 
-		// Close on outside click.
-		let popup_rect = PixelRect {
-			x: anchor.x + anchor.w as i32,
-			y: anchor.y + anchor.h as i32 + config.gap as i32,
-			w: config.width as u32,
-			h: if config.height > 0.0 {
-				config.height as u32
-			} else {
-				200
-			},
+		// Donor placement: anchor left, prefer below, fall back above, then clamp.
+		let width = i64::from(state.compose.width);
+		let height = i64::from(state.compose.height);
+		let margin = 4_i64.min(width.min(height) / 2);
+		let popup_w = (config.width.max(anchor.w as f32) as i64).clamp(1, (width - 2 * margin).max(1));
+		let popup_h = (if config.height > 0.0 {
+			config.height as i64
+		} else {
+			200
+		})
+		.clamp(1, (height - 2 * margin).max(1));
+		let below = i64::from(anchor.y) + i64::from(anchor.h) + config.gap.max(0.0) as i64;
+		let above = i64::from(anchor.y) - config.gap.max(0.0) as i64 - popup_h;
+		let y = if below + popup_h <= height - margin {
+			below
+		} else if above >= margin {
+			above
+		} else {
+			below.clamp(margin, (height - margin - popup_h).max(margin))
 		};
+		let popup_rect = PixelRect::new(
+			i64::from(anchor.x).clamp(margin, (width - margin - popup_w).max(margin)) as i32,
+			y as i32,
+			popup_w as u32,
+			popup_h as u32,
+		);
 		if state.input.l_pressed
 			&& !point_in_rect(state.input.pointer_x, state.input.pointer_y, popup_rect)
 		{
@@ -2120,6 +2243,7 @@ impl<'engine> Ui<'engine> {
 
 		let inner = UiLayout {
 			padding: UiEdge::all(config.padding),
+			gap: 4.0 * state.content_scale,
 			..UiLayout::default()
 		};
 		state.layout.push(PanelScope::new(popup_rect, inner));
@@ -2142,10 +2266,17 @@ impl<'engine> Ui<'engine> {
 		};
 		let style = Self::current_style(state).clone();
 		let id = widget_hash(label, state.layout.top().map(|s| s.outer));
-		let (rect, clip) = allocate_widget(state, style.padding);
+		let height = ((style.font_size + 8.0) * state.content_scale)
+			.ceil()
+			.max(1.0) as u32;
+		let (rect, clip) = allocate_widget_explicit(state, style.padding, height);
 
-		let hovered = point_in_rect(state.input.pointer_x, state.input.pointer_y, rect);
-		let activated = enabled && hovered && was_pressed_and_released(state, id);
+		let hovered = enabled && point_in_rect(state.input.pointer_x, state.input.pointer_y, rect);
+		if hovered && state.input.l_pressed {
+			state.pressed = id;
+		}
+		let held = enabled && state.pressed == id && state.input.pointer_down;
+		let activated = hovered && state.input.l_released && state.pressed == id;
 		if activated {
 			// Close popup on selection.
 			state.popup_open = 0;
@@ -2156,13 +2287,17 @@ impl<'engine> Ui<'engine> {
 
 		let bg = if selected {
 			Color::new(
-				style.accent.r * 0.25,
-				style.accent.g * 0.25,
-				style.accent.b * 0.35,
-				1.0,
+				style.accent.r,
+				style.accent.g,
+				style.accent.b,
+				if hovered { 0.35 } else { 0.22 },
 			)
-		} else if hovered && enabled {
-			style.surface
+		} else if hovered || held {
+			if held {
+				style.surface_active
+			} else {
+				style.surface_hover
+			}
 		} else {
 			Color::new(0.0, 0.0, 0.0, 0.0)
 		};
@@ -2171,20 +2306,35 @@ impl<'engine> Ui<'engine> {
 				rect,
 				color: bg,
 				clip,
-				corner_radius: 0.0,
+				corner_radius: (style.corner_radius * 0.65).min(rect.h as f32 * 0.5),
 			});
 		}
 		let text_color = if enabled {
 			style.text
 		} else {
-			style.text_secondary
+			style.text_disabled
 		};
 		let cfg = TextLayoutConfig {
 			font: FontId::Sans,
-			size: style.font_size - 1.0,
+			size: style.font_size * state.content_scale,
 			..Default::default()
 		};
-		Self::emit_text_or_record(state, label, rect, text_color, cfg);
+		if selected {
+			state.cmds.push(UiCmd::Rect {
+				rect: PixelRect::new(rect.x, rect.y, rect.w.min(3), rect.h),
+				color: style.accent,
+				clip,
+				corner_radius: 1.5,
+			});
+		}
+		let padding = ((6.0 + if selected { 4.0 } else { 0.0 }) * state.content_scale).round() as u32;
+		let text_rect = PixelRect::new(
+			rect.x + padding as i32,
+			rect.y,
+			rect.w.saturating_sub(padding),
+			rect.h,
+		);
+		Self::emit_text_or_record(state, label, text_rect, text_color, cfg);
 		activated
 	}
 
@@ -2522,12 +2672,8 @@ impl<'engine> Ui<'engine> {
 
 	// ── Tier 3: Specialized buttons ───────────────────────────────────────────
 
-	/// Icon button.  Returns `true` on click.
-	///
-	/// Renders a small square button with a Unicode stand-in glyph for the
-	/// requested icon.  GPU icon sprites are not yet in the atlas; the label
-	/// character is a legible fallback.
-	///
+	/// Donor geometric icon button with circular hover fill and cubic transitions.
+	/// Icons use GPU lines, outlines and filled triangles, never Unicode substitutes.
 	/// Donor: `oa::Ui::iconButton`.
 	pub fn icon_button(
 		&mut self,
@@ -2540,58 +2686,382 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return false;
 		};
-		let style = Self::current_style(state).clone();
+		if rect.w == 0
+			|| rect.h == 0
+			|| rect.w > state.compose.width
+			|| rect.h > state.compose.height
+			|| rect.w > i32::MAX as u32
+			|| rect.h > i32::MAX as u32
+			|| rect.x.checked_add(rect.w as i32).is_none()
+			|| rect.y.checked_add(rect.h as i32).is_none()
+		{
+			if state.recording_error.is_none() {
+				state.recording_error = Some(Error::invalid_argument(
+					"icon_button requires bounded nonempty geometry",
+				));
+			}
+			return false;
+		}
 		let widget_id = widget_hash(id, Some(rect));
-		let clip = rect;
-
 		let hovered = enabled && point_in_rect(state.input.pointer_x, state.input.pointer_y, rect);
-		let activated = hovered && was_pressed_and_released(state, widget_id);
 		if hovered {
 			state.hovered = widget_id;
 		}
-		if hovered && state.input.pointer_down {
+		if hovered && state.input.l_pressed {
 			state.pressed = widget_id;
 		}
-
-		let bg = match style_kind {
-			UiIconButtonStyle::Overlay => Color::new(0.0, 0.0, 0.0, if hovered { 0.55 } else { 0.35 }),
-			UiIconButtonStyle::Header => {
-				if hovered {
-					style.surface
-				} else {
-					Color::new(0.0, 0.0, 0.0, 0.0)
-				}
-			}
-			UiIconButtonStyle::WindowControl => {
-				if hovered {
-					style.surface
-				} else {
-					Color::new(0.0, 0.0, 0.0, 0.0)
-				}
-			}
+		let activated = hovered && state.input.l_released && state.pressed == widget_id;
+		let held = enabled && state.pressed == widget_id && state.input.pointer_down;
+		let hover_mix = animate_hover(state, widget_id, hovered);
+		let window_control = style_kind == UiIconButtonStyle::WindowControl;
+		let inset = if window_control {
+			(5.0 * state.content_scale).round() as u32
+		} else {
+			0
 		};
-		if bg.a > 0.0 {
+		let fill_rect = if inset.saturating_mul(2) < rect.w.min(rect.h) {
+			PixelRect::new(
+				rect.x + inset as i32,
+				rect.y + inset as i32,
+				rect.w - inset * 2,
+				rect.h - inset * 2,
+			)
+		} else {
+			rect
+		};
+		let fill_alpha = if !enabled {
+			0.0
+		} else if held || activated {
+			0.30
+		} else {
+			0.15 * hover_mix
+		};
+		if fill_alpha > 0.0 {
 			state.cmds.push(UiCmd::Rect {
-				rect,
-				color: bg,
-				clip,
-				corner_radius: style.corner_radius,
+				rect: fill_rect,
+				color: Color::new(1.0, 1.0, 1.0, fill_alpha),
+				clip: rect,
+				corner_radius: fill_rect.w.min(fill_rect.h) as f32 * 0.5,
 			});
 		}
-
-		let glyph = icon_glyph(icon);
-		let text_color = if enabled {
-			style.text
+		if state.focused == widget_id {
+			state.cmds.push(UiCmd::RectOutline {
+				rect,
+				color: Self::current_style(state).accent,
+				thickness: 1,
+				clip: rect,
+				corner_radius: rect.w.min(rect.h) as f32 * 0.5,
+			});
+		}
+		let alpha = if !enabled {
+			0.38
+		} else if style_kind == UiIconButtonStyle::Overlay {
+			0.94
+		} else if held || activated {
+			1.0
 		} else {
-			style.text_secondary
+			0.68 + 0.32 * hover_mix
 		};
-		let cfg = TextLayoutConfig {
-			font: FontId::SansSemibold,
-			size: style.font_size,
-			..Default::default()
+		let color = Color::new(1.0, 1.0, 1.0, alpha);
+		let transport = if enabled {
+			Color::new(1.0, 1.0, 1.0, 1.0)
+		} else {
+			color
 		};
-		Self::emit_text_or_record(state, glyph, rect, text_color, cfg);
+		let viewport = PixelRect::new(0, 0, state.compose.width, state.compose.height);
+		let clip = state
+			.layout
+			.top()
+			.map_or(viewport, |panel| viewport.clip(&panel.clip()))
+			.clip(&rect);
+		if clip.w != 0 && clip.h != 0 {
+			icons::draw(
+				&mut state.cmds,
+				rect,
+				clip,
+				icon,
+				state.content_scale,
+				window_control,
+				[color, transport],
+			);
+		}
 		activated
+	}
+
+	/// Render a dense FP32 matrix directly on the GPU, retaining its storage.
+	/// Donor: Ui::heatmap/drawHeatmap.slang. Explicit limits avoid host auto-scaling.
+	pub fn heatmap_matrix_at(
+		&mut self,
+		values: &crate::Matrix,
+		rect: PixelRect,
+		range: [f32; 2],
+		colormap: u32,
+	) -> Result<()> {
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		if values.dtype() != crate::DType::F32
+			|| values.shape().len() != 2
+			|| values.shape().contains(&0)
+			|| !values.engine_handle().same_as(&state.engine_handle)
+			|| !range.iter().all(|v| v.is_finite())
+			|| range[0] >= range[1]
+			|| colormap > 3
+		{
+			return Err(Error::invalid_argument(
+				"heatmap requires an owned dense FP32 matrix and finite increasing range",
+			));
+		}
+		let rows = u32::try_from(values.shape()[0])
+			.map_err(|_| Error::out_of_range("heatmap rows exceed u32"))?;
+		let cols = u32::try_from(values.shape()[1])
+			.map_err(|_| Error::out_of_range("heatmap columns exceed u32"))?;
+		if rect.w == 0
+			|| rect.h == 0
+			|| rect.w > state.compose.width
+			|| rect.h > state.compose.height
+			|| rect
+				.x
+				.checked_add(
+					i32::try_from(rect.w).map_err(|_| Error::out_of_range("heatmap width exceeds i32"))?,
+				)
+				.is_none()
+			|| rect
+				.y
+				.checked_add(
+					i32::try_from(rect.h).map_err(|_| Error::out_of_range("heatmap height exceeds i32"))?,
+				)
+				.is_none()
+			|| u64::from(rows) * u64::from(cols) > u64::from(u32::MAX / 4)
+			|| cols.checked_mul(rect.w).is_none()
+			|| rows.checked_mul(rect.h).is_none()
+		{
+			return Err(Error::out_of_range(
+				"heatmap geometry or indexing exceeds donor ABI",
+			));
+		}
+		let viewport = PixelRect::new(0, 0, state.compose.width, state.compose.height);
+		let clip = state
+			.layout
+			.top()
+			.map_or(viewport, |panel| viewport.clip(&panel.clip()))
+			.clip(&rect);
+		let values_idx = state
+			.engine_handle
+			.storage_descriptor_index(values.storage())?;
+		let push = [
+			values_idx,
+			rows,
+			cols,
+			0,
+			rect.x as u32,
+			rect.y as u32,
+			rect.w,
+			rect.h,
+			range[0].to_bits(),
+			range[1].to_bits(),
+			colormap,
+			0,
+			0,
+			0,
+			clip.x as u32,
+			clip.y as u32,
+			clip.w,
+			clip.h,
+		];
+		state.cmds.push(UiCmd::Heatmap {
+			values_idx,
+			rect,
+			push,
+		});
+		state.frame_matrices.push(values.clone());
+		Ok(())
+	}
+
+	/// Render a retained `[bins, 2]` min/max envelope without readback.
+	/// Donor: Ui::waveformTimeline/drawWaveform.slang; fraction marks playback.
+	pub fn waveform_matrix_at(
+		&mut self,
+		values: &crate::Matrix,
+		rect: PixelRect,
+		fraction: f32,
+		played: Color,
+		remaining: Color,
+	) -> Result<()> {
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		if values.dtype() != crate::DType::F32
+			|| values.shape().len() != 2
+			|| values.shape()[1] != 2
+			|| values.shape()[0] == 0
+			|| !values.engine_handle().same_as(&state.engine_handle)
+			|| !fraction.is_finite()
+			|| !played
+				.to_array()
+				.iter()
+				.chain(remaining.to_array().iter())
+				.all(|v| v.is_finite())
+		{
+			return Err(Error::invalid_argument(
+				"waveform requires an owned FP32 [bins, 2] envelope and finite colors/fraction",
+			));
+		}
+		let bins = u32::try_from(values.shape()[0])
+			.map_err(|_| Error::out_of_range("waveform bins exceed u32"))?;
+		if rect.w == 0
+			|| rect.h == 0
+			|| rect.w > state.compose.width
+			|| rect.h > state.compose.height
+			|| rect
+				.x
+				.checked_add(
+					i32::try_from(rect.w).map_err(|_| Error::out_of_range("waveform width exceeds i32"))?,
+				)
+				.is_none()
+			|| rect
+				.y
+				.checked_add(
+					i32::try_from(rect.h).map_err(|_| Error::out_of_range("waveform height exceeds i32"))?,
+				)
+				.is_none()
+			|| bins > u32::MAX / 8
+			|| bins.checked_mul(rect.w).is_none()
+		{
+			return Err(Error::out_of_range(
+				"waveform geometry or indexing exceeds donor ABI",
+			));
+		}
+		let viewport = PixelRect::new(0, 0, state.compose.width, state.compose.height);
+		let clip = state
+			.layout
+			.top()
+			.map_or(viewport, |panel| viewport.clip(&panel.clip()))
+			.clip(&rect);
+		let values_idx = state
+			.engine_handle
+			.storage_descriptor_index(values.storage())?;
+		let push = [
+			values_idx,
+			bins,
+			0,
+			rect.x as u32,
+			rect.y as u32,
+			rect.w,
+			rect.h,
+			fraction.clamp(0.0, 1.0).to_bits(),
+			played.to_u32(),
+			remaining.to_u32(),
+			clip.x as u32,
+			clip.y as u32,
+			clip.w,
+			clip.h,
+		];
+		state.cmds.push(UiCmd::Waveform {
+			values_idx,
+			rect,
+			push,
+		});
+		state.frame_matrices.push(values.clone());
+		Ok(())
+	}
+
+	/// GPU envelope scrubber with the donor min/max bars and playhead.
+	/// Donor: `oa::Ui::waveformTimeline`; source storage is retained until completion.
+	pub fn waveform_matrix_timeline(
+		&mut self,
+		id: &str,
+		rect: PixelRect,
+		values: &crate::Matrix,
+		fraction: &mut f32,
+	) -> Result<bool> {
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		let widget_id = widget_hash(id, Some(rect));
+		let hovered = point_in_rect(state.input.pointer_x, state.input.pointer_y, rect);
+		if hovered {
+			state.hovered = widget_id;
+		}
+		if hovered && state.input.l_pressed {
+			state.pressed = widget_id;
+			state.focused = widget_id;
+		}
+		let held = state.pressed == widget_id && state.input.pointer_down;
+		let activated = hovered && state.input.l_released && state.pressed == widget_id;
+		let mut changed = false;
+		if held || activated {
+			let next = ((state.input.pointer_x - rect.x as f32) / rect.w.max(1) as f32).clamp(0.0, 1.0);
+			changed = next != *fraction;
+			*fraction = next;
+		}
+		let style = Self::current_style(state).clone();
+		let scale = state.content_scale;
+		let remaining = Color {
+			a: 0.60,
+			..style.text_secondary
+		};
+		self.waveform_matrix_at(values, rect, *fraction, style.accent, remaining)?;
+		let base = ((20.0 * scale).round().max(1.0) as u32).min(rect.h);
+		let center = rect.x
+			+ base as i32 / 2
+			+ (rect.w.saturating_sub(base) as f32 * fraction.clamp(0.0, 1.0)).round() as i32;
+		let width = ((if hovered || held { 3.0 } else { 2.0 }) * scale)
+			.round()
+			.max(1.0) as u32;
+		let width = width.min(rect.w);
+		let x = (center - width as i32 / 2).clamp(rect.x, rect.x + rect.w as i32 - width as i32);
+		self.rect_raw(
+			PixelRect::new(x, rect.y, width, rect.h),
+			if hovered || held {
+				style.accent_hover
+			} else {
+				style.text
+			},
+			rect,
+			0.0,
+		);
+		Ok(changed)
+	}
+
+	/// Apply the donor premultiplied rounded mask after drawing a viewport.
+	pub fn mask_rounded_rect(&mut self, rect: PixelRect, radius: f32, outside: Color) -> Result<()> {
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		if rect.w == 0
+			|| rect.h == 0
+			|| rect.w > state.compose.width
+			|| rect.h > state.compose.height
+			|| rect.x.checked_add(rect.w as i32).is_none()
+			|| rect.y.checked_add(rect.h as i32).is_none()
+			|| !radius.is_finite()
+			|| radius < 0.0
+			|| !outside.to_array().iter().all(|v| v.is_finite())
+		{
+			return Err(Error::invalid_argument(
+				"rounded mask requires bounded geometry and finite radius/color",
+			));
+		}
+		let viewport = PixelRect::new(0, 0, state.compose.width, state.compose.height);
+		let clip = state
+			.layout
+			.top()
+			.map_or(viewport, |panel| viewport.clip(&panel.clip()))
+			.clip(&rect);
+		if clip.w != 0 && clip.h != 0 {
+			state.cmds.push(UiCmd::RoundedMask {
+				rect,
+				radius,
+				outside,
+				clip,
+			});
+		}
+		Ok(())
 	}
 
 	/// Chevron (prev/next) button.  Returns `true` on click.
@@ -2674,116 +3144,170 @@ impl<'engine> Ui<'engine> {
 
 	// ── Tier 3: Regular grid ──────────────────────────────────────────────────
 
-	/// Regular axis-aligned background grid (not a node-canvas grid).
+	/// Draw the donor decimal grid and gradient in one GPU dispatch.
 	///
-	/// Does not participate in panel flow; draws directly at `rect`.
-	///
-	/// Donor: `oa::Ui::grid`.
+	/// Invalid geometry/configuration is reported by the next render boundary,
+	/// matching other infallible widget APIs. Donor: `oa::Ui::grid`.
 	pub fn grid(&mut self, rect: PixelRect, config: UiGridConfig) {
 		let Some(state) = self.state.as_mut() else {
 			return;
 		};
-		let style = Self::current_style(state).clone();
-		let clip = rect;
-
-		if config.fill_background {
-			state.cmds.push(UiCmd::Rect {
-				rect,
-				color: Color::new(
-					style.background.r * 0.85,
-					style.background.g * 0.85,
-					style.background.b * 0.85,
-					1.0,
-				),
-				clip,
-				corner_radius: 0.0,
-			});
+		let thicknesses = [
+			config.minor_thickness,
+			config.major_thickness,
+			config.super_major_thickness,
+			config.axis_thickness,
+		];
+		let colors = [
+			config.background_top,
+			config.background_bottom,
+			config.minor_color,
+			config.major_color,
+			config.super_major_color,
+			config.axis_color,
+		];
+		let valid = rect.w != 0
+			&& rect.h != 0
+			&& rect.w <= i32::MAX as u32
+			&& rect.h <= i32::MAX as u32
+			&& thicknesses
+				.iter()
+				.all(|v| v.is_finite() && *v > 0.0 && *v <= 16.0)
+			&& config
+				.origin
+				.iter()
+				.chain(config.guide_fade_center.iter())
+				.all(|v| v.is_finite())
+			&& config
+				.minor_spacing
+				.iter()
+				.all(|v| v.is_finite() && *v > 0.0)
+			&& config.opacity.is_finite()
+			&& (0.0..=1.0).contains(&config.opacity)
+			&& (2..=100).contains(&config.major_every)
+			&& (config.major_every.saturating_mul(2)..=10000).contains(&config.super_major_every)
+			&& config
+				.super_major_every
+				.is_multiple_of(config.major_every.max(1))
+			&& config.guide_fade_inner_radius.is_finite()
+			&& config.guide_fade_inner_radius >= 0.0
+			&& config.guide_fade_outer_radius.is_finite()
+			&& config.guide_fade_outer_radius > config.guide_fade_inner_radius
+			&& config.guide_fade_outer_radius <= 1.0e7
+			&& colors
+				.iter()
+				.all(|c| [c.r, c.g, c.b, c.a].iter().all(|v| v.is_finite()));
+		if !valid {
+			if state.recording_error.is_none() {
+				state.recording_error = Some(Error::invalid_argument(
+					"ui::grid requires finite geometry, positive spacing/thickness/fade radii, opacity in [0,1], and divisible tiers",
+				));
+			}
+			return;
 		}
-
-		// Draw vertical lines.
-		let step = config.minor_spacing.max(1.0);
-		let mut x = (rect.x as f32 / step).ceil() * step;
-		while x < (rect.x + rect.w as i32) as f32 {
-			let tick = ((x - rect.x as f32) / step) as i32;
-			let (color, thick) = if tick % config.super_major_every == 0 {
-				(style.border, config.super_major_thickness)
-			} else if tick % config.major_every == 0 {
-				(
-					Color::new(style.border.r, style.border.g, style.border.b, 0.7),
-					config.major_thickness,
-				)
+		// Wide checked geometry avoids overflow before clipping off-screen rectangles.
+		let parent = state.layout.top().map_or(
+			PixelRect::new(0, 0, state.compose.width, state.compose.height),
+			|panel| panel.clip(),
+		);
+		let left = i64::from(rect.x).max(i64::from(parent.x)).max(0);
+		let top = i64::from(rect.y).max(i64::from(parent.y)).max(0);
+		let right = (i64::from(rect.x) + i64::from(rect.w))
+			.min(i64::from(parent.x) + i64::from(parent.w))
+			.min(i64::from(state.compose.width));
+		let bottom = (i64::from(rect.y) + i64::from(rect.h))
+			.min(i64::from(parent.y) + i64::from(parent.h))
+			.min(i64::from(state.compose.height));
+		if right <= left || bottom <= top {
+			return;
+		}
+		let clip = PixelRect::new(
+			left as i32,
+			top as i32,
+			(right - left) as u32,
+			(bottom - top) as u32,
+		);
+		let style = Self::current_style(state);
+		let light = style.background.r + style.background.g + style.background.b > 1.5;
+		let resolve = |requested: Color, fallback: Color| {
+			if requested.a <= 0.0 {
+				fallback
 			} else {
-				(
-					Color::new(style.border.r, style.border.g, style.border.b, 0.35),
-					config.minor_thickness,
-				)
-			};
-			let lx = x as i32;
-			state.cmds.push(UiCmd::Line {
-				x0: lx as f32,
-				y0: rect.y as f32,
-				x1: lx as f32,
-				y1: (rect.y + rect.h as i32) as f32,
-				color,
-				thickness: thick,
-				bounds: clip,
-			});
-			x += step;
-		}
-
-		// Draw horizontal lines.
-		let mut y = (rect.y as f32 / step).ceil() * step;
-		while y < (rect.y + rect.h as i32) as f32 {
-			let tick = ((y - rect.y as f32) / step) as i32;
-			let (color, thick) = if tick % config.super_major_every == 0 {
-				(style.border, config.super_major_thickness)
-			} else if tick % config.major_every == 0 {
-				(
-					Color::new(style.border.r, style.border.g, style.border.b, 0.7),
-					config.major_thickness,
-				)
-			} else {
-				(
-					Color::new(style.border.r, style.border.g, style.border.b, 0.35),
-					config.minor_thickness,
-				)
-			};
-			let ly = y as i32;
-			state.cmds.push(UiCmd::Line {
-				x0: rect.x as f32,
-				y0: ly as f32,
-				x1: (rect.x + rect.w as i32) as f32,
-				y1: ly as f32,
-				color,
-				thickness: thick,
-				bounds: clip,
-			});
-			y += step;
-		}
-
-		// Axis lines through origin (if inside rect).
-		if config.draw_axes {
-			let ax = rect.x + rect.w as i32 / 2;
-			let ay = rect.y + rect.h as i32 / 2;
-			state.cmds.push(UiCmd::Line {
-				x0: ax as f32,
-				y0: rect.y as f32,
-				x1: ax as f32,
-				y1: (rect.y + rect.h as i32) as f32,
-				color: style.text_secondary,
-				thickness: config.axis_thickness,
-				bounds: clip,
-			});
-			state.cmds.push(UiCmd::Line {
-				x0: rect.x as f32,
-				y0: ay as f32,
-				x1: (rect.x + rect.w as i32) as f32,
-				y1: ay as f32,
-				color: style.text_secondary,
-				thickness: config.axis_thickness,
-				bounds: clip,
-			});
-		}
+				requested
+			}
+		};
+		let line = |requested: Color, fallback: Color| {
+			let mut color = resolve(requested, fallback);
+			color.a *= config.opacity;
+			color.to_u32()
+		};
+		let top_color = Color::new(
+			style.surface.r + (1.0 - style.surface.r) * 0.055,
+			style.surface.g + (1.0 - style.surface.g) * 0.055,
+			style.surface.b + (1.0 - style.surface.b) * 0.055,
+			style.surface.a,
+		);
+		let bottom_color = Color::new(
+			style.surface.r * 0.955,
+			style.surface.g * 0.955,
+			style.surface.b * 0.955,
+			style.surface.a,
+		);
+		let minor = if light {
+			Color::new(0.0, 0.0, 0.0, 0.045)
+		} else {
+			Color::new(1.0, 1.0, 1.0, 0.045)
+		};
+		let major = if light {
+			Color::new(0.0, 0.0, 0.0, 0.14)
+		} else {
+			Color::new(0.78, 0.80, 0.82, 0.16)
+		};
+		let super_major = if light {
+			Color::new(0.12, 0.12, 0.12, 0.24)
+		} else {
+			Color::new(0.03, 0.03, 0.03, 0.62)
+		};
+		let axis = Color::new(0.0, 0.0, 0.0, if light { 0.60 } else { 0.82 });
+		let flags = u32::from(config.fill_background)
+			| (u32::from(config.draw_axes) << 1)
+			| (u32::from(config.draw_grid) << 2)
+			| (u32::from(config.radial_guide_fade) << 3)
+			| (u32::from(config.dither_background) << 4);
+		// Exactly 120 bytes, matching the donor/reflected shader ABI.
+		let push = [
+			0,
+			clip.x as u32,
+			clip.y as u32,
+			clip.w,
+			clip.h,
+			config.origin[0].to_bits(),
+			config.origin[1].to_bits(),
+			config.minor_spacing[0].to_bits(),
+			config.minor_spacing[1].to_bits(),
+			config.major_every,
+			config.super_major_every,
+			config.minor_thickness.to_bits(),
+			config.major_thickness.to_bits(),
+			config.super_major_thickness.to_bits(),
+			config.axis_thickness.to_bits(),
+			resolve(config.background_top, top_color).to_u32(),
+			resolve(config.background_bottom, bottom_color).to_u32(),
+			line(config.minor_color, minor),
+			line(config.major_color, major),
+			line(config.super_major_color, super_major),
+			line(config.axis_color, axis),
+			config.guide_fade_center[0].to_bits(),
+			config.guide_fade_center[1].to_bits(),
+			config.guide_fade_inner_radius.to_bits(),
+			config.guide_fade_outer_radius.to_bits(),
+			flags,
+			clip.x as u32,
+			clip.y as u32,
+			clip.w,
+			clip.h,
+		];
+		state.cmds.push(UiCmd::CanvasGrid { rect: clip, push });
 	}
 
 	// ── Tier 3: Planar image ──────────────────────────────────────────────────
@@ -2864,7 +3388,7 @@ impl<'engine> Ui<'engine> {
 		}
 		let x_min = x.iter().cloned().fold(f32::INFINITY, f32::min);
 		let x_max = x.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-		let matrix = crate::Matrix::from_f32(self.engine, [packed.len()], &packed)?;
+		let matrix = crate::Matrix::new_from_f32(self.engine, [packed.len()], &packed)?;
 		let descriptor = matrix
 			.engine_handle()
 			.storage_descriptor_index(matrix.storage())?;
@@ -3010,26 +3534,6 @@ impl<'engine> Ui<'engine> {
 		self.text_at(text, origin, config, color, clip)
 	}
 
-	fn record_render_with(
-		&self,
-		device: &ash::Device,
-		command_buffer: ash::vk::CommandBuffer,
-		descriptor_set: ash::vk::DescriptorSet,
-		pipeline_layout: ash::vk::PipelineLayout,
-	) -> Result<()> {
-		let state = self
-			.state
-			.as_ref()
-			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
-		Self::record_render_state(
-			state,
-			device,
-			command_buffer,
-			descriptor_set,
-			pipeline_layout,
-		)
-	}
-
 	/// Vertically center text in `rect` and emit a `Glyphs` command.
 	///
 	/// Private static helper used by widget implementations that already hold
@@ -3114,76 +3618,159 @@ impl<'engine> Ui<'engine> {
 		}
 	}
 
+	fn frame_bindings(state: &UiState) -> Result<Option<std::rc::Rc<UiFrameBindings>>> {
+		state.engine_handle.prepare_ui_sources()?;
+		let Some(layouts) = &state.pipelines.bounded else {
+			return Ok(None);
+		};
+		let engine = &state.engine_handle;
+		let storages = state
+			.frame_storages
+			.iter()
+			.chain(std::iter::once(state.text_atlas.storage()))
+			.chain(state.frame_matrices.iter().map(crate::Matrix::storage))
+			.chain(
+				state
+					.frame_textures
+					.iter()
+					.filter_map(crate::Texture::packed_storage),
+			);
+		let mut buffers = std::collections::HashMap::new();
+		for storage in storages {
+			buffers.insert(
+				engine.storage_descriptor_index(storage)?,
+				engine.ui_buffer_info(storage)?,
+			);
+		}
+		Ok(Some(std::rc::Rc::new(UiFrameBindings::new(
+			engine,
+			layouts,
+			engine.ui_compose_view(state.compose.raw_image())?,
+			&state.cmds.cmds,
+			|index| {
+				buffers
+					.get(&index)
+					.copied()
+					.ok_or_else(|| Error::internal("UI command source is not retained"))
+			},
+		)?)))
+	}
+
 	fn record_render_state(
 		state: &UiState,
-		device: &ash::Device,
-		command_buffer: ash::vk::CommandBuffer,
-		descriptor_set: ash::vk::DescriptorSet,
-		pipeline_layout: ash::vk::PipelineLayout,
+		device: &vk::Device,
+		command_buffer: vk::CommandBuffer,
+		descriptor_set: vk::DescriptorSet,
+		pipeline_layout: vk::PipelineLayout,
+		bindings: Option<&UiFrameBindings>,
 	) -> Result<()> {
-		let dst_idx = state.compose.bindless_index;
+		let dst_idx = if bindings.is_some() {
+			0
+		} else {
+			state.compose.bindless_index
+		};
 
 		// Transition compose image to GENERAL for compute writes.
-		let range = ash::vk::ImageSubresourceRange::default()
-			.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+		let range = vk::ImageSubresourceRange::default()
+			.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 			.level_count(1)
 			.layer_count(1);
 		let prior_layout = state.compose.layout();
-		let barrier_in = ash::vk::ImageMemoryBarrier2::default()
-			.src_stage_mask(if prior_layout == ash::vk::ImageLayout::UNDEFINED {
-				ash::vk::PipelineStageFlags2::NONE
+		let barrier_in = vk::ImageMemoryBarrier2::default()
+			.src_stage_mask(if prior_layout == vk::ImageLayout::UNDEFINED {
+				vk::PipelineStageFlagBits2::NONE
 			} else {
-				ash::vk::PipelineStageFlags2::ALL_TRANSFER
+				vk::PipelineStageFlagBits2::ALL_TRANSFER_BIT
 			})
-			.src_access_mask(if prior_layout == ash::vk::ImageLayout::UNDEFINED {
-				ash::vk::AccessFlags2::NONE
+			.src_access_mask(if prior_layout == vk::ImageLayout::UNDEFINED {
+				vk::AccessFlagBits2::NONE
 			} else {
-				ash::vk::AccessFlags2::TRANSFER_READ
+				vk::AccessFlagBits2::TRANSFER_READ_BIT
 			})
-			.dst_stage_mask(ash::vk::PipelineStageFlags2::COMPUTE_SHADER)
-			.dst_access_mask(ash::vk::AccessFlags2::SHADER_STORAGE_WRITE)
+			.dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+			.dst_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
 			.old_layout(prior_layout)
-			.new_layout(ash::vk::ImageLayout::GENERAL)
+			.new_layout(vk::ImageLayout::GENERAL)
 			.image(state.compose.raw_image())
 			.subresource_range(range);
 
+		// SAFETY: the Engine supplies a recording command buffer and retains the
+		// compose image. The barrier preserves its prior layout and compute-write scope.
 		unsafe {
-			device.cmd_pipeline_barrier2(
+			state.sync_commands.pipeline_barrier(
+				device,
 				command_buffer,
-				&ash::vk::DependencyInfo::default().image_memory_barriers(&[barrier_in]),
-			);
+				&vk::DependencyInfo::default()
+					.image_memory_barriers(&[barrier_in])
+					.map_err(Error::from)?
+					.memory_barriers(&[vk::MemoryBarrier2::default()
+						.src_stage_mask(
+							vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT | vk::PipelineStageFlagBits2::HOST_BIT,
+						)
+						.src_access_mask(vk::AccessFlagBits2::MEMORY_WRITE_BIT)
+						.dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+						.dst_access_mask(
+							vk::AccessFlagBits2::SHADER_STORAGE_READ_BIT
+								| vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT,
+						)])
+					.map_err(Error::from)?,
+			)?;
 
-			// Bind the shared descriptor set once.
-			device.cmd_bind_descriptor_sets(
-				command_buffer,
-				ash::vk::PipelineBindPoint::COMPUTE,
-				pipeline_layout,
-				0,
-				&[descriptor_set],
-				&[],
-			);
+			// Strict uses the shared heap; bounded sets are bound per command.
+			if bindings.is_none() {
+				device.cmd_bind_descriptor_sets(
+					command_buffer,
+					vk::PipelineBindPoint::COMPUTE,
+					pipeline_layout,
+					0,
+					&[descriptor_set],
+					&[],
+				)?;
+			}
 		}
 
 		// Replay each command. Alpha composition reads pixels written by the
 		// preceding dispatch, so preserve that storage-image RAW dependency.
-		for (index, cmd) in state.cmds.cmds.iter().enumerate() {
-			if index != 0 {
-				let dependency = ash::vk::MemoryBarrier2::default()
-					.src_stage_mask(ash::vk::PipelineStageFlags2::COMPUTE_SHADER)
-					.src_access_mask(ash::vk::AccessFlags2::SHADER_STORAGE_WRITE)
-					.dst_stage_mask(ash::vk::PipelineStageFlags2::COMPUTE_SHADER)
-					.dst_access_mask(
-						ash::vk::AccessFlags2::SHADER_STORAGE_READ
-							| ash::vk::AccessFlags2::SHADER_STORAGE_WRITE,
-					);
+		let commands = bindings.map_or(state.cmds.cmds.as_slice(), |bindings| {
+			bindings.commands.as_slice()
+		});
+		for (index, cmd) in commands.iter().enumerate() {
+			if let Some(bindings) = bindings {
+				// SAFETY: each immutable set matches the command's exact layout;
+				// its sources and pool remain retained through completion.
 				unsafe {
-					device.cmd_pipeline_barrier2(
+					device.cmd_bind_descriptor_sets(
 						command_buffer,
-						&ash::vk::DependencyInfo::default().memory_barriers(std::slice::from_ref(&dependency)),
-					);
+						vk::PipelineBindPoint::COMPUTE,
+						bindings.layouts[index],
+						0,
+						&[bindings.sets[index]],
+						&[],
+					)?;
 				}
 			}
-			Self::record_cmd(state, device, command_buffer, pipeline_layout, dst_idx, cmd)?;
+			if index != 0 {
+				let dependency = vk::MemoryBarrier2::default()
+					.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+					.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+					.dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+					.dst_access_mask(
+						vk::AccessFlagBits2::SHADER_STORAGE_READ_BIT
+							| vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT,
+					);
+				// SAFETY: consecutive dispatches share the retained compose image;
+				// these scopes make preceding writes visible to alpha reads/writes.
+				unsafe {
+					state.sync_commands.pipeline_barrier(
+						device,
+						command_buffer,
+						&(vk::DependencyInfo::default()
+							.memory_barriers(std::slice::from_ref(&dependency))
+							.map_err(Error::from)?),
+					)?;
+				}
+			}
+			Self::record_cmd(state, device, command_buffer, dst_idx, cmd)?;
 		}
 
 		Ok(())
@@ -3191,9 +3778,8 @@ impl<'engine> Ui<'engine> {
 
 	fn record_cmd(
 		state: &UiState,
-		device: &ash::Device,
-		cmd_buf: ash::vk::CommandBuffer,
-		layout: ash::vk::PipelineLayout,
+		device: &vk::Device,
+		cmd_buf: vk::CommandBuffer,
 		dst_idx: u32,
 		cmd: &UiCmd,
 	) -> Result<()> {
@@ -3203,19 +3789,147 @@ impl<'engine> Ui<'engine> {
 		match cmd {
 			UiCmd::Clear { color } => {
 				let pipeline = &state.pipelines.clear_compose;
+				let layout = pipeline.layout();
 				// push: dst_idx, dst_w, dst_h, rgba
 				let push = [dst_idx, w, h, color.to_u32()];
 				let push_bytes = bytemuck_push(&push);
 				unsafe {
-					device.cmd_bind_pipeline(cmd_buf, ash::vk::PipelineBindPoint::COMPUTE, pipeline.raw());
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
 					device.cmd_push_constants(
 						cmd_buf,
 						layout,
-						ash::vk::ShaderStageFlags::COMPUTE,
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
 						0,
 						push_bytes,
-					);
-					device.cmd_dispatch(cmd_buf, div_ceil(w, 8), div_ceil(h, 8), 1);
+					)?;
+					device.cmd_dispatch(cmd_buf, div_ceil(w, 8), div_ceil(h, 8), 1)?;
+				}
+			}
+			UiCmd::Heatmap {
+				values_idx,
+				rect,
+				push,
+			} => {
+				let pipeline = &state.pipelines.draw_heatmap;
+				let mut push = *push;
+				push[0] = *values_idx;
+				push[3] = dst_idx;
+				// SAFETY: retained matrix/image and exact 72-byte donor ABI.
+				unsafe {
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
+					device.cmd_push_constants(
+						cmd_buf,
+						pipeline.layout(),
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
+						0,
+						bytemuck_push(&push),
+					)?;
+					device.cmd_dispatch(cmd_buf, div_ceil(rect.w, 8), div_ceil(rect.h, 8), 1)?;
+				}
+			}
+			UiCmd::Waveform {
+				values_idx,
+				rect,
+				push,
+			} => {
+				let pipeline = &state.pipelines.draw_waveform;
+				let mut push = *push;
+				push[0] = *values_idx;
+				push[2] = dst_idx;
+				// SAFETY: retained matrix/image and exact 56-byte donor ABI; columns own disjoint pixels.
+				unsafe {
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
+					device.cmd_push_constants(
+						cmd_buf,
+						pipeline.layout(),
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
+						0,
+						bytemuck_push(&push),
+					)?;
+					device.cmd_dispatch(cmd_buf, div_ceil(rect.w, 64), 1, 1)?;
+				}
+			}
+			UiCmd::RoundedMask {
+				rect,
+				radius,
+				outside,
+				clip,
+			} => {
+				let pipeline = &state.pipelines.mask_rounded_viewport;
+				let push = [
+					dst_idx,
+					rect.x as u32,
+					rect.y as u32,
+					rect.w,
+					rect.h,
+					radius.to_bits(),
+					outside.to_u32(),
+					clip.x as u32,
+					clip.y as u32,
+					clip.w,
+					clip.h,
+				];
+				// SAFETY: exact 44-byte donor ABI; retained compose image/layout and bounded dispatch.
+				unsafe {
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
+					device.cmd_push_constants(
+						cmd_buf,
+						pipeline.layout(),
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
+						0,
+						bytemuck_push(&push),
+					)?;
+					device.cmd_dispatch(cmd_buf, div_ceil(rect.w, 8), div_ceil(rect.h, 8), 1)?;
+				}
+			}
+			UiCmd::Triangle {
+				points,
+				color,
+				bounds,
+			} => {
+				let pipeline = &state.pipelines.draw_triangle;
+				let push = [
+					dst_idx,
+					points[0][0].to_bits(),
+					points[0][1].to_bits(),
+					points[1][0].to_bits(),
+					points[1][1].to_bits(),
+					points[2][0].to_bits(),
+					points[2][1].to_bits(),
+					color.to_u32(),
+					bounds.x as u32,
+					bounds.y as u32,
+					bounds.w,
+					bounds.h,
+				];
+				// SAFETY: exact 48-byte donor ABI; retained image/layout, nonnegative bounds.
+				unsafe {
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
+					device.cmd_push_constants(
+						cmd_buf,
+						pipeline.layout(),
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
+						0,
+						bytemuck_push(&push),
+					)?;
+					device.cmd_dispatch(cmd_buf, div_ceil(bounds.w, 8), div_ceil(bounds.h, 8), 1)?;
+				}
+			}
+			UiCmd::CanvasGrid { rect, push } => {
+				let pipeline = &state.pipelines.draw_canvas_grid;
+				let mut push = *push;
+				push[0] = dst_idx;
+				// SAFETY: 120-byte reflected ABI, exact retained layout/image, bounded dispatch.
+				unsafe {
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
+					device.cmd_push_constants(
+						cmd_buf,
+						pipeline.layout(),
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
+						0,
+						bytemuck_push(&push),
+					)?;
+					device.cmd_dispatch(cmd_buf, div_ceil(rect.w, 8), div_ceil(rect.h, 8), 1)?;
 				}
 			}
 			UiCmd::Rect {
@@ -3225,6 +3939,7 @@ impl<'engine> Ui<'engine> {
 				corner_radius,
 			} => {
 				let pipeline = &state.pipelines.draw_rect;
+				let layout = pipeline.layout();
 				// push: dst_idx, dst_x, dst_y, dst_w, dst_h, rgba, clip_x, clip_y, clip_w, clip_h, corner_radius
 				let mut push = [0u8; 44];
 				write_u32(&mut push, 0, dst_idx);
@@ -3240,15 +3955,15 @@ impl<'engine> Ui<'engine> {
 				write_i32(&mut push, 36, cw[3]);
 				write_f32(&mut push, 40, *corner_radius);
 				unsafe {
-					device.cmd_bind_pipeline(cmd_buf, ash::vk::PipelineBindPoint::COMPUTE, pipeline.raw());
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
 					device.cmd_push_constants(
 						cmd_buf,
 						layout,
-						ash::vk::ShaderStageFlags::COMPUTE,
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
 						0,
 						&push,
-					);
-					device.cmd_dispatch(cmd_buf, div_ceil(rect.w, 8), div_ceil(rect.h, 8), 1);
+					)?;
+					device.cmd_dispatch(cmd_buf, div_ceil(rect.w, 8), div_ceil(rect.h, 8), 1)?;
 				}
 			}
 			UiCmd::RectOutline {
@@ -3259,6 +3974,7 @@ impl<'engine> Ui<'engine> {
 				corner_radius,
 			} => {
 				let pipeline = &state.pipelines.draw_rect_outline;
+				let layout = pipeline.layout();
 				// push: dst_idx, dst_x, dst_y, dst_w, dst_h, thickness, rgba, clip_x, clip_y, clip_w, clip_h, corner_radius
 				let mut push = [0u8; 48];
 				write_u32(&mut push, 0, dst_idx);
@@ -3275,15 +3991,15 @@ impl<'engine> Ui<'engine> {
 				write_i32(&mut push, 40, cw[3]);
 				write_f32(&mut push, 44, *corner_radius);
 				unsafe {
-					device.cmd_bind_pipeline(cmd_buf, ash::vk::PipelineBindPoint::COMPUTE, pipeline.raw());
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
 					device.cmd_push_constants(
 						cmd_buf,
 						layout,
-						ash::vk::ShaderStageFlags::COMPUTE,
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
 						0,
 						&push,
-					);
-					device.cmd_dispatch(cmd_buf, div_ceil(rect.w, 8), div_ceil(rect.h, 8), 1);
+					)?;
+					device.cmd_dispatch(cmd_buf, div_ceil(rect.w, 8), div_ceil(rect.h, 8), 1)?;
 				}
 			}
 			UiCmd::Line {
@@ -3296,6 +4012,7 @@ impl<'engine> Ui<'engine> {
 				bounds,
 			} => {
 				let pipeline = &state.pipelines.draw_line;
+				let layout = pipeline.layout();
 				// push: dst_idx, x0, y0, x1, y1, thickness, rgba, bounds_x, bounds_y, bounds_w, bounds_h
 				let mut push = [0u8; 44];
 				write_u32(&mut push, 0, dst_idx);
@@ -3310,15 +4027,15 @@ impl<'engine> Ui<'engine> {
 				write_u32(&mut push, 36, bounds.w);
 				write_u32(&mut push, 40, bounds.h);
 				unsafe {
-					device.cmd_bind_pipeline(cmd_buf, ash::vk::PipelineBindPoint::COMPUTE, pipeline.raw());
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
 					device.cmd_push_constants(
 						cmd_buf,
 						layout,
-						ash::vk::ShaderStageFlags::COMPUTE,
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
 						0,
 						&push,
-					);
-					device.cmd_dispatch(cmd_buf, div_ceil(bounds.w, 8), div_ceil(bounds.h, 8), 1);
+					)?;
+					device.cmd_dispatch(cmd_buf, div_ceil(bounds.w, 8), div_ceil(bounds.h, 8), 1)?;
 				}
 			}
 			UiCmd::BlitRgba {
@@ -3333,6 +4050,7 @@ impl<'engine> Ui<'engine> {
 				channel,
 			} => {
 				let pipeline = &state.pipelines.blit_rgba;
+				let layout = pipeline.layout();
 				// push: source/destination geometry, clip, channel selector.
 				let mut push = [0u8; 52];
 				write_u32(&mut push, 0, *src_idx);
@@ -3350,15 +4068,15 @@ impl<'engine> Ui<'engine> {
 				write_i32(&mut push, 44, cw[3]);
 				write_u32(&mut push, 48, *channel);
 				unsafe {
-					device.cmd_bind_pipeline(cmd_buf, ash::vk::PipelineBindPoint::COMPUTE, pipeline.raw());
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
 					device.cmd_push_constants(
 						cmd_buf,
 						layout,
-						ash::vk::ShaderStageFlags::COMPUTE,
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
 						0,
 						&push,
-					);
-					device.cmd_dispatch(cmd_buf, div_ceil(*dst_w, 8), div_ceil(*dst_h, 8), 1);
+					)?;
+					device.cmd_dispatch(cmd_buf, div_ceil(*dst_w, 8), div_ceil(*dst_h, 8), 1)?;
 				}
 			}
 			UiCmd::PlotLine {
@@ -3377,6 +4095,7 @@ impl<'engine> Ui<'engine> {
 				line_width,
 			} => {
 				let pipeline = &state.pipelines.draw_plot_line;
+				let layout = pipeline.layout();
 				// push: values_idx, count, dst_idx, dst_x, dst_y, dst_w, dst_h,
 				//       x_min, x_max, y_min, y_max, rgba, flags, antialias_samples,
 				//       line_width, clip_x, clip_y, clip_w, clip_h
@@ -3408,15 +4127,15 @@ impl<'engine> Ui<'engine> {
 				write_i32(&mut push, 68, cw[2]);
 				write_i32(&mut push, 72, cw[3]);
 				unsafe {
-					device.cmd_bind_pipeline(cmd_buf, ash::vk::PipelineBindPoint::COMPUTE, pipeline.raw());
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
 					device.cmd_push_constants(
 						cmd_buf,
 						layout,
-						ash::vk::ShaderStageFlags::COMPUTE,
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
 						0,
 						&push,
-					);
-					device.cmd_dispatch(cmd_buf, div_ceil(rect.w, 64), 1, 1);
+					)?;
+					device.cmd_dispatch(cmd_buf, div_ceil(rect.w, 64), 1, 1)?;
 				}
 			}
 			UiCmd::Glyphs {
@@ -3428,6 +4147,7 @@ impl<'engine> Ui<'engine> {
 				atlas_h,
 			} => {
 				let pipeline = &state.pipelines.draw_glyphs;
+				let layout = pipeline.layout();
 				let mut push = [0_u8; 72];
 				write_u32(&mut push, 0, *glyph_idx);
 				write_u32(&mut push, 4, 0);
@@ -3449,15 +4169,15 @@ impl<'engine> Ui<'engine> {
 				write_u32(&mut push, 64, *atlas_h);
 				write_f32(&mut push, 68, 0.0);
 				unsafe {
-					device.cmd_bind_pipeline(cmd_buf, ash::vk::PipelineBindPoint::COMPUTE, pipeline.raw());
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
 					device.cmd_push_constants(
 						cmd_buf,
 						layout,
-						ash::vk::ShaderStageFlags::COMPUTE,
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
 						0,
 						&push,
-					);
-					device.cmd_dispatch(cmd_buf, *count, 1, 1);
+					)?;
+					device.cmd_dispatch(cmd_buf, *count, 1, 1)?;
 				}
 			}
 		}
@@ -3486,14 +4206,42 @@ impl<'engine> Ui<'engine> {
 		let height = state.compose.height;
 		let descriptor_set = state.engine_handle.descriptor_set();
 		let pipeline_layout = state.engine_handle.ui_pipeline_layout();
-		let (event, readback) =
-			handle.submit_ui_readback(image, width, height, |device, command| {
-				self.record_render_with(device, command, descriptor_set, pipeline_layout)
-			})?;
+		let bindings = Self::frame_bindings(state)?;
+		// Failure cannot prove completion; quarantine exact owners rather than
+		// destroy resources that an uncertain submission may still reference.
+		let retention = (
+			state.pipelines.clone(),
+			state.compose.clone(),
+			state.text_atlas.clone(),
+			state.frame_matrices.clone(),
+			state.frame_textures.clone(),
+			state.frame_storages.clone(),
+			bindings.clone(),
+		);
+		let submission = handle.submit_ui_readback(image, width, height, |device, command| {
+			Self::record_render_state(
+				state,
+				device,
+				command,
+				descriptor_set,
+				pipeline_layout,
+				bindings.as_deref(),
+			)
+		});
+		let (event, readback) = match submission {
+			Ok(submission) => submission,
+			Err(error) => {
+				std::mem::forget(retention);
+				return Err(error);
+			}
+		};
 		state
 			.compose
-			.set_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL);
-		event.wait()?;
+			.set_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL);
+		if let Err(error) = event.wait() {
+			std::mem::forget((retention, readback));
+			return Err(error);
+		}
 		let mut rgba = vec![0_u8; width as usize * height as usize * 4];
 		readback.read_prefix(&mut rgba)?;
 		Ok(rgba)
@@ -3525,27 +4273,52 @@ impl<'engine> Ui<'engine> {
 			.state
 			.as_ref()
 			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		presenter.validate_ui_engine(&state.engine_handle)?;
 		let image = state.compose.raw_image();
 		let width = state.compose.width;
 		let height = state.compose.height;
 		let descriptor_set = state.engine_handle.descriptor_set();
 		let pipeline_layout = state.engine_handle.ui_pipeline_layout();
-		let result = presenter.present_compose(
+		let bindings = Self::frame_bindings(state)?;
+		// Retain the exact recorded frame, including pipelines and the old compose
+		// image when resize replaces it. The presentation fence retires these
+		// owners; assembling the next frame never waits or releases live inputs.
+		let retention = std::rc::Rc::new((
+			state.pipelines.clone(),
+			state.compose.clone(),
+			state.text_atlas.clone(),
+			state.frame_matrices.clone(),
+			state.frame_textures.clone(),
+			state.frame_storages.clone(),
+			bindings.clone(),
+		));
+		let result = presenter.present_compose_retained(
 			image,
 			width,
 			height,
 			descriptor_set,
 			pipeline_layout,
-			|device, cmd| Self::record_render_state(state, device, cmd, descriptor_set, pipeline_layout),
+			Some(retention),
+			|device, cmd| {
+				Self::record_render_state(
+					state,
+					device,
+					cmd,
+					descriptor_set,
+					pipeline_layout,
+					bindings.as_deref(),
+				)
+			},
 		)?;
 		state
 			.compose
-			.set_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL);
+			.set_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL);
 		Ok(result)
 	}
 
-	/// Explicit completion boundary — waits for all in-flight frames and
-	/// releases pipelines, compose image, and transient resources.
+	/// Release this UI session's owners. Submitted presentation frames retain
+	/// their exact resources until completion; use `Presenter::wait_presentation_idle`
+	/// when explicit blocking retirement is required.
 	pub fn close(&mut self) -> Result<()> {
 		if self.state.is_none() {
 			return Ok(());
@@ -3593,6 +4366,36 @@ fn was_pressed_and_released(state: &mut UiState, id: u64) -> bool {
 }
 
 /// Allocate a standard widget rect from the active panel.
+fn animate_hover(state: &mut UiState, widget_id: u64, hovered: bool) -> f32 {
+	let target = u8::from(hovered) as f32;
+	let motion = state
+		.widget_motion
+		.entry(widget_id)
+		.or_insert(WidgetMotion {
+			start: 0.0,
+			current: 0.0,
+			target: 0.0,
+			elapsed_ms: 0.0,
+			last_seen: state.frame_index,
+		});
+	motion.last_seen = state.frame_index;
+	if motion.target != target {
+		motion.start = motion.current;
+		motion.target = target;
+		motion.elapsed_ms = 0.0;
+	}
+	let duration = state.motion_speed.duration_ms(120.0);
+	motion.elapsed_ms = (motion.elapsed_ms + state.frame_delta_ms).min(duration);
+	let fraction = if duration <= 0.0 {
+		1.0
+	} else {
+		motion.elapsed_ms / duration
+	};
+	let inverse = 1.0 - fraction;
+	motion.current = motion.start + (target - motion.start) * (1.0 - inverse * inverse * inverse);
+	motion.current
+}
+
 fn allocate_widget(state: &mut UiState, padding: f32) -> (PixelRect, PixelRect) {
 	let clip = state.layout.top().map(|s| s.clip()).unwrap_or_default();
 	let Some(scope) = state.layout.top_mut() else {
@@ -3726,25 +4529,6 @@ fn colormap_sample(t: f32, colormap: i32) -> crate::Color {
 }
 
 /// Map a [`UiIcon`] to a Unicode stand-in character for text rendering.
-fn icon_glyph(icon: UiIcon) -> &'static str {
-	match icon {
-		UiIcon::Previous => "‹",
-		UiIcon::Next => "›",
-		UiIcon::Play => "▶",
-		UiIcon::Pause => "⏸",
-		UiIcon::Menu => "≡",
-		UiIcon::Minimize => "−",
-		UiIcon::Maximize => "□",
-		UiIcon::Restore => "❐",
-		UiIcon::Close => "×",
-		UiIcon::Fullscreen => "⤢",
-		UiIcon::ExitFullscreen => "⤡",
-		UiIcon::Volume => "♪",
-		UiIcon::Muted => "🔇",
-		UiIcon::Settings => "⚙",
-	}
-}
-
 /// Allocate a taller plot area from the active panel.
 fn allocate_plot(state: &mut UiState, padding: f32) -> (PixelRect, PixelRect) {
 	let clip = state.layout.top().map(|s| s.clip()).unwrap_or_default();

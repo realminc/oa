@@ -25,7 +25,7 @@ impl {{name}} {
 		clippy::too_many_arguments,
 		reason = "the donor {{name}} contract has five geometry fields plus a seed"
 	)]
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		input_channels: usize,
 		output_channels: usize,
@@ -53,13 +53,13 @@ impl {{name}} {
 			.ok_or_else(|| Error::invalid_argument("{{name}} weight size overflows usize"))?;
 		let limit = 1.0_f32 / (fan_in as f32).sqrt();
 		let values = random::symmetric_uniform(weight_count, limit, seed);
-		let weight = Matrix::from_f32(
+		let weight = Matrix::new_from_f32(
 			engine,
 			[output_channels, input_channels, kernel_size],
 			&values,
 		)?;
-		let bias = Matrix::from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
-		Self::from_matrices(weight, bias, stride, padding, dilation)
+		let bias = Matrix::new_from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
+		Self::new_from_matrices(weight, bias, stride, padding, dilation)
 	}
 
 	/// Construct {{name}} from exact OIK weight and channel-bias matrices.
@@ -68,7 +68,7 @@ impl {{name}} {
 	///
 	/// Returns an error unless weight is nonempty F32 `[O, I, K]`, bias is
 	/// matching same-engine F32 `[O]`, and stride/dilation are nonzero.
-	pub fn from_matrices(
+	pub fn new_from_matrices(
 		weight: Matrix,
 		bias: Matrix,
 		stride: usize,

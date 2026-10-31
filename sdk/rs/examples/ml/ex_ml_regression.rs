@@ -4,14 +4,14 @@ use oa::{Engine, Matrix, ml};
 fn main() -> oa::Result<()> {
 	let engine = Engine::new()?;
 
-	let x = Matrix::from_f32(&engine, [5, 1], &[-2.0, -1.0, 0.0, 1.0, 2.0])?;
-	let target = Matrix::from_f32(&engine, [5, 1], &[-3.0, -1.0, 1.0, 3.0, 5.0])?;
+	let x = Matrix::new_from_f32(&engine, [5, 1], &[-2.0, -1.0, 0.0, 1.0, 2.0])?;
+	let target = Matrix::new_from_f32(&engine, [5, 1], &[-3.0, -1.0, 1.0, 3.0, 5.0])?;
 
-	let model = ml::nn::Linear::with_seed(&engine, 1, 1, 0)?;
+	let model = ml::nn::Linear::new_with_seed(&engine, 1, 1, 0)?;
 	let mut optimizer = ml::Sgd::new(model.parameters(), 0.05, 0.0, 0.0)?;
 
 	let mut initial_loss = 0.0_f32;
-	let mut loss_matrix = Matrix::from_f32(&engine, [1], &[0.0])?;
+	let mut loss_matrix = Matrix::new_from_f32(&engine, [1], &[0.0])?;
 
 	for step in 0..80 {
 		optimizer.zero_grad();

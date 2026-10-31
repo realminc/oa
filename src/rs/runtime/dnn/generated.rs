@@ -2,9 +2,9 @@
 // schema=matrix_elemwise.json schema_version=1 generator_version=64
 // schema_sha256=6d4112435554d3615e6c2494c5062e5f93fa85815bccffa2ca49b12f97aaac75
 // matrix_blas_sha256=31a29676780c696e7f6a77f290398587a9e29e612903c5816503e35d3dda8687
-// matrix_reduce_sha256=82fbdb597e6fd7557a8c081a6302ceb383b2df455716387a549bed1a21f44fdd
-// matrix_rng_sha256=44767f064bbe8a861ee136a4b6ac710d80d5acc0febb4921a9b455dfac0147d6
-// ml_training_sha256=6678961ee57f24310158676c7b4fe0821e21ca48db7edcb20d2a749a164976ae
+// matrix_reduce_sha256=17296bb7678ffc44252a7c9277435bb12dda55299f818a64c50cfcffb22e9960
+// matrix_rng_sha256=440a6b90c6c16c545157f9563ed1a0938718a1f72f674d76ecd54d9ca0bf1d60
+// ml_training_sha256=0585c46a8b916b65da7f39d2dba124e03ad5c595e7700073b8ea3a6a0109b23b
 // Candidate roles mirror OA DNN vocabulary while retaining OARS compatibility identities.
 
 pub(super) static DNN_OP_ROLES: &[DnnOpRole] = &[

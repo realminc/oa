@@ -229,12 +229,12 @@ pub(super) struct PictureParameters {
 	mi_row_starts: [u16; MAX_TILE_ROWS + 1],
 	width_in_superblocks_minus_1: [u16; MAX_TILE_COLUMNS],
 	height_in_superblocks_minus_1: [u16; MAX_TILE_ROWS],
-	pub quantization: ash::vk::native::StdVideoAV1Quantization,
-	pub segmentation: ash::vk::native::StdVideoAV1Segmentation,
-	pub loop_filter: ash::vk::native::StdVideoAV1LoopFilter,
-	pub cdef: ash::vk::native::StdVideoAV1CDEF,
-	pub restoration: ash::vk::native::StdVideoAV1LoopRestoration,
-	pub global_motion: ash::vk::native::StdVideoAV1GlobalMotion,
+	pub quantization: vk::StdVideoAV1Quantization,
+	pub segmentation: vk::StdVideoAV1Segmentation,
+	pub loop_filter: vk::StdVideoAV1LoopFilter,
+	pub cdef: vk::StdVideoAV1CDEF,
+	pub restoration: vk::StdVideoAV1LoopRestoration,
+	pub global_motion: vk::StdVideoAV1GlobalMotion,
 }
 
 impl PictureParameters {
@@ -329,37 +329,35 @@ impl PictureParameters {
 			mi_row_starts,
 			width_in_superblocks_minus_1,
 			height_in_superblocks_minus_1,
-			quantization: ash::vk::native::StdVideoAV1Quantization {
-				flags: ash::vk::native::StdVideoAV1QuantizationFlags {
-					_bitfield_align_1: [],
-					_bitfield_1: ash::vk::native::StdVideoAV1QuantizationFlags::new_bitfield_1(
-						u32::from(frame.using_q_matrix),
-						u32::from(frame.different_uv_delta),
-						0,
-					),
+			quantization: vk::StdVideoAV1Quantization {
+				flags: {
+					let mut flags = vk::StdVideoAV1QuantizationFlags::default();
+					flags.set_using_qmatrix(u32::from(frame.using_q_matrix) as _);
+					flags.set_diff_uv_delta(u32::from(frame.different_uv_delta) as _);
+					flags.set_reserved(0 as _);
+					flags
 				},
 				base_q_idx: frame.base_q_idx,
-				DeltaQYDc: frame.delta_q_y_dc,
-				DeltaQUDc: frame.delta_q_u_dc,
-				DeltaQUAc: frame.delta_q_u_ac,
-				DeltaQVDc: frame.delta_q_v_dc,
-				DeltaQVAc: frame.delta_q_v_ac,
+				delta_qy_dc: frame.delta_q_y_dc,
+				delta_qu_dc: frame.delta_q_u_dc,
+				delta_qu_ac: frame.delta_q_u_ac,
+				delta_qv_dc: frame.delta_q_v_dc,
+				delta_qv_ac: frame.delta_q_v_ac,
 				qm_y: frame.qm_y,
 				qm_u: frame.qm_u,
 				qm_v: frame.qm_v,
 			},
-			segmentation: ash::vk::native::StdVideoAV1Segmentation {
-				FeatureEnabled: feature_enabled,
-				FeatureData: frame.segment_feature_data,
+			segmentation: vk::StdVideoAV1Segmentation {
+				feature_enabled,
+				feature_data: frame.segment_feature_data,
 			},
-			loop_filter: ash::vk::native::StdVideoAV1LoopFilter {
-				flags: ash::vk::native::StdVideoAV1LoopFilterFlags {
-					_bitfield_align_1: [],
-					_bitfield_1: ash::vk::native::StdVideoAV1LoopFilterFlags::new_bitfield_1(
-						u32::from(frame.loop_filter_delta_enabled),
-						u32::from(frame.loop_filter_delta_update),
-						0,
-					),
+			loop_filter: vk::StdVideoAV1LoopFilter {
+				flags: {
+					let mut flags = vk::StdVideoAV1LoopFilterFlags::default();
+					flags.set_loop_filter_delta_enabled(u32::from(frame.loop_filter_delta_enabled) as _);
+					flags.set_loop_filter_delta_update(u32::from(frame.loop_filter_delta_update) as _);
+					flags.set_reserved(0 as _);
+					flags
 				},
 				loop_filter_level: frame.loop_filter_levels,
 				loop_filter_sharpness: frame.loop_filter_sharpness,
@@ -368,7 +366,7 @@ impl PictureParameters {
 				update_mode_delta,
 				loop_filter_mode_deltas: frame.loop_filter_mode_deltas,
 			},
-			cdef: ash::vk::native::StdVideoAV1CDEF {
+			cdef: vk::StdVideoAV1CDEF {
 				cdef_damping_minus_3: frame.cdef_damping_minus_3,
 				cdef_bits: frame.cdef_bits,
 				cdef_y_pri_strength: frame.cdef_y_primary_strength,
@@ -376,132 +374,87 @@ impl PictureParameters {
 				cdef_uv_pri_strength: frame.cdef_uv_primary_strength,
 				cdef_uv_sec_strength: frame.cdef_uv_secondary_strength,
 			},
-			restoration: ash::vk::native::StdVideoAV1LoopRestoration {
-				FrameRestorationType: restoration_types,
-				LoopRestorationSize: frame.restoration_unit_size_log2_minus_5,
+			restoration: vk::StdVideoAV1LoopRestoration {
+				frame_restoration_type: restoration_types,
+				loop_restoration_size: frame.restoration_unit_size_log2_minus_5,
 			},
-			global_motion: ash::vk::native::StdVideoAV1GlobalMotion {
-				GmType: [0; LOGICAL_REFERENCE_COUNT],
+			global_motion: vk::StdVideoAV1GlobalMotion {
+				gm_type: [0; LOGICAL_REFERENCE_COUNT],
 				gm_params: global_parameters,
 			},
 		})
 	}
 
-	pub fn tile_info(&self, frame: &video::Av1FrameHeader) -> ash::vk::native::StdVideoAV1TileInfo {
-		ash::vk::native::StdVideoAV1TileInfo {
-			flags: ash::vk::native::StdVideoAV1TileInfoFlags {
-				_bitfield_align_1: [],
-				_bitfield_1: ash::vk::native::StdVideoAV1TileInfoFlags::new_bitfield_1(1, 0),
-			},
-			TileCols: frame.tile_columns,
-			TileRows: frame.tile_rows,
-			context_update_tile_id: frame.context_update_tile_id,
-			tile_size_bytes_minus_1: frame.tile_size_bytes_minus_1,
-			reserved1: [0; 7],
-			pMiColStarts: self.mi_col_starts.as_ptr(),
-			pMiRowStarts: self.mi_row_starts.as_ptr(),
-			pWidthInSbsMinus1: self.width_in_superblocks_minus_1.as_ptr(),
-			pHeightInSbsMinus1: self.height_in_superblocks_minus_1.as_ptr(),
-		}
+	pub fn tile_info(&self, frame: &video::Av1FrameHeader) -> vk::StdVideoAV1TileInfo<'_> {
+		let mut value = vk::StdVideoAV1TileInfo::default();
+		value.flags.set_uniform_tile_spacing_flag(1);
+		value.flags.set_reserved(0);
+		value.tile_cols = frame.tile_columns;
+		value.tile_rows = frame.tile_rows;
+		value.context_update_tile_id = frame.context_update_tile_id;
+		value.tile_size_bytes_minus_1 = frame.tile_size_bytes_minus_1;
+		value.reserved1 = [0; 7];
+		value.p_mi_col_starts = self.mi_col_starts.as_ptr();
+		value.p_mi_row_starts = self.mi_row_starts.as_ptr();
+		value.p_width_in_sbs_minus1 = self.width_in_superblocks_minus_1.as_ptr();
+		value.p_height_in_sbs_minus1 = self.height_in_superblocks_minus_1.as_ptr();
+		value
 	}
 
-	pub fn picture_info(
-		&self,
+	pub fn picture_info<'a>(
+		&'a self,
 		frame: &video::Av1FrameHeader,
-		tile_info: &ash::vk::native::StdVideoAV1TileInfo,
-	) -> ash::vk::native::StdVideoDecodeAV1PictureInfo {
-		let uses_luma_restoration = frame.restoration_types[0] != video::Av1RestorationType::None;
-		let uses_chroma_restoration = frame.restoration_types[1..]
-			.iter()
-			.any(|value| *value != video::Av1RestorationType::None);
-		ash::vk::native::StdVideoDecodeAV1PictureInfo {
-			flags: ash::vk::native::StdVideoDecodeAV1PictureInfoFlags {
-				_bitfield_align_1: [],
-				_bitfield_1: ash::vk::native::StdVideoDecodeAV1PictureInfoFlags::new_bitfield_1(
-					u32::from(frame.error_resilient_mode),
-					u32::from(frame.disable_cdf_update),
-					u32::from(frame.use_superres),
-					u32::from(frame.render_and_frame_size_different),
-					u32::from(frame.allow_screen_content_tools),
-					u32::from(frame.interpolation_filter == video::Av1InterpolationFilter::Switchable),
-					u32::from(frame.force_integer_motion_vectors),
-					u32::from(frame.frame_size_override),
-					0,
-					u32::from(frame.allow_intra_block_copy),
-					u32::from(frame.frame_references_short_signaling),
-					u32::from(frame.allow_high_precision_motion_vectors),
-					u32::from(frame.motion_mode_switchable),
-					u32::from(frame.use_reference_frame_motion_vectors),
-					u32::from(frame.disable_frame_end_update_cdf),
-					u32::from(frame.allow_warped_motion),
-					u32::from(frame.reduced_transform_set),
-					u32::from(frame.reference_select),
-					u32::from(frame.skip_mode_present),
-					u32::from(frame.delta_q_present),
-					u32::from(frame.delta_loop_filter_present),
-					u32::from(frame.delta_loop_filter_multi),
-					u32::from(frame.segmentation_enabled),
-					u32::from(frame.segmentation_update_map),
-					u32::from(frame.segmentation_temporal_update),
-					u32::from(frame.segmentation_update_data),
-					u32::from(uses_luma_restoration || uses_chroma_restoration),
-					u32::from(uses_chroma_restoration),
-					u32::from(frame.apply_grain),
-					0,
-				),
-			},
+		tile_info: &vk::StdVideoAV1TileInfo<'a>,
+	) -> vk::StdVideoDecodeAV1PictureInfo<'a> {
+		vk::StdVideoDecodeAV1PictureInfo {
 			frame_type: std_frame_type(frame.frame_type),
 			current_frame_id: 0,
-			OrderHint: frame.order_hint,
+			order_hint: frame.order_hint,
 			primary_ref_frame: frame.primary_reference_frame,
 			refresh_frame_flags: frame.refresh_frame_flags,
 			reserved1: 0,
 			interpolation_filter: std_interpolation_filter(frame.interpolation_filter),
-			TxMode: std_transform_mode(frame.transform_mode),
+			tx_mode: std_transform_mode(frame.transform_mode),
 			delta_q_res: frame.delta_q_resolution,
 			delta_lf_res: frame.delta_loop_filter_resolution,
-			SkipModeFrame: frame.skip_mode_frame,
+			skip_mode_frame: frame.skip_mode_frame,
 			coded_denom: frame.coded_denom,
 			reserved2: [0; 3],
-			OrderHints: frame.reference_order_hints,
-			expectedFrameId: [0; LOGICAL_REFERENCE_COUNT],
-			pTileInfo: tile_info,
-			pQuantization: &self.quantization,
-			pSegmentation: &self.segmentation,
-			pLoopFilter: &self.loop_filter,
-			pCDEF: &self.cdef,
-			pLoopRestoration: &self.restoration,
-			pGlobalMotion: &self.global_motion,
-			pFilmGrain: std::ptr::null(),
+			order_hints: frame.reference_order_hints,
+			expected_frame_id: [0; LOGICAL_REFERENCE_COUNT],
+			p_tile_info: tile_info,
+			p_quantization: &self.quantization,
+			p_segmentation: &self.segmentation,
+			p_loop_filter: &self.loop_filter,
+			p_cdef: &self.cdef,
+			p_loop_restoration: &self.restoration,
+			p_global_motion: &self.global_motion,
+			p_film_grain: std::ptr::null(),
+			..Default::default()
 		}
 	}
 }
 
-pub(super) fn reference_info(
-	record: ReferenceRecord,
-) -> ash::vk::native::StdVideoDecodeAV1ReferenceInfo {
-	ash::vk::native::StdVideoDecodeAV1ReferenceInfo {
-		flags: ash::vk::native::StdVideoDecodeAV1ReferenceInfoFlags {
-			_bitfield_align_1: [],
-			_bitfield_1: ash::vk::native::StdVideoDecodeAV1ReferenceInfoFlags::new_bitfield_1(
-				u32::from(record.disable_frame_end_update_cdf),
-				u32::from(record.segmentation_enabled),
-				0,
-			),
+pub(super) fn reference_info(record: ReferenceRecord) -> vk::StdVideoDecodeAV1ReferenceInfo {
+	vk::StdVideoDecodeAV1ReferenceInfo {
+		flags: {
+			let mut flags = vk::StdVideoDecodeAV1ReferenceInfoFlags::default();
+			flags.set_disable_frame_end_update_cdf(u32::from(record.disable_frame_end_update_cdf) as _);
+			flags.set_segmentation_enabled(u32::from(record.segmentation_enabled) as _);
+			flags.set_reserved(0 as _);
+			flags
 		},
-		frame_type: std_frame_type(record.frame_type) as u8,
-		RefFrameSignBias: record.reference_frame_sign_bias,
-		OrderHint: record.order_hint,
-		SavedOrderHints: record.saved_order_hints,
+		frame_type: std_frame_type(record.frame_type).0 as u8,
+		ref_frame_sign_bias: record.reference_frame_sign_bias,
+		order_hint: record.order_hint,
+		saved_order_hints: record.saved_order_hints,
 	}
 }
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn record_picture(
-	device: &ash::Device,
-	loader: &ash::khr::video_queue::Device,
-	decode_loader: &ash::khr::video_decode_queue::Device,
-	command_buffer: ash::vk::CommandBuffer,
+	device: &vk::Device,
+	command_buffer: vk::CommandBuffer,
 	session: &DecodeSession,
 	sequence: &video::Av1SequenceHeader,
 	frame: &video::Av1FrameHeader,
@@ -558,35 +511,36 @@ pub(super) fn record_picture(
 	let parameters = PictureParameters::new(sequence, frame)?;
 	let tile_info = parameters.tile_info(frame);
 	let std_picture = parameters.picture_info(frame, &tile_info);
-	let mut av1_picture = ash::vk::VideoDecodeAV1PictureInfoKHR::default()
+	let mut av1_picture = vk::VideoDecodeAV1PictureInfoKHR::default()
 		.std_picture_info(&std_picture)
 		.reference_name_slot_indices(plan.reference_name_slot_indices)
 		.frame_header_offset(
 			u32::try_from(frame_header_offset)
 				.map_err(|_| Error::out_of_range("AV1 frame-header offset exceeds Vulkan storage"))?,
 		)
-		.tile_offsets(&tiles.tile_offsets)
-		.tile_sizes(&tiles.tile_sizes);
+		.tile_offsets(&tiles.tile_offsets, &tiles.tile_sizes)
+		.map_err(Error::from)?;
 
 	let setup_record = ReferenceRecord::from(frame);
 	let setup_std_reference = reference_info(setup_record);
 	let mut setup_av1_slot =
-		ash::vk::VideoDecodeAV1DpbSlotInfoKHR::default().std_reference_info(&setup_std_reference);
+		vk::VideoDecodeAV1DpbSlotInfoKHR::default().std_reference_info(&setup_std_reference);
 	let (output, output_layer, dpb, dpb_layer) = session.picture_images(setup_slot_index)?;
-	let extent = ash::vk::Extent2D {
+	let extent = vk::Extent2D {
 		width: session.coded_extent.width,
 		height: session.coded_extent.height,
 	};
-	let setup_resource = ash::vk::VideoPictureResourceInfoKHR::default()
+	let setup_resource = vk::VideoPictureResourceInfoKHR::default()
 		.coded_extent(extent)
 		.base_array_layer(dpb_layer)
 		.image_view_binding(dpb.view);
-	let setup_slot = ash::vk::VideoReferenceSlotInfoKHR::default()
+	let setup_slot = vk::VideoReferenceSlotInfoKHR::default()
 		.slot_index(
 			i32::try_from(setup_slot_index).map_err(|_| Error::internal("AV1 setup slot exceeds i32"))?,
 		)
 		.picture_resource(&setup_resource)
-		.push_next(&mut setup_av1_slot);
+		.push_next(&mut setup_av1_slot)
+		.map_err(Error::from)?;
 
 	let reference_count = plan.active_references.len();
 	let mut std_references = Vec::new();
@@ -613,42 +567,47 @@ pub(super) fn record_picture(
 		}
 		let (_, _, reference_image, reference_layer) = session.picture_images(slot)?;
 		std_references.push(reference_info(record));
-		av1_reference_slots.push(ash::vk::VideoDecodeAV1DpbSlotInfoKHR::default());
+		av1_reference_slots.push(vk::VideoDecodeAV1DpbSlotInfoKHR::default());
 		reference_resources.push(
-			ash::vk::VideoPictureResourceInfoKHR::default()
+			vk::VideoPictureResourceInfoKHR::default()
 				.coded_extent(extent)
 				.base_array_layer(reference_layer)
 				.image_view_binding(reference_image.view),
 		);
-		reference_slots.push(ash::vk::VideoReferenceSlotInfoKHR::default().slot_index(
+		reference_slots.push(vk::VideoReferenceSlotInfoKHR::default().slot_index(
 			i32::try_from(slot).map_err(|_| Error::internal("AV1 reference slot exceeds i32"))?,
 		));
 	}
 	for index in 0..reference_count {
 		av1_reference_slots[index].p_std_reference_info = &std_references[index];
 		reference_slots[index].p_next =
-			(&av1_reference_slots[index] as *const ash::vk::VideoDecodeAV1DpbSlotInfoKHR<'_>).cast();
+			(&av1_reference_slots[index] as *const vk::VideoDecodeAV1DpbSlotInfoKHR<'_>).cast();
 		reference_slots[index].p_picture_resource = &reference_resources[index];
 	}
-	let mut inactive_setup = setup_slot;
-	inactive_setup.slot_index = -1;
+	let mut inactive_setup = vk::VideoReferenceSlotInfoKHR::default()
+		.slot_index(-1)
+		.picture_resource(&setup_resource);
+	inactive_setup.p_next = setup_slot.p_next;
 	reference_slots.push(inactive_setup);
-	let begin_info = ash::vk::VideoBeginCodingInfoKHR::default()
+	let begin_info = vk::VideoBeginCodingInfoKHR::default()
 		.video_session(session.handle)
 		.video_session_parameters(session.parameters)
-		.reference_slots(&reference_slots);
-	let output_resource = ash::vk::VideoPictureResourceInfoKHR::default()
+		.reference_slots(&reference_slots)
+		.map_err(Error::from)?;
+	let output_resource = vk::VideoPictureResourceInfoKHR::default()
 		.coded_extent(extent)
 		.base_array_layer(output_layer)
 		.image_view_binding(output.view);
-	let decode_info = ash::vk::VideoDecodeInfoKHR::default()
+	let decode_info = vk::VideoDecodeInfoKHR::default()
 		.src_buffer(bitstream.handle)
 		.src_buffer_offset(0)
 		.src_buffer_range(bitstream.range)
 		.dst_picture_resource(output_resource)
 		.setup_reference_slot(&setup_slot)
 		.reference_slots(&reference_slots[..reference_count])
-		.push_next(&mut av1_picture);
+		.map_err(Error::from)?
+		.push_next(&mut av1_picture)
+		.map_err(Error::from)?;
 
 	let mut image_barriers = Vec::new();
 	if initialize_images {
@@ -659,23 +618,23 @@ pub(super) fn record_picture(
 			for image in session.images.iter() {
 				image_barriers.push(decode_image_barrier(
 					image,
-					ash::vk::ImageLayout::VIDEO_DECODE_DPB_KHR,
-					ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-						| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+					vk::ImageLayout::VIDEO_DECODE_DPB_KHR,
+					vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+						| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 				));
 			}
 		} else {
 			image_barriers.push(decode_image_barrier(
 				dpb,
-				ash::vk::ImageLayout::VIDEO_DECODE_DPB_KHR,
-				ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-					| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+				vk::ImageLayout::VIDEO_DECODE_DPB_KHR,
+				vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+					| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 			));
 			if output.handle != dpb.handle {
 				image_barriers.push(decode_image_barrier(
 					output,
-					ash::vk::ImageLayout::VIDEO_DECODE_DST_KHR,
-					ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+					vk::ImageLayout::VIDEO_DECODE_DST_KHR,
+					vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 				));
 			}
 		}
@@ -691,20 +650,20 @@ pub(super) fn record_picture(
 		let compute_family = session.device.physical().compute_queue_family;
 		if decode_family != compute_family {
 			let layout = if session.image_set == DecodeImageSet::DistinctLayered {
-				ash::vk::ImageLayout::VIDEO_DECODE_DST_KHR
+				vk::ImageLayout::VIDEO_DECODE_DST_KHR
 			} else {
-				ash::vk::ImageLayout::VIDEO_DECODE_DPB_KHR
+				vk::ImageLayout::VIDEO_DECODE_DPB_KHR
 			};
 			image_barriers.push(
-				ash::vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(ash::vk::PipelineStageFlags2::NONE)
-					.src_access_mask(ash::vk::AccessFlags2::NONE)
-					.dst_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
+				vk::ImageMemoryBarrier2::default()
+					.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+					.src_access_mask(vk::AccessFlagBits2::NONE)
+					.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
 					.dst_access_mask(
-						ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-							| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+						vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+							| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 					)
-					.old_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+					.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 					.new_layout(layout)
 					.src_queue_family_index(compute_family)
 					.dst_queue_family_index(decode_family)
@@ -713,64 +672,72 @@ pub(super) fn record_picture(
 			);
 		}
 	}
-	let bitstream_barriers = [ash::vk::BufferMemoryBarrier2::default()
-		.src_stage_mask(ash::vk::PipelineStageFlags2::HOST)
-		.src_access_mask(ash::vk::AccessFlags2::HOST_WRITE)
-		.dst_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
-		.dst_access_mask(ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR)
-		.src_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
-		.dst_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+	let bitstream_barriers = [vk::BufferMemoryBarrier2::default()
+		.src_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+		.src_access_mask(vk::AccessFlagBits2::HOST_WRITE_BIT)
+		.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
+		.dst_access_mask(vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR)
+		.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+		.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
 		.buffer(bitstream.handle)
 		.offset(0)
 		.size(bitstream.range)];
 	let memory_barriers = (!initialize_images)
 		.then(|| {
-			ash::vk::MemoryBarrier2::default()
-				.src_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
-				.src_access_mask(ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR)
-				.dst_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
+			vk::MemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
+				.src_access_mask(vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
 				.dst_access_mask(
-					ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-						| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+					vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+						| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 				)
 		})
 		.into_iter()
 		.collect::<Vec<_>>();
-	let dependency = ash::vk::DependencyInfo::default()
+	let dependency = vk::DependencyInfo::default()
 		.memory_barriers(&memory_barriers)
+		.map_err(Error::from)?
 		.buffer_memory_barriers(&bitstream_barriers)
-		.image_memory_barriers(&image_barriers);
-	// SAFETY: every pointer chained into the coding scope borrows stack or vector
+		.map_err(Error::from)?
+		.image_memory_barriers(&image_barriers)
+		.map_err(Error::from)?;
+	// safety: every pointer chained into the coding scope borrows stack or vector
 	// storage that remains live and immovable through the decode command call.
 	unsafe {
-		device.cmd_reset_query_pool(command_buffer, session.result_status_pool, 0, 1);
-		device.cmd_pipeline_barrier2(command_buffer, &dependency);
-		(loader.fp().cmd_begin_video_coding_khr)(command_buffer, &begin_info);
+		device.cmd_reset_query_pool(command_buffer, session.result_status_pool, 0, 1)?;
+		device
+			.cmd_pipeline_barrier2(command_buffer, &dependency)
+			.map_err(Error::from)?;
+		device
+			.cmd_begin_video_coding_khr(command_buffer, std::ptr::from_ref(&begin_info))
+			.map_err(Error::from)?;
 	}
 	if plan.reset_dpb {
-		let control = ash::vk::VideoCodingControlInfoKHR::default()
-			.flags(ash::vk::VideoCodingControlFlagsKHR::RESET);
-		// SAFETY: the session is inside a coding scope and this plan starts at an
+		let control = vk::VideoCodingControlInfoKHR::default()
+			.flags(vk::VideoCodingControlFlagBitsKHR::RESET_BIT_KHR);
+		// safety: the session is inside a coding scope and this plan starts at an
 		// AV1 key-frame reset boundary.
 		unsafe {
-			(loader.fp().cmd_control_video_coding_khr)(command_buffer, &control);
+			device
+				.cmd_control_video_coding_khr(command_buffer, &control)
+				.map_err(Error::from)?;
 		}
 	}
-	// SAFETY: source, destination, setup, and distinct active references match the
+	// safety: source, destination, setup, and distinct active references match the
 	// selected AV1 profile and remain live through command recording.
 	unsafe {
 		device.cmd_begin_query(
 			command_buffer,
 			session.result_status_pool,
 			0,
-			ash::vk::QueryControlFlags::empty(),
-		);
-		(decode_loader.fp().cmd_decode_video_khr)(command_buffer, &decode_info);
-		device.cmd_end_query(command_buffer, session.result_status_pool, 0);
-		(loader.fp().cmd_end_video_coding_khr)(
-			command_buffer,
-			&ash::vk::VideoEndCodingInfoKHR::default(),
-		);
+			vk::QueryControlFlags::empty(),
+		)?;
+		device
+			.cmd_decode_video_khr(command_buffer, &decode_info)
+			.map_err(Error::from)?;
+		device.cmd_end_query(command_buffer, session.result_status_pool, 0)?;
+		device.cmd_end_video_coding_khr(command_buffer, &vk::VideoEndCodingInfoKHR::default())?;
 	}
 	if release_for_readback {
 		let decode_family = session
@@ -782,46 +749,48 @@ pub(super) fn record_picture(
 		let compute_family = session.device.physical().compute_queue_family;
 		let same_family = decode_family == compute_family;
 		let decoded_layout = if output.handle == dpb.handle {
-			ash::vk::ImageLayout::VIDEO_DECODE_DPB_KHR
+			vk::ImageLayout::VIDEO_DECODE_DPB_KHR
 		} else {
-			ash::vk::ImageLayout::VIDEO_DECODE_DST_KHR
+			vk::ImageLayout::VIDEO_DECODE_DST_KHR
 		};
-		let release = ash::vk::ImageMemoryBarrier2::default()
-			.src_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
+		let release = vk::ImageMemoryBarrier2::default()
+			.src_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
 			.src_access_mask(
-				ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR
-					| ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+				vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+					| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 			)
 			.dst_stage_mask(if same_family {
-				ash::vk::PipelineStageFlags2::TRANSFER
+				vk::PipelineStageFlagBits2::TRANSFER_BIT
 			} else {
-				ash::vk::PipelineStageFlags2::NONE
+				vk::PipelineStageFlagBits2::NONE
 			})
 			.dst_access_mask(if same_family {
-				ash::vk::AccessFlags2::TRANSFER_READ
+				vk::AccessFlagBits2::TRANSFER_READ_BIT
 			} else {
-				ash::vk::AccessFlags2::NONE
+				vk::AccessFlagBits2::NONE
 			})
 			.old_layout(decoded_layout)
-			.new_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+			.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 			.src_queue_family_index(if same_family {
-				ash::vk::QUEUE_FAMILY_IGNORED
+				vk::QUEUE_FAMILY_IGNORED
 			} else {
 				decode_family
 			})
 			.dst_queue_family_index(if same_family {
-				ash::vk::QUEUE_FAMILY_IGNORED
+				vk::QUEUE_FAMILY_IGNORED
 			} else {
 				compute_family
 			})
 			.image(output.handle)
 			.subresource_range(decode_image_subresource(output_layer, 1));
 		let release_dependency =
-			ash::vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
-		// SAFETY: decode owns this exact output layer; the readback command records
+			vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
+		// safety: decode owns this exact output layer; the readback command records
 		// the matching acquire/copy transition before host observation.
 		unsafe {
-			device.cmd_pipeline_barrier2(command_buffer, &release_dependency);
+			device
+				.cmd_pipeline_barrier2(command_buffer, &(release_dependency).map_err(Error::from)?)
+				.map_err(Error::from)?;
 		}
 	}
 	Ok(())
@@ -879,61 +848,45 @@ fn ceil_div(value: u32, divisor: u32) -> Result<u32> {
 		.ok_or_else(|| Error::out_of_range("AV1 tile division overflowed"))
 }
 
-const fn std_frame_type(value: video::Av1FrameType) -> ash::vk::native::StdVideoAV1FrameType {
+const fn std_frame_type(value: video::Av1FrameType) -> vk::StdVideoAV1FrameType {
 	match value {
-		video::Av1FrameType::Key => ash::vk::native::StdVideoAV1FrameType_STD_VIDEO_AV1_FRAME_TYPE_KEY,
-		video::Av1FrameType::Inter => {
-			ash::vk::native::StdVideoAV1FrameType_STD_VIDEO_AV1_FRAME_TYPE_INTER
-		}
-		video::Av1FrameType::IntraOnly => {
-			ash::vk::native::StdVideoAV1FrameType_STD_VIDEO_AV1_FRAME_TYPE_INTRA_ONLY
-		}
-		video::Av1FrameType::Switch => {
-			ash::vk::native::StdVideoAV1FrameType_STD_VIDEO_AV1_FRAME_TYPE_SWITCH
-		}
+		video::Av1FrameType::Key => vk::StdVideoAV1FrameType::KEY,
+		video::Av1FrameType::Inter => vk::StdVideoAV1FrameType::INTER,
+		video::Av1FrameType::IntraOnly => vk::StdVideoAV1FrameType::INTRA_ONLY,
+		video::Av1FrameType::Switch => vk::StdVideoAV1FrameType::SWITCH,
 	}
 }
 
 const fn std_interpolation_filter(
 	value: video::Av1InterpolationFilter,
-) -> ash::vk::native::StdVideoAV1InterpolationFilter {
+) -> vk::StdVideoAV1InterpolationFilter {
 	match value {
-		video::Av1InterpolationFilter::EightTap => {
-			ash::vk::native::StdVideoAV1InterpolationFilter_STD_VIDEO_AV1_INTERPOLATION_FILTER_EIGHTTAP
-		}
+		video::Av1InterpolationFilter::EightTap => vk::StdVideoAV1InterpolationFilter::EIGHTTAP,
 		video::Av1InterpolationFilter::EightTapSmooth => {
-			ash::vk::native::StdVideoAV1InterpolationFilter_STD_VIDEO_AV1_INTERPOLATION_FILTER_EIGHTTAP_SMOOTH
+			vk::StdVideoAV1InterpolationFilter::EIGHTTAP_SMOOTH
 		}
 		video::Av1InterpolationFilter::EightTapSharp => {
-			ash::vk::native::StdVideoAV1InterpolationFilter_STD_VIDEO_AV1_INTERPOLATION_FILTER_EIGHTTAP_SHARP
+			vk::StdVideoAV1InterpolationFilter::EIGHTTAP_SHARP
 		}
-		video::Av1InterpolationFilter::Bilinear => {
-			ash::vk::native::StdVideoAV1InterpolationFilter_STD_VIDEO_AV1_INTERPOLATION_FILTER_BILINEAR
-		}
-		video::Av1InterpolationFilter::Switchable => {
-			ash::vk::native::StdVideoAV1InterpolationFilter_STD_VIDEO_AV1_INTERPOLATION_FILTER_SWITCHABLE
-		}
+		video::Av1InterpolationFilter::Bilinear => vk::StdVideoAV1InterpolationFilter::BILINEAR,
+		video::Av1InterpolationFilter::Switchable => vk::StdVideoAV1InterpolationFilter::SWITCHABLE,
 	}
 }
 
-const fn std_transform_mode(value: video::Av1TransformMode) -> ash::vk::native::StdVideoAV1TxMode {
+const fn std_transform_mode(value: video::Av1TransformMode) -> vk::StdVideoAV1TxMode {
 	match value {
-		video::Av1TransformMode::Largest => {
-			ash::vk::native::StdVideoAV1TxMode_STD_VIDEO_AV1_TX_MODE_LARGEST
-		}
-		video::Av1TransformMode::Select => {
-			ash::vk::native::StdVideoAV1TxMode_STD_VIDEO_AV1_TX_MODE_SELECT
-		}
+		video::Av1TransformMode::Largest => vk::StdVideoAV1TxMode::LARGEST,
+		video::Av1TransformMode::Select => vk::StdVideoAV1TxMode::SELECT,
 	}
 }
 
 const fn std_restoration_type(
 	value: video::Av1RestorationType,
-) -> ash::vk::native::StdVideoAV1FrameRestorationType {
+) -> vk::StdVideoAV1FrameRestorationType {
 	match value {
-		video::Av1RestorationType::None => ash::vk::native::StdVideoAV1FrameRestorationType_STD_VIDEO_AV1_FRAME_RESTORATION_TYPE_NONE,
-		video::Av1RestorationType::Wiener => ash::vk::native::StdVideoAV1FrameRestorationType_STD_VIDEO_AV1_FRAME_RESTORATION_TYPE_WIENER,
-		video::Av1RestorationType::Sgrproj => ash::vk::native::StdVideoAV1FrameRestorationType_STD_VIDEO_AV1_FRAME_RESTORATION_TYPE_SGRPROJ,
-		video::Av1RestorationType::Switchable => ash::vk::native::StdVideoAV1FrameRestorationType_STD_VIDEO_AV1_FRAME_RESTORATION_TYPE_SWITCHABLE,
+		video::Av1RestorationType::None => vk::StdVideoAV1FrameRestorationType::NONE,
+		video::Av1RestorationType::Wiener => vk::StdVideoAV1FrameRestorationType::WIENER,
+		video::Av1RestorationType::Sgrproj => vk::StdVideoAV1FrameRestorationType::SGRPROJ,
+		video::Av1RestorationType::Switchable => vk::StdVideoAV1FrameRestorationType::SWITCHABLE,
 	}
 }

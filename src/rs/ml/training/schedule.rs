@@ -73,7 +73,7 @@ impl WarmupScheduler {
 	///
 	/// Returns an error when the target rate is non-finite or negative.
 	pub fn new(target_learning_rate: f32, warmup_steps: u64) -> Result<Self> {
-		Self::with_optional_after(target_learning_rate, warmup_steps, None)
+		Self::new_with_optional_after(target_learning_rate, warmup_steps, None)
 	}
 
 	/// Construct a warmup followed by `after` with a step origin of zero.
@@ -81,15 +81,15 @@ impl WarmupScheduler {
 	/// # Errors
 	///
 	/// Returns an error when the target rate is non-finite or negative.
-	pub fn with_after(
+	pub fn new_with_after(
 		target_learning_rate: f32,
 		warmup_steps: u64,
 		after: Box<dyn LrScheduler>,
 	) -> Result<Self> {
-		Self::with_optional_after(target_learning_rate, warmup_steps, Some(after))
+		Self::new_with_optional_after(target_learning_rate, warmup_steps, Some(after))
 	}
 
-	fn with_optional_after(
+	fn new_with_optional_after(
 		target_learning_rate: f32,
 		warmup_steps: u64,
 		after: Option<Box<dyn LrScheduler>>,
@@ -132,7 +132,7 @@ impl OneCycleScheduler {
 	/// # Errors
 	///
 	/// Returns an error for an invalid maximum rate or empty span.
-	pub fn with_defaults(max_learning_rate: f32, total_steps: u64) -> Result<Self> {
+	pub fn new_with_defaults(max_learning_rate: f32, total_steps: u64) -> Result<Self> {
 		Self::new(max_learning_rate, total_steps, 0.3, 25.0, 10_000.0)
 	}
 
@@ -409,7 +409,7 @@ impl ReduceOnPlateauScheduler {
 	/// # Errors
 	///
 	/// Returns an error when the initial rate is invalid.
-	pub fn with_defaults(initial_learning_rate: f32) -> Result<Self> {
+	pub fn new_with_defaults(initial_learning_rate: f32) -> Result<Self> {
 		Self::new(
 			initial_learning_rate,
 			0.1,
@@ -576,7 +576,7 @@ impl LinearWarmupCosineScheduler {
 			total_steps - warmup_steps,
 		)?;
 		Ok(Self {
-			inner: WarmupScheduler::with_after(max_learning_rate, warmup_steps, Box::new(cosine))?,
+			inner: WarmupScheduler::new_with_after(max_learning_rate, warmup_steps, Box::new(cosine))?,
 		})
 	}
 }

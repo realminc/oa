@@ -26,7 +26,7 @@ fn timing_and_color_metadata_are_explicit() -> oa::Result<()> {
 	);
 	assert_eq!(timing.duration(), Some(Duration::from_micros(16_683)));
 
-	let unknown_duration = VideoFrameTiming::from_microseconds(100, 0);
+	let unknown_duration = VideoFrameTiming::new_from_microseconds(100, 0);
 	assert_eq!(
 		unknown_duration.presentation_timestamp(),
 		Duration::from_micros(100)
@@ -51,11 +51,11 @@ fn timing_and_color_metadata_are_explicit() -> oa::Result<()> {
 fn planar_yuv420_frames_validate_and_share_bytes() -> oa::Result<()> {
 	let bytes = (0_u8..24).collect::<Vec<_>>();
 	let original_pixels = bytes.as_ptr();
-	let frame = VideoFrame::from_yuv420p(
+	let frame = VideoFrame::new_from_yuv420p(
 		bytes,
 		4,
 		4,
-		VideoFrameTiming::from_microseconds(7, 3),
+		VideoFrameTiming::new_from_microseconds(7, 3),
 		VideoColorInfo::unspecified(),
 	)?;
 	assert_eq!(frame.width(), 4);
@@ -74,22 +74,22 @@ fn planar_yuv420_frames_validate_and_share_bytes() -> oa::Result<()> {
 	assert!(frame.as_image().is_none());
 	assert!(frame.into_image().is_none());
 
-	let Err(error) = VideoFrame::from_yuv420p(
+	let Err(error) = VideoFrame::new_from_yuv420p(
 		vec![0; 24],
 		3,
 		4,
-		VideoFrameTiming::from_microseconds(0, 1),
+		VideoFrameTiming::new_from_microseconds(0, 1),
 		VideoColorInfo::unspecified(),
 	) else {
 		panic!("odd YUV420 dimensions must fail");
 	};
 	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
 
-	let Err(error) = VideoFrame::from_yuv420p(
+	let Err(error) = VideoFrame::new_from_yuv420p(
 		vec![0; 23],
 		4,
 		4,
-		VideoFrameTiming::from_microseconds(0, 1),
+		VideoFrameTiming::new_from_microseconds(0, 1),
 		VideoColorInfo::unspecified(),
 	) else {
 		panic!("incorrect YUV420 byte count must fail");
@@ -102,11 +102,11 @@ test_vk!(
 	packed_video_frame_retains_image_storage_and_metadata,
 	engine,
 	{
-		let matrix = Matrix::from_f32(&engine, [2, 4, 4], &[0.25; 32])?;
+		let matrix = Matrix::new_from_f32(&engine, [2, 4, 4], &[0.25; 32])?;
 		let image = Image::new(matrix, ImageLayout::Hwc, ImageFormat::Rgba)?;
-		let timing = VideoFrameTiming::from_microseconds(1_000_000, 33_333);
+		let timing = VideoFrameTiming::new_from_microseconds(1_000_000, 33_333);
 		let color = VideoColorInfo::new(VideoColorMatrix::Bt709, VideoColorRange::Full);
-		let frame = VideoFrame::from_image(image, timing, color)?;
+		let frame = VideoFrame::new_from_image(image, timing, color)?;
 
 		assert_eq!(frame.width(), 4);
 		assert_eq!(frame.height(), 2);
@@ -130,22 +130,22 @@ test_vk!(
 );
 
 test_vk!(video_frame_rejects_batches_and_empty_extents, engine, {
-	let batch = Matrix::from_f32(&engine, [2, 3, 1, 1], &[0.0; 6])?;
+	let batch = Matrix::new_from_f32(&engine, [2, 3, 1, 1], &[0.0; 6])?;
 	let batch = Image::new(batch, ImageLayout::Nchw, ImageFormat::Rgb)?;
-	let Err(error) = VideoFrame::from_image(
+	let Err(error) = VideoFrame::new_from_image(
 		batch,
-		VideoFrameTiming::from_microseconds(0, 1),
+		VideoFrameTiming::new_from_microseconds(0, 1),
 		VideoColorInfo::unspecified(),
 	) else {
 		panic!("batched frame must fail");
 	};
 	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
 
-	let empty = Matrix::from_f32(&engine, [0, 1, 3], &[])?;
+	let empty = Matrix::new_from_f32(&engine, [0, 1, 3], &[])?;
 	let empty = Image::new(empty, ImageLayout::Hwc, ImageFormat::Rgb)?;
-	let Err(error) = VideoFrame::from_image(
+	let Err(error) = VideoFrame::new_from_image(
 		empty,
-		VideoFrameTiming::from_microseconds(0, 1),
+		VideoFrameTiming::new_from_microseconds(0, 1),
 		VideoColorInfo::unspecified(),
 	) else {
 		panic!("empty frame must fail");
@@ -160,7 +160,7 @@ test_vk!(
 	{
 		let rgba = (0_u8..32).collect::<Vec<_>>();
 		let texture = texture_from_rgba8(&engine, &rgba, 4, 2)?;
-		let timing = VideoFrameTiming::from_microseconds(123, 33);
+		let timing = VideoFrameTiming::new_from_microseconds(123, 33);
 		let color = VideoColorInfo::new(VideoColorMatrix::Bt709, VideoColorRange::Full);
 		let frame = oa::video::from_texture(&texture, timing, color)?;
 		assert!(frame.ready_event().is_none());

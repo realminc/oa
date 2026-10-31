@@ -263,7 +263,7 @@ impl Figure {
 			data[count * 2 + i] = rgba8[i * 4 + 2] as f32 / 255.0;
 			data[count * 3 + i] = rgba8[i * 4 + 3] as f32 / 255.0;
 		}
-		let matrix = crate::Matrix::from_f32(engine, [1, 4, h, w], &data)?;
+		let matrix = crate::Matrix::new_from_f32(engine, [1, 4, h, w], &data)?;
 		Image::new(matrix, crate::ImageLayout::Nchw, crate::ImageFormat::Rgba)
 	}
 

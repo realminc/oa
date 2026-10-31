@@ -493,7 +493,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	} else {
 		None
 	};
-	let tokenizer = Rc::new(AlmTokenizer::with_seed(
+	let tokenizer = Rc::new(AlmTokenizer::new_with_seed(
 		&engine,
 		AlmTokenizerConfig {
 			input_dim: dataset.feature_dim(),
@@ -537,7 +537,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		..AlmPriorConfig::default()
 	};
 	prior_config.sync_vocab(cfg.num_codes)?;
-	let prior = Rc::new(AlmPrior::with_seed(
+	let prior = Rc::new(AlmPrior::new_with_seed(
 		&engine,
 		prior_config,
 		cfg.seed.wrapping_add(1),

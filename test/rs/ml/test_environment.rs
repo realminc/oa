@@ -6,6 +6,45 @@ use oa::ml::{
 	evaluation::{PolicyEvaluationConfig, evaluate_categorical},
 };
 
+test_vk!(
+	environment_timed_submission_preserves_exact_pending_and_rollback,
+	engine,
+	{
+		let mut environment = TestEnvironment::new(&engine, 2)?;
+		engine.checkpoint()?.wait()?;
+		assert!(environment.submit_timed().is_err());
+		for seed in [1, 2] {
+			environment.reset(seed)?;
+			let event = environment.submit_timed()?;
+			assert!(environment.execution().has_pending_event());
+			assert!(environment.begin().is_err());
+			assert!(environment.cancel().is_err());
+			assert!(!event.device_duration()?.is_zero());
+			// Reading timestamps doesn't consume the environment's exact wait contract.
+			assert!(environment.execution().has_pending_event());
+			let foreign = engine.checkpoint()?;
+			assert!(environment.wait(&foreign).is_err());
+			environment.wait(&event)?;
+			assert!(environment.wait(&event).is_err());
+		}
+		let committed = environment.observation().read_f32()?;
+		environment.reset(100)?;
+		environment.cancel()?;
+		assert_eq!(environment.observation().read_f32()?, committed);
+		environment.begin()?; // Empty transaction fails before submission, rolling back.
+		assert!(environment.submit_timed().is_err());
+		assert_eq!(environment.observation().read_f32()?, committed);
+		environment.reset(4)?;
+		let event = environment.submit()?;
+		assert!(event.device_duration().is_err());
+		environment.wait(&event)?;
+		assert_eq!(environment.execution().submission_count(), 3);
+		environment.close()?;
+		assert!(environment.submit_timed().is_err());
+		Ok(())
+	}
+);
+
 struct TestEnvironment<'engine> {
 	engine: &'engine oa::Engine,
 	execution: EnvironmentExecution,
@@ -20,7 +59,7 @@ struct TestEnvironment<'engine> {
 impl<'engine> TestEnvironment<'engine> {
 	fn new(engine: &'engine oa::Engine, environments: u32) -> oa::Result<Self> {
 		let spec = cart_pole_spec()?;
-		let observation = oa::Matrix::from_f32(
+		let observation = oa::Matrix::new_from_f32(
 			engine,
 			[environments as usize, 4],
 			&vec![0.0; environments as usize * 4],
@@ -32,12 +71,12 @@ impl<'engine> TestEnvironment<'engine> {
 			environments,
 			committed_observation: observation.clone(),
 			observation,
-			reward: oa::Matrix::from_f32(
+			reward: oa::Matrix::new_from_f32(
 				engine,
 				[environments as usize],
 				&vec![1.0; environments as usize],
 			)?,
-			boundary: oa::Matrix::from_slice(
+			boundary: oa::Matrix::new_from_slice(
 				engine,
 				[environments as usize],
 				&vec![0_u8; environments as usize],
@@ -192,12 +231,12 @@ test_vk!(
 	engine,
 	{
 		let spec = cart_pole_spec()?;
-		let observation = oa::Matrix::from_f32(&engine, [3, 4], &[0.0; 12])?;
-		let next_observation = oa::Matrix::from_f32(&engine, [3, 4], &[0.1; 12])?;
-		let action = oa::Matrix::from_slice(&engine, [3], &[0_i32, 1, 0])?;
-		let reward = oa::Matrix::from_f32(&engine, [3], &[1.0; 3])?;
-		let terminated = oa::Matrix::from_slice(&engine, [3], &[0_u8, 1, 0])?;
-		let truncated = oa::Matrix::from_slice(&engine, [3], &[0_u8, 0, 1])?;
+		let observation = oa::Matrix::new_from_f32(&engine, [3, 4], &[0.0; 12])?;
+		let next_observation = oa::Matrix::new_from_f32(&engine, [3, 4], &[0.1; 12])?;
+		let action = oa::Matrix::new_from_slice(&engine, [3], &[0_i32, 1, 0])?;
+		let reward = oa::Matrix::new_from_f32(&engine, [3], &[1.0; 3])?;
+		let terminated = oa::Matrix::new_from_slice(&engine, [3], &[0_u8, 1, 0])?;
+		let truncated = oa::Matrix::new_from_slice(&engine, [3], &[0_u8, 0, 1])?;
 		let transition = EnvironmentTransition::new(
 			observation.clone(),
 			next_observation,
@@ -214,7 +253,7 @@ test_vk!(
 		assert_eq!(transition.terminated().read::<u8>()?, [0, 1, 0]);
 		assert_eq!(transition.truncated().read::<u8>()?, [0, 0, 1]);
 
-		let wrong_action = oa::Matrix::from_slice(&engine, [3], &[0_u32, 1, 0])?;
+		let wrong_action = oa::Matrix::new_from_slice(&engine, [3], &[0_u32, 1, 0])?;
 		assert_eq!(
 			spec
 				.validate_action(&wrong_action, 3)
@@ -222,7 +261,7 @@ test_vk!(
 				.kind(),
 			oa::ErrorKind::InvalidArgument
 		);
-		let wrong_observation = oa::Matrix::from_f32(&engine, [2, 4], &[0.0; 8])?;
+		let wrong_observation = oa::Matrix::new_from_f32(&engine, [2, 4], &[0.0; 8])?;
 		assert_eq!(
 			spec
 				.validate_reset(&wrong_observation, 3)
@@ -235,14 +274,14 @@ test_vk!(
 );
 
 test_vk!(environment_transforms_match_donor_values, engine, {
-	let observation = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 4.0, 5.0, -8.0])?;
-	let mean = oa::Matrix::from_f32(&engine, [2], &[1.0, 0.0])?;
-	let stddev = oa::Matrix::from_f32(&engine, [2], &[2.0, 2.0])?;
+	let observation = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 4.0, 5.0, -8.0])?;
+	let mean = oa::Matrix::new_from_f32(&engine, [2], &[1.0, 0.0])?;
+	let stddev = oa::Matrix::new_from_f32(&engine, [2], &[2.0, 2.0])?;
 	let normalized =
 		oa::ml::environment::normalize_observation(&observation, &mean, &stddev, 1.0e-6, 3.0)?;
-	let action = oa::Matrix::from_f32(&engine, [3], &[-2.0, 0.0, 2.0])?;
+	let action = oa::Matrix::new_from_f32(&engine, [3], &[-2.0, 0.0, 2.0])?;
 	let scaled = oa::ml::environment::scale_action(&action, -1.0, 1.0, 0.0, 10.0, true)?;
-	let reward = oa::Matrix::from_f32(&engine, [3], &[-3.0, 0.25, 4.0])?;
+	let reward = oa::Matrix::new_from_f32(&engine, [3], &[-3.0, 0.25, 4.0])?;
 	let clipped = oa::ml::environment::clip_reward(&reward, -1.0, 1.0)?;
 	for (actual, expected) in normalized
 		.read_f32()?
@@ -257,7 +296,7 @@ test_vk!(environment_transforms_match_donor_values, engine, {
 });
 
 test_vk!(environment_transforms_reject_invalid_policy, engine, {
-	let value = oa::Matrix::from_f32(&engine, [2], &[0.0, 1.0])?;
+	let value = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 1.0])?;
 	assert!(oa::ml::environment::normalize_observation(&value, &value, &value, 0.0, 1.0).is_err());
 	assert!(oa::ml::environment::scale_action(&value, 1.0, 1.0, 0.0, 1.0, true).is_err());
 	assert!(oa::ml::environment::clip_reward(&value, 1.0, -1.0).is_err());
@@ -273,7 +312,7 @@ test_vk!(
 		assert_eq!(environment.execution().submission_count(), 0);
 		environment.reset(7)?;
 		assert!(environment.execution().has_active_recording());
-		let action = oa::Matrix::from_slice(&engine, [2], &[0_i32, 1])?;
+		let action = oa::Matrix::new_from_slice(&engine, [2], &[0_i32, 1])?;
 		let transition = environment.step(&action)?;
 		assert_eq!(transition.next_observation().shape(), [2, 4]);
 		environment.reset_completed()?;

@@ -24,7 +24,7 @@ impl Upsample {
 	///
 	/// Returns an error when `scale_factor` is zero.
 	pub fn new(scale_factor: usize) -> Result<Self> {
-		Self::with_mode(scale_factor, UpsampleMode::Bilinear)
+		Self::new_with_mode(scale_factor, UpsampleMode::Bilinear)
 	}
 
 	/// Construct Upsample with an explicit interpolation mode.
@@ -32,7 +32,7 @@ impl Upsample {
 	/// # Errors
 	///
 	/// Returns an error when `scale_factor` is zero.
-	pub fn with_mode(scale_factor: usize, mode: UpsampleMode) -> Result<Self> {
+	pub fn new_with_mode(scale_factor: usize, mode: UpsampleMode) -> Result<Self> {
 		if scale_factor == 0 {
 			return Err(crate::Error::invalid_argument(
 				"Upsample scale factor must be nonzero",

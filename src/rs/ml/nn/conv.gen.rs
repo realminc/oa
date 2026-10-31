@@ -35,7 +35,7 @@ impl Conv1d {
 		clippy::too_many_arguments,
 		reason = "the donor Conv1d contract has five geometry fields plus a seed"
 	)]
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		input_channels: usize,
 		output_channels: usize,
@@ -63,13 +63,13 @@ impl Conv1d {
 			.ok_or_else(|| Error::invalid_argument("Conv1d weight size overflows usize"))?;
 		let limit = 1.0_f32 / (fan_in as f32).sqrt();
 		let values = random::symmetric_uniform(weight_count, limit, seed);
-		let weight = Matrix::from_f32(
+		let weight = Matrix::new_from_f32(
 			engine,
 			[output_channels, input_channels, kernel_size],
 			&values,
 		)?;
-		let bias = Matrix::from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
-		Self::from_matrices(weight, bias, stride, padding, dilation)
+		let bias = Matrix::new_from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
+		Self::new_from_matrices(weight, bias, stride, padding, dilation)
 	}
 
 	/// Construct Conv1d from exact OIK weight and channel-bias matrices.
@@ -78,7 +78,7 @@ impl Conv1d {
 	///
 	/// Returns an error unless weight is nonempty F32 `[O, I, K]`, bias is
 	/// matching same-engine F32 `[O]`, and stride/dilation are nonzero.
-	pub fn from_matrices(
+	pub fn new_from_matrices(
 		weight: Matrix,
 		bias: Matrix,
 		stride: usize,
@@ -226,7 +226,7 @@ impl ConvTranspose1d {
 		clippy::too_many_arguments,
 		reason = "the donor ConvTranspose1d contract has five geometry fields plus a seed"
 	)]
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		input_channels: usize,
 		output_channels: usize,
@@ -248,12 +248,12 @@ impl ConvTranspose1d {
 			.ok_or_else(|| Error::invalid_argument("ConvTranspose1d weight size overflows usize"))?;
 		let limit = 1.0_f32 / (fan_in as f32).sqrt();
 		let values = random::symmetric_uniform(weight_count, limit, seed);
-		let weight = Matrix::from_f32(
+		let weight = Matrix::new_from_f32(
 			engine,
 			[input_channels, output_channels, kernel_size],
 			&values,
 		)?;
-		Self::from_matrix(weight, stride, padding)
+		Self::new_from_matrix(weight, stride, padding)
 	}
 
 	/// Construct ConvTranspose1d from an exact IOK weight matrix.
@@ -262,7 +262,7 @@ impl ConvTranspose1d {
 	///
 	/// Returns an error unless weight is nonempty F32 `[I, O, K]` and stride is
 	/// nonzero.
-	pub fn from_matrix(weight: Matrix, stride: usize, padding: usize) -> Result<Self> {
+	pub fn new_from_matrix(weight: Matrix, stride: usize, padding: usize) -> Result<Self> {
 		let [input_channels, output_channels, kernel_size] = weight.shape() else {
 			return Err(Error::invalid_argument(
 				"ConvTranspose1d weight must have IOK rank three",
@@ -385,7 +385,7 @@ impl ConvTranspose2d {
 		clippy::too_many_arguments,
 		reason = "the donor ConvTranspose2d contract has five geometry fields plus a seed"
 	)]
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		input_channels: usize,
 		output_channels: usize,
@@ -408,13 +408,13 @@ impl ConvTranspose2d {
 			.ok_or_else(|| Error::invalid_argument("ConvTranspose2d weight size overflows usize"))?;
 		let limit = 1.0_f32 / (fan_in as f32).sqrt();
 		let values = random::symmetric_uniform(weight_count, limit, seed);
-		let weight = Matrix::from_f32(
+		let weight = Matrix::new_from_f32(
 			engine,
 			[input_channels, output_channels, kernel_size, kernel_size],
 			&values,
 		)?;
-		let bias = Matrix::from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
-		Self::from_matrices(weight, bias, stride, padding)
+		let bias = Matrix::new_from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
+		Self::new_from_matrices(weight, bias, stride, padding)
 	}
 
 	/// Construct ConvTranspose2d from exact IOKK weight and channel-bias matrices.
@@ -423,7 +423,7 @@ impl ConvTranspose2d {
 	///
 	/// Returns an error unless weight is nonempty F32 `[I, O, K, K]`, bias is
 	/// matching same-engine F32 `[O]`, and stride is nonzero.
-	pub fn from_matrices(
+	pub fn new_from_matrices(
 		weight: Matrix,
 		bias: Matrix,
 		stride: usize,
@@ -565,7 +565,7 @@ impl Conv2d {
 		clippy::too_many_arguments,
 		reason = "the donor Conv2d contract has six independent geometry fields plus a seed"
 	)]
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		input_channels: usize,
 		output_channels: usize,
@@ -597,7 +597,7 @@ impl Conv2d {
 			.ok_or_else(|| Error::invalid_argument("Conv2d weight size overflows usize"))?;
 		let limit = 1.0_f32 / (fan_in as f32).sqrt();
 		let weight_values = random::symmetric_uniform(weight_count, limit, seed);
-		let weight = Matrix::from_f32(
+		let weight = Matrix::new_from_f32(
 			engine,
 			[
 				output_channels,
@@ -607,8 +607,8 @@ impl Conv2d {
 			],
 			&weight_values,
 		)?;
-		let bias = Matrix::from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
-		Self::from_matrices(weight, bias, stride, padding, groups)
+		let bias = Matrix::new_from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
+		Self::new_from_matrices(weight, bias, stride, padding, groups)
 	}
 
 	/// Construct Conv2d from exact grouped OIHW weight and bias matrices.
@@ -618,7 +618,7 @@ impl Conv2d {
 	/// Returns an error unless weight is nonempty square-kernel F32 OIHW/group,
 	/// bias is matching same-engine F32, stride/groups are nonzero, and output
 	/// channels are divisible by groups.
-	pub fn from_matrices(
+	pub fn new_from_matrices(
 		weight: Matrix,
 		bias: Matrix,
 		stride: usize,

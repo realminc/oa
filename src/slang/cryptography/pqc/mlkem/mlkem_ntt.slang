@@ -27,9 +27,12 @@ static const uint MLKEM_ZETA[128] = {
 
 void mlkem_ntt(inout uint poly[256]) {
 	uint index = 1u;
+	[loop]
 	for (uint length = 128u; length >= 2u; length >>= 1u) {
+		[loop]
 		for (uint start = 0u; start < 256u; start += 2u * length) {
 			uint zeta = MLKEM_ZETA[index++];
+			[loop]
 			for (uint j = start; j < start + length; ++j) {
 				uint product = mlkem_mul(zeta, poly[j + length]);
 				uint value = poly[j];
@@ -42,9 +45,12 @@ void mlkem_ntt(inout uint poly[256]) {
 
 void mlkem_intt(inout uint poly[256]) {
 	uint index = 127u;
+	[loop]
 	for (uint length = 2u; length <= 128u; length <<= 1u) {
+		[loop]
 		for (uint start = 0u; start < 256u; start += 2u * length) {
 			uint zeta = MLKEM_ZETA[index--];
+			[loop]
 			for (uint j = start; j < start + length; ++j) {
 				uint a = poly[j], b = poly[j + length];
 				poly[j] = mlkem_add(a, b);
@@ -53,6 +59,7 @@ void mlkem_intt(inout uint poly[256]) {
 		}
 	}
 	// 128^-1 mod q, not 256^-1 and not a Montgomery conversion.
+	[loop]
 	for (uint j = 0u; j < 256u; ++j) poly[j] = mlkem_mul(poly[j], 3303u);
 }
 
@@ -65,6 +72,7 @@ uint2 mlkem_base_multiply(uint2 a, uint2 b, uint gamma) {
 // In-place left operand; right must be a distinct array. No coefficient-wise
 // scalar product: every pair multiplies modulo X^2 - gamma.
 void mlkem_multiply_ntts(inout uint left[256], uint right[256]) {
+	[loop]
 	for (uint pair = 0u; pair < 128u; ++pair) {
 		// 17^(2*BitRev7(pair)+1); Appendix A's alternating +/- final-stage roots.
 		uint gamma = MLKEM_ZETA[64u + pair / 2u];

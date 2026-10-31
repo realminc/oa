@@ -201,7 +201,7 @@ impl HumanMl3dDataset {
 			.clips
 			.get(index)
 			.ok_or_else(|| Error::out_of_range("HumanML3D clip index is out of range"))?;
-		Matrix::from_f32(engine, [clip.frames, self.feature_dim], &clip.features)
+		Matrix::new_from_f32(engine, [clip.frames, self.feature_dim], &clip.features)
 	}
 
 	/// De-standardize `[frames, feature_dim]` values in place.

@@ -81,7 +81,7 @@ pub fn philox_uniform(input: &Matrix, low: f32, high: f32, seed: u64) -> Result<
 	let inputs = [input];
 	let outputs = [&output];
 	if engine.capture_active() {
-		let state = Matrix::from_slice_handle(engine, vec![1], &[0_u32])?;
+		let state = Matrix::new_from_slice_handle(engine, vec![1], &[0_u32])?;
 		let buffers = [
 			BufferBinding::read(input.storage()),
 			BufferBinding::write(output.storage()),
@@ -184,7 +184,7 @@ pub fn philox_normal(input: &Matrix, mean: f32, stddev: f32, seed: u64) -> Resul
 	let inputs = [input];
 	let outputs = [&output];
 	if engine.capture_active() {
-		let state = Matrix::from_slice_handle(engine, vec![1], &[0_u32])?;
+		let state = Matrix::new_from_slice_handle(engine, vec![1], &[0_u32])?;
 		let buffers = [
 			BufferBinding::read(input.storage()),
 			BufferBinding::write(output.storage()),
@@ -362,7 +362,7 @@ pub fn sample_logits(
 		];
 		let engine = logits.engine_handle();
 		if engine.capture_active() {
-			let state = Matrix::from_slice_handle(engine, vec![1], &[0_u32])?;
+			let state = Matrix::new_from_slice_handle(engine, vec![1], &[0_u32])?;
 			let random_buffers = [
 				BufferBinding::read(logits.storage()),
 				BufferBinding::write(random.storage()),
@@ -455,7 +455,7 @@ pub fn sample_logits(
 		];
 		let engine = logits.engine_handle();
 		if engine.capture_active() {
-			let state = Matrix::from_slice_handle(engine, vec![1], &[0_u32])?;
+			let state = Matrix::new_from_slice_handle(engine, vec![1], &[0_u32])?;
 			let random_buffers = [
 				BufferBinding::read(logits.storage()),
 				BufferBinding::write(random.storage()),
@@ -576,7 +576,7 @@ pub fn dropout(input: &Matrix, probability: f32, seed: u64) -> Result<Matrix> {
 		let inputs = [input];
 		let outputs = [&output];
 		if engine.capture_active() {
-			let state = Matrix::from_slice_handle(engine, vec![1], &[0_u32])?;
+			let state = Matrix::new_from_slice_handle(engine, vec![1], &[0_u32])?;
 			let buffers = [
 				BufferBinding::read(input.storage()),
 				BufferBinding::write(output.storage()),
@@ -660,7 +660,7 @@ pub(crate) fn dropout_backward(gradient: &Matrix, probability: f32, seed: u64) -
 	let inputs = [gradient];
 	let outputs = [&output];
 	if engine.capture_active() {
-		let state = Matrix::from_slice_handle(engine, vec![1], &[0_u32])?;
+		let state = Matrix::new_from_slice_handle(engine, vec![1], &[0_u32])?;
 		let buffers = [
 			BufferBinding::read(gradient.storage()),
 			BufferBinding::write(output.storage()),

@@ -287,7 +287,7 @@ impl<T: Float> Mat4<T> {
 		}
 	}
 
-	pub fn from_affine(linear: Mat3<T>, translation: Vec3<T>) -> Self {
+	pub fn new_from_affine(linear: Mat3<T>, translation: Vec3<T>) -> Self {
 		Self {
 			m: [
 				[linear.m[0][0], linear.m[0][1], linear.m[0][2], T::ZERO],
@@ -315,7 +315,7 @@ impl<T: Float> Mat4<T> {
 		let inverse_translation = (-self.translation_part()) * inverse_linear;
 		inverse_translation
 			.is_finite()
-			.then(|| Self::from_affine(inverse_linear, inverse_translation))
+			.then(|| Self::new_from_affine(inverse_linear, inverse_translation))
 	}
 
 	pub fn try_normal_matrix(self, tolerance: T) -> Option<Mat3<T>> {

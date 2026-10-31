@@ -14,6 +14,88 @@ else:
     from .._pqc_harness import SlangComponentTest, ROOT
 
 class MlkemKemTests(SlangComponentTest):
+    def test_buffered_kem_agreement_and_rejection(self):
+        if __package__ == "kernel":
+            from _mlkem_oracle import kem, decaps
+        else:
+            from .._mlkem_oracle import kem, decaps
+        rng = random.Random(2034096)
+        values, expected, rejected, rejection_keys = [], [], [], []
+        for k in (2, 3, 4):
+            for sample in range(2):
+                d = bytes(32) if sample == 0 else rng.randbytes(32)
+                z = bytes([255] * 32) if sample == 0 else rng.randbytes(32)
+                message = bytes(32) if sample == 0 else rng.randbytes(32)
+                ek, dk, ciphertext, key = kem(d, z, message, k)
+                values += [k, 0] + [int.from_bytes(d[i:i+4], "little") for i in range(0, 32, 4)]
+                values += list(z + message)
+                expected.append(list(ek) + [0xA5] * (1568 - len(ek))
+                                + list(dk) + [0xA5] * (3168 - len(dk))
+                                + list(ciphertext) + [0xA5] * (1568 - len(ciphertext))
+                                + list(key + key) + [1, 1, 1, 1])
+                # Exact-end cache admission is included in the separate decaps transport.
+                for position in (0, len(ciphertext) // 2, len(ciphertext) - 1):
+                    altered = bytearray(ciphertext)
+                    altered[position] ^= 128
+                    oracle = decaps(dk, bytes(altered), k)
+                    self.assertEqual(oracle, hashlib.shake_256(z + altered).digest(32))
+                    base = (17 * 1059 + 35) * 4 if len(rejection_keys) == 17 else 0
+                    rejected += [k, base] + list(dk) + [0xA5] * (3168 - len(dk))
+                    rejected += list(altered) + [0xA5] * (1568 - len(altered))
+                    rejection_keys.append((k, list(oracle), base))
+        actual = self.execute("mlkem_kem_workspace_components", values, 6, 7398)
+        for row, prefix in enumerate(expected):
+            result = actual[row * 7398:(row + 1) * 7398]
+            self.assertEqual(result[:6372], prefix)
+            self.assertEqual(result[6372], 0xA5A5A5A5)
+            self.assertEqual(result[7397], 0xA5A5A5A5)
+            k = values[row * 74]
+            self.assertTrue(all(value < 3329 for value in result[6373:6373 + 256*k]))
+            self.assertEqual(result[6373 + 256*k:7397], [0xA5A5A5A5] * (1024 - 256*k))
+        actual = self.execute("mlkem_decaps_workspace_components", rejected, 18, 1059)
+        for row, (k, key, base) in enumerate(rejection_keys):
+            result = actual[row * 1059:(row + 1) * 1059]
+            self.assertEqual(result[:33], key + [1])
+            self.assertEqual(result[33], 0xA5A5A5A5)
+            start = 35 if base else 34
+            self.assertEqual(result[34:start], [0xA5A5A5A5] * (start - 34))
+            self.assertEqual(result[start + 256*k:], [0xA5A5A5A5] * (1059 - start - 256*k))
+
+    def test_buffered_kem_nist_decapsulation(self):
+        folder = ROOT / "test/fixtures/cryptography/mlkem"
+        prompt = json.loads((folder / "encapDecap-prompt.json").read_text())
+        answers = json.loads((folder / "encapDecap-expectedResults.json").read_text())
+        expected = {(g["tgId"], t["tcId"]): t for g in answers["testGroups"] for t in g["tests"]}
+        values, keys = [], []
+        for group in prompt["testGroups"]:
+            if group["function"] != "decapsulation":
+                continue
+            k = {"ML-KEM-512": 2, "ML-KEM-768": 3, "ML-KEM-1024": 4}[group["parameterSet"]]
+            for case in group["tests"]:
+                dk, ciphertext = bytes.fromhex(case["dk"]), bytes.fromhex(case["c"])
+                values += [k, 0] + list(dk) + [0xA5] * (3168 - len(dk))
+                values += list(ciphertext) + [0xA5] * (1568 - len(ciphertext))
+                keys.append(list(bytes.fromhex(expected[(group["tgId"], case["tcId"])]["k"])))
+        self.assertEqual(len(keys), 30)
+        actual = self.execute("mlkem_decaps_workspace_components", values, len(keys), 1059)
+        for row, key in enumerate(keys):
+            self.assertEqual(actual[row * 1059:row * 1059 + 33], key + [1])
+            self.assertEqual(actual[row * 1059 + 33], 0xA5A5A5A5)
+            self.assertEqual(actual[row * 1059 + 1058], 0xA5A5A5A5)
+
+    def test_buffered_kem_workspace_preflight(self):
+        for k, base in ((1, 0), (5, 0), (2, 1), (4, 0xFFFFFFFF), (3, 6375 * 4)):
+            with self.subTest(k=k, base=base):
+                actual = self.execute("mlkem_kem_workspace_components", [k, base] + [0] * 72, 1, 7398)
+                self.assertEqual(actual[:6368], [0xA5] * 6368)
+                self.assertEqual(actual[6368:6372], [0] * 4)
+                self.assertEqual(actual[6372:], [0xA5A5A5A5] * 1026)
+        for k, base in ((1, 0), (5, 0), (2, 1), (4, 0xFFFFFFFF), (3, 36 * 4)):
+            with self.subTest(k=k, base=base):
+                actual = self.execute("mlkem_decaps_workspace_components", [k, base] + [0] * 4736, 1, 1059)
+                self.assertEqual(actual[:33], [0xA5] * 32 + [0])
+                self.assertEqual(actual[33:], [0xA5A5A5A5] * 1026)
+
     def test_mlkem_nist_vectors(self):
         folder = ROOT / "test/fixtures/cryptography/mlkem"
         counts = {"keyGen": 0, "encapsulation": 0, "decapsulation": 0, "keyCheck": 0}

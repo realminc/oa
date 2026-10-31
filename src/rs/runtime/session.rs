@@ -20,9 +20,6 @@ pub(super) struct ExecutionSession {
 	semantic: SemanticGraph,
 	semantic_values: BTreeMap<SemanticValueKey, SemanticValueBinding>,
 	semantic_storage: BTreeMap<SemanticValueId, Storage>,
-	/// Texture value ids admitted to the semantic graph this session.
-	/// Textures have no compute Storage so they use a separate set.
-	texture_admitted: std::collections::BTreeSet<u64>,
 	stable_resources: Vec<Storage>,
 	stable_resource_cursor: usize,
 	stable_resource_count: usize,
@@ -65,8 +62,6 @@ enum SemanticValueKey {
 	Matrix(u64),
 	Audio(u64),
 	Image(u64),
-	#[allow(dead_code)]
-	Texture(u64),
 }
 
 #[derive(Clone)]
@@ -85,7 +80,6 @@ impl ExecutionSession {
 			semantic: SemanticGraph::new(),
 			semantic_values: BTreeMap::new(),
 			semantic_storage: BTreeMap::new(),
-			texture_admitted: std::collections::BTreeSet::new(),
 			stable_resources: Vec::new(),
 			stable_resource_cursor: 0,
 			stable_resource_count: 0,
@@ -197,7 +191,7 @@ impl ExecutionSession {
 
 	pub(super) fn create_storage(&mut self, device: &Arc<Device>, bytes: &[u8]) -> Result<Storage> {
 		if !self.stable_resource_frame_active || bytes.is_empty() {
-			let storage = Storage::from_bytes(device, bytes)?;
+			let storage = Storage::new_from_bytes(device, bytes)?;
 			self.track_capture_created(&storage);
 			return Ok(storage);
 		}
@@ -212,7 +206,7 @@ impl ExecutionSession {
 			existing.prepare_reuse(bytes)?;
 			return Ok(existing.clone());
 		}
-		let storage = Storage::from_bytes(device, bytes)?;
+		let storage = Storage::new_from_bytes(device, bytes)?;
 		self.track_capture_created(&storage);
 		if slot < self.stable_resources.len() {
 			self.stable_resources[slot] = storage.clone();
@@ -930,30 +924,6 @@ impl ExecutionSession {
 		self.semantic.operations().len()
 	}
 
-	/// Record a Texture value into the session semantic graph.
-	///
-	/// Idempotent within a session: re-admitting the same texture id returns
-	/// `Ok(())` without adding a second node.  Errors on exhausted identity
-	/// space or graph limits.
-	pub(super) fn record_texture_semantic(
-		&mut self,
-		texture_value_id: u64,
-		width: usize,
-		height: usize,
-	) -> Result<()> {
-		if self.texture_admitted.contains(&texture_value_id) {
-			return Ok(());
-		}
-		admit_texture_semantic(
-			&mut self.semantic,
-			&mut self.texture_admitted,
-			texture_value_id,
-			width,
-			height,
-		)?;
-		Ok(())
-	}
-
 	pub(super) fn complete_autograd(
 		&mut self,
 		forward: super::SemanticOpId,
@@ -1357,42 +1327,6 @@ fn admit_image(
 		},
 	);
 	storage_bindings.insert(value, image.storage().clone());
-	Ok(value)
-}
-
-/// Record a Texture value into the semantic graph and return its graph id.
-///
-/// Texture values do not carry compute `Storage` (they use private Vulkan
-/// images), so they are tracked in a separate id set rather than the storage
-/// binding map.  Each distinct `texture_value_id` produces exactly one graph
-/// node per session.
-pub(super) fn admit_texture_semantic(
-	graph: &mut SemanticGraph,
-	admitted: &mut std::collections::BTreeSet<u64>,
-	texture_value_id: u64,
-	width: usize,
-	height: usize,
-) -> Result<SemanticValueId> {
-	if admitted.contains(&texture_value_id) {
-		// Value already in the graph; SemanticGraph assigns ids in order so
-		// we cannot cheaply retrieve the existing id here.  Return a sentinel
-		// that the caller may discard — this path is only reached on repeated
-		// texture admission within one capture session, which is uncommon.
-		return Err(crate::Error::failed_precondition(
-			"texture semantic value already admitted in this session",
-		));
-	}
-	// Textures are [height, width, 4] U8 in their host representation.
-	let value = graph.add_value(
-		SemanticValueDesc::new(
-			format!("texture.{texture_value_id}"),
-			OpValueKind::Texture,
-			[height, width, 4],
-			crate::DType::U8,
-		)?
-		.external(true),
-	)?;
-	admitted.insert(texture_value_id);
 	Ok(value)
 }
 

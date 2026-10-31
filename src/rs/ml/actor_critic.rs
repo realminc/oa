@@ -24,6 +24,15 @@ pub trait ActorCritic: Module {
 	///
 	/// Returns an error when the observation contract or a child operation fails.
 	fn evaluate(&self, observation: &Matrix) -> Result<ActorCriticOutput>;
+
+	/// Add model-owned regularization to the task loss under its active tape.
+	/// The default retains the task loss; sparse models may add routing losses.
+	///
+	/// # Errors
+	/// Returns a model loss-composition or ownership failure.
+	fn auxiliary_loss(&self, task: &Matrix) -> Result<Matrix> {
+		Ok(task.clone())
+	}
 }
 
 /// Dimensions and deterministic initialization seed for the default MLP.
@@ -68,37 +77,37 @@ impl CategoricalActorCritic {
 				"categorical actor-critic requires positive observation/hidden sizes and at least two actions",
 			));
 		}
-		let policy_0 = Rc::new(Linear::with_seed(
+		let policy_0 = Rc::new(Linear::new_with_seed(
 			engine,
 			config.observation_size,
 			config.hidden_size,
 			config.seed,
 		)?);
-		let policy_1 = Rc::new(Linear::with_seed(
+		let policy_1 = Rc::new(Linear::new_with_seed(
 			engine,
 			config.hidden_size,
 			config.hidden_size,
 			config.seed.wrapping_add(1),
 		)?);
-		let policy = Rc::new(Linear::with_seed(
+		let policy = Rc::new(Linear::new_with_seed(
 			engine,
 			config.hidden_size,
 			config.action_count,
 			config.seed.wrapping_add(2),
 		)?);
-		let value_0 = Rc::new(Linear::with_seed(
+		let value_0 = Rc::new(Linear::new_with_seed(
 			engine,
 			config.observation_size,
 			config.hidden_size,
 			config.seed.wrapping_add(3),
 		)?);
-		let value_1 = Rc::new(Linear::with_seed(
+		let value_1 = Rc::new(Linear::new_with_seed(
 			engine,
 			config.hidden_size,
 			config.hidden_size,
 			config.seed.wrapping_add(4),
 		)?);
-		let value = Rc::new(Linear::with_seed(
+		let value = Rc::new(Linear::new_with_seed(
 			engine,
 			config.hidden_size,
 			1,

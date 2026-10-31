@@ -145,6 +145,11 @@ impl Parameter {
 		Ok(())
 	}
 
+	pub(crate) fn restore_gradient(&self, gradient: Matrix) {
+		// Only compiled training owns this route; shapes/Engine are fixed by capture.
+		self.inner.borrow_mut().gradient = Some(gradient);
+	}
+
 	pub(crate) fn clear_gradient(&self) {
 		self.inner.borrow_mut().gradient = None;
 	}

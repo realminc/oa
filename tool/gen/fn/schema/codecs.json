@@ -1,0 +1,315 @@
+{
+	"schema_version": 1,
+	"family": "codecs",
+	"domain": "codecs",
+	"signature_records": [
+		{
+			"name": "audio_decode_memory",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"encoded",
+						"&[u8]"
+					]
+				],
+				"returns": "Audio",
+				"visibility": "pub",
+				"target": "crate::audio::decode_memory"
+			}
+		},
+		{
+			"name": "audio_encode_wav_f32",
+			"signature": {
+				"parameters": [
+					[
+						"audio",
+						"&Audio"
+					]
+				],
+				"returns": "Vec<u8>",
+				"visibility": "pub",
+				"target": "crate::audio::encode_wav_f32"
+			}
+		},
+		{
+			"name": "audio_encode_interleaved_wav_f32",
+			"signature": {
+				"parameters": [
+					[
+						"samples",
+						"&[f32]"
+					],
+					[
+						"sample_rate",
+						"u32"
+					],
+					[
+						"channel_count",
+						"usize"
+					]
+				],
+				"returns": "Vec<u8>",
+				"visibility": "pub",
+				"target": "crate::audio::encode_interleaved_wav_f32"
+			}
+		},
+		{
+			"name": "image_decode_memory",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"encoded",
+						"&[u8]"
+					],
+					[
+						"format",
+						"ImageFormat"
+					]
+				],
+				"returns": "Image",
+				"visibility": "pub",
+				"target": "crate::image::decode_memory"
+			}
+		},
+		{
+			"name": "image_encode",
+			"signature": {
+				"parameters": [
+					[
+						"image",
+						"&Image"
+					],
+					[
+						"codec",
+						"ImageCodec"
+					],
+					[
+						"quality",
+						"u32"
+					]
+				],
+				"returns": "Vec<u8>",
+				"visibility": "pub",
+				"target": "crate::image::encode"
+			}
+		},
+		{
+			"name": "image_can_decode",
+			"signature": {
+				"parameters": [
+					[
+						"codec",
+						"ImageCodec"
+					]
+				],
+				"returns": "bool",
+				"visibility": "pub",
+				"target": "crate::image::can_decode",
+				"raw_return": true
+			}
+		},
+		{
+			"name": "image_can_encode",
+			"signature": {
+				"parameters": [
+					[
+						"codec",
+						"ImageCodec"
+					]
+				],
+				"returns": "bool",
+				"visibility": "pub",
+				"target": "crate::image::can_encode",
+				"raw_return": true
+			}
+		},
+		{
+			"name": "audio_decode_file",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"path",
+						"impl AsRef<Path>"
+					]
+				],
+				"returns": "Audio",
+				"visibility": "pub",
+				"target": "crate::audio::decode_file",
+				"parity": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"path",
+						"&std::path::Path"
+					]
+				]
+			}
+		},
+		{
+			"name": "audio_save_wav_f32",
+			"signature": {
+				"parameters": [
+					[
+						"path",
+						"impl AsRef<Path>"
+					],
+					[
+						"audio",
+						"&Audio"
+					]
+				],
+				"returns": "()",
+				"visibility": "pub",
+				"target": "crate::audio::save_wav_f32",
+				"parity": [
+					[
+						"path",
+						"&std::path::Path"
+					],
+					[
+						"audio",
+						"&Audio"
+					]
+				]
+			}
+		},
+		{
+			"name": "image_decode_file",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"path",
+						"impl AsRef<Path>"
+					],
+					[
+						"format",
+						"ImageFormat"
+					]
+				],
+				"returns": "Image",
+				"visibility": "pub",
+				"target": "crate::image::decode_file",
+				"parity": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"path",
+						"&std::path::Path"
+					],
+					[
+						"format",
+						"ImageFormat"
+					]
+				]
+			}
+		},
+		{
+			"name": "image_save_file",
+			"signature": {
+				"parameters": [
+					[
+						"path",
+						"impl AsRef<Path>"
+					],
+					[
+						"image",
+						"&Image"
+					],
+					[
+						"quality",
+						"u32"
+					]
+				],
+				"returns": "()",
+				"visibility": "pub",
+				"target": "crate::image::save_file",
+				"parity": [
+					[
+						"path",
+						"&std::path::Path"
+					],
+					[
+						"image",
+						"&Image"
+					],
+					[
+						"quality",
+						"u32"
+					]
+				]
+			}
+		},
+		{
+			"name": "image_save_rgba_file",
+			"signature": {
+				"parameters": [
+					[
+						"rgba",
+						"&[u8]"
+					],
+					[
+						"width",
+						"u32"
+					],
+					[
+						"height",
+						"u32"
+					],
+					[
+						"path",
+						"impl AsRef<Path>"
+					],
+					[
+						"quality",
+						"u32"
+					]
+				],
+				"returns": "()",
+				"visibility": "pub",
+				"target": "crate::image::save_rgba_file",
+				"parity": [
+					[
+						"rgba",
+						"&[u8]"
+					],
+					[
+						"width",
+						"u32"
+					],
+					[
+						"height",
+						"u32"
+					],
+					[
+						"path",
+						"&std::path::Path"
+					],
+					[
+						"quality",
+						"u32"
+					]
+				]
+			}
+		}
+	]
+}

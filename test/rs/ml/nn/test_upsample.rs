@@ -92,7 +92,7 @@ test_vk!(
 	{
 		let shape = [1, 1, 2, 3];
 		let values = [1.0_f32, 2.0, 4.0, -1.0, 0.5, 3.0];
-		let input = oa::Matrix::from_f32(&engine, shape, &values)?;
+		let input = oa::Matrix::new_from_f32(&engine, shape, &values)?;
 		for mode in [UpsampleMode::Nearest, UpsampleMode::Bilinear] {
 			let (plan, output) = engine.capture(|| oa::ml::matrix::upsample_2d(&input, 2, mode))?;
 			assert_eq!(output.shape(), [1, 1, 4, 6]);
@@ -126,11 +126,14 @@ test_vk!(
 			let expected = numerical_gradient(&values, |candidate| {
 				mse(&host_upsample_2d(candidate, shape, 2, mode), &target_values)
 			});
-			let embedding =
-				oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 3], &values)?)?;
-			let indices = oa::Matrix::from_slice(&engine, [1, 1, 2], &[0_u32, 1])?;
-			let target = oa::Matrix::from_f32(&engine, [1, 1, 4, 6], &target_values)?;
-			let module = oa::ml::nn::Upsample::with_mode(2, mode)?;
+			let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+				&engine,
+				[2, 3],
+				&values,
+			)?)?;
+			let indices = oa::Matrix::new_from_slice(&engine, [1, 1, 2], &[0_u32, 1])?;
+			let target = oa::Matrix::new_from_f32(&engine, [1, 1, 4, 6], &target_values)?;
+			let module = oa::ml::nn::Upsample::new_with_mode(2, mode)?;
 			assert_eq!(module.scale_factor(), 2);
 			assert_eq!(module.mode(), mode);
 			assert!(module.parameters().is_empty());
@@ -152,13 +155,13 @@ test_vk!(
 	upsample_2d_preserves_donor_nearest_backward_vector,
 	engine,
 	{
-		let embedding = oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(
+		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 			&engine,
 			[2, 2],
 			&[1.0, 2.0, 3.0, 4.0],
 		)?)?;
-		let indices = oa::Matrix::from_slice(&engine, [1, 1, 2], &[0_u32, 1])?;
-		let target = oa::Matrix::from_f32(&engine, [1, 1, 4, 4], &[0.0; 16])?;
+		let indices = oa::Matrix::new_from_slice(&engine, [1, 1, 2], &[0_u32, 1])?;
+		let target = oa::Matrix::new_from_f32(&engine, [1, 1, 4, 4], &[0.0; 16])?;
 		let tape = oa::ml::GradientTape::new();
 		let output =
 			oa::ml::matrix::upsample_2d(&embedding.forward(&indices)?, 2, UpsampleMode::Nearest)?;

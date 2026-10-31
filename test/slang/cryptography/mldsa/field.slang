@@ -1,6 +1,7 @@
 // Test-only entry points; import production formulas without copying them.
 // Independent host oracles and Vulkan target validation are owned by Python.
 import mldsa_field;
+import wide_u32;
 
 StructuredBuffer<uint> inputs;
 RWStructuredBuffer<uint> outputs;

@@ -80,6 +80,10 @@ pub struct TextAtlas {
 }
 
 impl TextAtlas {
+	pub(super) fn storage(&self) -> &Storage {
+		&self._storage
+	}
+
 	pub(crate) fn new(engine: &EngineHandle) -> Result<Self> {
 		let storage = engine.create_storage(COVERAGE)?;
 		let descriptor = engine.storage_descriptor_index(&storage)?;

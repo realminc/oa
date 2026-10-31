@@ -13,8 +13,8 @@ test_vk!(
 	operators_match_named_operations_and_propagate_errors,
 	engine,
 	{
-		let a = oa::Matrix::from_f32(&engine, [2], &[2.0, 4.0])?;
-		let b = oa::Matrix::from_f32(&engine, [2], &[1.0, 2.0])?;
+		let a = oa::Matrix::new_from_f32(&engine, [2], &[2.0, 4.0])?;
+		let b = oa::Matrix::new_from_f32(&engine, [2], &[1.0, 2.0])?;
 		for (actual, expected) in [
 			((&a + &b)?, vec![3.0, 6.0]),
 			((&a - &b)?, vec![1.0, 2.0]),
@@ -37,7 +37,7 @@ test_vk!(
 		] {
 			assert_eq!(actual.read_f32()?, expected);
 		}
-		let bad = oa::Matrix::from_f32(&engine, [3], &[1.0; 3])?;
+		let bad = oa::Matrix::new_from_f32(&engine, [3], &[1.0; 3])?;
 		let named_error = oa::matrix::add(&a, &bad).err().expect("bad shape");
 		let operator_error = (&a + &bad).err().expect("fallible operator");
 		assert_eq!(named_error.kind(), operator_error.kind());

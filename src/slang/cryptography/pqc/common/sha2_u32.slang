@@ -67,6 +67,20 @@ void sha2_u32_compress(inout uint state[8], uint block[16]) {
 	state[4] += e; state[5] += f; state[6] += g; state[7] += h;
 }
 
+void sha2_u32_initialize(uint bits, out uint state[8]) {
+	if (bits == 224u) {
+		state[0] = 0xc1059ed8u; state[1] = 0x367cd507u;
+		state[2] = 0x3070dd17u; state[3] = 0xf70e5939u;
+		state[4] = 0xffc00b31u; state[5] = 0x68581511u;
+		state[6] = 0x64f98fa7u; state[7] = 0xbefa4fa4u;
+	} else {
+		state[0] = 0x6a09e667u; state[1] = 0xbb67ae85u;
+		state[2] = 0x3c6ef372u; state[3] = 0xa54ff53au;
+		state[4] = 0x510e527fu; state[5] = 0x9b05688cu;
+		state[6] = 0x1f83d9abu; state[7] = 0x5be0cd19u;
+	}
+}
+
 bool sha2_u32_digest(
 	RWByteAddressBuffer buf,
 	uint msg_base,
@@ -79,17 +93,7 @@ bool sha2_u32_digest(
 	if ((bits != 224u && bits != 256u) || (extent & 3u) != 0u
 		|| msg_base > extent || msg_len > extent - msg_base) return false;
 	uint state[8];
-	if (bits == 224u) {
-		state[0] = 0xc1059ed8u; state[1] = 0x367cd507u;
-		state[2] = 0x3070dd17u; state[3] = 0xf70e5939u;
-		state[4] = 0xffc00b31u; state[5] = 0x68581511u;
-		state[6] = 0x64f98fa7u; state[7] = 0xbefa4fa4u;
-	} else {
-		state[0] = 0x6a09e667u; state[1] = 0xbb67ae85u;
-		state[2] = 0x3c6ef372u; state[3] = 0xa54ff53au;
-		state[4] = 0x510e527fu; state[5] = 0x9b05688cu;
-		state[6] = 0x1f83d9abu; state[7] = 0x5be0cd19u;
-	}
+	sha2_u32_initialize(bits, state);
 	uint offset = 0u;
 	uint remaining = msg_len;
 	uint block[16];

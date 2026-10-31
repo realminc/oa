@@ -134,34 +134,34 @@ impl<'engine> LunarLander3dVector<'engine> {
 		let observation_count = lanes
 			.checked_mul(LUNAR_OBSERVATION_SIZE)
 			.ok_or_else(|| Error::resource_exhausted("Lunar Lander observation size overflows"))?;
-		let config_f32 = Matrix::from_f32(engine, [CONFIG_F32_COUNT], &config_f32_values)?;
-		let config_u32 = Matrix::from_slice(engine, [CONFIG_U32_COUNT], &config_u32_values)?;
-		let terrain_f32 = Matrix::from_f32(engine, [terrain_values.len()], &terrain_values)?;
-		let state_f32 = Matrix::from_f32(
+		let config_f32 = Matrix::new_from_f32(engine, [CONFIG_F32_COUNT], &config_f32_values)?;
+		let config_u32 = Matrix::new_from_slice(engine, [CONFIG_U32_COUNT], &config_u32_values)?;
+		let terrain_f32 = Matrix::new_from_f32(engine, [terrain_values.len()], &terrain_values)?;
+		let state_f32 = Matrix::new_from_f32(
 			engine,
 			[lanes, STATE_F32_WIDTH],
 			&vec![0.0; state_f32_count],
 		)?;
-		let state_u32 = Matrix::from_slice(
+		let state_u32 = Matrix::new_from_slice(
 			engine,
 			[lanes, STATE_U32_WIDTH],
 			&vec![0_u32; state_u32_count],
 		)?;
-		let observation = Matrix::from_f32(
+		let observation = Matrix::new_from_f32(
 			engine,
 			[lanes, LUNAR_OBSERVATION_SIZE],
 			&vec![0.0; observation_count],
 		)?;
-		let transition_observation = Matrix::from_f32(
+		let transition_observation = Matrix::new_from_f32(
 			engine,
 			[lanes, LUNAR_OBSERVATION_SIZE],
 			&vec![0.0; observation_count],
 		)?;
-		let reward = Matrix::from_f32(engine, [lanes], &vec![0.0; lanes])?;
-		let terminated = Matrix::from_slice(engine, [lanes], &vec![0_u8; lanes])?;
-		let truncated = Matrix::from_slice(engine, [lanes], &vec![0_u8; lanes])?;
-		let end_reason = Matrix::from_slice(engine, [lanes], &vec![0_u32; lanes])?;
-		let no_external_stop = Matrix::from_slice(engine, [lanes], &vec![0_u8; lanes])?;
+		let reward = Matrix::new_from_f32(engine, [lanes], &vec![0.0; lanes])?;
+		let terminated = Matrix::new_from_slice(engine, [lanes], &vec![0_u8; lanes])?;
+		let truncated = Matrix::new_from_slice(engine, [lanes], &vec![0_u8; lanes])?;
+		let end_reason = Matrix::new_from_slice(engine, [lanes], &vec![0_u32; lanes])?;
+		let no_external_stop = Matrix::new_from_slice(engine, [lanes], &vec![0_u8; lanes])?;
 		let spec = EnvironmentSpec::new(
 			EnvironmentSpace::continuous(
 				"observation",

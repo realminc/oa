@@ -2,14 +2,15 @@
 // schemas=matrix_elemwise.json,matrix_blas.json,matrix_reduce.json,matrix_rng.json,matrix_index.json,ml_training.json,audio.json,cryptography_hash.json,image.json,vision_detection.json generator_version=64
 // matrix_elemwise_sha256=6d4112435554d3615e6c2494c5062e5f93fa85815bccffa2ca49b12f97aaac75
 // matrix_blas_sha256=31a29676780c696e7f6a77f290398587a9e29e612903c5816503e35d3dda8687
-// matrix_reduce_sha256=82fbdb597e6fd7557a8c081a6302ceb383b2df455716387a549bed1a21f44fdd
-// matrix_rng_sha256=44767f064bbe8a861ee136a4b6ac710d80d5acc0febb4921a9b455dfac0147d6
-// matrix_index_sha256=d8dcc521d7c0f1e349c806b97571addc859ed4779ca094dfdc7791e6fd641c5e
-// ml_training_sha256=6678961ee57f24310158676c7b4fe0821e21ca48db7edcb20d2a749a164976ae
-// audio_sha256=1e7b6d6f13531fd8c330038c46a9b63856ef432febbe1a6ca1bd786b0081278b
-// cryptography_hash_sha256=5659414fbdf658b15d08f85afa35d5c8e610ddff7066bf4cd09f024d5accc3f7
-// image_sha256=0d0c5f1db8252e02650e5d790ba1eb27975549b460917d76d9b7a0234ffb64a1
-// vision_detection_sha256=c6188d1144d35167edf6c6f7034479db95afa18e51bc00b293a1022fa6e6f0c2
+// matrix_reduce_sha256=17296bb7678ffc44252a7c9277435bb12dda55299f818a64c50cfcffb22e9960
+// matrix_rng_sha256=440a6b90c6c16c545157f9563ed1a0938718a1f72f674d76ecd54d9ca0bf1d60
+// matrix_index_sha256=832c7f15decb8a9ba773fd566cb4b1d07ed7fa18454520a615af15b43c81357e
+// ml_training_sha256=0585c46a8b916b65da7f39d2dba124e03ad5c595e7700073b8ea3a6a0109b23b
+// audio_sha256=2f2611fc0899110cb5a178958123b4ccab5dda014db67459ba74696cf97c6427
+// cryptography_hash_sha256=982731ed954c1dddbb0b1430f6561e03cbaf7cb6e7880fae9ba317ad9a1fa87b
+// image_sha256=7964c886261cd8764e3b9bdef23d569d3f12ad030b674d98056242b6d4822bd9
+// vision_detection_sha256=7da58f99f580737228e29421ed632bb87609cfa4142d7d311fd2e913d78ba4b4
+// cryptography_bigint_sha256=636171eea6d8620d516a7d64ef1143ab03485ef3095474ad2e2c60e9fe0fe9e6
 
 use std::sync::OnceLock;
 
@@ -11312,6 +11313,1130 @@ static BOUNDED_ML_VQ_EMA_UPDATE_F32: ShaderArtifact = ShaderArtifact {
 	content_id: OnceLock::new(),
 };
 
+static ML_TRADING_RESET_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/ml_trading_reset_f32.spv")),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_TRADING_RESET_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_trading_reset_f32_bounded.spv"
+	)),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static ML_TRADING_STEP_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/ml_trading_step_f32.spv")),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 7,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 8,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 9,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 10,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_TRADING_STEP_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/ml_trading_step_f32_bounded.spv")),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 7,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 8,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 9,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 10,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static ML_CAUSAL_LINEAR_ATTENTION_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_causal_linear_attention_f32.spv"
+	)),
+	workgroup_size: [64, 1, 1],
+	dispatch_tile_size: [1, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::ExclusivePerWorkgroup,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_CAUSAL_LINEAR_ATTENTION_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_causal_linear_attention_f32_bounded.spv"
+	)),
+	workgroup_size: [64, 1, 1],
+	dispatch_tile_size: [1, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::ExclusivePerWorkgroup,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static ML_CAUSAL_LINEAR_ATTENTION_BACKWARD_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_causal_linear_attention_backward_f32.spv"
+	)),
+	workgroup_size: [64, 1, 1],
+	dispatch_tile_size: [1, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 6,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerWorkgroup,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::ExclusivePerWorkgroup,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_CAUSAL_LINEAR_ATTENTION_BACKWARD_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_causal_linear_attention_backward_f32_bounded.spv"
+	)),
+	workgroup_size: [64, 1, 1],
+	dispatch_tile_size: [1, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 6,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerWorkgroup,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::ExclusivePerWorkgroup,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static ML_CAUSAL_LINEAR_ATTENTION_BACKWARD_KV_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_causal_linear_attention_backward_kv_f32.spv"
+	)),
+	workgroup_size: [64, 1, 1],
+	dispatch_tile_size: [1, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 7,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::ExclusivePerWorkgroup,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_CAUSAL_LINEAR_ATTENTION_BACKWARD_KV_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_causal_linear_attention_backward_kv_f32_bounded.spv"
+	)),
+	workgroup_size: [64, 1, 1],
+	dispatch_tile_size: [1, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 7,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::ExclusivePerWorkgroup,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static ML_MINIBATCH_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/ml_minibatch_f32.spv")),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 7,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 8,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 9,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_MINIBATCH_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/ml_minibatch_f32_bounded.spv")),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 7,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 8,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 9,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static ML_MINIBATCH_CURSOR_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/ml_minibatch_cursor_f32.spv")),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 7,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 8,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 9,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_MINIBATCH_CURSOR_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_minibatch_cursor_f32_bounded.spv"
+	)),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 7,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 8,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 9,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static ML_TRAINING_ACCUMULATE_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/ml_training_accumulate_f32.spv")),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 0,
+			domain: LogicalWriteDomain::OutputElements,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneElement,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_TRAINING_ACCUMULATE_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_training_accumulate_f32_bounded.spv"
+	)),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 0,
+			domain: LogicalWriteDomain::OutputElements,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneElement,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static ML_APPEND_CURSOR_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/ml_append_cursor_f32.spv")),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 8,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 9,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 10,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 11,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 12,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 13,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 14,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 15,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 16,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 17,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_APPEND_CURSOR_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_append_cursor_f32_bounded.spv"
+	)),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 8,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 9,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 10,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 11,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 12,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 13,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 14,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 15,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 16,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 17,
+				domain: LogicalWriteDomain::OutputElements,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static ML_TRADING_RESET_CURSOR_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/ml_trading_reset_cursor_f32.spv")),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_TRADING_RESET_CURSOR_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_trading_reset_cursor_f32_bounded.spv"
+	)),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static ML_TRADING_STEP_CURSOR_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/ml_trading_step_cursor_f32.spv")),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 7,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 8,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 9,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 10,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_TRADING_STEP_CURSOR_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_trading_step_cursor_f32_bounded.spv"
+	)),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 6,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 7,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 8,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 9,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 10,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::SharedAtomicContributors,
+				extent: WriteExtent::OneElement,
+				collision: CollisionPolicy::AtomicU32,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static ML_SAMPLE_CATEGORICAL_CURSOR_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_sample_categorical_cursor_f32.spv"
+	)),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::OutputElements,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneElement,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_SAMPLE_CATEGORICAL_CURSOR_F32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_sample_categorical_cursor_f32_bounded.spv"
+	)),
+	workgroup_size: [256, 1, 1],
+	dispatch_tile_size: [256, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::OutputElements,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneElement,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static ML_TRADING_CURSOR_ADVANCE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_trading_cursor_advance_u32.spv"
+	)),
+	workgroup_size: [1, 1, 1],
+	dispatch_tile_size: [1, 1, 1],
+	physical_write: None,
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_ML_TRADING_CURSOR_ADVANCE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/ml_trading_cursor_advance_u32_bounded.spv"
+	)),
+	workgroup_size: [1, 1, 1],
+	dispatch_tile_size: [1, 1, 1],
+	physical_write: None,
+	content_id: OnceLock::new(),
+};
+
 static AUDIO_GAIN_F32: ShaderArtifact = ShaderArtifact {
 	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/audio_gain_f32.spv")),
 	workgroup_size: [256, 1, 1],
@@ -11808,7 +12933,17 @@ static CRYPTOGRAPHY_MERKLE_REDUCE_U8: ShaderArtifact = ShaderArtifact {
 	)),
 	workgroup_size: [256, 1, 1],
 	dispatch_tile_size: [256, 1, 1],
-	physical_write: None,
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
 	content_id: OnceLock::new(),
 };
 
@@ -11819,7 +12954,17 @@ static BOUNDED_CRYPTOGRAPHY_MERKLE_REDUCE_U8: ShaderArtifact = ShaderArtifact {
 	)),
 	workgroup_size: [256, 1, 1],
 	dispatch_tile_size: [256, 1, 1],
-	physical_write: None,
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
 	content_id: OnceLock::new(),
 };
 
@@ -11839,6 +12984,816 @@ static BOUNDED_CRYPTOGRAPHY_MERKLE_COPY_U8: ShaderArtifact = ShaderArtifact {
 	workgroup_size: [256, 1, 1],
 	dispatch_tile_size: [256, 1, 1],
 	physical_write: None,
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SHA224_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_sha224_u8.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SHA224_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_sha224_u8_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SHA256_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_sha256_u8.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SHA256_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_sha256_u8_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SHA384_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_sha384_u8.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SHA384_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_sha384_u8_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SHA512_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_sha512_u8.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SHA512_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_sha512_u8_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SHA512_224_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_sha512_224_u8.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SHA512_224_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_sha512_224_u8_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SHA512_256_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_sha512_256_u8.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SHA512_256_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_sha512_256_u8_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SHA3_224_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_sha3_224_u8.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SHA3_224_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_sha3_224_u8_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SHA3_256_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_sha3_256_u8.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SHA3_256_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_sha3_256_u8_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SHA3_384_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_sha3_384_u8.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SHA3_384_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_sha3_384_u8_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SHA3_512_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_sha3_512_u8.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SHA3_512_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_sha3_512_u8_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_MERKLE_PROOF_GATHER_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_merkle_proof_gather_u8.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_MERKLE_PROOF_GATHER_U8: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_merkle_proof_gather_u8_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_MERKLE_PROOF_VERIFY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_merkle_proof_verify_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 3,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneScalar,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_MERKLE_PROOF_VERIFY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_merkle_proof_verify_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 3,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneScalar,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_POSEIDON2_BABYBEAR16_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_babybear16_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_POSEIDON2_BABYBEAR16_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_babybear16_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_POSEIDON2_BABYBEAR16_PERMUTE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_babybear16_permute_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_POSEIDON2_BABYBEAR16_PERMUTE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_babybear16_permute_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_POSEIDON2_BABYBEAR24_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_babybear24_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_POSEIDON2_BABYBEAR24_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_babybear24_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_POSEIDON2_BABYBEAR24_PERMUTE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_babybear24_permute_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_POSEIDON2_BABYBEAR24_PERMUTE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_babybear24_permute_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_POSEIDON2_KOALABEAR16_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_koalabear16_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_POSEIDON2_KOALABEAR16_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_koalabear16_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_POSEIDON2_KOALABEAR16_PERMUTE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_koalabear16_permute_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_POSEIDON2_KOALABEAR16_PERMUTE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_koalabear16_permute_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_POSEIDON2_KOALABEAR24_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_koalabear24_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_POSEIDON2_KOALABEAR24_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_koalabear24_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_POSEIDON2_KOALABEAR24_PERMUTE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_koalabear24_permute_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_POSEIDON2_KOALABEAR24_PERMUTE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_poseidon2_koalabear24_permute_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
 	content_id: OnceLock::new(),
 };
 
@@ -12065,8 +14020,16 @@ static CRYPTOGRAPHY_ML_KEM_KEYGEN_U8: ShaderArtifact = ShaderArtifact {
 				collision: CollisionPolicy::Exclusive,
 				tail: TailPolicy::BoundsChecked,
 			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
 		],
-		workspace: WorkspacePartition::None,
+		workspace: WorkspacePartition::ExclusivePerWorkgroup,
 	}),
 	content_id: OnceLock::new(),
 };
@@ -12096,8 +14059,16 @@ static BOUNDED_CRYPTOGRAPHY_ML_KEM_KEYGEN_U8: ShaderArtifact = ShaderArtifact {
 				collision: CollisionPolicy::Exclusive,
 				tail: TailPolicy::BoundsChecked,
 			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
 		],
-		workspace: WorkspacePartition::None,
+		workspace: WorkspacePartition::ExclusivePerWorkgroup,
 	}),
 	content_id: OnceLock::new(),
 };
@@ -12135,8 +14106,16 @@ static CRYPTOGRAPHY_ML_KEM_ENCAPS_U8: ShaderArtifact = ShaderArtifact {
 				collision: CollisionPolicy::Exclusive,
 				tail: TailPolicy::BoundsChecked,
 			},
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
 		],
-		workspace: WorkspacePartition::None,
+		workspace: WorkspacePartition::ExclusivePerWorkgroup,
 	}),
 	content_id: OnceLock::new(),
 };
@@ -12174,8 +14153,16 @@ static BOUNDED_CRYPTOGRAPHY_ML_KEM_ENCAPS_U8: ShaderArtifact = ShaderArtifact {
 				collision: CollisionPolicy::Exclusive,
 				tail: TailPolicy::BoundsChecked,
 			},
+			PhysicalWrite {
+				binding: 5,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
 		],
-		workspace: WorkspacePartition::None,
+		workspace: WorkspacePartition::ExclusivePerWorkgroup,
 	}),
 	content_id: OnceLock::new(),
 };
@@ -12188,15 +14175,25 @@ static CRYPTOGRAPHY_ML_KEM_DECAPS_U8: ShaderArtifact = ShaderArtifact {
 	workgroup_size: [1, 1, 1],
 	dispatch_tile_size: [1, 1, 1],
 	physical_write: Some(PhysicalWriteContract {
-		writes: &[PhysicalWrite {
-			binding: 2,
-			domain: LogicalWriteDomain::Rows,
-			partition: WritePartition::ExclusivePerWorkgroup,
-			extent: WriteExtent::RowWidth,
-			collision: CollisionPolicy::Exclusive,
-			tail: TailPolicy::BoundsChecked,
-		}],
-		workspace: WorkspacePartition::None,
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::ExclusivePerWorkgroup,
 	}),
 	content_id: OnceLock::new(),
 };
@@ -12209,15 +14206,25 @@ static BOUNDED_CRYPTOGRAPHY_ML_KEM_DECAPS_U8: ShaderArtifact = ShaderArtifact {
 	workgroup_size: [1, 1, 1],
 	dispatch_tile_size: [1, 1, 1],
 	physical_write: Some(PhysicalWriteContract {
-		writes: &[PhysicalWrite {
-			binding: 2,
-			domain: LogicalWriteDomain::Rows,
-			partition: WritePartition::ExclusivePerWorkgroup,
-			extent: WriteExtent::RowWidth,
-			collision: CollisionPolicy::Exclusive,
-			tail: TailPolicy::BoundsChecked,
-		}],
-		workspace: WorkspacePartition::None,
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerWorkgroup,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::ExclusivePerWorkgroup,
 	}),
 	content_id: OnceLock::new(),
 };
@@ -15289,6 +17296,2695 @@ static BOUNDED_VISION_SEGMENTATION_CONFUSION_CLEAR_U32: ShaderArtifact = ShaderA
 	content_id: OnceLock::new(),
 };
 
+static CRYPTOGRAPHY_ADD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_add_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_ADD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_add_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SUBTRACT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_subtract_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SUBTRACT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_subtract_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_MULTIPLY_LOW_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_multiply_low_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_MULTIPLY_LOW_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_multiply_low_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_MULTIPLY_WIDE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_multiply_wide_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_MULTIPLY_WIDE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_multiply_wide_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_BIT_AND_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_bit_and_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_BIT_AND_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_bit_and_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_BIT_OR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_bit_or_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_BIT_OR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_bit_or_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_BIT_XOR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_bit_xor_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_BIT_XOR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_bit_xor_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_COMPARE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_compare_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneScalar,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_COMPARE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_compare_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneScalar,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_DIV_REM_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_div_rem_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_DIV_REM_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_div_rem_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SHIFT_LEFT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_shift_left_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SHIFT_LEFT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_shift_left_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SHIFT_RIGHT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_shift_right_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SHIFT_RIGHT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_shift_right_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_REDUCE_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_reduce_mod_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_REDUCE_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_reduce_mod_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_ADD_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_add_mod_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_ADD_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_add_mod_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SUBTRACT_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_subtract_mod_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SUBTRACT_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_subtract_mod_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_MULTIPLY_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_multiply_mod_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_MULTIPLY_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_multiply_mod_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SQUARE_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_square_mod_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SQUARE_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_square_mod_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_INVERSE_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_inverse_mod_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_INVERSE_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_inverse_mod_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_POW_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_pow_mod_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_POW_MOD_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_pow_mod_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_TO_MONTGOMERY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_to_montgomery_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_TO_MONTGOMERY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_to_montgomery_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_FROM_MONTGOMERY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_from_montgomery_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_FROM_MONTGOMERY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_from_montgomery_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_MONTGOMERY_MULTIPLY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_montgomery_multiply_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_MONTGOMERY_MULTIPLY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_montgomery_multiply_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_BARRETT_MULTIPLY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_barrett_multiply_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_BARRETT_MULTIPLY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_barrett_multiply_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_MULTIPLY_HIGH_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_multiply_high_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_MULTIPLY_HIGH_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_multiply_high_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SQUARE_WIDE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_square_wide_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SQUARE_WIDE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_square_wide_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_BIT_NOT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_bit_not_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_BIT_NOT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_bit_not_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_LEADING_ZEROS_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_leading_zeros_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneScalar,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_LEADING_ZEROS_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_leading_zeros_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneScalar,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_ADD_SCALAR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_add_scalar_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_ADD_SCALAR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_add_scalar_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_COMPARE_SCALAR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_compare_scalar_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneScalar,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_COMPARE_SCALAR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_compare_scalar_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneScalar,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_DIV_REM_MIXED_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_div_rem_mixed_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_DIV_REM_MIXED_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_div_rem_mixed_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_DIV_REM_NARROW_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_div_rem_narrow_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_DIV_REM_NARROW_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_div_rem_narrow_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_DIV_REM_SCALAR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_div_rem_scalar_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 1,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_DIV_REM_SCALAR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_div_rem_scalar_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 1,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_DIV_REM_WIDE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_div_rem_wide_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_DIV_REM_WIDE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_div_rem_wide_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 4,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_FROM_U32_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_from_u32_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_FROM_U32_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_from_u32_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_FROM_U64_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_from_u64_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_FROM_U64_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_from_u64_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_MULTIPLY_SCALAR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_multiply_scalar_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_MULTIPLY_SCALAR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_multiply_scalar_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_REDUCE_MONTGOMERY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_reduce_montgomery_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_REDUCE_MONTGOMERY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_reduce_montgomery_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SUBTRACT_SCALAR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_subtract_scalar_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SUBTRACT_SCALAR_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_subtract_scalar_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_TO_U32_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_to_u32_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 1,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_TO_U32_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_to_u32_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 1,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_TO_U64_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_to_u64_u32.spv")),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 1,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_TO_U64_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_to_u64_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 1,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_SETUP_BARRETT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_setup_barrett_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 1,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_SETUP_BARRETT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_setup_barrett_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 1,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_REDUCE_BARRETT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_reduce_barrett_u32.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_REDUCE_BARRETT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_reduce_barrett_u32_bounded.spv"
+	)),
+	workgroup_size: [32, 1, 1],
+	dispatch_tile_size: [32, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 2,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 3,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::OneScalar,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_MERKLE_TREE_REDUCE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_merkle_tree_reduce_u32.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_MERKLE_TREE_REDUCE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_merkle_tree_reduce_u32_bounded.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_MERKLE_FRAME_INIT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_merkle_frame_init_u32.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_MERKLE_FRAME_INIT_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_merkle_frame_init_u32_bounded.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_MERKLE_FRAME_APPEND_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_merkle_frame_append_u32.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 3,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_MERKLE_FRAME_APPEND_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_merkle_frame_append_u32_bounded.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 3,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_MERKLE_FRAME_VERIFY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_merkle_frame_verify_u32.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 3,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneScalar,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_MERKLE_FRAME_VERIFY_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_merkle_frame_verify_u32_bounded.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 3,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::OneScalar,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_NTT_TWIDDLES_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_twiddles_u32.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 0,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 1,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_NTT_TWIDDLES_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_twiddles_u32_bounded.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[
+			PhysicalWrite {
+				binding: 0,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+			PhysicalWrite {
+				binding: 1,
+				domain: LogicalWriteDomain::Rows,
+				partition: WritePartition::ExclusivePerInvocation,
+				extent: WriteExtent::RowWidth,
+				collision: CollisionPolicy::Exclusive,
+				tail: TailPolicy::BoundsChecked,
+			},
+		],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_NTT_REORDER_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_reorder_u32.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_NTT_REORDER_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_reorder_u32_bounded.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 1,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_NTT_STAGE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(env!("OUT_DIR"), "/cryptography_ntt_stage_u32.spv")),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::OutputElements,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::UpToTwoElements,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_NTT_STAGE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_stage_u32_bounded.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::OutputElements,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::UpToTwoElements,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_NTT_POINTWISE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_pointwise_u32.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_NTT_POINTWISE_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_pointwise_u32_bounded.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerInvocation,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_NTT_COOPERATIVE_256_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_cooperative_256_u32.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerWorkgroup,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_NTT_COOPERATIVE_256_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_cooperative_256_u32_bounded.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerWorkgroup,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_NTT_COOPERATIVE_1024_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_cooperative_1024_u32.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerWorkgroup,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_NTT_COOPERATIVE_1024_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_cooperative_1024_u32_bounded.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerWorkgroup,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_NTT_COOPERATIVE_4096_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_cooperative_4096_u32.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerWorkgroup,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_NTT_COOPERATIVE_4096_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_cooperative_4096_u32_bounded.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerWorkgroup,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static CRYPTOGRAPHY_NTT_COOPERATIVE_8192_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_cooperative_8192_u32.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerWorkgroup,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
+static BOUNDED_CRYPTOGRAPHY_NTT_COOPERATIVE_8192_U32: ShaderArtifact = ShaderArtifact {
+	bytes: include_bytes!(concat!(
+		env!("OUT_DIR"),
+		"/cryptography_ntt_cooperative_8192_u32_bounded.spv"
+	)),
+	workgroup_size: [128, 1, 1],
+	dispatch_tile_size: [128, 1, 1],
+	physical_write: Some(PhysicalWriteContract {
+		writes: &[PhysicalWrite {
+			binding: 2,
+			domain: LogicalWriteDomain::Rows,
+			partition: WritePartition::ExclusivePerWorkgroup,
+			extent: WriteExtent::RowWidth,
+			collision: CollisionPolicy::Exclusive,
+			tail: TailPolicy::BoundsChecked,
+		}],
+		workspace: WorkspacePartition::None,
+	}),
+	content_id: OnceLock::new(),
+};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TrainingReplayRole {
 	Safe,
@@ -15556,6 +20252,19 @@ pub(crate) enum KernelId {
 	MlVqAssignF32 = 408,
 	MlVqLookupF32 = 409,
 	MlVqEmaUpdateF32 = 410,
+	MlTradingResetF32 = 600,
+	MlTradingStepF32 = 601,
+	MlCausalLinearAttentionF32 = 602,
+	MlCausalLinearAttentionBackwardQF32 = 603,
+	MlCausalLinearAttentionBackwardKvF32 = 604,
+	MlRolloutMinibatchF32 = 605,
+	MlRolloutMinibatchCursorF32 = 606,
+	MlTrainingAccumulateF32 = 607,
+	MlRolloutAppendCursorF32 = 608,
+	MlTradingResetCursorF32 = 610,
+	MlTradingStepCursorF32 = 611,
+	MlSampleCategoricalCursorF32 = 609,
+	MlTradingCursorAdvanceU32 = 612,
 	AudioGainF32 = 58,
 	AudioClipF32 = 59,
 	AudioSaturateF32 = 60,
@@ -15585,6 +20294,26 @@ pub(crate) enum KernelId {
 	CryptographyKeccakF1600U8 = 202,
 	CryptographyMerkleReduceU8 = 203,
 	CryptographyMerkleCopyU8 = 204,
+	CryptographySha224U8 = 220,
+	CryptographySha256U8 = 221,
+	CryptographySha384U8 = 222,
+	CryptographySha512U8 = 223,
+	CryptographySha512224U8 = 224,
+	CryptographySha512256U8 = 225,
+	CryptographySha3224U8 = 226,
+	CryptographySha3256U8 = 227,
+	CryptographySha3384U8 = 228,
+	CryptographySha3512U8 = 229,
+	CryptographyMerkleProofGatherU8 = 230,
+	CryptographyMerkleProofVerifyU32 = 231,
+	CryptographyPoseidon2Babybear16U32 = 517,
+	CryptographyPoseidon2Babybear16PermuteU32 = 518,
+	CryptographyPoseidon2Babybear24U32 = 519,
+	CryptographyPoseidon2Babybear24PermuteU32 = 520,
+	CryptographyPoseidon2Koalabear16U32 = 521,
+	CryptographyPoseidon2Koalabear16PermuteU32 = 522,
+	CryptographyPoseidon2Koalabear24U32 = 523,
+	CryptographyPoseidon2Koalabear24PermuteU32 = 524,
 	CryptographyMlDsa65VerifyU8 = 205,
 	CryptographyMlDsa44VerifyU8 = 457,
 	CryptographyMlDsa87VerifyU8 = 458,
@@ -15668,6 +20397,59 @@ pub(crate) enum KernelId {
 	VisionConfusionMatrixClearU32 = 134,
 	VisionBinaryMaskCountsClearU32 = 135,
 	VisionSegmentationConfusionClearU32 = 136,
+	CryptographyBigIntAddU32 = 478,
+	CryptographyBigIntSubtractU32 = 479,
+	CryptographyBigIntMultiplyLowU32 = 480,
+	CryptographyBigIntMultiplyWideU32 = 481,
+	CryptographyBigIntBitAndU32 = 482,
+	CryptographyBigIntBitOrU32 = 483,
+	CryptographyBigIntBitXorU32 = 484,
+	CryptographyBigIntCompareU32 = 485,
+	CryptographyBigIntDivRemU32 = 486,
+	CryptographyBigIntShiftLeftU32 = 487,
+	CryptographyBigIntShiftRightU32 = 488,
+	CryptographyBigIntReduceModU32 = 489,
+	CryptographyBigIntAddModU32 = 490,
+	CryptographyBigIntSubtractModU32 = 491,
+	CryptographyBigIntMultiplyModU32 = 492,
+	CryptographyBigIntSquareModU32 = 493,
+	CryptographyBigIntInverseModU32 = 494,
+	CryptographyBigIntPowModU32 = 495,
+	CryptographyBigIntToMontgomeryU32 = 496,
+	CryptographyBigIntFromMontgomeryU32 = 497,
+	CryptographyBigIntMontgomeryMultiplyU32 = 498,
+	CryptographyBigIntBarrettMultiplyU32 = 499,
+	CryptographyBigIntMultiplyHighU32 = 500,
+	CryptographyBigIntSquareWideU32 = 501,
+	CryptographyBigIntBitNotU32 = 502,
+	CryptographyBigIntLeadingZerosU32 = 503,
+	CryptographyBigIntAddScalarU32 = 504,
+	CryptographyBigIntCompareScalarU32 = 505,
+	CryptographyBigIntDivRemMixedU32 = 506,
+	CryptographyBigIntDivRemNarrowU32 = 507,
+	CryptographyBigIntDivRemScalarU32 = 508,
+	CryptographyBigIntDivRemWideU32 = 509,
+	CryptographyBigIntFromU32U32 = 510,
+	CryptographyBigIntFromU64U32 = 511,
+	CryptographyBigIntMultiplyScalarU32 = 512,
+	CryptographyBigIntReduceMontgomeryU32 = 513,
+	CryptographyBigIntSubtractScalarU32 = 514,
+	CryptographyBigIntToU32U32 = 515,
+	CryptographyBigIntToU64U32 = 516,
+	CryptographyBigIntSetupBarrettU32 = 525,
+	CryptographyBigIntReduceBarrettU32 = 526,
+	CryptographyMerkleTreeReduceU32 = 535,
+	CryptographyMerkleFrameInitU32 = 536,
+	CryptographyMerkleFrameAppendU32 = 537,
+	CryptographyMerkleFrameVerifyU32 = 538,
+	CryptographyNttTwiddlesU32 = 527,
+	CryptographyNttReorderU32 = 528,
+	CryptographyNttStageU32 = 529,
+	CryptographyNttPointwiseU32 = 530,
+	CryptographyNttCooperative256U32 = 531,
+	CryptographyNttCooperative1024U32 = 532,
+	CryptographyNttCooperative4096U32 = 533,
+	CryptographyNttCooperative8192U32 = 534,
 }
 
 impl KernelId {
@@ -15687,8 +20469,17 @@ impl KernelId {
 			_ => None,
 		}
 	}
+	pub(crate) const fn mlkem_encaps_workspace_bytes() -> usize {
+		4096
+	}
+	pub(crate) const fn mlkem_decaps_workspace_bytes() -> usize {
+		4096
+	}
 	pub(crate) const fn mldsa_sign_workspace_bytes() -> usize {
 		23552
+	}
+	pub(crate) const fn mlkem_keygen_workspace_bytes() -> usize {
+		4096
 	}
 	pub(crate) const fn mldsa_prehash_bytes(algorithm: u32) -> Option<u64> {
 		match algorithm {
@@ -15710,7 +20501,7 @@ impl KernelId {
 }
 
 impl KernelId {
-	pub(crate) const ALL: [Self; 365] = [
+	pub(crate) const ALL: [Self; 451] = [
 		Self::MatrixAddF32,
 		Self::MatrixAddI32,
 		Self::MatrixAddBroadcastF32,
@@ -15964,6 +20755,19 @@ impl KernelId {
 		Self::MlVqAssignF32,
 		Self::MlVqLookupF32,
 		Self::MlVqEmaUpdateF32,
+		Self::MlTradingResetF32,
+		Self::MlTradingStepF32,
+		Self::MlCausalLinearAttentionF32,
+		Self::MlCausalLinearAttentionBackwardQF32,
+		Self::MlCausalLinearAttentionBackwardKvF32,
+		Self::MlRolloutMinibatchF32,
+		Self::MlRolloutMinibatchCursorF32,
+		Self::MlTrainingAccumulateF32,
+		Self::MlRolloutAppendCursorF32,
+		Self::MlTradingResetCursorF32,
+		Self::MlTradingStepCursorF32,
+		Self::MlSampleCategoricalCursorF32,
+		Self::MlTradingCursorAdvanceU32,
 		Self::AudioGainF32,
 		Self::AudioClipF32,
 		Self::AudioSaturateF32,
@@ -15993,6 +20797,26 @@ impl KernelId {
 		Self::CryptographyKeccakF1600U8,
 		Self::CryptographyMerkleReduceU8,
 		Self::CryptographyMerkleCopyU8,
+		Self::CryptographySha224U8,
+		Self::CryptographySha256U8,
+		Self::CryptographySha384U8,
+		Self::CryptographySha512U8,
+		Self::CryptographySha512224U8,
+		Self::CryptographySha512256U8,
+		Self::CryptographySha3224U8,
+		Self::CryptographySha3256U8,
+		Self::CryptographySha3384U8,
+		Self::CryptographySha3512U8,
+		Self::CryptographyMerkleProofGatherU8,
+		Self::CryptographyMerkleProofVerifyU32,
+		Self::CryptographyPoseidon2Babybear16U32,
+		Self::CryptographyPoseidon2Babybear16PermuteU32,
+		Self::CryptographyPoseidon2Babybear24U32,
+		Self::CryptographyPoseidon2Babybear24PermuteU32,
+		Self::CryptographyPoseidon2Koalabear16U32,
+		Self::CryptographyPoseidon2Koalabear16PermuteU32,
+		Self::CryptographyPoseidon2Koalabear24U32,
+		Self::CryptographyPoseidon2Koalabear24PermuteU32,
 		Self::CryptographyMlDsa65VerifyU8,
 		Self::CryptographyMlDsa44VerifyU8,
 		Self::CryptographyMlDsa87VerifyU8,
@@ -16076,6 +20900,59 @@ impl KernelId {
 		Self::VisionConfusionMatrixClearU32,
 		Self::VisionBinaryMaskCountsClearU32,
 		Self::VisionSegmentationConfusionClearU32,
+		Self::CryptographyBigIntAddU32,
+		Self::CryptographyBigIntSubtractU32,
+		Self::CryptographyBigIntMultiplyLowU32,
+		Self::CryptographyBigIntMultiplyWideU32,
+		Self::CryptographyBigIntBitAndU32,
+		Self::CryptographyBigIntBitOrU32,
+		Self::CryptographyBigIntBitXorU32,
+		Self::CryptographyBigIntCompareU32,
+		Self::CryptographyBigIntDivRemU32,
+		Self::CryptographyBigIntShiftLeftU32,
+		Self::CryptographyBigIntShiftRightU32,
+		Self::CryptographyBigIntReduceModU32,
+		Self::CryptographyBigIntAddModU32,
+		Self::CryptographyBigIntSubtractModU32,
+		Self::CryptographyBigIntMultiplyModU32,
+		Self::CryptographyBigIntSquareModU32,
+		Self::CryptographyBigIntInverseModU32,
+		Self::CryptographyBigIntPowModU32,
+		Self::CryptographyBigIntToMontgomeryU32,
+		Self::CryptographyBigIntFromMontgomeryU32,
+		Self::CryptographyBigIntMontgomeryMultiplyU32,
+		Self::CryptographyBigIntBarrettMultiplyU32,
+		Self::CryptographyBigIntMultiplyHighU32,
+		Self::CryptographyBigIntSquareWideU32,
+		Self::CryptographyBigIntBitNotU32,
+		Self::CryptographyBigIntLeadingZerosU32,
+		Self::CryptographyBigIntAddScalarU32,
+		Self::CryptographyBigIntCompareScalarU32,
+		Self::CryptographyBigIntDivRemMixedU32,
+		Self::CryptographyBigIntDivRemNarrowU32,
+		Self::CryptographyBigIntDivRemScalarU32,
+		Self::CryptographyBigIntDivRemWideU32,
+		Self::CryptographyBigIntFromU32U32,
+		Self::CryptographyBigIntFromU64U32,
+		Self::CryptographyBigIntMultiplyScalarU32,
+		Self::CryptographyBigIntReduceMontgomeryU32,
+		Self::CryptographyBigIntSubtractScalarU32,
+		Self::CryptographyBigIntToU32U32,
+		Self::CryptographyBigIntToU64U32,
+		Self::CryptographyBigIntSetupBarrettU32,
+		Self::CryptographyBigIntReduceBarrettU32,
+		Self::CryptographyMerkleTreeReduceU32,
+		Self::CryptographyMerkleFrameInitU32,
+		Self::CryptographyMerkleFrameAppendU32,
+		Self::CryptographyMerkleFrameVerifyU32,
+		Self::CryptographyNttTwiddlesU32,
+		Self::CryptographyNttReorderU32,
+		Self::CryptographyNttStageU32,
+		Self::CryptographyNttPointwiseU32,
+		Self::CryptographyNttCooperative256U32,
+		Self::CryptographyNttCooperative1024U32,
+		Self::CryptographyNttCooperative4096U32,
+		Self::CryptographyNttCooperative8192U32,
 	];
 
 	pub(crate) const fn artifact(self) -> &'static ShaderArtifact {
@@ -16335,6 +21212,19 @@ impl KernelId {
 			Self::MlVqAssignF32 => &ML_VQ_ASSIGN_F32,
 			Self::MlVqLookupF32 => &ML_VQ_LOOKUP_F32,
 			Self::MlVqEmaUpdateF32 => &ML_VQ_EMA_UPDATE_F32,
+			Self::MlTradingResetF32 => &ML_TRADING_RESET_F32,
+			Self::MlTradingStepF32 => &ML_TRADING_STEP_F32,
+			Self::MlCausalLinearAttentionF32 => &ML_CAUSAL_LINEAR_ATTENTION_F32,
+			Self::MlCausalLinearAttentionBackwardQF32 => &ML_CAUSAL_LINEAR_ATTENTION_BACKWARD_F32,
+			Self::MlCausalLinearAttentionBackwardKvF32 => &ML_CAUSAL_LINEAR_ATTENTION_BACKWARD_KV_F32,
+			Self::MlRolloutMinibatchF32 => &ML_MINIBATCH_F32,
+			Self::MlRolloutMinibatchCursorF32 => &ML_MINIBATCH_CURSOR_F32,
+			Self::MlTrainingAccumulateF32 => &ML_TRAINING_ACCUMULATE_F32,
+			Self::MlRolloutAppendCursorF32 => &ML_APPEND_CURSOR_F32,
+			Self::MlTradingResetCursorF32 => &ML_TRADING_RESET_CURSOR_F32,
+			Self::MlTradingStepCursorF32 => &ML_TRADING_STEP_CURSOR_F32,
+			Self::MlSampleCategoricalCursorF32 => &ML_SAMPLE_CATEGORICAL_CURSOR_F32,
+			Self::MlTradingCursorAdvanceU32 => &ML_TRADING_CURSOR_ADVANCE_U32,
 			Self::AudioGainF32 => &AUDIO_GAIN_F32,
 			Self::AudioClipF32 => &AUDIO_CLIP_F32,
 			Self::AudioSaturateF32 => &AUDIO_SATURATE_F32,
@@ -16364,6 +21254,34 @@ impl KernelId {
 			Self::CryptographyKeccakF1600U8 => &CRYPTOGRAPHY_KECCAK_F1600_U8,
 			Self::CryptographyMerkleReduceU8 => &CRYPTOGRAPHY_MERKLE_REDUCE_U8,
 			Self::CryptographyMerkleCopyU8 => &CRYPTOGRAPHY_MERKLE_COPY_U8,
+			Self::CryptographySha224U8 => &CRYPTOGRAPHY_SHA224_U8,
+			Self::CryptographySha256U8 => &CRYPTOGRAPHY_SHA256_U8,
+			Self::CryptographySha384U8 => &CRYPTOGRAPHY_SHA384_U8,
+			Self::CryptographySha512U8 => &CRYPTOGRAPHY_SHA512_U8,
+			Self::CryptographySha512224U8 => &CRYPTOGRAPHY_SHA512_224_U8,
+			Self::CryptographySha512256U8 => &CRYPTOGRAPHY_SHA512_256_U8,
+			Self::CryptographySha3224U8 => &CRYPTOGRAPHY_SHA3_224_U8,
+			Self::CryptographySha3256U8 => &CRYPTOGRAPHY_SHA3_256_U8,
+			Self::CryptographySha3384U8 => &CRYPTOGRAPHY_SHA3_384_U8,
+			Self::CryptographySha3512U8 => &CRYPTOGRAPHY_SHA3_512_U8,
+			Self::CryptographyMerkleProofGatherU8 => &CRYPTOGRAPHY_MERKLE_PROOF_GATHER_U8,
+			Self::CryptographyMerkleProofVerifyU32 => &CRYPTOGRAPHY_MERKLE_PROOF_VERIFY_U32,
+			Self::CryptographyPoseidon2Babybear16U32 => &CRYPTOGRAPHY_POSEIDON2_BABYBEAR16_U32,
+			Self::CryptographyPoseidon2Babybear16PermuteU32 => {
+				&CRYPTOGRAPHY_POSEIDON2_BABYBEAR16_PERMUTE_U32
+			}
+			Self::CryptographyPoseidon2Babybear24U32 => &CRYPTOGRAPHY_POSEIDON2_BABYBEAR24_U32,
+			Self::CryptographyPoseidon2Babybear24PermuteU32 => {
+				&CRYPTOGRAPHY_POSEIDON2_BABYBEAR24_PERMUTE_U32
+			}
+			Self::CryptographyPoseidon2Koalabear16U32 => &CRYPTOGRAPHY_POSEIDON2_KOALABEAR16_U32,
+			Self::CryptographyPoseidon2Koalabear16PermuteU32 => {
+				&CRYPTOGRAPHY_POSEIDON2_KOALABEAR16_PERMUTE_U32
+			}
+			Self::CryptographyPoseidon2Koalabear24U32 => &CRYPTOGRAPHY_POSEIDON2_KOALABEAR24_U32,
+			Self::CryptographyPoseidon2Koalabear24PermuteU32 => {
+				&CRYPTOGRAPHY_POSEIDON2_KOALABEAR24_PERMUTE_U32
+			}
 			Self::CryptographyMlDsa65VerifyU8 => &CRYPTOGRAPHY_ML_DSA_65_VERIFY_U8,
 			Self::CryptographyMlDsa44VerifyU8 => &CRYPTOGRAPHY_ML_DSA_44_VERIFY_U8,
 			Self::CryptographyMlDsa87VerifyU8 => &CRYPTOGRAPHY_ML_DSA_87_VERIFY_U8,
@@ -16453,6 +21371,59 @@ impl KernelId {
 			Self::VisionConfusionMatrixClearU32 => &VISION_CONFUSION_MATRIX_CLEAR_U32,
 			Self::VisionBinaryMaskCountsClearU32 => &VISION_BINARY_MASK_COUNTS_CLEAR_U32,
 			Self::VisionSegmentationConfusionClearU32 => &VISION_SEGMENTATION_CONFUSION_CLEAR_U32,
+			Self::CryptographyBigIntAddU32 => &CRYPTOGRAPHY_ADD_U32,
+			Self::CryptographyBigIntSubtractU32 => &CRYPTOGRAPHY_SUBTRACT_U32,
+			Self::CryptographyBigIntMultiplyLowU32 => &CRYPTOGRAPHY_MULTIPLY_LOW_U32,
+			Self::CryptographyBigIntMultiplyWideU32 => &CRYPTOGRAPHY_MULTIPLY_WIDE_U32,
+			Self::CryptographyBigIntBitAndU32 => &CRYPTOGRAPHY_BIT_AND_U32,
+			Self::CryptographyBigIntBitOrU32 => &CRYPTOGRAPHY_BIT_OR_U32,
+			Self::CryptographyBigIntBitXorU32 => &CRYPTOGRAPHY_BIT_XOR_U32,
+			Self::CryptographyBigIntCompareU32 => &CRYPTOGRAPHY_COMPARE_U32,
+			Self::CryptographyBigIntDivRemU32 => &CRYPTOGRAPHY_DIV_REM_U32,
+			Self::CryptographyBigIntShiftLeftU32 => &CRYPTOGRAPHY_SHIFT_LEFT_U32,
+			Self::CryptographyBigIntShiftRightU32 => &CRYPTOGRAPHY_SHIFT_RIGHT_U32,
+			Self::CryptographyBigIntReduceModU32 => &CRYPTOGRAPHY_REDUCE_MOD_U32,
+			Self::CryptographyBigIntAddModU32 => &CRYPTOGRAPHY_ADD_MOD_U32,
+			Self::CryptographyBigIntSubtractModU32 => &CRYPTOGRAPHY_SUBTRACT_MOD_U32,
+			Self::CryptographyBigIntMultiplyModU32 => &CRYPTOGRAPHY_MULTIPLY_MOD_U32,
+			Self::CryptographyBigIntSquareModU32 => &CRYPTOGRAPHY_SQUARE_MOD_U32,
+			Self::CryptographyBigIntInverseModU32 => &CRYPTOGRAPHY_INVERSE_MOD_U32,
+			Self::CryptographyBigIntPowModU32 => &CRYPTOGRAPHY_POW_MOD_U32,
+			Self::CryptographyBigIntToMontgomeryU32 => &CRYPTOGRAPHY_TO_MONTGOMERY_U32,
+			Self::CryptographyBigIntFromMontgomeryU32 => &CRYPTOGRAPHY_FROM_MONTGOMERY_U32,
+			Self::CryptographyBigIntMontgomeryMultiplyU32 => &CRYPTOGRAPHY_MONTGOMERY_MULTIPLY_U32,
+			Self::CryptographyBigIntBarrettMultiplyU32 => &CRYPTOGRAPHY_BARRETT_MULTIPLY_U32,
+			Self::CryptographyBigIntMultiplyHighU32 => &CRYPTOGRAPHY_MULTIPLY_HIGH_U32,
+			Self::CryptographyBigIntSquareWideU32 => &CRYPTOGRAPHY_SQUARE_WIDE_U32,
+			Self::CryptographyBigIntBitNotU32 => &CRYPTOGRAPHY_BIT_NOT_U32,
+			Self::CryptographyBigIntLeadingZerosU32 => &CRYPTOGRAPHY_LEADING_ZEROS_U32,
+			Self::CryptographyBigIntAddScalarU32 => &CRYPTOGRAPHY_ADD_SCALAR_U32,
+			Self::CryptographyBigIntCompareScalarU32 => &CRYPTOGRAPHY_COMPARE_SCALAR_U32,
+			Self::CryptographyBigIntDivRemMixedU32 => &CRYPTOGRAPHY_DIV_REM_MIXED_U32,
+			Self::CryptographyBigIntDivRemNarrowU32 => &CRYPTOGRAPHY_DIV_REM_NARROW_U32,
+			Self::CryptographyBigIntDivRemScalarU32 => &CRYPTOGRAPHY_DIV_REM_SCALAR_U32,
+			Self::CryptographyBigIntDivRemWideU32 => &CRYPTOGRAPHY_DIV_REM_WIDE_U32,
+			Self::CryptographyBigIntFromU32U32 => &CRYPTOGRAPHY_FROM_U32_U32,
+			Self::CryptographyBigIntFromU64U32 => &CRYPTOGRAPHY_FROM_U64_U32,
+			Self::CryptographyBigIntMultiplyScalarU32 => &CRYPTOGRAPHY_MULTIPLY_SCALAR_U32,
+			Self::CryptographyBigIntReduceMontgomeryU32 => &CRYPTOGRAPHY_REDUCE_MONTGOMERY_U32,
+			Self::CryptographyBigIntSubtractScalarU32 => &CRYPTOGRAPHY_SUBTRACT_SCALAR_U32,
+			Self::CryptographyBigIntToU32U32 => &CRYPTOGRAPHY_TO_U32_U32,
+			Self::CryptographyBigIntToU64U32 => &CRYPTOGRAPHY_TO_U64_U32,
+			Self::CryptographyBigIntSetupBarrettU32 => &CRYPTOGRAPHY_SETUP_BARRETT_U32,
+			Self::CryptographyBigIntReduceBarrettU32 => &CRYPTOGRAPHY_REDUCE_BARRETT_U32,
+			Self::CryptographyMerkleTreeReduceU32 => &CRYPTOGRAPHY_MERKLE_TREE_REDUCE_U32,
+			Self::CryptographyMerkleFrameInitU32 => &CRYPTOGRAPHY_MERKLE_FRAME_INIT_U32,
+			Self::CryptographyMerkleFrameAppendU32 => &CRYPTOGRAPHY_MERKLE_FRAME_APPEND_U32,
+			Self::CryptographyMerkleFrameVerifyU32 => &CRYPTOGRAPHY_MERKLE_FRAME_VERIFY_U32,
+			Self::CryptographyNttTwiddlesU32 => &CRYPTOGRAPHY_NTT_TWIDDLES_U32,
+			Self::CryptographyNttReorderU32 => &CRYPTOGRAPHY_NTT_REORDER_U32,
+			Self::CryptographyNttStageU32 => &CRYPTOGRAPHY_NTT_STAGE_U32,
+			Self::CryptographyNttPointwiseU32 => &CRYPTOGRAPHY_NTT_POINTWISE_U32,
+			Self::CryptographyNttCooperative256U32 => &CRYPTOGRAPHY_NTT_COOPERATIVE_256_U32,
+			Self::CryptographyNttCooperative1024U32 => &CRYPTOGRAPHY_NTT_COOPERATIVE_1024_U32,
+			Self::CryptographyNttCooperative4096U32 => &CRYPTOGRAPHY_NTT_COOPERATIVE_4096_U32,
+			Self::CryptographyNttCooperative8192U32 => &CRYPTOGRAPHY_NTT_COOPERATIVE_8192_U32,
 		}
 	}
 
@@ -16727,6 +21698,21 @@ impl KernelId {
 			Self::MlVqAssignF32 => &BOUNDED_ML_VQ_ASSIGN_F32,
 			Self::MlVqLookupF32 => &BOUNDED_ML_VQ_LOOKUP_F32,
 			Self::MlVqEmaUpdateF32 => &BOUNDED_ML_VQ_EMA_UPDATE_F32,
+			Self::MlTradingResetF32 => &BOUNDED_ML_TRADING_RESET_F32,
+			Self::MlTradingStepF32 => &BOUNDED_ML_TRADING_STEP_F32,
+			Self::MlCausalLinearAttentionF32 => &BOUNDED_ML_CAUSAL_LINEAR_ATTENTION_F32,
+			Self::MlCausalLinearAttentionBackwardQF32 => &BOUNDED_ML_CAUSAL_LINEAR_ATTENTION_BACKWARD_F32,
+			Self::MlCausalLinearAttentionBackwardKvF32 => {
+				&BOUNDED_ML_CAUSAL_LINEAR_ATTENTION_BACKWARD_KV_F32
+			}
+			Self::MlRolloutMinibatchF32 => &BOUNDED_ML_MINIBATCH_F32,
+			Self::MlRolloutMinibatchCursorF32 => &BOUNDED_ML_MINIBATCH_CURSOR_F32,
+			Self::MlTrainingAccumulateF32 => &BOUNDED_ML_TRAINING_ACCUMULATE_F32,
+			Self::MlRolloutAppendCursorF32 => &BOUNDED_ML_APPEND_CURSOR_F32,
+			Self::MlTradingResetCursorF32 => &BOUNDED_ML_TRADING_RESET_CURSOR_F32,
+			Self::MlTradingStepCursorF32 => &BOUNDED_ML_TRADING_STEP_CURSOR_F32,
+			Self::MlSampleCategoricalCursorF32 => &BOUNDED_ML_SAMPLE_CATEGORICAL_CURSOR_F32,
+			Self::MlTradingCursorAdvanceU32 => &BOUNDED_ML_TRADING_CURSOR_ADVANCE_U32,
 			Self::AudioGainF32 => &BOUNDED_AUDIO_GAIN_F32,
 			Self::AudioClipF32 => &BOUNDED_AUDIO_CLIP_F32,
 			Self::AudioSaturateF32 => &BOUNDED_AUDIO_SATURATE_F32,
@@ -16756,6 +21742,34 @@ impl KernelId {
 			Self::CryptographyKeccakF1600U8 => &BOUNDED_CRYPTOGRAPHY_KECCAK_F1600_U8,
 			Self::CryptographyMerkleReduceU8 => &BOUNDED_CRYPTOGRAPHY_MERKLE_REDUCE_U8,
 			Self::CryptographyMerkleCopyU8 => &BOUNDED_CRYPTOGRAPHY_MERKLE_COPY_U8,
+			Self::CryptographySha224U8 => &BOUNDED_CRYPTOGRAPHY_SHA224_U8,
+			Self::CryptographySha256U8 => &BOUNDED_CRYPTOGRAPHY_SHA256_U8,
+			Self::CryptographySha384U8 => &BOUNDED_CRYPTOGRAPHY_SHA384_U8,
+			Self::CryptographySha512U8 => &BOUNDED_CRYPTOGRAPHY_SHA512_U8,
+			Self::CryptographySha512224U8 => &BOUNDED_CRYPTOGRAPHY_SHA512_224_U8,
+			Self::CryptographySha512256U8 => &BOUNDED_CRYPTOGRAPHY_SHA512_256_U8,
+			Self::CryptographySha3224U8 => &BOUNDED_CRYPTOGRAPHY_SHA3_224_U8,
+			Self::CryptographySha3256U8 => &BOUNDED_CRYPTOGRAPHY_SHA3_256_U8,
+			Self::CryptographySha3384U8 => &BOUNDED_CRYPTOGRAPHY_SHA3_384_U8,
+			Self::CryptographySha3512U8 => &BOUNDED_CRYPTOGRAPHY_SHA3_512_U8,
+			Self::CryptographyMerkleProofGatherU8 => &BOUNDED_CRYPTOGRAPHY_MERKLE_PROOF_GATHER_U8,
+			Self::CryptographyMerkleProofVerifyU32 => &BOUNDED_CRYPTOGRAPHY_MERKLE_PROOF_VERIFY_U32,
+			Self::CryptographyPoseidon2Babybear16U32 => &BOUNDED_CRYPTOGRAPHY_POSEIDON2_BABYBEAR16_U32,
+			Self::CryptographyPoseidon2Babybear16PermuteU32 => {
+				&BOUNDED_CRYPTOGRAPHY_POSEIDON2_BABYBEAR16_PERMUTE_U32
+			}
+			Self::CryptographyPoseidon2Babybear24U32 => &BOUNDED_CRYPTOGRAPHY_POSEIDON2_BABYBEAR24_U32,
+			Self::CryptographyPoseidon2Babybear24PermuteU32 => {
+				&BOUNDED_CRYPTOGRAPHY_POSEIDON2_BABYBEAR24_PERMUTE_U32
+			}
+			Self::CryptographyPoseidon2Koalabear16U32 => &BOUNDED_CRYPTOGRAPHY_POSEIDON2_KOALABEAR16_U32,
+			Self::CryptographyPoseidon2Koalabear16PermuteU32 => {
+				&BOUNDED_CRYPTOGRAPHY_POSEIDON2_KOALABEAR16_PERMUTE_U32
+			}
+			Self::CryptographyPoseidon2Koalabear24U32 => &BOUNDED_CRYPTOGRAPHY_POSEIDON2_KOALABEAR24_U32,
+			Self::CryptographyPoseidon2Koalabear24PermuteU32 => {
+				&BOUNDED_CRYPTOGRAPHY_POSEIDON2_KOALABEAR24_PERMUTE_U32
+			}
 			Self::CryptographyMlDsa65VerifyU8 => &BOUNDED_CRYPTOGRAPHY_ML_DSA_65_VERIFY_U8,
 			Self::CryptographyMlDsa44VerifyU8 => &BOUNDED_CRYPTOGRAPHY_ML_DSA_44_VERIFY_U8,
 			Self::CryptographyMlDsa87VerifyU8 => &BOUNDED_CRYPTOGRAPHY_ML_DSA_87_VERIFY_U8,
@@ -16853,6 +21867,61 @@ impl KernelId {
 			Self::VisionConfusionMatrixClearU32 => &BOUNDED_VISION_CONFUSION_MATRIX_CLEAR_U32,
 			Self::VisionBinaryMaskCountsClearU32 => &BOUNDED_VISION_BINARY_MASK_COUNTS_CLEAR_U32,
 			Self::VisionSegmentationConfusionClearU32 => &BOUNDED_VISION_SEGMENTATION_CONFUSION_CLEAR_U32,
+			Self::CryptographyBigIntAddU32 => &BOUNDED_CRYPTOGRAPHY_ADD_U32,
+			Self::CryptographyBigIntSubtractU32 => &BOUNDED_CRYPTOGRAPHY_SUBTRACT_U32,
+			Self::CryptographyBigIntMultiplyLowU32 => &BOUNDED_CRYPTOGRAPHY_MULTIPLY_LOW_U32,
+			Self::CryptographyBigIntMultiplyWideU32 => &BOUNDED_CRYPTOGRAPHY_MULTIPLY_WIDE_U32,
+			Self::CryptographyBigIntBitAndU32 => &BOUNDED_CRYPTOGRAPHY_BIT_AND_U32,
+			Self::CryptographyBigIntBitOrU32 => &BOUNDED_CRYPTOGRAPHY_BIT_OR_U32,
+			Self::CryptographyBigIntBitXorU32 => &BOUNDED_CRYPTOGRAPHY_BIT_XOR_U32,
+			Self::CryptographyBigIntCompareU32 => &BOUNDED_CRYPTOGRAPHY_COMPARE_U32,
+			Self::CryptographyBigIntDivRemU32 => &BOUNDED_CRYPTOGRAPHY_DIV_REM_U32,
+			Self::CryptographyBigIntShiftLeftU32 => &BOUNDED_CRYPTOGRAPHY_SHIFT_LEFT_U32,
+			Self::CryptographyBigIntShiftRightU32 => &BOUNDED_CRYPTOGRAPHY_SHIFT_RIGHT_U32,
+			Self::CryptographyBigIntReduceModU32 => &BOUNDED_CRYPTOGRAPHY_REDUCE_MOD_U32,
+			Self::CryptographyBigIntAddModU32 => &BOUNDED_CRYPTOGRAPHY_ADD_MOD_U32,
+			Self::CryptographyBigIntSubtractModU32 => &BOUNDED_CRYPTOGRAPHY_SUBTRACT_MOD_U32,
+			Self::CryptographyBigIntMultiplyModU32 => &BOUNDED_CRYPTOGRAPHY_MULTIPLY_MOD_U32,
+			Self::CryptographyBigIntSquareModU32 => &BOUNDED_CRYPTOGRAPHY_SQUARE_MOD_U32,
+			Self::CryptographyBigIntInverseModU32 => &BOUNDED_CRYPTOGRAPHY_INVERSE_MOD_U32,
+			Self::CryptographyBigIntPowModU32 => &BOUNDED_CRYPTOGRAPHY_POW_MOD_U32,
+			Self::CryptographyBigIntToMontgomeryU32 => &BOUNDED_CRYPTOGRAPHY_TO_MONTGOMERY_U32,
+			Self::CryptographyBigIntFromMontgomeryU32 => &BOUNDED_CRYPTOGRAPHY_FROM_MONTGOMERY_U32,
+			Self::CryptographyBigIntMontgomeryMultiplyU32 => {
+				&BOUNDED_CRYPTOGRAPHY_MONTGOMERY_MULTIPLY_U32
+			}
+			Self::CryptographyBigIntBarrettMultiplyU32 => &BOUNDED_CRYPTOGRAPHY_BARRETT_MULTIPLY_U32,
+			Self::CryptographyBigIntMultiplyHighU32 => &BOUNDED_CRYPTOGRAPHY_MULTIPLY_HIGH_U32,
+			Self::CryptographyBigIntSquareWideU32 => &BOUNDED_CRYPTOGRAPHY_SQUARE_WIDE_U32,
+			Self::CryptographyBigIntBitNotU32 => &BOUNDED_CRYPTOGRAPHY_BIT_NOT_U32,
+			Self::CryptographyBigIntLeadingZerosU32 => &BOUNDED_CRYPTOGRAPHY_LEADING_ZEROS_U32,
+			Self::CryptographyBigIntAddScalarU32 => &BOUNDED_CRYPTOGRAPHY_ADD_SCALAR_U32,
+			Self::CryptographyBigIntCompareScalarU32 => &BOUNDED_CRYPTOGRAPHY_COMPARE_SCALAR_U32,
+			Self::CryptographyBigIntDivRemMixedU32 => &BOUNDED_CRYPTOGRAPHY_DIV_REM_MIXED_U32,
+			Self::CryptographyBigIntDivRemNarrowU32 => &BOUNDED_CRYPTOGRAPHY_DIV_REM_NARROW_U32,
+			Self::CryptographyBigIntDivRemScalarU32 => &BOUNDED_CRYPTOGRAPHY_DIV_REM_SCALAR_U32,
+			Self::CryptographyBigIntDivRemWideU32 => &BOUNDED_CRYPTOGRAPHY_DIV_REM_WIDE_U32,
+			Self::CryptographyBigIntFromU32U32 => &BOUNDED_CRYPTOGRAPHY_FROM_U32_U32,
+			Self::CryptographyBigIntFromU64U32 => &BOUNDED_CRYPTOGRAPHY_FROM_U64_U32,
+			Self::CryptographyBigIntMultiplyScalarU32 => &BOUNDED_CRYPTOGRAPHY_MULTIPLY_SCALAR_U32,
+			Self::CryptographyBigIntReduceMontgomeryU32 => &BOUNDED_CRYPTOGRAPHY_REDUCE_MONTGOMERY_U32,
+			Self::CryptographyBigIntSubtractScalarU32 => &BOUNDED_CRYPTOGRAPHY_SUBTRACT_SCALAR_U32,
+			Self::CryptographyBigIntToU32U32 => &BOUNDED_CRYPTOGRAPHY_TO_U32_U32,
+			Self::CryptographyBigIntToU64U32 => &BOUNDED_CRYPTOGRAPHY_TO_U64_U32,
+			Self::CryptographyBigIntSetupBarrettU32 => &BOUNDED_CRYPTOGRAPHY_SETUP_BARRETT_U32,
+			Self::CryptographyBigIntReduceBarrettU32 => &BOUNDED_CRYPTOGRAPHY_REDUCE_BARRETT_U32,
+			Self::CryptographyMerkleTreeReduceU32 => &BOUNDED_CRYPTOGRAPHY_MERKLE_TREE_REDUCE_U32,
+			Self::CryptographyMerkleFrameInitU32 => &BOUNDED_CRYPTOGRAPHY_MERKLE_FRAME_INIT_U32,
+			Self::CryptographyMerkleFrameAppendU32 => &BOUNDED_CRYPTOGRAPHY_MERKLE_FRAME_APPEND_U32,
+			Self::CryptographyMerkleFrameVerifyU32 => &BOUNDED_CRYPTOGRAPHY_MERKLE_FRAME_VERIFY_U32,
+			Self::CryptographyNttTwiddlesU32 => &BOUNDED_CRYPTOGRAPHY_NTT_TWIDDLES_U32,
+			Self::CryptographyNttReorderU32 => &BOUNDED_CRYPTOGRAPHY_NTT_REORDER_U32,
+			Self::CryptographyNttStageU32 => &BOUNDED_CRYPTOGRAPHY_NTT_STAGE_U32,
+			Self::CryptographyNttPointwiseU32 => &BOUNDED_CRYPTOGRAPHY_NTT_POINTWISE_U32,
+			Self::CryptographyNttCooperative256U32 => &BOUNDED_CRYPTOGRAPHY_NTT_COOPERATIVE_256_U32,
+			Self::CryptographyNttCooperative1024U32 => &BOUNDED_CRYPTOGRAPHY_NTT_COOPERATIVE_1024_U32,
+			Self::CryptographyNttCooperative4096U32 => &BOUNDED_CRYPTOGRAPHY_NTT_COOPERATIVE_4096_U32,
+			Self::CryptographyNttCooperative8192U32 => &BOUNDED_CRYPTOGRAPHY_NTT_COOPERATIVE_8192_U32,
 		}
 	}
 
@@ -17125,6 +22194,19 @@ impl KernelId {
 			Self::MlVqAssignF32 => 4,
 			Self::MlVqLookupF32 => 3,
 			Self::MlVqEmaUpdateF32 => 8,
+			Self::MlTradingResetF32 => 7,
+			Self::MlTradingStepF32 => 12,
+			Self::MlCausalLinearAttentionF32 => 5,
+			Self::MlCausalLinearAttentionBackwardQF32 => 7,
+			Self::MlCausalLinearAttentionBackwardKvF32 => 8,
+			Self::MlRolloutMinibatchF32 => 10,
+			Self::MlRolloutMinibatchCursorF32 => 11,
+			Self::MlTrainingAccumulateF32 => 3,
+			Self::MlRolloutAppendCursorF32 => 18,
+			Self::MlTradingResetCursorF32 => 8,
+			Self::MlTradingStepCursorF32 => 13,
+			Self::MlSampleCategoricalCursorF32 => 3,
+			Self::MlTradingCursorAdvanceU32 => 1,
 			Self::AudioGainF32 => 2,
 			Self::AudioClipF32 => 2,
 			Self::AudioSaturateF32 => 2,
@@ -17154,6 +22236,26 @@ impl KernelId {
 			Self::CryptographyKeccakF1600U8 => 2,
 			Self::CryptographyMerkleReduceU8 => 2,
 			Self::CryptographyMerkleCopyU8 => 2,
+			Self::CryptographySha224U8 => 2,
+			Self::CryptographySha256U8 => 2,
+			Self::CryptographySha384U8 => 2,
+			Self::CryptographySha512U8 => 2,
+			Self::CryptographySha512224U8 => 2,
+			Self::CryptographySha512256U8 => 2,
+			Self::CryptographySha3224U8 => 2,
+			Self::CryptographySha3256U8 => 2,
+			Self::CryptographySha3384U8 => 2,
+			Self::CryptographySha3512U8 => 2,
+			Self::CryptographyMerkleProofGatherU8 => 3,
+			Self::CryptographyMerkleProofVerifyU32 => 4,
+			Self::CryptographyPoseidon2Babybear16U32 => 2,
+			Self::CryptographyPoseidon2Babybear16PermuteU32 => 2,
+			Self::CryptographyPoseidon2Babybear24U32 => 2,
+			Self::CryptographyPoseidon2Babybear24PermuteU32 => 2,
+			Self::CryptographyPoseidon2Koalabear16U32 => 2,
+			Self::CryptographyPoseidon2Koalabear16PermuteU32 => 2,
+			Self::CryptographyPoseidon2Koalabear24U32 => 2,
+			Self::CryptographyPoseidon2Koalabear24PermuteU32 => 2,
 			Self::CryptographyMlDsa65VerifyU8 => 6,
 			Self::CryptographyMlDsa44VerifyU8 => 6,
 			Self::CryptographyMlDsa87VerifyU8 => 6,
@@ -17163,9 +22265,9 @@ impl KernelId {
 			Self::CryptographyMlDsa65VerifyHashMessageU8 => 6,
 			Self::CryptographyMlDsa44VerifyHashMessageU8 => 6,
 			Self::CryptographyMlDsa87VerifyHashMessageU8 => 6,
-			Self::CryptographyMlKemKeygenU8 => 3,
-			Self::CryptographyMlKemEncapsU8 => 5,
-			Self::CryptographyMlKemDecapsU8 => 3,
+			Self::CryptographyMlKemKeygenU8 => 4,
+			Self::CryptographyMlKemEncapsU8 => 6,
+			Self::CryptographyMlKemDecapsU8 => 4,
 			Self::CryptographyMlDsaKeygenU8 => 3,
 			Self::CryptographyMlDsaSignU8 => 6,
 			Self::CryptographyMlDsaSignMessageU8 => 7,
@@ -17237,6 +22339,59 @@ impl KernelId {
 			Self::VisionConfusionMatrixClearU32 => 1,
 			Self::VisionBinaryMaskCountsClearU32 => 1,
 			Self::VisionSegmentationConfusionClearU32 => 1,
+			Self::CryptographyBigIntAddU32 => 3,
+			Self::CryptographyBigIntSubtractU32 => 3,
+			Self::CryptographyBigIntMultiplyLowU32 => 3,
+			Self::CryptographyBigIntMultiplyWideU32 => 3,
+			Self::CryptographyBigIntBitAndU32 => 3,
+			Self::CryptographyBigIntBitOrU32 => 3,
+			Self::CryptographyBigIntBitXorU32 => 3,
+			Self::CryptographyBigIntCompareU32 => 3,
+			Self::CryptographyBigIntDivRemU32 => 5,
+			Self::CryptographyBigIntShiftLeftU32 => 2,
+			Self::CryptographyBigIntShiftRightU32 => 2,
+			Self::CryptographyBigIntReduceModU32 => 4,
+			Self::CryptographyBigIntAddModU32 => 5,
+			Self::CryptographyBigIntSubtractModU32 => 5,
+			Self::CryptographyBigIntMultiplyModU32 => 5,
+			Self::CryptographyBigIntSquareModU32 => 4,
+			Self::CryptographyBigIntInverseModU32 => 4,
+			Self::CryptographyBigIntPowModU32 => 5,
+			Self::CryptographyBigIntToMontgomeryU32 => 4,
+			Self::CryptographyBigIntFromMontgomeryU32 => 4,
+			Self::CryptographyBigIntMontgomeryMultiplyU32 => 5,
+			Self::CryptographyBigIntBarrettMultiplyU32 => 5,
+			Self::CryptographyBigIntMultiplyHighU32 => 3,
+			Self::CryptographyBigIntSquareWideU32 => 2,
+			Self::CryptographyBigIntBitNotU32 => 2,
+			Self::CryptographyBigIntLeadingZerosU32 => 2,
+			Self::CryptographyBigIntAddScalarU32 => 2,
+			Self::CryptographyBigIntCompareScalarU32 => 2,
+			Self::CryptographyBigIntDivRemMixedU32 => 5,
+			Self::CryptographyBigIntDivRemNarrowU32 => 5,
+			Self::CryptographyBigIntDivRemScalarU32 => 4,
+			Self::CryptographyBigIntDivRemWideU32 => 5,
+			Self::CryptographyBigIntFromU32U32 => 2,
+			Self::CryptographyBigIntFromU64U32 => 2,
+			Self::CryptographyBigIntMultiplyScalarU32 => 2,
+			Self::CryptographyBigIntReduceMontgomeryU32 => 4,
+			Self::CryptographyBigIntSubtractScalarU32 => 2,
+			Self::CryptographyBigIntToU32U32 => 3,
+			Self::CryptographyBigIntToU64U32 => 3,
+			Self::CryptographyBigIntSetupBarrettU32 => 3,
+			Self::CryptographyBigIntReduceBarrettU32 => 4,
+			Self::CryptographyMerkleTreeReduceU32 => 2,
+			Self::CryptographyMerkleFrameInitU32 => 2,
+			Self::CryptographyMerkleFrameAppendU32 => 4,
+			Self::CryptographyMerkleFrameVerifyU32 => 4,
+			Self::CryptographyNttTwiddlesU32 => 2,
+			Self::CryptographyNttReorderU32 => 2,
+			Self::CryptographyNttStageU32 => 3,
+			Self::CryptographyNttPointwiseU32 => 3,
+			Self::CryptographyNttCooperative256U32 => 3,
+			Self::CryptographyNttCooperative1024U32 => 3,
+			Self::CryptographyNttCooperative4096U32 => 3,
+			Self::CryptographyNttCooperative8192U32 => 3,
 		}
 	}
 
@@ -17495,118 +22650,204 @@ impl KernelId {
 			Self::MlVqAssignF32 => 250,
 			Self::MlVqLookupF32 => 251,
 			Self::MlVqEmaUpdateF32 => 252,
-			Self::AudioGainF32 => 253,
-			Self::AudioClipF32 => 254,
-			Self::AudioSaturateF32 => 255,
-			Self::AudioResampleF32 => 256,
-			Self::AudioFadeF32 => 257,
-			Self::AudioMixF32 => 258,
-			Self::AudioAmplitudeToDbF32 => 259,
-			Self::AudioWaveformEnvelopeF32 => 260,
-			Self::AudioPreEmphasisF32 => 261,
-			Self::AudioToMonoF32 => 262,
-			Self::AudioNormalizeLevelF32 => 263,
-			Self::AudioNormalizeApplyF32 => 264,
-			Self::AudioBiquadSummaryF32 => 265,
-			Self::AudioBiquadScanF32 => 266,
-			Self::AudioBiquadApplyF32 => 267,
-			Self::AudioReverbCombF32 => 268,
-			Self::AudioReverbSumF32 => 269,
-			Self::AudioReverbAllpassF32 => 270,
-			Self::AudioReverbMixF32 => 271,
-			Self::AudioStftF32 => 272,
-			Self::AudioMelFilterbankF32 => 273,
-			Self::AudioMelNormalizeF32 => 274,
-			Self::AudioMfccDctF32 => 275,
-			Self::AudioSosFilterF32 => 276,
-			Self::CryptographyShake128U8 => 277,
-			Self::CryptographyShake256U8 => 278,
-			Self::CryptographyKeccakF1600U8 => 279,
-			Self::CryptographyMerkleReduceU8 => 280,
-			Self::CryptographyMerkleCopyU8 => 281,
-			Self::CryptographyMlDsa65VerifyU8 => 282,
-			Self::CryptographyMlDsa44VerifyU8 => 283,
-			Self::CryptographyMlDsa87VerifyU8 => 284,
-			Self::CryptographyMlDsa65VerifyPrehashedU8 => 285,
-			Self::CryptographyMlDsa44VerifyPrehashedU8 => 286,
-			Self::CryptographyMlDsa87VerifyPrehashedU8 => 287,
-			Self::CryptographyMlDsa65VerifyHashMessageU8 => 288,
-			Self::CryptographyMlDsa44VerifyHashMessageU8 => 289,
-			Self::CryptographyMlDsa87VerifyHashMessageU8 => 290,
-			Self::CryptographyMlKemKeygenU8 => 291,
-			Self::CryptographyMlKemEncapsU8 => 292,
-			Self::CryptographyMlKemDecapsU8 => 293,
-			Self::CryptographyMlDsaKeygenU8 => 294,
-			Self::CryptographyMlDsaSignU8 => 295,
-			Self::CryptographyMlDsaSignMessageU8 => 296,
-			Self::CryptographyMlDsaSignPrehashedU8 => 297,
-			Self::CryptographyMlDsaSignHashMessageU8 => 298,
-			Self::ImageResizeNearestF32 => 299,
-			Self::ImageResizeBilinearF32 => 300,
-			Self::ImageCropF32 => 301,
-			Self::ImageFlipF32 => 302,
-			Self::ImageRotateF32 => 303,
-			Self::ImagePadF32 => 304,
-			Self::ImageCenterCropF32 => 305,
-			Self::ImageRemapF32 => 306,
-			Self::ImageWarpAffineF32 => 307,
-			Self::ImageWarpPerspectiveF32 => 308,
-			Self::ImageThresholdBinaryF32 => 309,
-			Self::ImageThresholdBinaryInvF32 => 310,
-			Self::ImageThresholdTruncateF32 => 311,
-			Self::ImageThresholdToZeroF32 => 312,
-			Self::ImageThresholdToZeroInvF32 => 313,
-			Self::ImageInRangeF32 => 314,
-			Self::ImageClampF32 => 315,
-			Self::ImageInvertF32 => 316,
-			Self::ImageBrightnessContrastF32 => 317,
-			Self::ImageGammaContrastF32 => 318,
-			Self::ImageSolarizeF32 => 319,
-			Self::ImagePosterizeF32 => 320,
-			Self::ImageGrayscaleF32 => 321,
-			Self::ImageAlphaBlendF32 => 322,
-			Self::ImageCompositeF32 => 323,
-			Self::ImageEraseF32 => 324,
-			Self::ImageColorTwistF32 => 325,
-			Self::ImageChannelReorderF32 => 326,
-			Self::ImageGaussianNoiseF32 => 327,
-			Self::ImageSaltPepperNoiseF32 => 328,
-			Self::ImageConvolve2dF32 => 329,
-			Self::ImageSeparableConvolve2dF32 => 330,
-			Self::ImageAverageBlurF32 => 331,
-			Self::ImageSobelF32 => 332,
-			Self::ImageScharrF32 => 333,
-			Self::ImageLaplacianF32 => 334,
-			Self::ImageErodeF32 => 335,
-			Self::ImageDilateF32 => 336,
-			Self::ImageMorphologyOpenF32 => 337,
-			Self::ImageMorphologyCloseF32 => 338,
-			Self::ImageMorphologyGradientF32 => 339,
-			Self::ImageGaussianBlurF32 => 340,
-			Self::ImageSharpenF32 => 341,
-			Self::ImageMedianBlurF32 => 342,
-			Self::ImageBilateralFilterF32 => 343,
-			Self::ImageUnsharpMaskF32 => 344,
-			Self::ImageMorphologyTopHatF32 => 345,
-			Self::ImageMorphologyBlackHatF32 => 346,
-			Self::ImageAdaptiveThresholdMeanF32 => 347,
-			Self::ImageAdaptiveThresholdGaussianF32 => 348,
-			Self::ImageNormalizeF32 => 349,
-			Self::ImageConvertColorF32 => 350,
-			Self::ImageResizeNormalizeF32 => 351,
-			Self::ImageSegmentationOverlayF32 => 352,
-			Self::VisionBoxIouF32 => 353,
-			Self::VisionNmsF32 => 354,
-			Self::VisionConfusionMatrixI32 => 355,
-			Self::VisionBinaryMaskCountsU8 => 356,
-			Self::VisionDetectionMetricCurvesF32 => 357,
-			Self::VisionDetectionAveragePrecisionF32 => 358,
-			Self::VisionDetectionMeanAveragePrecisionF32 => 359,
-			Self::VisionSegmentationConfusionI32 => 360,
-			Self::VisionSegmentationMetricsF32 => 361,
-			Self::VisionConfusionMatrixClearU32 => 362,
-			Self::VisionBinaryMaskCountsClearU32 => 363,
-			Self::VisionSegmentationConfusionClearU32 => 364,
+			Self::MlTradingResetF32 => 253,
+			Self::MlTradingStepF32 => 254,
+			Self::MlCausalLinearAttentionF32 => 255,
+			Self::MlCausalLinearAttentionBackwardQF32 => 256,
+			Self::MlCausalLinearAttentionBackwardKvF32 => 257,
+			Self::MlRolloutMinibatchF32 => 258,
+			Self::MlRolloutMinibatchCursorF32 => 259,
+			Self::MlTrainingAccumulateF32 => 260,
+			Self::MlRolloutAppendCursorF32 => 261,
+			Self::MlTradingResetCursorF32 => 262,
+			Self::MlTradingStepCursorF32 => 263,
+			Self::MlSampleCategoricalCursorF32 => 264,
+			Self::MlTradingCursorAdvanceU32 => 265,
+			Self::AudioGainF32 => 266,
+			Self::AudioClipF32 => 267,
+			Self::AudioSaturateF32 => 268,
+			Self::AudioResampleF32 => 269,
+			Self::AudioFadeF32 => 270,
+			Self::AudioMixF32 => 271,
+			Self::AudioAmplitudeToDbF32 => 272,
+			Self::AudioWaveformEnvelopeF32 => 273,
+			Self::AudioPreEmphasisF32 => 274,
+			Self::AudioToMonoF32 => 275,
+			Self::AudioNormalizeLevelF32 => 276,
+			Self::AudioNormalizeApplyF32 => 277,
+			Self::AudioBiquadSummaryF32 => 278,
+			Self::AudioBiquadScanF32 => 279,
+			Self::AudioBiquadApplyF32 => 280,
+			Self::AudioReverbCombF32 => 281,
+			Self::AudioReverbSumF32 => 282,
+			Self::AudioReverbAllpassF32 => 283,
+			Self::AudioReverbMixF32 => 284,
+			Self::AudioStftF32 => 285,
+			Self::AudioMelFilterbankF32 => 286,
+			Self::AudioMelNormalizeF32 => 287,
+			Self::AudioMfccDctF32 => 288,
+			Self::AudioSosFilterF32 => 289,
+			Self::CryptographyShake128U8 => 290,
+			Self::CryptographyShake256U8 => 291,
+			Self::CryptographyKeccakF1600U8 => 292,
+			Self::CryptographyMerkleReduceU8 => 293,
+			Self::CryptographyMerkleCopyU8 => 294,
+			Self::CryptographySha224U8 => 295,
+			Self::CryptographySha256U8 => 296,
+			Self::CryptographySha384U8 => 297,
+			Self::CryptographySha512U8 => 298,
+			Self::CryptographySha512224U8 => 299,
+			Self::CryptographySha512256U8 => 300,
+			Self::CryptographySha3224U8 => 301,
+			Self::CryptographySha3256U8 => 302,
+			Self::CryptographySha3384U8 => 303,
+			Self::CryptographySha3512U8 => 304,
+			Self::CryptographyMerkleProofGatherU8 => 305,
+			Self::CryptographyMerkleProofVerifyU32 => 306,
+			Self::CryptographyPoseidon2Babybear16U32 => 307,
+			Self::CryptographyPoseidon2Babybear16PermuteU32 => 308,
+			Self::CryptographyPoseidon2Babybear24U32 => 309,
+			Self::CryptographyPoseidon2Babybear24PermuteU32 => 310,
+			Self::CryptographyPoseidon2Koalabear16U32 => 311,
+			Self::CryptographyPoseidon2Koalabear16PermuteU32 => 312,
+			Self::CryptographyPoseidon2Koalabear24U32 => 313,
+			Self::CryptographyPoseidon2Koalabear24PermuteU32 => 314,
+			Self::CryptographyMlDsa65VerifyU8 => 315,
+			Self::CryptographyMlDsa44VerifyU8 => 316,
+			Self::CryptographyMlDsa87VerifyU8 => 317,
+			Self::CryptographyMlDsa65VerifyPrehashedU8 => 318,
+			Self::CryptographyMlDsa44VerifyPrehashedU8 => 319,
+			Self::CryptographyMlDsa87VerifyPrehashedU8 => 320,
+			Self::CryptographyMlDsa65VerifyHashMessageU8 => 321,
+			Self::CryptographyMlDsa44VerifyHashMessageU8 => 322,
+			Self::CryptographyMlDsa87VerifyHashMessageU8 => 323,
+			Self::CryptographyMlKemKeygenU8 => 324,
+			Self::CryptographyMlKemEncapsU8 => 325,
+			Self::CryptographyMlKemDecapsU8 => 326,
+			Self::CryptographyMlDsaKeygenU8 => 327,
+			Self::CryptographyMlDsaSignU8 => 328,
+			Self::CryptographyMlDsaSignMessageU8 => 329,
+			Self::CryptographyMlDsaSignPrehashedU8 => 330,
+			Self::CryptographyMlDsaSignHashMessageU8 => 331,
+			Self::ImageResizeNearestF32 => 332,
+			Self::ImageResizeBilinearF32 => 333,
+			Self::ImageCropF32 => 334,
+			Self::ImageFlipF32 => 335,
+			Self::ImageRotateF32 => 336,
+			Self::ImagePadF32 => 337,
+			Self::ImageCenterCropF32 => 338,
+			Self::ImageRemapF32 => 339,
+			Self::ImageWarpAffineF32 => 340,
+			Self::ImageWarpPerspectiveF32 => 341,
+			Self::ImageThresholdBinaryF32 => 342,
+			Self::ImageThresholdBinaryInvF32 => 343,
+			Self::ImageThresholdTruncateF32 => 344,
+			Self::ImageThresholdToZeroF32 => 345,
+			Self::ImageThresholdToZeroInvF32 => 346,
+			Self::ImageInRangeF32 => 347,
+			Self::ImageClampF32 => 348,
+			Self::ImageInvertF32 => 349,
+			Self::ImageBrightnessContrastF32 => 350,
+			Self::ImageGammaContrastF32 => 351,
+			Self::ImageSolarizeF32 => 352,
+			Self::ImagePosterizeF32 => 353,
+			Self::ImageGrayscaleF32 => 354,
+			Self::ImageAlphaBlendF32 => 355,
+			Self::ImageCompositeF32 => 356,
+			Self::ImageEraseF32 => 357,
+			Self::ImageColorTwistF32 => 358,
+			Self::ImageChannelReorderF32 => 359,
+			Self::ImageGaussianNoiseF32 => 360,
+			Self::ImageSaltPepperNoiseF32 => 361,
+			Self::ImageConvolve2dF32 => 362,
+			Self::ImageSeparableConvolve2dF32 => 363,
+			Self::ImageAverageBlurF32 => 364,
+			Self::ImageSobelF32 => 365,
+			Self::ImageScharrF32 => 366,
+			Self::ImageLaplacianF32 => 367,
+			Self::ImageErodeF32 => 368,
+			Self::ImageDilateF32 => 369,
+			Self::ImageMorphologyOpenF32 => 370,
+			Self::ImageMorphologyCloseF32 => 371,
+			Self::ImageMorphologyGradientF32 => 372,
+			Self::ImageGaussianBlurF32 => 373,
+			Self::ImageSharpenF32 => 374,
+			Self::ImageMedianBlurF32 => 375,
+			Self::ImageBilateralFilterF32 => 376,
+			Self::ImageUnsharpMaskF32 => 377,
+			Self::ImageMorphologyTopHatF32 => 378,
+			Self::ImageMorphologyBlackHatF32 => 379,
+			Self::ImageAdaptiveThresholdMeanF32 => 380,
+			Self::ImageAdaptiveThresholdGaussianF32 => 381,
+			Self::ImageNormalizeF32 => 382,
+			Self::ImageConvertColorF32 => 383,
+			Self::ImageResizeNormalizeF32 => 384,
+			Self::ImageSegmentationOverlayF32 => 385,
+			Self::VisionBoxIouF32 => 386,
+			Self::VisionNmsF32 => 387,
+			Self::VisionConfusionMatrixI32 => 388,
+			Self::VisionBinaryMaskCountsU8 => 389,
+			Self::VisionDetectionMetricCurvesF32 => 390,
+			Self::VisionDetectionAveragePrecisionF32 => 391,
+			Self::VisionDetectionMeanAveragePrecisionF32 => 392,
+			Self::VisionSegmentationConfusionI32 => 393,
+			Self::VisionSegmentationMetricsF32 => 394,
+			Self::VisionConfusionMatrixClearU32 => 395,
+			Self::VisionBinaryMaskCountsClearU32 => 396,
+			Self::VisionSegmentationConfusionClearU32 => 397,
+			Self::CryptographyBigIntAddU32 => 398,
+			Self::CryptographyBigIntSubtractU32 => 399,
+			Self::CryptographyBigIntMultiplyLowU32 => 400,
+			Self::CryptographyBigIntMultiplyWideU32 => 401,
+			Self::CryptographyBigIntBitAndU32 => 402,
+			Self::CryptographyBigIntBitOrU32 => 403,
+			Self::CryptographyBigIntBitXorU32 => 404,
+			Self::CryptographyBigIntCompareU32 => 405,
+			Self::CryptographyBigIntDivRemU32 => 406,
+			Self::CryptographyBigIntShiftLeftU32 => 407,
+			Self::CryptographyBigIntShiftRightU32 => 408,
+			Self::CryptographyBigIntReduceModU32 => 409,
+			Self::CryptographyBigIntAddModU32 => 410,
+			Self::CryptographyBigIntSubtractModU32 => 411,
+			Self::CryptographyBigIntMultiplyModU32 => 412,
+			Self::CryptographyBigIntSquareModU32 => 413,
+			Self::CryptographyBigIntInverseModU32 => 414,
+			Self::CryptographyBigIntPowModU32 => 415,
+			Self::CryptographyBigIntToMontgomeryU32 => 416,
+			Self::CryptographyBigIntFromMontgomeryU32 => 417,
+			Self::CryptographyBigIntMontgomeryMultiplyU32 => 418,
+			Self::CryptographyBigIntBarrettMultiplyU32 => 419,
+			Self::CryptographyBigIntMultiplyHighU32 => 420,
+			Self::CryptographyBigIntSquareWideU32 => 421,
+			Self::CryptographyBigIntBitNotU32 => 422,
+			Self::CryptographyBigIntLeadingZerosU32 => 423,
+			Self::CryptographyBigIntAddScalarU32 => 424,
+			Self::CryptographyBigIntCompareScalarU32 => 425,
+			Self::CryptographyBigIntDivRemMixedU32 => 426,
+			Self::CryptographyBigIntDivRemNarrowU32 => 427,
+			Self::CryptographyBigIntDivRemScalarU32 => 428,
+			Self::CryptographyBigIntDivRemWideU32 => 429,
+			Self::CryptographyBigIntFromU32U32 => 430,
+			Self::CryptographyBigIntFromU64U32 => 431,
+			Self::CryptographyBigIntMultiplyScalarU32 => 432,
+			Self::CryptographyBigIntReduceMontgomeryU32 => 433,
+			Self::CryptographyBigIntSubtractScalarU32 => 434,
+			Self::CryptographyBigIntToU32U32 => 435,
+			Self::CryptographyBigIntToU64U32 => 436,
+			Self::CryptographyBigIntSetupBarrettU32 => 437,
+			Self::CryptographyBigIntReduceBarrettU32 => 438,
+			Self::CryptographyMerkleTreeReduceU32 => 439,
+			Self::CryptographyMerkleFrameInitU32 => 440,
+			Self::CryptographyMerkleFrameAppendU32 => 441,
+			Self::CryptographyMerkleFrameVerifyU32 => 442,
+			Self::CryptographyNttTwiddlesU32 => 443,
+			Self::CryptographyNttReorderU32 => 444,
+			Self::CryptographyNttStageU32 => 445,
+			Self::CryptographyNttPointwiseU32 => 446,
+			Self::CryptographyNttCooperative256U32 => 447,
+			Self::CryptographyNttCooperative1024U32 => 448,
+			Self::CryptographyNttCooperative4096U32 => 449,
+			Self::CryptographyNttCooperative8192U32 => 450,
 		}
 	}
 
@@ -17943,6 +23184,25 @@ impl KernelId {
 			Self::MlVqAssignF32 => Some(crate::core::operation::ml::VQ_ASSIGN),
 			Self::MlVqLookupF32 => Some(crate::core::operation::ml::VQ_LOOKUP),
 			Self::MlVqEmaUpdateF32 => Some(crate::core::operation::ml::VQ_EMA_UPDATE),
+			Self::MlTradingResetF32 => Some(crate::core::operation::ml::TRADING_RESET),
+			Self::MlTradingStepF32 => Some(crate::core::operation::ml::TRADING_STEP),
+			Self::MlCausalLinearAttentionF32 => Some(crate::core::operation::ml::CAUSAL_LINEAR_ATTENTION),
+			Self::MlCausalLinearAttentionBackwardQF32 => {
+				Some(crate::core::operation::ml::CAUSAL_LINEAR_ATTENTION_BACKWARD)
+			}
+			Self::MlCausalLinearAttentionBackwardKvF32 => {
+				Some(crate::core::operation::ml::CAUSAL_LINEAR_ATTENTION_BACKWARD)
+			}
+			Self::MlRolloutMinibatchF32 => Some(crate::core::operation::ml::MINIBATCH),
+			Self::MlRolloutMinibatchCursorF32 => Some(crate::core::operation::ml::MINIBATCH_CURSOR),
+			Self::MlTrainingAccumulateF32 => Some(crate::core::operation::ml::TRAINING_ACCUMULATE),
+			Self::MlRolloutAppendCursorF32 => Some(crate::core::operation::ml::APPEND_CURSOR),
+			Self::MlTradingResetCursorF32 => Some(crate::core::operation::ml::TRADING_RESET_CURSOR),
+			Self::MlTradingStepCursorF32 => Some(crate::core::operation::ml::TRADING_STEP_CURSOR),
+			Self::MlSampleCategoricalCursorF32 => {
+				Some(crate::core::operation::ml::SAMPLE_CATEGORICAL_CURSOR)
+			}
+			Self::MlTradingCursorAdvanceU32 => Some(crate::core::operation::ml::TRADING_CURSOR_ADVANCE),
 			Self::AudioGainF32 => Some(crate::core::operation::audio::GAIN),
 			Self::AudioClipF32 => Some(crate::core::operation::audio::CLIP),
 			Self::AudioSaturateF32 => Some(crate::core::operation::audio::SATURATE),
@@ -17977,6 +23237,46 @@ impl KernelId {
 			}
 			Self::CryptographyMerkleCopyU8 => {
 				Some(crate::core::operation::cryptography::hash::MERKLE_ROOT)
+			}
+			Self::CryptographySha224U8 => Some(crate::core::operation::cryptography::hash::SHA224),
+			Self::CryptographySha256U8 => Some(crate::core::operation::cryptography::hash::SHA256),
+			Self::CryptographySha384U8 => Some(crate::core::operation::cryptography::hash::SHA384),
+			Self::CryptographySha512U8 => Some(crate::core::operation::cryptography::hash::SHA512),
+			Self::CryptographySha512224U8 => Some(crate::core::operation::cryptography::hash::SHA512_224),
+			Self::CryptographySha512256U8 => Some(crate::core::operation::cryptography::hash::SHA512_256),
+			Self::CryptographySha3224U8 => Some(crate::core::operation::cryptography::hash::SHA3_224),
+			Self::CryptographySha3256U8 => Some(crate::core::operation::cryptography::hash::SHA3_256),
+			Self::CryptographySha3384U8 => Some(crate::core::operation::cryptography::hash::SHA3_384),
+			Self::CryptographySha3512U8 => Some(crate::core::operation::cryptography::hash::SHA3_512),
+			Self::CryptographyMerkleProofGatherU8 => {
+				Some(crate::core::operation::cryptography::hash::MERKLE_PROOFS)
+			}
+			Self::CryptographyMerkleProofVerifyU32 => {
+				Some(crate::core::operation::cryptography::hash::VERIFY_MERKLE_PROOFS)
+			}
+			Self::CryptographyPoseidon2Babybear16U32 => {
+				Some(crate::core::operation::cryptography::hash::POSEIDON2_BABYBEAR16)
+			}
+			Self::CryptographyPoseidon2Babybear16PermuteU32 => {
+				Some(crate::core::operation::cryptography::hash::POSEIDON2_BABYBEAR16_PERMUTE)
+			}
+			Self::CryptographyPoseidon2Babybear24U32 => {
+				Some(crate::core::operation::cryptography::hash::POSEIDON2_BABYBEAR24)
+			}
+			Self::CryptographyPoseidon2Babybear24PermuteU32 => {
+				Some(crate::core::operation::cryptography::hash::POSEIDON2_BABYBEAR24_PERMUTE)
+			}
+			Self::CryptographyPoseidon2Koalabear16U32 => {
+				Some(crate::core::operation::cryptography::hash::POSEIDON2_KOALABEAR16)
+			}
+			Self::CryptographyPoseidon2Koalabear16PermuteU32 => {
+				Some(crate::core::operation::cryptography::hash::POSEIDON2_KOALABEAR16_PERMUTE)
+			}
+			Self::CryptographyPoseidon2Koalabear24U32 => {
+				Some(crate::core::operation::cryptography::hash::POSEIDON2_KOALABEAR24)
+			}
+			Self::CryptographyPoseidon2Koalabear24PermuteU32 => {
+				Some(crate::core::operation::cryptography::hash::POSEIDON2_KOALABEAR24_PERMUTE)
 			}
 			Self::CryptographyMlDsa65VerifyU8 => {
 				Some(crate::core::operation::cryptography::pqc::ML_DSA_65_VERIFY_BATCH)
@@ -18098,6 +23398,161 @@ impl KernelId {
 			}
 			Self::VisionSegmentationConfusionClearU32 => {
 				Some(crate::core::operation::vision::EVALUATE_SEGMENTATION)
+			}
+			Self::CryptographyBigIntAddU32 => Some(crate::core::operation::cryptography::bigint::ADD),
+			Self::CryptographyBigIntSubtractU32 => {
+				Some(crate::core::operation::cryptography::bigint::SUBTRACT)
+			}
+			Self::CryptographyBigIntMultiplyLowU32 => {
+				Some(crate::core::operation::cryptography::bigint::MULTIPLY_LOW)
+			}
+			Self::CryptographyBigIntMultiplyWideU32 => {
+				Some(crate::core::operation::cryptography::bigint::MULTIPLY_WIDE)
+			}
+			Self::CryptographyBigIntBitAndU32 => {
+				Some(crate::core::operation::cryptography::bigint::BIT_AND)
+			}
+			Self::CryptographyBigIntBitOrU32 => {
+				Some(crate::core::operation::cryptography::bigint::BIT_OR)
+			}
+			Self::CryptographyBigIntBitXorU32 => {
+				Some(crate::core::operation::cryptography::bigint::BIT_XOR)
+			}
+			Self::CryptographyBigIntCompareU32 => {
+				Some(crate::core::operation::cryptography::bigint::COMPARE)
+			}
+			Self::CryptographyBigIntDivRemU32 => {
+				Some(crate::core::operation::cryptography::bigint::DIV_REM)
+			}
+			Self::CryptographyBigIntShiftLeftU32 => {
+				Some(crate::core::operation::cryptography::bigint::SHIFT_LEFT)
+			}
+			Self::CryptographyBigIntShiftRightU32 => {
+				Some(crate::core::operation::cryptography::bigint::SHIFT_RIGHT)
+			}
+			Self::CryptographyBigIntReduceModU32 => {
+				Some(crate::core::operation::cryptography::bigint::REDUCE_MOD)
+			}
+			Self::CryptographyBigIntAddModU32 => {
+				Some(crate::core::operation::cryptography::bigint::ADD_MOD)
+			}
+			Self::CryptographyBigIntSubtractModU32 => {
+				Some(crate::core::operation::cryptography::bigint::SUBTRACT_MOD)
+			}
+			Self::CryptographyBigIntMultiplyModU32 => {
+				Some(crate::core::operation::cryptography::bigint::MULTIPLY_MOD)
+			}
+			Self::CryptographyBigIntSquareModU32 => {
+				Some(crate::core::operation::cryptography::bigint::SQUARE_MOD)
+			}
+			Self::CryptographyBigIntInverseModU32 => {
+				Some(crate::core::operation::cryptography::bigint::INVERSE_MOD)
+			}
+			Self::CryptographyBigIntPowModU32 => {
+				Some(crate::core::operation::cryptography::bigint::POW_MOD)
+			}
+			Self::CryptographyBigIntToMontgomeryU32 => {
+				Some(crate::core::operation::cryptography::bigint::TO_MONTGOMERY)
+			}
+			Self::CryptographyBigIntFromMontgomeryU32 => {
+				Some(crate::core::operation::cryptography::bigint::FROM_MONTGOMERY)
+			}
+			Self::CryptographyBigIntMontgomeryMultiplyU32 => {
+				Some(crate::core::operation::cryptography::bigint::MONTGOMERY_MULTIPLY)
+			}
+			Self::CryptographyBigIntBarrettMultiplyU32 => {
+				Some(crate::core::operation::cryptography::bigint::BARRETT_MULTIPLY)
+			}
+			Self::CryptographyBigIntMultiplyHighU32 => {
+				Some(crate::core::operation::cryptography::bigint::MULTIPLY_HIGH)
+			}
+			Self::CryptographyBigIntSquareWideU32 => {
+				Some(crate::core::operation::cryptography::bigint::SQUARE_WIDE)
+			}
+			Self::CryptographyBigIntBitNotU32 => {
+				Some(crate::core::operation::cryptography::bigint::BIT_NOT)
+			}
+			Self::CryptographyBigIntLeadingZerosU32 => {
+				Some(crate::core::operation::cryptography::bigint::LEADING_ZEROS)
+			}
+			Self::CryptographyBigIntAddScalarU32 => {
+				Some(crate::core::operation::cryptography::bigint::ADD_SCALAR)
+			}
+			Self::CryptographyBigIntCompareScalarU32 => {
+				Some(crate::core::operation::cryptography::bigint::COMPARE_SCALAR)
+			}
+			Self::CryptographyBigIntDivRemMixedU32 => {
+				Some(crate::core::operation::cryptography::bigint::DIV_REM_MIXED)
+			}
+			Self::CryptographyBigIntDivRemNarrowU32 => {
+				Some(crate::core::operation::cryptography::bigint::DIV_REM_NARROW)
+			}
+			Self::CryptographyBigIntDivRemScalarU32 => {
+				Some(crate::core::operation::cryptography::bigint::DIV_REM_SCALAR)
+			}
+			Self::CryptographyBigIntDivRemWideU32 => {
+				Some(crate::core::operation::cryptography::bigint::DIV_REM_WIDE)
+			}
+			Self::CryptographyBigIntFromU32U32 => {
+				Some(crate::core::operation::cryptography::bigint::FROM_U32)
+			}
+			Self::CryptographyBigIntFromU64U32 => {
+				Some(crate::core::operation::cryptography::bigint::FROM_U64)
+			}
+			Self::CryptographyBigIntMultiplyScalarU32 => {
+				Some(crate::core::operation::cryptography::bigint::MULTIPLY_SCALAR)
+			}
+			Self::CryptographyBigIntReduceMontgomeryU32 => {
+				Some(crate::core::operation::cryptography::bigint::REDUCE_MONTGOMERY)
+			}
+			Self::CryptographyBigIntSubtractScalarU32 => {
+				Some(crate::core::operation::cryptography::bigint::SUBTRACT_SCALAR)
+			}
+			Self::CryptographyBigIntToU32U32 => {
+				Some(crate::core::operation::cryptography::bigint::TO_U32)
+			}
+			Self::CryptographyBigIntToU64U32 => {
+				Some(crate::core::operation::cryptography::bigint::TO_U64)
+			}
+			Self::CryptographyBigIntSetupBarrettU32 => {
+				Some(crate::core::operation::cryptography::bigint::SETUP_BARRETT)
+			}
+			Self::CryptographyBigIntReduceBarrettU32 => {
+				Some(crate::core::operation::cryptography::bigint::REDUCE_BARRETT)
+			}
+			Self::CryptographyMerkleTreeReduceU32 => {
+				Some(crate::core::operation::cryptography::merkle::MERKLE_TREE_REDUCE)
+			}
+			Self::CryptographyMerkleFrameInitU32 => {
+				Some(crate::core::operation::cryptography::merkle::MERKLE_FRAME_INIT)
+			}
+			Self::CryptographyMerkleFrameAppendU32 => {
+				Some(crate::core::operation::cryptography::merkle::MERKLE_FRAME_APPEND)
+			}
+			Self::CryptographyMerkleFrameVerifyU32 => {
+				Some(crate::core::operation::cryptography::merkle::MERKLE_FRAME_VERIFY)
+			}
+			Self::CryptographyNttTwiddlesU32 => {
+				Some(crate::core::operation::cryptography::ntt::NTT_TWIDDLES)
+			}
+			Self::CryptographyNttReorderU32 => {
+				Some(crate::core::operation::cryptography::ntt::NTT_REORDER)
+			}
+			Self::CryptographyNttStageU32 => Some(crate::core::operation::cryptography::ntt::NTT_STAGE),
+			Self::CryptographyNttPointwiseU32 => {
+				Some(crate::core::operation::cryptography::ntt::NTT_POINTWISE)
+			}
+			Self::CryptographyNttCooperative256U32 => {
+				Some(crate::core::operation::cryptography::ntt::NTT_TRANSFORM)
+			}
+			Self::CryptographyNttCooperative1024U32 => {
+				Some(crate::core::operation::cryptography::ntt::NTT_TRANSFORM)
+			}
+			Self::CryptographyNttCooperative4096U32 => {
+				Some(crate::core::operation::cryptography::ntt::NTT_TRANSFORM)
+			}
+			Self::CryptographyNttCooperative8192U32 => {
+				Some(crate::core::operation::cryptography::ntt::NTT_TRANSFORM)
 			}
 		}
 	}
@@ -18361,6 +23816,19 @@ impl KernelId {
 			Self::MlVqAssignF32 => "ml.matrix.vq_assign.f32",
 			Self::MlVqLookupF32 => "ml.matrix.vq_lookup.f32",
 			Self::MlVqEmaUpdateF32 => "ml.matrix.vq_ema_update.f32",
+			Self::MlTradingResetF32 => "ml.environment.trading_reset.f32",
+			Self::MlTradingStepF32 => "ml.environment.trading_step.f32",
+			Self::MlCausalLinearAttentionF32 => "ml.matrix.causal_linear_attention.f32",
+			Self::MlCausalLinearAttentionBackwardQF32 => "ml.matrix.causal_linear_attention_backward.f32",
+			Self::MlCausalLinearAttentionBackwardKvF32 => "ml.causal_linear_attention_backward_kv.f32",
+			Self::MlRolloutMinibatchF32 => "ml.rollout.minibatch.f32",
+			Self::MlRolloutMinibatchCursorF32 => "ml.rollout.minibatch_cursor.f32",
+			Self::MlTrainingAccumulateF32 => "ml.matrix.training_accumulate.f32",
+			Self::MlRolloutAppendCursorF32 => "ml.rollout.append_cursor.f32",
+			Self::MlTradingResetCursorF32 => "ml.environment.trading_reset_cursor.f32",
+			Self::MlTradingStepCursorF32 => "ml.environment.trading_step_cursor.f32",
+			Self::MlSampleCategoricalCursorF32 => "ml.matrix.sample_categorical_cursor.f32",
+			Self::MlTradingCursorAdvanceU32 => "ml.environment.trading_cursor_advance.u32",
 			Self::AudioGainF32 => "audio.gain.f32",
 			Self::AudioClipF32 => "audio.clip.f32",
 			Self::AudioSaturateF32 => "audio.saturate.f32",
@@ -18390,6 +23858,34 @@ impl KernelId {
 			Self::CryptographyKeccakF1600U8 => "cryptography.hash.keccak_f1600.u8",
 			Self::CryptographyMerkleReduceU8 => "cryptography.hash.merkle_reduce.u8",
 			Self::CryptographyMerkleCopyU8 => "cryptography.hash.merkle_copy.u8",
+			Self::CryptographySha224U8 => "cryptography.hash.sha224.u8",
+			Self::CryptographySha256U8 => "cryptography.hash.sha256.u8",
+			Self::CryptographySha384U8 => "cryptography.hash.sha384.u8",
+			Self::CryptographySha512U8 => "cryptography.hash.sha512.u8",
+			Self::CryptographySha512224U8 => "cryptography.hash.sha512_224.u8",
+			Self::CryptographySha512256U8 => "cryptography.hash.sha512_256.u8",
+			Self::CryptographySha3224U8 => "cryptography.hash.sha3_224.u8",
+			Self::CryptographySha3256U8 => "cryptography.hash.sha3_256.u8",
+			Self::CryptographySha3384U8 => "cryptography.hash.sha3_384.u8",
+			Self::CryptographySha3512U8 => "cryptography.hash.sha3_512.u8",
+			Self::CryptographyMerkleProofGatherU8 => "cryptography.hash.merkle_proof_gather.u8",
+			Self::CryptographyMerkleProofVerifyU32 => "cryptography.hash.merkle_proof_verify.u32",
+			Self::CryptographyPoseidon2Babybear16U32 => "cryptography.hash.poseidon2_babybear16.u32",
+			Self::CryptographyPoseidon2Babybear16PermuteU32 => {
+				"cryptography.hash.poseidon2_babybear16_permute.u32"
+			}
+			Self::CryptographyPoseidon2Babybear24U32 => "cryptography.hash.poseidon2_babybear24.u32",
+			Self::CryptographyPoseidon2Babybear24PermuteU32 => {
+				"cryptography.hash.poseidon2_babybear24_permute.u32"
+			}
+			Self::CryptographyPoseidon2Koalabear16U32 => "cryptography.hash.poseidon2_koalabear16.u32",
+			Self::CryptographyPoseidon2Koalabear16PermuteU32 => {
+				"cryptography.hash.poseidon2_koalabear16_permute.u32"
+			}
+			Self::CryptographyPoseidon2Koalabear24U32 => "cryptography.hash.poseidon2_koalabear24.u32",
+			Self::CryptographyPoseidon2Koalabear24PermuteU32 => {
+				"cryptography.hash.poseidon2_koalabear24_permute.u32"
+			}
 			Self::CryptographyMlDsa65VerifyU8 => "cryptography.pqc.ml_dsa_65_verify.u8",
 			Self::CryptographyMlDsa44VerifyU8 => "cryptography.pqc.ml_dsa_44_verify.u8",
 			Self::CryptographyMlDsa87VerifyU8 => "cryptography.pqc.ml_dsa_87_verify.u8",
@@ -18485,6 +23981,61 @@ impl KernelId {
 			Self::VisionConfusionMatrixClearU32 => "vision.confusion_matrix_clear.u32",
 			Self::VisionBinaryMaskCountsClearU32 => "vision.binary_mask_counts_clear.u32",
 			Self::VisionSegmentationConfusionClearU32 => "vision.segmentation_confusion_clear.u32",
+			Self::CryptographyBigIntAddU32 => "cryptography.bigint.add.u32",
+			Self::CryptographyBigIntSubtractU32 => "cryptography.bigint.subtract.u32",
+			Self::CryptographyBigIntMultiplyLowU32 => "cryptography.bigint.multiply_low.u32",
+			Self::CryptographyBigIntMultiplyWideU32 => "cryptography.bigint.multiply_wide.u32",
+			Self::CryptographyBigIntBitAndU32 => "cryptography.bigint.bit_and.u32",
+			Self::CryptographyBigIntBitOrU32 => "cryptography.bigint.bit_or.u32",
+			Self::CryptographyBigIntBitXorU32 => "cryptography.bigint.bit_xor.u32",
+			Self::CryptographyBigIntCompareU32 => "cryptography.bigint.compare.u32",
+			Self::CryptographyBigIntDivRemU32 => "cryptography.bigint.div_rem.u32",
+			Self::CryptographyBigIntShiftLeftU32 => "cryptography.bigint.shift_left.u32",
+			Self::CryptographyBigIntShiftRightU32 => "cryptography.bigint.shift_right.u32",
+			Self::CryptographyBigIntReduceModU32 => "cryptography.bigint.reduce_mod.u32",
+			Self::CryptographyBigIntAddModU32 => "cryptography.bigint.add_mod.u32",
+			Self::CryptographyBigIntSubtractModU32 => "cryptography.bigint.subtract_mod.u32",
+			Self::CryptographyBigIntMultiplyModU32 => "cryptography.bigint.multiply_mod.u32",
+			Self::CryptographyBigIntSquareModU32 => "cryptography.bigint.square_mod.u32",
+			Self::CryptographyBigIntInverseModU32 => "cryptography.bigint.inverse_mod.u32",
+			Self::CryptographyBigIntPowModU32 => "cryptography.bigint.pow_mod.u32",
+			Self::CryptographyBigIntToMontgomeryU32 => "cryptography.bigint.to_montgomery.u32",
+			Self::CryptographyBigIntFromMontgomeryU32 => "cryptography.bigint.from_montgomery.u32",
+			Self::CryptographyBigIntMontgomeryMultiplyU32 => {
+				"cryptography.bigint.montgomery_multiply.u32"
+			}
+			Self::CryptographyBigIntBarrettMultiplyU32 => "cryptography.bigint.barrett_multiply.u32",
+			Self::CryptographyBigIntMultiplyHighU32 => "cryptography.bigint.multiply_high.u32",
+			Self::CryptographyBigIntSquareWideU32 => "cryptography.bigint.square_wide.u32",
+			Self::CryptographyBigIntBitNotU32 => "cryptography.bigint.bit_not.u32",
+			Self::CryptographyBigIntLeadingZerosU32 => "cryptography.bigint.leading_zeros.u32",
+			Self::CryptographyBigIntAddScalarU32 => "cryptography.bigint.add_scalar.u32",
+			Self::CryptographyBigIntCompareScalarU32 => "cryptography.bigint.compare_scalar.u32",
+			Self::CryptographyBigIntDivRemMixedU32 => "cryptography.bigint.div_rem_mixed.u32",
+			Self::CryptographyBigIntDivRemNarrowU32 => "cryptography.bigint.div_rem_narrow.u32",
+			Self::CryptographyBigIntDivRemScalarU32 => "cryptography.bigint.div_rem_scalar.u32",
+			Self::CryptographyBigIntDivRemWideU32 => "cryptography.bigint.div_rem_wide.u32",
+			Self::CryptographyBigIntFromU32U32 => "cryptography.bigint.from_u32.u32",
+			Self::CryptographyBigIntFromU64U32 => "cryptography.bigint.from_u64.u32",
+			Self::CryptographyBigIntMultiplyScalarU32 => "cryptography.bigint.multiply_scalar.u32",
+			Self::CryptographyBigIntReduceMontgomeryU32 => "cryptography.bigint.reduce_montgomery.u32",
+			Self::CryptographyBigIntSubtractScalarU32 => "cryptography.bigint.subtract_scalar.u32",
+			Self::CryptographyBigIntToU32U32 => "cryptography.bigint.to_u32.u32",
+			Self::CryptographyBigIntToU64U32 => "cryptography.bigint.to_u64.u32",
+			Self::CryptographyBigIntSetupBarrettU32 => "cryptography.bigint.setup_barrett.u32",
+			Self::CryptographyBigIntReduceBarrettU32 => "cryptography.bigint.reduce_barrett.u32",
+			Self::CryptographyMerkleTreeReduceU32 => "cryptography.merkle.merkle_tree_reduce.u32",
+			Self::CryptographyMerkleFrameInitU32 => "cryptography.merkle.merkle_frame_init.u32",
+			Self::CryptographyMerkleFrameAppendU32 => "cryptography.merkle.merkle_frame_append.u32",
+			Self::CryptographyMerkleFrameVerifyU32 => "cryptography.merkle.merkle_frame_verify.u32",
+			Self::CryptographyNttTwiddlesU32 => "cryptography.ntt.ntt_twiddles.u32",
+			Self::CryptographyNttReorderU32 => "cryptography.ntt.ntt_reorder.u32",
+			Self::CryptographyNttStageU32 => "cryptography.ntt.ntt_stage.u32",
+			Self::CryptographyNttPointwiseU32 => "cryptography.ntt.ntt_pointwise.u32",
+			Self::CryptographyNttCooperative256U32 => "cryptography.ntt.ntt_cooperative_256.u32",
+			Self::CryptographyNttCooperative1024U32 => "cryptography.ntt.ntt_cooperative_1024.u32",
+			Self::CryptographyNttCooperative4096U32 => "cryptography.ntt.ntt_cooperative_4096.u32",
+			Self::CryptographyNttCooperative8192U32 => "cryptography.ntt.ntt_cooperative_8192.u32",
 		}
 	}
 
@@ -18743,6 +24294,19 @@ impl KernelId {
 			Self::MlVqAssignF32 => "float32",
 			Self::MlVqLookupF32 => "float32",
 			Self::MlVqEmaUpdateF32 => "float32",
+			Self::MlTradingResetF32 => "float32",
+			Self::MlTradingStepF32 => "float32",
+			Self::MlCausalLinearAttentionF32 => "float32",
+			Self::MlCausalLinearAttentionBackwardQF32 => "float32",
+			Self::MlCausalLinearAttentionBackwardKvF32 => "float32",
+			Self::MlRolloutMinibatchF32 => "float32",
+			Self::MlRolloutMinibatchCursorF32 => "float32",
+			Self::MlTrainingAccumulateF32 => "float32",
+			Self::MlRolloutAppendCursorF32 => "float32",
+			Self::MlTradingResetCursorF32 => "float32",
+			Self::MlTradingStepCursorF32 => "float32",
+			Self::MlSampleCategoricalCursorF32 => "float32",
+			Self::MlTradingCursorAdvanceU32 => "uint32",
 			Self::AudioGainF32 => "float32",
 			Self::AudioClipF32 => "float32",
 			Self::AudioSaturateF32 => "float32",
@@ -18772,6 +24336,26 @@ impl KernelId {
 			Self::CryptographyKeccakF1600U8 => "uint8",
 			Self::CryptographyMerkleReduceU8 => "uint8",
 			Self::CryptographyMerkleCopyU8 => "uint8",
+			Self::CryptographySha224U8 => "uint8",
+			Self::CryptographySha256U8 => "uint8",
+			Self::CryptographySha384U8 => "uint8",
+			Self::CryptographySha512U8 => "uint8",
+			Self::CryptographySha512224U8 => "uint8",
+			Self::CryptographySha512256U8 => "uint8",
+			Self::CryptographySha3224U8 => "uint8",
+			Self::CryptographySha3256U8 => "uint8",
+			Self::CryptographySha3384U8 => "uint8",
+			Self::CryptographySha3512U8 => "uint8",
+			Self::CryptographyMerkleProofGatherU8 => "uint8",
+			Self::CryptographyMerkleProofVerifyU32 => "uint32",
+			Self::CryptographyPoseidon2Babybear16U32 => "uint32",
+			Self::CryptographyPoseidon2Babybear16PermuteU32 => "uint32",
+			Self::CryptographyPoseidon2Babybear24U32 => "uint32",
+			Self::CryptographyPoseidon2Babybear24PermuteU32 => "uint32",
+			Self::CryptographyPoseidon2Koalabear16U32 => "uint32",
+			Self::CryptographyPoseidon2Koalabear16PermuteU32 => "uint32",
+			Self::CryptographyPoseidon2Koalabear24U32 => "uint32",
+			Self::CryptographyPoseidon2Koalabear24PermuteU32 => "uint32",
 			Self::CryptographyMlDsa65VerifyU8 => "uint8",
 			Self::CryptographyMlDsa44VerifyU8 => "uint8",
 			Self::CryptographyMlDsa87VerifyU8 => "uint8",
@@ -18855,6 +24439,59 @@ impl KernelId {
 			Self::VisionConfusionMatrixClearU32 => "uint32",
 			Self::VisionBinaryMaskCountsClearU32 => "uint32",
 			Self::VisionSegmentationConfusionClearU32 => "uint32",
+			Self::CryptographyBigIntAddU32 => "uint32",
+			Self::CryptographyBigIntSubtractU32 => "uint32",
+			Self::CryptographyBigIntMultiplyLowU32 => "uint32",
+			Self::CryptographyBigIntMultiplyWideU32 => "uint32",
+			Self::CryptographyBigIntBitAndU32 => "uint32",
+			Self::CryptographyBigIntBitOrU32 => "uint32",
+			Self::CryptographyBigIntBitXorU32 => "uint32",
+			Self::CryptographyBigIntCompareU32 => "uint32",
+			Self::CryptographyBigIntDivRemU32 => "uint32",
+			Self::CryptographyBigIntShiftLeftU32 => "uint32",
+			Self::CryptographyBigIntShiftRightU32 => "uint32",
+			Self::CryptographyBigIntReduceModU32 => "uint32",
+			Self::CryptographyBigIntAddModU32 => "uint32",
+			Self::CryptographyBigIntSubtractModU32 => "uint32",
+			Self::CryptographyBigIntMultiplyModU32 => "uint32",
+			Self::CryptographyBigIntSquareModU32 => "uint32",
+			Self::CryptographyBigIntInverseModU32 => "uint32",
+			Self::CryptographyBigIntPowModU32 => "uint32",
+			Self::CryptographyBigIntToMontgomeryU32 => "uint32",
+			Self::CryptographyBigIntFromMontgomeryU32 => "uint32",
+			Self::CryptographyBigIntMontgomeryMultiplyU32 => "uint32",
+			Self::CryptographyBigIntBarrettMultiplyU32 => "uint32",
+			Self::CryptographyBigIntMultiplyHighU32 => "uint32",
+			Self::CryptographyBigIntSquareWideU32 => "uint32",
+			Self::CryptographyBigIntBitNotU32 => "uint32",
+			Self::CryptographyBigIntLeadingZerosU32 => "uint32",
+			Self::CryptographyBigIntAddScalarU32 => "uint32",
+			Self::CryptographyBigIntCompareScalarU32 => "uint32",
+			Self::CryptographyBigIntDivRemMixedU32 => "uint32",
+			Self::CryptographyBigIntDivRemNarrowU32 => "uint32",
+			Self::CryptographyBigIntDivRemScalarU32 => "uint32",
+			Self::CryptographyBigIntDivRemWideU32 => "uint32",
+			Self::CryptographyBigIntFromU32U32 => "uint32",
+			Self::CryptographyBigIntFromU64U32 => "uint32",
+			Self::CryptographyBigIntMultiplyScalarU32 => "uint32",
+			Self::CryptographyBigIntReduceMontgomeryU32 => "uint32",
+			Self::CryptographyBigIntSubtractScalarU32 => "uint32",
+			Self::CryptographyBigIntToU32U32 => "uint32",
+			Self::CryptographyBigIntToU64U32 => "uint32",
+			Self::CryptographyBigIntSetupBarrettU32 => "uint32",
+			Self::CryptographyBigIntReduceBarrettU32 => "uint32",
+			Self::CryptographyMerkleTreeReduceU32 => "uint32",
+			Self::CryptographyMerkleFrameInitU32 => "uint32",
+			Self::CryptographyMerkleFrameAppendU32 => "uint32",
+			Self::CryptographyMerkleFrameVerifyU32 => "uint32",
+			Self::CryptographyNttTwiddlesU32 => "uint32",
+			Self::CryptographyNttReorderU32 => "uint32",
+			Self::CryptographyNttStageU32 => "uint32",
+			Self::CryptographyNttPointwiseU32 => "uint32",
+			Self::CryptographyNttCooperative256U32 => "uint32",
+			Self::CryptographyNttCooperative1024U32 => "uint32",
+			Self::CryptographyNttCooperative4096U32 => "uint32",
+			Self::CryptographyNttCooperative8192U32 => "uint32",
 		}
 	}
 
@@ -19113,6 +24750,19 @@ impl KernelId {
 			Self::MlVqAssignF32 => TrainingReplayRole::Safe,
 			Self::MlVqLookupF32 => TrainingReplayRole::Safe,
 			Self::MlVqEmaUpdateF32 => TrainingReplayRole::Safe,
+			Self::MlTradingResetF32 => TrainingReplayRole::Safe,
+			Self::MlTradingStepF32 => TrainingReplayRole::Safe,
+			Self::MlCausalLinearAttentionF32 => TrainingReplayRole::Safe,
+			Self::MlCausalLinearAttentionBackwardQF32 => TrainingReplayRole::Safe,
+			Self::MlCausalLinearAttentionBackwardKvF32 => TrainingReplayRole::Safe,
+			Self::MlRolloutMinibatchF32 => TrainingReplayRole::Safe,
+			Self::MlRolloutMinibatchCursorF32 => TrainingReplayRole::Safe,
+			Self::MlTrainingAccumulateF32 => TrainingReplayRole::Safe,
+			Self::MlRolloutAppendCursorF32 => TrainingReplayRole::Safe,
+			Self::MlTradingResetCursorF32 => TrainingReplayRole::Safe,
+			Self::MlTradingStepCursorF32 => TrainingReplayRole::Safe,
+			Self::MlSampleCategoricalCursorF32 => TrainingReplayRole::Safe,
+			Self::MlTradingCursorAdvanceU32 => TrainingReplayRole::Safe,
 			Self::AudioGainF32 => TrainingReplayRole::Safe,
 			Self::AudioClipF32 => TrainingReplayRole::Safe,
 			Self::AudioSaturateF32 => TrainingReplayRole::Safe,
@@ -19142,6 +24792,26 @@ impl KernelId {
 			Self::CryptographyKeccakF1600U8 => TrainingReplayRole::Safe,
 			Self::CryptographyMerkleReduceU8 => TrainingReplayRole::Safe,
 			Self::CryptographyMerkleCopyU8 => TrainingReplayRole::Safe,
+			Self::CryptographySha224U8 => TrainingReplayRole::Safe,
+			Self::CryptographySha256U8 => TrainingReplayRole::Safe,
+			Self::CryptographySha384U8 => TrainingReplayRole::Safe,
+			Self::CryptographySha512U8 => TrainingReplayRole::Safe,
+			Self::CryptographySha512224U8 => TrainingReplayRole::Safe,
+			Self::CryptographySha512256U8 => TrainingReplayRole::Safe,
+			Self::CryptographySha3224U8 => TrainingReplayRole::Safe,
+			Self::CryptographySha3256U8 => TrainingReplayRole::Safe,
+			Self::CryptographySha3384U8 => TrainingReplayRole::Safe,
+			Self::CryptographySha3512U8 => TrainingReplayRole::Safe,
+			Self::CryptographyMerkleProofGatherU8 => TrainingReplayRole::Safe,
+			Self::CryptographyMerkleProofVerifyU32 => TrainingReplayRole::Safe,
+			Self::CryptographyPoseidon2Babybear16U32 => TrainingReplayRole::Safe,
+			Self::CryptographyPoseidon2Babybear16PermuteU32 => TrainingReplayRole::Safe,
+			Self::CryptographyPoseidon2Babybear24U32 => TrainingReplayRole::Safe,
+			Self::CryptographyPoseidon2Babybear24PermuteU32 => TrainingReplayRole::Safe,
+			Self::CryptographyPoseidon2Koalabear16U32 => TrainingReplayRole::Safe,
+			Self::CryptographyPoseidon2Koalabear16PermuteU32 => TrainingReplayRole::Safe,
+			Self::CryptographyPoseidon2Koalabear24U32 => TrainingReplayRole::Safe,
+			Self::CryptographyPoseidon2Koalabear24PermuteU32 => TrainingReplayRole::Safe,
 			Self::CryptographyMlDsa65VerifyU8 => TrainingReplayRole::Safe,
 			Self::CryptographyMlDsa44VerifyU8 => TrainingReplayRole::Safe,
 			Self::CryptographyMlDsa87VerifyU8 => TrainingReplayRole::Safe,
@@ -19225,6 +24895,59 @@ impl KernelId {
 			Self::VisionConfusionMatrixClearU32 => TrainingReplayRole::Safe,
 			Self::VisionBinaryMaskCountsClearU32 => TrainingReplayRole::Safe,
 			Self::VisionSegmentationConfusionClearU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntAddU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntSubtractU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntMultiplyLowU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntMultiplyWideU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntBitAndU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntBitOrU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntBitXorU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntCompareU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntDivRemU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntShiftLeftU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntShiftRightU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntReduceModU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntAddModU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntSubtractModU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntMultiplyModU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntSquareModU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntInverseModU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntPowModU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntToMontgomeryU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntFromMontgomeryU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntMontgomeryMultiplyU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntBarrettMultiplyU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntMultiplyHighU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntSquareWideU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntBitNotU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntLeadingZerosU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntAddScalarU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntCompareScalarU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntDivRemMixedU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntDivRemNarrowU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntDivRemScalarU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntDivRemWideU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntFromU32U32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntFromU64U32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntMultiplyScalarU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntReduceMontgomeryU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntSubtractScalarU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntToU32U32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntToU64U32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntSetupBarrettU32 => TrainingReplayRole::Safe,
+			Self::CryptographyBigIntReduceBarrettU32 => TrainingReplayRole::Safe,
+			Self::CryptographyMerkleTreeReduceU32 => TrainingReplayRole::Safe,
+			Self::CryptographyMerkleFrameInitU32 => TrainingReplayRole::Safe,
+			Self::CryptographyMerkleFrameAppendU32 => TrainingReplayRole::Safe,
+			Self::CryptographyMerkleFrameVerifyU32 => TrainingReplayRole::Safe,
+			Self::CryptographyNttTwiddlesU32 => TrainingReplayRole::Safe,
+			Self::CryptographyNttReorderU32 => TrainingReplayRole::Safe,
+			Self::CryptographyNttStageU32 => TrainingReplayRole::Safe,
+			Self::CryptographyNttPointwiseU32 => TrainingReplayRole::Safe,
+			Self::CryptographyNttCooperative256U32 => TrainingReplayRole::Safe,
+			Self::CryptographyNttCooperative1024U32 => TrainingReplayRole::Safe,
+			Self::CryptographyNttCooperative4096U32 => TrainingReplayRole::Safe,
+			Self::CryptographyNttCooperative8192U32 => TrainingReplayRole::Safe,
 		}
 	}
 

@@ -69,7 +69,7 @@ pub fn clip_grad_norm(gradients: &[Matrix], max_norm: f32) -> Result<()> {
 	}
 	params[17] = max_norm.to_bits();
 	let engine = gradients[0].engine_handle();
-	let params = Matrix::from_slice_handle(engine, vec![18], &params)?;
+	let params = Matrix::new_from_slice_handle(engine, vec![18], &params)?;
 	let partials = Matrix::allocate(engine, vec![16], 16, crate::DType::F32)?;
 	let mut reduce_buffers = Vec::with_capacity(18);
 	reduce_buffers.push(BufferBinding::read(params.storage()));

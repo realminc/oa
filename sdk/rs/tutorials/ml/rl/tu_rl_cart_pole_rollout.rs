@@ -26,12 +26,12 @@ fn main() -> oa::Result<()> {
 			observation_shape: vec![4],
 		},
 	)?;
-	let policy_weight = oa::Matrix::from_f32(
+	let policy_weight = oa::Matrix::new_from_f32(
 		&engine,
 		[2, 4],
 		&[0.0, -0.1, -4.0, -1.0, 0.0, 0.1, 4.0, 1.0],
 	)?;
-	let value = oa::Matrix::from_f32(&engine, [ENVIRONMENTS], &[0.0; ENVIRONMENTS])?;
+	let value = oa::Matrix::new_from_f32(&engine, [ENVIRONMENTS], &[0.0; ENVIRONMENTS])?;
 
 	println!("\nOA reinforcement learning — vectorized GPU CartPole rollout");
 	println!(

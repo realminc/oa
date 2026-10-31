@@ -51,19 +51,19 @@ test_vk!(rnn_cell_matches_nonzero_hidden_state_oracle, engine, {
 		bias_ih: &bias_ih,
 		bias_hh: &bias_hh,
 	});
-	let cell = oa::ml::nn::RnnCell::from_matrices(
-		oa::Matrix::from_f32(&engine, [2, 2], &weight_ih)?,
-		oa::Matrix::from_f32(&engine, [2, 2], &weight_hh)?,
-		oa::Matrix::from_f32(&engine, [2], &bias_ih)?,
-		oa::Matrix::from_f32(&engine, [2], &bias_hh)?,
+	let cell = oa::ml::nn::RnnCell::new_from_matrices(
+		oa::Matrix::new_from_f32(&engine, [2, 2], &weight_ih)?,
+		oa::Matrix::new_from_f32(&engine, [2, 2], &weight_hh)?,
+		oa::Matrix::new_from_f32(&engine, [2], &bias_ih)?,
+		oa::Matrix::new_from_f32(&engine, [2], &bias_hh)?,
 	)?;
 	assert_eq!(cell.input_size(), 2);
 	assert_eq!(cell.hidden_size(), 2);
 	assert!(cell.has_bias());
 	assert_eq!(cell.all_parameters()?.len(), 4);
 	let output = cell.step(
-		&oa::Matrix::from_f32(&engine, [1, 2], &input)?,
-		&oa::Matrix::from_f32(&engine, [1, 2], &hidden)?,
+		&oa::Matrix::new_from_f32(&engine, [1, 2], &input)?,
+		&oa::Matrix::new_from_f32(&engine, [1, 2], &hidden)?,
 	)?;
 	assert_close(&output.read_f32()?, &expected, 2.0e-5);
 	assert_eq!(cell.zero_state(3)?.read_f32()?, vec![0.0; 6]);
@@ -77,18 +77,18 @@ fn gpu_cell_loss_and_gradients(
 	values: &[f32; 4],
 	backward: bool,
 ) -> oa::Result<(f32, Vec<f32>)> {
-	let cell = oa::ml::nn::RnnCell::from_matrices(
-		oa::Matrix::from_f32(engine, [1, 1], &values[0..1])?,
-		oa::Matrix::from_f32(engine, [1, 1], &values[1..2])?,
-		oa::Matrix::from_f32(engine, [1], &values[2..3])?,
-		oa::Matrix::from_f32(engine, [1], &values[3..4])?,
+	let cell = oa::ml::nn::RnnCell::new_from_matrices(
+		oa::Matrix::new_from_f32(engine, [1, 1], &values[0..1])?,
+		oa::Matrix::new_from_f32(engine, [1, 1], &values[1..2])?,
+		oa::Matrix::new_from_f32(engine, [1], &values[2..3])?,
+		oa::Matrix::new_from_f32(engine, [1], &values[3..4])?,
 	)?;
 	let tape = oa::ml::GradientTape::new();
 	let output = cell.step(
-		&oa::Matrix::from_f32(engine, [1, 1], &[input])?,
-		&oa::Matrix::from_f32(engine, [1, 1], &[hidden])?,
+		&oa::Matrix::new_from_f32(engine, [1, 1], &[input])?,
+		&oa::Matrix::new_from_f32(engine, [1, 1], &[hidden])?,
 	)?;
-	let target = oa::Matrix::from_f32(engine, [1, 1], &[0.0])?;
+	let target = oa::Matrix::new_from_f32(engine, [1, 1], &[0.0])?;
 	let loss = oa::ml::loss::mse(&output, &target)?;
 	if backward {
 		tape.backward(&loss)?;
@@ -137,9 +137,9 @@ test_vk!(
 );
 
 test_vk!(rnn_cell_preserves_bias_and_bias_free_contracts, engine, {
-	let cell = oa::ml::nn::RnnCell::with_seed(&engine, 2, 3, true, 0x524e_4e01)?;
-	let input = oa::Matrix::from_f32(&engine, [2, 2], &[0.1; 4])?;
-	let hidden = oa::Matrix::from_f32(&engine, [2, 3], &[0.2; 6])?;
+	let cell = oa::ml::nn::RnnCell::new_with_seed(&engine, 2, 3, true, 0x524e_4e01)?;
+	let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.1; 4])?;
+	let hidden = oa::Matrix::new_from_f32(&engine, [2, 3], &[0.2; 6])?;
 	let before_freeze = cell.step(&input, &hidden)?.read_f32()?;
 	let parameters = cell.all_parameters()?;
 	parameters[2].set_requires_grad(false);
@@ -147,13 +147,16 @@ test_vk!(rnn_cell_preserves_bias_and_bias_free_contracts, engine, {
 	let after_freeze = cell.step(&input, &hidden)?.read_f32()?;
 	assert_close(&after_freeze, &before_freeze, 1.0e-7);
 
-	let bias_free = oa::ml::nn::RnnCell::with_seed(&engine, 2, 3, false, 0x524e_4e02)?;
+	let bias_free = oa::ml::nn::RnnCell::new_with_seed(&engine, 2, 3, false, 0x524e_4e02)?;
 	assert!(!bias_free.has_bias());
 	assert_eq!(bias_free.all_parameters()?.len(), 2);
 	assert_eq!(bias_free.step(&input, &hidden)?.shape(), [2, 3]);
 	assert_eq!(
 		bias_free
-			.step(&oa::Matrix::from_f32(&engine, [2, 1], &[0.0; 2])?, &hidden,)
+			.step(
+				&oa::Matrix::new_from_f32(&engine, [2, 1], &[0.0; 2])?,
+				&hidden,
+			)
 			.err()
 			.expect("wrong RNN cell input width was accepted")
 			.kind(),

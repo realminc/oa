@@ -620,13 +620,13 @@ impl AccessState {
 		self.write
 	}
 
-	pub(in crate::runtime) fn vk_access(self) -> ash::vk::AccessFlags2 {
-		let mut flags = ash::vk::AccessFlags2::empty();
+	pub(in crate::runtime) fn vk_access(self) -> vk::AccessFlags2 {
+		let mut flags = vk::AccessFlags2::empty();
 		if self.read {
-			flags |= ash::vk::AccessFlags2::SHADER_STORAGE_READ;
+			flags = flags | vk::AccessFlagBits2::SHADER_STORAGE_READ_BIT;
 		}
 		if self.write {
-			flags |= ash::vk::AccessFlags2::SHADER_STORAGE_WRITE;
+			flags = flags | vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT;
 		}
 		flags
 	}

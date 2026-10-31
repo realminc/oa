@@ -4,7 +4,7 @@ use oa::Color;
 fn donor_pack_rounding_and_unpack_contract() {
 	assert_eq!(Color::new(1.0, 0.5, -1.0, 2.0).to_u32(), 0xff8000ff);
 	assert_eq!(
-		Color::from_u32(0xff8000ff),
+		Color::new_from_u32(0xff8000ff),
 		Color::new(1.0, 128.0 / 255.0, 0.0, 1.0)
 	);
 }

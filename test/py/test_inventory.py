@@ -7,11 +7,25 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-_PATH_ATTR = re.compile(r'#\[path\s*=\s*"([^"]+)"\]\s*mod\s+\w+\s*;')
-_UNIT_PATH = re.compile(r'#\[cfg\(test\)\]\s*#\[path\s*=\s*"([^"]+)"\]\s*mod\s+\w+\s*;')
+_MODULE = r'(?:pub(?:\((?:crate|super|self|in\s+(?:crate|super|self)(?:::\w+)*)\))?\s+)?mod\s+\w+\s*;'
+_PATH_ATTR = re.compile(r'#\[path\s*=\s*"([^"]+)"\]\s*' + _MODULE)
+_UNIT_PATH = re.compile(r'#\[cfg\(test\)\]\s*#\[path\s*=\s*"([^"]+)"\]\s*' + _MODULE)
 
 
 class InventoryTests(unittest.TestCase):
+	def test_external_module_paths_accept_visibility_without_allowing_inline_bodies(self):
+		for visibility in ("", "pub ", "pub(crate) ", "pub(super) ", "pub(self) ",
+			"pub(in crate::runtime) ", "pub(in super::parent) "):
+			with self.subTest(visibility=visibility):
+				prefix = '#[cfg(test)]\n#[path = "fixture.rs"]\n'
+				source = prefix + visibility + "mod tests;"
+				self.assertEqual(_UNIT_PATH.findall(source), ["fixture.rs"])
+				self.assertEqual(_PATH_ATTR.findall(source), ["fixture.rs"])
+				self.assertEqual(_UNIT_PATH.sub("", source).strip(), "")
+				inline = prefix + visibility + "mod tests { #[test] fn hidden() {} }"
+				self.assertEqual(_UNIT_PATH.findall(inline), [])
+				self.assertIn("#[cfg(test)]", _UNIT_PATH.sub("", inline))
+
 	def test_every_rust_test_file_is_reachable_from_a_cargo_suite(self):
 		manifest = tomllib.loads((ROOT / "Cargo.toml").read_text())
 		self.assertFalse(manifest["package"]["autotests"])

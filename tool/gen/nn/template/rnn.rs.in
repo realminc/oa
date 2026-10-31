@@ -30,7 +30,7 @@ struct RnnLayer {
 }
 
 impl RnnLayer {
-	fn with_seed(
+	fn new_with_seed(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
@@ -48,12 +48,12 @@ impl RnnLayer {
 			.ok_or_else(|| Error::invalid_argument("RNN Xavier extent overflows usize"))?;
 		let input_limit = (6.0_f32 / xavier_extent as f32).sqrt();
 		let hidden_limit = (3.0_f32 / hidden_size as f32).sqrt();
-		let weight_ih = Matrix::from_f32(
+		let weight_ih = Matrix::new_from_f32(
 			engine,
 			[hidden_size, input_size],
 			&{{initializer}}(weight_ih_count, input_limit, seed),
 		)?;
-		let weight_hh = Matrix::from_f32(
+		let weight_hh = Matrix::new_from_f32(
 			engine,
 			[hidden_size, hidden_size],
 			&{{initializer}}(
@@ -63,10 +63,10 @@ impl RnnLayer {
 			),
 		)?;
 		let bias_ih = bias
-			.then(|| Matrix::from_f32(engine, [hidden_size], &vec![0.0; hidden_size]))
+			.then(|| Matrix::new_from_f32(engine, [hidden_size], &vec![0.0; hidden_size]))
 			.transpose()?;
 		let bias_hh = bias
-			.then(|| Matrix::from_f32(engine, [hidden_size], &vec![0.0; hidden_size]))
+			.then(|| Matrix::new_from_f32(engine, [hidden_size], &vec![0.0; hidden_size]))
 			.transpose()?;
 		Self::from_values(weight_ih, weight_hh, bias_ih, bias_hh)
 	}
@@ -261,7 +261,7 @@ impl {{cell_type}} {
 	///
 	/// Returns an error when dimensions are zero, hidden size exceeds 1024,
 	/// arithmetic overflows, or parameter allocation fails.
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
@@ -274,7 +274,7 @@ impl {{cell_type}} {
 			));
 		}
 		Ok(Self {
-			layer: RnnLayer::with_seed(engine, input_size, hidden_size, bias, seed)?,
+			layer: RnnLayer::new_with_seed(engine, input_size, hidden_size, bias, seed)?,
 		})
 	}
 
@@ -284,7 +284,7 @@ impl {{cell_type}} {
 	///
 	/// Returns an error unless weights use `[H, I]` and `[H, H]`, biases use
 	/// `[H]`, and all values satisfy the F32 engine and hidden-size contract.
-	pub fn from_matrices(
+	pub fn new_from_matrices(
 		weight_ih: Matrix,
 		weight_hh: Matrix,
 		bias_ih: Matrix,
@@ -301,7 +301,7 @@ impl {{cell_type}} {
 	///
 	/// Returns an error unless both weights satisfy the F32 engine, shape, and
 	/// hidden-size contract.
-	pub fn from_weights(weight_ih: Matrix, weight_hh: Matrix) -> Result<Self> {
+	pub fn new_from_weights(weight_ih: Matrix, weight_hh: Matrix) -> Result<Self> {
 		Ok(Self {
 			layer: RnnLayer::from_values(weight_ih, weight_hh, None, None)?,
 		})
@@ -393,14 +393,14 @@ impl {{name}} {
 	/// Returns an error when a dimension or layer count is zero, hidden size
 	/// exceeds the 1024-element scan limit, arithmetic overflows, or parameter
 	/// allocation and registration fail.
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
 		num_layers: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::with_seed_and_bias(engine, input_size, hidden_size, num_layers, true, seed)
+		Self::new_with_seed_and_bias(engine, input_size, hidden_size, num_layers, true, seed)
 	}
 
 	/// Construct a deterministically initialized stacked RNN with optional biases.
@@ -410,7 +410,7 @@ impl {{name}} {
 	/// Returns an error when a dimension or layer count is zero, hidden size
 	/// exceeds the 1024-element scan limit, arithmetic overflows, or parameter
 	/// allocation and registration fail.
-	pub fn with_seed_and_bias(
+	pub fn new_with_seed_and_bias(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
@@ -427,7 +427,7 @@ impl {{name}} {
 		let mut registry = ModuleRegistry::new();
 		for index in 0..num_layers {
 			let layer_input = if index == 0 { input_size } else { hidden_size };
-			let layer = Rc::new(RnnLayer::with_seed(
+			let layer = Rc::new(RnnLayer::new_with_seed(
 				engine,
 				layer_input,
 				hidden_size,
@@ -451,7 +451,7 @@ impl {{name}} {
 	///
 	/// Returns an error unless weights use `[H, I]` and `[H, H]`, biases use
 	/// `[H]`, and all values satisfy the F32 engine and hidden-size contract.
-	pub fn from_matrices(
+	pub fn new_from_matrices(
 		weight_ih: Matrix,
 		weight_hh: Matrix,
 		bias_ih: Matrix,
@@ -466,7 +466,7 @@ impl {{name}} {
 	///
 	/// Returns an error unless both weights satisfy the F32 engine, shape, and
 	/// hidden-size contract.
-	pub fn from_weights(weight_ih: Matrix, weight_hh: Matrix) -> Result<Self> {
+	pub fn new_from_weights(weight_ih: Matrix, weight_hh: Matrix) -> Result<Self> {
 		Self::from_one_layer(weight_ih, weight_hh, None, None)
 	}
 

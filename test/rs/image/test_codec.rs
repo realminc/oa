@@ -44,7 +44,7 @@ test_vk!(
 			0.0, 0.0, 0.75, 1.0, // blue
 		];
 		let image = Image::new(
-			Matrix::from_f32(&engine, [1, 3, 2, 2], &values)?,
+			Matrix::new_from_f32(&engine, [1, 3, 2, 2], &values)?,
 			ImageLayout::Nchw,
 			ImageFormat::Rgb,
 		)?;

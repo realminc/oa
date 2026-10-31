@@ -1,8 +1,8 @@
+mod pqc;
+
 use std::sync::Arc;
 
 use std::{cell::RefCell, marker::PhantomData, rc::Rc};
-
-use vk_mem::Alloc;
 
 use crate::{Error, LogComponent, LogLevel, LogOptions, Matrix, Result};
 
@@ -11,9 +11,9 @@ use super::{
 	ExecutionPlan, FlatColorPipeline, GraphicsPipeline, ImageSemanticDispatch, Instance, MeshBuffer,
 	NativeRgbaImage, OptionalSemanticDispatch, PresentationSurface, RecordedCommandBuffer,
 	RenderTarget, RetirementService, SceneDrawCmd, SecretBinding, SecretBuffer, SecretErasure,
-	SemanticDispatch, StandardSurfaceBlendPipeline, StandardSurfaceDescriptorArena,
-	StandardSurfaceDescriptorLayouts, StandardSurfacePipeline, Storage, UnlitDescriptorArena,
-	UnlitDescriptorLayouts, UnlitPipeline,
+	SemanticDispatch, Storage, SurfaceBlendPipeline, SurfaceDescriptorArena,
+	SurfaceDescriptorLayouts, SurfacePipeline, UnlitDescriptorArena, UnlitDescriptorLayouts,
+	UnlitPipeline,
 	log::{LogSelection, Logger},
 	session::ExecutionSession,
 };
@@ -571,9 +571,9 @@ impl VideoDecoderBackend {
 
 /// Engine-tracked compose image allocation — cleaned up on `destroy_compose_image`.
 struct ComposeImageEntry {
-	image: ash::vk::Image,
-	view: ash::vk::ImageView,
-	alloc: vk_mem::Allocation,
+	image: vk::Image,
+	view: vk::ImageView,
+	alloc: vk::mem::Allocation,
 }
 
 struct EngineState {
@@ -597,11 +597,7 @@ pub(crate) struct EngineHandle {
 
 /// Unique private value; only in-flight commands may share its storage lifetime.
 /// No Clone, Debug, mapping, export, Matrix conversion or implicit erasure.
-#[cfg_attr(
-	not(test),
-	expect(dead_code, reason = "private ML-KEM retained-key integration")
-)]
-pub(super) struct MlKemDeviceKey {
+pub(crate) struct MlKemDeviceKey {
 	engine: EngineHandle,
 	private: Arc<SecretBuffer>,
 	public: Buffer,
@@ -611,11 +607,7 @@ pub(super) struct MlKemDeviceKey {
 
 /// Unique private value; only in-flight commands may share its storage lifetime.
 /// No Clone, Debug, mapping, export, Matrix conversion or implicit erasure.
-#[cfg_attr(
-	not(test),
-	expect(dead_code, reason = "private ML-DSA retained-key integration")
-)]
-pub(super) struct MlDsaDeviceKey {
+pub(crate) struct MlDsaDeviceKey {
 	engine: EngineHandle,
 	private: Arc<SecretBuffer>,
 	public: Buffer,
@@ -625,11 +617,7 @@ pub(super) struct MlDsaDeviceKey {
 
 /// Unique private shared-secret value. Readiness retains its originating Engine;
 /// command references retain storage only, with no mapping or implicit erasure.
-#[cfg_attr(
-	not(test),
-	expect(dead_code, reason = "private ML-KEM shared-secret integration")
-)]
-pub(super) struct MlKemSharedSecret {
+pub(crate) struct MlKemSharedSecret {
 	engine: EngineHandle,
 	private: Arc<SecretBuffer>,
 	ready: Event,
@@ -714,15 +702,15 @@ impl Engine {
 
 	/// Return whether this Engine has an executable graphics path.
 	///
-	/// A physical graphics queue alone does not qualify the Compatibility
-	/// shader/binding path. Presentation also requires WSI support and
+	/// Both profiles require enabled dynamic rendering and a graphics queue.
+	/// Presentation additionally requires WSI support and
 	/// per-surface present-support negotiation.
 	pub fn has_graphics(&self) -> bool {
 		self.handle.state.borrow().device.has_graphics_queue()
 	}
 
 	/// Create one SDL3 Vulkan surface borrowing this Engine and window.
-	pub fn create_presentation_surface<'window>(
+	pub fn new_presentation_surface<'window>(
 		&self,
 		window: &'window super::SdlWindow,
 	) -> Result<super::PresentationSurface<'window>> {
@@ -839,6 +827,16 @@ impl Engine {
 		let device = Device::new(&instance, physical_device)?;
 		let retirement = RetirementService::new(&device);
 		device.log_identity();
+		// Opt-in upfront compilation; the default stays lazy so optional
+		// domains never enter a driver compiler during Engine construction.
+		if crate::EnvFlag::is_set("OA_SHADER_PRELOAD")
+			&& let Err(error) = device.preload_pipelines()
+		{
+			crate::log_warn!(
+				crate::LogComponent::RUNTIME,
+				"embedded shader preload failed: {error}"
+			);
+		}
 
 		Ok(Self {
 			_log_selection: log_selection,
@@ -899,6 +897,29 @@ impl Engine {
 		let output = capture()?;
 		let plan = guard.finish(&[])?;
 		Ok((plan, output))
+	}
+
+	pub(crate) fn capture_with_initialized_state<T>(
+		&self,
+		state: &[&Matrix],
+		capture: impl FnOnce() -> Result<T>,
+	) -> Result<(ExecutionPlan, T)> {
+		let snapshots = state
+			.iter()
+			.map(|value| {
+				if !self.owns_matrix(value) {
+					return Err(Error::invalid_argument(
+						"capture state belongs to another engine",
+					));
+				}
+				value.storage().initialized_readiness()
+			})
+			.collect::<Result<Vec<_>>>()?;
+		let result = self.capture(capture);
+		for (value, previous) in state.iter().zip(snapshots) {
+			previous.restore(value.storage());
+		}
+		result
 	}
 
 	pub(crate) fn capture_observed_matrix(
@@ -1033,32 +1054,34 @@ impl EngineHandle {
 			.raw();
 		let handle = image.handle;
 		let command = state.device.record_compute_commands(|command| {
-			let range = ash::vk::ImageSubresourceRange::default()
-				.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+			let range = vk::ImageSubresourceRange::default()
+				.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 				.level_count(1)
 				.layer_count(1);
-			let to_transfer = ash::vk::ImageMemoryBarrier2::default()
-				.src_stage_mask(ash::vk::PipelineStageFlags2::NONE)
-				.dst_stage_mask(ash::vk::PipelineStageFlags2::COPY)
-				.dst_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-				.old_layout(ash::vk::ImageLayout::UNDEFINED)
-				.new_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+			let to_transfer = vk::ImageMemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.dst_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.old_layout(vk::ImageLayout::UNDEFINED)
+				.new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
 				.image(handle)
 				.subresource_range(range);
 			let barriers = [to_transfer];
 			unsafe {
-				state.device.raw().cmd_pipeline_barrier2(
+				state.device.pipeline_barrier(
 					command,
-					&ash::vk::DependencyInfo::default().image_memory_barriers(&barriers),
-				)
-			};
-			let copy = ash::vk::BufferImageCopy::default()
+					&(vk::DependencyInfo::default()
+						.image_memory_barriers(&barriers)
+						.map_err(Error::from)?),
+				)?;
+			}
+			let copy = vk::BufferImageCopy::default()
 				.image_subresource(
-					ash::vk::ImageSubresourceLayers::default()
-						.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+					vk::ImageSubresourceLayers::default()
+						.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 						.layer_count(1),
 				)
-				.image_extent(ash::vk::Extent3D {
+				.image_extent(vk::Extent3D {
 					width,
 					height,
 					depth: 1,
@@ -1068,26 +1091,28 @@ impl EngineHandle {
 					command,
 					buffer,
 					handle,
-					ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+					vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 					&[copy],
 				)
-			};
-			let to_read = ash::vk::ImageMemoryBarrier2::default()
-				.src_stage_mask(ash::vk::PipelineStageFlags2::COPY)
-				.src_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-				.dst_stage_mask(ash::vk::PipelineStageFlags2::ALL_COMMANDS)
-				.dst_access_mask(ash::vk::AccessFlags2::SHADER_SAMPLED_READ)
-				.old_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-				.new_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+			}?;
+			let to_read = vk::ImageMemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+				.dst_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
+				.old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+				.new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
 				.image(handle)
 				.subresource_range(range);
 			let barriers = [to_read];
 			unsafe {
-				state.device.raw().cmd_pipeline_barrier2(
+				state.device.pipeline_barrier(
 					command,
-					&ash::vk::DependencyInfo::default().image_memory_barriers(&barriers),
-				)
-			};
+					&(vk::DependencyInfo::default()
+						.image_memory_barriers(&barriers)
+						.map_err(Error::from)?),
+				)?;
+			}
 			Ok(())
 		})?;
 		let event = submit_recorded(&mut state, command)?;
@@ -1109,7 +1134,7 @@ impl EngineHandle {
 	pub(crate) fn allocate_mesh_buffer(
 		&self,
 		size: usize,
-		usage: ash::vk::BufferUsageFlags,
+		usage: vk::BufferUsageFlags,
 	) -> Result<MeshBuffer> {
 		self.state.borrow().device.allocate_mesh_buffer(size, usage)
 	}
@@ -1121,74 +1146,154 @@ impl EngineHandle {
 	}
 
 	/// Return the shared bindless descriptor set for command recording.
-	pub(crate) fn descriptor_set(&self) -> ash::vk::DescriptorSet {
+	pub(crate) fn descriptor_set(&self) -> vk::DescriptorSet {
 		self.state.borrow().device.descriptor_set()
+	}
+
+	/// Copy immutable command entry points before recording borrows EngineState.
+	/// This retains no additional device owner or mutable execution state.
+	pub(crate) fn ui_sync_commands(&self) -> super::SyncCommands {
+		self.state.borrow().device.sync_commands().clone()
 	}
 
 	pub(crate) fn require_ui_bindings(&self) -> Result<()> {
 		self.state.borrow().device.require_ui_bindings()
 	}
 
+	pub(crate) fn prepare_ui_sources(&self) -> Result<()> {
+		self.flush_impl(false)?;
+		Ok(())
+	}
+
+	pub(in crate::runtime) fn validate_ui_presentation(&self, device: &Arc<Device>) -> Result<()> {
+		let state = self.state.borrow();
+		if !Arc::ptr_eq(&state.device, device) {
+			return Err(Error::invalid_argument(
+				"UI and Presenter belong to different Engines",
+			));
+		}
+		if device.physical().graphics_queue_family != Some(device.physical().compute_queue_family) {
+			return Err(Error::missing_capability(
+				"UI presentation requires the unified compute/graphics family selected by EngineRequirements::presentation",
+			));
+		}
+		Ok(())
+	}
+
+	pub(crate) fn ui_uses_bounded_bindings(&self) -> bool {
+		self.state.borrow().device.physical().profile
+			== super::device::features::ExecutionProfile::Compatibility
+	}
+
+	pub(crate) fn ui_compose_view(&self, image: vk::Image) -> Result<vk::ImageView> {
+		let state = self.state.borrow();
+		let entries = state.compose_images.borrow();
+		entries
+			.iter()
+			.find(|entry| entry.image == image)
+			.map(|entry| entry.view)
+			.ok_or_else(|| Error::failed_precondition("UI compose image is not retained by Engine"))
+	}
+
+	pub(crate) fn ui_buffer_info(&self, storage: &Storage) -> Result<vk::DescriptorBufferInfo> {
+		let state = self.state.borrow();
+		if !storage.belongs_to(&state.device) {
+			return Err(Error::invalid_argument(
+				"UI source belongs to another Engine",
+			));
+		}
+		let buffer = storage
+			.buffer()
+			.ok_or_else(|| Error::invalid_argument("UI source is empty"))?;
+		Ok(
+			vk::DescriptorBufferInfo::default()
+				.buffer(buffer.raw())
+				.range(buffer.size()),
+		)
+	}
+
 	/// Return the pipeline layout shared by all UI compute pipelines.
-	pub(crate) fn ui_pipeline_layout(&self) -> ash::vk::PipelineLayout {
+	pub(crate) fn ui_pipeline_layout(&self) -> vk::PipelineLayout {
 		self.state.borrow().device.ui_pipeline_layout()
 	}
 
-	/// Return the raw Vulkan device for command recording.
-	pub(crate) fn raw_device(&self) -> ash::Device {
-		self.state.borrow().device.raw().clone()
+	/// Run `f` while holding the primary pipeline-cache synchronization lock.
+	///
+	/// `f` receives the primary cache handle (`NULL` when no driver cache is
+	/// present). Holding the lock across every `vkCreate*Pipelines` call inside
+	/// `f` satisfies Vulkan's external-synchronization requirement for the
+	/// shared cache.
+	///
+	/// # Errors
+	/// Returns an error when the pipeline-creation lock is poisoned or `f`
+	/// fails.
+	pub(crate) fn with_pipeline_cache<T>(
+		&self,
+		f: impl FnOnce(vk::PipelineCache) -> Result<T>,
+	) -> Result<T> {
+		let state = self.state.borrow();
+		let cache = state.device.pipeline_cache()?;
+		f(cache.raw())
+	}
+
+	/// Return retained shared ownership of the Vulkan device for command recording.
+	pub(crate) fn raw_device(&self) -> Arc<vk::Device> {
+		self.state.borrow().device.raw_arc()
 	}
 
 	/// Create a device-local R8G8B8A8_UNORM STORAGE image and register it in
 	/// the bindless image heap.  Returns `(raw_image, bindless_index)`.
-	pub(crate) fn create_compose_image(
-		&self,
-		width: u32,
-		height: u32,
-	) -> Result<(ash::vk::Image, u32)> {
+	pub(crate) fn create_compose_image(&self, width: u32, height: u32) -> Result<(vk::Image, u32)> {
 		let state = self.state.borrow();
 		let device = &state.device;
-		let image_info = ash::vk::ImageCreateInfo::default()
-			.image_type(ash::vk::ImageType::TYPE_2D)
-			.format(ash::vk::Format::R8G8B8A8_UNORM)
-			.extent(ash::vk::Extent3D {
+		let image_info = vk::ImageCreateInfo::default()
+			.image_type(vk::ImageType::_2D)
+			.format(vk::Format::R8G8B8A8_UNORM)
+			.extent(vk::Extent3D {
 				width,
 				height,
 				depth: 1,
 			})
 			.mip_levels(1)
 			.array_layers(1)
-			.samples(ash::vk::SampleCountFlags::TYPE_1)
-			.tiling(ash::vk::ImageTiling::OPTIMAL)
+			.samples(vk::SampleCountFlagBits::_1_BIT)
+			.tiling(vk::ImageTiling::OPTIMAL)
 			.usage(
-				ash::vk::ImageUsageFlags::STORAGE
-					| ash::vk::ImageUsageFlags::TRANSFER_SRC
-					| ash::vk::ImageUsageFlags::TRANSFER_DST,
+				vk::ImageUsageFlagBits::STORAGE_BIT
+					| vk::ImageUsageFlagBits::TRANSFER_SRC_BIT
+					| vk::ImageUsageFlagBits::TRANSFER_DST_BIT,
 			)
-			.sharing_mode(ash::vk::SharingMode::EXCLUSIVE)
-			.initial_layout(ash::vk::ImageLayout::UNDEFINED);
-		let alloc_info = vk_mem::AllocationCreateInfo {
-			usage: vk_mem::MemoryUsage::AutoPreferDevice,
+			.sharing_mode(vk::SharingMode::EXCLUSIVE)
+			.initial_layout(vk::ImageLayout::UNDEFINED);
+		let alloc_info = vk::mem::AllocationCreateInfo {
+			usage: vk::mem::MemoryUsage::PreferDevice,
 			..Default::default()
 		};
-		let (image, mut alloc) = unsafe { device.allocator().create_image(&image_info, &alloc_info) }
-			.map_err(|source| {
-			Error::backend_failure("Vulkan", "UI compose image allocation", source)
-		})?;
-		let view_info = ash::vk::ImageViewCreateInfo::default()
+		let (image, mut alloc) = unsafe {
+			device
+				.allocator()
+				.with_allocator(|a| a.create_image_with_options(&image_info, &alloc_info))
+		}
+		.map_err(|source| Error::backend_failure("Vulkan", "UI compose image allocation", source))?
+		.map_err(Error::from)?;
+		let view_info = vk::ImageViewCreateInfo::default()
 			.image(image)
-			.view_type(ash::vk::ImageViewType::TYPE_2D)
-			.format(ash::vk::Format::R8G8B8A8_UNORM)
+			.view_type(vk::ImageViewType::_2D)
+			.format(vk::Format::R8G8B8A8_UNORM)
 			.subresource_range(
-				ash::vk::ImageSubresourceRange::default()
-					.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+				vk::ImageSubresourceRange::default()
+					.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 					.level_count(1)
 					.layer_count(1),
 			);
 		let view = match unsafe { device.raw().create_image_view(&view_info, None) } {
 			Ok(view) => view,
 			Err(source) => {
-				unsafe { device.allocator().destroy_image(image, &mut alloc) };
+				unsafe {
+					device
+						.allocator()
+						.with_allocator(|a| a.destroy_image(image, &mut alloc))
+				}??;
 				return Err(Error::backend_failure(
 					"Vulkan",
 					"UI compose image view creation",
@@ -1200,8 +1305,10 @@ impl EngineHandle {
 			Ok(idx) => idx,
 			Err(error) => {
 				unsafe {
-					device.raw().destroy_image_view(view, None);
-					device.allocator().destroy_image(image, &mut alloc);
+					device.raw().destroy_image_view(view, None)?;
+					device
+						.allocator()
+						.with_allocator(|a| a.destroy_image(image, &mut alloc))??;
 				}
 				return Err(error);
 			}
@@ -1218,15 +1325,15 @@ impl EngineHandle {
 	}
 
 	/// Release the bindless slot and destroy the compose image.
-	pub(crate) fn destroy_compose_image(&self, raw_image: ash::vk::Image, bindless_index: u32) {
+	pub(crate) fn destroy_compose_image(&self, raw_image: vk::Image, bindless_index: u32) {
 		if let Ok(state) = self.state.try_borrow() {
 			state.device.release_storage_image(bindless_index);
 			let mut entries = state.compose_images.borrow_mut();
 			if let Some(pos) = entries.iter().position(|e| e.image == raw_image) {
 				let mut entry = entries.swap_remove(pos);
 				unsafe {
-					state.device.raw().destroy_image_view(entry.view, None);
-					state
+					let _ = state.device.raw().destroy_image_view(entry.view, None);
+					let _ = state
 						.device
 						.allocator()
 						.destroy_image(entry.image, &mut entry.alloc);
@@ -1255,10 +1362,10 @@ impl EngineHandle {
 	/// returned storage becomes host-observable after the returned event completes.
 	pub(crate) fn submit_ui_readback(
 		&self,
-		image: ash::vk::Image,
+		image: vk::Image,
 		width: u32,
 		height: u32,
-		record: impl FnOnce(&ash::Device, ash::vk::CommandBuffer) -> Result<()>,
+		record: impl FnOnce(&vk::Device, vk::CommandBuffer) -> Result<()>,
 	) -> Result<(Event, Storage)> {
 		let byte_len = usize::try_from(width)
 			.ok()
@@ -1266,7 +1373,7 @@ impl EngineHandle {
 			.and_then(|pixels| pixels.checked_mul(4))
 			.ok_or_else(|| Error::out_of_range("UI readback byte count overflows usize"))?;
 		let mut state = self.state.borrow_mut();
-		let readback = Storage::from_bytes(&state.device, &vec![0_u8; byte_len])?;
+		let readback = Storage::new_from_bytes(&state.device, &vec![0_u8; byte_len])?;
 		let readback_buffer = readback
 			.buffer()
 			.ok_or_else(|| Error::internal("non-empty UI readback has no Vulkan buffer"))?
@@ -1274,41 +1381,43 @@ impl EngineHandle {
 		let device = state.device.clone();
 		let command = device.record_compute_commands(|command_buffer| {
 			record(device.raw(), command_buffer)?;
-			let range = ash::vk::ImageSubresourceRange::default()
-				.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+			let range = vk::ImageSubresourceRange::default()
+				.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 				.level_count(1)
 				.layer_count(1);
-			let to_copy = ash::vk::ImageMemoryBarrier2::default()
-				.src_stage_mask(ash::vk::PipelineStageFlags2::COMPUTE_SHADER)
-				.src_access_mask(ash::vk::AccessFlags2::SHADER_STORAGE_WRITE)
-				.dst_stage_mask(ash::vk::PipelineStageFlags2::COPY)
-				.dst_access_mask(ash::vk::AccessFlags2::TRANSFER_READ)
-				.old_layout(ash::vk::ImageLayout::GENERAL)
-				.new_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+			let to_copy = vk::ImageMemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+				.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+				.old_layout(vk::ImageLayout::GENERAL)
+				.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 				.image(image)
 				.subresource_range(range);
 			unsafe {
-				device.raw().cmd_pipeline_barrier2(
+				device.pipeline_barrier(
 					command_buffer,
-					&ash::vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&to_copy)),
-				);
+					&(vk::DependencyInfo::default()
+						.image_memory_barriers(std::slice::from_ref(&to_copy))
+						.map_err(Error::from)?),
+				)?;
 				device.raw().cmd_copy_image_to_buffer(
 					command_buffer,
 					image,
-					ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+					vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
 					readback_buffer,
-					&[ash::vk::BufferImageCopy::default()
+					&[vk::BufferImageCopy::default()
 						.image_subresource(
-							ash::vk::ImageSubresourceLayers::default()
-								.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+							vk::ImageSubresourceLayers::default()
+								.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 								.layer_count(1),
 						)
-						.image_extent(ash::vk::Extent3D {
+						.image_extent(vk::Extent3D {
 							width,
 							height,
 							depth: 1,
 						})],
-				);
+				)?;
 			}
 			Ok(())
 		})?;
@@ -1330,10 +1439,10 @@ impl EngineHandle {
 		index_count: u32,
 		clear_color: [f32; 4],
 		push_data: &[u8],
-		push_stages: ash::vk::ShaderStageFlags,
-		pipeline: ash::vk::Pipeline,
-		pipeline_layout: ash::vk::PipelineLayout,
-		descriptor_sets: &[ash::vk::DescriptorSet],
+		push_stages: vk::ShaderStageFlags,
+		pipeline: vk::Pipeline,
+		pipeline_layout: vk::PipelineLayout,
+		descriptor_sets: &[vk::DescriptorSet],
 	) -> Result<Event> {
 		let mut state = self.state.borrow_mut();
 		let command = state.device.record_mesh_frame(
@@ -1363,11 +1472,11 @@ impl EngineHandle {
 		vertex_buf: &MeshBuffer,
 		index_buf: &MeshBuffer,
 		clear_color: [f32; 4],
-		push_stages: ash::vk::ShaderStageFlags,
-		pipeline: ash::vk::Pipeline,
-		blend_pipeline: ash::vk::Pipeline,
-		pipeline_layout: ash::vk::PipelineLayout,
-		scene_set: ash::vk::DescriptorSet,
+		push_stages: vk::ShaderStageFlags,
+		pipeline: vk::Pipeline,
+		blend_pipeline: vk::Pipeline,
+		pipeline_layout: vk::PipelineLayout,
+		scene_set: vk::DescriptorSet,
 		draws: &[SceneDrawCmd],
 	) -> Result<Event> {
 		let mut state = self.state.borrow_mut();
@@ -1398,7 +1507,7 @@ impl EngineHandle {
 
 	pub(crate) fn create_unlit_descriptor_arena(
 		&self,
-		layout: ash::vk::DescriptorSetLayout,
+		layout: vk::DescriptorSetLayout,
 		set_count: u32,
 	) -> Result<UnlitDescriptorArena> {
 		self
@@ -1408,40 +1517,34 @@ impl EngineHandle {
 			.create_unlit_descriptor_arena(layout, set_count)
 	}
 
-	/// Create the owned descriptor set layouts for the Standard Surface pipeline.
-	pub(crate) fn create_standard_surface_descriptor_layouts(
-		&self,
-	) -> Result<StandardSurfaceDescriptorLayouts> {
+	/// Create the owned descriptor set layouts for the Surface pipeline.
+	pub(crate) fn create_surface_descriptor_layouts(&self) -> Result<SurfaceDescriptorLayouts> {
 		self
 			.state
 			.borrow()
 			.device
-			.create_standard_surface_descriptor_layouts()
+			.create_surface_descriptor_layouts()
 	}
 
-	pub(crate) fn create_standard_surface_descriptor_arena(
+	pub(crate) fn create_surface_descriptor_arena(
 		&self,
-		scene_layout: ash::vk::DescriptorSetLayout,
-		material_layout: ash::vk::DescriptorSetLayout,
+		scene_layout: vk::DescriptorSetLayout,
+		material_layout: vk::DescriptorSetLayout,
 		set_count: u32,
 		max_materials_per_slot: u32,
-	) -> Result<StandardSurfaceDescriptorArena> {
-		self
-			.state
-			.borrow()
-			.device
-			.create_standard_surface_descriptor_arena(
-				scene_layout,
-				material_layout,
-				set_count,
-				max_materials_per_slot,
-			)
+	) -> Result<SurfaceDescriptorArena> {
+		self.state.borrow().device.create_surface_descriptor_arena(
+			scene_layout,
+			material_layout,
+			set_count,
+			max_materials_per_slot,
+		)
 	}
 
 	/// Create the unlit textured Vulkan pipeline, borrowing the device.
 	pub(crate) fn create_unlit_pipeline(
 		&self,
-		sampler_layout: ash::vk::DescriptorSetLayout,
+		sampler_layout: vk::DescriptorSetLayout,
 	) -> Result<UnlitPipeline> {
 		self
 			.state
@@ -1450,38 +1553,47 @@ impl EngineHandle {
 			.create_unlit_pipeline(sampler_layout)
 	}
 
-	/// Create the Standard Surface PBR Vulkan pipeline, borrowing the device.
-	pub(crate) fn create_standard_surface_pipeline(
+	/// Create the Surface PBR Vulkan pipeline, borrowing the device.
+	pub(crate) fn create_surface_pipeline(
 		&self,
-		scene_layout: ash::vk::DescriptorSetLayout,
-		material_layout: ash::vk::DescriptorSetLayout,
-	) -> Result<StandardSurfacePipeline> {
+		scene_layout: vk::DescriptorSetLayout,
+		material_layout: vk::DescriptorSetLayout,
+	) -> Result<SurfacePipeline> {
 		self
 			.state
 			.borrow()
 			.device
-			.create_standard_surface_pipeline(scene_layout, material_layout)
+			.create_surface_pipeline(scene_layout, material_layout)
 	}
 
-	/// Create the Standard Surface transparent-blend pipeline, borrowing the device.
+	/// Create the Surface transparent-blend pipeline, borrowing the device.
 	///
-	/// Reuses the `layout` from an existing [`StandardSurfacePipeline`] so the
+	/// Reuses the `layout` from an existing [`SurfacePipeline`] so the
 	/// descriptor sets remain compatible.
-	pub(crate) fn create_standard_surface_blend_pipeline(
+	pub(crate) fn create_surface_blend_pipeline(
 		&self,
-		layout: ash::vk::PipelineLayout,
-	) -> Result<StandardSurfaceBlendPipeline> {
+		layout: vk::PipelineLayout,
+	) -> Result<SurfaceBlendPipeline> {
 		self
 			.state
 			.borrow()
 			.device
-			.create_standard_surface_blend_pipeline(layout)
+			.create_surface_blend_pipeline(layout)
 	}
 
 	pub(crate) fn create_storage(&self, bytes: &[u8]) -> Result<Storage> {
 		let mut state = self.state.borrow_mut();
 		let device = state.device.clone();
 		state.session.create_storage(&device, bytes)
+	}
+
+	pub(crate) fn validate_storage_owner(&self, storage: &Storage) -> Result<()> {
+		if !storage.belongs_to(&self.state.borrow().device) {
+			return Err(Error::invalid_argument(
+				"storage belongs to a different Engine",
+			));
+		}
+		Ok(())
 	}
 
 	pub(crate) fn create_output_storage(&self, byte_len: usize) -> Result<Storage> {
@@ -1612,7 +1724,7 @@ impl EngineHandle {
 	pub(super) fn consume_secret_entropy<const N: usize>(
 		&self,
 		entropy: crate::cryptography::entropy::Entropy<N>,
-		consumer: impl FnOnce(&Arc<Device>, ash::vk::CommandBuffer, SecretBinding<'_>) -> Result<()>,
+		consumer: impl FnOnce(&Arc<Device>, vk::CommandBuffer, SecretBinding<'_>) -> Result<()>,
 	) -> Result<SecretErasure> {
 		if self.state.borrow().capture_active {
 			return Err(Error::failed_precondition(
@@ -1675,10 +1787,6 @@ impl EngineHandle {
 
 	/// Private asynchronous keygen: key readiness and entropy erasure are exact
 	/// evidence from the same submission. Secret storage never leaves this module.
-	#[cfg_attr(
-		not(test),
-		expect(dead_code, reason = "private ML-KEM retained-key integration")
-	)]
 	pub(super) fn generate_mlkem_key(
 		&self,
 		k: u32,
@@ -1730,10 +1838,6 @@ impl EngineHandle {
 
 	/// Explicit consuming boundary. Submission order includes key generation
 	/// and all previous consumers; failure leaves storage quarantined.
-	#[cfg_attr(
-		not(test),
-		expect(dead_code, reason = "private ML-KEM retained-key integration")
-	)]
 	pub(super) fn erase_mlkem_key(&self, key: MlKemDeviceKey) -> Result<SecretErasure> {
 		{
 			let state = self.state.borrow();
@@ -1758,10 +1862,6 @@ impl EngineHandle {
 		Ok(SecretErasure::new(event, witness))
 	}
 
-	#[cfg_attr(
-		not(test),
-		expect(dead_code, reason = "private ML-DSA retained-key integration")
-	)]
 	pub(super) fn generate_mldsa_key(
 		&self,
 		parameter: u32,
@@ -1818,10 +1918,6 @@ impl EngineHandle {
 
 	/// Explicit consuming boundary. Submission order includes key generation
 	/// and all previous consumers; failure leaves storage quarantined.
-	#[cfg_attr(
-		not(test),
-		expect(dead_code, reason = "private ML-DSA retained-key integration")
-	)]
 	pub(super) fn erase_mldsa_key(&self, key: MlDsaDeviceKey) -> Result<SecretErasure> {
 		{
 			let state = self.state.borrow();
@@ -1914,10 +2010,6 @@ impl EngineHandle {
 	/// and padded to at least one complete word; lengths exclude padding.
 	/// The device forms H(tr || 0 || context length || context || message, 64).
 	/// No host key readback, internal-message mode or prehash mode is implied.
-	#[cfg_attr(
-		not(test),
-		expect(dead_code, reason = "private ML-DSA signing integration")
-	)]
 	pub(super) fn sign_mldsa_message(
 		&self,
 		key: &MlDsaDeviceKey,
@@ -1931,10 +2023,6 @@ impl EngineHandle {
 
 	/// Private HashML-DSA signing from the original public message. Digest and
 	/// mu framing stay on device; workspace and entropy share exact erasure.
-	#[cfg_attr(
-		not(test),
-		expect(dead_code, reason = "private ML-DSA signing integration")
-	)]
 	pub(super) fn sign_mldsa_hash_message(
 		&self,
 		key: &MlDsaDeviceKey,
@@ -2027,10 +2115,6 @@ impl EngineHandle {
 	/// Private HashML-DSA framing for a precomputed public digest. The generated
 	/// NIST hash identity fixes its length and OID. This does not compute the
 	/// prehash, admit a FIPS-validated module or imply full hash-family coverage.
-	#[cfg_attr(
-		not(test),
-		expect(dead_code, reason = "private ML-DSA signing integration")
-	)]
 	pub(super) fn sign_mldsa_prehashed(
 		&self,
 		key: &MlDsaDeviceKey,
@@ -2131,6 +2215,33 @@ impl EngineHandle {
 		entropy: crate::cryptography::entropy::Entropy<32>,
 	) -> Result<(MlKemSharedSecret, Buffer, Buffer, SecretErasure)> {
 		self.validate_mlkem_key(key)?;
+		self.encapsulate_mlkem_public(key.k, &key.public, entropy)
+	}
+
+	/// Private external-public-key qualification route. Canonicality is checked
+	/// on device before the KEM formula; status never reports ciphertext rejection.
+	pub(super) fn encapsulate_mlkem_public(
+		&self,
+		k: u32,
+		public: &Buffer,
+		entropy: crate::cryptography::entropy::Entropy<32>,
+	) -> Result<(MlKemSharedSecret, Buffer, Buffer, SecretErasure)> {
+		if !(2..=4).contains(&k) {
+			return Err(Error::invalid_argument("ML-KEM k must be 2, 3 or 4"));
+		}
+		{
+			let state = self.state.borrow();
+			if state.capture_active {
+				return Err(Error::failed_precondition(
+					"ML-KEM secret encapsulation cannot enter capture",
+				));
+			}
+			if !public.belongs_to(&state.device) || public.size() != u64::from(384 * k + 32) {
+				return Err(Error::invalid_argument(
+					"ML-KEM public-key ownership or extent mismatch",
+				));
+			}
+		}
 		self
 			.state
 			.borrow()
@@ -2139,7 +2250,6 @@ impl EngineHandle {
 		self.flush_impl(false)?;
 		entropy.consume(|bytes| {
 			let mut state = self.state.borrow_mut();
-			let k = key.k;
 			let ciphertext_size = 32 * if k == 4 { 11 * k + 5 } else { 10 * k + 4 };
 			let ciphertext = Buffer::host_visible_storage(
 				&state.device,
@@ -2150,7 +2260,7 @@ impl EngineHandle {
 			let private = Arc::new(SecretBuffer::new(&state.device, 32)?);
 			let seed = SecretBuffer::new(&state.device, 32)?;
 			let (command, witness) =
-				seed.record_mlkem_encaps(bytes, &key.public, &private, &ciphertext, &status, k)?;
+				seed.record_mlkem_encaps(bytes, public, &private, &ciphertext, &status, k)?;
 			let ready = submit_recorded(&mut state, command)?;
 			let erasure = SecretErasure::new(ready.clone(), witness);
 			Ok((
@@ -2168,15 +2278,11 @@ impl EngineHandle {
 
 	/// Retained generated keys only. A malformed ciphertext of the correct size
 	/// follows implicit rejection entirely on device; no rejection flag escapes.
-	#[cfg_attr(
-		not(test),
-		expect(dead_code, reason = "private ML-KEM shared-secret integration")
-	)]
 	pub(super) fn decapsulate_mlkem(
 		&self,
 		key: &MlKemDeviceKey,
 		ciphertext: &Buffer,
-	) -> Result<MlKemSharedSecret> {
+	) -> Result<(MlKemSharedSecret, SecretErasure)> {
 		self.validate_mlkem_key(key)?;
 		let expected = u64::from(
 			32 * if key.k == 4 {
@@ -2199,21 +2305,21 @@ impl EngineHandle {
 		self.flush_impl(false)?;
 		let mut state = self.state.borrow_mut();
 		let private = Arc::new(SecretBuffer::new(&state.device, 32)?);
-		let command = key
+		let (command, witness) = key
 			.private
 			.record_mlkem_decaps(ciphertext, &private, key.k)?;
 		let ready = submit_recorded(&mut state, command)?;
-		Ok(MlKemSharedSecret {
-			engine: self.clone(),
-			private,
-			ready,
-		})
+		let erasure = SecretErasure::new(ready.clone(), witness);
+		Ok((
+			MlKemSharedSecret {
+				engine: self.clone(),
+				private,
+				ready,
+			},
+			erasure,
+		))
 	}
 
-	#[cfg_attr(
-		not(test),
-		expect(dead_code, reason = "private ML-KEM shared-secret integration")
-	)]
 	pub(super) fn erase_mlkem_shared_secret(
 		&self,
 		secret: MlKemSharedSecret,
@@ -2263,6 +2369,18 @@ impl EngineHandle {
 		let mut state = self.state.borrow_mut();
 		let device = state.device.clone();
 		state.session.record_semantic(&device, dispatch, semantic)
+	}
+
+	pub(crate) fn compute_shared_memory_bytes(&self) -> u32 {
+		self.state.borrow().device.compute_shared_memory_bytes()
+	}
+
+	pub(crate) fn linear_dispatch_grid(&self, count: u32, group_size: u32) -> Result<[u32; 3]> {
+		self
+			.state
+			.borrow()
+			.device
+			.linear_dispatch_grid(count, group_size)
 	}
 
 	pub(crate) fn record_optional_semantic(
@@ -2365,22 +2483,6 @@ impl EngineHandle {
 		self.state.borrow().session.semantic_operation_count()
 	}
 
-	/// Emit a `Texture`-kind semantic value node for `texture_value_id`.
-	///
-	/// Idempotent per session: the same id is not added twice.
-	pub(crate) fn record_texture_semantic(
-		&self,
-		texture_value_id: u64,
-		width: usize,
-		height: usize,
-	) -> Result<()> {
-		self
-			.state
-			.borrow_mut()
-			.session
-			.record_texture_semantic(texture_value_id, width, height)
-	}
-
 	pub(crate) fn complete_semantic_autograd(
 		&self,
 		forward: super::SemanticOpId,
@@ -2441,11 +2543,9 @@ impl EngineHandle {
 		self.flush()?;
 		let mut state = self.state.borrow_mut();
 		let recorded = if timed {
-			let recorded = state.device.record_timed_compute_graph(plan.graph());
-			if recorded.is_ok() {
-				plan.mark_timed_recorded();
-			}
-			recorded
+			plan
+				.reusable_command(&state.device)
+				.and_then(|command| state.device.time_reusable_command(command))
 		} else {
 			plan.reusable_command(&state.device)
 		};
@@ -2520,11 +2620,11 @@ impl RecordingTransaction {
 		})
 	}
 
-	pub(crate) fn submit(mut self) -> Result<Event> {
+	pub(crate) fn submit(mut self, timed: bool) -> Result<Event> {
 		let guard = self.guard.take().expect("recording transaction guard");
 		let engine = guard.engine.clone();
 		let plan = guard.finish(&[])?;
-		engine.submit_plan(&plan, false)
+		engine.submit_plan(&plan, timed)
 	}
 }
 

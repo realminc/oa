@@ -59,12 +59,12 @@ impl Timestamp {
 	}
 
 	/// Construct from nanoseconds.
-	pub const fn from_nanos(n: i64) -> Self {
+	pub const fn new_from_nanos(n: i64) -> Self {
 		Self { nanos: n }
 	}
 
 	/// Construct from seconds (f64).
-	pub fn from_secs_f64(s: f64) -> Self {
+	pub fn new_from_secs_f64(s: f64) -> Self {
 		Self {
 			nanos: (s * 1e9) as i64,
 		}
@@ -267,7 +267,7 @@ impl Datetime {
 	}
 
 	/// Construct from Unix timestamp in seconds.
-	pub const fn from_unix_secs(secs: i64) -> Self {
+	pub const fn new_from_unix_secs(secs: i64) -> Self {
 		Self { unix_secs: secs }
 	}
 

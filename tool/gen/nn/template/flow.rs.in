@@ -37,7 +37,7 @@ impl {{time_type}} {
 		let frequencies = (0..half)
 			.map(|index| time_scale * (-log_period * index as f32 / half as f32).exp())
 			.collect::<Vec<_>>();
-		let frequencies = Matrix::from_f32(engine, [1, half], &frequencies)?;
+		let frequencies = Matrix::new_from_f32(engine, [1, half], &frequencies)?;
 		let mut registry = ModuleRegistry::new();
 		registry.register_buffer("{{frequency_name}}", frequencies.clone(), false)?;
 		Ok(Self {
@@ -151,7 +151,7 @@ impl {{transformer_type}} {
 	///
 	/// Returns an error for invalid geometry, expert routing, epsilon, or failed
 	/// child construction and registration.
-	pub fn with_seed(engine: &Engine, config: {{transformer_config_type}}, seed: u64) -> Result<Self> {
+	pub fn new_with_seed(engine: &Engine, config: {{transformer_config_type}}, seed: u64) -> Result<Self> {
 		validate_config(config)?;
 		let mut registry = ModuleRegistry::new();
 		let mut blocks = Vec::with_capacity(config.num_layers);
@@ -457,7 +457,7 @@ impl {{name}} {
 	///
 	/// Returns an error for invalid model/time/dropout geometry or failed child,
 	/// parameter, and buffer construction.
-	pub fn with_seed(engine: &Engine, config: {{config_type}}, seed: u64) -> Result<Self> {
+	pub fn new_with_seed(engine: &Engine, config: {{config_type}}, seed: u64) -> Result<Self> {
 		if config.input_dim == 0
 			|| config.backbone.model_width == 0
 			|| config.backbone.sequence_length == 0
@@ -500,7 +500,7 @@ impl {{name}} {
 				seed.wrapping_add(1),
 			)?))
 		};
-		let backbone = Rc::new({{transformer_type}}::with_seed(
+		let backbone = Rc::new({{transformer_type}}::new_with_seed(
 			engine,
 			config.backbone,
 			seed.wrapping_add(2),

@@ -56,7 +56,7 @@ test_vk!(
 
 		for (shape, layout, format, expected) in cases {
 			let values = vec![0.25_f32; shape.iter().product()];
-			let matrix = Matrix::from_slice(&engine, shape.clone(), &values)?;
+			let matrix = Matrix::new_from_slice(&engine, shape.clone(), &values)?;
 			let image = Image::new(matrix, layout, format)?;
 			assert_eq!(image.as_matrix().shape(), shape);
 			assert_eq!(image.batch_size(), expected.0);
@@ -73,19 +73,19 @@ test_vk!(
 );
 
 test_vk!(image_rejects_inconsistent_metadata, engine, {
-	let rank_three = Matrix::from_slice(&engine, [3, 4, 5], &[0_u32; 60])?;
+	let rank_three = Matrix::new_from_slice(&engine, [3, 4, 5], &[0_u32; 60])?;
 	let error = Image::new(rank_three, ImageLayout::Nchw, ImageFormat::Rgb)
 		.err()
 		.expect("rank mismatch must fail");
 	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
 
-	let four_channels = Matrix::from_slice(&engine, [4, 4, 5], &[0_u32; 80])?;
+	let four_channels = Matrix::new_from_slice(&engine, [4, 4, 5], &[0_u32; 80])?;
 	let error = Image::new(four_channels, ImageLayout::Chw, ImageFormat::Rgb)
 		.err()
 		.expect("channel mismatch must fail");
 	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
 
-	let implicit_gray = Matrix::from_slice(&engine, [4, 5], &[0_u32; 20])?;
+	let implicit_gray = Matrix::new_from_slice(&engine, [4, 5], &[0_u32; 20])?;
 	let error = Image::new(implicit_gray, ImageLayout::Hw, ImageFormat::Rgba)
 		.err()
 		.expect("Hw must reject non-gray formats");

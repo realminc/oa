@@ -116,7 +116,7 @@ fn build_mel_filterbank(input: &Audio, config: MelConfig, freq_bins: u32) -> Res
 				};
 		}
 	}
-	Matrix::from_slice_handle(
+	Matrix::new_from_slice_handle(
 		input.engine_handle(),
 		vec![config.num_mels as usize, freq_bins as usize],
 		&weights,

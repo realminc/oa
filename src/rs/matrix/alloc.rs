@@ -24,7 +24,7 @@ pub fn from_f32_on(
 	shape: impl Into<Vec<usize>>,
 	values: &[f32],
 ) -> Result<Matrix> {
-	Matrix::from_f32(engine, shape, values)
+	Matrix::new_from_f32(engine, shape, values)
 }
 
 /// Create an FP32 matrix filled with ones.

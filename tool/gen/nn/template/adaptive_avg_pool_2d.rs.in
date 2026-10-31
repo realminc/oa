@@ -12,7 +12,7 @@ impl {{name}} {
 	///
 	/// Returns an error when `output_size` is zero.
 	pub fn new(output_size: usize) -> Result<Self> {
-		Self::with_output_size(output_size, output_size)
+		Self::new_with_output_size(output_size, output_size)
 	}
 
 	/// Construct {{name}} with independent output height and width.
@@ -20,7 +20,7 @@ impl {{name}} {
 	/// # Errors
 	///
 	/// Returns an error when either output extent is zero.
-	pub fn with_output_size(output_height: usize, output_width: usize) -> Result<Self> {
+	pub fn new_with_output_size(output_height: usize, output_width: usize) -> Result<Self> {
 		if output_height == 0 || output_width == 0 {
 			return Err(Error::invalid_argument(
 				"{{name}} output extents must be nonzero",

@@ -25,7 +25,7 @@ impl {{name}} {
 		clippy::too_many_arguments,
 		reason = "the donor {{name}} contract has six independent geometry fields plus a seed"
 	)]
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		input_channels: usize,
 		output_channels: usize,
@@ -57,7 +57,7 @@ impl {{name}} {
 			.ok_or_else(|| Error::invalid_argument("{{name}} weight size overflows usize"))?;
 		let limit = 1.0_f32 / (fan_in as f32).sqrt();
 		let weight_values = random::symmetric_uniform(weight_count, limit, seed);
-		let weight = Matrix::from_f32(
+		let weight = Matrix::new_from_f32(
 			engine,
 			[
 				output_channels,
@@ -67,8 +67,8 @@ impl {{name}} {
 			],
 			&weight_values,
 		)?;
-		let bias = Matrix::from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
-		Self::from_matrices(weight, bias, stride, padding, groups)
+		let bias = Matrix::new_from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
+		Self::new_from_matrices(weight, bias, stride, padding, groups)
 	}
 
 	/// Construct {{name}} from exact grouped OIHW weight and bias matrices.
@@ -78,7 +78,7 @@ impl {{name}} {
 	/// Returns an error unless weight is nonempty square-kernel F32 OIHW/group,
 	/// bias is matching same-engine F32, stride/groups are nonzero, and output
 	/// channels are divisible by groups.
-	pub fn from_matrices(
+	pub fn new_from_matrices(
 		weight: Matrix,
 		bias: Matrix,
 		stride: usize,

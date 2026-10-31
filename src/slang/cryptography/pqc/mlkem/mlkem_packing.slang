@@ -8,6 +8,7 @@ import mlkem_field;
 
 void mlkem_byte_encode(uint coefficients[256], uint bits, inout uint bytes[384]) {
 	uint reservoir = 0u, available = 0u, position = 0u;
+	[loop]
 	for (uint i = 0u; i < 256u; ++i) {
 		reservoir |= coefficients[i] << available;
 		available += bits;
@@ -26,6 +27,7 @@ bool mlkem_byte_decode(uint bytes[384], uint bits, out uint coefficients[256]) {
 	uint reservoir = 0u, available = 0u, position = 0u;
 	uint mask = (1u << bits) - 1u;
 	bool canonical = true;
+	[loop]
 	for (uint i = 0u; i < 256u; ++i) {
 		while (available < bits) {
 			reservoir |= bytes[position++] << available;

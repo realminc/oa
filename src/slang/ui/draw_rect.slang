@@ -22,6 +22,8 @@ struct PushConstants {
 }
 
 [[vk::push_constant]] PushConstants pc;
+// Compose storage has a fixed RGBA8_UNORM ABI; no formatless image access.
+[[vk::image_format("rgba8")]]
 [[vk::binding(1, 0)]] RWTexture2D<float4> images[];
 
 float roundedRectCoverage(uint x, uint y) {

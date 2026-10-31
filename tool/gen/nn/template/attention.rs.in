@@ -12,6 +12,10 @@ pub enum {{backend_type}} {
 	Standard,
 	/// Explicitly request the fused causal Flash provider.
 	Flash,
+	/// Katharopoulos kernel-trick linear attention with bounded scan state,
+	/// independent of sequence length.  Bidirectional uses a single global KV
+	/// accumulation; causal uses a per-position lower-triangular KV scan.
+	Linear,
 }
 
 /// Token-visibility contract for self-attention.
@@ -57,14 +61,14 @@ impl {{name}} {
 	///
 	/// Returns an error unless dimensions are positive and `model_width` is
 	/// divisible by `num_heads`, or child construction/registration fails.
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		model_width: usize,
 		num_heads: usize,
 		sequence_length: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::with_seed_and_options(
+		Self::new_with_seed_and_options(
 			engine,
 			model_width,
 			num_heads,
@@ -81,7 +85,7 @@ impl {{name}} {
 	///
 	/// Returns an error unless dimensions are positive and `model_width` is
 	/// divisible by `num_heads`, or child construction/registration fails.
-	pub fn with_seed_and_bias(
+	pub fn new_with_seed_and_bias(
 		engine: &Engine,
 		model_width: usize,
 		num_heads: usize,
@@ -89,7 +93,7 @@ impl {{name}} {
 		bias: bool,
 		seed: u64,
 	) -> Result<Self> {
-		Self::with_seed_and_options(
+		Self::new_with_seed_and_options(
 			engine,
 			model_width,
 			num_heads,
@@ -111,7 +115,7 @@ impl {{name}} {
 	/// Returns an error unless dimensions are valid, `dropout_probability` is
 	/// finite and in `[0, 1)`, or child construction/registration fails.
 	#[allow(clippy::too_many_arguments)]
-	pub fn with_seed_and_options(
+	pub fn new_with_seed_and_options(
 		engine: &Engine,
 		model_width: usize,
 		num_heads: usize,
@@ -341,6 +345,9 @@ impl {{name}} {
 				}
 				self.forward_flash(input)
 			}
+			{{backend_type}}::Linear => Err(Error::invalid_argument(
+				"{{backend_type}}::Linear is not supported by {{name}}; use {{linear_name}} instead",
+			)),
 			{{backend_type}}::Auto | {{backend_type}}::Standard => {
 				self.forward_standard(input, None, mode == {{mode_type}}::Causal)
 			}
@@ -430,6 +437,406 @@ impl {{name}} {
 impl Module for {{name}} {
 	fn forward(&self, input: &Matrix) -> Result<Matrix> {
 		{{name}}::forward(self, input)
+	}
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}
+
+// ── Linear attention ──────────────────────────────────────────────────────────
+
+/// Token-visibility contract for linear attention.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum {{linear_mode_type}} {
+	/// Each position attends only to itself and earlier positions.
+	///
+	/// Implemented as a cumulative-KV prefix scan: at each step `t` the
+	/// running `[B*H, d, d]` accumulator `kv_t = Σ_{i≤t} phi(k_i)ᵀ phi(v_i)`
+	/// is queried by `phi(q_t)`.  No S×S matrix is ever materialised.
+	/// Bounded fused scan state; projections and adjoints scale with S.
+	#[default]
+	Causal,
+	/// Every position attends to every other position.
+	///
+	/// Uses the true O(B·H·d_head²) global KV accumulation.
+	Bidirectional,
+}
+
+/// Multi-head linear attention over packed `[B*S, D]` values.
+///
+/// Uses the Katharopoulos (2020) ELU+1 kernel rather than softmax.
+/// Causal heads up to 64 use fused forward and recomputed prefix/suffix
+/// adjoints. Saved projections/context scale as O(B*H*S*d), with bounded
+/// O(d²) scan state per head. Larger heads retain the compositional path,
+/// whose training tape saves O(B*H*S*d²) prefixes. Bidirectional mode uses
+/// the global KV composition. Standard attention stores S² probabilities;
+/// Flash recomputes them and does not store a global S² score matrix.
+///
+/// ## Parameter layout
+///
+/// Four biased projections (`{{query_name}}`, `{{key_name}}`, `{{value_name}}`, `{{output_name}}`)
+/// with the same names and seed stride as [`{{name}}`], so checkpoints are
+/// transferable between the two modules.
+pub struct {{linear_name}} {
+	model_width: usize,
+	num_heads: usize,
+	sequence_length: Cell<usize>,
+	query_projection: Rc<Linear>,
+	key_projection: Rc<Linear>,
+	value_projection: Rc<Linear>,
+	output_projection: Rc<Linear>,
+	mode: Cell<{{linear_mode_type}}>,
+	registry: ModuleRegistry,
+}
+
+impl {{linear_name}} {
+	/// Construct four biased projections with causal visibility.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless dimensions are positive, `model_width` is
+	/// divisible by `num_heads`, or child construction/registration fails.
+	pub fn new_with_seed(
+		engine: &Engine,
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_options(engine, model_width, num_heads, sequence_length, true, seed)
+	}
+
+	/// Construct four projections with explicit optional bias.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless dimensions are positive, `model_width` is
+	/// divisible by `num_heads`, or child construction/registration fails.
+	pub fn new_with_seed_and_bias(
+		engine: &Engine,
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_options(engine, model_width, num_heads, sequence_length, bias, seed)
+	}
+
+	/// Construct with explicit bias policy; initial mode is
+	/// [`{{linear_mode_type}}::Causal`].
+	///
+	/// # Errors
+	///
+	/// Returns an error unless dimensions are positive, `model_width` is
+	/// divisible by `num_heads`, or child construction/registration fails.
+	pub fn new_with_seed_and_options(
+		engine: &Engine,
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		if model_width == 0
+			|| num_heads == 0
+			|| sequence_length == 0
+			|| !model_width.is_multiple_of(num_heads)
+		{
+			return Err(Error::invalid_argument(
+				"{{linear_name}} requires positive D/H/S and D divisible by H",
+			));
+		}
+		let query_projection = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			model_width,
+			bias,
+			seed,
+		)?);
+		let key_projection = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			model_width,
+			bias,
+			seed.wrapping_add(1),
+		)?);
+		let value_projection = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			model_width,
+			bias,
+			seed.wrapping_add(2),
+		)?);
+		let output_projection = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			model_width,
+			bias,
+			seed.wrapping_add(3),
+		)?);
+		let mut registry = ModuleRegistry::new();
+		registry.register_module("{{query_name}}", query_projection.clone())?;
+		registry.register_module("{{key_name}}", key_projection.clone())?;
+		registry.register_module("{{value_name}}", value_projection.clone())?;
+		registry.register_module("{{output_name}}", output_projection.clone())?;
+		Ok(Self {
+			model_width,
+			num_heads,
+			sequence_length: Cell::new(sequence_length),
+			query_projection,
+			key_projection,
+			value_projection,
+			output_projection,
+			mode: Cell::new({{linear_mode_type}}::Causal),
+			registry,
+		})
+	}
+
+	// ── forward paths ─────────────────────────────────────────────────────────
+
+	fn geometry(&self, input: &Matrix) -> Result<usize> {
+		let sequence_length = self.sequence_length.get();
+		let [rows, width] = input.shape() else {
+			return Err(Error::invalid_argument(
+				"{{linear_name}} expects F32 [B*S, D] input",
+			));
+		};
+		if input.dtype() != DType::F32
+			|| *width != self.model_width
+			|| *rows == 0
+			|| !rows.is_multiple_of(sequence_length)
+		{
+			return Err(Error::invalid_argument(format!(
+				"{{linear_name}} expects nonempty F32 [B*S, {}] with S={}; found {:?} {}",
+				self.model_width,
+				sequence_length,
+				input.shape(),
+				input.dtype().token(),
+			)));
+		}
+		Ok(rows / sequence_length)
+	}
+
+	/// ELU(x, α=1) + 1 — the Katharopoulos feature map phi(x).
+	///
+	/// Evaluates the negative branch directly to avoid ELU + 1 cancellation.
+	/// Extreme negative inputs may still underflow; normalization has a floor.
+	fn feature_map(x: &Matrix) -> Result<Matrix> {
+		core_matrix::add(
+			&core_matrix::exp(&core_matrix::clamp_max(x, 0.0)?)?,
+			&super::super::matrix::relu(x)?,
+		)
+	}
+
+	/// Causal linear attention: cumulative-KV prefix scan.
+	///
+	/// For each position `t` in `0..S`:
+	/// ```text
+	/// kv_t    += phi(K)[t]ᵀ ⊗ V[t]     [B*H, d, d]  running accumulator
+	/// k_sum_t += phi(K)[t]                   [B*H, 1, d]  running normaliser
+	/// ctx_t    = phi(Q)[t] @ kv_t            [B*H, 1, d]
+	/// denom_t  = phi(Q)[t] @ k_sum_tᵀ       [B*H, 1, 1]
+	/// out_t    = ctx_t / denom_t             [B*H, 1, d]
+	/// ```
+	/// `out_t` is concatenated into `[B*H, S, d]`.  No S×S matrix is ever
+	/// materialised. The compositional fallback retains prefixes for reverse
+	/// mode. Heads up to 64 use the fused bounded-state Matrix provider.
+	fn forward_causal(&self, input: &Matrix) -> Result<Matrix> {
+		let batch = self.geometry(input)?;
+		let sequence_length = self.sequence_length.get();
+		let head_dim = self.model_width / self.num_heads;
+
+		if head_dim <= 64 {
+            let q = {{split_operation}}(&self.query_projection.forward(input)?, batch, sequence_length, self.num_heads)?;
+            let k = {{split_operation}}(&self.key_projection.forward(input)?, batch, sequence_length, self.num_heads)?;
+            let v = {{split_operation}}(&self.value_projection.forward(input)?, batch, sequence_length, self.num_heads)?;
+            let context = {{linear_operation}}(&q, &k, &v, 1.0e-6)?;
+            let context = {{merge_operation}}(&context, batch, sequence_length, self.num_heads)?;
+            return self.output_projection.forward(&context);
+        }
+
+        let phi_q = Self::feature_map(&self.query_projection.forward(input)?)?;
+		let phi_k = Self::feature_map(&self.key_projection.forward(input)?)?;
+		let phi_v = self.value_projection.forward(input)?;
+
+		// [B*H, S, d_head]
+		let phi_q = {{split_operation}}(&phi_q, batch, sequence_length, self.num_heads)?;
+		let phi_k = {{split_operation}}(&phi_k, batch, sequence_length, self.num_heads)?;
+		let phi_v = {{split_operation}}(&phi_v, batch, sequence_length, self.num_heads)?;
+
+		let batch_heads = batch
+			.checked_mul(self.num_heads)
+			.ok_or_else(|| Error::invalid_argument("linear attention batch-head count overflows"))?;
+
+		// Zero accumulators: kv [B*H, d, d], k_sum [B*H, d, 1].
+		let kv_count = batch_heads
+			.checked_mul(head_dim)
+			.and_then(|n| n.checked_mul(head_dim))
+			.ok_or_else(|| Error::invalid_argument("linear attention kv size overflows"))?;
+		let ksum_count = batch_heads
+			.checked_mul(head_dim)
+			.ok_or_else(|| Error::invalid_argument("linear attention k_sum size overflows"))?;
+		let kv = Matrix::allocate(
+			input.engine_handle(),
+			vec![batch_heads, head_dim, head_dim],
+			kv_count,
+			DType::F32,
+		)?;
+		kv.write_values(&vec![0.0_f32; kv_count])?;
+		let k_sum = Matrix::allocate(
+			input.engine_handle(),
+			vec![batch_heads, head_dim, 1],
+			ksum_count,
+			DType::F32,
+		)?;
+		k_sum.write_values(&vec![0.0_f32; ksum_count])?;
+
+		// Prefix scan over sequence positions.
+		let mut kv = kv;
+		let mut k_sum = k_sum;
+		let mut steps: Vec<Matrix> = Vec::with_capacity(sequence_length);
+		for t in 0..sequence_length {
+			let t_i64 = t as i64;
+			// phi_q_t, phi_k_t, phi_v_t : [B*H, 1, d_head]
+			let phi_q_t = {{slice_operation}}(&phi_q, 1, t_i64, t_i64 + 1)?;
+			let phi_k_t = {{slice_operation}}(&phi_k, 1, t_i64, t_i64 + 1)?;
+			let phi_v_t = {{slice_operation}}(&phi_v, 1, t_i64, t_i64 + 1)?;
+
+			// kv += phi_k_t^T @ phi_v_t  — [B*H, d, d]
+			kv = {{add_operation}}(&kv, &{{kv_operation}}(&phi_k_t, &phi_v_t)?)?;
+
+			// k_sum += phi_k_t^T  — [B*H, d, 1]
+			// phi_k_t is [B*H, 1, d]; reshape to [B*H, d, 1] for column accumulation.
+			let phi_k_t_col = phi_k_t.reshape([batch_heads, head_dim, 1])?;
+			k_sum = {{add_operation}}(&k_sum, &phi_k_t_col)?;
+
+			// ctx_t = phi_q_t @ kv  — [B*H, 1, d]
+			let ctx_t = {{context_operation}}(&phi_q_t, &kv)?;
+
+			// denom_t = phi_q_t @ k_sum  — [B*H, 1, 1]
+			let denom_t = {{context_operation}}(&phi_q_t, &k_sum)?;
+
+			// out_t = ctx_t / denom_t  — [B*H, 1, d]
+			steps.push({{div_operation}}(&ctx_t, &core_matrix::clamp_min(&denom_t, 1.0e-6)?)?);
+		}
+
+		// Concatenate [B*H, 1, d] steps into [B*H, S, d].
+		let context = {{concat_operation}}(&steps, 1)?;
+		let context = {{merge_operation}}(&context, batch, sequence_length, self.num_heads)?;
+		self.output_projection.forward(&context)
+	}
+
+	/// Bidirectional linear attention: true O(B·H·d_head²) workspace.
+	///
+	/// Computes:
+	/// ```text
+	/// kv          = phi(K)ᵀ @ phi(V)          [B*H, d, d]
+	/// context_raw = phi(Q) @ kv                [B*H, S, d]
+	/// k_sum       = sum_seq(phi(K))            [B*H, 1, d]
+	/// denom       = phi(Q) @ k_sum^T           [B*H, S, 1]
+	/// context     = context_raw / denom        [B*H, S, d]
+	/// ```
+	fn forward_bidirectional(&self, input: &Matrix) -> Result<Matrix> {
+		let batch = self.geometry(input)?;
+		let sequence_length = self.sequence_length.get();
+		let head_dim = self.model_width / self.num_heads;
+
+		let phi_q = Self::feature_map(&self.query_projection.forward(input)?)?;
+		let phi_k = Self::feature_map(&self.key_projection.forward(input)?)?;
+		let phi_v = self.value_projection.forward(input)?;
+
+		// [B*H, S, d_head]
+		let phi_q = {{split_operation}}(&phi_q, batch, sequence_length, self.num_heads)?;
+		let phi_k = {{split_operation}}(&phi_k, batch, sequence_length, self.num_heads)?;
+		let phi_v = {{split_operation}}(&phi_v, batch, sequence_length, self.num_heads)?;
+
+		let batch_heads = batch
+			.checked_mul(self.num_heads)
+			.ok_or_else(|| Error::invalid_argument("linear attention batch-head count overflows"))?;
+
+		// KV accumulation: phi(K)^T @ phi(V) → [B*H, d_head, d_head].
+		let kv = {{kv_operation}}(&phi_k, &phi_v)?;
+
+		// Unnormalised context: phi(Q) @ kv → [B*H, S, d_head].
+		let context_raw = {{context_operation}}(&phi_q, &kv)?;
+
+		// Key column sum: sum over sequence axis → [B*H, 1, d_head] (keepdim).
+		let k_sum = {{sum_operation}}(&phi_k, 1)?;
+
+		// Denominator: phi(Q) @ k_sum^T → [B*H, S, 1].
+		let k_sum_col = k_sum.reshape([batch_heads, head_dim, 1])?;
+		let denom = {{context_operation}}(&phi_q, &k_sum_col)?;
+
+		// Normalise: [B*H, S, d_head] / [B*H, S, 1] (broadcast).
+		let context = {{div_operation}}(&context_raw, &core_matrix::clamp_min(&denom, 1.0e-6)?)?;
+
+		let context = {{merge_operation}}(&context, batch, sequence_length, self.num_heads)?;
+		self.output_projection.forward(&context)
+	}
+
+	// ── public API ────────────────────────────────────────────────────────────
+
+	/// Apply linear attention using the configured visibility policy.
+	///
+	/// Accepts packed F32 `[B*S, D]` input where `B` is the batch size and `S`
+	/// is the configured sequence length.
+	///
+	/// # Errors
+	///
+	/// Returns an error for invalid input geometry or failed operation
+	/// recording.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		match self.mode.get() {
+			{{linear_mode_type}}::Causal => self.forward_causal(input),
+			{{linear_mode_type}}::Bidirectional => self.forward_bidirectional(input),
+		}
+	}
+
+	/// Select causal or bidirectional visibility.
+	pub fn set_mode(&self, mode: {{linear_mode_type}}) {
+		self.mode.set(mode);
+	}
+
+	/// Return the configured visibility contract.
+	pub fn mode(&self) -> {{linear_mode_type}} {
+		self.mode.get()
+	}
+
+	pub const fn model_width(&self) -> usize {
+		self.model_width
+	}
+	pub const fn num_heads(&self) -> usize {
+		self.num_heads
+	}
+	pub fn sequence_length(&self) -> usize {
+		self.sequence_length.get()
+	}
+
+	/// Change runtime sequence geometry without rebuilding projection weights.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `sequence_length` is zero.
+	pub fn set_sequence_length(&self, sequence_length: usize) -> Result<()> {
+		if sequence_length == 0 {
+			return Err(Error::invalid_argument(
+				"linear attention sequence length must be nonzero",
+			));
+		}
+		self.sequence_length.set(sequence_length);
+		Ok(())
+	}
+
+	/// Return whether all four projections own trainable biases.
+	pub fn has_bias(&self) -> bool {
+		self.query_projection.has_bias()
+	}
+}
+
+impl Module for {{linear_name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{linear_name}}::forward(self, input)
 	}
 	fn registry(&self) -> &ModuleRegistry {
 		&self.registry

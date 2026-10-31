@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import json
+import re
 import shutil
 import tempfile
 import unittest
@@ -72,11 +73,11 @@ class NnGenerationTests(unittest.TestCase):
 
 	def test_empyrealm_rust_and_python_public_name_match(self):
 		self.assertIn("pub use empyrealm::Empyrealm;", (ROOT / "src/rs/ml/nn.rs").read_text())
-		binding = (ROOT / "src/py/ml/nn/empyrealm.rs").read_text()
+		binding = (ROOT / "src/py/pyo3/ml/nn/empyrealm.rs").read_text()
 		self.assertIn('pyclass(name = "Empyrealm", unsendable)', binding)
 		self.assertIn("oa::ml::nn::Empyrealm", binding)
-		self.assertIn("class Empyrealm:", (ROOT / "sdk/py/binding/oa/_native.pyi").read_text())
-		for name in ("sdk/py/binding/oa/ml/__init__.py", "sdk/py/binding/oa/ml/nn/__init__.py"):
+		self.assertIn("class Empyrealm:", (ROOT / "src/py/oa/_native.pyi").read_text())
+		for name in ("src/py/oa/ml/__init__.py", "src/py/oa/ml/nn/__init__.py"):
 			text = (ROOT / name).read_text()
 			self.assertIn('"Empyrealm"', text)
 			self.assertNotIn("EmpyrealmCore", text)
@@ -251,7 +252,7 @@ class NnGenerationTests(unittest.TestCase):
 				self.assertIn("byte::VOCAB_SIZE", text)
 				if layer["template"] == "byte_embedding":
 					self.assertIn("weight.shape().first() != Some(&byte::VOCAB_SIZE)", text)
-					self.assertIn("Embedding::from_matrix(weight)?", text)
+					self.assertIn("Embedding::new_from_matrix(weight)?", text)
 				else:
 					self.assertIn('expect("byte head always constructs a trainable bias")', text)
 
@@ -331,7 +332,7 @@ class NnGenerationTests(unittest.TestCase):
 		self.assertIn("self.config.num_codes > 512", text)
 		self.assertIn("!config.ema_epsilon.is_finite()", text)
 		self.assertIn("!(0.0..=1.0).contains(&config.ema_decay)", text)
-		self.assertIn("Rc::new(VectorQuantizer::with_seed(", text)
+		self.assertIn("Rc::new(VectorQuantizer::new_with_seed(", text)
 		self.assertIn("codebook.engine_handle().same_as(embed_sum.engine_handle())", text)
 
 	def test_malformed_metadata_is_rejected(self):
@@ -514,7 +515,7 @@ class NnGenerationTests(unittest.TestCase):
 		GEN.validate(schema)
 		template = (ROOT / "tool/gen/nn/template/upsample.rs.in").read_text()
 		text = GEN.render(template, {"name": layer["name"], "doc": layer["doc"], **layer["values"]})
-		self.assertIn("Self::with_mode(scale_factor, UpsampleMode::Nearest)", text)
+		self.assertIn("Self::new_with_mode(scale_factor, UpsampleMode::Nearest)", text)
 		for invalid in ("UpsampleMode::Cubic", "false", True):
 			layer["values"]["default_mode"] = invalid
 			with self.assertRaisesRegex(GEN.SchemaError, "unsupported interpolation default"):
@@ -523,14 +524,14 @@ class NnGenerationTests(unittest.TestCase):
 	def test_spatial_layers_keep_operation_owned_adjoints_and_checked_geometry(self):
 		outputs = GEN.expected_outputs(ROOT, ROOT)
 		pool = outputs[ROOT / "src/rs/ml/nn/pool.gen.rs"]
-		self.assertEqual(pool.count("Self::with_options(kernel_size, kernel_size, 0)"), 2)
+		self.assertEqual(pool.count("Self::new_with_options(kernel_size, kernel_size, 0)"), 2)
 		self.assertEqual(pool.count("kernel_size == 0 || stride == 0"), 2)
 		self.assertIn("matrix::max_pool_2d(input, self.kernel_size, self.stride, self.padding)?.output", pool)
-		self.assertIn("Self::with_output_size(output_size, output_size)", pool)
+		self.assertIn("Self::new_with_output_size(output_size, output_size)", pool)
 		self.assertIn("output_height == 0 || output_width == 0", pool)
 		self.assertIn("matrix::adaptive_avg_pool_2d(input, self.output_height, self.output_width)", pool)
 		upsample = outputs[ROOT / "src/rs/ml/nn/upsample.gen.rs"]
-		self.assertIn("Self::with_mode(scale_factor, UpsampleMode::Bilinear)", upsample)
+		self.assertIn("Self::new_with_mode(scale_factor, UpsampleMode::Bilinear)", upsample)
 		self.assertIn("scale_factor == 0", upsample)
 		rope = outputs[ROOT / "src/rs/ml/nn/rope.gen.rs"]
 		for check in ("num_heads == 0", "head_dim == 0", "!head_dim.is_multiple_of(2)", "!theta_base.is_finite()", "theta_base <= 0.0", "num_heads.checked_mul(head_dim).is_none()"):
@@ -635,18 +636,18 @@ class NnGenerationTests(unittest.TestCase):
 			with self.subTest(field=key):
 				changed = copy.deepcopy(schema)
 				values = changed["layers"][0]["values"]
-				if key.endswith("_type"):
+				if GEN.CONTRACTS["attention"][key] == "support_type":
 					values[key] = "CustomPolicy"
 					GEN.validate(changed)
 					text = GEN.render(template, {"name": layer["name"], "doc": layer["doc"], **values})
-					self.assertIn("pub enum CustomPolicy", text)
-					self.assertNotIn(original, text)
+					self.assertIn("pub " + ("struct" if key == "linear_name" else "enum") + " CustomPolicy", text)
+					self.assertNotRegex(text, rf"\b{re.escape(original)}\b")
 					values[key] = "bad.path"
 				elif key.endswith("_name"):
 					values[key] = "custom_projection"
 					GEN.validate(changed)
 					text = GEN.render(template, {"name": layer["name"], "doc": layer["doc"], **values})
-					self.assertEqual(text.count('"custom_projection"'), 1)
+					self.assertEqual(text.count('"custom_projection"'), 2)
 					self.assertNotIn('"' + original + '"', text)
 					values[key] = "bad.path"
 				else:
@@ -690,9 +691,10 @@ class NnGenerationTests(unittest.TestCase):
 
 	def test_attention_retains_explicit_routes_replay_dropout_and_mask_cache(self):
 		text = GEN.expected_outputs(ROOT, ROOT)[ROOT / "src/rs/ml/nn/attention.gen.rs"]
+		text = text[:text.index("pub enum LinearAttentionMode")]
 		for name in ("q_proj", "k_proj", "v_proj", "out_proj"):
 			self.assertEqual(text.count(f'registry.register_module("{name}"'), 1)
-		self.assertEqual(text.count("Linear::with_seed_and_bias("), 4)
+		self.assertEqual(text.count("Linear::new_with_seed_and_bias("), 4)
 		for offset in (1, 2, 3, 4):
 			self.assertIn(f"seed.wrapping_add({offset})", text)
 		self.assertIn("AttentionBackend::Auto | AttentionBackend::Standard", text)
@@ -706,6 +708,24 @@ class NnGenerationTests(unittest.TestCase):
 		self.assertIn("self.mask_cache.borrow_mut().clear()", text)
 		self.assertIn("flash_attention_causal(&query, &key, &value, scale)", text)
 		self.assertNotIn("autograd::record_", text)
+
+
+	def test_linear_attention_keeps_owned_provider_stable_map_and_projection_tree(self):
+		schema = self.schema("attention")
+		text = GEN.expected_outputs(ROOT, ROOT)[ROOT / "src/rs/ml/nn/attention.gen.rs"]
+		linear = text[text.index("pub enum LinearAttentionMode"):]
+		self.assertEqual(linear.count("Linear::new_with_seed_and_bias("), 4)
+		for name in ("q_proj", "k_proj", "v_proj", "out_proj"):
+			self.assertEqual(linear.count(f'registry.register_module("{name}"'), 1)
+		self.assertIn("matrix::causal_linear_attention(&q, &k, &v, 1.0e-6)", linear)
+		self.assertIn("if head_dim <= 64", linear)
+		self.assertIn("core_matrix::exp(&core_matrix::clamp_max(x, 0.0)?)?", linear)
+		self.assertIn("core_matrix::clamp_min(&denom, 1.0e-6)", linear)
+		self.assertNotIn("elu(x, 1.0)", linear)
+		self.assertNotIn("KernelId", linear)
+		schema["layers"][0]["values"]["linear_operation"] = "matrix::sum"
+		with self.assertRaises(GEN.SchemaError):
+			GEN.validate(schema)
 
 	def test_ffn_schema_owns_child_names_and_exact_composition_roles(self):
 		schema = self.schema("ffn")
@@ -735,7 +755,7 @@ class NnGenerationTests(unittest.TestCase):
 		positions = [text.index(f'registry.register_module("{name}"') for name in ("norm", "gate", "up", "down")]
 		self.assertEqual(positions, sorted(positions))
 		self.assertIn("RmsNorm::new(engine, model_width, epsilon)", text)
-		self.assertEqual(text.count("Linear::with_seed("), 3)
+		self.assertEqual(text.count("Linear::new_with_seed("), 3)
 		self.assertIn("seed.wrapping_add(1)", text)
 		self.assertIn("seed.wrapping_add(2)", text)
 		forward = text[text.index("pub fn forward(&self, input: &Matrix)"):text.index("/// Return the input")]

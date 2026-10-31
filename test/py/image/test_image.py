@@ -11,15 +11,15 @@ def _make_rgb_image(engine: oa.Engine, width: int = 4, height: int = 4) -> oa.Im
 	r = [float(i) / n for i in range(n)]
 	g = [float(n - i) / n for i in range(n)]
 	b = [0.5] * n
-	m = oa.Matrix.from_f32(engine, [1, 3, height, width], r + g + b)
-	return oa.Image.from_matrix(m, "nchw", "rgb")
+	m = oa.Matrix.new_from_f32(engine, [1, 3, height, width], r + g + b)
+	return oa.Image.new_from_matrix(m, "nchw", "rgb")
 
 
 def _make_gray_image(engine: oa.Engine, width: int = 4, height: int = 4) -> oa.Image:
 	n = width * height
 	vals = [float(i) / n for i in range(n)]
-	m = oa.Matrix.from_f32(engine, [1, 1, height, width], vals)
-	return oa.Image.from_matrix(m, "nchw", "gray")
+	m = oa.Matrix.new_from_f32(engine, [1, 1, height, width], vals)
+	return oa.Image.new_from_matrix(m, "nchw", "gray")
 
 
 class ImageConstructorTest(unittest.TestCase):
@@ -55,7 +55,7 @@ class ImageGeometricTest(unittest.TestCase):
 		self.assertEqual(result.height, 4)
 
 	def test_resize_nearest(self) -> None:
-		result = oa.image.resize(self.img, 2, 2, interpolation_name="nearest")
+		result = oa.image.resize(self.img, 2, 2, interpolation="nearest")
 		self.assertEqual(result.width, 2)
 
 	def test_crop_dimensions(self) -> None:
@@ -178,7 +178,7 @@ class ImageColorTest(unittest.TestCase):
 		cls.img = _make_rgb_image(cls.engine)
 
 	def test_convert_color_rgb_to_bgr(self) -> None:
-		bgr = oa.image.convert_color(self.img, format_name="bgr")
+		bgr = oa.image.convert_color(self.img, destination_format="bgr")
 		self.assertEqual(bgr.format, "bgr")
 		self.assertEqual(bgr.width, self.img.width)
 
@@ -198,7 +198,7 @@ class ImageColorTest(unittest.TestCase):
 	def test_convert_color_rgb_to_bgr(self) -> None:
 		# convert_color supports RGB ↔ BGR; grayscale conversion is not yet
 		# implemented. Verify the RGB→BGR identity contract.
-		bgr = oa.image.convert_color(self.img, format_name="bgr")
+		bgr = oa.image.convert_color(self.img, destination_format="bgr")
 		self.assertEqual(bgr.format, "bgr")
 		self.assertEqual(bgr.width, self.img.width)
 		self.assertEqual(bgr.height, self.img.height)
@@ -259,7 +259,7 @@ class ImageFilterTest(unittest.TestCase):
 
 	def test_convolve_2d_identity_kernel(self) -> None:
 		# A [1,1] identity kernel leaves the image unchanged
-		kernel = oa.Matrix.from_f32(self.engine, [1, 1], [1.0])
+		kernel = oa.Matrix.new_from_f32(self.engine, [1, 1], [1.0])
 		result = oa.image.convolve_2d(self.img, kernel, "constant", 0.0)
 		orig = self.img.as_matrix().read_f32()
 		res = result.as_matrix().read_f32()
@@ -267,8 +267,8 @@ class ImageFilterTest(unittest.TestCase):
 			self.assertAlmostEqual(o, r, places=5)
 
 	def test_separable_convolve_2d_identity(self) -> None:
-		kx = oa.Matrix.from_f32(self.engine, [1], [1.0])
-		ky = oa.Matrix.from_f32(self.engine, [1], [1.0])
+		kx = oa.Matrix.new_from_f32(self.engine, [1], [1.0])
+		ky = oa.Matrix.new_from_f32(self.engine, [1], [1.0])
 		result = oa.image.separable_convolve_2d(self.img, kx, ky)
 		orig = self.img.as_matrix().read_f32()
 		res = result.as_matrix().read_f32()

@@ -75,7 +75,7 @@ impl VideoDecoder {
 	/// Baseline/Main/High, H.265 Main, AV1 Main 8-bit 4:2:0 without film grain,
 	/// or VP9 Profile 0 8-bit 4:2:0 and the selected Engine admits the qualified
 	/// Vulkan path.
-	pub fn create(engine: &Engine, info: VideoContainerInfo) -> Result<Self> {
+	pub fn new(engine: &Engine, info: VideoContainerInfo) -> Result<Self> {
 		let profile = info.decode_profile().ok_or_else(|| {
 			Error::missing_capability("the stream has no Vulkan-queryable decode profile")
 		})?;
@@ -578,7 +578,7 @@ impl VideoDecoder {
 		let timing = packet_timing(packet, state.info)?;
 		let frame = match backing {
 			DecodedBacking::HostPlanar(bytes) => {
-				VideoFrame::from_yuv420p(bytes, width, height, timing, color)?
+				VideoFrame::new_from_yuv420p(bytes, width, height, timing, color)?
 			}
 			DecodedBacking::Native(frame) => VideoFrame::from_native(frame, timing, color),
 		};

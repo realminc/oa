@@ -163,7 +163,7 @@ pub fn evaluate_tokenizer(
 			.ok_or_else(|| Error::resource_exhausted("validation cursor exceeds usize"))?;
 		let rows = config.batch_size.min(windows.len() - begin);
 		let mut target = gather_tokenizer_batch(dataset, &windows, begin, rows, config.sequence_len)?;
-		let input = Matrix::from_slice(
+		let input = Matrix::new_from_slice(
 			engine,
 			[rows, config.sequence_len, dataset.feature_dim()],
 			&target,
@@ -293,9 +293,9 @@ pub fn evaluate_prior(
 		let element_count = rows
 			.checked_mul(config.window_len)
 			.ok_or_else(|| Error::resource_exhausted("validation batch size exceeds usize"))?;
-		let input = Matrix::from_slice(engine, [rows, config.window_len], &batch.input_ids)?;
-		let targets = Matrix::from_slice(engine, [element_count], &batch.target_ids)?;
-		let mask = Matrix::from_slice(engine, [element_count], &batch.loss_mask)?;
+		let input = Matrix::new_from_slice(engine, [rows, config.window_len], &batch.input_ids)?;
+		let targets = Matrix::new_from_slice(engine, [element_count], &batch.target_ids)?;
+		let mask = Matrix::new_from_slice(engine, [element_count], &batch.loss_mask)?;
 		let eos_mask_values = batch
 			.target_ids
 			.iter()
@@ -312,7 +312,7 @@ pub fn evaluate_prior(
 			.iter()
 			.filter(|&&value| value != 0.0)
 			.count() as u64;
-		let eos_mask = Matrix::from_slice(engine, [element_count], &eos_mask_values)?;
+		let eos_mask = Matrix::new_from_slice(engine, [element_count], &eos_mask_values)?;
 		let text = conditioning
 			.map(|source| gather_validation_text(engine, source, &windows[begin..begin + rows]))
 			.transpose()?;
@@ -410,7 +410,7 @@ fn gather_validation_text(
 	for window in windows {
 		values.extend_from_slice(&source.by_sequence[window.sequence][..source.feature_dim]);
 	}
-	Matrix::from_slice(engine, [windows.len(), source.feature_dim], &values)
+	Matrix::new_from_slice(engine, [windows.len(), source.feature_dim], &values)
 }
 
 fn scalar_f32(value: &Matrix) -> Result<f32> {

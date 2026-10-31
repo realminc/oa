@@ -17,7 +17,8 @@
 // Controls (same as oa::Viewer):
 //   LMB / MMB / wheel — pan and zoom
 //   +/-  — zoom in / out     0 / F — fit to window     9 — 100 %
-//   1–4  — R/G/B/A channel   5 — RGB composite         B / G — canvas mode
+//   1–4  — R/G/B/A channel   5 — RGB composite
+//   B — dark/gradient background; G — workspace grid
 //   Q / Esc — quit
 //
 // usage:  cargo run --example tu_viewer_image -- [image.jpg]

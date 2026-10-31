@@ -36,7 +36,7 @@ impl {{block_type}} {
 	/// # Errors
 	///
 	/// Returns an error for invalid dimensions or failed child construction.
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		model_width: usize,
 		hidden_width: usize,
@@ -45,7 +45,7 @@ impl {{block_type}} {
 		epsilon: f32,
 		seed: u64,
 	) -> Result<Self> {
-		Self::with_seed_config(
+		Self::new_with_seed_config(
 			engine,
 			model_width,
 			hidden_width,
@@ -72,7 +72,7 @@ impl {{block_type}} {
 		clippy::too_many_arguments,
 		reason = "the constructor preserves the donor block and conditioning dimensions"
 	)]
-	pub fn with_seed_conditioned(
+	pub fn new_with_seed_conditioned(
 		engine: &Engine,
 		model_width: usize,
 		hidden_width: usize,
@@ -82,7 +82,7 @@ impl {{block_type}} {
 		epsilon: f32,
 		seed: u64,
 	) -> Result<Self> {
-		Self::with_seed(
+		Self::new_with_seed(
 			engine,
 			model_width,
 			hidden_width,
@@ -107,7 +107,7 @@ impl {{block_type}} {
 		clippy::too_many_arguments,
 		reason = "the constructor preserves the donor attention and MoE dimensions"
 	)]
-	pub fn with_seed_moe(
+	pub fn new_with_seed_moe(
 		engine: &Engine,
 		model_width: usize,
 		expert_hidden_width: usize,
@@ -118,7 +118,7 @@ impl {{block_type}} {
 		epsilon: f32,
 		seed: u64,
 	) -> Result<Self> {
-		Self::with_seed_config(
+		Self::new_with_seed_config(
 			engine,
 			model_width,
 			expert_hidden_width,
@@ -143,7 +143,7 @@ impl {{block_type}} {
 		clippy::too_many_arguments,
 		reason = "the constructor preserves the donor attention, MoE, and conditioning dimensions"
 	)]
-	pub fn with_seed_moe_conditioned(
+	pub fn new_with_seed_moe_conditioned(
 		engine: &Engine,
 		model_width: usize,
 		expert_hidden_width: usize,
@@ -155,7 +155,7 @@ impl {{block_type}} {
 		epsilon: f32,
 		seed: u64,
 	) -> Result<Self> {
-		Self::with_seed_moe(
+		Self::new_with_seed_moe(
 			engine,
 			model_width,
 			expert_hidden_width,
@@ -174,7 +174,7 @@ impl {{block_type}} {
 		clippy::too_many_arguments,
 		reason = "shared constructor preserves public block recipes"
 	)]
-	fn with_seed_config(
+	fn new_with_seed_config(
 		engine: &Engine,
 		model_width: usize,
 		hidden_width: usize,
@@ -268,13 +268,13 @@ impl {{block_type}} {
 		let weight_count = condition_dim
 			.checked_mul(modulation_width)
 			.ok_or_else(|| Error::invalid_argument("{{name}} modulation size overflows usize"))?;
-		let weight = Matrix::from_f32(
+		let weight = Matrix::new_from_f32(
 			engine,
 			[modulation_width, condition_dim],
 			&vec![0.0; weight_count],
 		)?;
-		let bias = Matrix::from_f32(engine, [modulation_width], &vec![0.0; modulation_width])?;
-		let adaptive_modulation = Rc::new(Linear::from_matrices(weight, bias)?);
+		let bias = Matrix::new_from_f32(engine, [modulation_width], &vec![0.0; modulation_width])?;
+		let adaptive_modulation = Rc::new(Linear::new_from_matrices(weight, bias)?);
 		self
 			.registry
 			.register_module("{{modulation_name}}", adaptive_modulation.clone())?;
@@ -525,7 +525,7 @@ impl {{name}} {
 	/// divisible by the head count, positions fit U32, and every child can be
 	/// constructed and registered.
 	#[allow(clippy::too_many_arguments)]
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		vocab_size: usize,
 		context_length: usize,
@@ -536,7 +536,7 @@ impl {{name}} {
 		epsilon: f32,
 		seed: u64,
 	) -> Result<Self> {
-		Self::with_seed_config(
+		Self::new_with_seed_config(
 			engine,
 			vocab_size,
 			context_length,
@@ -563,7 +563,7 @@ impl {{name}} {
 		clippy::too_many_arguments,
 		reason = "the constructor preserves the complete {{name}} and MoE recipe"
 	)]
-	pub fn with_seed_moe(
+	pub fn new_with_seed_moe(
 		engine: &Engine,
 		vocab_size: usize,
 		context_length: usize,
@@ -576,7 +576,7 @@ impl {{name}} {
 		epsilon: f32,
 		seed: u64,
 	) -> Result<Self> {
-		Self::with_seed_config(
+		Self::new_with_seed_config(
 			engine,
 			vocab_size,
 			context_length,
@@ -598,7 +598,7 @@ impl {{name}} {
 		clippy::too_many_arguments,
 		reason = "shared constructor preserves public model recipes"
 	)]
-	fn with_seed_config(
+	fn new_with_seed_config(
 		engine: &Engine,
 		vocab_size: usize,
 		context_length: usize,
@@ -652,7 +652,7 @@ impl {{name}} {
 		let mut blocks = Vec::with_capacity(num_layers);
 		for index in 0..num_layers {
 			let seed_offset = (index as u64).wrapping_mul(seed_stride).wrapping_add(2);
-			let block = Rc::new({{block_type}}::with_seed_config(
+			let block = Rc::new({{block_type}}::new_with_seed_config(
 				engine,
 				model_width,
 				hidden_width,
@@ -721,7 +721,7 @@ impl {{name}} {
 			.map(|index| (index % self.context_length) as u32)
 			.collect::<Vec<_>>();
 		let position_ids =
-			Matrix::from_slice_handle(tokens.engine_handle(), vec![rows], &position_values)?;
+			Matrix::new_from_slice_handle(tokens.engine_handle(), vec![rows], &position_values)?;
 		let token_values = self
 			.token_embedding
 			.forward(tokens)?

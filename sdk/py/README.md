@@ -18,7 +18,7 @@ total = oa.matrix.add(one, two)
 assert total.shape == [2, 3]
 assert total.to_list() == [3.0] * 6
 
-image = oa.Image.from_matrix(oa.matrix.ones(engine, [3, 2, 2]), "chw", "rgb")
+image = oa.Image.new_from_matrix(oa.matrix.ones(engine, [3, 2, 2]), "chw", "rgb")
 flipped = oa.image.flip(image, horizontal=True, vertical=False)
 ```
 
@@ -28,7 +28,7 @@ Callers may use ordinary local abbreviations such as `import oa.matrix as oam`
 or `import oa.core as oac`; OA does not publish duplicate alias modules. Host
 observation through `read_f32()` or `to_list()` is the synchronization boundary.
 
-The canonical PyO3 implementation lives in `../../src/py`. Root
+The canonical PyO3 implementation lives in `../../src/py/pyo3`. Root
 `../../pyproject.toml` and `../../uv.lock` own packaging and environment
 metadata; this SDK directory owns the importable package, PyO3 crate, and
 tutorials.

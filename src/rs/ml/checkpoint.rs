@@ -526,7 +526,7 @@ fn matrices_from_flat(
 		let end = offset
 			.checked_add(data.num_elements())
 			.ok_or_else(|| Error::resource_exhausted("optimizer state offset overflows usize"))?;
-		matrices.push(Matrix::from_f32(
+		matrices.push(Matrix::new_from_f32(
 			engine,
 			data.shape().to_vec(),
 			&values[offset..end],
@@ -601,10 +601,10 @@ fn validate_state_u32_contract(tensor: &Tensor, path: &str) -> Result<()> {
 fn matrix_from_tensor(engine: &Engine, tensor: &Tensor) -> Result<Matrix> {
 	let shape = tensor_shape(tensor)?;
 	match tensor_dtype(tensor)? {
-		DType::U8 => Matrix::from_slice(engine, shape, &tensor.data),
-		DType::F32 => Matrix::from_slice(engine, shape, &decode_f32(&tensor.data)?),
-		DType::I32 => Matrix::from_slice(engine, shape, &decode_i32(&tensor.data)?),
-		DType::U32 => Matrix::from_slice(engine, shape, &decode_u32(&tensor.data)?),
+		DType::U8 => Matrix::new_from_slice(engine, shape, &tensor.data),
+		DType::F32 => Matrix::new_from_slice(engine, shape, &decode_f32(&tensor.data)?),
+		DType::I32 => Matrix::new_from_slice(engine, shape, &decode_i32(&tensor.data)?),
+		DType::U32 => Matrix::new_from_slice(engine, shape, &decode_u32(&tensor.data)?),
 	}
 }
 

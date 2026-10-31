@@ -74,3 +74,47 @@ fn presenter_displays_a_renderer_frame() -> oa::Result<()> {
 	renderer.close()?;
 	Ok(())
 }
+
+#[test]
+#[ignore = "requires Vulkan presentation and a live SDL display"]
+fn presenter_retains_compositor_frames_across_resize_and_ui_close() -> oa::Result<()> {
+	let window = SdlWindow::new("OA compositor lifetime qualification", 64, 64)?;
+	let selection = std::env::var("OA_TEST_DEVICE_INDEX")
+		.ok()
+		.map(|index| oa::DeviceSelection::Index(index.parse().expect("device index")))
+		.unwrap_or_default();
+	let engine = Engine::builder()
+		.devices(selection)
+		.requirements(oa::EngineRequirements::default().presentation())
+		.instance_extensions(window.required_instance_extensions()?)
+		.build()?;
+	let mut presenter = Presenter::new(&engine, &window)?;
+	assert!(presenter.init_swapchain(&window)?);
+	let mut ui = oa::ui::Ui::init(&engine, 64, 64)?;
+	let source = oa::render::texture_from_rgba8(&engine, &[255_u8; 16], 2, 2)?;
+	for size in [64, 96, 64, 96] {
+		ui.resize(size, size)?;
+		ui.begin_frame(0.0);
+		let clip = oa::ui::PixelRect::new(0, 0, size, size);
+		let color = oa::Color::new(0.0, 1.0, 0.0, 1.0);
+		ui.rect_raw(clip, color, clip, 0.0);
+		ui.rect_outline_raw(clip, oa::Color::new(1.0, 0.0, 0.0, 1.0), 1, clip);
+		ui.line_at([0.0, 0.0], [20.0, 20.0], color, 1.0, clip)?;
+		ui.plot_line_at(&[0.0, 1.0, 0.5], clip, 0.0, 1.0, color, 1.0)?;
+		ui.image_at(&source, oa::ui::PixelRect::new(0, 0, 8, 8))?;
+		ui.text_at(
+			"OA",
+			[12.0, 24.0],
+			oa::TextLayoutConfig::default(),
+			color,
+			clip,
+		)?;
+		ui.end_frame();
+		let _suboptimal = ui.present_to(&mut presenter)?;
+	}
+	// The last two frames still own their pipelines, images and source buffers.
+	ui.close()?;
+	drop(source);
+	presenter.close_swapchain()?;
+	Ok(())
+}

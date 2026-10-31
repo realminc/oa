@@ -1,0 +1,56 @@
+/// {{summary}}
+///
+/// Operands are public U32 `[batch, words]` rows of little-endian limbs,
+/// with 1..=128 words (32..=4096 bits). Records device work without host reads
+/// or a host wait. This public-data route does not accept cryptographic secrets
+/// and makes no constant-time or performance claim.
+///
+/// {{behavior}}
+///
+/// # Errors
+///
+/// Rejects rank, dtype, shape, ownership, address limits, allocation or recording failures.
+pub fn {{name}}({{arguments}}) -> Result<{{return_type}}> {
+	let contract = crate::core::operation::cryptography::bigint::{{constant}};
+	let operation = contract.name();
+	let [rows, words] = match left.shape() {
+		[rows, words] => [*rows, *words],
+		_ => return Err(Error::invalid_argument(format!("{operation} requires rank-two operands"))),
+	};
+	if left.dtype() != DType::U32 || !(1..=128).contains(&words) {{validation}} {
+		return Err(Error::invalid_argument(format!("{operation} requires matching-owner U32 limb rows with 1..=128 words")));
+	}
+	let count = u32::try_from(rows)
+		.map_err(|_| Error::invalid_argument(format!("{operation} batch exceeds u32")))?;
+	let input_bytes = rows.checked_mul(words).and_then(|n| n.checked_mul(4))
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} input byte extent overflows usize")))?;
+	u32::try_from(input_bytes)
+		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
+	let engine = left.engine_handle();
+{{allocations}}
+	if rows != 0 {
+		let kernel = KernelId::{{kernel_id}};
+		let buffers = [
+{{bindings}}
+		];
+		let push_constants = [
+			PushConstant::U32(count),
+			PushConstant::U32(words as u32),
+{{push}}
+		];
+		let inputs = [{{inputs}}];
+		let outputs = [{{outputs}}];
+		let attributes = [
+			OpAttribute::UnsignedInteger { name: "width_bits".into(), value: (words * 32) as u64 },
+{{attributes}}
+		];
+		engine.record_semantic(
+			ComputeDispatch {
+				kernel, buffers: &buffers, push_constants: &push_constants,
+				workgroups: kernel.linear_workgroups(count),
+			},
+			SemanticDispatch { contract, inputs: &inputs, outputs: &outputs, attributes: &attributes },
+		)?;
+	}
+	Ok({{result}})
+}

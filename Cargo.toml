@@ -1,6 +1,6 @@
 [package]
 name = "oarust"
-version = "0.8.6"
+version = "0.9.0"
 edition = "2024"
 rust-version = "1.98"
 autotests = false
@@ -15,10 +15,11 @@ include = [
   "/sdk/rs/slang/ml/rl/**/*.slang",
   "/sdk/rs/mod.rs", "/sdk/rs/data.rs", "/sdk/rs/data/**/*.rs",
   "/sdk/rs/ml.rs", "/sdk/rs/ml/**/*.rs",
-  "/test/rs/matrix/*.gen.rs", "/tool/gen/**",
-  "/test/rs/runtime/*_unit.rs", "/test/rs/cryptography/entropy_unit.rs", "/test/rs/ml/tape_unit.rs",
+  "/test/rs/matrix/*.gen.rs", "/tool/gen/**", "/test/rs/**/*_unit.rs",
   "/test/fixtures/cryptography/mldsa/keyGen-*.json", "/test/fixtures/cryptography/mldsa/sigGen-*.json",
   "/test/fixtures/cryptography/mlkem/keyGen-*.json",
+  "/test/fixtures/cryptography/mlkem/encapDecap-*.json",
+  "/test/fixtures/cryptography/mlkem/engine-roundtrip.json",
   "!**/__pycache__/**", "!**/*.pyc",
 ]
 
@@ -252,9 +253,8 @@ default = ["bundled-sdl"]
 bundled-sdl = ["sdl3/build-from-source-static"]
 
 [dependencies]
-ash = "0.38"
-vk-mem = "0.5"
-sdl3 = { version = "0.20", features = ["ash", "use-pkg-config"] }
+vkrust = { version = "0.9", features = ["allocator"] }
+sdl3 = { version = "0.20", features = ["use-pkg-config"] }
 
 bitflags = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

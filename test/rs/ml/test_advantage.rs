@@ -14,7 +14,7 @@ test_vk!(
 	normalize_matches_donor_and_one_semantic_operation,
 	engine,
 	{
-		let values = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 2.0, 3.0, 4.0])?;
+		let values = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 2.0, 3.0, 4.0])?;
 		let (plan, normalized) = engine.capture(|| normalize(&values, 1.0e-8))?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
 		assert!(plan.diagnostics().node_count() > 1);
@@ -38,7 +38,7 @@ test_vk!(
 		];
 		assert_close(&normalized.read_f32()?, &expected, 1.0e-6);
 
-		let constant = oa::Matrix::from_f32(&engine, [4], &[7.0; 4])?;
+		let constant = oa::Matrix::new_from_f32(&engine, [4], &[7.0; 4])?;
 		let constant = normalize(&constant, 1.0e-8)?.read_f32()?;
 		assert!(constant.iter().all(|value| value.is_finite()));
 		assert_close(&constant, &[0.0; 4], 1.0e-6);
@@ -49,13 +49,16 @@ test_vk!(
 test_vk!(normalize_adjoint_matches_independent_formula, engine, {
 	let values_host = [1.0_f32, -2.0, 0.5, 4.0];
 	let upstream_host = [0.5_f32, -1.0, 2.0, 0.25];
-	let input =
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [1, 4], &values_host)?)?;
-	let row = oa::Matrix::from_slice(&engine, [1], &[0_u32])?;
+	let input = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+		&engine,
+		[1, 4],
+		&values_host,
+	)?)?;
+	let row = oa::Matrix::new_from_slice(&engine, [1], &[0_u32])?;
 	let tape = oa::ml::GradientTape::new();
 	let values = input.forward(&row)?;
 	let normalized = normalize(&values, 1.0e-5)?;
-	let upstream = oa::Matrix::from_f32(&engine, [1, 4], &upstream_host)?;
+	let upstream = oa::Matrix::new_from_f32(&engine, [1, 4], &upstream_host)?;
 	let loss = oa::matrix::reshape(
 		&oa::matrix::sum(&oa::matrix::mul(&normalized, &upstream)?, -1)?,
 		Vec::new(),
@@ -90,8 +93,8 @@ test_vk!(normalize_adjoint_matches_independent_formula, engine, {
 });
 
 test_vk!(normalize_rejects_invalid_contracts, engine, {
-	let values = oa::Matrix::from_f32(&engine, [2], &[1.0, 2.0])?;
-	let integer = oa::Matrix::from_slice(&engine, [2], &[1_i32, 2])?;
+	let values = oa::Matrix::new_from_f32(&engine, [2], &[1.0, 2.0])?;
+	let integer = oa::Matrix::new_from_slice(&engine, [2], &[1_i32, 2])?;
 	for invalid in [
 		normalize(&values, 0.0),
 		normalize(&values, f32::NAN),
@@ -110,12 +113,14 @@ test_vk!(
 	gae_matches_the_donor_oracle_and_boundary_semantics,
 	engine,
 	{
-		let reward = oa::Matrix::from_f32(&engine, [4, 2], &[1.0, 0.5, 0.2, 1.0, 2.0, 0.3, 0.7, 1.5])?;
-		let value = oa::Matrix::from_f32(&engine, [4, 2], &[0.4, 0.1, 0.3, 0.5, 0.8, 0.2, 0.6, 0.9])?;
+		let reward =
+			oa::Matrix::new_from_f32(&engine, [4, 2], &[1.0, 0.5, 0.2, 1.0, 2.0, 0.3, 0.7, 1.5])?;
+		let value =
+			oa::Matrix::new_from_f32(&engine, [4, 2], &[0.4, 0.1, 0.3, 0.5, 0.8, 0.2, 0.6, 0.9])?;
 		let next_value =
-			oa::Matrix::from_f32(&engine, [4, 2], &[0.3, 0.5, 99.0, 4.0, 0.6, 0.9, 0.2, 0.4])?;
-		let terminated = oa::Matrix::from_slice(&engine, [4, 2], &[0_u8, 0, 1, 0, 0, 0, 0, 0])?;
-		let truncated = oa::Matrix::from_slice(&engine, [4, 2], &[0_u8, 0, 0, 1, 0, 0, 0, 0])?;
+			oa::Matrix::new_from_f32(&engine, [4, 2], &[0.3, 0.5, 99.0, 4.0, 0.6, 0.9, 0.2, 0.4])?;
+		let terminated = oa::Matrix::new_from_slice(&engine, [4, 2], &[0_u8, 0, 1, 0, 0, 0, 0, 0])?;
+		let truncated = oa::Matrix::new_from_slice(&engine, [4, 2], &[0_u8, 0, 0, 1, 0, 0, 0, 0])?;
 		let config = GaeConfig {
 			gamma: 0.9,
 			lambda: 0.8,
@@ -170,8 +175,8 @@ test_vk!(
 		assert_close(&result.advantage.read_f32()?, &expected_advantage, 1.0e-6);
 		assert_close(&result.returns.read_f32()?, &expected_return, 1.0e-6);
 
-		let mut reused_advantage = oa::Matrix::from_f32(&engine, [4, 2], &[0.0; 8])?;
-		let mut reused_return = oa::Matrix::from_f32(&engine, [4, 2], &[0.0; 8])?;
+		let mut reused_advantage = oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0; 8])?;
+		let mut reused_return = oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0; 8])?;
 		gae_into(
 			&reward,
 			&value,
@@ -189,10 +194,10 @@ test_vk!(
 );
 
 test_vk!(gae_rejects_invalid_rollout_contracts, engine, {
-	let values = oa::Matrix::from_f32(&engine, [2, 2], &[0.0; 4])?;
-	let mask = oa::Matrix::from_slice(&engine, [2, 2], &[0_u8; 4])?;
-	let wrong_mask = oa::Matrix::from_slice(&engine, [2, 1], &[0_u8; 2])?;
-	let wrong_value = oa::Matrix::from_f32(&engine, [4], &[0.0; 4])?;
+	let values = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.0; 4])?;
+	let mask = oa::Matrix::new_from_slice(&engine, [2, 2], &[0_u8; 4])?;
+	let wrong_mask = oa::Matrix::new_from_slice(&engine, [2, 1], &[0_u8; 2])?;
+	let wrong_value = oa::Matrix::new_from_f32(&engine, [4], &[0.0; 4])?;
 	for invalid in [
 		gae(
 			&values,
@@ -228,7 +233,7 @@ test_vk!(gae_rejects_invalid_rollout_contracts, engine, {
 		};
 		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 	}
-	let mut aliased_advantage = oa::Matrix::from_f32(&engine, [2, 2], &[0.0; 4])?;
+	let mut aliased_advantage = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.0; 4])?;
 	let mut aliased_return = aliased_advantage.clone();
 	assert_eq!(
 		gae_into(

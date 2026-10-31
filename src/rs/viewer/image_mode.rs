@@ -3,7 +3,6 @@
 //! Donor: `oa::Viewer::openImage`, `oa::Viewer::renderImage`.
 
 use super::config::ViewerConfig;
-use crate::render::texture_from_image;
 use crate::ui::{
 	Ui,
 	navigation::Navigation,
@@ -24,8 +23,7 @@ pub enum ChannelMode {
 
 /// Load and GPU-upload a texture from a file path.
 pub fn load_texture(engine: &Engine, path: &str) -> Result<Texture> {
-	let image = crate::image::decode_file(engine, path, crate::ImageFormat::Rgba)?;
-	texture_from_image(&image)
+	crate::render::texture_from_file(engine, path)
 }
 
 /// Draw the image or its channel view into the viewport.

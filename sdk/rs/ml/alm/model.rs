@@ -48,16 +48,16 @@ impl Alm {
 	///
 	/// Returns an error unless the tokenizer and prior vocabulary contracts agree,
 	/// or when either child or the ownership tree cannot be constructed.
-	pub fn with_seed(engine: &Engine, config: AlmConfig, seed: u64) -> Result<Self> {
-		let tokenizer = Rc::new(AlmTokenizer::with_seed(engine, config.tokenizer, seed)?);
-		let prior = Rc::new(AlmPrior::with_seed(
+	pub fn new_with_seed(engine: &Engine, config: AlmConfig, seed: u64) -> Result<Self> {
+		let tokenizer = Rc::new(AlmTokenizer::new_with_seed(engine, config.tokenizer, seed)?);
+		let prior = Rc::new(AlmPrior::new_with_seed(
 			engine,
 			config.prior,
 			seed.wrapping_add(1),
 		)?);
 		let clip_text = config
 			.clip_text
-			.map(|clip| ClipText::with_seed(engine, clip, seed.wrapping_add(2)).map(Rc::new))
+			.map(|clip| ClipText::new_with_seed(engine, clip, seed.wrapping_add(2)).map(Rc::new))
 			.transpose()?;
 		Self::from_parts_impl(tokenizer, prior, clip_text, None, None)
 	}
@@ -66,9 +66,9 @@ impl Alm {
 	///
 	/// # Errors
 	///
-	/// Returns the same errors as [`Self::with_seed`].
+	/// Returns the same errors as [`Self::new_with_seed`].
 	pub fn new(engine: &Engine, config: AlmConfig) -> Result<Self> {
-		Self::with_seed(engine, config, 0)
+		Self::new_with_seed(engine, config, 0)
 	}
 
 	/// Adopt independently constructed tokenizer and prior children.
@@ -77,7 +77,7 @@ impl Alm {
 	///
 	/// Returns an error unless vocabulary and Engine ownership agree, or child
 	/// registration fails.
-	pub fn from_parts(tokenizer: Rc<AlmTokenizer>, prior: Rc<AlmPrior>) -> Result<Self> {
+	pub fn new_from_parts(tokenizer: Rc<AlmTokenizer>, prior: Rc<AlmPrior>) -> Result<Self> {
 		Self::from_parts_impl(tokenizer, prior, None, None, None)
 	}
 
@@ -86,7 +86,7 @@ impl Alm {
 	/// # Errors
 	///
 	/// Returns an error unless their dimensions and Engine ownership agree.
-	pub fn from_text_parts(
+	pub fn new_from_text_parts(
 		tokenizer: Rc<AlmTokenizer>,
 		prior: Rc<AlmPrior>,
 		clip_text: Rc<ClipText>,
@@ -103,7 +103,7 @@ impl Alm {
 	///
 	/// Returns an error unless the prior is conditioned, the identity is nonempty,
 	/// and the child vocabulary and Engine contracts agree.
-	pub fn from_external_text_parts(
+	pub fn new_from_external_text_parts(
 		tokenizer: Rc<AlmTokenizer>,
 		prior: Rc<AlmPrior>,
 		text_encoder_identity: impl Into<String>,
@@ -128,7 +128,7 @@ impl Alm {
 	///
 	/// Returns an error unless the CLIP configuration is the donor ViT-L/14
 	/// contract, merges are nonempty and valid, and all children share one Engine.
-	pub fn from_native_text_parts(
+	pub fn new_from_native_text_parts(
 		tokenizer: Rc<AlmTokenizer>,
 		prior: Rc<AlmPrior>,
 		clip_text: Rc<ClipText>,
@@ -238,7 +238,7 @@ impl Alm {
 				));
 			}
 			let data =
-				Matrix::from_slice_handle(tokenizer_data.engine_handle(), vec![bytes.len()], bytes)?;
+				Matrix::new_from_slice_handle(tokenizer_data.engine_handle(), vec![bytes.len()], bytes)?;
 			registry.register_buffer("text_tokenizer_merges", data, true)?;
 			Some(
 				registry

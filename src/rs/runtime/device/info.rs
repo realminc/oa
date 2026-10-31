@@ -5,6 +5,8 @@
 /// Election never assigns a performance rank to this value. Integrated,
 /// discrete, virtual, and other hardware all compete using queried features
 /// and resource capacities.
+use super::NativeFlagBits;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeviceKind {
 	Integrated,
@@ -222,9 +224,9 @@ pub(in crate::runtime) struct DevicePhysicalInfo {
 	pub(in crate::runtime) device_id: u32,
 	pub(in crate::runtime) driver_name: String,
 	pub(in crate::runtime) driver_info: String,
-	pub(in crate::runtime) driver_id: ash::vk::DriverId,
+	pub(in crate::runtime) driver_id: vk::DriverId,
 	pub(in crate::runtime) driver_version: u32,
-	pub(in crate::runtime) conformance_version: ash::vk::ConformanceVersion,
+	pub(in crate::runtime) conformance_version: vk::ConformanceVersion,
 	pub(in crate::runtime) capability_identity: u64,
 	pub(in crate::runtime) local_memory_bytes: u64,
 	pub(in crate::runtime) local_memory_budget_bytes: Option<u64>,
@@ -354,7 +356,7 @@ pub(super) fn log_compute_device(device: &super::Device, p: &str, is_last: bool)
 		physical
 			.cooperative_matrix
 			.supported_stages
-			.contains(ash::vk::ShaderStageFlags::COMPUTE)
+			.contains(vk::ShaderStageFlagBits::COMPUTE_BIT)
 			&& !physical.cooperative_matrix.tuples.is_empty(),
 		physical.features.shader_float16 || physical.features.shader_integer_dot_product,
 	) {
@@ -553,7 +555,7 @@ pub(super) fn log_compute_device(device: &super::Device, p: &str, is_last: bool)
 	let coop_compute = physical
 		.cooperative_matrix
 		.supported_stages
-		.contains(ash::vk::ShaderStageFlags::COMPUTE)
+		.contains(vk::ShaderStageFlagBits::COMPUTE_BIT)
 		&& !physical.cooperative_matrix.tuples.is_empty();
 	let coop_tuples = physical.cooperative_matrix.tuples.len();
 	crate::log_info!(crate::LogComponent::RUNTIME, "{}precision {{", pp);

@@ -77,7 +77,8 @@ pub fn tokenize_corpus(
 				"HumanML3D clip {index} is shorter than one tokenizer downsample interval"
 			)));
 		}
-		let input = Matrix::from_slice(engine, [1, frames, tokenizer.config().input_dim], features)?;
+		let input =
+			Matrix::new_from_slice(engine, [1, frames, tokenizer.config().input_dim], features)?;
 		let mut levels = tokenizer.tokenize(&input)?;
 		let tokens = levels
 			.pop()
@@ -231,7 +232,7 @@ fn train_alm_impl(
 		.map(|native| {
 			let mut tokenizer = ClipTokenizer::new();
 			tokenizer.load_merges(native.merges)?;
-			Ok(tokenizer)
+			Ok::<_, Error>(tokenizer)
 		})
 		.transpose()?;
 	let clips = (0..dataset.len())
@@ -323,11 +324,11 @@ fn train_alm_impl(
 		config.prior,
 	)?;
 	let model = if prior.config().text_feature_dim == 0 {
-		Alm::from_parts(tokenizer, prior)?
+		Alm::new_from_parts(tokenizer, prior)?
 	} else if let Some(native) = native_text {
-		Alm::from_native_text_parts(tokenizer, prior, native.model, native.merges)?
+		Alm::new_from_native_text_parts(tokenizer, prior, native.model, native.merges)?
 	} else {
-		Alm::from_external_text_parts(
+		Alm::new_from_external_text_parts(
 			tokenizer,
 			prior,
 			dataset

@@ -1,10 +1,10 @@
 //! External contracts for Material values: AlphaMode, FlatColorMaterial,
-//! UnlitMaterial, StandardSurfaceMaterial, Material, and the scene
+//! UnlitMaterial, SurfaceMaterial, Material, and the scene
 //! material integration (SceneMaterial, SceneNode::material, validate_scene).
 
 use oa::{
-	AlphaMode, ErrorKind, FlatColorMaterial, Material, MaterialId, SceneMaterial,
-	StandardSurfaceMaterial, TextureHandle, Transform, UnlitMaterial,
+	AlphaMode, ErrorKind, FlatColorMaterial, Material, MaterialId, SceneMaterial, SurfaceMaterial,
+	TextureHandle, Transform, UnlitMaterial,
 	render::{Scene, SceneMeshId, SceneNode, SceneNodeId, validate_scene},
 };
 
@@ -119,11 +119,11 @@ fn unlit_validate_rejects_reserved_zero_texture_handle() {
 	assert_eq!(m.validate().unwrap_err().kind(), ErrorKind::InvalidArgument);
 }
 
-// ── StandardSurfaceMaterial ───────────────────────────────────────────────────
+// ── SurfaceMaterial ───────────────────────────────────────────────────
 
 #[test]
-fn standard_default_is_neutral_gray_dielectric() {
-	let m = StandardSurfaceMaterial::default();
+fn surface_default_is_neutral_gray_dielectric() {
+	let m = SurfaceMaterial::default();
 	assert_eq!(m.base_color, [0.8, 0.8, 0.8]);
 	assert_eq!(m.metalness, 0.0);
 	assert_eq!(m.roughness, 0.5);
@@ -147,8 +147,8 @@ fn standard_default_is_neutral_gray_dielectric() {
 }
 
 #[test]
-fn standard_validate_accepts_fully_populated_material() {
-	let m = StandardSurfaceMaterial {
+fn surface_validate_accepts_fully_populated_material() {
+	let m = SurfaceMaterial {
 		base_color: [0.2, 0.4, 0.8],
 		base_color_texture: Some(TextureHandle(1)),
 		metalness: 1.0,
@@ -182,8 +182,8 @@ fn standard_validate_accepts_fully_populated_material() {
 }
 
 #[test]
-fn standard_validate_rejects_metalness_above_one() {
-	let m = StandardSurfaceMaterial {
+fn surface_validate_rejects_metalness_above_one() {
+	let m = SurfaceMaterial {
 		metalness: 1.001,
 		..Default::default()
 	};
@@ -191,8 +191,8 @@ fn standard_validate_rejects_metalness_above_one() {
 }
 
 #[test]
-fn standard_validate_rejects_roughness_below_zero() {
-	let m = StandardSurfaceMaterial {
+fn surface_validate_rejects_roughness_below_zero() {
+	let m = SurfaceMaterial {
 		roughness: -0.01,
 		..Default::default()
 	};
@@ -200,8 +200,8 @@ fn standard_validate_rejects_roughness_below_zero() {
 }
 
 #[test]
-fn standard_validate_rejects_zero_ior() {
-	let m = StandardSurfaceMaterial {
+fn surface_validate_rejects_zero_ior() {
+	let m = SurfaceMaterial {
 		specular_ior: 0.0,
 		..Default::default()
 	};
@@ -209,8 +209,8 @@ fn standard_validate_rejects_zero_ior() {
 }
 
 #[test]
-fn standard_validate_rejects_negative_ior() {
-	let m = StandardSurfaceMaterial {
+fn surface_validate_rejects_negative_ior() {
+	let m = SurfaceMaterial {
 		specular_ior: -1.5,
 		..Default::default()
 	};
@@ -218,8 +218,8 @@ fn standard_validate_rejects_negative_ior() {
 }
 
 #[test]
-fn standard_validate_rejects_negative_emission_scale() {
-	let m = StandardSurfaceMaterial {
+fn surface_validate_rejects_negative_emission_scale() {
+	let m = SurfaceMaterial {
 		emission_scale: -0.1,
 		..Default::default()
 	};
@@ -227,8 +227,8 @@ fn standard_validate_rejects_negative_emission_scale() {
 }
 
 #[test]
-fn standard_validate_rejects_nan_base_color() {
-	let m = StandardSurfaceMaterial {
+fn surface_validate_rejects_nan_base_color() {
+	let m = SurfaceMaterial {
 		base_color: [f32::NAN, 0.0, 0.0],
 		..Default::default()
 	};
@@ -236,8 +236,8 @@ fn standard_validate_rejects_nan_base_color() {
 }
 
 #[test]
-fn standard_validate_rejects_negative_subsurface_radius() {
-	let m = StandardSurfaceMaterial {
+fn surface_validate_rejects_negative_subsurface_radius() {
+	let m = SurfaceMaterial {
 		subsurface_radius: [1.0, -0.1, 1.0],
 		..Default::default()
 	};
@@ -245,8 +245,8 @@ fn standard_validate_rejects_negative_subsurface_radius() {
 }
 
 #[test]
-fn standard_validate_rejects_reserved_zero_texture_handle() {
-	let m = StandardSurfaceMaterial {
+fn surface_validate_rejects_reserved_zero_texture_handle() {
+	let m = SurfaceMaterial {
 		normal_texture: Some(TextureHandle(0)),
 		..Default::default()
 	};
@@ -256,8 +256,8 @@ fn standard_validate_rejects_reserved_zero_texture_handle() {
 // ── Material enum ─────────────────────────────────────────────────────────────
 
 #[test]
-fn material_default_is_standard_neutral_gray() {
-	assert!(matches!(Material::default(), Material::Standard(_)));
+fn material_default_is_surface_neutral_gray() {
+	assert!(matches!(Material::default(), Material::Surface(_)));
 }
 
 #[test]
@@ -299,10 +299,8 @@ fn minimal_scene_with_material(mat_id: MaterialId, mat: Material) -> Scene {
 
 #[test]
 fn scene_accepts_node_with_valid_material_ref() {
-	let scene = minimal_scene_with_material(
-		MaterialId(1),
-		Material::Standard(StandardSurfaceMaterial::default()),
-	);
+	let scene =
+		minimal_scene_with_material(MaterialId(1), Material::Surface(SurfaceMaterial::default()));
 	assert!(validate_scene(&scene).is_ok());
 }
 

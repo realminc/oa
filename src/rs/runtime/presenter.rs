@@ -17,6 +17,10 @@ pub struct Presenter<'window> {
 }
 
 impl<'window> Presenter<'window> {
+	pub(crate) fn validate_ui_engine(&self, engine: &super::EngineHandle) -> Result<()> {
+		self.surface().validate_ui_engine(engine)
+	}
+
 	/// Create a presentation session for one SDL3 window.
 	///
 	/// The Engine must have been built using `EngineRequirements::presentation()`
@@ -24,9 +28,17 @@ impl<'window> Presenter<'window> {
 	pub fn new(engine: &Engine, window: &'window SdlWindow) -> Result<Self> {
 		Ok(Self {
 			swapchain: None,
-			surface: Some(engine.create_presentation_surface(window)?),
+			surface: Some(engine.new_presentation_surface(window)?),
 			pending_drawable_extent: None,
 		})
+	}
+
+	/// Whether the active swapchain negotiated premultiplied client-frame alpha.
+	pub fn has_transparent_composition(&self) -> bool {
+		self
+			.swapchain
+			.as_ref()
+			.is_some_and(super::PresentationSwapchain::is_transparent)
 	}
 
 	/// Return whether the Engine retained a graphics-capable queue.
@@ -191,12 +203,35 @@ impl<'window> Presenter<'window> {
 	/// same submission — no host readback, no extra queue round-trip.
 	pub fn present_compose(
 		&mut self,
-		compose_image: ash::vk::Image,
+		compose_image: vk::Image,
 		compose_width: u32,
 		compose_height: u32,
-		descriptor_set: ash::vk::DescriptorSet,
-		pipeline_layout: ash::vk::PipelineLayout,
-		record: impl FnOnce(&ash::Device, ash::vk::CommandBuffer) -> crate::Result<()>,
+		descriptor_set: vk::DescriptorSet,
+		pipeline_layout: vk::PipelineLayout,
+		record: impl FnOnce(&vk::Device, vk::CommandBuffer) -> crate::Result<()>,
+	) -> crate::Result<bool> {
+		self.present_compose_retained(
+			compose_image,
+			compose_width,
+			compose_height,
+			descriptor_set,
+			pipeline_layout,
+			None,
+			record,
+		)
+	}
+
+	/// Attach exact UI resource ownership to the submitted presentation frame.
+	#[allow(clippy::too_many_arguments)]
+	pub(crate) fn present_compose_retained(
+		&mut self,
+		compose_image: vk::Image,
+		compose_width: u32,
+		compose_height: u32,
+		descriptor_set: vk::DescriptorSet,
+		pipeline_layout: vk::PipelineLayout,
+		retention: Option<std::rc::Rc<dyn std::any::Any>>,
+		record: impl FnOnce(&vk::Device, vk::CommandBuffer) -> crate::Result<()>,
 	) -> crate::Result<bool> {
 		self
 			.swapchain
@@ -208,6 +243,7 @@ impl<'window> Presenter<'window> {
 				compose_height,
 				descriptor_set,
 				pipeline_layout,
+				retention,
 				record,
 			)
 	}

@@ -85,12 +85,12 @@ pub fn run<M: Module>(
 				last_input.clone_from(&input_values);
 				last_target.clone_from(&target_values);
 				Ok((
-					oa::Matrix::from_slice(
+					oa::Matrix::new_from_slice(
 						&engine,
 						[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
 						&input_values,
 					)?,
-					oa::Matrix::from_slice(
+					oa::Matrix::new_from_slice(
 						&engine,
 						[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
 						&target_values,
@@ -119,8 +119,9 @@ pub fn run<M: Module>(
 	let result = training.finish()?;
 	let final_training_loss = result.last_loss().unwrap_or_default();
 
-	let input = oa::Matrix::from_slice(&engine, [nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &last_input)?;
-	let target = oa::Matrix::from_slice(
+	let input =
+		oa::Matrix::new_from_slice(&engine, [nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &last_input)?;
+	let target = oa::Matrix::new_from_slice(
 		&engine,
 		[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
 		&last_target,

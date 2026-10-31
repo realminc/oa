@@ -40,6 +40,21 @@ pub(crate) enum UiCmd {
 		thickness: f32,
 		bounds: PixelRect,
 	},
+	/// Premultiplied rounded viewport mask, applied after composition.
+	RoundedMask {
+		rect: PixelRect,
+		radius: f32,
+		outside: Color,
+		clip: PixelRect,
+	},
+	/// Donor antialiased filled icon triangle.
+	Triangle {
+		points: [[f32; 2]; 3],
+		color: Color,
+		bounds: PixelRect,
+	},
+	/// Donor decimal grid and gradient in one image dispatch.
+	CanvasGrid { rect: PixelRect, push: [u32; 30] },
 	/// Blit a host RGBA8 buffer into the compose image at `(dst_x, dst_y)`.
 	BlitRgba {
 		/// Bindless buffer index of the RGBA8 source bytes.
@@ -53,6 +68,17 @@ pub(crate) enum UiCmd {
 		clip: PixelRect,
 		/// 0 = RGBA; 1..=4 select R/G/B/A and replicate it to RGB.
 		channel: u32,
+	},
+	/// Direct retained matrix visualization, exact donor ABI.
+	Heatmap {
+		values_idx: u32,
+		rect: PixelRect,
+		push: [u32; 18],
+	},
+	Waveform {
+		values_idx: u32,
+		rect: PixelRect,
+		push: [u32; 14],
 	},
 	/// GPU line plot over a bindless F32 sample buffer.
 	PlotLine {

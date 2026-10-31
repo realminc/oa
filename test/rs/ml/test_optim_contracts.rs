@@ -23,9 +23,9 @@ fn no_op_optimizer_rejects_invalid_rates() {
 #[test]
 fn adamw_explicit_hyperparameters_reject_invalid_scalars_before_allocation() {
 	let empty = || std::iter::empty::<Parameter>();
-	assert!(AdamW::with_hyperparameters(empty(), f32::NAN, 0.9, 0.999, 1.0e-8, 0.0).is_err());
-	assert!(AdamW::with_hyperparameters(empty(), 1.0e-3, 1.0, 0.999, 1.0e-8, 0.0).is_err());
-	assert!(AdamW::with_hyperparameters(empty(), 1.0e-3, 0.9, -0.1, 1.0e-8, 0.0).is_err());
-	assert!(AdamW::with_hyperparameters(empty(), 1.0e-3, 0.9, 0.999, 0.0, 0.0).is_err());
-	assert!(AdamW::with_hyperparameters(empty(), 1.0e-3, 0.9, 0.999, 1.0e-8, -0.1).is_err());
+	assert!(AdamW::new_with_hyperparameters(empty(), f32::NAN, 0.9, 0.999, 1.0e-8, 0.0).is_err());
+	assert!(AdamW::new_with_hyperparameters(empty(), 1.0e-3, 1.0, 0.999, 1.0e-8, 0.0).is_err());
+	assert!(AdamW::new_with_hyperparameters(empty(), 1.0e-3, 0.9, -0.1, 1.0e-8, 0.0).is_err());
+	assert!(AdamW::new_with_hyperparameters(empty(), 1.0e-3, 0.9, 0.999, 0.0, 0.0).is_err());
+	assert!(AdamW::new_with_hyperparameters(empty(), 1.0e-3, 0.9, 0.999, 1.0e-8, -0.1).is_err());
 }

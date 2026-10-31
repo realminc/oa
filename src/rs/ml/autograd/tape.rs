@@ -147,7 +147,7 @@ fn record_node_for(tape: &RecordingState, node: GradNode) -> Result<()> {
 			.checked_add(1)
 			.ok_or_else(|| Error::resource_exhausted("autograd sequence exhausted"))?;
 		next.set(sequence);
-		Ok(sequence)
+		Ok::<_, Error>(sequence)
 	})?;
 	tape.nodes.borrow_mut().push(TapeEntry { sequence, node });
 	Ok(())

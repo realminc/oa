@@ -62,11 +62,11 @@ fn random_split_empty_input_returns_empty() {
 // ---- Sample -----------------------------------------------------------------
 
 test_vk!(sample_has_label_reflects_constructor, engine, {
-	let x = oa::Matrix::from_f32(&engine, [2], &[1.0, 2.0])?;
-	let y = oa::Matrix::from_f32(&engine, [2], &[0.0, 1.0])?;
+	let x = oa::Matrix::new_from_f32(&engine, [2], &[1.0, 2.0])?;
+	let y = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 1.0])?;
 	let unlabeled = oa::Sample::new(x.clone());
 	assert!(!unlabeled.has_label());
-	let labeled = oa::Sample::with_label(x, y);
+	let labeled = oa::Sample::new_with_label(x, y);
 	assert!(labeled.has_label());
 	Ok(())
 });
@@ -85,7 +85,7 @@ impl oa::Dataset for VecDataset<'_> {
 
 	fn get_item(&self, index: i64) -> oa::Result<oa::Matrix> {
 		let row = &self.data[index as usize];
-		oa::Matrix::from_f32(self.engine, [row.len()], row)
+		oa::Matrix::new_from_f32(self.engine, [row.len()], row)
 	}
 }
 
@@ -152,7 +152,8 @@ test_vk!(data_loader_drop_last_drops_incomplete_batch, engine, {
 test_vk!(collate_stacks_x_along_batch_dim, engine, {
 	let samples: Vec<oa::Sample> = (0..4_i64)
 		.map(|i| {
-			let x = oa::Matrix::from_f32(&engine, [3], &[i as f32; 3]).expect("from_f32 in collate test");
+			let x =
+				oa::Matrix::new_from_f32(&engine, [3], &[i as f32; 3]).expect("from_f32 in collate test");
 			oa::Sample::new(x)
 		})
 		.collect();
@@ -166,11 +167,11 @@ test_vk!(collate_stacks_x_along_batch_dim, engine, {
 test_vk!(collate_stacks_y_when_all_labeled, engine, {
 	let samples: Vec<oa::Sample> = (0..3_i64)
 		.map(|i| {
-			let x =
-				oa::Matrix::from_f32(&engine, [2], &[i as f32; 2]).expect("from_f32 x in labeled collate");
+			let x = oa::Matrix::new_from_f32(&engine, [2], &[i as f32; 2])
+				.expect("from_f32 x in labeled collate");
 			let y =
-				oa::Matrix::from_f32(&engine, [1], &[i as f32]).expect("from_f32 y in labeled collate");
-			oa::Sample::with_label(x, y)
+				oa::Matrix::new_from_f32(&engine, [1], &[i as f32]).expect("from_f32 y in labeled collate");
+			oa::Sample::new_with_label(x, y)
 		})
 		.collect();
 	let batch = oa::data::collate(&samples)?;
@@ -182,13 +183,13 @@ test_vk!(collate_stacks_y_when_all_labeled, engine, {
 });
 
 test_vk!(collate_stacks_integer_labels_and_byte_samples, engine, {
-	let first = oa::Sample::with_label(
-		oa::Matrix::from_slice(&engine, [3], &[1_u8, 2, 3])?,
-		oa::Matrix::from_slice(&engine, [], &[-4_i32])?,
+	let first = oa::Sample::new_with_label(
+		oa::Matrix::new_from_slice(&engine, [3], &[1_u8, 2, 3])?,
+		oa::Matrix::new_from_slice(&engine, [], &[-4_i32])?,
 	);
-	let second = oa::Sample::with_label(
-		oa::Matrix::from_slice(&engine, [3], &[4_u8, 5, 6])?,
-		oa::Matrix::from_slice(&engine, [], &[7_i32])?,
+	let second = oa::Sample::new_with_label(
+		oa::Matrix::new_from_slice(&engine, [3], &[4_u8, 5, 6])?,
+		oa::Matrix::new_from_slice(&engine, [], &[7_i32])?,
 	);
 	let batch = oa::data::collate(&[first, second])?;
 	assert_eq!(batch.x.shape(), [2, 3]);
@@ -343,17 +344,17 @@ test_vk!(
 	collate_rejects_inconsistent_labels_shapes_and_dtypes,
 	engine,
 	{
-		let x = oa::Matrix::from_f32(&engine, [2], &[1.0, 2.0])?;
-		let y = oa::Matrix::from_f32(&engine, [1], &[1.0])?;
+		let x = oa::Matrix::new_from_f32(&engine, [2], &[1.0, 2.0])?;
+		let y = oa::Matrix::new_from_f32(&engine, [1], &[1.0])?;
 		assert!(
 			oa::data::collate(&[
 				oa::Sample::new(x.clone()),
-				oa::Sample::with_label(x.clone(), y.clone())
+				oa::Sample::new_with_label(x.clone(), y.clone())
 			])
 			.is_err()
 		);
 		assert!(oa::data::collate(&[oa::Sample::new(x.clone()), oa::Sample::new(y)]).is_err());
-		let integers = oa::Matrix::from_slice(&engine, [2], &[1_i32, 2])?;
+		let integers = oa::Matrix::new_from_slice(&engine, [2], &[1_i32, 2])?;
 		assert_eq!(
 			oa::data::collate(&[oa::Sample::new(integers)])
 				.err()
@@ -390,9 +391,9 @@ test_vk!(
 	single_sample_collation_preserves_values_and_metadata,
 	engine,
 	{
-		let x = oa::Matrix::from_f32(&engine, [2], &[3.0, 4.0])?;
-		let y = oa::Matrix::from_f32(&engine, [1], &[1.0])?;
-		let batch = oa::data::collate(&[oa::Sample::with_label(x, y)])?;
+		let x = oa::Matrix::new_from_f32(&engine, [2], &[3.0, 4.0])?;
+		let y = oa::Matrix::new_from_f32(&engine, [1], &[1.0])?;
+		let batch = oa::data::collate(&[oa::Sample::new_with_label(x, y)])?;
 		assert_eq!(batch.x.shape(), [1, 2]);
 		assert_eq!(batch.x.read_f32()?, [3.0, 4.0]);
 		let label = batch.y.expect("labeled batch");
@@ -401,3 +402,6 @@ test_vk!(
 		Ok(())
 	}
 );
+
+#[path = "data/test_ohlcv.rs"]
+mod test_ohlcv;

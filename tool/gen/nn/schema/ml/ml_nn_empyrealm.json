@@ -14,8 +14,8 @@
 			"doc": "OA's embedding-plus-Mamba core with one canonical Rust execution path.",
 			"template": "empyrealm",
 			"values": {
-				"embedding_constructor": "Embedding::with_seed",
-				"mixer_constructor": "Mamba3::with_seed",
+				"embedding_constructor": "Embedding::new_with_seed",
+				"mixer_constructor": "Mamba3::new_with_seed",
 				"add_operation": "crate::matrix::add",
 				"embedding_name": "embed",
 				"mixer_name": "mixer"

@@ -6,7 +6,7 @@
 //! - `begin_frame_flat_color(mesh, camera, material)` — solid-color draw call.
 //! - `begin_frame_unlit(mesh, camera, material)` — textured unlit draw call.
 //! - `begin_frame_scene(scene, camera)` — material-dispatched scene draw
-//!   (Standard Surface PBR; requires graphics path and non-empty scene).
+//!   (Surface PBR; requires graphics path and non-empty scene).
 //!
 //! `submit_frame` returns a [`RenderFrame`] carrying the color `Texture` and
 //! exact producer `Event` for every path.
@@ -21,11 +21,11 @@ use std::{
 
 use crate::{
 	Color, Engine, Error, Event, Result,
-	render::material::{FlatColorMaterial, StandardSurfaceMaterial, TextureHandle, UnlitMaterial},
+	render::material::{FlatColorMaterial, SurfaceMaterial, TextureHandle, UnlitMaterial},
 	runtime::{
 		FlatColorPipeline, GraphicsPipeline, MeshBuffer, NativeRgbaImage, RenderTarget, SceneDrawCmd,
-		StandardSurfaceBlendPipeline, StandardSurfaceDescriptorArena, StandardSurfaceDescriptorLayouts,
-		StandardSurfacePipeline, UnlitDescriptorArena, UnlitDescriptorLayouts, UnlitPipeline,
+		SurfaceBlendPipeline, SurfaceDescriptorArena, SurfaceDescriptorLayouts, SurfacePipeline,
+		UnlitDescriptorArena, UnlitDescriptorLayouts, UnlitPipeline,
 	},
 };
 
@@ -53,7 +53,7 @@ pub struct RendererConfig {
 	/// Background clear color (linear RGBA, each component 0.0–1.0).
 	pub clear_color: Color,
 	/// Normalized light direction (XYZ) pointing from the surface toward the
-	/// light; used by the vertex-color-lit and standard-surface paths.
+	/// light; used by the vertex-color-lit and surface paths.
 	pub light_direction: [f32; 3],
 	/// Ambient light intensity (0.0–1.0) for the vertex-color-lit path.
 	pub ambient: f32,
@@ -120,17 +120,17 @@ pub(super) struct RendererState {
 	/// Owned descriptor set layouts for the unlit pipeline (set 1).
 	/// Must be declared after `unlit_pipeline` so it drops after the pipeline.
 	_unlit_layouts: Option<UnlitDescriptorLayouts>,
-	/// Standard Surface PBR material pipeline (opaque pass).
-	standard_surface_pipeline: Option<StandardSurfacePipeline>,
-	/// Standard Surface alpha-blend pipeline (transparent pass).
-	/// Must be declared before `_standard_surface_layouts` so it drops before
-	/// the layout — but after `standard_surface_pipeline` so destroy order is
+	/// Surface PBR material pipeline (opaque pass).
+	surface_pipeline: Option<SurfacePipeline>,
+	/// Surface alpha-blend pipeline (transparent pass).
+	/// Must be declared before `_surface_layouts` so it drops before
+	/// the layout — but after `surface_pipeline` so destroy order is
 	/// opaque then blend then layouts.
-	standard_surface_blend_pipeline: Option<StandardSurfaceBlendPipeline>,
-	standard_surface_descriptors: Option<StandardSurfaceDescriptorArena>,
-	/// Owned descriptor set layouts for the Standard Surface pipeline (sets 0+1).
-	/// Must be declared after `standard_surface_pipeline` so it drops after.
-	_standard_surface_layouts: Option<StandardSurfaceDescriptorLayouts>,
+	surface_blend_pipeline: Option<SurfaceBlendPipeline>,
+	surface_descriptors: Option<SurfaceDescriptorArena>,
+	/// Owned descriptor set layouts for the Surface pipeline (sets 0+1).
+	/// Must be declared after `surface_pipeline` so it drops after.
+	_surface_layouts: Option<SurfaceDescriptorLayouts>,
 	textures: HashMap<TextureHandle, Texture>,
 	white_texture: Option<Texture>,
 	slots: Vec<Slot>,
@@ -162,7 +162,7 @@ struct Building {
 	source: BuildingSource,
 }
 
-/// Per-draw packet carried in `BuildingSource::StandardSurface`.
+/// Per-draw packet carried in `BuildingSource::Surface`.
 struct PendingDraw {
 	index_start: u32,
 	index_count: u32,
@@ -198,8 +198,8 @@ enum BuildingSource {
 		push_data: [u8; 96],
 		texture: Rc<NativeRgbaImage>,
 	},
-	/// Standard Surface PBR — per-draw packets sharing one scene UBO.
-	StandardSurface {
+	/// Surface PBR — per-draw packets sharing one scene UBO.
+	Surface {
 		scene_data: Box<[u8; SCENE_LIGHTS_SIZE]>,
 		draws: Vec<PendingDraw>,
 	},
@@ -263,9 +263,9 @@ impl Drop for RendererState {
 		std::mem::forget(self.unlit_pipeline.take());
 		std::mem::forget(self.unlit_descriptors.take());
 		std::mem::forget(self._unlit_layouts.take());
-		std::mem::forget(self.standard_surface_pipeline.take());
-		std::mem::forget(self.standard_surface_descriptors.take());
-		std::mem::forget(self._standard_surface_layouts.take());
+		std::mem::forget(self.surface_pipeline.take());
+		std::mem::forget(self.surface_descriptors.take());
+		std::mem::forget(self._surface_layouts.take());
 	}
 }
 
@@ -275,10 +275,10 @@ impl Drop for RendererState {
 type DrawParams = (
 	u32,
 	Vec<u8>,
-	ash::vk::ShaderStageFlags,
-	ash::vk::Pipeline,
-	ash::vk::PipelineLayout,
-	Vec<ash::vk::DescriptorSet>,
+	vk::ShaderStageFlags,
+	vk::Pipeline,
+	vk::PipelineLayout,
+	Vec<vk::DescriptorSet>,
 );
 
 // ── Push-constant helpers ─────────────────────────────────────────────────────
@@ -343,8 +343,8 @@ fn build_unlit_push(mvp: &crate::vlm::Mat4, mat: &UnlitMaterial) -> [u8; 96] {
 	data
 }
 
-/// Build the 128-byte standard-surface push block (MVP + model matrix).
-fn build_standard_surface_push(mvp: &crate::vlm::Mat4, model: &crate::vlm::Mat4) -> [u8; 128] {
+/// Build the 128-byte surface push block (MVP + model matrix).
+fn build_surface_push(mvp: &crate::vlm::Mat4, model: &crate::vlm::Mat4) -> [u8; 128] {
 	let mut data = [0u8; 128];
 	for (i, row) in mvp.m.iter().enumerate() {
 		for (j, val) in row.iter().enumerate() {
@@ -381,7 +381,7 @@ fn build_scene_lights(config: &RendererConfig) -> [u8; SCENE_LIGHTS_SIZE] {
 	data
 }
 
-fn build_material_params(material: &StandardSurfaceMaterial) -> [u8; MATERIAL_PARAMS_SIZE] {
+fn build_material_params(material: &SurfaceMaterial) -> [u8; MATERIAL_PARAMS_SIZE] {
 	let mut data = [0_u8; MATERIAL_PARAMS_SIZE];
 	let mut write = |offset: usize, value: f32| {
 		data[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
@@ -461,10 +461,10 @@ impl<'engine> Renderer<'engine> {
 			unlit_pipeline,
 			unlit_descriptors,
 			unlit_layouts,
-			standard_surface_pipeline,
-			standard_surface_blend_pipeline,
-			standard_surface_descriptors,
-			standard_surface_layouts,
+			surface_pipeline,
+			surface_blend_pipeline,
+			surface_descriptors,
+			surface_layouts,
 		) = if mesh_enabled {
 			let vcl = handle.create_graphics_pipeline()?;
 			let fc = handle.create_flat_color_pipeline()?;
@@ -472,27 +472,29 @@ impl<'engine> Renderer<'engine> {
 			let unlit_descriptors = handle
 				.create_unlit_descriptor_arena(unlit_layouts.sampler_layout, config.target_slot_count)?;
 			let unlit = handle.create_unlit_pipeline(unlit_layouts.sampler_layout)?;
-			let ss_layouts = handle.create_standard_surface_descriptor_layouts()?;
-			let ss_descriptors = handle.create_standard_surface_descriptor_arena(
-				ss_layouts.scene_layout,
-				ss_layouts.material_layout,
+			let surface_layouts = handle.create_surface_descriptor_layouts()?;
+			let surface_descriptors = handle.create_surface_descriptor_arena(
+				surface_layouts.scene_layout,
+				surface_layouts.material_layout,
 				config.target_slot_count,
 				config.max_materials_per_scene,
 			)?;
-			let ss = handle
-				.create_standard_surface_pipeline(ss_layouts.scene_layout, ss_layouts.material_layout)?;
+			let surface = handle.create_surface_pipeline(
+				surface_layouts.scene_layout,
+				surface_layouts.material_layout,
+			)?;
 			// The blend pipeline reuses the opaque pipeline's layout.
-			let ss_blend = handle.create_standard_surface_blend_pipeline(ss.layout())?;
+			let surface_blend = handle.create_surface_blend_pipeline(surface.layout())?;
 			(
 				Some(vcl),
 				Some(fc),
 				Some(unlit),
 				Some(unlit_descriptors),
 				Some(unlit_layouts),
-				Some(ss),
-				Some(ss_blend),
-				Some(ss_descriptors),
-				Some(ss_layouts),
+				Some(surface),
+				Some(surface_blend),
+				Some(surface_descriptors),
+				Some(surface_layouts),
 			)
 		} else {
 			(None, None, None, None, None, None, None, None, None)
@@ -508,16 +510,18 @@ impl<'engine> Renderer<'engine> {
 			let graphics = if mesh_enabled {
 				let target = handle.allocate_render_target(config.width, config.height)?;
 				let vertex_buf =
-					handle.allocate_mesh_buffer(vertex_cap, ash::vk::BufferUsageFlags::VERTEX_BUFFER)?;
+					handle.allocate_mesh_buffer(vertex_cap, vk::BufferUsageFlagBits::VERTEX_BUFFER_BIT)?;
 				let index_buf =
-					handle.allocate_mesh_buffer(index_cap, ash::vk::BufferUsageFlags::INDEX_BUFFER)?;
-				let scene_uniform = handle
-					.allocate_mesh_buffer(SCENE_LIGHTS_SIZE, ash::vk::BufferUsageFlags::UNIFORM_BUFFER)?;
+					handle.allocate_mesh_buffer(index_cap, vk::BufferUsageFlagBits::INDEX_BUFFER_BIT)?;
+				let scene_uniform = handle.allocate_mesh_buffer(
+					SCENE_LIGHTS_SIZE,
+					vk::BufferUsageFlagBits::UNIFORM_BUFFER_BIT,
+				)?;
 				let mut material_uniforms = Vec::with_capacity(config.max_materials_per_scene as usize);
 				for _ in 0..config.max_materials_per_scene {
 					material_uniforms.push(handle.allocate_mesh_buffer(
 						MATERIAL_PARAMS_SIZE,
-						ash::vk::BufferUsageFlags::UNIFORM_BUFFER,
+						vk::BufferUsageFlagBits::UNIFORM_BUFFER_BIT,
 					)?);
 				}
 				Some(GraphicsSlot {
@@ -547,10 +551,10 @@ impl<'engine> Renderer<'engine> {
 				unlit_pipeline,
 				unlit_descriptors,
 				_unlit_layouts: unlit_layouts,
-				standard_surface_pipeline,
-				standard_surface_blend_pipeline,
-				standard_surface_descriptors,
-				_standard_surface_layouts: standard_surface_layouts,
+				surface_pipeline,
+				surface_blend_pipeline,
+				surface_descriptors,
+				_surface_layouts: surface_layouts,
 				textures: HashMap::new(),
 				white_texture,
 				slots,
@@ -761,9 +765,9 @@ impl<'engine> Renderer<'engine> {
 	/// UBOs and descriptor sets within the same render pass.
 	///
 	/// Material dispatch:
-	/// - `Material::Standard` → Standard Surface PBR pipeline.
-	/// - `None` (no assignment) → `StandardSurfaceMaterial::default()`.
-	/// - Non-Standard materials and scenes exceeding `max_materials_per_scene`
+	/// - `Material::Surface` → Surface PBR pipeline.
+	/// - `None` (no assignment) → `SurfaceMaterial::default()`.
+	/// - Non-Surface materials and scenes exceeding `max_materials_per_scene`
 	///   are rejected.
 	///
 	/// # Errors
@@ -772,7 +776,7 @@ impl<'engine> Renderer<'engine> {
 	/// validation or produces an empty mesh, the compiled vertex/index count
 	/// exceeds configured capacity, more than `max_materials_per_scene`
 	/// distinct materials are referenced, any assigned material is not
-	/// `Material::Standard`, or buffer write fails.
+	/// `Material::Surface`, or buffer write fails.
 	pub fn begin_frame_scene(&self, scene: &Scene, camera: &Camera) -> Result<()> {
 		self.require_graphics("scene")?;
 		camera.validate()?;
@@ -803,10 +807,10 @@ impl<'engine> Renderer<'engine> {
 			}
 		}
 
-		// ── Validate all materials are Standard ────────────────────────────
+		// ── Validate all materials are Surface ────────────────────────────
 		let mvp = camera.get_view_projection_matrix();
 		let model = crate::vlm::Mat4::identity();
-		let push_data = build_standard_surface_push(&mvp, &model);
+		let push_data = build_surface_push(&mvp, &model);
 		let scene_data = Box::new(build_scene_lights(&self.config));
 
 		let mut draws: Vec<PendingDraw> = Vec::with_capacity(packets.len());
@@ -816,26 +820,26 @@ impl<'engine> Renderer<'engine> {
 				.material_id
 				.and_then(|id| scene.materials.iter().find(|m| m.id == id))
 				.map(|entry| &entry.data);
-			let standard = match material {
-				Some(super::Material::Standard(m)) => m.clone(),
+			let surface = match material {
+				Some(super::Material::Surface(m)) => m.clone(),
 				Some(_) => {
 					return Err(Error::invalid_argument(
-						"render::Renderer scene path requires Standard materials; \
+						"render::Renderer scene path requires Surface materials; \
 						 FlatColor and Unlit are not supported in begin_frame_scene",
 					));
 				}
-				None => StandardSurfaceMaterial::default(),
+				None => SurfaceMaterial::default(),
 			};
 			draws.push(PendingDraw {
 				index_start: packet.index_start,
 				index_count: packet.index_count,
 				push_data,
 				mat_index,
-				material_data: Box::new(build_material_params(&standard)),
-				base_texture: standard.base_color_texture,
-				orm_texture: standard.orm_texture,
-				normal_texture: standard.normal_texture,
-				is_blend: standard.alpha_mode == crate::render::material::AlphaMode::Blend,
+				material_data: Box::new(build_material_params(&surface)),
+				base_texture: surface.base_color_texture,
+				orm_texture: surface.orm_texture,
+				normal_texture: surface.normal_texture,
+				is_blend: surface.alpha_mode == crate::render::material::AlphaMode::Blend,
 			});
 		}
 
@@ -847,7 +851,7 @@ impl<'engine> Renderer<'engine> {
 		self.state.borrow_mut().building = Some(Building {
 			slot: slot_idx,
 			generation,
-			source: BuildingSource::StandardSurface { scene_data, draws },
+			source: BuildingSource::Surface { scene_data, draws },
 		});
 		Ok(())
 	}
@@ -889,24 +893,24 @@ impl<'engine> Renderer<'engine> {
 				})
 			}
 
-			// ── Standard Surface — multi-draw scene path ─────────────────────
-			BuildingSource::StandardSurface { scene_data, draws } => {
+			// ── Surface — multi-draw scene path ─────────────────────
+			BuildingSource::Surface { scene_data, draws } => {
 				let handle = self.engine.handle();
 				let producer = {
 					let mut state = self.state.borrow_mut();
 					// Resolve pipeline and arena handles.
 					let p = state
-						.standard_surface_pipeline
+						.surface_pipeline
 						.as_ref()
-						.ok_or_else(|| Error::failed_precondition("standard-surface pipeline unavailable"))?
+						.ok_or_else(|| Error::failed_precondition("surface pipeline unavailable"))?
 						.raw();
-					let pl = state.standard_surface_pipeline.as_ref().unwrap().layout();
+					let pl = state.surface_pipeline.as_ref().unwrap().layout();
 					// Write scene UBO and build per-draw SceneDrawCmds.
 					let slot_ref = &mut state.slots[building.slot];
 					let gfx = slot_ref
 						.graphics
 						.as_mut()
-						.ok_or_else(|| Error::failed_precondition("standard-surface graphics slot missing"))?;
+						.ok_or_else(|| Error::failed_precondition("surface graphics slot missing"))?;
 					gfx.scene_uniform.write_and_flush(scene_data.as_ref())?;
 					let scene_raw = gfx.scene_uniform.raw();
 					// Resolve the white-texture view for sampler fallback.
@@ -916,15 +920,13 @@ impl<'engine> Renderer<'engine> {
 						.and_then(|t| t.native())
 						.map(|n| n.view())
 						.ok_or_else(|| {
-							Error::failed_precondition("standard-surface white fallback texture unavailable")
+							Error::failed_precondition("surface white fallback texture unavailable")
 						})?;
 					// Write scene descriptor set.
 					let scene_set = state
-						.standard_surface_descriptors
+						.surface_descriptors
 						.as_ref()
-						.ok_or_else(|| {
-							Error::failed_precondition("standard-surface descriptor arena unavailable")
-						})?
+						.ok_or_else(|| Error::failed_precondition("surface descriptor arena unavailable"))?
 						.write_scene_slot(building.slot, scene_raw, SCENE_LIGHTS_SIZE as u64)?;
 					// Per-draw: write material UBO + descriptor set.
 					let mut draw_cmds: Vec<SceneDrawCmd> = Vec::with_capacity(draws.len());
@@ -933,12 +935,12 @@ impl<'engine> Renderer<'engine> {
 							.graphics
 							.as_mut()
 							.ok_or_else(|| {
-								Error::failed_precondition("standard-surface graphics slot missing (material)")
+								Error::failed_precondition("surface graphics slot missing (material)")
 							})?
 							.material_uniforms
 							.get(draw.mat_index)
 							.ok_or_else(|| {
-								Error::internal("standard-surface material UBO index exceeds allocated count")
+								Error::internal("surface material UBO index exceeds allocated count")
 							})?;
 						mat_uniform.write_and_flush(draw.material_data.as_ref())?;
 						let mat_raw = mat_uniform.raw();
@@ -958,7 +960,7 @@ impl<'engine> Renderer<'engine> {
 							.and_then(|t| t.native())
 							.map(|n| n.view());
 						let mat_set = state
-							.standard_surface_descriptors
+							.surface_descriptors
 							.as_ref()
 							.unwrap()
 							.write_material_slot(
@@ -992,11 +994,9 @@ impl<'engine> Renderer<'engine> {
 					});
 					// Record and submit.
 					let blend_p = state
-						.standard_surface_blend_pipeline
+						.surface_blend_pipeline
 						.as_ref()
-						.ok_or_else(|| {
-							Error::failed_precondition("standard-surface blend pipeline unavailable")
-						})?
+						.ok_or_else(|| Error::failed_precondition("surface blend pipeline unavailable"))?
 						.raw();
 					let slot_mut = &mut state.slots[building.slot];
 					let gfx_mut = slot_mut.graphics.as_mut().expect("graphics slot populated");
@@ -1005,7 +1005,7 @@ impl<'engine> Renderer<'engine> {
 						&gfx_mut.vertex_buf,
 						&gfx_mut.index_buf,
 						self.config.clear_color.to_array(),
-						ash::vk::ShaderStageFlags::VERTEX,
+						vk::ShaderStageFlagBits::VERTEX_BIT,
 						p,
 						blend_p,
 						pl,
@@ -1261,7 +1261,7 @@ impl<'engine> Renderer<'engine> {
 				Ok((
 					*index_count,
 					push_data.to_vec(),
-					ash::vk::ShaderStageFlags::VERTEX,
+					vk::ShaderStageFlagBits::VERTEX_BIT,
 					p.raw(),
 					p.layout(),
 					Vec::new(),
@@ -1278,7 +1278,7 @@ impl<'engine> Renderer<'engine> {
 				Ok((
 					*index_count,
 					push_data.to_vec(),
-					ash::vk::ShaderStageFlags::VERTEX | ash::vk::ShaderStageFlags::FRAGMENT,
+					vk::ShaderStageFlagBits::VERTEX_BIT | vk::ShaderStageFlagBits::FRAGMENT_BIT,
 					p.raw(),
 					p.layout(),
 					Vec::new(),
@@ -1301,14 +1301,14 @@ impl<'engine> Renderer<'engine> {
 				Ok((
 					*index_count,
 					push_data.to_vec(),
-					ash::vk::ShaderStageFlags::VERTEX | ash::vk::ShaderStageFlags::FRAGMENT,
+					vk::ShaderStageFlagBits::VERTEX_BIT | vk::ShaderStageFlagBits::FRAGMENT_BIT,
 					p.raw(),
 					p.layout(),
 					vec![set],
 				))
 			}
-			BuildingSource::StandardSurface { .. } => {
-				unreachable!("StandardSurface source handled in the StandardSurface match arm")
+			BuildingSource::Surface { .. } => {
+				unreachable!("Surface source handled in the Surface match arm")
 			}
 			BuildingSource::Texture(_) => {
 				unreachable!("Texture source handled before resolve_graphics_source")

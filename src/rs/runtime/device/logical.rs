@@ -9,7 +9,7 @@ use crate::{
 };
 
 use super::{
-	Device,
+	Device, NativeFlagBits,
 	buffer::{MeshBuffer, RecycledBuffer},
 	command::{CommandPool, CommandPoolKind, RecordedCommandBuffer, ReusableCommandBuffer},
 	commands::{RenderingCommands, SyncCommands},
@@ -19,7 +19,7 @@ use super::{
 	image::RenderTarget,
 	info::log_compute_device,
 	physical::DevicePhysical,
-	pipeline::ComputePipeline,
+	pipeline::{self, ComputePipeline},
 	timeline::Timeline,
 	timestamp::TimestampPair,
 };
@@ -39,35 +39,35 @@ pub(crate) struct SceneDrawCmd {
 	pub index_start: u32,
 	/// Index count for this draw (multiple of 3).
 	pub index_count: u32,
-	/// Raw push constant bytes (must be `STANDARD_SURFACE_PUSH_SIZE` long).
+	/// Raw push constant bytes (must be `SURFACE_PUSH_SIZE` long).
 	pub push_data: Vec<u8>,
 	/// Resolved material descriptor set (set 1).
-	pub material_set: ash::vk::DescriptorSet,
+	pub material_set: vk::DescriptorSet,
 	/// When `true` this draw belongs to the transparent/blend pass.
 	pub is_blend: bool,
 }
 
 /// Vulkan executor resources, owned once by Device; never independently retained.
 pub(in crate::runtime) struct DeviceLogical {
-	handle: ash::Device,
+	handle: ManuallyDrop<std::sync::Arc<vk::Device>>,
 	sync_commands: SyncCommands,
 	rendering_commands: RenderingCommands,
-	allocator: ManuallyDrop<vk_mem::Allocator>,
+	allocator: ManuallyDrop<vk::mem::SynchronizedAllocator<'static>>,
 	command_pool: Mutex<CommandPool>,
 	graphics_command_pool: Mutex<Option<CommandPool>>,
 	video_decode_command_pool: Mutex<Option<CommandPool>>,
 	timeline: Timeline,
 	descriptors: DescriptorHeap,
 	/// Shared pipeline layout for UI compute pipelines (128-byte push range).
-	ui_pipeline_layout: ash::vk::PipelineLayout,
+	ui_pipeline_layout: vk::PipelineLayout,
 	storage_pool: Mutex<StoragePool>,
 	// None means unsupported; an empty OnceLock means admitted but not compiled.
 	pipelines: Vec<Option<OnceLock<ComputePipeline>>>,
-	pipeline_creation: Mutex<()>,
-	compute_queue: ash::vk::Queue,
-	graphics_queue: Option<ash::vk::Queue>,
-	video_decode_queue: Option<ash::vk::Queue>,
-	video_encode_queue: Option<ash::vk::Queue>,
+	pipeline_creation: Mutex<PipelineCreation>,
+	compute_queue: vk::Queue,
+	graphics_queue: Option<vk::Queue>,
+	video_decode_queue: Option<vk::Queue>,
+	video_encode_queue: Option<vk::Queue>,
 	timestamp_period_ns: f64,
 	compute_timestamp_valid_bits: u32,
 }
@@ -76,6 +76,34 @@ pub(in crate::runtime) struct DeviceLogical {
 struct StoragePool {
 	free: Vec<RecycledBuffer>,
 	bytes: usize,
+}
+
+/// Serializes compute-pipeline creation and every host access to the primary
+/// pipeline cache it owns.
+///
+/// Vulkan requires external synchronization for host access to one
+/// `VkPipelineCache`: lazy creation in `require_kernel`, the primary-cache
+/// snapshot, and the final worker merge all hold this lock, while parallel
+/// preload workers compile against their own per-worker caches.
+struct PipelineCreation {
+	cache: Option<pipeline::PipelineCache>,
+}
+
+/// Exclusive host access to the primary pipeline cache.
+///
+/// Vulkan requires external synchronization for every host access to one
+/// `VkPipelineCache`; holding this guard across a `vkCreate*Pipelines` call
+/// satisfies that requirement. The handle is `NULL` when the driver cache is
+/// absent, which requests uncached pipeline creation.
+pub(in crate::runtime) struct PipelineCacheGuard<'a> {
+	_guard: std::sync::MutexGuard<'a, PipelineCreation>,
+	raw: vk::PipelineCache,
+}
+
+impl PipelineCacheGuard<'_> {
+	pub(in crate::runtime) const fn raw(&self) -> vk::PipelineCache {
+		self.raw
+	}
 }
 
 impl Device {
@@ -144,15 +172,18 @@ impl Device {
 	}
 
 	pub(in crate::runtime) fn has_graphics_queue(&self) -> bool {
-		self.physical.profile == ExecutionProfile::Strict
-			&& self.logical.graphics_queue.is_some()
-			&& self.configuration.features().dynamic_rendering
+		self.logical.graphics_queue.is_some() && self.configuration.features().dynamic_rendering
 	}
 
 	pub(in crate::runtime) fn require_ui_bindings(&self) -> Result<()> {
-		if self.physical.profile == ExecutionProfile::Compatibility {
+		if !self.optimal_format_supports(
+			vk::Format::R8G8B8A8_UNORM,
+			vk::FormatFeatureFlagBits::STORAGE_IMAGE_BIT
+				| vk::FormatFeatureFlagBits::TRANSFER_SRC_BIT
+				| vk::FormatFeatureFlagBits::TRANSFER_DST_BIT,
+		) {
 			return Err(Error::missing_capability(
-				"UI compositor has no validated bounded shader and storage-image binding path",
+				"UI requires RGBA8 storage and transfer image support",
 			));
 		}
 		Ok(())
@@ -161,70 +192,106 @@ impl Device {
 	pub(in crate::runtime) fn supports_swapchain(&self) -> bool {
 		self
 			.configuration
-			.extension_enabled(ash::khr::swapchain::NAME)
+			.extension_enabled(vk::KHR_SWAPCHAIN_EXTENSION_NAME)
 	}
 
 	pub(in crate::runtime) fn optimal_format_supports(
 		&self,
-		format: ash::vk::Format,
-		required: ash::vk::FormatFeatureFlags,
+		format: vk::Format,
+		required: vk::FormatFeatureFlags,
 	) -> bool {
 		// SAFETY: the physical device and its owning instance are retained by this
 		// Device. This query only reads immutable format capabilities.
-		let properties = unsafe {
-			self
-				.instance
-				.raw()
-				.get_physical_device_format_properties(self.physical.handle, format)
+		let mut properties = vk::FormatProperties::default();
+		// SAFETY: the physical device and its owning instance are retained by this
+		// Device; `properties` is live and writable for the call.
+		let result = unsafe {
+			self.instance.raw().get_physical_device_format_properties(
+				self.physical.handle,
+				format,
+				&mut properties,
+			)
 		};
-		properties.optimal_tiling_features.contains(required)
+		matches!(result, Ok(())) && properties.optimal_tiling_features.contains(required)
+	}
+
+	/// Lock the pipeline-creation state and return the primary cache handle.
+	///
+	/// The returned guard holds the creation lock for its lifetime; pass
+	/// [`PipelineCacheGuard::raw`] to `vkCreate*Pipelines` while the guard is
+	/// alive. A missing cache yields `NULL` for uncached creation.
+	pub(in crate::runtime) fn pipeline_cache(&self) -> Result<PipelineCacheGuard<'_>> {
+		let guard = self
+			.logical
+			.pipeline_creation
+			.lock()
+			.map_err(|_| Error::failed_precondition("Vulkan pipeline creation lock is poisoned"))?;
+		let raw = guard
+			.cache
+			.as_ref()
+			.map_or(vk::PipelineCache::NULL, pipeline::PipelineCache::raw);
+		Ok(PipelineCacheGuard { _guard: guard, raw })
 	}
 
 	/// Create the vertex-color lit graphics pipeline for this device.
 	pub(in crate::runtime) fn create_graphics_pipeline(
 		&self,
 	) -> Result<super::pipeline::GraphicsPipeline> {
-		super::pipeline::GraphicsPipeline::new(&self.logical.handle, self.physical.limits)
+		let cache = self.pipeline_cache()?;
+		super::pipeline::GraphicsPipeline::new(
+			std::sync::Arc::clone(&self.logical.handle),
+			self.physical.limits,
+			cache.raw(),
+		)
 	}
 
 	/// Create the flat-color material pipeline for this device.
 	pub(in crate::runtime) fn create_flat_color_pipeline(
 		&self,
 	) -> Result<super::pipeline::FlatColorPipeline> {
-		super::pipeline::FlatColorPipeline::new(&self.logical.handle, self.physical.limits)
+		let cache = self.pipeline_cache()?;
+		super::pipeline::FlatColorPipeline::new(
+			std::sync::Arc::clone(&self.logical.handle),
+			self.physical.limits,
+			cache.raw(),
+		)
 	}
 
 	/// Create the owned descriptor set layouts for the unlit pipeline.
 	pub(in crate::runtime) fn create_unlit_descriptor_layouts(
 		&self,
 	) -> Result<super::pipeline::UnlitDescriptorLayouts> {
-		super::pipeline::UnlitDescriptorLayouts::new(&self.logical.handle)
+		super::pipeline::UnlitDescriptorLayouts::new(std::sync::Arc::clone(&self.logical.handle))
 	}
 
 	pub(in crate::runtime) fn create_unlit_descriptor_arena(
 		&self,
-		layout: ash::vk::DescriptorSetLayout,
+		layout: vk::DescriptorSetLayout,
 		set_count: u32,
 	) -> Result<super::pipeline::UnlitDescriptorArena> {
-		super::pipeline::UnlitDescriptorArena::new(&self.logical.handle, layout, set_count)
+		super::pipeline::UnlitDescriptorArena::new(
+			std::sync::Arc::clone(&self.logical.handle),
+			layout,
+			set_count,
+		)
 	}
 
-	/// Create the owned descriptor set layouts for the Standard Surface pipeline.
-	pub(in crate::runtime) fn create_standard_surface_descriptor_layouts(
+	/// Create the owned descriptor set layouts for the Surface pipeline.
+	pub(in crate::runtime) fn create_surface_descriptor_layouts(
 		&self,
-	) -> Result<super::pipeline::StandardSurfaceDescriptorLayouts> {
-		super::pipeline::StandardSurfaceDescriptorLayouts::new(&self.logical.handle)
+	) -> Result<super::pipeline::SurfaceDescriptorLayouts> {
+		super::pipeline::SurfaceDescriptorLayouts::new(std::sync::Arc::clone(&self.logical.handle))
 	}
 
-	pub(in crate::runtime) fn create_standard_surface_descriptor_arena(
+	pub(in crate::runtime) fn create_surface_descriptor_arena(
 		&self,
-		scene_layout: ash::vk::DescriptorSetLayout,
-		material_layout: ash::vk::DescriptorSetLayout,
+		scene_layout: vk::DescriptorSetLayout,
+		material_layout: vk::DescriptorSetLayout,
 		set_count: u32,
 		max_materials_per_slot: u32,
-	) -> Result<super::pipeline::StandardSurfaceDescriptorArena> {
-		super::pipeline::StandardSurfaceDescriptorArena::new(
-			&self.logical.handle,
+	) -> Result<super::pipeline::SurfaceDescriptorArena> {
+		super::pipeline::SurfaceDescriptorArena::new(
+			std::sync::Arc::clone(&self.logical.handle),
 			scene_layout,
 			material_layout,
 			set_count,
@@ -238,44 +305,57 @@ impl Device {
 	/// image sampler at binding 0, the base-color texture).
 	pub(in crate::runtime) fn create_unlit_pipeline(
 		&self,
-		sampler_layout: ash::vk::DescriptorSetLayout,
+		sampler_layout: vk::DescriptorSetLayout,
 	) -> Result<super::pipeline::UnlitPipeline> {
-		super::pipeline::UnlitPipeline::new(&self.logical.handle, sampler_layout, self.physical.limits)
-	}
-
-	/// Create the Standard Surface PBR pipeline for this device.
-	///
-	/// `scene_layout` is set 0 (scene lights UBO).
-	/// `material_layout` is set 1 (textures + material params UBO).
-	pub(in crate::runtime) fn create_standard_surface_pipeline(
-		&self,
-		scene_layout: ash::vk::DescriptorSetLayout,
-		material_layout: ash::vk::DescriptorSetLayout,
-	) -> Result<super::pipeline::StandardSurfacePipeline> {
-		super::pipeline::StandardSurfacePipeline::new(
-			&self.logical.handle,
-			scene_layout,
-			material_layout,
+		let cache = self.pipeline_cache()?;
+		super::pipeline::UnlitPipeline::new(
+			std::sync::Arc::clone(&self.logical.handle),
+			sampler_layout,
 			self.physical.limits,
+			cache.raw(),
 		)
 	}
 
-	/// Create the Standard Surface transparent-blend pipeline for this device.
+	/// Create the Surface PBR pipeline for this device.
+	///
+	/// `scene_layout` is set 0 (scene lights UBO).
+	/// `material_layout` is set 1 (textures + material params UBO).
+	pub(in crate::runtime) fn create_surface_pipeline(
+		&self,
+		scene_layout: vk::DescriptorSetLayout,
+		material_layout: vk::DescriptorSetLayout,
+	) -> Result<super::pipeline::SurfacePipeline> {
+		let cache = self.pipeline_cache()?;
+		super::pipeline::SurfacePipeline::new(
+			std::sync::Arc::clone(&self.logical.handle),
+			scene_layout,
+			material_layout,
+			self.physical.limits,
+			cache.raw(),
+		)
+	}
+
+	/// Create the Surface transparent-blend pipeline for this device.
 	///
 	/// Shares the same pipeline layout (and descriptor set layouts) as the
 	/// opaque variant; only the depth-write and blend state differ.
-	pub(in crate::runtime) fn create_standard_surface_blend_pipeline(
+	pub(in crate::runtime) fn create_surface_blend_pipeline(
 		&self,
-		layout: ash::vk::PipelineLayout,
-	) -> Result<super::pipeline::StandardSurfaceBlendPipeline> {
-		super::pipeline::StandardSurfaceBlendPipeline::new(&self.logical.handle, layout)
+		layout: vk::PipelineLayout,
+	) -> Result<super::pipeline::SurfaceBlendPipeline> {
+		let cache = self.pipeline_cache()?;
+		super::pipeline::SurfaceBlendPipeline::new(
+			std::sync::Arc::clone(&self.logical.handle),
+			layout,
+			cache.raw(),
+		)
 	}
 
 	/// Allocate a host-visible persistently-mapped buffer for mesh vertex or index data.
 	pub(in crate::runtime) fn allocate_mesh_buffer(
 		self: &Arc<Self>,
 		size: usize,
-		usage: ash::vk::BufferUsageFlags,
+		usage: vk::BufferUsageFlags,
 	) -> Result<MeshBuffer> {
 		MeshBuffer::new(self, size, usage)
 	}
@@ -316,7 +396,7 @@ impl Device {
 		&self.instance
 	}
 
-	pub(in crate::runtime) fn graphics_queue_handle(&self) -> Result<ash::vk::Queue> {
+	pub(in crate::runtime) fn graphics_queue_handle(&self) -> Result<vk::Queue> {
 		self
 			.logical
 			.graphics_queue
@@ -341,14 +421,14 @@ impl Device {
 		)
 	}
 
-	pub(in crate::runtime) fn allocator(&self) -> &vk_mem::Allocator {
+	pub(in crate::runtime) fn allocator(&self) -> &vk::mem::SynchronizedAllocator<'static> {
 		&self.logical.allocator
 	}
 
 	pub(in crate::runtime) fn bind_storage_buffer(
 		&self,
-		buffer: ash::vk::Buffer,
-		size: ash::vk::DeviceSize,
+		buffer: vk::Buffer,
+		size: vk::DeviceSize,
 	) -> Result<u32> {
 		self
 			.logical
@@ -361,24 +441,24 @@ impl Device {
 	}
 
 	/// Return the shared descriptor set for command recording.
-	pub(in crate::runtime) fn descriptor_set(&self) -> ash::vk::DescriptorSet {
+	pub(in crate::runtime) fn descriptor_set(&self) -> vk::DescriptorSet {
 		self.logical.descriptors.set()
 	}
 
 	pub(in crate::runtime) fn bounded_descriptor_layout(
 		&self,
 		count: u32,
-	) -> Option<ash::vk::DescriptorSetLayout> {
+	) -> Option<vk::DescriptorSetLayout> {
 		self.logical.descriptors.bounded_layout(count)
 	}
 
 	/// Return the shared pipeline layout for UI compute pipelines.
-	pub(in crate::runtime) fn ui_pipeline_layout(&self) -> ash::vk::PipelineLayout {
+	pub(in crate::runtime) fn ui_pipeline_layout(&self) -> vk::PipelineLayout {
 		self.logical.ui_pipeline_layout
 	}
 
 	/// Allocate one STORAGE_IMAGE descriptor slot (binding=1) and write `view`.
-	pub(in crate::runtime) fn bind_storage_image(&self, view: ash::vk::ImageView) -> Result<u32> {
+	pub(in crate::runtime) fn bind_storage_image(&self, view: vk::ImageView) -> Result<u32> {
 		self
 			.logical
 			.descriptors
@@ -437,7 +517,7 @@ impl Device {
 		// SAFETY: the pool exclusively owns this completed buffer/allocation pair,
 		// and this device owns the allocator that created it.
 		unsafe {
-			self
+			let _ = self
 				.allocator()
 				.destroy_buffer(buffer.handle, &mut buffer.allocation);
 		}
@@ -452,9 +532,11 @@ impl Device {
 		seed: super::secret_buffer::SecretBinding<'a>,
 		private: super::secret_buffer::SecretBinding<'a>,
 		public: &Buffer,
+		workspace: super::secret_buffer::SecretBinding<'a>,
 		k: u32,
 	) -> Result<super::pqc::PreparedSecretKeygen<'a>> {
-		let operands = super::pqc::SecretKeygenOperands::mlkem(self, seed, private, public, k)?;
+		let operands =
+			super::pqc::SecretKeygenOperands::mlkem(self, seed, private, public, workspace, k)?;
 		self.prepare_secret_keygen(operands)
 	}
 
@@ -518,7 +600,7 @@ impl Device {
 				// Serialize fallible first-use creation without publishing partial state.
 				// The OnceLock keeps immutable pipeline borrows valid through recording;
 				// Device remains the sole retained owner and destruction boundary.
-				let _creation = self
+				let mut creation = self
 					.logical
 					.pipeline_creation
 					.lock()
@@ -540,8 +622,42 @@ impl Device {
 					} else {
 						self.logical.descriptors.layout()
 					};
-					let created =
-						ComputePipeline::new(&self.logical.handle, layout, artifact, self.physical.limits)?;
+					let cache = creation
+						.cache
+						.as_ref()
+						.map_or(vk::PipelineCache::NULL, pipeline::PipelineCache::raw);
+					let created = match ComputePipeline::new(
+						std::sync::Arc::clone(&self.logical.handle),
+						layout,
+						artifact,
+						self.physical.limits,
+						cache,
+					) {
+						Ok(pipeline) => pipeline,
+						Err(first_error) => {
+							if creation.cache.is_none() {
+								return Err(first_error);
+							}
+							// A corrupt or incompatible persisted blob must not make
+							// the shader unloadable; drop the cache and the file,
+							// then retry creation uncached.
+							crate::log_warn!(
+								crate::LogComponent::COMPUTE,
+								"pipeline cache: creation failed for {}; dropping {}",
+								kernel.report_name(),
+								pipeline::pipeline_cache_path().display()
+							);
+							creation.cache = None;
+							let _ = crate::Filesystem::remove_file(&pipeline::pipeline_cache_path());
+							ComputePipeline::new(
+								std::sync::Arc::clone(&self.logical.handle),
+								layout,
+								artifact,
+								self.physical.limits,
+								vk::PipelineCache::NULL,
+							)?
+						}
+					};
 					if let Err(mut duplicate) = slot.set(created) {
 						// A second publication would violate the serialized owning boundary.
 						// Destroy only our unpublished pipeline, preserving the retained one.
@@ -579,11 +695,219 @@ impl Device {
 		)))
 	}
 
-	pub(in crate::runtime) fn raw(&self) -> &ash::Device {
+	/// Compile every admitted-but-unbuilt kernel pipeline, spreading work
+	/// across `OA_SHADER_LOAD_THREADS` workers.
+	///
+	/// Vulkan requires external synchronization for one pipeline cache, so
+	/// each worker receives its own cache seeded with the primary cache's
+	/// snapshot; worker caches merge back into the primary cache only after
+	/// all workers join. A single worker (or a warm persisted cache) reuses
+	/// the serialized `require_kernel` path.
+	///
+	/// # Errors
+	/// Returns the last pipeline-creation failure after all jobs finish; one
+	/// failing shader does not stop the remaining pipelines from compiling.
+	pub(in crate::runtime) fn preload_pipelines(&self) -> Result<()> {
+		let mut jobs = Vec::new();
+		for kernel in KernelId::ALL {
+			let Some(Some(slot)) = self.logical.pipelines.get(kernel.index()) else {
+				continue;
+			};
+			if slot.get().is_some() {
+				continue;
+			}
+			let artifact = if self.physical.profile == ExecutionProfile::Compatibility {
+				kernel.bounded_artifact()
+			} else {
+				kernel.artifact()
+			};
+			let layout = if self.physical.profile == ExecutionProfile::Compatibility {
+				self
+					.logical
+					.descriptors
+					.bounded_layout(kernel.bounded_buffer_count())
+					.ok_or_else(|| {
+						Error::missing_capability("bounded pipeline descriptor layout is unavailable")
+					})?
+			} else {
+				self.logical.descriptors.layout()
+			};
+			jobs.push((kernel, artifact, layout));
+		}
+		if jobs.is_empty() {
+			return Ok(());
+		}
+
+		// Snapshot the primary cache once before workers start; the immutable
+		// seed gives every worker the warm data without sharing one cache.
+		// "warm" is the persisted-seed size, not the queried blob size — even a
+		// cold cache serializes a non-empty driver header.
+		let (initial, warm) = {
+			let creation = self
+				.logical
+				.pipeline_creation
+				.lock()
+				.map_err(|_| Error::failed_precondition("Vulkan pipeline creation lock is poisoned"))?;
+			let initial = creation
+				.cache
+				.as_ref()
+				.and_then(|cache| cache.data().ok())
+				.unwrap_or_default();
+			let warm = creation
+				.cache
+				.as_ref()
+				.is_some_and(|cache| cache.initial_data_bytes() != 0);
+			(initial, warm)
+		};
+		let configured = crate::EnvFlag::get_int("OA_SHADER_LOAD_THREADS", 0);
+		let hardware = std::thread::available_parallelism().map_or(1, |count| count.get());
+		let workers = if configured > 0 {
+			usize::try_from(configured).unwrap_or(64).min(64)
+		} else if warm {
+			1
+		} else {
+			(hardware / 2).clamp(1, 8)
+		}
+		.clamp(1, jobs.len());
+
+		crate::log_info!(
+			crate::LogComponent::COMPUTE,
+			"Loading {} shader pipeline{} on demand ({} thread{}, {} cache)",
+			jobs.len(),
+			if jobs.len() == 1 { "" } else { "s" },
+			workers,
+			if workers == 1 { "" } else { "s" },
+			if warm { "warm" } else { "cold" }
+		);
+		let load_begin = std::time::Instant::now();
+
+		let mut failures: Vec<(KernelId, Error)> = Vec::new();
+		if workers == 1 {
+			for (kernel, _, _) in &jobs {
+				if let Err(error) = self.require_kernel(*kernel) {
+					failures.push((*kernel, error));
+				}
+			}
+		} else {
+			let device = Arc::clone(&self.logical.handle);
+			let worker_caches = (0..workers)
+				.map(|_| pipeline::PipelineCache::new(Arc::clone(&device), &initial).ok())
+				.collect::<Vec<_>>();
+			let next = std::sync::atomic::AtomicUsize::new(0);
+			let worker_failures = Mutex::new(Vec::<(KernelId, Error)>::new());
+			let next_ref = &next;
+			let failures_ref = &worker_failures;
+			let jobs = &jobs;
+			let pipelines = &self.logical.pipelines;
+			let limits = self.physical.limits;
+			let device = &device;
+			std::thread::scope(|scope| {
+				for worker_cache in &worker_caches {
+					scope.spawn(move || {
+						let cache = worker_cache
+							.as_ref()
+							.map_or(vk::PipelineCache::NULL, pipeline::PipelineCache::raw);
+						loop {
+							let index = next_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+							let Some((kernel, artifact, layout)) = jobs.get(index) else {
+								break;
+							};
+							let Some(Some(slot)) = pipelines.get(kernel.index()) else {
+								continue;
+							};
+							if slot.get().is_some() {
+								continue;
+							}
+							// A corrupt or incompatible worker cache must not make
+							// the shader unloadable; retry this pipeline uncached
+							// without mutating the shared primary cache.
+							let created =
+								ComputePipeline::new(Arc::clone(device), *layout, artifact, limits, cache).or_else(
+									|_| {
+										ComputePipeline::new(
+											Arc::clone(device),
+											*layout,
+											artifact,
+											limits,
+											vk::PipelineCache::NULL,
+										)
+									},
+								);
+							match created {
+								Ok(pipeline) => {
+									if let Err(mut duplicate) = slot.set(pipeline) {
+										duplicate.destroy(device);
+									}
+								}
+								Err(error) => {
+									let _ = failures_ref
+										.lock()
+										.map(|mut failures| failures.push((*kernel, error)));
+								}
+							}
+						}
+					});
+				}
+			});
+			// Merge only after every worker has joined; sources and destination
+			// are then externally synchronized for vkMergePipelineCaches.
+			let creation = self
+				.logical
+				.pipeline_creation
+				.lock()
+				.map_err(|_| Error::failed_precondition("Vulkan pipeline creation lock is poisoned"))?;
+			if let Some(cache) = creation.cache.as_ref() {
+				let sources = worker_caches
+					.iter()
+					.flatten()
+					.map(pipeline::PipelineCache::raw)
+					.collect::<Vec<_>>();
+				if let Err(error) = cache.merge(&sources) {
+					crate::log_warn!(
+						crate::LogComponent::COMPUTE,
+						"pipeline cache: worker merge failed: {error}"
+					);
+				}
+			}
+			failures.append(&mut worker_failures.into_inner().unwrap_or_default());
+		}
+		let load_ms = load_begin.elapsed().as_secs_f64() * 1000.0;
+		for (kernel, error) in &failures {
+			crate::log_warn!(
+				crate::LogComponent::COMPUTE,
+				"Failed to load shader '{}' on demand: {}",
+				kernel.report_name(),
+				error
+			);
+		}
+		crate::log_info!(
+			crate::LogComponent::COMPUTE,
+			"Loaded {}/{} shader pipeline{} on demand (failed={}, threads={}, {:.2} ms)",
+			jobs.len() - failures.len(),
+			jobs.len(),
+			if jobs.len() == 1 { "" } else { "s" },
+			failures.len(),
+			workers,
+			load_ms
+		);
+		match failures.pop() {
+			Some((_, error)) => Err(error),
+			None => Ok(()),
+		}
+	}
+
+	pub(in crate::runtime) fn raw(&self) -> &vk::Device {
 		&self.logical().handle
 	}
 
-	pub(super) fn sync_commands(&self) -> &SyncCommands {
+	/// Retained shared ownership of the native device. Consumers that keep
+	/// `vk::Device` references across Engine borrows clone this Arc; teardown
+	/// order remains owned by DeviceLogical's ManuallyDrop.
+	pub(in crate::runtime) fn raw_arc(&self) -> Arc<vk::Device> {
+		(*self.logical().handle).clone()
+	}
+
+	pub(in crate::runtime) fn sync_commands(&self) -> &SyncCommands {
 		&self.logical.sync_commands
 	}
 
@@ -592,14 +916,15 @@ impl Device {
 	/// valid retained resources with legal synchronization scopes.
 	pub(in crate::runtime) unsafe fn pipeline_barrier(
 		&self,
-		command: ash::vk::CommandBuffer,
-		dependency: &ash::vk::DependencyInfo<'_>,
-	) {
+		command: vk::CommandBuffer,
+		dependency: &vk::DependencyInfo<'_>,
+	) -> Result<()> {
 		unsafe {
 			self
 				.logical
 				.sync_commands
-				.pipeline_barrier(&self.logical.handle, command, dependency);
+				.pipeline_barrier(&self.logical.handle, command, dependency)
+				.map_err(Error::from)
 		}
 	}
 
@@ -613,7 +938,7 @@ impl Device {
 
 	pub(in crate::runtime) fn record_present_clear(
 		&self,
-		image: ash::vk::Image,
+		image: vk::Image,
 		color: [f32; 4],
 	) -> Result<RecordedCommandBuffer> {
 		let family = self
@@ -636,60 +961,62 @@ impl Device {
 			.as_mut()
 			.expect("graphics command pool initialized")
 			.record_custom(&self.logical.handle, |command| {
-				let range = ash::vk::ImageSubresourceRange::default()
-					.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+				let range = vk::ImageSubresourceRange::default()
+					.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 					.level_count(1)
 					.layer_count(1);
-				let barrier = ash::vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(ash::vk::PipelineStageFlags2::NONE)
-					.dst_stage_mask(ash::vk::PipelineStageFlags2::CLEAR)
-					.old_layout(ash::vk::ImageLayout::UNDEFINED)
-					.new_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+				let barrier = vk::ImageMemoryBarrier2::default()
+					.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+					.dst_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
+					.old_layout(vk::ImageLayout::UNDEFINED)
+					.new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
 					.image(image)
 					.subresource_range(range);
 				let barriers = [barrier];
-				let dependency = ash::vk::DependencyInfo::default().image_memory_barriers(&barriers);
+				let dependency = vk::DependencyInfo::default().image_memory_barriers(&barriers);
 				unsafe {
-					self
-						.logical
-						.sync_commands
-						.pipeline_barrier(&self.logical.handle, command, &dependency)
-				};
-				let clear = ash::vk::ClearColorValue { float32: color };
+					self.logical.sync_commands.pipeline_barrier(
+						&self.logical.handle,
+						command,
+						&(dependency).map_err(Error::from)?,
+					)
+				}?;
+				let clear = vk::ClearColorValue { float32: color };
 				unsafe {
 					self.logical.handle.cmd_clear_color_image(
 						command,
 						image,
-						ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+						vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 						&clear,
 						&[range],
 					)
-				};
-				let barrier = ash::vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(ash::vk::PipelineStageFlags2::CLEAR)
-					.src_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-					.dst_stage_mask(ash::vk::PipelineStageFlags2::NONE)
-					.old_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-					.new_layout(ash::vk::ImageLayout::PRESENT_SRC_KHR)
+				}?;
+				let barrier = vk::ImageMemoryBarrier2::default()
+					.src_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
+					.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+					.dst_stage_mask(vk::PipelineStageFlagBits2::NONE)
+					.old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+					.new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
 					.image(image)
 					.subresource_range(range);
 				let barriers = [barrier];
-				let dependency = ash::vk::DependencyInfo::default().image_memory_barriers(&barriers);
+				let dependency = vk::DependencyInfo::default().image_memory_barriers(&barriers);
 				unsafe {
-					self
-						.logical
-						.sync_commands
-						.pipeline_barrier(&self.logical.handle, command, &dependency)
-				};
+					self.logical.sync_commands.pipeline_barrier(
+						&self.logical.handle,
+						command,
+						&(dependency).map_err(Error::from)?,
+					)
+				}?;
 				Ok(())
 			})
 	}
 
 	pub(in crate::runtime) fn record_present_blit(
 		&self,
-		source: ash::vk::Image,
+		source: vk::Image,
 		source_extent: [u32; 2],
-		target: ash::vk::Image,
+		target: vk::Image,
 		target_extent: [u32; 2],
 	) -> Result<RecordedCommandBuffer> {
 		let family = self
@@ -712,58 +1039,63 @@ impl Device {
 			.as_mut()
 			.expect("graphics command pool initialized")
 			.record_custom(&self.logical.handle, |command| {
-				let range = ash::vk::ImageSubresourceRange::default()
-					.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+				let range = vk::ImageSubresourceRange::default()
+					.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 					.level_count(1)
 					.layer_count(1);
 				let barriers = [
-					ash::vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(ash::vk::PipelineStageFlags2::ALL_COMMANDS)
-						.src_access_mask(ash::vk::AccessFlags2::SHADER_SAMPLED_READ)
-						.dst_stage_mask(ash::vk::PipelineStageFlags2::BLIT)
-						.dst_access_mask(ash::vk::AccessFlags2::TRANSFER_READ)
-						.old_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-						.new_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+					vk::ImageMemoryBarrier2::default()
+						.src_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+						.src_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
+						.dst_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+						.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+						.old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+						.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 						.image(source)
 						.subresource_range(range),
-					ash::vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(ash::vk::PipelineStageFlags2::NONE)
-						.dst_stage_mask(ash::vk::PipelineStageFlags2::BLIT)
-						.dst_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-						.old_layout(ash::vk::ImageLayout::UNDEFINED)
-						.new_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+					vk::ImageMemoryBarrier2::default()
+						.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+						.dst_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+						.dst_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+						.old_layout(vk::ImageLayout::UNDEFINED)
+						.new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
 						.image(target)
 						.subresource_range(range),
 				];
 				unsafe {
-					self.logical.sync_commands.pipeline_barrier(
-						&self.logical.handle,
-						command,
-						&ash::vk::DependencyInfo::default().image_memory_barriers(&barriers),
-					)
+					self
+						.logical
+						.sync_commands
+						.pipeline_barrier(
+							&self.logical.handle,
+							command,
+							&(vk::DependencyInfo::default().image_memory_barriers(&barriers))
+								.map_err(Error::from)?,
+						)
+						.map_err(Error::from)?
 				};
-				let region = ash::vk::ImageBlit::default()
+				let region = vk::ImageBlit::default()
 					.src_subresource(
-						ash::vk::ImageSubresourceLayers::default()
-							.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+						vk::ImageSubresourceLayers::default()
+							.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 							.layer_count(1),
 					)
 					.src_offsets([
-						ash::vk::Offset3D::default(),
-						ash::vk::Offset3D {
+						vk::Offset3D::default(),
+						vk::Offset3D {
 							x: source_extent[0] as i32,
 							y: source_extent[1] as i32,
 							z: 1,
 						},
 					])
 					.dst_subresource(
-						ash::vk::ImageSubresourceLayers::default()
-							.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+						vk::ImageSubresourceLayers::default()
+							.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 							.layer_count(1),
 					)
 					.dst_offsets([
-						ash::vk::Offset3D::default(),
-						ash::vk::Offset3D {
+						vk::Offset3D::default(),
+						vk::Offset3D {
 							x: target_extent[0] as i32,
 							y: target_extent[1] as i32,
 							z: 1,
@@ -773,38 +1105,43 @@ impl Device {
 					self.logical.handle.cmd_blit_image(
 						command,
 						source,
-						ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+						vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
 						target,
-						ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+						vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 						&[region],
-						ash::vk::Filter::LINEAR,
+						vk::Filter::LINEAR,
 					)
-				};
+				}?;
 				let barriers = [
-					ash::vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(ash::vk::PipelineStageFlags2::BLIT)
-						.src_access_mask(ash::vk::AccessFlags2::TRANSFER_READ)
-						.dst_stage_mask(ash::vk::PipelineStageFlags2::ALL_COMMANDS)
-						.dst_access_mask(ash::vk::AccessFlags2::SHADER_SAMPLED_READ)
-						.old_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-						.new_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+					vk::ImageMemoryBarrier2::default()
+						.src_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+						.src_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+						.dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+						.dst_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
+						.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+						.new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
 						.image(source)
 						.subresource_range(range),
-					ash::vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(ash::vk::PipelineStageFlags2::BLIT)
-						.src_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-						.dst_stage_mask(ash::vk::PipelineStageFlags2::NONE)
-						.old_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-						.new_layout(ash::vk::ImageLayout::PRESENT_SRC_KHR)
+					vk::ImageMemoryBarrier2::default()
+						.src_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+						.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+						.dst_stage_mask(vk::PipelineStageFlagBits2::NONE)
+						.old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+						.new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
 						.image(target)
 						.subresource_range(range),
 				];
 				unsafe {
-					self.logical.sync_commands.pipeline_barrier(
-						&self.logical.handle,
-						command,
-						&ash::vk::DependencyInfo::default().image_memory_barriers(&barriers),
-					)
+					self
+						.logical
+						.sync_commands
+						.pipeline_barrier(
+							&self.logical.handle,
+							command,
+							&(vk::DependencyInfo::default().image_memory_barriers(&barriers))
+								.map_err(Error::from)?,
+						)
+						.map_err(Error::from)?
 				};
 				Ok(())
 			})
@@ -813,33 +1150,36 @@ impl Device {
 	pub(in crate::runtime) fn submit_present(
 		&self,
 		command: &RecordedCommandBuffer,
-		wait: ash::vk::Semaphore,
-		signal: ash::vk::Semaphore,
-		fence: ash::vk::Fence,
+		wait: vk::Semaphore,
+		signal: vk::Semaphore,
+		fence: vk::Fence,
 	) -> Result<()> {
 		let queue = *self
 			.logical
 			.graphics_queue
 			.as_ref()
 			.ok_or_else(|| Error::missing_capability("no Vulkan graphics queue is enabled"))?;
-		let waits = [ash::vk::SemaphoreSubmitInfo::default()
+		let waits = [vk::SemaphoreSubmitInfo::default()
 			.semaphore(wait)
-			.stage_mask(ash::vk::PipelineStageFlags2::ALL_COMMANDS)];
-		let commands = [ash::vk::CommandBufferSubmitInfo::default().command_buffer(command.raw())];
-		let signals = [ash::vk::SemaphoreSubmitInfo::default()
+			.stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)];
+		let commands = [vk::CommandBufferSubmitInfo::default().command_buffer(command.raw())];
+		let signals = [vk::SemaphoreSubmitInfo::default()
 			.semaphore(signal)
-			.stage_mask(ash::vk::PipelineStageFlags2::ALL_COMMANDS)];
-		let submits = [ash::vk::SubmitInfo2::default()
+			.stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)];
+		let submits = [vk::SubmitInfo2::default()
 			.wait_semaphore_infos(&waits)
+			.map_err(Error::from)?
 			.command_buffer_infos(&commands)
-			.signal_semaphore_infos(&signals)];
+			.map_err(Error::from)?
+			.signal_semaphore_infos(&signals)
+			.map_err(Error::from)?];
 		unsafe {
 			self
 				.logical
 				.sync_commands
 				.submit(&self.logical.handle, queue, &submits, fence)
+				.map_err(|source| Error::backend_failure("Vulkan", "presentation queue submission", source))
 		}
-		.map_err(|source| Error::backend_failure("Vulkan", "presentation queue submission", source))
 	}
 
 	/// Record one graphics frame: barrier → begin rendering → draw → end rendering
@@ -851,15 +1191,15 @@ impl Device {
 	pub(in crate::runtime) fn record_mesh_frame(
 		&self,
 		target: &mut RenderTarget,
-		vertex_buffer: ash::vk::Buffer,
-		index_buffer: ash::vk::Buffer,
+		vertex_buffer: vk::Buffer,
+		index_buffer: vk::Buffer,
 		index_count: u32,
 		clear_color: [f32; 4],
 		push_data: &[u8],
-		push_stages: ash::vk::ShaderStageFlags,
-		pipeline: ash::vk::Pipeline,
-		pipeline_layout: ash::vk::PipelineLayout,
-		descriptor_sets: &[ash::vk::DescriptorSet],
+		push_stages: vk::ShaderStageFlags,
+		pipeline: vk::Pipeline,
+		pipeline_layout: vk::PipelineLayout,
+		descriptor_sets: &[vk::DescriptorSet],
 	) -> Result<RecordedCommandBuffer> {
 		let family = self
 			.physical
@@ -885,12 +1225,12 @@ impl Device {
 		let width = target.width;
 		let height = target.height;
 		let old_color_layout = target.color_layout;
-		let color_range = ash::vk::ImageSubresourceRange::default()
-			.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+		let color_range = vk::ImageSubresourceRange::default()
+			.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 			.level_count(1)
 			.layer_count(1);
-		let depth_range = ash::vk::ImageSubresourceRange::default()
-			.aspect_mask(ash::vk::ImageAspectFlags::DEPTH)
+		let depth_range = vk::ImageSubresourceRange::default()
+			.aspect_mask(vk::ImageAspectFlagBits::DEPTH_BIT)
 			.level_count(1)
 			.layer_count(1);
 		let result = slot
@@ -899,87 +1239,94 @@ impl Device {
 			.record_custom(&self.logical.handle, |cmd| {
 				// 1. barrier: transition color attachment and depth to write layouts.
 				let to_attachment = [
-					ash::vk::ImageMemoryBarrier2::default()
+					vk::ImageMemoryBarrier2::default()
 						.src_stage_mask(
-							if old_color_layout == ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
-								ash::vk::PipelineStageFlags2::ALL_COMMANDS
+							if old_color_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
+								vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT
 							} else {
-								ash::vk::PipelineStageFlags2::empty()
+								vk::PipelineStageFlags2::empty()
 							},
 						)
 						.src_access_mask(
-							if old_color_layout == ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
-								ash::vk::AccessFlags2::SHADER_SAMPLED_READ
+							if old_color_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
+								vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT
 							} else {
-								ash::vk::AccessFlags2::empty()
+								vk::AccessFlags2::empty()
 							},
 						)
-						.dst_stage_mask(ash::vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
-						.dst_access_mask(ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
+						.dst_stage_mask(vk::PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT_BIT)
+						.dst_access_mask(vk::AccessFlagBits2::COLOR_ATTACHMENT_WRITE_BIT)
 						.old_layout(old_color_layout)
-						.new_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+						.new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
 						.image(color_image)
 						.subresource_range(color_range),
-					ash::vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(ash::vk::PipelineStageFlags2::empty())
+					vk::ImageMemoryBarrier2::default()
+						.src_stage_mask(vk::PipelineStageFlags2::empty())
 						.dst_stage_mask(
-							ash::vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
-								| ash::vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
+							vk::PipelineStageFlagBits2::EARLY_FRAGMENT_TESTS_BIT
+								| vk::PipelineStageFlagBits2::LATE_FRAGMENT_TESTS_BIT,
 						)
 						.dst_access_mask(
-							ash::vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ
-								| ash::vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+							vk::AccessFlagBits2::DEPTH_STENCIL_ATTACHMENT_READ_BIT
+								| vk::AccessFlagBits2::DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 						)
-						.old_layout(ash::vk::ImageLayout::UNDEFINED)
-						.new_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+						.old_layout(vk::ImageLayout::UNDEFINED)
+						.new_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
 						.image(depth_image)
 						.subresource_range(depth_range),
 				];
 				unsafe {
-					self.logical.sync_commands.pipeline_barrier(
-						&self.logical.handle,
-						cmd,
-						&ash::vk::DependencyInfo::default().image_memory_barriers(&to_attachment),
-					)
+					self
+						.logical
+						.sync_commands
+						.pipeline_barrier(
+							&self.logical.handle,
+							cmd,
+							&(vk::DependencyInfo::default()
+								.image_memory_barriers(&to_attachment)
+								.map_err(Error::from)?),
+						)
+						.map_err(Error::from)?
 				};
 				// 2. begin dynamic rendering
-				let clear_cv = ash::vk::ClearColorValue {
+				let clear_cv = vk::ClearColorValue {
 					float32: clear_color,
 				};
-				let clear_dv = ash::vk::ClearDepthStencilValue {
+				let clear_dv = vk::ClearDepthStencilValue {
 					depth: 1.0,
 					stencil: 0,
 				};
-				let color_att = ash::vk::RenderingAttachmentInfo::default()
+				let color_att = vk::RenderingAttachmentInfo::default()
 					.image_view(color_view)
-					.image_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-					.load_op(ash::vk::AttachmentLoadOp::CLEAR)
-					.store_op(ash::vk::AttachmentStoreOp::STORE)
-					.clear_value(ash::vk::ClearValue { color: clear_cv });
-				let depth_att = ash::vk::RenderingAttachmentInfo::default()
+					.image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+					.load_op(vk::AttachmentLoadOp::CLEAR)
+					.store_op(vk::AttachmentStoreOp::STORE)
+					.clear_value(vk::ClearValue { color: clear_cv });
+				let depth_att = vk::RenderingAttachmentInfo::default()
 					.image_view(depth_view)
-					.image_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-					.load_op(ash::vk::AttachmentLoadOp::CLEAR)
-					.store_op(ash::vk::AttachmentStoreOp::DONT_CARE)
-					.clear_value(ash::vk::ClearValue {
+					.image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+					.load_op(vk::AttachmentLoadOp::CLEAR)
+					.store_op(vk::AttachmentStoreOp::DONT_CARE)
+					.clear_value(vk::ClearValue {
 						depth_stencil: clear_dv,
 					});
-				let rendering_info = ash::vk::RenderingInfo::default()
-					.render_area(ash::vk::Rect2D {
-						offset: ash::vk::Offset2D::default(),
-						extent: ash::vk::Extent2D { width, height },
+				let rendering_info = vk::RenderingInfo::default()
+					.render_area(vk::Rect2D {
+						offset: vk::Offset2D::default(),
+						extent: vk::Extent2D { width, height },
 					})
 					.layer_count(1)
 					.color_attachments(std::slice::from_ref(&color_att))
+					.map_err(Error::from)?
 					.depth_attachment(&depth_att);
 				unsafe {
 					self
 						.logical
 						.rendering_commands
 						.begin(&self.logical.handle, cmd, &rendering_info)
-				};
+				}?;
 				// 3. set dynamic viewport and scissor
-				let viewport = ash::vk::Viewport {
+				let viewport = vk::Viewport {
 					x: 0.0,
 					y: 0.0,
 					width: width as f32,
@@ -987,34 +1334,36 @@ impl Device {
 					min_depth: 0.0,
 					max_depth: 1.0,
 				};
-				let scissor = ash::vk::Rect2D {
-					offset: ash::vk::Offset2D::default(),
-					extent: ash::vk::Extent2D { width, height },
+				let scissor = vk::Rect2D {
+					offset: vk::Offset2D::default(),
+					extent: vk::Extent2D { width, height },
 				};
 				unsafe {
-					self.logical.handle.cmd_set_viewport(cmd, 0, &[viewport]);
-					self.logical.handle.cmd_set_scissor(cmd, 0, &[scissor]);
+					self.logical.handle.cmd_set_viewport(cmd, 0, &[viewport])?;
+					self.logical.handle.cmd_set_scissor(cmd, 0, &[scissor])?;
 				};
 				// 4. bind pipeline and push constants
 				unsafe {
-					self.logical.handle.cmd_bind_pipeline(
-						cmd,
-						ash::vk::PipelineBindPoint::GRAPHICS,
-						pipeline,
-					);
 					self
 						.logical
 						.handle
-						.cmd_push_constants(cmd, pipeline_layout, push_stages, 0, push_data);
+						.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline)?;
+					self.logical.handle.cmd_push_constants(
+						cmd,
+						pipeline_layout,
+						push_stages,
+						0,
+						push_data,
+					)?;
 					if !descriptor_sets.is_empty() {
 						self.logical.handle.cmd_bind_descriptor_sets(
 							cmd,
-							ash::vk::PipelineBindPoint::GRAPHICS,
+							vk::PipelineBindPoint::GRAPHICS,
 							pipeline_layout,
 							0,
 							descriptor_sets,
 							&[],
-						);
+						)?;
 					}
 				};
 				// 5. bind vertex/index buffers and draw
@@ -1022,17 +1371,15 @@ impl Device {
 					self
 						.logical
 						.handle
-						.cmd_bind_vertex_buffers(cmd, 0, &[vertex_buffer], &[0]);
-					self.logical.handle.cmd_bind_index_buffer(
-						cmd,
-						index_buffer,
-						0,
-						ash::vk::IndexType::UINT32,
-					);
+						.cmd_bind_vertex_buffers(cmd, 0, &[vertex_buffer], &[0])?;
 					self
 						.logical
 						.handle
-						.cmd_draw_indexed(cmd, index_count, 1, 0, 0, 0);
+						.cmd_bind_index_buffer(cmd, index_buffer, 0, vk::IndexType::UINT32)?;
+					self
+						.logical
+						.handle
+						.cmd_draw_indexed(cmd, index_count, 1, 0, 0, 0)?;
 				};
 				// 6. end rendering
 				unsafe {
@@ -1040,33 +1387,38 @@ impl Device {
 						.logical
 						.rendering_commands
 						.end(&self.logical.handle, cmd)
-				};
+				}?;
 				// 7. barrier: color attachment → TRANSFER_SRC for readback
-				let to_transfer = ash::vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(ash::vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
-					.src_access_mask(ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
-					.dst_stage_mask(ash::vk::PipelineStageFlags2::COPY)
-					.dst_access_mask(ash::vk::AccessFlags2::TRANSFER_READ)
-					.old_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-					.new_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+				let to_transfer = vk::ImageMemoryBarrier2::default()
+					.src_stage_mask(vk::PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT_BIT)
+					.src_access_mask(vk::AccessFlagBits2::COLOR_ATTACHMENT_WRITE_BIT)
+					.dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+					.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+					.old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+					.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 					.image(color_image)
 					.subresource_range(color_range);
 				unsafe {
-					self.logical.sync_commands.pipeline_barrier(
-						&self.logical.handle,
-						cmd,
-						&ash::vk::DependencyInfo::default()
-							.image_memory_barriers(std::slice::from_ref(&to_transfer)),
-					)
+					self
+						.logical
+						.sync_commands
+						.pipeline_barrier(
+							&self.logical.handle,
+							cmd,
+							&(vk::DependencyInfo::default())
+								.image_memory_barriers(std::slice::from_ref(&to_transfer))
+								.map_err(Error::from)?,
+						)
+						.map_err(Error::from)?
 				};
 				// 8. copy color image to host-visible readback buffer
-				let copy = ash::vk::BufferImageCopy::default()
+				let copy = vk::BufferImageCopy::default()
 					.image_subresource(
-						ash::vk::ImageSubresourceLayers::default()
-							.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+						vk::ImageSubresourceLayers::default()
+							.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 							.layer_count(1),
 					)
-					.image_extent(ash::vk::Extent3D {
+					.image_extent(vk::Extent3D {
 						width,
 						height,
 						depth: 1,
@@ -1075,33 +1427,38 @@ impl Device {
 					self.logical.handle.cmd_copy_image_to_buffer(
 						cmd,
 						color_image,
-						ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+						vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
 						readback_buf,
 						&[copy],
 					)
-				};
+				}?;
 				// 9. barrier: TRANSFER_SRC → SHADER_READ_ONLY for future Presenter blit
-				let to_sampled = ash::vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(ash::vk::PipelineStageFlags2::COPY)
-					.src_access_mask(ash::vk::AccessFlags2::TRANSFER_READ)
-					.dst_stage_mask(ash::vk::PipelineStageFlags2::ALL_COMMANDS)
-					.dst_access_mask(ash::vk::AccessFlags2::SHADER_SAMPLED_READ)
-					.old_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-					.new_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+				let to_sampled = vk::ImageMemoryBarrier2::default()
+					.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+					.src_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+					.dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+					.dst_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
+					.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+					.new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
 					.image(color_image)
 					.subresource_range(color_range);
 				unsafe {
-					self.logical.sync_commands.pipeline_barrier(
-						&self.logical.handle,
-						cmd,
-						&ash::vk::DependencyInfo::default()
-							.image_memory_barriers(std::slice::from_ref(&to_sampled)),
-					)
+					self
+						.logical
+						.sync_commands
+						.pipeline_barrier(
+							&self.logical.handle,
+							cmd,
+							&(vk::DependencyInfo::default())
+								.image_memory_barriers(std::slice::from_ref(&to_sampled))
+								.map_err(Error::from)?,
+						)
+						.map_err(Error::from)?
 				};
 				Ok(())
 			});
 		if result.is_ok() {
-			target.color_layout = ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+			target.color_layout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
 		}
 		result
 	}
@@ -1119,14 +1476,14 @@ impl Device {
 	pub(in crate::runtime) fn record_scene_frame(
 		&self,
 		target: &mut RenderTarget,
-		vertex_buffer: ash::vk::Buffer,
-		index_buffer: ash::vk::Buffer,
+		vertex_buffer: vk::Buffer,
+		index_buffer: vk::Buffer,
 		clear_color: [f32; 4],
-		push_stages: ash::vk::ShaderStageFlags,
-		pipeline: ash::vk::Pipeline,
-		blend_pipeline: ash::vk::Pipeline,
-		pipeline_layout: ash::vk::PipelineLayout,
-		scene_set: ash::vk::DescriptorSet,
+		push_stages: vk::ShaderStageFlags,
+		pipeline: vk::Pipeline,
+		blend_pipeline: vk::Pipeline,
+		pipeline_layout: vk::PipelineLayout,
+		scene_set: vk::DescriptorSet,
 		draws: &[SceneDrawCmd],
 	) -> Result<RecordedCommandBuffer> {
 		let family = self
@@ -1153,12 +1510,12 @@ impl Device {
 		let width = target.width;
 		let height = target.height;
 		let old_color_layout = target.color_layout;
-		let color_range = ash::vk::ImageSubresourceRange::default()
-			.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+		let color_range = vk::ImageSubresourceRange::default()
+			.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 			.level_count(1)
 			.layer_count(1);
-		let depth_range = ash::vk::ImageSubresourceRange::default()
-			.aspect_mask(ash::vk::ImageAspectFlags::DEPTH)
+		let depth_range = vk::ImageSubresourceRange::default()
+			.aspect_mask(vk::ImageAspectFlagBits::DEPTH_BIT)
 			.level_count(1)
 			.layer_count(1);
 		let result = slot
@@ -1167,87 +1524,94 @@ impl Device {
 			.record_custom(&self.logical.handle, |cmd| {
 				// 1. barrier: transition color attachment and depth to write layouts.
 				let to_attachment = [
-					ash::vk::ImageMemoryBarrier2::default()
+					vk::ImageMemoryBarrier2::default()
 						.src_stage_mask(
-							if old_color_layout == ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
-								ash::vk::PipelineStageFlags2::ALL_COMMANDS
+							if old_color_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
+								vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT
 							} else {
-								ash::vk::PipelineStageFlags2::empty()
+								vk::PipelineStageFlags2::empty()
 							},
 						)
 						.src_access_mask(
-							if old_color_layout == ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
-								ash::vk::AccessFlags2::SHADER_SAMPLED_READ
+							if old_color_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
+								vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT
 							} else {
-								ash::vk::AccessFlags2::empty()
+								vk::AccessFlags2::empty()
 							},
 						)
-						.dst_stage_mask(ash::vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
-						.dst_access_mask(ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
+						.dst_stage_mask(vk::PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT_BIT)
+						.dst_access_mask(vk::AccessFlagBits2::COLOR_ATTACHMENT_WRITE_BIT)
 						.old_layout(old_color_layout)
-						.new_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+						.new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
 						.image(color_image)
 						.subresource_range(color_range),
-					ash::vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(ash::vk::PipelineStageFlags2::empty())
+					vk::ImageMemoryBarrier2::default()
+						.src_stage_mask(vk::PipelineStageFlags2::empty())
 						.dst_stage_mask(
-							ash::vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
-								| ash::vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
+							vk::PipelineStageFlagBits2::EARLY_FRAGMENT_TESTS_BIT
+								| vk::PipelineStageFlagBits2::LATE_FRAGMENT_TESTS_BIT,
 						)
 						.dst_access_mask(
-							ash::vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ
-								| ash::vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+							vk::AccessFlagBits2::DEPTH_STENCIL_ATTACHMENT_READ_BIT
+								| vk::AccessFlagBits2::DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 						)
-						.old_layout(ash::vk::ImageLayout::UNDEFINED)
-						.new_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+						.old_layout(vk::ImageLayout::UNDEFINED)
+						.new_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
 						.image(depth_image)
 						.subresource_range(depth_range),
 				];
 				unsafe {
-					self.logical.sync_commands.pipeline_barrier(
-						&self.logical.handle,
-						cmd,
-						&ash::vk::DependencyInfo::default().image_memory_barriers(&to_attachment),
-					)
+					self
+						.logical
+						.sync_commands
+						.pipeline_barrier(
+							&self.logical.handle,
+							cmd,
+							&(vk::DependencyInfo::default()
+								.image_memory_barriers(&to_attachment)
+								.map_err(Error::from)?),
+						)
+						.map_err(Error::from)?
 				};
 				// 2. begin dynamic rendering
-				let clear_cv = ash::vk::ClearColorValue {
+				let clear_cv = vk::ClearColorValue {
 					float32: clear_color,
 				};
-				let clear_dv = ash::vk::ClearDepthStencilValue {
+				let clear_dv = vk::ClearDepthStencilValue {
 					depth: 1.0,
 					stencil: 0,
 				};
-				let color_att = ash::vk::RenderingAttachmentInfo::default()
+				let color_att = vk::RenderingAttachmentInfo::default()
 					.image_view(color_view)
-					.image_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-					.load_op(ash::vk::AttachmentLoadOp::CLEAR)
-					.store_op(ash::vk::AttachmentStoreOp::STORE)
-					.clear_value(ash::vk::ClearValue { color: clear_cv });
-				let depth_att = ash::vk::RenderingAttachmentInfo::default()
+					.image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+					.load_op(vk::AttachmentLoadOp::CLEAR)
+					.store_op(vk::AttachmentStoreOp::STORE)
+					.clear_value(vk::ClearValue { color: clear_cv });
+				let depth_att = vk::RenderingAttachmentInfo::default()
 					.image_view(depth_view)
-					.image_layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-					.load_op(ash::vk::AttachmentLoadOp::CLEAR)
-					.store_op(ash::vk::AttachmentStoreOp::DONT_CARE)
-					.clear_value(ash::vk::ClearValue {
+					.image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+					.load_op(vk::AttachmentLoadOp::CLEAR)
+					.store_op(vk::AttachmentStoreOp::DONT_CARE)
+					.clear_value(vk::ClearValue {
 						depth_stencil: clear_dv,
 					});
-				let rendering_info = ash::vk::RenderingInfo::default()
-					.render_area(ash::vk::Rect2D {
-						offset: ash::vk::Offset2D::default(),
-						extent: ash::vk::Extent2D { width, height },
+				let rendering_info = vk::RenderingInfo::default()
+					.render_area(vk::Rect2D {
+						offset: vk::Offset2D::default(),
+						extent: vk::Extent2D { width, height },
 					})
 					.layer_count(1)
 					.color_attachments(std::slice::from_ref(&color_att))
+					.map_err(Error::from)?
 					.depth_attachment(&depth_att);
 				unsafe {
 					self
 						.logical
 						.rendering_commands
 						.begin(&self.logical.handle, cmd, &rendering_info)
-				};
+				}?;
 				// 3. set dynamic viewport and scissor
-				let viewport = ash::vk::Viewport {
+				let viewport = vk::Viewport {
 					x: 0.0,
 					y: 0.0,
 					width: width as f32,
@@ -1255,43 +1619,40 @@ impl Device {
 					min_depth: 0.0,
 					max_depth: 1.0,
 				};
-				let scissor = ash::vk::Rect2D {
-					offset: ash::vk::Offset2D::default(),
-					extent: ash::vk::Extent2D { width, height },
+				let scissor = vk::Rect2D {
+					offset: vk::Offset2D::default(),
+					extent: vk::Extent2D { width, height },
 				};
 				unsafe {
-					self.logical.handle.cmd_set_viewport(cmd, 0, &[viewport]);
-					self.logical.handle.cmd_set_scissor(cmd, 0, &[scissor]);
+					self.logical.handle.cmd_set_viewport(cmd, 0, &[viewport])?;
+					self.logical.handle.cmd_set_scissor(cmd, 0, &[scissor])?;
 				};
 				// 4. bind vertex/index buffers and scene set (set 0) once
 				unsafe {
 					self
 						.logical
 						.handle
-						.cmd_bind_vertex_buffers(cmd, 0, &[vertex_buffer], &[0]);
-					self.logical.handle.cmd_bind_index_buffer(
-						cmd,
-						index_buffer,
-						0,
-						ash::vk::IndexType::UINT32,
-					);
+						.cmd_bind_vertex_buffers(cmd, 0, &[vertex_buffer], &[0])?;
+					self
+						.logical
+						.handle
+						.cmd_bind_index_buffer(cmd, index_buffer, 0, vk::IndexType::UINT32)?;
 					self.logical.handle.cmd_bind_descriptor_sets(
 						cmd,
-						ash::vk::PipelineBindPoint::GRAPHICS,
+						vk::PipelineBindPoint::GRAPHICS,
 						pipeline_layout,
 						0,
 						&[scene_set],
 						&[],
-					);
+					)?;
 				};
 
 				// 5a. opaque pass — bind opaque pipeline, emit non-blend draws
 				unsafe {
-					self.logical.handle.cmd_bind_pipeline(
-						cmd,
-						ash::vk::PipelineBindPoint::GRAPHICS,
-						pipeline,
-					);
+					self
+						.logical
+						.handle
+						.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline)?;
 				}
 				for draw in draws.iter().filter(|d| !d.is_blend) {
 					unsafe {
@@ -1301,19 +1662,23 @@ impl Device {
 							push_stages,
 							0,
 							&draw.push_data,
-						);
+						)?;
 						self.logical.handle.cmd_bind_descriptor_sets(
 							cmd,
-							ash::vk::PipelineBindPoint::GRAPHICS,
+							vk::PipelineBindPoint::GRAPHICS,
 							pipeline_layout,
 							1,
 							&[draw.material_set],
 							&[],
-						);
-						self
-							.logical
-							.handle
-							.cmd_draw_indexed(cmd, draw.index_count, 1, draw.index_start, 0, 0);
+						)?;
+						self.logical.handle.cmd_draw_indexed(
+							cmd,
+							draw.index_count,
+							1,
+							draw.index_start,
+							0,
+							0,
+						)?;
 					}
 				}
 
@@ -1323,9 +1688,9 @@ impl Device {
 					unsafe {
 						self.logical.handle.cmd_bind_pipeline(
 							cmd,
-							ash::vk::PipelineBindPoint::GRAPHICS,
+							vk::PipelineBindPoint::GRAPHICS,
 							blend_pipeline,
-						);
+						)?;
 					}
 					for draw in draws.iter().filter(|d| d.is_blend) {
 						unsafe {
@@ -1335,15 +1700,15 @@ impl Device {
 								push_stages,
 								0,
 								&draw.push_data,
-							);
+							)?;
 							self.logical.handle.cmd_bind_descriptor_sets(
 								cmd,
-								ash::vk::PipelineBindPoint::GRAPHICS,
+								vk::PipelineBindPoint::GRAPHICS,
 								pipeline_layout,
 								1,
 								&[draw.material_set],
 								&[],
-							);
+							)?;
 							self.logical.handle.cmd_draw_indexed(
 								cmd,
 								draw.index_count,
@@ -1351,7 +1716,7 @@ impl Device {
 								draw.index_start,
 								0,
 								0,
-							);
+							)?;
 						}
 					}
 				}
@@ -1361,33 +1726,38 @@ impl Device {
 						.logical
 						.rendering_commands
 						.end(&self.logical.handle, cmd)
-				};
+				}?;
 				// 7. barrier: color attachment → TRANSFER_SRC for readback
-				let to_transfer = ash::vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(ash::vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
-					.src_access_mask(ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
-					.dst_stage_mask(ash::vk::PipelineStageFlags2::COPY)
-					.dst_access_mask(ash::vk::AccessFlags2::TRANSFER_READ)
-					.old_layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-					.new_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+				let to_transfer = vk::ImageMemoryBarrier2::default()
+					.src_stage_mask(vk::PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT_BIT)
+					.src_access_mask(vk::AccessFlagBits2::COLOR_ATTACHMENT_WRITE_BIT)
+					.dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+					.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+					.old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+					.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 					.image(color_image)
 					.subresource_range(color_range);
 				unsafe {
-					self.logical.sync_commands.pipeline_barrier(
-						&self.logical.handle,
-						cmd,
-						&ash::vk::DependencyInfo::default()
-							.image_memory_barriers(std::slice::from_ref(&to_transfer)),
-					)
+					self
+						.logical
+						.sync_commands
+						.pipeline_barrier(
+							&self.logical.handle,
+							cmd,
+							&(vk::DependencyInfo::default())
+								.image_memory_barriers(std::slice::from_ref(&to_transfer))
+								.map_err(Error::from)?,
+						)
+						.map_err(Error::from)?
 				};
 				// 8. copy color image to host-visible readback buffer
-				let copy = ash::vk::BufferImageCopy::default()
+				let copy = vk::BufferImageCopy::default()
 					.image_subresource(
-						ash::vk::ImageSubresourceLayers::default()
-							.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+						vk::ImageSubresourceLayers::default()
+							.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 							.layer_count(1),
 					)
-					.image_extent(ash::vk::Extent3D {
+					.image_extent(vk::Extent3D {
 						width,
 						height,
 						depth: 1,
@@ -1396,40 +1766,72 @@ impl Device {
 					self.logical.handle.cmd_copy_image_to_buffer(
 						cmd,
 						color_image,
-						ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+						vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
 						readback_buf,
 						&[copy],
 					)
-				};
+				}?;
 				// 9. barrier: TRANSFER_SRC → SHADER_READ_ONLY for future Presenter blit
-				let to_sampled = ash::vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(ash::vk::PipelineStageFlags2::COPY)
-					.src_access_mask(ash::vk::AccessFlags2::TRANSFER_READ)
-					.dst_stage_mask(ash::vk::PipelineStageFlags2::ALL_COMMANDS)
-					.dst_access_mask(ash::vk::AccessFlags2::SHADER_SAMPLED_READ)
-					.old_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-					.new_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+				let to_sampled = vk::ImageMemoryBarrier2::default()
+					.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+					.src_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+					.dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+					.dst_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
+					.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+					.new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
 					.image(color_image)
 					.subresource_range(color_range);
 				unsafe {
-					self.logical.sync_commands.pipeline_barrier(
-						&self.logical.handle,
-						cmd,
-						&ash::vk::DependencyInfo::default()
-							.image_memory_barriers(std::slice::from_ref(&to_sampled)),
-					)
+					self
+						.logical
+						.sync_commands
+						.pipeline_barrier(
+							&self.logical.handle,
+							cmd,
+							&(vk::DependencyInfo::default())
+								.image_memory_barriers(std::slice::from_ref(&to_sampled))
+								.map_err(Error::from)?,
+						)
+						.map_err(Error::from)?
 				};
 				Ok(())
 			});
 		if result.is_ok() {
-			target.color_layout = ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+			target.color_layout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
 		}
 		result
 	}
 
+	/// Record compositor compute work in the family used for presentation submission.
+	pub(in crate::runtime) fn record_presentation_commands(
+		&self,
+		record: impl FnOnce(vk::CommandBuffer) -> Result<()>,
+	) -> Result<RecordedCommandBuffer> {
+		let family = self
+			.physical
+			.graphics_queue_family
+			.ok_or_else(|| Error::missing_capability("no graphics queue is enabled"))?;
+		let mut slot = self
+			.logical
+			.graphics_command_pool
+			.lock()
+			.unwrap_or_else(|p| p.into_inner());
+		if slot.is_none() {
+			*slot = Some(CommandPool::new(
+				&self.logical.handle,
+				family,
+				CommandPoolKind::Graphics,
+			)?);
+		}
+		slot
+			.as_mut()
+			.expect("graphics command pool initialized")
+			.record_custom(&self.logical.handle, record)
+	}
+
 	pub(in crate::runtime) fn record_compute_commands(
 		&self,
-		record: impl FnOnce(ash::vk::CommandBuffer) -> Result<()>,
+		record: impl FnOnce(vk::CommandBuffer) -> Result<()>,
 	) -> Result<RecordedCommandBuffer> {
 		let mut command_pool = match self.logical.command_pool.lock() {
 			Ok(command_pool) => command_pool,
@@ -1440,7 +1842,7 @@ impl Device {
 
 	pub(in crate::runtime) fn record_video_decode(
 		&self,
-		record: impl FnOnce(ash::vk::CommandBuffer) -> Result<()>,
+		record: impl FnOnce(vk::CommandBuffer) -> Result<()>,
 	) -> Result<RecordedCommandBuffer> {
 		let family = self
 			.physical
@@ -1530,29 +1932,61 @@ impl Device {
 		)
 	}
 
+	pub(in crate::runtime) fn time_reusable_command(
+		self: &Arc<Self>,
+		command: RecordedCommandBuffer,
+	) -> Result<RecordedCommandBuffer> {
+		let timing = TimestampPair::new(
+			self,
+			self.logical.timestamp_period_ns,
+			self.logical.compute_timestamp_valid_bits,
+		)?;
+		let mut pool = self
+			.logical
+			.command_pool
+			.lock()
+			.unwrap_or_else(|p| p.into_inner());
+		let before = pool.record_custom(self.raw(), |buffer| timing.record_begin(buffer))?;
+		let after = match pool.record_custom(self.raw(), |buffer| timing.record_end(buffer)) {
+			Ok(after) => after,
+			Err(error) => {
+				pool.free_handle(self.raw(), before.raw());
+				return Err(error);
+			}
+		};
+		Ok(command.with_timing_brackets(before, after, timing))
+	}
+
 	pub(in crate::runtime) fn submit(
 		&self,
 		command: &RecordedCommandBuffer,
 		epoch: u64,
 	) -> Result<()> {
-		let command_infos = [ash::vk::CommandBufferSubmitInfo::default().command_buffer(command.raw())];
-		let signal_infos = [ash::vk::SemaphoreSubmitInfo::default()
+		let command_infos = command
+			.submission_handles()
+			.into_iter()
+			.map(|handle| vk::CommandBufferSubmitInfo::default().command_buffer(handle))
+			.collect::<Vec<_>>();
+		let signal_infos = [vk::SemaphoreSubmitInfo::default()
 			.semaphore(self.logical.timeline.raw())
 			.value(epoch)
-			.stage_mask(ash::vk::PipelineStageFlags2::ALL_COMMANDS)];
-		let wait_info = ash::vk::SemaphoreSubmitInfo::default()
+			.stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)];
+		let wait_info = vk::SemaphoreSubmitInfo::default()
 			.semaphore(self.logical.timeline.raw())
 			.value(epoch.saturating_sub(1))
-			.stage_mask(ash::vk::PipelineStageFlags2::ALL_COMMANDS);
+			.stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT);
 		let wait_infos = if epoch > 1 {
 			std::slice::from_ref(&wait_info)
 		} else {
 			&[]
 		};
-		let submit_infos = [ash::vk::SubmitInfo2::default()
+		let submit_infos = [vk::SubmitInfo2::default()
 			.wait_semaphore_infos(wait_infos)
+			.map_err(Error::from)?
 			.command_buffer_infos(&command_infos)
-			.signal_semaphore_infos(&signal_infos)];
+			.map_err(Error::from)?
+			.signal_semaphore_infos(&signal_infos)
+			.map_err(Error::from)?];
 		let queue = match command.pool_kind() {
 			CommandPoolKind::Compute => self.logical.compute_queue,
 			CommandPoolKind::Graphics => *self
@@ -1581,13 +2015,18 @@ impl Device {
 				&self.logical.handle,
 				queue,
 				&submit_infos,
-				ash::vk::Fence::null(),
+				vk::Fence::default(),
 			)
 		}
 		.map_err(|source| Error::backend_failure("Vulkan", "queue submission", source))
 	}
 
-	pub(in crate::runtime) fn free(&self, command: RecordedCommandBuffer) {
+	pub(in crate::runtime) fn free(&self, mut command: RecordedCommandBuffer) {
+		if let Some(pair) = command.take_brackets() {
+			for bracket in *pair {
+				self.free(bracket);
+			}
+		}
 		// Drop reusable ownership before taking the pool lock. Its final owner frees
 		// the shared handle through this same mutex.
 		let Some((handle, pool, _bounded_sets)) = command.into_owned_handle() else {
@@ -1622,7 +2061,7 @@ impl Device {
 		}
 	}
 
-	pub(in crate::runtime) fn free_command_buffer_handle(&self, handle: ash::vk::CommandBuffer) {
+	pub(in crate::runtime) fn free_command_buffer_handle(&self, handle: vk::CommandBuffer) {
 		let mut command_pool = match self.logical.command_pool.lock() {
 			Ok(command_pool) => command_pool,
 			Err(poisoned) => poisoned.into_inner(),
@@ -1658,28 +2097,40 @@ impl DeviceLogical {
 				}
 			})
 			.collect::<Result<Vec<_>>>()?;
-		let handle = configuration.create_device(instance, physical.handle)?;
+		let handle = std::sync::Arc::new(configuration.create_device(instance, physical.handle)?);
 
 		let sync_commands = SyncCommands::new(instance, &handle, physical.api_version);
 		let rendering_commands = RenderingCommands::new(instance, &handle, physical.api_version);
 
 		// SAFETY: logical-device creation requested queue zero from this family, and
 		// the logical device remains alive for the returned queue's full lifetime.
-		let compute_queue = unsafe { handle.get_device_queue(physical.compute_queue_family, 0) };
-		let graphics_queue = physical.graphics_queue_family.map(|family| {
-			// SAFETY: logical-device creation requested queue zero from every unique
-			// graphics family retained by physical-device selection.
-			unsafe { handle.get_device_queue(family, 0) }
-		});
-		let video_decode_queue = physical.video.decode_queue_family.map(|family| {
-			// SAFETY: logical-device creation requested queue zero from every unique
-			// selected video queue family and the device owns the returned handle.
-			unsafe { handle.get_device_queue(family, 0) }
-		});
-		let video_encode_queue = physical.video.encode_queue_family.map(|family| {
-			// SAFETY: same queue-creation proof as the decode queue above.
-			unsafe { handle.get_device_queue(family, 0) }
-		});
+		let compute_queue =
+			unsafe { handle.get_device_queue(physical.compute_queue_family, 0) }.map_err(Error::from)?;
+		let graphics_queue = physical
+			.graphics_queue_family
+			.map(|family| {
+				// SAFETY: logical-device creation requested queue zero from every unique
+				// graphics family retained by physical-device selection.
+				unsafe { handle.get_device_queue(family, 0) }.map_err(Error::from)
+			})
+			.transpose()?;
+		let video_decode_queue = physical
+			.video
+			.decode_queue_family
+			.map(|family| {
+				// SAFETY: logical-device creation requested queue zero from every unique
+				// selected video queue family and the device owns the returned handle.
+				unsafe { handle.get_device_queue(family, 0) }.map_err(Error::from)
+			})
+			.transpose()?;
+		let video_encode_queue = physical
+			.video
+			.encode_queue_family
+			.map(|family| {
+				// SAFETY: same queue-creation proof as the decode queue above.
+				unsafe { handle.get_device_queue(family, 0) }.map_err(Error::from)
+			})
+			.transpose()?;
 		let mut command_pool = match CommandPool::new(
 			&handle,
 			physical.compute_queue_family,
@@ -1689,8 +2140,10 @@ impl DeviceLogical {
 			Err(error) => {
 				// SAFETY: command-pool creation failed, so the device has no live child
 				// resources. Creation used no allocation callbacks.
-				unsafe {
-					handle.destroy_device(None);
+				if let Some(device) = std::sync::Arc::into_inner(handle) {
+					unsafe {
+						device.destroy(None);
+					}
 				}
 				return Err(error);
 			}
@@ -1701,31 +2154,36 @@ impl DeviceLogical {
 				command_pool.destroy(&handle);
 				// SAFETY: timeline creation failed and the command pool was destroyed, so the
 				// device has no live children. No callbacks were installed.
-				unsafe {
-					handle.destroy_device(None);
+				if let Some(device) = std::sync::Arc::into_inner(handle) {
+					unsafe {
+						device.destroy(None);
+					}
 				}
 				return Err(error);
 			}
 		};
 
-		let mut allocator_create_info =
-			vk_mem::AllocatorCreateInfo::new(instance.raw(), &handle, physical.handle);
-		allocator_create_info.vulkan_api_version = physical.api_version.min(ash::vk::API_VERSION_1_3);
-		if configuration.extension_enabled(ash::ext::memory_budget::NAME) {
-			allocator_create_info.flags |= vk_mem::AllocatorCreateFlags::EXT_MEMORY_BUDGET;
-		}
-
-		// SAFETY: the borrowed Instance remains live throughout construction.
-		// On success, Device retains it until after allocator/device destruction.
-		let allocator = match unsafe { vk_mem::Allocator::new(allocator_create_info) } {
+		// SAFETY: physical.handle belongs to this instance and created this device;
+		// the allocator owns its own Arc<Device> clone. On success, Device retains
+		// it until after allocator/device destruction.
+		let allocator = match unsafe {
+			vk::mem::Allocator::new_retained_from_physical_device(
+				instance.raw(),
+				physical.handle,
+				handle.clone(),
+			)
+		} {
 			Ok(allocator) => allocator,
 			Err(source) => {
 				timeline.destroy(&handle);
 				command_pool.destroy(&handle);
 				// SAFETY: allocator creation failed and both existing device children were
-				// destroyed. No callbacks were installed.
-				unsafe {
-					handle.destroy_device(None);
+				// destroyed; new_retained consumed its Arc clone, so this Arc is sole.
+				// No callbacks were installed.
+				if let Some(device) = std::sync::Arc::into_inner(handle) {
+					unsafe {
+						device.destroy(None);
+					}
 				}
 				return Err(Error::backend_failure(
 					"Vulkan",
@@ -1734,15 +2192,24 @@ impl DeviceLogical {
 				));
 			}
 		};
+		// SAFETY: the retained allocator carries no outstanding caller borrow, so
+		// safe owned adoption applies and OA gets the synchronized surface.
+		let allocator = vk::mem::SynchronizedAllocator::new_owned(allocator);
 		let mut descriptors = match DescriptorHeap::new(&handle, physical.limits, physical.profile) {
 			Ok(descriptors) => descriptors,
 			Err(error) => {
+				unsafe {
+					let _ = allocator.with_allocator(|a| a.close());
+				}
 				drop(allocator);
 				timeline.destroy(&handle);
 				command_pool.destroy(&handle);
-				// SAFETY: every successfully created device child was destroyed above.
-				unsafe {
-					handle.destroy_device(None);
+				// SAFETY: every successfully created device child was destroyed above;
+				// the closed allocator's Arc clone is released, so this Arc is sole.
+				if let Some(device) = std::sync::Arc::into_inner(handle) {
+					unsafe {
+						device.destroy(None);
+					}
 				}
 				return Err(error);
 			}
@@ -1753,22 +2220,28 @@ impl DeviceLogical {
 		let ui_pipeline_layout = {
 			let desc_layout = descriptors.layout();
 			let descriptor_layouts = [desc_layout];
-			let push_range = ash::vk::PushConstantRange::default()
-				.stage_flags(ash::vk::ShaderStageFlags::COMPUTE)
+			let push_range = vk::PushConstantRange::default()
+				.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT)
 				.offset(0)
 				.size(128);
 			let push_ranges = [push_range];
-			let layout_info = ash::vk::PipelineLayoutCreateInfo::default()
+			let layout_info = vk::PipelineLayoutCreateInfo::default()
 				.set_layouts(&descriptor_layouts)
+				.map_err(Error::from)?
 				.push_constant_ranges(&push_ranges);
-			match unsafe { handle.create_pipeline_layout(&layout_info, None) } {
+			match unsafe { handle.create_pipeline_layout(&(layout_info).map_err(Error::from)?, None) } {
 				Ok(layout) => layout,
 				Err(source) => {
 					descriptors.destroy(&handle);
+					unsafe {
+						let _ = allocator.with_allocator(|a| a.close());
+					}
 					drop(allocator);
 					timeline.destroy(&handle);
 					command_pool.destroy(&handle);
-					unsafe { handle.destroy_device(None) };
+					if let Some(device) = std::sync::Arc::into_inner(handle) {
+						unsafe { device.destroy(None) };
+					}
 					return Err(Error::backend_failure(
 						"Vulkan",
 						"UI pipeline layout creation",
@@ -1779,8 +2252,13 @@ impl DeviceLogical {
 		};
 		let timestamp_period_ns = physical.limits.timestamp_period_ns;
 		let compute_timestamp_valid_bits = physical.limits.compute_timestamp_valid_bits;
+		// The persisted pipeline cache is best-effort: an unreadable or
+		// driver-rejected blob degrades to uncached creation. Loading it only
+		// after all fallible device children exist keeps the error paths above
+		// free of an extra retained device reference.
+		let pipeline_cache = pipeline::PipelineCache::open(&handle);
 		let mut logical = Self {
-			handle,
+			handle: ManuallyDrop::new(handle),
 			sync_commands,
 			rendering_commands,
 			allocator: ManuallyDrop::new(allocator),
@@ -1792,7 +2270,9 @@ impl DeviceLogical {
 			ui_pipeline_layout,
 			storage_pool: Mutex::new(StoragePool::default()),
 			pipelines: Vec::with_capacity(KernelId::ALL.len()),
-			pipeline_creation: Mutex::new(()),
+			pipeline_creation: Mutex::new(PipelineCreation {
+				cache: pipeline_cache,
+			}),
 			compute_queue,
 			graphics_queue,
 			video_decode_queue,
@@ -1825,52 +2305,31 @@ impl DeviceLogical {
 				logical.pipelines.push(None);
 				continue;
 			}
-			let descriptor_layout = if physical.profile == ExecutionProfile::Compatibility {
-				let Some(layout) = logical
+			if physical.profile == ExecutionProfile::Compatibility
+				&& logical
 					.descriptors
 					.bounded_layout(kernel.bounded_buffer_count())
-				else {
-					logical.pipelines.push(None);
-					continue;
-				};
-				layout
-			} else {
-				logical.descriptors.layout()
-			};
-			// This composed optional kernel has substantial driver compile cost.
-			// Admit it normally, then compile on its first preflighted dispatch;
-			// unrelated applications must not compile PQC during Engine construction.
-			if kernel.requires_secret_storage()
-				|| matches!(
-					kernel,
-					KernelId::CryptographyMlDsa44VerifyU8
-						| KernelId::CryptographyMlDsa65VerifyU8
-						| KernelId::CryptographyMlDsa87VerifyU8
-						| KernelId::CryptographyMlDsa44VerifyPrehashedU8
-						| KernelId::CryptographyMlDsa65VerifyPrehashedU8
-						| KernelId::CryptographyMlDsa87VerifyPrehashedU8
-						| KernelId::CryptographyMlDsa44VerifyHashMessageU8
-						| KernelId::CryptographyMlDsa65VerifyHashMessageU8
-						| KernelId::CryptographyMlDsa87VerifyHashMessageU8
-				) {
-				logical.pipelines.push(Some(OnceLock::new()));
+					.is_none()
+			{
+				logical.pipelines.push(None);
 				continue;
 			}
-			match ComputePipeline::new(
-				&logical.handle,
-				descriptor_layout,
-				artifact,
+			match super::pipeline::validate_artifact_limits(
+				artifact.workgroup_size,
+				artifact.push_constant_size()?,
 				physical.limits,
 			) {
-				Ok(pipeline) => logical.pipelines.push(Some(OnceLock::from(pipeline))),
-				Err(error)
-					if physical.profile == ExecutionProfile::Compatibility
-						&& error.kind() == crate::ErrorKind::MissingCapability =>
-				{
+				Ok(()) => {}
+				Err(error) if error.kind() == crate::ErrorKind::MissingCapability => {
 					logical.pipelines.push(None);
+					continue;
 				}
 				Err(error) => return Err(error),
 			}
+			// Admission is metadata-only. Compile exactly the requested artifact
+			// through require_kernel before recording its first dispatch. Optional
+			// domains must not enter a driver compiler during Engine construction.
+			logical.pipelines.push(Some(OnceLock::new()));
 		}
 
 		Ok(logical)
@@ -1887,9 +2346,10 @@ impl Drop for DeviceLogical {
 			// SAFETY: final device ownership proves no live buffer can reference these
 			// pooled allocations, which were created by this allocator.
 			unsafe {
-				self
+				let _ = self
 					.allocator
-					.destroy_buffer(buffer.handle, &mut buffer.allocation);
+					.with_allocator(|allocator| allocator.free(&mut buffer.allocation));
+				let _ = self.handle.destroy_buffer(buffer.handle, None);
 			}
 		}
 		for slot in self.pipelines.iter_mut().flatten() {
@@ -1897,9 +2357,18 @@ impl Drop for DeviceLogical {
 				pipeline.destroy(&self.handle);
 			}
 		}
+		// Persist the merged driver blob while the device is still live; save is
+		// best-effort and the cache handle is destroyed before the device.
+		let creation = match self.pipeline_creation.get_mut() {
+			Ok(creation) => creation,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		if let Some(cache) = creation.cache.take() {
+			cache.save();
+		}
 		// SAFETY: no UI pipeline still holds a reference to this layout.
 		unsafe {
-			self
+			let _ = self
 				.handle
 				.destroy_pipeline_layout(self.ui_pipeline_layout, None);
 		}
@@ -1908,6 +2377,7 @@ impl Drop for DeviceLogical {
 		// the final Device, so no buffer owner remains. The allocator was initialized
 		// exactly once and is dropped exactly once before its device.
 		unsafe {
+			let _ = self.allocator.with_allocator(|allocator| allocator.close());
 			ManuallyDrop::drop(&mut self.allocator);
 		}
 		self.timeline.destroy(&self.handle);
@@ -1932,8 +2402,18 @@ impl Drop for DeviceLogical {
 		}
 		// SAFETY: the allocator, timeline, and command pools have been destroyed, and no
 		// other logical-device children remain at this checkpoint.
-		unsafe {
-			self.handle.destroy_device(None);
+		// SAFETY: all children are destroyed; the allocator's clone was released by
+		// close, so this Arc is the sole device owner. No callbacks were installed.
+		if let Some(device) =
+			std::sync::Arc::into_inner(unsafe { ManuallyDrop::take(&mut self.handle) })
+		{
+			unsafe {
+				device.destroy(None);
+			}
 		}
 	}
 }
+
+#[cfg(test)]
+#[path = "../../../../test/rs/runtime/device_logical_unit.rs"]
+mod tests;

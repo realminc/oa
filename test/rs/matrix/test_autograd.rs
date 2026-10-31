@@ -36,11 +36,11 @@ test_vk!(matrix_unary_adjoints_match_analytic_oracles, engine, {
 		"clamp_min",
 		"clamp_max",
 	] {
-		let layer = oa::ml::nn::Linear::from_matrices(
-			oa::Matrix::from_f32(&engine, [3, 1], &[0.0; 3])?,
-			oa::Matrix::from_f32(&engine, [3], &values)?,
+		let layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [3, 1], &[0.0; 3])?,
+			oa::Matrix::new_from_f32(&engine, [3], &values)?,
 		)?;
-		let input = oa::Matrix::from_f32(&engine, [1, 1], &[0.0])?;
+		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
 		let tape = oa::ml::GradientTape::new();
 		let value = layer.forward(&input)?;
 		let output = match operation {
@@ -89,16 +89,16 @@ test_vk!(
 	engine,
 	{
 		for operation in ["add", "sub", "mul", "div"] {
-			let left = oa::ml::nn::Linear::from_matrices(
-				oa::Matrix::from_f32(&engine, [1, 1], &[1.0])?,
-				oa::Matrix::from_f32(&engine, [1], &[0.0])?,
+			let left = oa::ml::nn::Linear::new_from_matrices(
+				oa::Matrix::new_from_f32(&engine, [1, 1], &[1.0])?,
+				oa::Matrix::new_from_f32(&engine, [1], &[0.0])?,
 			)?;
-			let right = oa::ml::nn::Linear::from_matrices(
-				oa::Matrix::from_f32(&engine, [3, 1], &[0.0; 3])?,
-				oa::Matrix::from_f32(&engine, [3], &[1.0, 2.0, 4.0])?,
+			let right = oa::ml::nn::Linear::new_from_matrices(
+				oa::Matrix::new_from_f32(&engine, [3, 1], &[0.0; 3])?,
+				oa::Matrix::new_from_f32(&engine, [3], &[1.0, 2.0, 4.0])?,
 			)?;
-			let left_input = oa::Matrix::from_f32(&engine, [2, 1], &[2.0, 3.0])?;
-			let right_input = oa::Matrix::from_f32(&engine, [1, 1], &[0.0])?;
+			let left_input = oa::Matrix::new_from_f32(&engine, [2, 1], &[2.0, 3.0])?;
+			let right_input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
 			let tape = oa::ml::GradientTape::new();
 			let a = left.forward(&left_input)?;
 			let b = right.forward(&right_input)?;
@@ -113,11 +113,11 @@ test_vk!(
 			assert_adjoint(&left.weight(), &[left_expected])?;
 			assert_adjoint(&right.bias().expect("test bias"), &right_expected)?;
 		}
-		let layer = oa::ml::nn::Linear::from_matrices(
-			oa::Matrix::from_f32(&engine, [3, 1], &[0.0; 3])?,
-			oa::Matrix::from_f32(&engine, [3], &[-1.0, 0.0, 2.0])?,
+		let layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [3, 1], &[0.0; 3])?,
+			oa::Matrix::new_from_f32(&engine, [3], &[-1.0, 0.0, 2.0])?,
 		)?;
-		let input = oa::Matrix::from_f32(&engine, [1, 1], &[0.0])?;
+		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
 		let tape = oa::ml::GradientTape::new();
 		let value = layer.forward(&input)?;
 		let square = oa::matrix::mul(&value, &value)?;
@@ -133,13 +133,13 @@ test_vk!(
 	matrix_matmul_concat_transpose_and_view_adjoints_preserve_lineage,
 	engine,
 	{
-		let layer = oa::ml::nn::Linear::from_matrices(
-			oa::Matrix::from_f32(&engine, [3, 2], &[1.0, 4.0, 2.0, 5.0, 3.0, 6.0])?,
-			oa::Matrix::from_f32(&engine, [3], &[0.0; 3])?,
+		let layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [3, 2], &[1.0, 4.0, 2.0, 5.0, 3.0, 6.0])?,
+			oa::Matrix::new_from_f32(&engine, [3], &[0.0; 3])?,
 		)?;
-		let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
-		let right = oa::Matrix::from_f32(&engine, [2, 3], &[1.0, -1.0, 2.0, 0.5, 2.0, 1.0])?;
-		let empty = oa::Matrix::from_f32(&engine, [0, 2], &[])?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
+		let right = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -1.0, 2.0, 0.5, 2.0, 1.0])?;
+		let empty = oa::Matrix::new_from_f32(&engine, [0, 2], &[])?;
 		let tape = oa::ml::GradientTape::new();
 		let left = layer.forward(&input)?;
 		let product = oa::matrix::mat_mul_nt(&left, &right)?;

@@ -5,8 +5,8 @@ fn rejected<T>(result: oa::Result<T>, message: &str) -> oa::Error {
 }
 
 test_vk!(add_broadcast_matches_rank_aligned_fp32_oracle, engine, {
-	let left = oa::Matrix::from_f32(&engine, [2, 1, 3], &[1.0, 2.0, 3.0, 10.0, 20.0, 30.0])?;
-	let right = oa::Matrix::from_f32(&engine, [1, 4, 1], &[100.0, 200.0, 300.0, 400.0])?;
+	let left = oa::Matrix::new_from_f32(&engine, [2, 1, 3], &[1.0, 2.0, 3.0, 10.0, 20.0, 30.0])?;
+	let right = oa::Matrix::new_from_f32(&engine, [1, 4, 1], &[100.0, 200.0, 300.0, 400.0])?;
 	let output = oa::matrix::add(&left, &right)?;
 	assert_eq!(output.shape(), [2, 4, 3]);
 	assert_eq!(
@@ -20,8 +20,8 @@ test_vk!(add_broadcast_matches_rank_aligned_fp32_oracle, engine, {
 });
 
 test_vk!(add_broadcast_preserves_i32_wrapping_arithmetic, engine, {
-	let left = oa::Matrix::from_slice(&engine, [2, 1], &[i32::MAX, -2_i32])?;
-	let right = oa::Matrix::from_slice(&engine, [1, 2], &[1_i32, i32::MIN])?;
+	let left = oa::Matrix::new_from_slice(&engine, [2, 1], &[i32::MAX, -2_i32])?;
+	let right = oa::Matrix::new_from_slice(&engine, [1, 2], &[1_i32, i32::MIN])?;
 	let output = oa::matrix::add(&left, &right)?;
 	assert_eq!(output.shape(), [2, 2]);
 	assert_eq!(output.read::<i32>()?, vec![i32::MIN, -1, -1, 2_147_483_646]);
@@ -29,8 +29,8 @@ test_vk!(add_broadcast_preserves_i32_wrapping_arithmetic, engine, {
 });
 
 test_vk!(mul_broadcast_matches_rank_aligned_fp32_oracle, engine, {
-	let left = oa::Matrix::from_f32(&engine, [2, 1], &[2.0, -1.0])?;
-	let right = oa::Matrix::from_f32(&engine, [1, 3], &[3.0, 0.5, -2.0])?;
+	let left = oa::Matrix::new_from_f32(&engine, [2, 1], &[2.0, -1.0])?;
+	let right = oa::Matrix::new_from_f32(&engine, [1, 3], &[3.0, 0.5, -2.0])?;
 	let output = oa::matrix::mul(&left, &right)?;
 	assert_eq!(output.shape(), [2, 3]);
 	assert_eq!(output.read_f32()?, vec![6.0, 1.0, -4.0, -3.0, -0.5, 2.0]);
@@ -38,8 +38,8 @@ test_vk!(mul_broadcast_matches_rank_aligned_fp32_oracle, engine, {
 });
 
 test_vk!(sub_and_div_broadcast_match_donor_oracles, engine, {
-	let left = oa::Matrix::from_f32(&engine, [2, 1], &[12.0, -6.0])?;
-	let right = oa::Matrix::from_f32(&engine, [1, 3], &[3.0, 2.0, -4.0])?;
+	let left = oa::Matrix::new_from_f32(&engine, [2, 1], &[12.0, -6.0])?;
+	let right = oa::Matrix::new_from_f32(&engine, [1, 3], &[3.0, 2.0, -4.0])?;
 	let difference = oa::matrix::sub(&left, &right)?;
 	let quotient = oa::matrix::div(&left, &right)?;
 	assert_eq!(difference.shape(), [2, 3]);
@@ -53,8 +53,8 @@ test_vk!(sub_and_div_broadcast_match_donor_oracles, engine, {
 });
 
 test_vk!(add_broadcast_capture_keeps_add_semantic_identity, engine, {
-	let left = oa::Matrix::from_f32(&engine, [2, 3], &[1.0; 6])?;
-	let right = oa::Matrix::from_f32(&engine, [1, 3], &[2.0; 3])?;
+	let left = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0; 6])?;
+	let right = oa::Matrix::new_from_f32(&engine, [1, 3], &[2.0; 3])?;
 	let (plan, output) = engine.capture(|| oa::matrix::add(&left, &right))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
@@ -70,10 +70,10 @@ test_vk!(
 	add_broadcast_rejects_incompatible_or_excessive_shapes,
 	engine,
 	{
-		let left = oa::Matrix::from_f32(&engine, [2, 3], &[0.0; 6])?;
-		let right = oa::Matrix::from_f32(&engine, [4, 3], &[0.0; 12])?;
-		let rank_nine = oa::Matrix::from_f32(&engine, [1, 1, 1, 1, 1, 1, 1, 1, 2], &[0.0; 2])?;
-		let scalar = oa::Matrix::from_f32(&engine, [], &[0.0])?;
+		let left = oa::Matrix::new_from_f32(&engine, [2, 3], &[0.0; 6])?;
+		let right = oa::Matrix::new_from_f32(&engine, [4, 3], &[0.0; 12])?;
+		let rank_nine = oa::Matrix::new_from_f32(&engine, [1, 1, 1, 1, 1, 1, 1, 1, 2], &[0.0; 2])?;
+		let scalar = oa::Matrix::new_from_f32(&engine, [], &[0.0])?;
 		for error in [
 			rejected(
 				oa::matrix::add(&left, &right),

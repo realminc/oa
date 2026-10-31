@@ -4,7 +4,8 @@ test_vk!(
 	donor_transformer_model_owns_and_differentiates_its_stack,
 	engine,
 	{
-		let model = oa::ml::nn::Transformer::with_seed(&engine, 5, 3, 4, 7, 2, 2, 1.0e-5, 0x5452_4e53)?;
+		let model =
+			oa::ml::nn::Transformer::new_with_seed(&engine, 5, 3, 4, 7, 2, 2, 1.0e-5, 0x5452_4e53)?;
 		assert_eq!(model.vocab_size(), 5);
 		assert_eq!(model.context_length(), 3);
 		assert_eq!(model.model_width(), 4);
@@ -24,8 +25,8 @@ test_vk!(
 		assert_eq!(named[36].path(), "head.weight");
 		assert_eq!(named[37].path(), "head.bias");
 
-		let tokens = oa::Matrix::from_slice(&engine, [1, 3], &[0_u32, 1, 2])?;
-		let targets = oa::Matrix::from_slice(&engine, [3], &[1_u32, 2, 3])?;
+		let tokens = oa::Matrix::new_from_slice(&engine, [1, 3], &[0_u32, 1, 2])?;
+		let targets = oa::Matrix::new_from_slice(&engine, [3], &[1_u32, 2, 3])?;
 		let tape = oa::ml::GradientTape::new();
 		let logits = model.forward(&tokens)?;
 		assert_eq!(logits.shape(), [3, 5]);
@@ -57,7 +58,7 @@ test_vk!(transformer_model_rejects_invalid_contracts, engine, {
 	] {
 		let (vocab, context, model, hidden, layers, heads) = dimensions;
 		assert_eq!(
-			oa::ml::nn::Transformer::with_seed(
+			oa::ml::nn::Transformer::new_with_seed(
 				&engine, vocab, context, model, hidden, layers, heads, 1.0e-5, 1,
 			)
 			.err()
@@ -66,8 +67,8 @@ test_vk!(transformer_model_rejects_invalid_contracts, engine, {
 			oa::ErrorKind::InvalidArgument
 		);
 	}
-	let model = oa::ml::nn::Transformer::with_seed(&engine, 5, 3, 4, 7, 1, 2, 1.0e-5, 1)?;
-	let wrong_length = oa::Matrix::from_slice(&engine, [1, 2], &[0_u32, 1])?;
+	let model = oa::ml::nn::Transformer::new_with_seed(&engine, 5, 3, 4, 7, 1, 2, 1.0e-5, 1)?;
+	let wrong_length = oa::Matrix::new_from_slice(&engine, [1, 2], &[0_u32, 1])?;
 	assert_eq!(
 		model
 			.forward(&wrong_length)
@@ -83,8 +84,19 @@ test_vk!(
 	moe_transformer_owns_and_differentiates_donor_topology,
 	engine,
 	{
-		let model =
-			oa::ml::nn::Transformer::with_seed_moe(&engine, 5, 3, 4, 3, 1, 2, 2, 1, 1.0e-5, 0x4d4f_4554)?;
+		let model = oa::ml::nn::Transformer::new_with_seed_moe(
+			&engine,
+			5,
+			3,
+			4,
+			3,
+			1,
+			2,
+			2,
+			1,
+			1.0e-5,
+			0x4d4f_4554,
+		)?;
 		assert!(model.is_moe());
 		let block = model.block(0).expect("MoE Transformer lost its block");
 		assert!(block.is_moe());
@@ -111,8 +123,8 @@ test_vk!(
 				.all(|value| !value.path().contains("ln_ffn") && !value.path().contains("ffn1"))
 		);
 
-		let tokens = oa::Matrix::from_slice(&engine, [1, 3], &[0_u32, 1, 2])?;
-		let targets = oa::Matrix::from_slice(&engine, [3], &[1_u32, 2, 3])?;
+		let tokens = oa::Matrix::new_from_slice(&engine, [1, 3], &[0_u32, 1, 2])?;
+		let targets = oa::Matrix::new_from_slice(&engine, [3], &[1_u32, 2, 3])?;
 		let tape = oa::ml::GradientTape::new();
 		let logits = model.forward(&tokens)?;
 		assert_eq!(logits.shape(), [3, 5]);
@@ -136,7 +148,7 @@ test_vk!(
 	adaptive_transformer_blocks_preserve_adaln_zero_identity_and_gradients,
 	engine,
 	{
-		let dense = oa::ml::nn::TransformerBlock::with_seed_conditioned(
+		let dense = oa::ml::nn::TransformerBlock::new_with_seed_conditioned(
 			&engine,
 			4,
 			7,
@@ -146,7 +158,7 @@ test_vk!(
 			1.0e-5,
 			0x4144_414c,
 		)?;
-		let moe = oa::ml::nn::TransformerBlock::with_seed_moe_conditioned(
+		let moe = oa::ml::nn::TransformerBlock::new_with_seed_moe_conditioned(
 			&engine,
 			4,
 			3,
@@ -179,22 +191,22 @@ test_vk!(
 			}
 		}
 
-		let input = oa::Matrix::from_f32(
+		let input = oa::Matrix::new_from_f32(
 			&engine,
 			[4, 4],
 			&[
 				0.2, -0.3, 0.5, 0.7, -0.1, 0.4, -0.6, 0.8, 0.9, -0.2, 0.3, -0.5, 0.6, 0.1, -0.7, 0.4,
 			],
 		)?;
-		let condition = oa::Matrix::from_f32(&engine, [2, 3], &[0.25, -0.5, 0.75, -0.2, 0.4, 0.8])?;
-		let mask = oa::Matrix::from_f32(&engine, [8, 2], &[0.0; 16])?;
+		let condition = oa::Matrix::new_from_f32(&engine, [2, 3], &[0.25, -0.5, 0.75, -0.2, 0.4, 0.8])?;
+		let mask = oa::Matrix::new_from_f32(&engine, [8, 2], &[0.0; 16])?;
 
 		let tape = oa::ml::GradientTape::new();
 		let dense_output = dense.forward_conditioned(&input, &condition)?;
 		let moe_output = moe.forward_conditioned_masked(&input, &condition, &mask)?;
 		assert_eq!(dense_output.read_f32()?, input.read_f32()?);
 		assert_eq!(moe_output.read_f32()?, input.read_f32()?);
-		let target = oa::Matrix::from_f32(&engine, [4, 4], &[0.0; 16])?;
+		let target = oa::Matrix::new_from_f32(&engine, [4, 4], &[0.0; 16])?;
 		let loss = oa::ml::loss::mse(&dense_output, &target)?;
 		tape.backward(&loss)?;
 
@@ -219,15 +231,15 @@ test_vk!(
 
 test_vk!(adaptive_transformer_rejects_invalid_contracts, engine, {
 	assert_eq!(
-		oa::ml::nn::TransformerBlock::with_seed_conditioned(&engine, 4, 7, 2, 2, 0, 1.0e-5, 1,)
+		oa::ml::nn::TransformerBlock::new_with_seed_conditioned(&engine, 4, 7, 2, 2, 0, 1.0e-5, 1,)
 			.err()
 			.expect("zero adaptive condition width was accepted")
 			.kind(),
 		oa::ErrorKind::InvalidArgument
 	);
-	let ordinary = oa::ml::nn::TransformerBlock::with_seed(&engine, 4, 7, 2, 2, 1.0e-5, 1)?;
-	let input = oa::Matrix::from_f32(&engine, [2, 4], &[0.0; 8])?;
-	let condition = oa::Matrix::from_f32(&engine, [1, 3], &[0.0; 3])?;
+	let ordinary = oa::ml::nn::TransformerBlock::new_with_seed(&engine, 4, 7, 2, 2, 1.0e-5, 1)?;
+	let input = oa::Matrix::new_from_f32(&engine, [2, 4], &[0.0; 8])?;
+	let condition = oa::Matrix::new_from_f32(&engine, [1, 3], &[0.0; 3])?;
 	assert_eq!(
 		ordinary
 			.forward_conditioned(&input, &condition)
@@ -238,24 +250,27 @@ test_vk!(adaptive_transformer_rejects_invalid_contracts, engine, {
 	);
 
 	let adaptive =
-		oa::ml::nn::TransformerBlock::with_seed_conditioned(&engine, 4, 7, 2, 2, 3, 1.0e-5, 1)?;
+		oa::ml::nn::TransformerBlock::new_with_seed_conditioned(&engine, 4, 7, 2, 2, 3, 1.0e-5, 1)?;
 	for error in [
 		adaptive
 			.forward_conditioned(
-				&oa::Matrix::from_f32(&engine, [2, 3], &[0.0; 6])?,
+				&oa::Matrix::new_from_f32(&engine, [2, 3], &[0.0; 6])?,
 				&condition,
 			)
 			.err()
 			.expect("wrong model width was accepted"),
 		adaptive
 			.forward_conditioned(
-				&oa::Matrix::from_f32(&engine, [3, 4], &[0.0; 12])?,
+				&oa::Matrix::new_from_f32(&engine, [3, 4], &[0.0; 12])?,
 				&condition,
 			)
 			.err()
 			.expect("non-divisible sequence geometry was accepted"),
 		adaptive
-			.forward_conditioned(&input, &oa::Matrix::from_f32(&engine, [1, 2], &[0.0; 2])?)
+			.forward_conditioned(
+				&input,
+				&oa::Matrix::new_from_f32(&engine, [1, 2], &[0.0; 2])?,
+			)
 			.err()
 			.expect("wrong condition width was accepted"),
 	] {

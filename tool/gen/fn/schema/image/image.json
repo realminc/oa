@@ -11,6 +11,11 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["target_width", "unsigned_integer"], ["target_height", "unsigned_integer"], ["interpolation", "enum"]],
+      "python": {
+        "defaults": {
+          "interpolation": "bilinear"
+        }
+      },
       "rust": {
         "category": "geometric",
         "parameters": [["input", "&Image"], ["target_width", "u32"], ["target_height", "u32"], ["interpolation", "InterpolationMode"]],
@@ -183,6 +188,12 @@
         ["border", "enum"],
         ["border_value", "float"]
       ],
+      "python": {
+        "defaults": {
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "geometric",
         "parameters": [
@@ -266,6 +277,13 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["interpolation", "enum"], ["border", "enum"], ["border_value", "float"]],
+      "python": {
+        "defaults": {
+          "interpolation": "bilinear",
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "geometric",
         "parameters": [
@@ -325,6 +343,13 @@
         ["border", "enum"],
         ["border_value", "float"]
       ],
+      "python": {
+        "defaults": {
+          "interpolation": "bilinear",
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "geometric",
         "parameters": [
@@ -388,6 +413,13 @@
         ["border", "enum"],
         ["border_value", "float"]
       ],
+      "python": {
+        "defaults": {
+          "interpolation": "bilinear",
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "geometric",
         "parameters": [
@@ -720,6 +752,11 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["max_value", "float"]],
+      "python": {
+        "defaults": {
+          "max_value": 1.0
+        }
+      },
       "rust": {
         "category": "pixel",
         "parameters": [["input", "&Image"], ["max_value", "f32"]],
@@ -952,17 +989,17 @@
       "attributes": [["alpha", "float"]],
       "rust": {
         "category": "pixel",
-        "parameters": [["a", "&Image"], ["b", "&Image"], ["alpha", "f32"]],
+        "parameters": [["left", "&Image"], ["right", "&Image"], ["alpha", "f32"]],
         "returns": "Image",
-        "doc": ["Blend two equal semantic images using `a * (1-alpha) + b * alpha`."],
+        "doc": ["Blend two equal semantic images using `left * (1-alpha) + right * alpha`."],
         "attribute_sources": {"alpha": {"encoding": "float", "value": "alpha"}},
         "bindings": [
           {
             "name": "buffers",
             "values": {
-              "a_index": ["read", "a"],
-              "b_index": ["read", "b"],
-              "mask_index": ["read", "a"],
+              "a_index": ["read", "left"],
+              "b_index": ["read", "right"],
+              "mask_index": ["read", "left"],
               "output_index": ["write", "output"]
             }
           }
@@ -1005,7 +1042,7 @@
       "attributes": [],
       "rust": {
         "category": "pixel",
-        "parameters": [["a", "&Image"], ["b", "&Image"], ["mask", "&Image"]],
+        "parameters": [["left", "&Image"], ["right", "&Image"], ["mask", "&Image"]],
         "returns": "Image",
         "doc": ["Composite two equal images with a clamped Gray or per-channel mask."],
         "attribute_sources": {},
@@ -1013,8 +1050,8 @@
           {
             "name": "buffers",
             "values": {
-              "a_index": ["read", "a"],
-              "b_index": ["read", "b"],
+              "a_index": ["read", "left"],
+              "b_index": ["read", "right"],
               "mask_index": ["read", "mask"],
               "output_index": ["write", "output"]
             }
@@ -1298,6 +1335,12 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["border", "enum"], ["border_value", "float"]],
+      "python": {
+        "defaults": {
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["kernel", "&Matrix"], ["border", "BorderMode"], ["border_value", "f32"]],
@@ -1358,6 +1401,12 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["border", "enum"], ["border_value", "float"]],
+      "python": {
+        "defaults": {
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [
@@ -1424,6 +1473,11 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["kernel_width", "unsigned_integer"], ["kernel_height", "unsigned_integer"], ["border", "enum"]],
+      "python": {
+        "defaults": {
+          "border": "constant"
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"]],
@@ -1485,6 +1539,11 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["dx", "unsigned_integer"], ["dy", "unsigned_integer"], ["border", "enum"]],
+      "python": {
+        "defaults": {
+          "border": "constant"
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["dx", "u32"], ["dy", "u32"], ["border", "BorderMode"]],
@@ -1546,6 +1605,11 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["dx", "unsigned_integer"], ["dy", "unsigned_integer"], ["border", "enum"]],
+      "python": {
+        "defaults": {
+          "border": "constant"
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["dx", "u32"], ["dy", "u32"], ["border", "BorderMode"]],
@@ -1607,6 +1671,11 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["border", "enum"]],
+      "python": {
+        "defaults": {
+          "border": "constant"
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["border", "BorderMode"]],
@@ -1669,6 +1738,12 @@
         ["border", "enum"],
         ["border_value", "float"]
       ],
+      "python": {
+        "defaults": {
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
@@ -1736,6 +1811,12 @@
         ["border", "enum"],
         ["border_value", "float"]
       ],
+      "python": {
+        "defaults": {
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
@@ -1803,6 +1884,12 @@
         ["border", "enum"],
         ["border_value", "float"]
       ],
+      "python": {
+        "defaults": {
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
@@ -1870,6 +1957,12 @@
         ["border", "enum"],
         ["border_value", "float"]
       ],
+      "python": {
+        "defaults": {
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
@@ -1937,6 +2030,12 @@
         ["border", "enum"],
         ["border_value", "float"]
       ],
+      "python": {
+        "defaults": {
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
@@ -1999,6 +2098,11 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["sigma", "float"], ["kernel_size", "unsigned_integer"]],
+      "python": {
+        "defaults": {
+          "kernel_size": 0
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["sigma", "f32"], ["kernel_size", "u32"]],
@@ -2059,6 +2163,11 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["amount", "float"], ["border", "enum"]],
+      "python": {
+        "defaults": {
+          "border": "constant"
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["amount", "f32"], ["border", "BorderMode"]],
@@ -2119,6 +2228,11 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["kernel_size", "unsigned_integer"], ["border", "enum"]],
+      "python": {
+        "defaults": {
+          "border": "constant"
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["kernel_size", "u32"], ["border", "BorderMode"]],
@@ -2179,6 +2293,11 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["kernel_size", "unsigned_integer"], ["sigma_color", "float"], ["sigma_space", "float"], ["border", "enum"]],
+      "python": {
+        "defaults": {
+          "border": "constant"
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [
@@ -2247,6 +2366,11 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["sigma", "float"], ["amount", "float"], ["kernel_size", "unsigned_integer"]],
+      "python": {
+        "defaults": {
+          "kernel_size": 0
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["sigma", "f32"], ["amount", "f32"], ["kernel_size", "u32"]],
@@ -2313,6 +2437,12 @@
         ["border", "enum"],
         ["border_value", "float"]
       ],
+      "python": {
+        "defaults": {
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
@@ -2380,6 +2510,12 @@
         ["border", "enum"],
         ["border_value", "float"]
       ],
+      "python": {
+        "defaults": {
+          "border": "constant",
+          "border_value": 0.0
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["border", "BorderMode"], ["border_value", "f32"]],
@@ -2442,6 +2578,11 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["kernel_size", "unsigned_integer"], ["c", "float"], ["max_value", "float"], ["border", "enum"]],
+      "python": {
+        "defaults": {
+          "border": "constant"
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [["input", "&Image"], ["kernel_size", "u32"], ["c", "f32"], ["max_value", "f32"], ["border", "BorderMode"]],
@@ -2510,6 +2651,11 @@
         ["sigma", "float"],
         ["border", "enum"]
       ],
+      "python": {
+        "defaults": {
+          "border": "constant"
+        }
+      },
       "rust": {
         "category": "filter",
         "parameters": [
@@ -2587,6 +2733,25 @@
         ["std_1", "float"],
         ["std_2", "float"]
       ],
+      "python": {
+        "parameters": [
+          [
+            "input",
+            "&Image"
+          ],
+          [
+            "mean",
+            "[f32; 3]"
+          ],
+          [
+            "std",
+            "[f32; 3]"
+          ]
+        ],
+        "arguments": {
+          "parameters": "oa::image::NormalizationParams { mean: $mean, std: $std }"
+        }
+      },
       "rust": {
         "category": "color",
         "parameters": [["input", "&Image"], ["parameters", "NormalizationParams"]],
@@ -2679,6 +2844,33 @@
         ["std_1", "float"],
         ["std_2", "float"]
       ],
+      "python": {
+        "parameters": [
+          [
+            "input",
+            "&Image"
+          ],
+          [
+            "width",
+            "u32"
+          ],
+          [
+            "height",
+            "u32"
+          ],
+          [
+            "mean",
+            "[f32; 3]"
+          ],
+          [
+            "std",
+            "[f32; 3]"
+          ]
+        ],
+        "arguments": {
+          "parameters": "oa::image::NormalizationParams { mean: $mean, std: $std }"
+        }
+      },
       "rust": {
         "category": "color",
         "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["parameters", "NormalizationParams"]],

@@ -35,9 +35,9 @@ impl LayerNorm {
 				"layer norm epsilon must be finite and positive",
 			));
 		}
-		let weight = Matrix::from_f32(engine, [normalized_shape], &vec![1.0; normalized_shape])?;
-		let bias = Matrix::from_f32(engine, [normalized_shape], &vec![0.0; normalized_shape])?;
-		Self::from_matrices(weight, bias, epsilon)
+		let weight = Matrix::new_from_f32(engine, [normalized_shape], &vec![1.0; normalized_shape])?;
+		let bias = Matrix::new_from_f32(engine, [normalized_shape], &vec![0.0; normalized_shape])?;
+		Self::new_from_matrices(weight, bias, epsilon)
 	}
 
 	/// Construct a LayerNorm from exact weight and bias matrices.
@@ -46,7 +46,7 @@ impl LayerNorm {
 	///
 	/// Returns an error unless weight and bias are equal, nonempty, same-engine
 	/// FP32 vectors and `epsilon` is finite and positive.
-	pub fn from_matrices(weight: Matrix, bias: Matrix, epsilon: f32) -> Result<Self> {
+	pub fn new_from_matrices(weight: Matrix, bias: Matrix, epsilon: f32) -> Result<Self> {
 		let [normalized_shape] = weight.shape() else {
 			return Err(Error::invalid_argument(
 				"layer norm weight must be rank one",

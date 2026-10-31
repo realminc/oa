@@ -103,7 +103,7 @@ impl Audio {
 	/// Returns an error for zero channels, an empty or incomplete planar
 	/// buffer, a zero sample rate, incompatible layout metadata, checked-size
 	/// overflow, or device allocation/upload failure.
-	pub fn from_planar_f32(
+	pub fn new_from_planar_f32(
 		engine: &Engine,
 		samples: &[f32],
 		channel_count: usize,
@@ -118,7 +118,7 @@ impl Audio {
 				"audio layout {layout:?} requires {expected} channels; received {channel_count}"
 			)));
 		}
-		let data = Matrix::from_f32(engine, [channel_count, samples_per_channel], samples)?;
+		let data = Matrix::new_from_f32(engine, [channel_count, samples_per_channel], samples)?;
 		Self::new(data, sample_rate, layout)
 	}
 
@@ -158,67 +158,6 @@ impl Audio {
 		self.samples() as f64 / f64::from(self.sample_rate)
 	}
 
-	// -------------------------------------------------------------------------
-	// Convenience method delegates — each forwards to the owning module
-	// function so both `audio.gain(db)` and `audio::gain(&audio, db)` are valid
-	// and identical call sites. No second implementation is introduced.
-	// -------------------------------------------------------------------------
-
-	/// Apply scalar gain in decibels. See [`crate::audio::gain`].
-	pub fn gain(&self, gain_db: f32) -> Result<Self> {
-		crate::audio::gain(self, gain_db)
-	}
-
-	/// Normalize peak or RMS level. See [`crate::audio::normalize`].
-	pub fn normalize(&self, config: crate::audio::NormalizeAudioConfig) -> Result<Self> {
-		crate::audio::normalize(self, config)
-	}
-
-	/// Resample to a new sample rate. See [`crate::audio::resample`].
-	pub fn resample(&self, config: crate::audio::ResampleConfig) -> Result<Self> {
-		crate::audio::resample(self, config)
-	}
-
-	/// Mix down to a single mono channel. See [`crate::audio::to_mono`].
-	pub fn to_mono(&self) -> Result<Self> {
-		crate::audio::to_mono(self)
-	}
-
-	/// Clamp every sample to `[minimum, maximum]`. See [`crate::audio::clip`].
-	pub fn clip(&self, minimum: f32, maximum: f32) -> Result<Self> {
-		crate::audio::clip(self, minimum, maximum)
-	}
-
-	/// Apply `y[n] = x[n] - alpha*x[n-1]` per channel. See [`crate::audio::pre_emphasis`].
-	pub fn pre_emphasis(&self, alpha: f32) -> Result<Self> {
-		crate::audio::pre_emphasis(self, alpha)
-	}
-
-	/// Apply tanh soft clipping with a dry/wet mix. See [`crate::audio::saturate`].
-	pub fn saturate(&self, drive_db: f32, mix: f32) -> Result<Self> {
-		crate::audio::saturate(self, drive_db, mix)
-	}
-
-	/// Apply a single biquad filter. See [`crate::audio::biquad`].
-	pub fn biquad(&self, coefficients: crate::audio::BiquadCoefficients) -> Result<Self> {
-		crate::audio::biquad(self, coefficients)
-	}
-
-	/// Apply a biquad section-of-sections cascade. See [`crate::audio::sos_filter`].
-	pub fn sos_filter(&self, sections: &[crate::audio::BiquadCoefficients]) -> Result<Self> {
-		crate::audio::sos_filter(self, sections)
-	}
-
-	/// Apply Schroeder reverberation. See [`crate::audio::reverb`].
-	pub fn reverb(&self, decay_seconds: f32, wet: f32) -> Result<Self> {
-		crate::audio::reverb(self, decay_seconds, wet)
-	}
-
-	/// Apply a linear fade in and out. See [`crate::audio::fade`].
-	pub fn fade(&self, fade_in_samples: u64, fade_out_samples: u64) -> Result<Self> {
-		crate::audio::fade(self, fade_in_samples, fade_out_samples)
-	}
-
 	pub(crate) const fn engine_handle(&self) -> &EngineHandle {
 		self.data.engine_handle()
 	}
@@ -235,7 +174,7 @@ impl Audio {
 fn next_audio_value_id() -> Result<u64> {
 	static NEXT_AUDIO_VALUE_ID: AtomicU64 = AtomicU64::new(1);
 	NEXT_AUDIO_VALUE_ID
-		.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+		.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
 			value.checked_add(1)
 		})
 		.map_err(|_| Error::resource_exhausted("audio semantic value identity space is exhausted"))

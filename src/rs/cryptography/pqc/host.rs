@@ -62,7 +62,7 @@ impl Default for PublicKey {
 
 impl PublicKey {
 	/// Parse exactly [`PUBLIC_KEY_SIZE`] bytes.
-	pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+	pub fn new_from_bytes(bytes: &[u8]) -> Result<Self> {
 		Ok(Self(copy_array(bytes, "ML-DSA-65 public key")?))
 	}
 
@@ -124,7 +124,7 @@ impl Default for Signature {
 
 impl Signature {
 	/// Parse exactly [`SIGNATURE_SIZE`] bytes.
-	pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+	pub fn new_from_bytes(bytes: &[u8]) -> Result<Self> {
 		Ok(Self(copy_array(bytes, "ML-DSA-65 signature")?))
 	}
 

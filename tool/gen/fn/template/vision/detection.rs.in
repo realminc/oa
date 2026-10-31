@@ -1,10 +1,10 @@
 // OA donor: source/cpp/lib/oa/vision/fndetection/fnDetection.cpp
 // Mechanical generation adaptation of OARS v0.5.5; preserve algorithms and recording order.
 // @operation box_iou
-	let rows_a = box_rows(boxes_a, "boxes_a")?;
-	let rows_b = box_rows(boxes_b, "boxes_b")?;
-	let engine = boxes_a.engine_handle();
-	if !engine.same_as(boxes_b.engine_handle()) {
+	let rows_a = box_rows(left, "boxes_a")?;
+	let rows_b = box_rows(right, "boxes_b")?;
+	let engine = left.engine_handle();
+	if !engine.same_as(right.engine_handle()) {
 		return Err(Error::invalid_argument(
 			"vision::box_iou inputs must belong to the same engine",
 		));
@@ -22,7 +22,7 @@
 	)?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	let inputs = [boxes_a, boxes_b];
+	let inputs = [left, right];
 	let outputs = [&output];
 	engine.record_semantic(
 		ComputeDispatch {

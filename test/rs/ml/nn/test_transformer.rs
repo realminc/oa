@@ -133,18 +133,18 @@ test_vk!(
 		let expected_q = numerical_gradient(&q, |values| cpu_loss(values, &k, &v));
 		let expected_k = numerical_gradient(&k, |values| cpu_loss(&q, values, &v));
 		let expected_v = numerical_gradient(&v, |values| cpu_loss(&q, &k, values));
-		let indices = oa::Matrix::from_slice(&engine, [S], &[0_u32, 1, 2])?;
+		let indices = oa::Matrix::new_from_slice(&engine, [S], &[0_u32, 1, 2])?;
 		let q_embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [S, D], &q)?)?;
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(&engine, [S, D], &q)?)?;
 		let k_embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [S, D], &k)?)?;
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(&engine, [S, D], &k)?)?;
 		let v_embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [S, D], &v)?)?;
-		let linear = oa::ml::nn::Linear::from_matrices(
-			oa::Matrix::from_f32(&engine, [C, D], &linear_weight)?,
-			oa::Matrix::from_f32(&engine, [C], &linear_bias)?,
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(&engine, [S, D], &v)?)?;
+		let linear = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [C, D], &linear_weight)?,
+			oa::Matrix::new_from_f32(&engine, [C], &linear_bias)?,
 		)?;
-		let target_matrix = oa::Matrix::from_slice(&engine, [S], &targets)?;
+		let target_matrix = oa::Matrix::new_from_slice(&engine, [S], &targets)?;
 		let tape = oa::ml::GradientTape::new();
 		let q_matrix = q_embedding.forward(&indices)?;
 		let k_matrix = k_embedding.forward(&indices)?;
@@ -194,9 +194,9 @@ test_vk!(
 	engine,
 	{
 		let values = vec![0.0_f32; 1025];
-		let query = oa::Matrix::from_f32(&engine, [1025, 1], &values)?;
-		let key = oa::Matrix::from_f32(&engine, [1025, 1], &values)?;
-		let value = oa::Matrix::from_f32(&engine, [1025, 1], &values)?;
+		let query = oa::Matrix::new_from_f32(&engine, [1025, 1], &values)?;
+		let key = oa::Matrix::new_from_f32(&engine, [1025, 1], &values)?;
+		let value = oa::Matrix::new_from_f32(&engine, [1025, 1], &values)?;
 		let output =
 			oa::ml::matrix::scaled_dot_product_attention_causal(&query, &key, &value, 1025, 1)?;
 		assert_eq!(output.shape(), [1025, 1]);
@@ -212,15 +212,15 @@ test_vk!(
 		let values = [-2.0_f32, -1.0, -0.1, 0.0, 0.5, 1.0, 2.0];
 		let expected =
 			values.map(|x| 0.5 * x * (1.0 + (0.797_884_6 * (x + 0.044_715 * x * x * x)).tanh()));
-		let input = oa::Matrix::from_f32(&engine, [7], &values)?;
+		let input = oa::Matrix::new_from_f32(&engine, [7], &values)?;
 		assert_close(
 			&oa::ml::matrix::gelu(&input)?.read_f32()?,
 			&expected,
 			1.0e-6,
 		);
 		let embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [7, 1], &values)?)?;
-		let indices = oa::Matrix::from_slice(&engine, [7], &[0_u32, 1, 2, 3, 4, 5, 6])?;
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(&engine, [7, 1], &values)?)?;
+		let indices = oa::Matrix::new_from_slice(&engine, [7], &[0_u32, 1, 2, 3, 4, 5, 6])?;
 		let linear_weight = [0.4_f32, -0.6];
 		let linear_bias = [0.1_f32, -0.2];
 		let targets = [0_u32, 1, 0, 1, 0, 1, 0];
@@ -236,11 +236,11 @@ test_vk!(
 			)
 		};
 		let expected_gradient = numerical_gradient(&values, host_loss);
-		let linear = oa::ml::nn::Linear::from_matrices(
-			oa::Matrix::from_f32(&engine, [2, 1], &linear_weight)?,
-			oa::Matrix::from_f32(&engine, [2], &linear_bias)?,
+		let linear = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [2, 1], &linear_weight)?,
+			oa::Matrix::new_from_f32(&engine, [2], &linear_bias)?,
 		)?;
-		let target_matrix = oa::Matrix::from_slice(&engine, [7], &targets)?;
+		let target_matrix = oa::Matrix::new_from_slice(&engine, [7], &targets)?;
 		let tape = oa::ml::GradientTape::new();
 		let activated = oa::ml::matrix::gelu(&embedding.forward(&indices)?)?;
 		let loss = oa::ml::loss::cross_entropy(&linear.forward(&activated)?, &target_matrix)?;
@@ -268,21 +268,21 @@ test_vk!(
 			let gate = gate_values[index];
 			gate / (1.0 + (-gate).exp()) * up_values[index]
 		});
-		let gate = oa::Matrix::from_f32(&engine, [7], &gate_values)?;
-		let up = oa::Matrix::from_f32(&engine, [7], &up_values)?;
+		let gate = oa::Matrix::new_from_f32(&engine, [7], &gate_values)?;
+		let up = oa::Matrix::new_from_f32(&engine, [7], &up_values)?;
 		assert_close(
 			&oa::ml::matrix::swiglu(&gate, &up)?.read_f32()?,
 			&expected,
 			1.0e-6,
 		);
-		let wrong_shape = oa::Matrix::from_f32(&engine, [1], &[1.0])?;
+		let wrong_shape = oa::Matrix::new_from_f32(&engine, [1], &[1.0])?;
 		assert_eq!(
 			oa::ml::matrix::swiglu(&gate, &wrong_shape)
 				.err()
 				.map(|error| error.kind()),
 			Some(oa::ErrorKind::InvalidArgument)
 		);
-		let wrong_dtype = oa::Matrix::from_slice(&engine, [7], &[1_u32; 7])?;
+		let wrong_dtype = oa::Matrix::new_from_slice(&engine, [7], &[1_u32; 7])?;
 		assert_eq!(
 			oa::ml::matrix::swiglu(&gate, &wrong_dtype)
 				.err()
@@ -290,11 +290,17 @@ test_vk!(
 			Some(oa::ErrorKind::InvalidArgument)
 		);
 
-		let indices = oa::Matrix::from_slice(&engine, [7], &[0_u32, 1, 2, 3, 4, 5, 6])?;
-		let gate_embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [7, 1], &gate_values)?)?;
-		let up_embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [7, 1], &up_values)?)?;
+		let indices = oa::Matrix::new_from_slice(&engine, [7], &[0_u32, 1, 2, 3, 4, 5, 6])?;
+		let gate_embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[7, 1],
+			&gate_values,
+		)?)?;
+		let up_embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[7, 1],
+			&up_values,
+		)?)?;
 		let linear_weight = [0.4_f32, -0.6];
 		let linear_bias = [0.1_f32, -0.2];
 		let targets = [0_u32, 1, 0, 1, 0, 1, 0];
@@ -312,11 +318,11 @@ test_vk!(
 		};
 		let expected_gate = numerical_gradient(&gate_values, |values| host_loss(values, &up_values));
 		let expected_up = numerical_gradient(&up_values, |values| host_loss(&gate_values, values));
-		let linear = oa::ml::nn::Linear::from_matrices(
-			oa::Matrix::from_f32(&engine, [2, 1], &linear_weight)?,
-			oa::Matrix::from_f32(&engine, [2], &linear_bias)?,
+		let linear = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [2, 1], &linear_weight)?,
+			oa::Matrix::new_from_f32(&engine, [2], &linear_bias)?,
 		)?;
-		let target_matrix = oa::Matrix::from_slice(&engine, [7], &targets)?;
+		let target_matrix = oa::Matrix::new_from_slice(&engine, [7], &targets)?;
 		let tape = oa::ml::GradientTape::new();
 		let activated = oa::ml::matrix::swiglu(
 			&gate_embedding.forward(&indices)?,

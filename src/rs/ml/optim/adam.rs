@@ -130,7 +130,7 @@ impl Adam {
 	/// Returns an error for invalid ownership, duplicate parameters, or moment
 	/// allocation failure.
 	pub fn new(parameters: impl IntoIterator<Item = Parameter>, learning_rate: f32) -> Result<Self> {
-		Self::with_hyperparameters(parameters, learning_rate, 0.9, 0.999, 1.0e-8)
+		Self::new_with_hyperparameters(parameters, learning_rate, 0.9, 0.999, 1.0e-8)
 	}
 
 	/// Bind Adam with explicit scalar hyperparameters.
@@ -139,7 +139,7 @@ impl Adam {
 	///
 	/// Returns an error for non-finite or out-of-range scalars, an empty or
 	/// duplicate parameter set, mixed-engine ownership, or moment allocation.
-	pub fn with_hyperparameters(
+	pub fn new_with_hyperparameters(
 		parameters: impl IntoIterator<Item = Parameter>,
 		learning_rate: f32,
 		beta1: f32,

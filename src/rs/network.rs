@@ -17,3 +17,6 @@ pub use mcp::{
 	McpTextResource, McpTool, McpToolResult,
 };
 pub use tcp::{TcpListener, TcpStream};
+
+#[path = "network/parity.gen.rs"]
+mod parity;

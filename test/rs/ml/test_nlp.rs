@@ -22,12 +22,12 @@ fn train_bpe_model(
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, learning_rate)?;
 	let mut sampler = nlp::BpeSampler::new(nlp::BATCH_SIZE, tokenizer)?;
 	let (initial_input, initial_target) = sampler.next_values()?;
-	let input = oa::Matrix::from_slice(
+	let input = oa::Matrix::new_from_slice(
 		engine,
 		[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
 		&initial_input,
 	)?;
-	let target = oa::Matrix::from_slice(
+	let target = oa::Matrix::new_from_slice(
 		engine,
 		[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
 		&initial_target,
@@ -99,12 +99,12 @@ fn train_byte_model(
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, learning_rate)?;
 	let mut sampler = nlp::ByteSampler::new(nlp::BATCH_SIZE)?;
 	let (initial_input, initial_target) = sampler.next_values()?;
-	let input = oa::Matrix::from_slice(
+	let input = oa::Matrix::new_from_slice(
 		engine,
 		[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
 		&initial_input,
 	)?;
-	let target = oa::Matrix::from_slice(
+	let target = oa::Matrix::new_from_slice(
 		engine,
 		[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
 		&initial_target,
@@ -205,12 +205,12 @@ fn train_char_model(
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, learning_rate)?;
 	let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
 	let (initial_input, initial_target) = sampler.next_values()?;
-	let input = oa::Matrix::from_slice(
+	let input = oa::Matrix::new_from_slice(
 		engine,
 		[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
 		&initial_input,
 	)?;
-	let target = oa::Matrix::from_slice(
+	let target = oa::Matrix::new_from_slice(
 		engine,
 		[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
 		&initial_target,
@@ -596,7 +596,7 @@ test_vk!(
 	{
 		let byte = nlp::ByteTransformer::new(&engine)?;
 		assert_eq!(byte.num_parameters()?, 25_760);
-		let byte_tokens = oa::Matrix::from_slice(&engine, [1, 16], b"to be or not to ")?;
+		let byte_tokens = oa::Matrix::new_from_slice(&engine, [1, 16], b"to be or not to ")?;
 		assert_eq!(byte.forward(&byte_tokens)?.shape(), [16, 256]);
 
 		let bpe = nlp::BpeTransformer::new(&engine)?;
@@ -616,7 +616,7 @@ test_vk!(
 	{
 		let byte = nlp::ByteMoeTransformer::new(&engine)?;
 		assert_eq!(byte.num_parameters()?, 28_068);
-		let byte_tokens = oa::Matrix::from_slice(&engine, [1, 16], b"to be or not to ")?;
+		let byte_tokens = oa::Matrix::new_from_slice(&engine, [1, 16], b"to be or not to ")?;
 		assert_eq!(byte.forward(&byte_tokens)?.shape(), [16, 256]);
 
 		let bpe = nlp::BpeMoeTransformer::new(&engine)?;
@@ -636,7 +636,7 @@ test_vk!(
 	{
 		let byte = nlp::ByteMamba3::new(&engine)?;
 		assert_eq!(byte.num_parameters()?, 25_800);
-		let byte_tokens = oa::Matrix::from_slice(&engine, [1, 16], b"to be or not to ")?;
+		let byte_tokens = oa::Matrix::new_from_slice(&engine, [1, 16], b"to be or not to ")?;
 		assert_eq!(byte.forward(&byte_tokens)?.shape(), [16, 256]);
 
 		let bpe = nlp::BpeMamba3::new(&engine)?;
@@ -666,7 +666,7 @@ test_vk!(
 		assert!(paths.iter().any(|path| path == "core.mixer.out_proj"));
 		assert_eq!(paths.last().map(String::as_str), Some("head.bias"));
 
-		let tokens = oa::Matrix::from_slice(&engine, [1, 16], b"to be or not to ")?;
+		let tokens = oa::Matrix::new_from_slice(&engine, [1, 16], b"to be or not to ")?;
 		let reference = nlp::ByteMamba3::new(&engine)?;
 		assert_eq!(model.forward(&tokens)?.shape(), [16, 256]);
 		assert_eq!(
@@ -685,12 +685,12 @@ test_vk!(
 		let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 		let mut sampler = nlp::ByteSampler::new(nlp::BATCH_SIZE)?;
 		let (initial_input, initial_target) = sampler.next_values()?;
-		let input = oa::Matrix::from_slice(
+		let input = oa::Matrix::new_from_slice(
 			&engine,
 			[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
 			&initial_input,
 		)?;
-		let target = oa::Matrix::from_slice(
+		let target = oa::Matrix::new_from_slice(
 			&engine,
 			[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
 			&initial_target,
@@ -771,12 +771,12 @@ test_vk!(
 		let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 		let mut sampler = nlp::ByteSampler::new(nlp::BATCH_SIZE)?;
 		let (initial_input, initial_target) = sampler.next_values()?;
-		let input = oa::Matrix::from_slice(
+		let input = oa::Matrix::new_from_slice(
 			&engine,
 			[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
 			&initial_input,
 		)?;
-		let target = oa::Matrix::from_slice(
+		let target = oa::Matrix::new_from_slice(
 			&engine,
 			[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
 			&initial_target,
@@ -855,12 +855,12 @@ test_vk!(canonical_bpe_rnn_completes_the_cpp_300_step_gate, engine, {
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 	let mut sampler = nlp::BpeSampler::new(nlp::BATCH_SIZE, &tokenizer)?;
 	let (initial_input, initial_target) = sampler.next_values()?;
-	let input = oa::Matrix::from_slice(
+	let input = oa::Matrix::new_from_slice(
 		&engine,
 		[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
 		&initial_input,
 	)?;
-	let target = oa::Matrix::from_slice(
+	let target = oa::Matrix::new_from_slice(
 		&engine,
 		[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
 		&initial_target,
@@ -1313,12 +1313,12 @@ test_vk!(
 		let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.003)?;
 		let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
 		let (initial_input, initial_target) = sampler.next_values()?;
-		let input = oa::Matrix::from_slice(
+		let input = oa::Matrix::new_from_slice(
 			&engine,
 			[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
 			&initial_input,
 		)?;
-		let target = oa::Matrix::from_slice(
+		let target = oa::Matrix::new_from_slice(
 			&engine,
 			[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
 			&initial_target,
@@ -1500,12 +1500,12 @@ test_vk!(
 		let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 		let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
 		let (initial_input, initial_target) = sampler.next_values()?;
-		let input = oa::Matrix::from_slice(
+		let input = oa::Matrix::new_from_slice(
 			&engine,
 			[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
 			&initial_input,
 		)?;
-		let target = oa::Matrix::from_slice(
+		let target = oa::Matrix::new_from_slice(
 			&engine,
 			[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
 			&initial_target,
@@ -1638,12 +1638,12 @@ test_vk!(
 		let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 		let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
 		let (initial_input, initial_target) = sampler.next_values()?;
-		let input = oa::Matrix::from_slice(
+		let input = oa::Matrix::new_from_slice(
 			&engine,
 			[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
 			&initial_input,
 		)?;
-		let target = oa::Matrix::from_slice(
+		let target = oa::Matrix::new_from_slice(
 			&engine,
 			[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
 			&initial_target,

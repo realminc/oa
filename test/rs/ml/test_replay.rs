@@ -15,12 +15,12 @@ fn transition(
 		.map(|value| value + 100.0)
 		.collect::<Vec<_>>();
 	Ok(ReplayTransition::new(
-		oa::Matrix::from_f32(engine, [batch, 2], &observations)?,
-		oa::Matrix::from_slice(engine, [batch], actions)?,
-		oa::Matrix::from_f32(engine, [batch, 2], &next_observations)?,
-		oa::Matrix::from_f32(engine, [batch], rewards)?,
-		oa::Matrix::from_slice(engine, [batch], terminated)?,
-		oa::Matrix::from_slice(engine, [batch], truncated)?,
+		oa::Matrix::new_from_f32(engine, [batch, 2], &observations)?,
+		oa::Matrix::new_from_slice(engine, [batch], actions)?,
+		oa::Matrix::new_from_f32(engine, [batch, 2], &next_observations)?,
+		oa::Matrix::new_from_f32(engine, [batch], rewards)?,
+		oa::Matrix::new_from_slice(engine, [batch], terminated)?,
+		oa::Matrix::new_from_slice(engine, [batch], truncated)?,
 	))
 }
 
@@ -179,7 +179,7 @@ test_vk!(
 		);
 
 		let invalid = ReplayTransition::new(
-			oa::Matrix::from_f32(&engine, [1, 3], &[0.0; 3])?,
+			oa::Matrix::new_from_f32(&engine, [1, 3], &[0.0; 3])?,
 			valid.action().clone(),
 			valid.next_observation().clone(),
 			valid.reward().clone(),

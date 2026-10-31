@@ -152,7 +152,7 @@ test_vk!(dropped_event_does_not_abandon_retirement, engine, {
 
 test_vk!(fp32_storage_round_trips_through_vma, engine, {
 	let expected = [1.25_f32, -2.5, 0.0, 128.75, f32::INFINITY, -0.0];
-	let matrix = oa::Matrix::from_f32(&engine, [2, 3], &expected)?;
+	let matrix = oa::Matrix::new_from_f32(&engine, [2, 3], &expected)?;
 
 	assert_eq!(matrix.shape(), [2, 3]);
 	assert_eq!(matrix.dtype(), oa::DType::F32);
@@ -171,7 +171,7 @@ test_vk!(fp32_storage_round_trips_through_vma, engine, {
 });
 
 test_vk!(zero_extent_matrix_needs_no_vulkan_buffer, engine, {
-	let matrix = oa::Matrix::from_f32(&engine, [3, 0, usize::MAX], &[])?;
+	let matrix = oa::Matrix::new_from_f32(&engine, [3, 0, usize::MAX], &[])?;
 
 	assert_eq!(matrix.shape(), [3, 0, usize::MAX]);
 	assert!(matrix.read_f32()?.is_empty());
@@ -183,7 +183,7 @@ test_vk!(zero_extent_matrix_needs_no_vulkan_buffer, engine, {
 fn matrix_keeps_its_destruction_services_alive() -> oa::Result<()> {
 	let matrix = {
 		let engine = oa::Engine::new()?;
-		oa::Matrix::from_f32(&engine, [2], &[3.5, -7.0])?
+		oa::Matrix::new_from_f32(&engine, [2], &[3.5, -7.0])?
 	};
 
 	assert_eq!(matrix.read_f32()?, [3.5, -7.0]);
@@ -206,8 +206,8 @@ test_vk!(
 				.zip(&right_values)
 				.map(|(left, right)| left + right)
 				.collect::<Vec<_>>();
-			let left = oa::Matrix::from_f32(&engine, [element_count], &left_values)?;
-			let right = oa::Matrix::from_f32(&engine, [element_count], &right_values)?;
+			let left = oa::Matrix::new_from_f32(&engine, [element_count], &left_values)?;
+			let right = oa::Matrix::new_from_f32(&engine, [element_count], &right_values)?;
 			let output = oa::matrix::add(&left, &right)?;
 			drop(left);
 			drop(right);
@@ -231,15 +231,15 @@ test_vk!(
 	matrix_add_handles_zero_extent_and_rejects_invalid_ownership,
 	engine,
 	{
-		let left = oa::Matrix::from_f32(&engine, [2, 0, usize::MAX], &[])?;
-		let right = oa::Matrix::from_f32(&engine, [2, 0, usize::MAX], &[])?;
+		let left = oa::Matrix::new_from_f32(&engine, [2, 0, usize::MAX], &[])?;
+		let right = oa::Matrix::new_from_f32(&engine, [2, 0, usize::MAX], &[])?;
 		let output = oa::matrix::add(&left, &right)?;
 		assert_eq!(output.shape(), [2, 0, usize::MAX]);
 		assert!(output.read_f32()?.is_empty());
 
 		let other_engine = oa::Engine::new()?;
-		let foreign = oa::Matrix::from_f32(&other_engine, [1], &[1.0])?;
-		let local = oa::Matrix::from_f32(&engine, [1], &[2.0])?;
+		let foreign = oa::Matrix::new_from_f32(&other_engine, [1], &[1.0])?;
+		let local = oa::Matrix::new_from_f32(&engine, [1], &[2.0])?;
 		let error = match oa::matrix::add(&local, &foreign) {
 			Ok(_) => panic!("cross-engine matrix add was accepted"),
 			Err(error) => error,
@@ -253,8 +253,8 @@ test_vk!(
 	matrix_add_rejects_shape_mismatch_without_submission,
 	engine,
 	{
-		let left = oa::Matrix::from_f32(&engine, [2], &[1.0, 2.0])?;
-		let right = oa::Matrix::from_f32(&engine, [1, 2], &[3.0, 4.0])?;
+		let left = oa::Matrix::new_from_f32(&engine, [2], &[1.0, 2.0])?;
+		let right = oa::Matrix::new_from_f32(&engine, [1, 2], &[3.0, 4.0])?;
 		let error = match oa::matrix::add(&left, &right) {
 			Ok(_) => panic!("shape-mismatched matrix add was accepted"),
 			Err(error) => error,
@@ -268,7 +268,7 @@ test_vk!(
 	matrix_add_supports_input_aliasing_and_batched_outputs,
 	engine,
 	{
-		let input = oa::Matrix::from_f32(&engine, [5], &[1.0, -2.0, 3.5, 0.0, 8.0])?;
+		let input = oa::Matrix::new_from_f32(&engine, [5], &[1.0, -2.0, 3.5, 0.0, 8.0])?;
 
 		let first = oa::matrix::add(&input, &input)?;
 		let second = oa::matrix::add(&input, &input)?;
@@ -305,12 +305,12 @@ test_vk!(
 	empty_and_invalid_observation_do_not_flush_unrelated_eager_work,
 	engine,
 	{
-		let left = oa::Matrix::from_slice(&engine, [2], &[1_i32, 2])?;
-		let right = oa::Matrix::from_slice(&engine, [2], &[3_i32, 4])?;
+		let left = oa::Matrix::new_from_slice(&engine, [2], &[1_i32, 2])?;
+		let right = oa::Matrix::new_from_slice(&engine, [2], &[3_i32, 4])?;
 		let pending = oa::matrix::add(&left, &right)?;
 
-		let empty_left = oa::Matrix::from_f32(&engine, [0], &[])?;
-		let empty_right = oa::Matrix::from_f32(&engine, [0], &[])?;
+		let empty_left = oa::Matrix::new_from_f32(&engine, [0], &[])?;
+		let empty_right = oa::Matrix::new_from_f32(&engine, [0], &[])?;
 		let empty = oa::matrix::add(&empty_left, &empty_right)?;
 		assert!(empty.read_f32()?.is_empty());
 		assert_eq!(
@@ -336,8 +336,8 @@ test_vk!(
 fn matrix_add_resources_survive_public_engine_drop() -> oa::Result<()> {
 	let output = {
 		let engine = oa::Engine::new()?;
-		let left = oa::Matrix::from_f32(&engine, [3], &[1.0, 2.0, 3.0])?;
-		let right = oa::Matrix::from_f32(&engine, [3], &[4.0, 5.0, 6.0])?;
+		let left = oa::Matrix::new_from_f32(&engine, [3], &[1.0, 2.0, 3.0])?;
+		let right = oa::Matrix::new_from_f32(&engine, [3], &[4.0, 5.0, 6.0])?;
 		oa::matrix::add(&left, &right)?
 	};
 
@@ -374,10 +374,10 @@ fn software_vulkan_index_executes_compute_and_crypto() -> oa::Result<()> {
 	assert_eq!(engine.device_info().index(), cpu.index());
 	assert_eq!(engine.device_info().name(), cpu.name());
 	assert_eq!(engine.device_info().kind(), oa::DeviceKind::Cpu);
-	let a = oa::Matrix::from_f32(&engine, [3], &[1.0, -2.0, 0.5])?;
+	let a = oa::Matrix::new_from_f32(&engine, [3], &[1.0, -2.0, 0.5])?;
 	let sum = oa::matrix::add(&a, &a)?;
 	assert_eq!(sum.read_f32()?, [2.0, -4.0, 1.0]);
-	let input = oa::Matrix::from_slice(
+	let input = oa::Matrix::new_from_slice(
 		&engine,
 		[3, 3],
 		&[11_u8, 48, 85, 122, 159, 196, 233, 14, 51],

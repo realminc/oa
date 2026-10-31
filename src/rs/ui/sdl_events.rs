@@ -35,7 +35,7 @@ fn sdl_modifiers(sdl_mods: sdl3::keyboard::Mod) -> UiModifiers {
 }
 
 fn scancode_to_key(sc: Scancode) -> UiKey {
-	UiKey::from_sdl_scancode(sc as u32)
+	UiKey::new_from_sdl_scancode(sc as u32)
 }
 
 // ── Pixel-scale helpers ───────────────────────────────────────────────────────

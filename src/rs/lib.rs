@@ -47,7 +47,11 @@ pub use core::{
 };
 pub use cryptography::pqc::{Keypair, PublicKey, SecretKey, Signature};
 pub use cryptography::{Hash, Hasher, MerkleProof, MerkleTree, SecureBuffer, Shake128, Shake256};
-pub use data::{Batch, DataLoader, DataLoaderConfig, Dataset, Sample, SplitResult, Subset};
+pub use data::{
+	Batch, DataFrame, DataFrameView, DataLoader, DataLoaderConfig, Dataset, DsOhlcv, OhlcvView,
+	OhlcvWindowConfig, OhlcvWindows, Sample, Series, SeriesView, SeriesViewMut, SplitResult, Subset,
+	UnixTimeUnit,
+};
 pub use image::{Image, ImageFormat, ImageLayout};
 pub use matrix::Matrix;
 pub use media::MediaPlayer;
@@ -57,7 +61,7 @@ pub use network::{
 };
 pub use render::{
 	Aabb, AlphaMode, Camera, CameraProjection, FlatColorMaterial, Material, MaterialId,
-	SceneMaterial, StandardSurfaceMaterial, Texture, TextureHandle, UnlitMaterial,
+	SceneMaterial, SurfaceMaterial, Texture, TextureHandle, UnlitMaterial,
 };
 pub use video::{VideoDecoder, VideoDemuxer, VideoFrame, VideoMuxer, VideoPlayer};
 

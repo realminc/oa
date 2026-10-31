@@ -17,10 +17,10 @@ use crate::runtime::Device;
 /// - binding=1: STORAGE_IMAGE  array (`images[]`) — UI compose targets
 pub(super) struct DescriptorHeap {
 	profile: ExecutionProfile,
-	pool: ash::vk::DescriptorPool,
-	layout: ash::vk::DescriptorSetLayout,
-	bounded_layouts: Vec<ash::vk::DescriptorSetLayout>,
-	set: ash::vk::DescriptorSet,
+	pool: vk::DescriptorPool,
+	layout: vk::DescriptorSetLayout,
+	bounded_layouts: Vec<vk::DescriptorSetLayout>,
+	set: vk::DescriptorSet,
 	buffer_capacity: u32,
 	image_capacity: u32,
 	free_storage_indices: Mutex<Vec<u32>>,
@@ -34,7 +34,7 @@ impl DescriptorHeap {
 	}
 
 	pub(super) fn new(
-		device: &ash::Device,
+		device: &vk::Device,
 		mut limits: DeviceLimits,
 		profile: ExecutionProfile,
 	) -> Result<Self> {
@@ -54,32 +54,35 @@ impl DescriptorHeap {
 		}
 	}
 
-	fn try_new(device: &ash::Device, limits: DeviceLimits) -> Result<Self> {
-		let buffer_binding = ash::vk::DescriptorSetLayoutBinding::default()
+	fn try_new(device: &vk::Device, limits: DeviceLimits) -> Result<Self> {
+		let buffer_binding = vk::DescriptorSetLayoutBinding::default()
 			.binding(0)
-			.descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
+			.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
 			.descriptor_count(limits.storage_buffer_descriptors)
-			.stage_flags(ash::vk::ShaderStageFlags::COMPUTE);
-		let image_binding = ash::vk::DescriptorSetLayoutBinding::default()
+			.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT);
+		let image_binding = vk::DescriptorSetLayoutBinding::default()
 			.binding(1)
-			.descriptor_type(ash::vk::DescriptorType::STORAGE_IMAGE)
+			.descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
 			.descriptor_count(limits.storage_image_descriptors)
-			.stage_flags(ash::vk::ShaderStageFlags::COMPUTE);
+			.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT);
 		let bindings = [buffer_binding, image_binding];
 		let binding_flags = [
-			ash::vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
-				| ash::vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
-				| ash::vk::DescriptorBindingFlags::PARTIALLY_BOUND,
-			ash::vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
-				| ash::vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
-				| ash::vk::DescriptorBindingFlags::PARTIALLY_BOUND,
+			vk::DescriptorBindingFlagBits::UPDATE_AFTER_BIND_BIT
+				| vk::DescriptorBindingFlagBits::UPDATE_UNUSED_WHILE_PENDING_BIT
+				| vk::DescriptorBindingFlagBits::PARTIALLY_BOUND_BIT,
+			vk::DescriptorBindingFlagBits::UPDATE_AFTER_BIND_BIT
+				| vk::DescriptorBindingFlagBits::UPDATE_UNUSED_WHILE_PENDING_BIT
+				| vk::DescriptorBindingFlagBits::PARTIALLY_BOUND_BIT,
 		];
-		let mut binding_flags_info =
-			ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo::default().binding_flags(&binding_flags);
-		let layout_info = ash::vk::DescriptorSetLayoutCreateInfo::default()
-			.flags(ash::vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
+		let mut binding_flags_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
+			.binding_flags(&binding_flags)
+			.map_err(Error::from)?;
+		let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
+			.flags(vk::DescriptorSetLayoutCreateFlagBits::UPDATE_AFTER_BIND_POOL_BIT)
 			.bindings(&bindings)
-			.push_next(&mut binding_flags_info);
+			.map_err(Error::from)?
+			.push_next(&mut binding_flags_info)
+			.map_err(Error::from)?;
 		// SAFETY: bindings and their binding-flags entries have matching counts, all
 		// required descriptor-indexing features were queried and enabled, and no
 		// allocation callbacks are installed.
@@ -89,17 +92,18 @@ impl DescriptorHeap {
 			})?;
 
 		let pool_sizes = [
-			ash::vk::DescriptorPoolSize::default()
-				.ty(ash::vk::DescriptorType::STORAGE_BUFFER)
+			vk::DescriptorPoolSize::default()
+				.r#type(vk::DescriptorType::STORAGE_BUFFER)
 				.descriptor_count(limits.storage_buffer_descriptors),
-			ash::vk::DescriptorPoolSize::default()
-				.ty(ash::vk::DescriptorType::STORAGE_IMAGE)
+			vk::DescriptorPoolSize::default()
+				.r#type(vk::DescriptorType::STORAGE_IMAGE)
 				.descriptor_count(limits.storage_image_descriptors),
 		];
-		let pool_info = ash::vk::DescriptorPoolCreateInfo::default()
-			.flags(ash::vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
+		let pool_info = vk::DescriptorPoolCreateInfo::default()
+			.flags(vk::DescriptorPoolCreateFlagBits::UPDATE_AFTER_BIND_BIT)
 			.max_sets(1)
-			.pool_sizes(&pool_sizes);
+			.pool_sizes(&pool_sizes)
+			.map_err(Error::from)?;
 		// SAFETY: the requested descriptor counts are bounded by queried update-after-bind limits.
 		let pool = match unsafe { device.create_descriptor_pool(&pool_info, None) } {
 			Ok(pool) => pool,
@@ -114,12 +118,14 @@ impl DescriptorHeap {
 		};
 
 		let layouts = [layout];
-		let allocate_info = ash::vk::DescriptorSetAllocateInfo::default()
+		let allocate_info = vk::DescriptorSetAllocateInfo::default()
 			.descriptor_pool(pool)
-			.set_layouts(&layouts);
+			.set_layouts(&layouts)
+			.map_err(Error::from)?;
+		let mut sets = [vk::DescriptorSet::default()];
 		// SAFETY: the pool has capacity for one set containing the complete layout.
-		let sets = match unsafe { device.allocate_descriptor_sets(&allocate_info) } {
-			Ok(sets) => sets,
+		match unsafe { device.allocate_descriptor_sets(&allocate_info, &mut sets) } {
+			Ok(()) => {}
 			Err(source) => {
 				destroy_pool(device, pool);
 				destroy_layout(device, layout);
@@ -130,15 +136,7 @@ impl DescriptorHeap {
 				));
 			}
 		};
-		let Some(set) = sets.first().copied() else {
-			destroy_pool(device, pool);
-			destroy_layout(device, layout);
-			return Err(Error::backend_failure(
-				"Vulkan",
-				"compute descriptor-set allocation",
-				std::io::Error::other("Vulkan returned no descriptor set after successful allocation"),
-			));
-		};
+		let set = sets[0];
 
 		Ok(Self {
 			profile: ExecutionProfile::Strict,
@@ -154,7 +152,7 @@ impl DescriptorHeap {
 		})
 	}
 
-	fn new_bounded(device: &ash::Device, capacity: u32) -> Result<Self> {
+	fn new_bounded(device: &vk::Device, capacity: u32) -> Result<Self> {
 		if capacity == 0 {
 			return Err(Error::missing_capability(
 				"bounded descriptors require a nonzero capacity",
@@ -162,21 +160,18 @@ impl DescriptorHeap {
 		}
 		let mut bounded_layouts = Vec::new();
 		for count in 1..=capacity {
-			let binding = ash::vk::DescriptorSetLayoutBinding::default()
+			let binding = vk::DescriptorSetLayoutBinding::default()
 				.binding(0)
-				.descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
+				.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
 				.descriptor_count(count)
-				.stage_flags(ash::vk::ShaderStageFlags::COMPUTE);
+				.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT);
+			let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
+				.bindings(std::slice::from_ref(&binding))
+				.map_err(Error::from)?;
 			// SAFETY: each fixed array fits the queried per-stage/set budget;
 			// the conventional binding needs no descriptor-indexing extension.
 			// Uniform dynamic buffer-array indexing is enabled as a core feature.
-			let layout = unsafe {
-				device.create_descriptor_set_layout(
-					&ash::vk::DescriptorSetLayoutCreateInfo::default()
-						.bindings(std::slice::from_ref(&binding)),
-					None,
-				)
-			};
+			let layout = unsafe { device.create_descriptor_set_layout(&layout_info, None) };
 			match layout {
 				Ok(layout) => bounded_layouts.push(layout),
 				Err(source) => {
@@ -196,10 +191,10 @@ impl DescriptorHeap {
 		// commands map them to local indices and retain immutable descriptor sets.
 		Ok(Self {
 			profile: ExecutionProfile::Compatibility,
-			pool: ash::vk::DescriptorPool::null(),
+			pool: vk::DescriptorPool::default(),
 			layout,
 			bounded_layouts,
-			set: ash::vk::DescriptorSet::null(),
+			set: vk::DescriptorSet::default(),
 			buffer_capacity: capacity,
 			image_capacity: 0,
 			free_storage_indices: Mutex::new(Vec::new()),
@@ -210,9 +205,9 @@ impl DescriptorHeap {
 
 	pub(super) fn bind_storage_buffer(
 		&self,
-		device: &ash::Device,
-		buffer: ash::vk::Buffer,
-		size: ash::vk::DeviceSize,
+		device: &vk::Device,
+		buffer: vk::Buffer,
+		size: vk::DeviceSize,
 	) -> Result<u32> {
 		if self.profile == ExecutionProfile::Compatibility {
 			let _ = (device, buffer, size);
@@ -226,7 +221,7 @@ impl DescriptorHeap {
 			}
 			return self
 				.virtual_next
-				.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+				.try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
 					next.checked_add(1)
 				})
 				.map_err(|_| Error::resource_exhausted("bounded storage identity space exhausted"));
@@ -241,23 +236,25 @@ impl DescriptorHeap {
 		let index = free
 			.pop()
 			.ok_or_else(|| Error::resource_exhausted("Vulkan storage descriptor capacity exhausted"))?;
-		let buffer_info = ash::vk::DescriptorBufferInfo::default()
+		let buffer_info = vk::DescriptorBufferInfo::default()
 			.buffer(buffer)
 			.offset(0)
 			.range(size);
 		let buffer_infos = [buffer_info];
-		let write = ash::vk::WriteDescriptorSet::default()
+		let write = vk::WriteDescriptorSet::default()
 			.dst_set(self.set)
 			.dst_binding(0)
 			.dst_array_element(index)
-			.descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
+			.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
 			.buffer_info(&buffer_infos);
 		// SAFETY: the descriptor set, buffer, and range are live. The allocator lock
 		// serializes host updates, and update-after-bind plus update-unused-while-pending
 		// permit a newly allocated, currently unused slot to be written while submitted
 		// work may use other slots.
 		unsafe {
-			device.update_descriptor_sets(&[write], &[]);
+			device
+				.update_descriptor_sets(&[write.map_err(Error::from)?], &[])
+				.map_err(Error::from)?;
 		}
 		Ok(index)
 	}
@@ -273,15 +270,11 @@ impl DescriptorHeap {
 	/// Allocate one STORAGE_IMAGE slot (binding=1) and write `view` into it.
 	///
 	/// The image must be in `GENERAL` layout when compute shaders read or write it.
-	pub(super) fn bind_storage_image(
-		&self,
-		device: &ash::Device,
-		view: ash::vk::ImageView,
-	) -> Result<u32> {
+	pub(super) fn bind_storage_image(&self, device: &vk::Device, view: vk::ImageView) -> Result<u32> {
 		if self.profile == ExecutionProfile::Compatibility {
-			return Err(Error::missing_capability(
-				"bounded storage-image descriptors are not implemented",
-			));
+			// Bounded UI descriptors bind the retained view directly; there is no
+			// global image array or descriptor slot to allocate.
+			return Ok(0);
 		}
 		let mut free = self.free_image_indices.lock().map_err(|_| {
 			Error::backend_failure(
@@ -293,23 +286,28 @@ impl DescriptorHeap {
 		let index = free.pop().ok_or_else(|| {
 			Error::resource_exhausted("Vulkan storage image descriptor capacity exhausted")
 		})?;
-		let image_info = ash::vk::DescriptorImageInfo::default()
+		let image_info = vk::DescriptorImageInfo::default()
 			.image_view(view)
-			.image_layout(ash::vk::ImageLayout::GENERAL);
+			.image_layout(vk::ImageLayout::GENERAL);
 		let image_infos = [image_info];
-		let write = ash::vk::WriteDescriptorSet::default()
+		let write = vk::WriteDescriptorSet::default()
 			.dst_set(self.set)
 			.dst_binding(1)
 			.dst_array_element(index)
-			.descriptor_type(ash::vk::DescriptorType::STORAGE_IMAGE)
+			.descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
 			.image_info(&image_infos);
 		unsafe {
-			device.update_descriptor_sets(&[write], &[]);
+			device
+				.update_descriptor_sets(&[write.map_err(Error::from)?], &[])
+				.map_err(Error::from)?;
 		}
 		Ok(index)
 	}
 
 	pub(super) fn release_storage_image(&self, index: u32) {
+		if self.profile == ExecutionProfile::Compatibility {
+			return;
+		}
 		let mut free = match self.free_image_indices.lock() {
 			Ok(free) => free,
 			Err(poisoned) => poisoned.into_inner(),
@@ -317,7 +315,7 @@ impl DescriptorHeap {
 		free.push(index);
 	}
 
-	pub(super) fn destroy(&mut self, device: &ash::Device) {
+	pub(super) fn destroy(&mut self, device: &vk::Device) {
 		if self.profile == ExecutionProfile::Strict {
 			destroy_pool(device, self.pool);
 			destroy_layout(device, self.layout);
@@ -328,28 +326,30 @@ impl DescriptorHeap {
 		}
 	}
 
-	pub(super) fn bounded_layout(&self, count: u32) -> Option<ash::vk::DescriptorSetLayout> {
+	pub(super) fn bounded_layout(&self, count: u32) -> Option<vk::DescriptorSetLayout> {
 		let index = usize::try_from(count.checked_sub(1)?).ok()?;
 		self.bounded_layouts.get(index).copied()
 	}
 
-	pub(super) const fn layout(&self) -> ash::vk::DescriptorSetLayout {
+	pub(super) const fn layout(&self) -> vk::DescriptorSetLayout {
 		self.layout
 	}
 
-	pub(super) const fn set(&self) -> ash::vk::DescriptorSet {
+	pub(super) const fn set(&self) -> vk::DescriptorSet {
 		self.set
 	}
 }
 
-fn destroy_pool(device: &ash::Device, pool: ash::vk::DescriptorPool) {
+fn destroy_pool(device: &vk::Device, pool: vk::DescriptorPool) {
 	// SAFETY: the pool belongs to `device`; destroying it releases its descriptor set.
-	unsafe { device.destroy_descriptor_pool(pool, None) }
+	// A missing destroy entry point cannot be recovered here; destruction is final.
+	let _ = unsafe { device.destroy_descriptor_pool(pool, None) };
 }
 
-fn destroy_layout(device: &ash::Device, layout: ash::vk::DescriptorSetLayout) {
+fn destroy_layout(device: &vk::Device, layout: vk::DescriptorSetLayout) {
 	// SAFETY: the layout belongs to `device` and no live set or pipeline layout uses it.
-	unsafe { device.destroy_descriptor_set_layout(layout, None) }
+	// A missing destroy entry point cannot be recovered here; destruction is final.
+	let _ = unsafe { device.destroy_descriptor_set_layout(layout, None) };
 }
 
 /// Immutable descriptor sets owned by one recorded compute graph. The pool is
@@ -357,15 +357,15 @@ fn destroy_layout(device: &ash::Device, layout: ash::vk::DescriptorSetLayout) {
 /// reusable owner is dropped after submissions complete).
 pub(super) struct BoundedSets {
 	device: Arc<Device>,
-	pool: ash::vk::DescriptorPool,
-	sets: Vec<ash::vk::DescriptorSet>,
+	pool: vk::DescriptorPool,
+	sets: Vec<vk::DescriptorSet>,
 }
 
 impl BoundedSets {
 	pub(super) fn new(
 		context: &Arc<Device>,
-		layouts: &[ash::vk::DescriptorSetLayout],
-		buffers: &[Vec<ash::vk::DescriptorBufferInfo>],
+		layouts: &[vk::DescriptorSetLayout],
+		buffers: &[Vec<vk::DescriptorBufferInfo>],
 	) -> Result<Self> {
 		let device = context.raw();
 		if layouts.is_empty() || layouts.len() != buffers.len() {
@@ -391,24 +391,27 @@ impl BoundedSets {
 				.checked_add(len)
 				.ok_or_else(|| Error::resource_exhausted("bounded descriptor count overflow"))
 		})?;
-		let sizes = [ash::vk::DescriptorPoolSize::default()
-			.ty(ash::vk::DescriptorType::STORAGE_BUFFER)
+		let sizes = [vk::DescriptorPoolSize::default()
+			.r#type(vk::DescriptorType::STORAGE_BUFFER)
 			.descriptor_count(descriptor_count)];
-		let info = ash::vk::DescriptorPoolCreateInfo::default()
+		let info = vk::DescriptorPoolCreateInfo::default()
 			.max_sets(count)
-			.pool_sizes(&sizes);
+			.pool_sizes(&sizes)
+			.map_err(Error::from)?;
 		// SAFETY: the nonzero pool sizes exactly sum the validated live layouts;
 		// no optional pool flags or allocation callbacks are used.
 		let pool = unsafe { device.create_descriptor_pool(&info, None) }.map_err(|source| {
 			Error::backend_failure("Vulkan", "bounded descriptor-pool creation", source)
 		})?;
-		let allocate = ash::vk::DescriptorSetAllocateInfo::default()
+		let allocate = vk::DescriptorSetAllocateInfo::default()
 			.descriptor_pool(pool)
-			.set_layouts(layouts);
+			.set_layouts(layouts)
+			.map_err(Error::from)?;
 		// SAFETY: every layout belongs to this device and the new pool has the
 		// exact set/descriptor capacity. All arrays live throughout the call.
-		let sets = match unsafe { device.allocate_descriptor_sets(&allocate) } {
-			Ok(sets) => sets,
+		let mut sets = vec![vk::DescriptorSet::default(); layouts.len()];
+		match unsafe { device.allocate_descriptor_sets(&allocate, &mut sets) } {
+			Ok(()) => {}
 			Err(source) => {
 				destroy_pool(device, pool);
 				return Err(Error::backend_failure(
@@ -419,14 +422,18 @@ impl BoundedSets {
 			}
 		};
 		for (&set, infos) in sets.iter().zip(buffers) {
-			let write = ash::vk::WriteDescriptorSet::default()
+			let write = vk::WriteDescriptorSet::default()
 				.dst_set(set)
 				.dst_binding(0)
-				.descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
+				.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
 				.buffer_info(infos);
 			// SAFETY: every slot has a retained live buffer/range; this fresh set
 			// has not been bound or submitted and its capacity matches `infos`.
-			unsafe { device.update_descriptor_sets(&[write], &[]) };
+			unsafe {
+				device
+					.update_descriptor_sets(&[write.map_err(Error::from)?], &[])
+					.map_err(Error::from)?
+			};
 		}
 		Ok(Self {
 			device: context.clone(),
@@ -435,7 +442,7 @@ impl BoundedSets {
 		})
 	}
 
-	pub(super) fn set(&self, index: usize) -> ash::vk::DescriptorSet {
+	pub(super) fn set(&self, index: usize) -> vk::DescriptorSet {
 		self.sets[index]
 	}
 }

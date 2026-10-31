@@ -13,6 +13,7 @@ struct MlkemSponge {
 };
 
 void mlkem_sponge_init(uint rate, out MlkemSponge sponge) {
+	[loop]
 	for (uint i = 0u; i < 25u; ++i) sponge.state[i] = uint2(0u, 0u);
 	sponge.position = 0u;
 	sponge.rate = rate;
@@ -35,6 +36,7 @@ void mlkem_sponge_finish(inout MlkemSponge sponge, uint suffix, out uint digest[
 	else sponge.state[lane].y ^= suffix << shift;
 	sponge.state[sponge.rate / 8u - 1u].y ^= 0x80000000u;
 	keccak_f1600_u32(sponge.state);
+	[loop]
 	for (uint i = 0u; i < 64u; ++i) {
 		uint word = (i & 7u) < 4u ? sponge.state[i / 8u].x : sponge.state[i / 8u].y;
 		digest[i] = (word >> ((i & 3u) * 8u)) & 255u;
@@ -44,6 +46,7 @@ void mlkem_sponge_finish(inout MlkemSponge sponge, uint suffix, out uint digest[
 void mlkem_hash_key(uint ek[1568], uint k, out uint digest[64]) {
 	MlkemSponge sponge;
 	mlkem_sponge_init(136u, sponge);
+	[loop]
 	for (uint i = 0u; i < 384u * k + 32u; ++i) mlkem_sponge_byte(sponge, ek[i]);
 	mlkem_sponge_finish(sponge, 6u, digest); // H = SHA3-256; first32 used.
 }
@@ -52,21 +55,34 @@ void mlkem_derive(uint message[32], uint hash[32], out uint key[32], out uint r[
 	MlkemSponge sponge;
 	uint digest[64];
 	mlkem_sponge_init(72u, sponge);
+	[loop]
 	for (uint i = 0u; i < 32u; ++i) mlkem_sponge_byte(sponge, message[i]);
+	[loop]
 	for (uint i = 0u; i < 32u; ++i) mlkem_sponge_byte(sponge, hash[i]);
 	mlkem_sponge_finish(sponge, 6u, digest); // G = SHA3-512.
+	[loop]
 	for (uint i = 0u; i < 32u; ++i) key[i] = digest[i];
+	[loop]
 	for (uint i = 0u; i < 8u; ++i) r[i] = digest[32u + 4u*i] | (digest[33u + 4u*i] << 8u)
 		| (digest[34u + 4u*i] << 16u) | (digest[35u + 4u*i] << 24u);
 }
 
-void mlkem_keygen_internal(uint d[8], uint z[32], uint k,
-	inout uint ek[1568], inout uint dk[3168]) {
+void mlkem_keygen_cached<T : IMlkemVector>(
+	uint d[8],
+	uint z[32],
+	uint k,
+	inout T cache,
+	inout uint ek[1568],
+	inout uint dk[3168]
+) {
 	uint pkeSecret[1536], digest[64];
-	mlkem_kpke_keygen(d, k, ek, pkeSecret);
+	mlkem_kpke_keygen_cached(d, k, cache, ek, pkeSecret);
 	mlkem_hash_key(ek, k, digest);
+	[loop]
 	for (uint i = 0u; i < 384u*k; ++i) dk[i] = pkeSecret[i];
+	[loop]
 	for (uint i = 0u; i < 384u*k + 32u; ++i) dk[384u*k + i] = ek[i];
+	[loop]
 	for (uint i = 0u; i < 32u; ++i) {
 		dk[768u*k + 32u + i] = digest[i];
 		dk[768u*k + 64u + i] = z[i];
@@ -74,36 +90,131 @@ void mlkem_keygen_internal(uint d[8], uint z[32], uint k,
 }
 
 // Internal formula; returned flag is public-key canonicality, NOT rejection.
-bool mlkem_encaps_internal(uint ek[1568], uint message[32], uint k,
-	out uint key[32], inout uint ciphertext[1568]) {
+bool mlkem_encaps_cached<T : IMlkemVector>(
+	uint ek[1568],
+	uint message[32],
+	uint k,
+	inout T cache,
+	out uint key[32],
+	inout uint ciphertext[1568]
+) {
 	uint digest[64], hash[32], r[8];
 	mlkem_hash_key(ek, k, digest);
+	[loop]
 	for (uint i = 0u; i < 32u; ++i) hash[i] = digest[i];
 	mlkem_derive(message, hash, key, r);
-	return mlkem_kpke_encrypt(ek, message, r, k, ciphertext);
+	return mlkem_kpke_encrypt_cached(ek, message, r, k, cache, ciphertext);
 }
 
 // No rejection flag leaves this function. Fixed-work compare and masked select
 // are source-level properties only; machine-code timing and erasure are open.
-void mlkem_decaps_internal(uint dk[3168], uint ciphertext[1568], uint k, out uint key[32]) {
+void mlkem_decaps_cached<T : IMlkemVector>(
+	uint dk[3168],
+	uint ciphertext[1568],
+	uint k,
+	inout T cache,
+	out uint key[32]
+) {
+	// Keep byte-copy/selection loops rolled: driver unrolling duplicates
+	// dynamic private-array accesses and can exhaust software compiler memory.
 	uint pkeSecret[1536], ek[1568], hash[32], message[32], r[8];
 	uint candidate[32], rejection[64], check[1568];
 	uint size = 32u * (k == 4u ? 11u*k + 5u : 10u*k + 4u);
+	[loop]
 	for (uint i = 0u; i < 384u*k; ++i) pkeSecret[i] = dk[i];
+	[loop]
 	for (uint i = 0u; i < 384u*k + 32u; ++i) ek[i] = dk[384u*k + i];
+	[loop]
 	for (uint i = 0u; i < 32u; ++i) hash[i] = dk[768u*k + 32u + i];
-	mlkem_kpke_decrypt(pkeSecret, ciphertext, k, message);
+	mlkem_kpke_decrypt_cached(pkeSecret, ciphertext, k, cache, message);
 	mlkem_derive(message, hash, candidate, r);
 	MlkemSponge sponge;
 	mlkem_sponge_init(136u, sponge);
+	[loop]
 	for (uint i = 0u; i < 32u; ++i) mlkem_sponge_byte(sponge, dk[768u*k + 64u + i]);
+	[loop]
 	for (uint i = 0u; i < size; ++i) mlkem_sponge_byte(sponge, ciphertext[i]);
 	mlkem_sponge_finish(sponge, 31u, rejection); // J = SHAKE256,32bytes.
-	mlkem_kpke_encrypt(ek, message, r, k, check);
+	mlkem_kpke_encrypt_cached(ek, message, r, k, cache, check);
 	uint difference = 0u;
+	[loop]
 	for (uint i = 0u; i < size; ++i) difference |= ciphertext[i] ^ check[i];
 	uint mask = 0u - ((difference | (0u - difference)) >> 31u);
+	[loop]
 	for (uint i = 0u; i < 32u; ++i) key[i] = (candidate[i] & ~mask) | (rejection[i] & mask);
+}
+
+// Local and buffer storage share the same FIPS 203 composition. Decapsulation
+// reuses one vector: decrypt consumes u before re-encryption overwrites it with y.
+void mlkem_keygen_internal(uint d[8], uint z[32], uint k,
+	inout uint ek[1568], inout uint dk[3168]) {
+	MlkemLocalVector cache;
+	mlkem_keygen_cached(d, z, k, cache, ek, dk);
+}
+
+bool mlkem_encaps_internal(uint ek[1568], uint message[32], uint k,
+	out uint key[32], inout uint ciphertext[1568]) {
+	MlkemLocalVector cache;
+	return mlkem_encaps_cached(ek, message, k, cache, key, ciphertext);
+}
+
+void mlkem_decaps_internal(uint dk[3168], uint ciphertext[1568], uint k, out uint key[32]) {
+	MlkemLocalVector cache;
+	mlkem_decaps_cached(dk, ciphertext, k, cache, key);
+}
+
+// Workspace preflight precedes all output writes. Array length/byte validity and
+// disjointness remain the caller's contract, as for the existing internal formulas.
+bool mlkem_keygen_buffer(
+	uint d[8],
+	uint z[32],
+	uint k,
+	RWByteAddressBuffer workspace,
+	uint base,
+	inout uint ek[1568],
+	inout uint dk[3168]
+) {
+	if (!mlkem_vector_range_valid(workspace, base, k)) return false;
+	MlkemBufferVector cache;
+	cache.buffer = workspace;
+	cache.base = base;
+	mlkem_keygen_cached(d, z, k, cache, ek, dk);
+	return true;
+}
+
+// Returned status describes public-key canonicality, never ciphertext rejection.
+bool mlkem_encaps_buffer(
+	uint ek[1568],
+	uint message[32],
+	uint k,
+	RWByteAddressBuffer workspace,
+	uint base,
+	inout uint key[32],
+	inout uint ciphertext[1568]
+) {
+	if (!mlkem_vector_range_valid(workspace, base, k)) return false;
+	MlkemBufferVector cache;
+	cache.buffer = workspace;
+	cache.base = base;
+	return mlkem_encaps_cached(ek, message, k, cache, key, ciphertext);
+}
+
+// True means the workspace was usable. Implicit rejection remains inside the
+// fixed-work masked selection and does not escape as an observable status bit.
+bool mlkem_decaps_buffer(
+	uint dk[3168],
+	uint ciphertext[1568],
+	uint k,
+	RWByteAddressBuffer workspace,
+	uint base,
+	inout uint key[32]
+) {
+	if (!mlkem_vector_range_valid(workspace, base, k)) return false;
+	MlkemBufferVector cache;
+	cache.buffer = workspace;
+	cache.base = base;
+	mlkem_decaps_cached(dk, ciphertext, k, cache, key);
+	return true;
 }
 
 // FIPS 203 sections 7.2/7.3 input checks; private fixed-capacity laboratory.
@@ -119,7 +230,9 @@ bool mlkem_ciphertext_length_valid(uint k, uint length) {
 bool mlkem_encapsulation_key_valid(uint ek[1568], uint k, uint length) {
 	if (!mlkem_parameter_valid(k) || length != 384u*k + 32u) return false;
 	uint invalid = 0u;
+	[loop]
 	for (uint i = 0u; i < length; ++i) invalid |= ek[i] >> 8u;
+	[loop]
 	for (uint i = 0u; i < 384u*k; i += 3u) {
 		uint a = ek[i] | ((ek[i + 1u] & 15u) << 8u);
 		uint b = (ek[i + 1u] >> 4u) | (ek[i + 2u] << 4u);
@@ -131,9 +244,12 @@ bool mlkem_encapsulation_key_valid(uint ek[1568], uint k, uint length) {
 bool mlkem_decapsulation_key_valid(uint dk[3168], uint k, uint length) {
 	if (!mlkem_parameter_valid(k) || length != 768u*k + 96u) return false;
 	uint invalid = 0u, ek[1568], digest[64];
+	[loop]
 	for (uint i = 0u; i < length; ++i) invalid |= dk[i] >> 8u;
+	[loop]
 	for (uint i = 0u; i < 384u*k + 32u; ++i) ek[i] = dk[384u*k + i];
 	mlkem_hash_key(ek, k, digest);
+	[loop]
 	for (uint i = 0u; i < 32u; ++i) invalid |= digest[i] ^ dk[768u*k + 32u + i];
 	return invalid == 0u;
 }

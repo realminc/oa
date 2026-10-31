@@ -52,7 +52,9 @@ mod utility;
 mod vq;
 
 pub use activation::{Gelu, Relu, Silu};
-pub use attention::{AttentionBackend, AttentionMode, MultiHeadAttention};
+pub use attention::{
+	AttentionBackend, AttentionMode, CausalLinearAttention, LinearAttentionMode, MultiHeadAttention,
+};
 pub use batch_norm::BatchNorm2d;
 pub use byte::{ByteEmbedding, ByteHead};
 pub use conv::{Conv1d, Conv2d, ConvTranspose1d, ConvTranspose2d};

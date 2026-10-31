@@ -80,6 +80,12 @@ MLDSA_PREHASH_HASHLIB = {
 
 
 ENTRY_SOURCES = {
+    "bigint_bit_components": "bigint/bits.slang",
+    "bigint_arithmetic_components": "bigint/arithmetic.slang",
+    "bigint_modular_components": "bigint/modular.slang",
+    "bigint_inverse_components": "bigint/modular.slang",
+    "bigint_montgomery_components": "bigint/montgomery.slang",
+    "bigint_barrett_components": "bigint/barrett.slang",
     "mldsa_prehash_digest_components": "mldsa/prehash_digest.slang",
     "sha2_u32_pair_components": "common/sha2_pair_digest.slang",
     "sha2_u32_pair_arithmetic_components": "common/sha2_pair_digest.slang",
@@ -107,11 +113,14 @@ ENTRY_SOURCES = {
     "mlkem_encaps_components": "mlkem/kem.slang",
     "mlkem_field_components": "mlkem/field.slang",
     "mlkem_kem_components": "mlkem/kem.slang",
+    "mlkem_kem_workspace_components": "mlkem/kem_workspace.slang",
+    "mlkem_decaps_workspace_components": "mlkem/kem_workspace.slang",
     "mlkem_kem_decaps_components": "mlkem/kem.slang",
     "mlkem_key_check_components": "mlkem/kem.slang",
     "mlkem_keygen_components": "mlkem/kem.slang",
     "mlkem_kpke_components": "mlkem/kpke.slang",
     "mlkem_kpke_decrypt_components": "mlkem/kpke.slang",
+    "mlkem_kpke_workspace_components": "mlkem/kpke_workspace.slang",
     "mlkem_packing_components": "mlkem/packing.slang",
     "mlkem_polynomial_components": "mlkem/ntt.slang",
     "mlkem_rejection_components": "mlkem/sampling.slang",
@@ -141,7 +150,9 @@ BYTE_ADDRESS_ENTRIES = frozenset((
     "verification_components", "parameter_verification_components", "range_components",
 ))
 
-OUTPUT_BYTE_ADDRESS_ENTRIES = frozenset(("mldsa_sign_workspace_components",
+OUTPUT_BYTE_ADDRESS_ENTRIES = frozenset(("mlkem_kpke_workspace_components",
+    "mlkem_kem_workspace_components", "mlkem_decaps_workspace_components",
+    "mldsa_sign_workspace_components",
     "mldsa_sign_message_workspace_components", "mldsa_prehash_workspace_components",
     "mldsa_hash_message_workspace_components"))
 

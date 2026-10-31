@@ -33,7 +33,7 @@ impl Color {
 	}
 
 	/// Unpack one `0xRRGGBBAA` word.
-	pub const fn from_u32(rgba: u32) -> Self {
+	pub const fn new_from_u32(rgba: u32) -> Self {
 		Self::new(
 			((rgba >> 24) & 0xff) as f32 / 255.0,
 			((rgba >> 16) & 0xff) as f32 / 255.0,

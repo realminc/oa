@@ -78,7 +78,7 @@ impl ClipResidualBlock {
 			config.hidden_size,
 			config.layer_norm_epsilon,
 		)?);
-		let attention = Rc::new(MultiHeadAttention::with_seed(
+		let attention = Rc::new(MultiHeadAttention::new_with_seed(
 			engine,
 			config.hidden_size,
 			config.num_heads,
@@ -90,13 +90,13 @@ impl ClipResidualBlock {
 			config.hidden_size,
 			config.layer_norm_epsilon,
 		)?);
-		let fc1 = Rc::new(Linear::with_seed(
+		let fc1 = Rc::new(Linear::new_with_seed(
 			engine,
 			config.hidden_size,
 			config.intermediate_size,
 			seed.wrapping_add(4),
 		)?);
-		let fc2 = Rc::new(Linear::with_seed(
+		let fc2 = Rc::new(Linear::new_with_seed(
 			engine,
 			config.intermediate_size,
 			config.hidden_size,
@@ -170,15 +170,15 @@ impl ClipText {
 		import_safetensors_config(input.as_ref(), output.as_ref(), ClipTextConfig::default())
 	}
 
-	pub fn with_seed(engine: &Engine, config: ClipTextConfig, seed: u64) -> Result<Self> {
+	pub fn new_with_seed(engine: &Engine, config: ClipTextConfig, seed: u64) -> Result<Self> {
 		validate_config(config)?;
-		let token_embedding = Rc::new(Embedding::with_seed(
+		let token_embedding = Rc::new(Embedding::new_with_seed(
 			engine,
 			config.vocab_size,
 			config.hidden_size,
 			seed,
 		)?);
-		let position_embedding = Rc::new(Embedding::with_seed(
+		let position_embedding = Rc::new(Embedding::new_with_seed(
 			engine,
 			config.context_length,
 			config.hidden_size,
@@ -202,7 +202,7 @@ impl ClipText {
 			config.hidden_size,
 			config.layer_norm_epsilon,
 		)?);
-		let text_projection = Rc::new(Linear::with_seed_and_bias(
+		let text_projection = Rc::new(Linear::new_with_seed_and_bias(
 			engine,
 			config.hidden_size,
 			config.projection_dim,
@@ -211,7 +211,7 @@ impl ClipText {
 		)?);
 		registry.register_module("final_layer_norm", final_layer_norm.clone())?;
 		registry.register_module("text_projection", text_projection.clone())?;
-		let position_ids = Matrix::from_slice(
+		let position_ids = Matrix::new_from_slice(
 			engine,
 			[config.context_length],
 			&(0..config.context_length)
@@ -233,7 +233,7 @@ impl ClipText {
 	}
 
 	pub fn new(engine: &Engine, config: ClipTextConfig) -> Result<Self> {
-		Self::with_seed(engine, config, 0)
+		Self::new_with_seed(engine, config, 0)
 	}
 
 	/// Save this frozen text tower as an OA `OaClipTextAg` v1 model file.
@@ -351,12 +351,12 @@ impl ClipText {
 		truncate: bool,
 	) -> Result<Matrix> {
 		let batch = tokenizer.encode(prompts, self.config.context_length, truncate)?;
-		let tokens = Matrix::from_slice_handle(
+		let tokens = Matrix::new_from_slice_handle(
 			self.position_ids.engine_handle(),
 			vec![batch.batch, batch.context_length],
 			&batch.token_ids,
 		)?;
-		let eos = Matrix::from_slice_handle(
+		let eos = Matrix::new_from_slice_handle(
 			self.position_ids.engine_handle(),
 			vec![batch.batch],
 			&batch.flat_eos_rows,
@@ -415,7 +415,7 @@ impl Module for ClipText {
 					.map_err(|_| Error::invalid_argument("CLIP EOS row exceeds I32"))
 			})
 			.collect::<Result<Vec<_>>>()?;
-		let eos = Matrix::from_slice_handle(token_ids.engine_handle(), vec![*batch], &rows)?;
+		let eos = Matrix::new_from_slice_handle(token_ids.engine_handle(), vec![*batch], &rows)?;
 		self.forward_tokens(token_ids, &eos)
 	}
 

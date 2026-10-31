@@ -38,6 +38,49 @@ pub(in crate::runtime) mod physical;
 
 use std::sync::Arc;
 
+/// Bitwise membership test for generated `vk::*FlagBits*` newtypes.
+///
+/// The generated bindings expose `BitAnd`/`BitOr` but no named membership
+/// helper; this restores the conventional `flags.contains(bit)` spelling for
+/// private native code.
+pub(in crate::runtime) trait NativeFlagBits:
+	Copy + PartialEq + std::ops::BitAnd<Output = Self>
+{
+	fn contains(self, member: Self) -> bool {
+		(self & member) == member
+	}
+}
+
+macro_rules! impl_native_flag_bits {
+	($($ty:ty),* $(,)?) => {
+		$(impl NativeFlagBits for $ty {})*
+	};
+}
+
+impl_native_flag_bits! {
+	vk::FormatFeatureFlagBits,
+	vk::ImageCreateFlagBits,
+	vk::ImageUsageFlagBits,
+	vk::QueueFlagBits,
+	vk::ShaderStageFlagBits,
+	vk::CompositeAlphaFlagBitsKHR,
+	vk::SampleCountFlagBits,
+	vk::VideoCapabilityFlagBitsKHR,
+	vk::VideoChromaSubsamplingFlagBitsKHR,
+	vk::VideoCodingControlFlagBitsKHR,
+	vk::VideoComponentBitDepthFlagBitsKHR,
+	vk::VideoDecodeCapabilityFlagBitsKHR,
+	vk::VideoDecodeH264PictureLayoutFlagBitsKHR,
+	vk::VideoEncodeFeedbackFlagBitsKHR,
+	vk::VideoEncodeH265CtbSizeFlagBitsKHR,
+	vk::VideoEncodeH265TransformBlockSizeFlagBitsKHR,
+	vk::VideoEncodeRateControlModeFlagBitsKHR,
+	vk::AccessFlagBits2,
+	vk::PipelineStageFlagBits2,
+	vk::BufferUsageFlagBits,
+	vk::QueryResultFlagBits,
+}
+
 use configuration::DeviceConfiguration;
 use logical::DeviceLogical;
 pub(in crate::runtime) use physical::DevicePhysical;
@@ -70,6 +113,41 @@ impl Device {
 
 	pub(in crate::runtime) fn logical(&self) -> &DeviceLogical {
 		&self.logical
+	}
+
+	pub(in crate::runtime) fn compute_shared_memory_bytes(&self) -> u32 {
+		self.physical.limits.max_compute_shared_memory_size
+	}
+
+	/// Flatten linear work across two queried dispatch dimensions.
+	pub(in crate::runtime) fn linear_dispatch_grid(
+		&self,
+		count: u32,
+		group_size: u32,
+	) -> crate::Result<[u32; 3]> {
+		let limits = self.physical.limits;
+		if group_size == 0
+			|| group_size > limits.max_compute_work_group_size[0]
+			|| group_size > limits.max_compute_work_group_invocations
+		{
+			return Err(crate::Error::invalid_argument(
+				"linear dispatch group size exceeds device limits",
+			));
+		}
+		let groups = count.div_ceil(group_size).max(1);
+		let x = groups.min(limits.max_compute_work_group_count[0]);
+		if x == 0 || limits.max_compute_work_group_count[1] == 0 {
+			return Err(crate::Error::missing_capability(
+				"device has no usable compute dispatch grid",
+			));
+		}
+		let y = groups.div_ceil(x);
+		if y > limits.max_compute_work_group_count[1] {
+			return Err(crate::Error::invalid_argument(
+				"linear work exceeds queried compute dispatch grid",
+			));
+		}
+		Ok([x, y, 1])
 	}
 }
 

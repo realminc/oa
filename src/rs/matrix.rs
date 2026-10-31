@@ -11,6 +11,8 @@ mod elemwise;
 mod index;
 #[allow(clippy::module_inception)]
 mod matrix;
+#[path = "matrix/matrix.gen.rs"]
+mod methods;
 #[path = "matrix/reduce.gen.rs"]
 mod reduce;
 mod rng;

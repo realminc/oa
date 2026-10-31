@@ -16,6 +16,8 @@ mod layer_norm;
 mod linear;
 mod mamba3;
 mod moe;
+#[path = "matrix/parity.gen.rs"]
+mod parity;
 mod pool;
 mod recurrent;
 mod rms_norm;
@@ -24,9 +26,11 @@ mod rnn;
 mod rope;
 #[path = "matrix/swiglu.gen.rs"]
 mod swiglu;
+mod training;
 #[path = "matrix/upsample.gen.rs"]
 mod upsample;
 mod vq;
+pub(in crate::ml) use training::{sample_categorical_cursor, training_accumulate};
 
 pub use activation::{elu, gelu, leaky_relu, mish, relu, sigmoid, silu, softplus, tanh};
 pub(in crate::ml) use activation::{
@@ -34,12 +38,13 @@ pub(in crate::ml) use activation::{
 	silu_backward, softplus_backward, tanh_backward,
 };
 pub use attention::{
-	bmm, bmm_nt, bmm_tn, flash_attention_causal, merge_heads, scaled_dot_product_attention,
-	scaled_dot_product_attention_causal, softmax_scaled_masked, split_heads,
+	bmm, bmm_nt, bmm_tn, causal_linear_attention, flash_attention_causal, merge_heads,
+	scaled_dot_product_attention, scaled_dot_product_attention_causal, softmax_scaled_masked,
+	split_heads,
 };
 pub(in crate::ml) use attention::{
-	flash_attention_causal_backward, merge_heads_dispatch, softmax_scaled_masked_backward,
-	split_heads_dispatch,
+	causal_linear_attention_backward, flash_attention_causal_backward, merge_heads_dispatch,
+	softmax_scaled_masked_backward, split_heads_dispatch,
 };
 pub use batch_norm::{BatchNorm2dResult, batch_norm_2d, batch_norm_2d_with_stats};
 pub(in crate::ml) use batch_norm::{

@@ -55,7 +55,7 @@ impl MediaPlayer {
 				"MediaPlayer requires both track paths",
 			));
 		}
-		let video = VideoPlayer::open_native(
+		let video = VideoPlayer::new_native(
 			engine,
 			&config.video_path,
 			VideoPlayerConfig {
@@ -113,7 +113,7 @@ impl MediaPlayer {
 		}
 		let audio_eos = self.audio.is_eos();
 		let result = (|| {
-			let clock = MediaTimestamp::from_microseconds(self.audio.position_us());
+			let clock = MediaTimestamp::new_from_microseconds(self.audio.position_us());
 			let mut advanced = 0;
 			while advanced < max_frames && !self.video.is_done() {
 				let Some(boundary) = self.video.next_presentation_boundary()? else {
@@ -157,7 +157,7 @@ impl MediaPlayer {
 				.info()
 				.ok_or_else(|| Error::failed_precondition("video closed"))?;
 			let ticks =
-				MediaTimestamp::from_microseconds(timestamp_us).to_video_ticks(info.time_base())?;
+				MediaTimestamp::new_from_microseconds(timestamp_us).to_video_ticks(info.time_base())?;
 			self.video.seek_at_or_before(ticks)?;
 			self.audio.seek(timestamp_us)
 		})();

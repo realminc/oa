@@ -172,7 +172,12 @@ impl DnnPlan {
 					"DNN capture found an unassigned semantic value",
 				));
 			};
-			if value.shape().is_empty() || value.shape().contains(&0) || value.shape().len() > 4 {
+			let supported =
+				|shape: &[usize]| !shape.is_empty() && !shape.contains(&0) && shape.len() <= 4;
+			let root = &graph.values()[storage_roots[id.index() as usize].index() as usize];
+			// A supported view can have a scalar/high-rank storage root. Keep that
+			// entire lineage on the source path rather than retaining a dangling root.
+			if !supported(value.shape()) || !supported(root.shape()) {
 				continue;
 			}
 			values.push(DnnValueDesc {

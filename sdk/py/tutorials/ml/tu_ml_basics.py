@@ -8,8 +8,8 @@ import oa
 
 engine = oa.Engine()
 
-x = oa.Matrix.from_f32(engine, [5, 1], [-2.0, -1.0, 0.0, 1.0, 2.0])
-target = oa.Matrix.from_f32(engine, [5, 1], [-3.0, -1.0, 1.0, 3.0, 5.0])
+x = oa.Matrix.new_from_f32(engine, [5, 1], [-2.0, -1.0, 0.0, 1.0, 2.0])
+target = oa.Matrix.new_from_f32(engine, [5, 1], [-3.0, -1.0, 1.0, 3.0, 5.0])
 
 model = oa.ml.Linear(engine, 1, 1, seed=0)
 optimizer = oa.ml.Sgd(model.parameters(), learning_rate=0.05)

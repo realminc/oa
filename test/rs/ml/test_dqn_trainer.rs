@@ -4,9 +4,9 @@ use oa::ml::{
 };
 
 fn linear(engine: &oa::Engine, weight: [f32; 4], bias: [f32; 2]) -> oa::Result<oa::ml::nn::Linear> {
-	oa::ml::nn::Linear::from_matrices(
-		oa::Matrix::from_f32(engine, [2, 2], &weight)?,
-		oa::Matrix::from_f32(engine, [2], &bias)?,
+	oa::ml::nn::Linear::new_from_matrices(
+		oa::Matrix::new_from_f32(engine, [2, 2], &weight)?,
+		oa::Matrix::new_from_f32(engine, [2], &bias)?,
 	)
 }
 
@@ -24,12 +24,12 @@ test_vk!(
 			},
 		)?;
 		replay.append(&ReplayTransition::new(
-			oa::Matrix::from_f32(&engine, [4, 2], &[0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0])?,
-			oa::Matrix::from_slice(&engine, [4], &[0_i32, 1, 0, 1])?,
-			oa::Matrix::from_f32(&engine, [4, 2], &[1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0])?,
-			oa::Matrix::from_f32(&engine, [4], &[0.0, 1.0, 1.0, 0.0])?,
-			oa::Matrix::from_slice(&engine, [4], &[0_u8, 0, 1, 0])?,
-			oa::Matrix::from_slice(&engine, [4], &[0_u8, 0, 0, 1])?,
+			oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0])?,
+			oa::Matrix::new_from_slice(&engine, [4], &[0_i32, 1, 0, 1])?,
+			oa::Matrix::new_from_f32(&engine, [4, 2], &[1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0])?,
+			oa::Matrix::new_from_f32(&engine, [4], &[0.0, 1.0, 1.0, 0.0])?,
+			oa::Matrix::new_from_slice(&engine, [4], &[0_u8, 0, 1, 0])?,
+			oa::Matrix::new_from_slice(&engine, [4], &[0_u8, 0, 0, 1])?,
 		))?;
 
 		let online = linear(&engine, [0.2, -0.1, -0.3, 0.4], [0.0, 0.0])?;

@@ -149,8 +149,8 @@ fn run_correctness_suite(engine: &Engine) -> anyhow::Result<()> {
 		let left_values = values(case.m * case.k, index * 2 + 3);
 		let right_values = values(case.n * case.k, index * 2 + 11);
 		let expected = cpu_mat_mul_nt(&left_values, &right_values, case.m, case.n, case.k);
-		let left = Matrix::from_f32(engine, [case.m, case.k], &left_values)?;
-		let right = Matrix::from_f32(engine, [case.n, case.k], &right_values)?;
+		let left = Matrix::new_from_f32(engine, [case.m, case.k], &left_values)?;
+		let right = Matrix::new_from_f32(engine, [case.n, case.k], &right_values)?;
 		let output = matrix::mat_mul_nt(&left, &right)?;
 		let actual = output.read_f32()?;
 		let error = normalized_error(&actual, &expected)?;

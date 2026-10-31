@@ -176,34 +176,34 @@ class VideoFrameFromImageTest(unittest.TestCase):
 		cls.engine = oa.Engine()
 
 	def test_from_image_produces_correct_dimensions(self) -> None:
-		m = oa.Matrix.from_f32(self.engine, [1, 3, 4, 4], [0.5] * 48)
-		image = oa.Image.from_matrix(m, "nchw", "rgb")
-		frame = oa.VideoFrame.from_image(image, presentation_us=1_000)
+		m = oa.Matrix.new_from_f32(self.engine, [1, 3, 4, 4], [0.5] * 48)
+		image = oa.Image.new_from_matrix(m, "nchw", "rgb")
+		frame = oa.VideoFrame.new_from_image(image, presentation_us=1_000)
 		self.assertEqual(frame.width(), 4)
 		self.assertEqual(frame.height(), 4)
 		self.assertEqual(frame.presentation_us(), 1_000)
 		self.assertIn("VideoFrame", repr(frame))
 
 	def test_color_returns_video_color_info(self) -> None:
-		m = oa.Matrix.from_f32(self.engine, [1, 3, 4, 4], [0.5] * 48)
-		image = oa.Image.from_matrix(m, "nchw", "rgb")
-		frame = oa.VideoFrame.from_image(image)
+		m = oa.Matrix.new_from_f32(self.engine, [1, 3, 4, 4], [0.5] * 48)
+		image = oa.Image.new_from_matrix(m, "nchw", "rgb")
+		frame = oa.VideoFrame.new_from_image(image)
 		color = frame.color()
 		self.assertIsInstance(color, oa.VideoColorInfo)
 		self.assertEqual(color.matrix, oa.VideoColorMatrix.Unspecified)
 
 	def test_timing_returns_video_frame_timing(self) -> None:
-		m = oa.Matrix.from_f32(self.engine, [1, 3, 4, 4], [0.5] * 48)
-		image = oa.Image.from_matrix(m, "nchw", "rgb")
-		frame = oa.VideoFrame.from_image(image, presentation_us=2_500)
+		m = oa.Matrix.new_from_f32(self.engine, [1, 3, 4, 4], [0.5] * 48)
+		image = oa.Image.new_from_matrix(m, "nchw", "rgb")
+		frame = oa.VideoFrame.new_from_image(image, presentation_us=2_500)
 		timing = frame.timing()
 		self.assertIsInstance(timing, oa.VideoFrameTiming)
 		self.assertEqual(timing.presentation_us, 2_500)
 
 	def test_as_image_returns_backing_image(self) -> None:
-		m = oa.Matrix.from_f32(self.engine, [1, 3, 4, 4], [0.5] * 48)
-		image = oa.Image.from_matrix(m, "nchw", "rgb")
-		frame = oa.VideoFrame.from_image(image)
+		m = oa.Matrix.new_from_f32(self.engine, [1, 3, 4, 4], [0.5] * 48)
+		image = oa.Image.new_from_matrix(m, "nchw", "rgb")
+		frame = oa.VideoFrame.new_from_image(image)
 		result = frame.as_image()
 		self.assertIsNotNone(result)
 
@@ -230,7 +230,7 @@ class EncodedVideoPacketTest(unittest.TestCase):
 
 	def test_with_timestamps_allows_distinct_pts_dts(self) -> None:
 		data = b"\x00\x00\x00\x01\x41" + b"\x00" * 10
-		pkt = oa.EncodedVideoPacket.with_timestamps(
+		pkt = oa.EncodedVideoPacket.new_with_timestamps(
 			bitstream=list(data),
 			presentation_timestamp_micros=10_000,
 			decode_timestamp_micros=8_000,

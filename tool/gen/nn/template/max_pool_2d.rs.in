@@ -13,7 +13,7 @@ impl {{name}} {
 	///
 	/// Returns an error when `kernel_size` is zero.
 	pub fn new(kernel_size: usize) -> Result<Self> {
-		Self::with_options(kernel_size, kernel_size, 0)
+		Self::new_with_options(kernel_size, kernel_size, 0)
 	}
 
 	/// Construct {{name}} with explicit square-kernel geometry.
@@ -21,7 +21,7 @@ impl {{name}} {
 	/// # Errors
 	///
 	/// Returns an error when `kernel_size` or `stride` is zero.
-	pub fn with_options(kernel_size: usize, stride: usize, padding: usize) -> Result<Self> {
+	pub fn new_with_options(kernel_size: usize, stride: usize, padding: usize) -> Result<Self> {
 		if kernel_size == 0 || stride == 0 {
 			return Err(Error::invalid_argument(
 				"{{name}} kernel size and stride must be nonzero",

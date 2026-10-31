@@ -14,9 +14,12 @@ fn parameter_vector(
 	engine: &oa::Engine,
 	values: &[f32],
 ) -> oa::Result<(oa::ml::nn::Embedding, oa::Matrix)> {
-	let parameter =
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(engine, [values.len(), 1], values)?)?;
-	let rows = oa::Matrix::from_slice(
+	let parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+		engine,
+		[values.len(), 1],
+		values,
+	)?)?;
+	let rows = oa::Matrix::new_from_slice(
 		engine,
 		[values.len()],
 		&(0..values.len() as u32).collect::<Vec<_>>(),
@@ -36,9 +39,9 @@ test_vk!(
 		let (next_q2_parameter, next_q2) = parameter_vector(&engine, &[20.0, 40.0, 60.0])?;
 		let (next_log_parameter, next_log_probability) =
 			parameter_vector(&engine, &[-1.0, -2.0, -3.0])?;
-		let reward = oa::Matrix::from_f32(&engine, [3], &[1.0, 2.0, 3.0])?;
-		let terminated = oa::Matrix::from_slice(&engine, [3], &[0_u8, 1, 0])?;
-		let truncated = oa::Matrix::from_slice(&engine, [3], &[0_u8, 0, 1])?;
+		let reward = oa::Matrix::new_from_f32(&engine, [3], &[1.0, 2.0, 3.0])?;
+		let terminated = oa::Matrix::new_from_slice(&engine, [3], &[0_u8, 1, 0])?;
+		let truncated = oa::Matrix::new_from_slice(&engine, [3], &[0_u8, 0, 1])?;
 		engine.checkpoint()?.wait()?;
 
 		let (plan, result) = engine.capture(|| {
@@ -158,9 +161,9 @@ test_vk!(
 );
 
 test_vk!(sac_losses_reject_invalid_contracts, engine, {
-	let vector = oa::Matrix::from_f32(&engine, [2], &[1.0, 2.0])?;
-	let short = oa::Matrix::from_f32(&engine, [1], &[1.0])?;
-	let boundary = oa::Matrix::from_slice(&engine, [2], &[0_u8, 0])?;
+	let vector = oa::Matrix::new_from_f32(&engine, [2], &[1.0, 2.0])?;
+	let short = oa::Matrix::new_from_f32(&engine, [1], &[1.0])?;
+	let boundary = oa::Matrix::new_from_slice(&engine, [2], &[0_u8, 0])?;
 	assert!(sac_actor(&vector, &short, &vector, 0.2).is_err());
 	assert!(sac_actor(&vector, &vector, &vector, -0.1).is_err());
 	assert!(

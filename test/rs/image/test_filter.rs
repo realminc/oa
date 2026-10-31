@@ -6,12 +6,12 @@ test_vk!(
 	{
 		let values = (0..9).map(|value| value as f32).collect::<Vec<_>>();
 		let image = Image::new(
-			Matrix::from_f32(&engine, [1, 1, 3, 3], &values)?,
+			Matrix::new_from_f32(&engine, [1, 1, 3, 3], &values)?,
 			ImageLayout::Nchw,
 			ImageFormat::Gray,
 		)?;
-		let one_2d = Matrix::from_f32(&engine, [1, 1], &[1.0])?;
-		let one_1d = Matrix::from_f32(&engine, [1], &[1.0])?;
+		let one_2d = Matrix::new_from_f32(&engine, [1, 1], &[1.0])?;
+		let one_1d = Matrix::new_from_f32(&engine, [1], &[1.0])?;
 		let identity_outputs = [
 			oa::image::convolve_2d(&image, &one_2d, BorderMode::Constant, 0.0)?,
 			oa::image::separable_convolve_2d(&image, &one_1d, &one_1d, BorderMode::Constant, 0.0)?,
@@ -80,11 +80,11 @@ test_vk!(
 	engine,
 	{
 		let image = Image::new(
-			Matrix::from_f32(&engine, [1, 2, 2], &[0.0; 4])?,
+			Matrix::new_from_f32(&engine, [1, 2, 2], &[0.0; 4])?,
 			ImageLayout::Chw,
 			ImageFormat::Gray,
 		)?;
-		let even = Matrix::from_f32(&engine, [2, 2], &[1.0; 4])?;
+		let even = Matrix::new_from_f32(&engine, [2, 2], &[1.0; 4])?;
 		for error in [
 			oa::image::convolve_2d(&image, &even, BorderMode::Constant, 0.0)
 				.err()
@@ -116,14 +116,14 @@ test_vk!(
 	engine,
 	{
 		let image = Image::new(
-			Matrix::from_f32(&engine, [1, 2, 3], &[0.0; 6])?,
+			Matrix::new_from_f32(&engine, [1, 2, 3], &[0.0; 6])?,
 			ImageLayout::Chw,
 			ImageFormat::Gray,
 		)?;
-		let unit = Matrix::from_f32(&engine, [1], &[1.0])?;
+		let unit = Matrix::new_from_f32(&engine, [1], &[1.0])?;
 		for shape in [vec![], vec![1], vec![1, 1, 1], vec![0, 1]] {
 			let values = vec![1.0; shape.iter().product()];
-			let kernel = Matrix::from_f32(&engine, shape, &values)?;
+			let kernel = Matrix::new_from_f32(&engine, shape, &values)?;
 			let error = oa::image::convolve_2d(&image, &kernel, BorderMode::Constant, 0.0)
 				.err()
 				.expect("invalid 2D kernel shape must return an error");
@@ -131,7 +131,7 @@ test_vk!(
 		}
 		for shape in [vec![], vec![1, 1, 1], vec![2, 2], vec![0]] {
 			let values = vec![1.0; shape.iter().product()];
-			let kernel = Matrix::from_f32(&engine, shape, &values)?;
+			let kernel = Matrix::new_from_f32(&engine, shape, &values)?;
 			for (x, y) in [(&kernel, &unit), (&unit, &kernel)] {
 				let error = oa::image::separable_convolve_2d(&image, x, y, BorderMode::Constant, 0.0)
 					.err()
@@ -146,7 +146,7 @@ test_vk!(
 test_vk!(rectangular_filter_extents_preserve_pixels, engine, {
 	let values = (0..15).map(|index| index as f32).collect::<Vec<_>>();
 	let image = Image::new(
-		Matrix::from_f32(&engine, [1, 3, 5], &values)?,
+		Matrix::new_from_f32(&engine, [1, 3, 5], &values)?,
 		ImageLayout::Chw,
 		ImageFormat::Gray,
 	)?;

@@ -114,7 +114,7 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 }
 
 test_vk!(avg_pool_2d_matches_donor_and_odd_padding_oracles, engine, {
-	let donor_input = oa::Matrix::from_f32(
+	let donor_input = oa::Matrix::new_from_f32(
 		&engine,
 		[1, 1, 4, 4],
 		&[
@@ -129,7 +129,7 @@ test_vk!(avg_pool_2d_matches_donor_and_odd_padding_oracles, engine, {
 	let values = (0..40)
 		.map(|index| index as f32 * 0.25 - 3.0)
 		.collect::<Vec<_>>();
-	let input = oa::Matrix::from_f32(&engine, shape, &values)?;
+	let input = oa::Matrix::new_from_f32(&engine, shape, &values)?;
 	let (expected_shape, expected) = host_avg_pool_2d(&values, shape, 3, 2, 1);
 	let (plan, output) = engine.capture(|| oa::ml::matrix::avg_pool_2d(&input, 3, 2, 1))?;
 	assert_eq!(output.shape(), expected_shape);
@@ -151,11 +151,14 @@ test_vk!(avg_pool_2d_module_and_adjoint_match_host_oracle, engine, {
 		0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, -1.2, 0.5, 0.9, 1.4, -0.2, 0.1,
 	];
 	let target_values = [-0.5_f32, 0.2, 0.9, -0.1, 0.7, -0.8];
-	let embedding =
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [3, 4], &input_values)?)?;
-	let indices = oa::Matrix::from_slice(&engine, [1, 1, 3], &[0_u32, 1, 2])?;
-	let target = oa::Matrix::from_f32(&engine, [1, 1, 2, 3], &target_values)?;
-	let pool = oa::ml::nn::AvgPool2d::with_options(2, 2, 1)?;
+	let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+		&engine,
+		[3, 4],
+		&input_values,
+	)?)?;
+	let indices = oa::Matrix::new_from_slice(&engine, [1, 1, 3], &[0_u32, 1, 2])?;
+	let target = oa::Matrix::new_from_f32(&engine, [1, 1, 2, 3], &target_values)?;
+	let pool = oa::ml::nn::AvgPool2d::new_with_options(2, 2, 1)?;
 	assert_eq!(pool.kernel_size(), 2);
 	assert_eq!(pool.stride(), 2);
 	assert_eq!(pool.padding(), 1);
@@ -189,9 +192,9 @@ test_vk!(avg_pool_2d_module_and_adjoint_match_host_oracle, engine, {
 });
 
 test_vk!(avg_pool_2d_rejects_invalid_contracts, engine, {
-	let rank_two = oa::Matrix::from_f32(&engine, [2, 2], &[1.0; 4])?;
-	let integer = oa::Matrix::from_slice(&engine, [1, 1, 2, 2], &[1_i32; 4])?;
-	let input = oa::Matrix::from_f32(&engine, [1, 1, 2, 2], &[1.0; 4])?;
+	let rank_two = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0; 4])?;
+	let integer = oa::Matrix::new_from_slice(&engine, [1, 1, 2, 2], &[1_i32; 4])?;
+	let input = oa::Matrix::new_from_f32(&engine, [1, 1, 2, 2], &[1.0; 4])?;
 	for result in [
 		oa::ml::matrix::avg_pool_2d(&rank_two, 2, 2, 0),
 		oa::ml::matrix::avg_pool_2d(&integer, 2, 2, 0),
@@ -207,7 +210,7 @@ test_vk!(avg_pool_2d_rejects_invalid_contracts, engine, {
 	}
 	assert_eq!(oa::ml::nn::AvgPool2d::new(2)?.stride(), 2);
 	assert_eq!(
-		oa::ml::nn::AvgPool2d::with_options(1, 0, 0)
+		oa::ml::nn::AvgPool2d::new_with_options(1, 0, 0)
 			.err()
 			.expect("zero-stride AvgPool2d module was accepted")
 			.kind(),
@@ -223,21 +226,24 @@ test_vk!(
 		let input_values = [
 			1.0_f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
 		];
-		let input = oa::Matrix::from_f32(&engine, [1, 1, 4, 4], &input_values)?;
+		let input = oa::Matrix::new_from_f32(&engine, [1, 1, 4, 4], &input_values)?;
 		let result = oa::ml::matrix::max_pool_2d(&input, 2, 2, 0)?;
 		assert_eq!(result.output.shape(), [1, 1, 2, 2]);
 		assert_eq!(result.indices.dtype(), oa::DType::U32);
 		assert_eq!(result.output.read_f32()?, [6.0, 8.0, 14.0, 16.0]);
 		assert_eq!(result.indices.read::<u32>()?, [5, 7, 13, 15]);
-		let tie_input = oa::Matrix::from_f32(&engine, [1, 1, 2, 2], &[5.0, 5.0, 1.0, 0.0])?;
+		let tie_input = oa::Matrix::new_from_f32(&engine, [1, 1, 2, 2], &[5.0, 5.0, 1.0, 0.0])?;
 		let tie = oa::ml::matrix::max_pool_2d(&tie_input, 2, 2, 0)?;
 		assert_eq!(tie.output.read_f32()?, [5.0]);
 		assert_eq!(tie.indices.read::<u32>()?, [0]);
 
-		let embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [4, 4], &input_values)?)?;
-		let indices = oa::Matrix::from_slice(&engine, [1, 1, 4], &[0_u32, 1, 2, 3])?;
-		let target = oa::Matrix::from_f32(&engine, [1, 1, 2, 2], &[0.0; 4])?;
+		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[4, 4],
+			&input_values,
+		)?)?;
+		let indices = oa::Matrix::new_from_slice(&engine, [1, 1, 4], &[0_u32, 1, 2, 3])?;
+		let target = oa::Matrix::new_from_f32(&engine, [1, 1, 2, 2], &[0.0; 4])?;
 		let module = oa::ml::nn::MaxPool2d::new(2)?;
 		assert_eq!(module.kernel_size(), 2);
 		assert_eq!(module.stride(), 2);
@@ -271,7 +277,7 @@ test_vk!(
 			0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, -1.2, 0.5, 0.9, 1.4, -0.2, 0.1,
 		];
 		let target_values = [-0.5_f32, 0.2, 0.9, -0.1, 0.7, -0.8];
-		let input = oa::Matrix::from_f32(&engine, shape, &input_values)?;
+		let input = oa::Matrix::new_from_f32(&engine, shape, &input_values)?;
 		let output = oa::ml::matrix::adaptive_avg_pool_2d(&input, 2, 3)?;
 		assert_eq!(output.shape(), [1, 1, 2, 3]);
 		assert_close(
@@ -280,11 +286,14 @@ test_vk!(
 			1.0e-6,
 		);
 
-		let embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [3, 4], &input_values)?)?;
-		let indices = oa::Matrix::from_slice(&engine, [1, 1, 3], &[0_u32, 1, 2])?;
-		let target = oa::Matrix::from_f32(&engine, [1, 1, 2, 3], &target_values)?;
-		let pool = oa::ml::nn::AdaptiveAvgPool2d::with_output_size(2, 3)?;
+		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[3, 4],
+			&input_values,
+		)?)?;
+		let indices = oa::Matrix::new_from_slice(&engine, [1, 1, 3], &[0_u32, 1, 2])?;
+		let target = oa::Matrix::new_from_f32(&engine, [1, 1, 2, 3], &target_values)?;
+		let pool = oa::ml::nn::AdaptiveAvgPool2d::new_with_output_size(2, 3)?;
 		assert_eq!(pool.output_height(), 2);
 		assert_eq!(pool.output_width(), 3);
 		assert!(pool.parameters().is_empty());

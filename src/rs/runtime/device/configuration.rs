@@ -38,46 +38,46 @@ impl DeviceConfiguration {
 		add_arithmetic_extensions(&mut extensions, physical.features, physical.api_version);
 		let swapchain_enabled = physical.swapchain_supported && instance.surface_enabled();
 		if swapchain_enabled {
-			extensions.push(ash::khr::swapchain::NAME);
+			extensions.push(vk::KHR_SWAPCHAIN_EXTENSION_NAME);
 		}
 		if physical.video.decode_queue_family.is_some() || physical.video.encode_queue_family.is_some()
 		{
-			extensions.push(ash::khr::video_queue::NAME);
+			extensions.push(vk::KHR_VIDEO_QUEUE_EXTENSION_NAME);
 		}
 		if physical.video.decode_queue_family.is_some() {
-			extensions.push(ash::khr::video_decode_queue::NAME);
+			extensions.push(vk::KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME);
 		}
 		if physical.video.h264_decode {
-			extensions.push(ash::khr::video_decode_h264::NAME);
+			extensions.push(vk::KHR_VIDEO_DECODE_H264_EXTENSION_NAME);
 		}
 		if physical.video.h265_decode {
-			extensions.push(ash::khr::video_decode_h265::NAME);
+			extensions.push(vk::KHR_VIDEO_DECODE_H265_EXTENSION_NAME);
 		}
 		if physical.video.av1_decode {
-			extensions.push(ash::khr::video_decode_av1::NAME);
+			extensions.push(vk::KHR_VIDEO_DECODE_AV1_EXTENSION_NAME);
 		}
 		if physical.video.vp9_decode {
 			extensions.push(c"VK_KHR_video_decode_vp9");
 		}
 		if physical.video.encode_queue_family.is_some() {
-			extensions.push(ash::khr::video_encode_queue::NAME);
+			extensions.push(vk::KHR_VIDEO_ENCODE_QUEUE_EXTENSION_NAME);
 		}
 		if physical.video.h264_encode {
-			extensions.push(ash::khr::video_encode_h264::NAME);
+			extensions.push(vk::KHR_VIDEO_ENCODE_H264_EXTENSION_NAME);
 		}
 		if physical.video.h265_encode {
-			extensions.push(ash::khr::video_encode_h265::NAME);
+			extensions.push(vk::KHR_VIDEO_ENCODE_H265_EXTENSION_NAME);
 		}
 		if physical.video.av1_encode {
 			extensions.push(c"VK_KHR_video_encode_av1");
 		}
 		if physical.info.local_memory_budget_bytes.is_some() {
-			extensions.push(ash::ext::memory_budget::NAME);
+			extensions.push(vk::EXT_MEMORY_BUDGET_EXTENSION_NAME);
 		}
-		if physical.api_version < ash::vk::API_VERSION_1_3 {
-			extensions.push(ash::khr::synchronization2::NAME);
+		if physical.api_version < vk::API_VERSION_1_3 {
+			extensions.push(vk::KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
 			if physical.features.dynamic_rendering {
-				extensions.push(ash::khr::dynamic_rendering::NAME);
+				extensions.push(vk::KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
 			}
 		}
 
@@ -104,18 +104,19 @@ impl DeviceConfiguration {
 	pub(super) fn create_device(
 		&self,
 		instance: &Instance,
-		physical: ash::vk::PhysicalDevice,
-	) -> Result<ash::Device> {
+		physical: vk::PhysicalDevice,
+	) -> Result<vk::Device> {
 		let priorities = [1.0_f32];
 		let queue_create_infos: Vec<_> = self
 			.queue_families
 			.iter()
 			.map(|family| {
-				ash::vk::DeviceQueueCreateInfo::default()
+				vk::DeviceQueueCreateInfo::default()
 					.queue_family_index(*family)
 					.queue_priorities(&priorities)
 			})
-			.collect();
+			.collect::<std::result::Result<Vec<_>, _>>()
+			.map_err(Error::from)?;
 		let extension_names: Vec<_> = self.extensions.iter().map(|name| name.as_ptr()).collect();
 		let features = self.features;
 		let core_features = self.core_features();
@@ -123,29 +124,44 @@ impl DeviceConfiguration {
 		let mut features13 = self.features13();
 		let mut cooperative_matrix = self.cooperative_matrix_features();
 		let mut integer_dot_product = self.integer_dot_product_features();
-		let mut synchronization2 = ash::vk::PhysicalDeviceSynchronization2Features::default()
-			.synchronization2(features.synchronization2);
-		let mut dynamic_rendering = ash::vk::PhysicalDeviceDynamicRenderingFeatures::default()
-			.dynamic_rendering(features.dynamic_rendering);
-		let mut create_info = ash::vk::DeviceCreateInfo::default()
-			.queue_create_infos(&queue_create_infos)
-			.enabled_extension_names(&extension_names)
+		let mut synchronization2 = vk::PhysicalDeviceSynchronization2Features::default()
+			.synchronization2(u32::from(features.synchronization2));
+		let mut dynamic_rendering = vk::PhysicalDeviceDynamicRenderingFeatures::default()
+			.dynamic_rendering(u32::from(features.dynamic_rendering));
+		let mut create_info = vk::DeviceCreateInfo::default()
 			.enabled_features(&core_features)
-			.push_next(&mut features12);
-		if self.api_version >= ash::vk::API_VERSION_1_3 {
-			create_info = create_info.push_next(&mut features13);
+			.push_next(&mut features12)
+			.map_err(Error::from)?
+			.queue_create_infos(&queue_create_infos)
+			.map_err(|source| Error::backend_failure("Vulkan", "device create-info queues", source))?
+			.enabled_extension_names(&extension_names)
+			.map_err(|source| {
+				Error::backend_failure("Vulkan", "device create-info extensions", source)
+			})?;
+		if self.api_version >= vk::API_VERSION_1_3 {
+			create_info = create_info
+				.push_next(&mut features13)
+				.map_err(Error::from)?;
 		} else {
 			if features.shader_integer_dot_product {
-				create_info = create_info.push_next(&mut integer_dot_product);
+				create_info = create_info
+					.push_next(&mut integer_dot_product)
+					.map_err(Error::from)?;
 			}
-			create_info = create_info.push_next(&mut synchronization2);
+			create_info = create_info
+				.push_next(&mut synchronization2)
+				.map_err(Error::from)?;
 			if features.dynamic_rendering {
-				create_info = create_info.push_next(&mut dynamic_rendering);
+				create_info = create_info
+					.push_next(&mut dynamic_rendering)
+					.map_err(Error::from)?;
 			}
 		}
 
 		if features.cooperative_matrix {
-			create_info = create_info.push_next(&mut cooperative_matrix);
+			create_info = create_info
+				.push_next(&mut cooperative_matrix)
+				.map_err(Error::from)?;
 		}
 
 		// SAFETY: the physical device and queue families were queried from this
@@ -156,67 +172,67 @@ impl DeviceConfiguration {
 			.map_err(|source| Error::backend_failure("Vulkan", "logical-device creation", source))
 	}
 
-	fn core_features(&self) -> ash::vk::PhysicalDeviceFeatures {
+	fn core_features(&self) -> vk::PhysicalDeviceFeatures {
 		let features = self.features;
-		ash::vk::PhysicalDeviceFeatures::default()
-			.shader_storage_buffer_array_dynamic_indexing(
+		vk::PhysicalDeviceFeatures::default()
+			.shader_storage_buffer_array_dynamic_indexing(u32::from(
 				features.shader_storage_buffer_array_dynamic_indexing,
-			)
-			.shader_int64(features.shader_int64)
-			.shader_float64(features.shader_float64)
+			))
+			.shader_int64(u32::from(features.shader_int64))
+			.shader_float64(u32::from(features.shader_float64))
 	}
 
-	fn features12(&self) -> ash::vk::PhysicalDeviceVulkan12Features<'static> {
+	fn features12(&self) -> vk::PhysicalDeviceVulkan12Features<'static> {
 		let features = self.features;
-		ash::vk::PhysicalDeviceVulkan12Features::default()
-			.shader_float16(features.shader_float16)
-			.vulkan_memory_model(features.vulkan_memory_model)
-			.vulkan_memory_model_device_scope(features.vulkan_memory_model_device_scope)
-			.vulkan_memory_model_availability_visibility_chains(
+		vk::PhysicalDeviceVulkan12Features::default()
+			.shader_float16(u32::from(features.shader_float16))
+			.vulkan_memory_model(u32::from(features.vulkan_memory_model))
+			.vulkan_memory_model_device_scope(u32::from(features.vulkan_memory_model_device_scope))
+			.vulkan_memory_model_availability_visibility_chains(u32::from(
 				features.vulkan_memory_model_availability_visibility_chains,
-			)
-			.timeline_semaphore(features.timeline_semaphore)
-			.storage_buffer8_bit_access(features.storage_buffer_8_bit_access)
-			.uniform_and_storage_buffer8_bit_access(features.uniform_and_storage_buffer_8_bit_access)
-			.shader_int8(features.shader_int8)
-			.runtime_descriptor_array(features.runtime_descriptor_array)
-			.descriptor_binding_partially_bound(features.descriptor_binding_partially_bound)
-			.descriptor_binding_storage_buffer_update_after_bind(
+			))
+			.timeline_semaphore(u32::from(features.timeline_semaphore))
+			.storage_buffer8_bit_access(u32::from(features.storage_buffer_8_bit_access))
+			.uniform_and_storage_buffer8_bit_access(u32::from(
+				features.uniform_and_storage_buffer_8_bit_access,
+			))
+			.shader_int8(u32::from(features.shader_int8))
+			.runtime_descriptor_array(u32::from(features.runtime_descriptor_array))
+			.descriptor_binding_partially_bound(u32::from(features.descriptor_binding_partially_bound))
+			.descriptor_binding_storage_buffer_update_after_bind(u32::from(
 				features.descriptor_binding_storage_buffer_update_after_bind,
-			)
-			.descriptor_binding_storage_image_update_after_bind(
+			))
+			.descriptor_binding_storage_image_update_after_bind(u32::from(
 				features.descriptor_binding_storage_image_update_after_bind,
-			)
-			.descriptor_binding_update_unused_while_pending(
+			))
+			.descriptor_binding_update_unused_while_pending(u32::from(
 				features.descriptor_binding_update_unused_while_pending,
-			)
+			))
 	}
 
-	fn features13(&self) -> ash::vk::PhysicalDeviceVulkan13Features<'static> {
-		ash::vk::PhysicalDeviceVulkan13Features::default()
-			.shader_integer_dot_product(self.features.shader_integer_dot_product)
-			.synchronization2(self.features.synchronization2)
-			.dynamic_rendering(self.features.dynamic_rendering)
+	fn features13(&self) -> vk::PhysicalDeviceVulkan13Features<'static> {
+		vk::PhysicalDeviceVulkan13Features::default()
+			.shader_integer_dot_product(u32::from(self.features.shader_integer_dot_product))
+			.synchronization2(u32::from(self.features.synchronization2))
+			.dynamic_rendering(u32::from(self.features.dynamic_rendering))
 	}
 
-	fn cooperative_matrix_features(
-		&self,
-	) -> ash::vk::PhysicalDeviceCooperativeMatrixFeaturesKHR<'static> {
-		ash::vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default()
-			.cooperative_matrix(self.features.cooperative_matrix)
+	fn cooperative_matrix_features(&self) -> vk::PhysicalDeviceCooperativeMatrixFeaturesKHR<'static> {
+		vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default()
+			.cooperative_matrix(u32::from(self.features.cooperative_matrix))
 	}
 
 	fn integer_dot_product_features(
 		&self,
-	) -> ash::vk::PhysicalDeviceShaderIntegerDotProductFeatures<'static> {
-		ash::vk::PhysicalDeviceShaderIntegerDotProductFeatures::default()
-			.shader_integer_dot_product(self.features.shader_integer_dot_product)
+	) -> vk::PhysicalDeviceShaderIntegerDotProductFeatures<'static> {
+		vk::PhysicalDeviceShaderIntegerDotProductFeatures::default()
+			.shader_integer_dot_product(u32::from(self.features.shader_integer_dot_product))
 	}
 
 	pub(super) fn missing_shader_requirements(
 		&self,
-		subgroup_stages: ash::vk::ShaderStageFlags,
-		subgroup_operations: ash::vk::SubgroupFeatureFlags,
+		subgroup_stages: vk::ShaderStageFlags,
+		subgroup_operations: vk::SubgroupFeatureFlags,
 		requirements: ShaderRequirements,
 	) -> Vec<&'static str> {
 		let features = self.features;
@@ -233,14 +249,18 @@ impl DeviceConfiguration {
 			missing.push("uniformAndStorageBuffer8BitAccess");
 		}
 		if requirements.subgroup_basic
-			&& (!subgroup_stages.contains(ash::vk::ShaderStageFlags::COMPUTE)
-				|| !subgroup_operations.contains(ash::vk::SubgroupFeatureFlags::BASIC))
+			&& ((subgroup_stages & vk::ShaderStageFlagBits::COMPUTE_BIT)
+				!= vk::ShaderStageFlagBits::COMPUTE_BIT
+				|| (subgroup_operations & vk::SubgroupFeatureFlagBits::BASIC_BIT)
+					!= vk::SubgroupFeatureFlagBits::BASIC_BIT)
 		{
 			missing.push("compute subgroup basic operations");
 		}
 		if requirements.subgroup_arithmetic
-			&& (!subgroup_stages.contains(ash::vk::ShaderStageFlags::COMPUTE)
-				|| !subgroup_operations.contains(ash::vk::SubgroupFeatureFlags::ARITHMETIC))
+			&& ((subgroup_stages & vk::ShaderStageFlagBits::COMPUTE_BIT)
+				!= vk::ShaderStageFlagBits::COMPUTE_BIT
+				|| (subgroup_operations & vk::SubgroupFeatureFlagBits::ARITHMETIC_BIT)
+					!= vk::SubgroupFeatureFlagBits::ARITHMETIC_BIT)
 		{
 			missing.push("compute subgroup arithmetic operations");
 		}
@@ -254,10 +274,10 @@ fn add_arithmetic_extensions(
 	api_version: u32,
 ) {
 	if features.cooperative_matrix {
-		extensions.push(ash::khr::cooperative_matrix::NAME);
+		extensions.push(vk::KHR_COOPERATIVE_MATRIX_EXTENSION_NAME);
 	}
-	if api_version < ash::vk::API_VERSION_1_3 && features.shader_integer_dot_product {
-		extensions.push(ash::khr::shader_integer_dot_product::NAME);
+	if api_version < vk::API_VERSION_1_3 && features.shader_integer_dot_product {
+		extensions.push(vk::KHR_SHADER_INTEGER_DOT_PRODUCT_EXTENSION_NAME);
 	}
 }
 

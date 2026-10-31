@@ -100,7 +100,7 @@ impl AlmTokenizer {
 	/// Returns an error for invalid geometry or quantizer policy, arithmetic
 	/// overflow, failed allocation/upload, or module-registration failure.
 	pub fn new(engine: &Engine, config: AlmTokenizerConfig) -> Result<Self> {
-		Self::with_seed(engine, config, DEFAULT_INITIALIZER_SEED)
+		Self::new_with_seed(engine, config, DEFAULT_INITIALIZER_SEED)
 	}
 
 	/// Construct the tokenizer with an explicit deterministic initializer seed.
@@ -111,7 +111,7 @@ impl AlmTokenizer {
 	/// # Errors
 	///
 	/// Returns the same errors as [`Self::new`].
-	pub fn with_seed(engine: &Engine, config: AlmTokenizerConfig, seed: u64) -> Result<Self> {
+	pub fn new_with_seed(engine: &Engine, config: AlmTokenizerConfig, seed: u64) -> Result<Self> {
 		validate_config(config)?;
 		let downsample_factor = 1_usize
 			.checked_shl(
@@ -158,7 +158,7 @@ impl AlmTokenizer {
 			dead_threshold: config.dead_threshold,
 			normalize_codes: true,
 		};
-		let rvq = Rc::new(ResidualVectorQuantizer::with_seed(
+		let rvq = Rc::new(ResidualVectorQuantizer::new_with_seed(
 			engine, vq_config, 1, rng,
 		)?);
 		registry.register_module("rvq", rvq.clone())?;
@@ -479,13 +479,13 @@ fn make_conv(
 	rng: &mut u64,
 ) -> Result<Rc<Conv1d>> {
 	let values = glorot_values(input_channels, output_channels, kernel_size, rng)?;
-	let weight = Matrix::from_f32(
+	let weight = Matrix::new_from_f32(
 		engine,
 		[output_channels, input_channels, kernel_size],
 		&values,
 	)?;
-	let bias = Matrix::from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
-	Ok(Rc::new(Conv1d::from_matrices(
+	let bias = Matrix::new_from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
+	Ok(Rc::new(Conv1d::new_from_matrices(
 		weight, bias, stride, padding, dilation,
 	)?))
 }
@@ -500,12 +500,12 @@ fn make_conv_transpose(
 	rng: &mut u64,
 ) -> Result<Rc<ConvTranspose1d>> {
 	let values = glorot_values(output_channels, input_channels, kernel_size, rng)?;
-	let weight = Matrix::from_f32(
+	let weight = Matrix::new_from_f32(
 		engine,
 		[input_channels, output_channels, kernel_size],
 		&values,
 	)?;
-	Ok(Rc::new(ConvTranspose1d::from_matrix(
+	Ok(Rc::new(ConvTranspose1d::new_from_matrix(
 		weight, stride, padding,
 	)?))
 }

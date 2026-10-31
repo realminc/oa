@@ -14,7 +14,7 @@ use std::{
 use cpal::{
 	Data, FromSample, SampleFormat, SizedSample, Stream, SupportedStreamConfig,
 	SupportedStreamConfigRange,
-	traits::{DeviceTrait, HostTrait, StreamTrait},
+	traits::{DeviceTrait, StreamTrait},
 };
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 use symphonia::core::{
@@ -131,13 +131,13 @@ impl AudioPlayer {
 		});
 
 		let host = cpal::default_host();
-		let device = host
-			.default_output_device()
-			.ok_or_else(|| Error::no_suitable_device("AudioPlayer found no default output device"))?;
-		let ranges = device
-			.supported_output_configs()
-			.map_err(|error| cpal_error("output configuration query", error))?;
-		let stream_config = select_config(ranges, sample_rate, channels, "output")?;
+		let (device, stream_config) = super::device::select_device(
+			engine,
+			&host,
+			super::device::Direction::Output,
+			sample_rate,
+			channels,
+		)?;
 		let sample_format = stream_config.sample_format();
 		let callback_shared = Arc::clone(&shared);
 		let error_shared = Arc::clone(&shared);
@@ -177,7 +177,7 @@ impl AudioPlayer {
 	}
 
 	/// Open a URI using the default playback configuration.
-	pub fn open_uri(engine: &Engine, uri: impl AsRef<Path>) -> Result<Self> {
+	pub fn new_from_uri(engine: &Engine, uri: impl AsRef<Path>) -> Result<Self> {
 		Self::open(engine, AudioPlayerConfig::new(uri.as_ref()))
 	}
 
@@ -346,16 +346,15 @@ impl Drop for AudioPlayer {
 
 impl PlayerService {
 	fn close(mut self) -> Result<()> {
-		let pause_result = self
-			.stream
-			.pause()
-			.map_err(|error| cpal_error("playback stream stop", error));
+		// CPAL stream destruction stops and joins the callback worker. Requiring
+		// hardware pause first rejects valid ALSA desktop-server bridges.
+		drop(self.stream);
 		if let Some(handle) = self.decoder_thread.take() {
 			handle
 				.join()
 				.map_err(|_| Error::internal("AudioPlayer decoder thread panicked"))?;
 		}
-		pause_result
+		Ok(())
 	}
 }
 

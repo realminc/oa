@@ -511,7 +511,7 @@ impl Muon {
 	/// Returns an error for invalid ownership, duplicate parameters, or momentum
 	/// allocation failure.
 	pub fn new(parameters: impl IntoIterator<Item = Parameter>, learning_rate: f32) -> Result<Self> {
-		Self::with_hyperparameters(parameters, learning_rate, 0.95, 0.1, 1.0e-7, 5)
+		Self::new_with_hyperparameters(parameters, learning_rate, 0.95, 0.1, 1.0e-7, 5)
 	}
 
 	/// Bind Muon with explicit donor scalar policy.
@@ -522,7 +522,7 @@ impl Muon {
 	///
 	/// Returns an error for invalid scalars, an empty or duplicate parameter set,
 	/// non-F32 parameters, mixed-engine ownership, or momentum allocation failure.
-	pub fn with_hyperparameters(
+	pub fn new_with_hyperparameters(
 		parameters: impl IntoIterator<Item = Parameter>,
 		learning_rate: f32,
 		beta: f32,

@@ -8,21 +8,17 @@
 //! host operations. Device batch verification is Experimental; software Vulkan
 //! correctness evidence and named physical-device qualification are separate.
 
+pub mod device;
+
 #[path = "pqc/host.rs"]
 mod host;
+#[path = "pqc/parity.gen.rs"]
+mod parity;
 #[path = "pqc/verify.gen.rs"]
-mod verification;
+pub(crate) mod verification;
 
 pub use host::{
 	Keypair, MlDsaParameters, PUBLIC_KEY_SIZE, PublicKey, SECRET_KEY_SIZE, SIGNATURE_SIZE, SecretKey,
 	Signature, generate_keypair, sign, sign_hash, verify, verify_hash,
 };
 pub use verification::{verify_batch, verify_batch_with_context, verify_batch_with_parameters};
-#[cfg_attr(
-	not(test),
-	expect(
-		unused_imports,
-		reason = "private verifier adapters await runtime admission"
-	)
-)]
-pub(crate) use verification::{verify_hash_message_batch, verify_prehashed_batch};

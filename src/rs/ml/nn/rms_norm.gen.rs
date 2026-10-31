@@ -27,8 +27,8 @@ impl RmsNorm {
 		if dimension == 0 {
 			return Err(Error::invalid_argument("RMSNorm dimension must be nonzero"));
 		}
-		let weight = Matrix::from_f32(engine, [dimension], &vec![1.0; dimension])?;
-		Self::from_matrix(weight, epsilon)
+		let weight = Matrix::new_from_f32(engine, [dimension], &vec![1.0; dimension])?;
+		Self::new_from_matrix(weight, epsilon)
 	}
 
 	/// Construct RMSNorm from an exact weight Matrix.
@@ -37,7 +37,7 @@ impl RmsNorm {
 	///
 	/// Returns an error unless weight is a nonempty F32 vector and `epsilon` is
 	/// finite and positive.
-	pub fn from_matrix(weight: Matrix, epsilon: f32) -> Result<Self> {
+	pub fn new_from_matrix(weight: Matrix, epsilon: f32) -> Result<Self> {
 		let [dimension] = weight.shape() else {
 			return Err(Error::invalid_argument("RMSNorm weight must be rank one"));
 		};

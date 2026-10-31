@@ -121,7 +121,7 @@ test_vk!(cart_pole_gpu_step_matches_scalar_cpu_oracle, engine, {
 	environment.wait(&initial_reset)?;
 	let initial = environment.observation().read_f32()?;
 	let actions = [0_i32, 1, 1, 0];
-	let action = oa::Matrix::from_slice(&engine, [4], &actions)?;
+	let action = oa::Matrix::new_from_slice(&engine, [4], &actions)?;
 	let transition = environment.step(&action)?;
 	let completion = environment.submit()?;
 	environment.wait(&completion)?;
@@ -173,7 +173,7 @@ test_vk!(
 		assert_eq!(environment.observation().read_f32()?, first_initial);
 		assert_eq!(environment.episode_index().read::<u32>()?, [0, 0, 0]);
 
-		let actions = oa::Matrix::from_slice(&engine, [3], &[0_i32, 1, 0])?;
+		let actions = oa::Matrix::new_from_slice(&engine, [3], &[0_i32, 1, 0])?;
 		environment.step(&actions)?;
 		let event = environment.submit()?;
 		environment.wait(&event)?;
@@ -209,7 +209,7 @@ test_vk!(cart_pole_invalid_action_terminates_only_its_lane, engine, {
 			..CartPoleConfig::default()
 		},
 	)?;
-	let action = oa::Matrix::from_slice(&engine, [2], &[7_i32, 1])?;
+	let action = oa::Matrix::new_from_slice(&engine, [2], &[7_i32, 1])?;
 	let transition = environment.step(&action)?;
 	let event = environment.submit()?;
 	environment.wait(&event)?;
@@ -232,7 +232,7 @@ test_vk!(
 				..CartPoleConfig::default()
 			},
 		)?;
-		let actions = oa::Matrix::from_slice(&engine, [2], &[0_i32, 1])?;
+		let actions = oa::Matrix::new_from_slice(&engine, [2], &[0_i32, 1])?;
 		environment.step(&actions)?;
 		environment.reset_completed()?;
 		environment.step(&actions)?;

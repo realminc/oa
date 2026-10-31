@@ -28,9 +28,8 @@
 // Donor: sdk/cpp/tutorials/vision/tuViewerImageHeadless.cpp
 // ═══════════════════════════════════════════════════════════════════════════
 
-use oa::image::decode_file as decode_image;
-use oa::render::{blit, clear, save_texture_file, texture_from_image};
-use oa::{Engine, ImageFormat, Result};
+use oa::render::{blit, clear, save_texture_file, texture_from_file};
+use oa::{Engine, Result};
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -55,9 +54,8 @@ fn main() -> Result<()> {
 		out_path.display()
 	);
 
-	// ── Producer: decode a semantic image, then lower it to a Texture ────────
-	let image = decode_image(&engine, &in_path, ImageFormat::Rgba)?;
-	let tex = texture_from_image(&image)?;
+	// ── Producer: decode packed pixels and upload directly as a Texture ─────
+	let tex = texture_from_file(&engine, &in_path)?;
 
 	// ── Sink: save to file (readback + encode + write) ────────────────────────
 	save_texture_file(&tex, &out_path, 90)?;

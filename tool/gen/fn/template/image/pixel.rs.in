@@ -523,20 +523,20 @@
 			"image::alpha_blend alpha must be in [0, 1]",
 		));
 	}
-	validate_matching_images(a, b, "image::alpha_blend")?;
+	validate_matching_images(left, right, "image::alpha_blend")?;
 	let contract = {{contract}};
-	let (batch, channels, height, width) = image_extent(a, contract.name())?;
-	let mask_channels = u32::try_from(a.channels())
+	let (batch, channels, height, width) = image_extent(left, contract.name())?;
+	let mask_channels = u32::try_from(left.channels())
 		.map_err(|_| Error::out_of_range(format!("{} mask channels exceed u32", contract.name())))?;
 	let output = allocate(
-		a,
-		a.as_matrix().shape().to_vec(),
-		a.format(),
+		left,
+		left.as_matrix().shape().to_vec(),
+		left.format(),
 		contract.name(),
 	)?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	a.engine_handle().record_image_semantic(
+	left.engine_handle().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -545,18 +545,18 @@
 		},
 		ImageSemanticDispatch {
 			contract,
-			inputs: &[ImageSemanticInput::Image(a), ImageSemanticInput::Image(b)],
+			inputs: &[ImageSemanticInput::Image(left), ImageSemanticInput::Image(right)],
 			outputs: &[&output],
 			attributes: &[{{attributes}}],
 		},
 	)?;
 	Ok(output)
 // @operation composite
-	let (batch, channels, height, width) = image_extent(a, "image::composite")?;
-	validate_matching_images(a, b, "image::composite")?;
+	let (batch, channels, height, width) = image_extent(left, "image::composite")?;
+	validate_matching_images(left, right, "image::composite")?;
 	let (mask_batch, mask_channels, mask_height, mask_width) =
 		image_extent(mask, "image::composite")?;
-	if !a.engine_handle().same_as(mask.engine_handle())
+	if !left.engine_handle().same_as(mask.engine_handle())
 		|| mask_batch != batch
 		|| mask_height != height
 		|| mask_width != width
@@ -567,18 +567,18 @@
 		));
 	}
 	let contract = {{contract}};
-	let (batch, channels, height, width) = image_extent(a, contract.name())?;
+	let (batch, channels, height, width) = image_extent(left, contract.name())?;
 	let mask_channels = u32::try_from(mask.channels())
 		.map_err(|_| Error::out_of_range(format!("{} mask channels exceed u32", contract.name())))?;
 	let output = allocate(
-		a,
-		a.as_matrix().shape().to_vec(),
-		a.format(),
+		left,
+		left.as_matrix().shape().to_vec(),
+		left.format(),
 		contract.name(),
 	)?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	a.engine_handle().record_image_semantic(
+	left.engine_handle().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -588,8 +588,8 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[
-				ImageSemanticInput::Image(a),
-				ImageSemanticInput::Image(b),
+				ImageSemanticInput::Image(left),
+				ImageSemanticInput::Image(right),
 				ImageSemanticInput::Image(mask),
 			],
 			outputs: &[&output],

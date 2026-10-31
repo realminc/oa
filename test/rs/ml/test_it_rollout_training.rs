@@ -5,14 +5,14 @@ use oa::ml::{
 
 fn transition(engine: &oa::Engine, value: f32) -> oa::Result<RolloutTransition> {
 	Ok(RolloutTransition::new(
-		oa::Matrix::from_f32(engine, [1, 1], &[value])?,
-		oa::Matrix::from_slice(engine, [1], &[0_i32])?,
-		oa::Matrix::from_f32(engine, [1], &[1.0])?,
-		oa::Matrix::from_f32(engine, [1], &[0.25])?,
-		oa::Matrix::from_f32(engine, [1], &[0.5])?,
-		oa::Matrix::from_f32(engine, [1], &[-0.2])?,
-		oa::Matrix::from_slice(engine, [1], &[0_u8])?,
-		oa::Matrix::from_slice(engine, [1], &[0_u8])?,
+		oa::Matrix::new_from_f32(engine, [1, 1], &[value])?,
+		oa::Matrix::new_from_slice(engine, [1], &[0_i32])?,
+		oa::Matrix::new_from_f32(engine, [1], &[1.0])?,
+		oa::Matrix::new_from_f32(engine, [1], &[0.25])?,
+		oa::Matrix::new_from_f32(engine, [1], &[0.5])?,
+		oa::Matrix::new_from_f32(engine, [1], &[-0.2])?,
+		oa::Matrix::new_from_slice(engine, [1], &[0_u8])?,
+		oa::Matrix::new_from_slice(engine, [1], &[0_u8])?,
 	))
 }
 
@@ -46,7 +46,7 @@ test_vk!(
 		rollout.append(&transition(&engine, 1.0)?)?;
 		training.finalize_rollout(&mut rollout, oa::ml::advantage::GaeConfig::default())?;
 		assert_eq!(training.phase(), RolloutTrainingPhase::Update);
-		let loss = oa::Matrix::from_f32(&engine, [], &[0.25])?;
+		let loss = oa::Matrix::new_from_f32(&engine, [], &[0.25])?;
 		for epoch in 1..=2 {
 			assert!(training.begin_update()?);
 			training.complete_update(&loss)?;
@@ -90,7 +90,7 @@ test_vk!(
 			.capture(|| {
 				training.begin_rollout(&mut rollout)?;
 				rollout.append(&transition(&engine, 1.0)?)?;
-				let integer = oa::Matrix::from_slice(&engine, [1], &[1_i32])?;
+				let integer = oa::Matrix::new_from_slice(&engine, [1], &[1_i32])?;
 				oa::matrix::add(rollout.batch().reward(), &integer).map(|_| ())
 			})
 			.map(|_| ());

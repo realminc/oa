@@ -30,6 +30,9 @@ test_vk!(
 			.expect("saved texture PNG must decode")
 			.to_rgba8();
 		assert_eq!(decoded.into_raw(), rgba);
+		let loaded = oa::render::texture_from_file(&engine, &path)?;
+		assert_eq!((loaded.width(), loaded.height()), (2, 2));
+		assert_eq!(loaded.read_rgba8()?, rgba);
 		std::fs::remove_file(path).expect("temporary texture image removal failed");
 		Ok(())
 	}
@@ -56,6 +59,10 @@ test_vk!(
 		let source = oa::render::texture_from_rgba8(&engine, &[1, 2, 3, 4, 5, 6, 7, 8], 2, 1)?;
 		let copy = oa::render::blit(&source)?;
 		assert_eq!(copy.read_rgba8()?, source.read_rgba8()?);
+		// Reusing a Texture across recording generations must not leave an
+		// unbound semantic value behind after a host-observation checkpoint.
+		let second_copy = oa::render::blit(&copy)?;
+		assert_eq!(second_copy.read_rgba8()?, source.read_rgba8()?);
 		let cleared = oa::render::clear(
 			&source,
 			oa::Color {
@@ -92,7 +99,7 @@ test_vk!(
 	engine,
 	{
 		let image = oa::Image::new(
-			oa::Matrix::from_slice(&engine, [1, 2, 4], &[9_u8, 8, 7, 6, 5, 4, 3, 2])?,
+			oa::Matrix::new_from_slice(&engine, [1, 2, 4], &[9_u8, 8, 7, 6, 5, 4, 3, 2])?,
 			oa::ImageLayout::Hwc,
 			oa::ImageFormat::Rgba,
 		)?;
@@ -122,7 +129,7 @@ test_vk!(
 		renderer.begin_frame(&source)?;
 		let frame = renderer.submit_frame()?;
 		assert_eq!((frame.width(), frame.height()), (2, 1));
-		let timing = oa::video::VideoFrameTiming::from_microseconds(17, 33);
+		let timing = oa::video::VideoFrameTiming::new_from_microseconds(17, 33);
 		let color = oa::video::VideoColorInfo::unspecified();
 		let video_frame = oa::video::from_texture(frame.color(), timing, color)?;
 		assert!(video_frame.ready_event().is_none());
@@ -163,7 +170,7 @@ test_vk!(
 		};
 		renderer.begin_frame_flat_color(&mesh, &camera, &material)?;
 		let frame = renderer.submit_frame()?;
-		let timing = oa::video::VideoFrameTiming::from_microseconds(17, 33);
+		let timing = oa::video::VideoFrameTiming::new_from_microseconds(17, 33);
 		let color = oa::video::VideoColorInfo::unspecified();
 		let error = oa::video::from_texture(frame.color(), timing, color)
 			.err()
@@ -262,7 +269,7 @@ test_vk!(
 );
 
 test_vk!(
-	headless_renderer_draws_standard_surface_scene,
+	headless_renderer_draws_surface_scene,
 	engine,
 	"requires a hardware Vulkan graphics device",
 	{
@@ -280,7 +287,7 @@ test_vk!(
 		)?;
 		let material_id = oa::render::MaterialId(1);
 		let mesh_id = oa::render::SceneMeshId(1);
-		let material = oa::render::StandardSurfaceMaterial {
+		let material = oa::render::SurfaceMaterial {
 			base_color: [0.4, 0.0, 0.0],
 			emission_color: [1.0, 0.0, 0.0],
 			emission_scale: 1.0,
@@ -295,7 +302,7 @@ test_vk!(
 			materials: vec![oa::render::SceneMaterial {
 				id: material_id,
 				name: "emissive red".into(),
-				data: oa::render::Material::Standard(material),
+				data: oa::render::Material::Surface(material),
 			}],
 			nodes: vec![oa::render::SceneNode {
 				id: oa::render::SceneNodeId(1),
@@ -316,7 +323,7 @@ test_vk!(
 				.0
 				.iter()
 				.any(|pixel| pixel[0] > 180 && pixel[1] < 20 && pixel[2] < 20),
-			"standard-surface scene draw produced no emissive red pixels"
+			"surface scene draw produced no emissive red pixels"
 		);
 		renderer.close()?;
 		Ok(())
@@ -531,7 +538,7 @@ test_vk!(
 				oa::render::SceneMaterial {
 					id: red_id,
 					name: "red".into(),
-					data: oa::render::Material::Standard(oa::render::StandardSurfaceMaterial {
+					data: oa::render::Material::Surface(oa::render::SurfaceMaterial {
 						emission_color: [1.0, 0.0, 0.0],
 						emission_scale: 1.0,
 						..Default::default()
@@ -540,7 +547,7 @@ test_vk!(
 				oa::render::SceneMaterial {
 					id: blue_id,
 					name: "blue".into(),
-					data: oa::render::Material::Standard(oa::render::StandardSurfaceMaterial {
+					data: oa::render::Material::Surface(oa::render::SurfaceMaterial {
 						emission_color: [0.0, 0.0, 1.0],
 						emission_scale: 1.0,
 						..Default::default()

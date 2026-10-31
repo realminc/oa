@@ -202,10 +202,12 @@ python -m venv .venv
 .venv/bin/python -m unittest discover -s test/py -v
 ```
 
-The native PyO3 implementation lives in `src/py`. Root `pyproject.toml` and
-`uv.lock` own the checkout-wide Python environment and distribution metadata;
-the importable `oa` package, PyO3 crate, examples, and tutorials live in
-`sdk/py`. Neither creates a second runtime or CPU implementation.
+The native PyO3 implementation and the importable `oa` package live in
+`src/py/pyo3` (`src/py/pyo3/*.rs` for the PyO3 crate source, `src/py/oa/` for the
+package). Root `pyproject.toml` and `uv.lock` own the checkout-wide Python
+environment and distribution metadata; the PyO3 crate manifest, examples, and
+tutorials live in `sdk/py`. Neither creates a second runtime or CPU
+implementation.
 
 ## Release artifacts
 

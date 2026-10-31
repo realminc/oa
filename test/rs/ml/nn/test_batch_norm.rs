@@ -110,9 +110,9 @@ test_vk!(batch_norm_2d_training_matches_independent_oracle, engine, {
 		&expected_variance,
 		EPSILON,
 	);
-	let input = oa::Matrix::from_f32(&engine, shape, &input_values)?;
-	let weight = oa::Matrix::from_f32(&engine, [2], &weight_values)?;
-	let bias = oa::Matrix::from_f32(&engine, [2], &bias_values)?;
+	let input = oa::Matrix::new_from_f32(&engine, shape, &input_values)?;
+	let weight = oa::Matrix::new_from_f32(&engine, [2], &weight_values)?;
+	let bias = oa::Matrix::new_from_f32(&engine, [2], &bias_values)?;
 	let (plan, result) =
 		engine.capture(|| oa::ml::matrix::batch_norm_2d(&input, &weight, &bias, EPSILON))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
@@ -126,9 +126,9 @@ test_vk!(batch_norm_2d_training_matches_independent_oracle, engine, {
 	assert_close(&result.variance.read_f32()?, &expected_variance, 2.0e-6);
 	assert_close(&result.output.read_f32()?, &expected, 2.0e-5);
 
-	let large = oa::Matrix::from_f32(&engine, [1, 1, 1, 513], &[10_000.0; 513])?;
-	let unit = oa::Matrix::from_f32(&engine, [1], &[1.0])?;
-	let zero = oa::Matrix::from_f32(&engine, [1], &[0.0])?;
+	let large = oa::Matrix::new_from_f32(&engine, [1, 1, 1, 513], &[10_000.0; 513])?;
+	let unit = oa::Matrix::new_from_f32(&engine, [1], &[1.0])?;
+	let zero = oa::Matrix::new_from_f32(&engine, [1], &[0.0])?;
 	let stable = oa::ml::matrix::batch_norm_2d(&large, &unit, &zero, EPSILON)?;
 	assert!(stable.variance.read_f32()?[0].is_finite());
 	assert!(
@@ -145,8 +145,8 @@ test_vk!(
 	batch_norm_2d_module_updates_and_uses_persistent_state,
 	engine,
 	{
-		let module = oa::ml::nn::BatchNorm2d::with_options(&engine, 1, EPSILON, 0.1)?;
-		let input = oa::Matrix::from_f32(&engine, [1, 1, 2, 2], &[1.0, 2.0, 3.0, 4.0])?;
+		let module = oa::ml::nn::BatchNorm2d::new_with_options(&engine, 1, EPSILON, 0.1)?;
+		let input = oa::Matrix::new_from_f32(&engine, [1, 1, 2, 2], &[1.0, 2.0, 3.0, 4.0])?;
 		let output = module.forward(&input)?;
 		assert_close(
 			&output.read_f32()?,
@@ -234,18 +234,21 @@ test_vk!(
 			host_loss(&input_values, &weight_values, values)
 		});
 
-		let embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [4, 3], &input_values)?)?;
-		let indices = oa::Matrix::from_slice(&engine, [1, 2, 2], &[0_u32, 1, 2, 3])?;
-		let module = oa::ml::nn::BatchNorm2d::from_matrices(
-			oa::Matrix::from_f32(&engine, [2], &weight_values)?,
-			oa::Matrix::from_f32(&engine, [2], &bias_values)?,
-			oa::Matrix::from_f32(&engine, [2], &[0.0, 0.0])?,
-			oa::Matrix::from_f32(&engine, [2], &[1.0, 1.0])?,
+		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[4, 3],
+			&input_values,
+		)?)?;
+		let indices = oa::Matrix::new_from_slice(&engine, [1, 2, 2], &[0_u32, 1, 2, 3])?;
+		let module = oa::ml::nn::BatchNorm2d::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [2], &weight_values)?,
+			oa::Matrix::new_from_f32(&engine, [2], &bias_values)?,
+			oa::Matrix::new_from_f32(&engine, [2], &[0.0, 0.0])?,
+			oa::Matrix::new_from_f32(&engine, [2], &[1.0, 1.0])?,
 			EPSILON,
 			0.1,
 		)?;
-		let target = oa::Matrix::from_f32(&engine, shape, &target_values)?;
+		let target = oa::Matrix::new_from_f32(&engine, shape, &target_values)?;
 		let tape = oa::ml::GradientTape::new();
 		let output = module.forward(&embedding.forward(&indices)?)?;
 		let loss = oa::ml::loss::mse(&output, &target)?;
@@ -298,19 +301,22 @@ test_vk!(
 				&target_values,
 			)
 		});
-		let embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [1, 4], &input_values)?)?;
-		let indices = oa::Matrix::from_slice(&engine, [1, 1, 1], &[0_u32])?;
-		let module = oa::ml::nn::BatchNorm2d::from_matrices(
-			oa::Matrix::from_f32(&engine, [1], &weight)?,
-			oa::Matrix::from_f32(&engine, [1], &bias)?,
-			oa::Matrix::from_f32(&engine, [1], &mean)?,
-			oa::Matrix::from_f32(&engine, [1], &variance)?,
+		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			&engine,
+			[1, 4],
+			&input_values,
+		)?)?;
+		let indices = oa::Matrix::new_from_slice(&engine, [1, 1, 1], &[0_u32])?;
+		let module = oa::ml::nn::BatchNorm2d::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [1], &weight)?,
+			oa::Matrix::new_from_f32(&engine, [1], &bias)?,
+			oa::Matrix::new_from_f32(&engine, [1], &mean)?,
+			oa::Matrix::new_from_f32(&engine, [1], &variance)?,
 			EPSILON,
 			0.1,
 		)?;
 		module.eval();
-		let target = oa::Matrix::from_f32(&engine, shape, &target_values)?;
+		let target = oa::Matrix::new_from_f32(&engine, shape, &target_values)?;
 		let tape = oa::ml::GradientTape::new();
 		let loss = oa::ml::loss::mse(&module.forward(&embedding.forward(&indices)?)?, &target)?;
 		tape.backward(&loss)?;

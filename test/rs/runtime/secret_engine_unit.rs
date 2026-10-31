@@ -211,7 +211,7 @@ fn secret_descriptor_reuse_requires_confirmed_retirement() -> Result<()> {
 	let index = {
 		let binding = secret.binding()?;
 		assert_eq!(binding.byte_len(), 20);
-		assert_ne!(binding.raw(), ash::vk::Buffer::null());
+		assert_ne!(binding.raw(), vk::Buffer::NULL);
 		binding.descriptor_index()
 	};
 	let (command, witness) = secret.record_erasure()?;
@@ -327,6 +327,7 @@ fn secret_mlkem_keygen_nist_all_parameters() -> Result<()> {
 			let entropy = Entropy::test_from_bytes(&seed)?;
 			crate::core::memory::zero_secure(&mut seed);
 			let (public, erasure) = handle.prove_mlkem_keygen(k, entropy)?;
+			assert_eq!(erasure.test_retained_allocation_count(), 4);
 			erasure.wait()?;
 			assert!(erasure.try_is_complete()?);
 			let mut bytes = vec![0; public.byte_len()];
@@ -355,19 +356,27 @@ fn secret_mlkem_keygen_rejects_alias_extent_and_foreign_storage() -> Result<()> 
 	let device = handle.state.borrow().device.clone();
 	let seed = SecretBuffer::new(&device, 64)?;
 	let private = SecretBuffer::new(&device, 1632)?;
+	let workspace = SecretBuffer::new(
+		&device,
+		crate::runtime::shader::KernelId::mlkem_keygen_workspace_bytes(),
+	)?;
+	let wrong_workspace = SecretBuffer::new(
+		&device,
+		crate::runtime::shader::KernelId::mlkem_keygen_workspace_bytes() - 4,
+	)?;
 	let public = Buffer::host_visible_storage(&device, 800)?;
 	let wrong = Buffer::host_visible_storage(&device, 804)?;
 	let before = handle.state.borrow().next_epoch;
 	assert!(
-		matches!(device.prepare_mlkem_keygen(seed.binding()?, seed.binding()?, &public, 2),
+		matches!(device.prepare_mlkem_keygen(seed.binding()?, seed.binding()?, &public, workspace.binding()?, 2),
 		Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 	);
 	assert!(
-		matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &wrong, 2),
+		matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &wrong, workspace.binding()?, 2),
 		Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 	);
 	assert!(
-		matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &public, 4),
+		matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &public, workspace.binding()?, 4),
 		Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 	);
 	let foreign = secret_test_engine()?;
@@ -375,14 +384,34 @@ fn secret_mlkem_keygen_rejects_alias_extent_and_foreign_storage() -> Result<()> 
 	let foreign_device = foreign_handle.state.borrow().device.clone();
 	let foreign_public = Buffer::host_visible_storage(&foreign_device, 800)?;
 	assert!(
-		matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &foreign_public, 2),
+		matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &foreign_public, workspace.binding()?, 2),
 		Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 	);
+	let foreign_workspace = SecretBuffer::new(
+		&foreign_device,
+		crate::runtime::shader::KernelId::mlkem_keygen_workspace_bytes(),
+	)?;
+	for candidate in [&wrong_workspace, &foreign_workspace, &private] {
+		assert!(
+			matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &public, candidate.binding()?, 2),
+			Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
+		);
+	}
 	assert_eq!(handle.state.borrow().next_epoch, before);
 	let final_consumer = engine.checkpoint()?;
 	handle.erase_secret_buffer(seed, &final_consumer)?.wait()?;
 	handle
 		.erase_secret_buffer(private, &final_consumer)?
+		.wait()?;
+	handle
+		.erase_secret_buffer(workspace, &final_consumer)?
+		.wait()?;
+	handle
+		.erase_secret_buffer(wrong_workspace, &final_consumer)?
+		.wait()?;
+	let foreign_completion = foreign.checkpoint()?;
+	foreign_handle
+		.erase_secret_buffer(foreign_workspace, &foreign_completion)?
 		.wait()?;
 	Ok(())
 }
@@ -395,6 +424,7 @@ fn secret_mlkem_retained_key_erases_without_waiting_for_generation() -> Result<(
 	let handle = engine.handle();
 	for k in [2, 3, 4] {
 		let (key, seed_erasure) = handle.generate_mlkem_key(k, Entropy::generate()?)?;
+		assert_eq!(seed_erasure.test_retained_allocation_count(), 3);
 		assert_eq!(key.k, k);
 		assert_eq!(key.private.binding()?.byte_len(), u64::from(768 * k + 96));
 		let public = key.public.clone();
@@ -453,13 +483,22 @@ fn secret_mlkem_kem_chains_without_host_waits_and_erases_all_owners() -> Result<
 		let (key, seed_erasure) = handle.generate_mlkem_key(k, Entropy::generate()?)?;
 		let (encapsulated, ciphertext, status, message_erasure) =
 			handle.encapsulate_mlkem(&key, Entropy::generate()?)?;
-		let decapsulated = handle.decapsulate_mlkem(&key, &ciphertext)?;
+		let (decapsulated, cache_erasure) = handle.decapsulate_mlkem(&key, &ciphertext)?;
+		assert_eq!(message_erasure.test_retained_allocation_count(), 3);
+		assert_eq!(cache_erasure.test_retained_allocation_count(), 1);
 		// No waits between producers, consumers or consuming erasures.
 		let first = handle.erase_mlkem_shared_secret(encapsulated)?;
 		let second = handle.erase_mlkem_shared_secret(decapsulated)?;
 		let key_erasure = handle.erase_mlkem_key(key)?;
 		key_erasure.wait()?;
-		for ticket in [seed_erasure, message_erasure, first, second, key_erasure] {
+		for ticket in [
+			seed_erasure,
+			message_erasure,
+			cache_erasure,
+			first,
+			second,
+			key_erasure,
+		] {
 			assert!(ticket.try_is_complete()?);
 		}
 		let mut valid = [0; 4];
@@ -492,6 +531,244 @@ fn secret_mlkem_kem_rejects_capture_and_wrong_ciphertext_before_submission() -> 
 	);
 	assert_eq!(handle.state.borrow().next_epoch, epoch);
 	handle.erase_mlkem_key(key)?.wait()?;
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires explicit software Vulkan selection; NIST external encapsulation proof"]
+fn secret_mlkem_external_encapsulation_matches_nist_ciphertext_all_parameters() -> Result<()> {
+	use crate::cryptography::entropy::Entropy;
+	assert!(std::env::var_os("OA_TEST_DEVICE_INDEX").is_some());
+	let engine = secret_test_engine()?;
+	let handle = engine.handle();
+	let device = handle.state.borrow().device.clone();
+	assert_eq!(device.physical().info.kind, crate::runtime::DeviceKind::Cpu);
+	let prompt: serde_json::Value = serde_json::from_str(include_str!(
+		"../../fixtures/cryptography/mlkem/encapDecap-prompt.json"
+	))
+	.expect("pinned NIST prompt");
+	let expected: serde_json::Value = serde_json::from_str(include_str!(
+		"../../fixtures/cryptography/mlkem/encapDecap-expectedResults.json"
+	))
+	.expect("pinned NIST answers");
+	let decode = |value: &serde_json::Value| -> Vec<u8> {
+		let text = value.as_str().expect("fixture hex");
+		(0..text.len())
+			.step_by(2)
+			.map(|i| u8::from_str_radix(&text[i..i + 2], 16).expect("hex byte"))
+			.collect()
+	};
+	let mut cases = 0;
+	for group in prompt["testGroups"].as_array().expect("groups") {
+		if group["function"] != "encapsulation" {
+			continue;
+		}
+		let k = match group["parameterSet"].as_str().expect("parameter") {
+			"ML-KEM-512" => 2,
+			"ML-KEM-768" => 3,
+			"ML-KEM-1024" => 4,
+			_ => panic!("unknown fixture parameter"),
+		};
+		let case = &group["tests"][0];
+		let answers = expected["testGroups"]
+			.as_array()
+			.expect("answers")
+			.iter()
+			.find(|g| g["tgId"] == group["tgId"])
+			.expect("answer group");
+		let answer = answers["tests"]
+			.as_array()
+			.expect("cases")
+			.iter()
+			.find(|a| a["tcId"] == case["tcId"])
+			.expect("answer");
+		let mut encoded_key = decode(&case["ek"]);
+		let public = Buffer::host_visible_storage(&device, encoded_key.len())?;
+		public.write(0, &encoded_key)?;
+		let mut message: [u8; 32] = decode(&case["m"]).try_into().expect("32-byte NIST entropy");
+		let entropy = Entropy::test_from_bytes(&message)?;
+		crate::core::memory::zero_secure(&mut message);
+		let (secret, ciphertext, status, entropy_erasure) =
+			handle.encapsulate_mlkem_public(k, &public, entropy)?;
+		// Retained descriptors keep an imported public key alive until its consumer completes.
+		drop(public);
+		let secret_erasure = handle.erase_mlkem_shared_secret(secret)?;
+		secret_erasure.wait()?;
+		assert_eq!(entropy_erasure.test_retained_allocation_count(), 3);
+		assert!(entropy_erasure.try_is_complete()?);
+		assert!(secret_erasure.try_is_complete()?);
+		let mut valid = [0; 4];
+		status.read(0, &mut valid)?;
+		assert_eq!(u32::from_le_bytes(valid), 1);
+		let mut actual = vec![0; ciphertext.byte_len()];
+		ciphertext.read(0, &mut actual)?;
+		assert_eq!(actual, decode(&answer["c"]), "NIST tcId {}", case["tcId"]);
+		// The first packed coefficient 0xfff is outside the canonical field range.
+		encoded_key[0] = 0xff;
+		encoded_key[1] |= 0x0f;
+		let invalid = Buffer::host_visible_storage(&device, encoded_key.len())?;
+		invalid.write(0, &encoded_key)?;
+		let (secret, ciphertext, status, entropy_erasure) =
+			handle.encapsulate_mlkem_public(k, &invalid, Entropy::generate()?)?;
+		let secret_erasure = handle.erase_mlkem_shared_secret(secret)?;
+		secret_erasure.wait()?;
+		assert_eq!(entropy_erasure.test_retained_allocation_count(), 3);
+		assert!(entropy_erasure.try_is_complete()?);
+		status.read(0, &mut valid)?;
+		assert_eq!(u32::from_le_bytes(valid), 0);
+		ciphertext.read(0, &mut actual)?;
+		assert!(actual.iter().all(|byte| *byte == 0));
+		cases += 1;
+	}
+	assert_eq!(cases, 3);
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires explicit software Vulkan selection; external-key admission"]
+fn secret_mlkem_external_encapsulation_rejects_invalid_ownership_before_submission() -> Result<()> {
+	use crate::cryptography::entropy::Entropy;
+	assert!(std::env::var_os("OA_TEST_DEVICE_INDEX").is_some());
+	let engine = secret_test_engine()?;
+	let handle = engine.handle();
+	let device = handle.state.borrow().device.clone();
+	assert_eq!(device.physical().info.kind, crate::runtime::DeviceKind::Cpu);
+	let public = Buffer::host_visible_storage(&device, 800)?;
+	let wrong = Buffer::host_visible_storage(&device, 4)?;
+	let foreign = secret_test_engine()?;
+	let foreign_device = foreign.handle().state.borrow().device.clone();
+	let foreign_public = Buffer::host_visible_storage(&foreign_device, 800)?;
+	let epoch = handle.state.borrow().next_epoch;
+	for (k, buffer) in [
+		(1, &public),
+		(5, &public),
+		(2, &wrong),
+		(3, &public),
+		(2, &foreign_public),
+	] {
+		assert!(
+			matches!(handle.encapsulate_mlkem_public(k, buffer, Entropy::generate()?),
+			Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
+		);
+		assert_eq!(handle.state.borrow().next_epoch, epoch);
+	}
+	assert!(
+		matches!(engine.capture(|| handle.encapsulate_mlkem_public(2, &public, Entropy::generate()?).map(|_| ())),
+		Err(error) if error.kind() == crate::ErrorKind::FailedPrecondition)
+	);
+	assert_eq!(handle.state.borrow().next_epoch, epoch);
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires explicit software Vulkan selection; disposable ML-KEM-512 known-secret proof"]
+fn secret_mlkem512_known_fixture_agreement_and_implicit_rejection() -> Result<()> {
+	use crate::cryptography::{entropy::Entropy, shake256};
+	assert!(std::env::var_os("OA_TEST_DEVICE_INDEX").is_some());
+	let engine = secret_test_engine()?;
+	let handle = engine.handle();
+	let device = handle.state.borrow().device.clone();
+	assert_eq!(device.physical().info.kind, crate::runtime::DeviceKind::Cpu);
+	let fixture: serde_json::Value = serde_json::from_str(include_str!(
+		"../../fixtures/cryptography/mlkem/engine-roundtrip.json"
+	))
+	.expect("independent fixture");
+	let decode = |name: &str| -> Vec<u8> {
+		let text = fixture[name].as_str().expect("hex fixture");
+		(0..text.len())
+			.step_by(2)
+			.map(|i| u8::from_str_radix(&text[i..i + 2], 16).expect("hex byte"))
+			.collect()
+	};
+	let mut seed = [0; 64];
+	seed[..32].copy_from_slice(&decode("d"));
+	seed[32..].copy_from_slice(&decode("z"));
+	let entropy = Entropy::test_from_bytes(&seed)?;
+	crate::core::memory::zero_secure(&mut seed);
+	let (key, seed_erasure) = handle.generate_mlkem_key(2, entropy)?;
+	assert_eq!(seed_erasure.test_retained_allocation_count(), 3);
+	eprintln!("ML-KEM-512 fixture keygen submitted");
+	let ciphertext = Buffer::host_visible_storage(&device, 768)?;
+	let status = Buffer::host_visible_storage(&device, 4)?;
+	// Only known, public fixture outputs use the test constructor. Production
+	// keys and shared-secret owners retain their non-exportable allocation policy.
+	let encapsulated = SecretBuffer::test_fixture(&device)?;
+	let decapsulated = SecretBuffer::test_fixture(&device)?;
+	let mut message: [u8; 32] = decode("m").try_into().expect("message length");
+	let entropy = Entropy::test_from_bytes(&message)?;
+	crate::core::memory::zero_secure(&mut message);
+	let (command, witness) = entropy.consume(|bytes| {
+		SecretBuffer::new(&device, 32)?.record_mlkem_encaps(
+			bytes,
+			&key.public,
+			encapsulated.owner(),
+			&ciphertext,
+			&status,
+			2,
+		)
+	})?;
+	let ready = submit_recorded(&mut handle.state.borrow_mut(), command)?;
+	let message_erasure = SecretErasure::new(ready, witness);
+	eprintln!("ML-KEM-512 fixture encapsulation submitted");
+	let (command, witness) = key
+		.private
+		.record_mlkem_decaps(&ciphertext, decapsulated.owner(), 2)?;
+	let event = submit_recorded(&mut handle.state.borrow_mut(), command)?;
+	let mut cache_erasures = vec![SecretErasure::new(event, witness)];
+	eprintln!("ML-KEM-512 fixture decapsulation submitted");
+	let mut fixtures = vec![(encapsulated, decode("k")), (decapsulated, decode("k"))];
+	// Correct-length invalid ciphertexts return J(z || c), with no rejection
+	// status from the production decapsulation dispatch.
+	let expected_ciphertext = decode("c");
+	for position in [0, 384, 767] {
+		let mut altered = expected_ciphertext.clone();
+		altered[position] ^= 128;
+		let input = Buffer::host_visible_storage(&device, altered.len())?;
+		input.write(0, &altered)?;
+		let secret = SecretBuffer::test_fixture(&device)?;
+		let (command, witness) = key.private.record_mlkem_decaps(&input, secret.owner(), 2)?;
+		let event = submit_recorded(&mut handle.state.borrow_mut(), command)?;
+		cache_erasures.push(SecretErasure::new(event, witness));
+		drop(input);
+		let mut rejection_input = decode("z");
+		rejection_input.extend_from_slice(&altered);
+		let mut expected = vec![0; 32];
+		shake256(&rejection_input, &mut expected);
+		fixtures.push((secret, expected));
+	}
+	let mut observations = Vec::new();
+	for (fixture, expected) in fixtures {
+		let probe = Buffer::host_visible_storage(&device, 32)?;
+		let command = fixture.test_record_fixture_snapshot(&probe)?;
+		let _event = submit_recorded(&mut handle.state.borrow_mut(), command)?;
+		let (command, witness) = fixture.into_owner().record_retained_erasure()?;
+		let event = submit_recorded(&mut handle.state.borrow_mut(), command)?;
+		observations.push(((probe, SecretErasure::new(event, witness)), expected));
+	}
+	let public = key.public.clone();
+	let key_erasure = handle.erase_mlkem_key(key)?;
+	key_erasure.wait()?;
+	for ticket in cache_erasures {
+		assert_eq!(ticket.test_retained_allocation_count(), 1);
+		assert!(ticket.try_is_complete()?);
+	}
+	assert!(seed_erasure.try_is_complete()?);
+	assert!(message_erasure.try_is_complete()?);
+	for ((probe, erasure), expected) in observations {
+		assert!(erasure.try_is_complete()?);
+		let mut actual = [0; 32];
+		probe.read(0, &mut actual)?;
+		assert_eq!(actual.as_slice(), expected);
+	}
+	let mut encoded = vec![0; public.byte_len()];
+	public.read(0, &mut encoded)?;
+	assert_eq!(encoded, decode("ek"));
+	let mut actual = vec![0; ciphertext.byte_len()];
+	ciphertext.read(0, &mut actual)?;
+	assert_eq!(actual, expected_ciphertext);
+	let mut valid = [0; 4];
+	status.read(0, &mut valid)?;
+	assert_eq!(u32::from_le_bytes(valid), 1);
 	Ok(())
 }
 
@@ -1113,7 +1390,10 @@ fn mldsa_hash_message_verifier_nist_capture() -> Result<()> {
 fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 	use crate::Matrix;
 	use crate::cryptography::{
-		pqc::{MlDsaParameters, verify_hash_message_batch, verify_prehashed_batch},
+		pqc::{
+			MlDsaParameters,
+			verification::{verify_hash_message_batch, verify_prehashed_batch},
+		},
 		shake256,
 	};
 	if std::env::var_os("OA_TEST_DEVICE_INDEX").is_none() {
@@ -1205,11 +1485,11 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 		};
 		bytes.extend_from_slice(payload);
 		let payload_length = u32::try_from(payload.len()).expect("payload length");
-		let inputs = Matrix::from_slice(&engine, [bytes.len()], &bytes)?;
-		let offsets = Matrix::from_slice(&engine, [1], &[offset])?;
-		let lengths = Matrix::from_slice(&engine, [1], &[payload_length])?;
-		let signatures = Matrix::from_slice(&engine, [sig.len()], &sig)?;
-		let keys = Matrix::from_slice(&engine, [pk.len()], &pk)?;
+		let inputs = Matrix::new_from_slice(&engine, [bytes.len()], &bytes)?;
+		let offsets = Matrix::new_from_slice(&engine, [1], &[offset])?;
+		let lengths = Matrix::new_from_slice(&engine, [1], &[payload_length])?;
+		let signatures = Matrix::new_from_slice(&engine, [sig.len()], &sig)?;
+		let keys = Matrix::new_from_slice(&engine, [pk.len()], &pk)?;
 		let ctx = 1..1 + context.len();
 		let (mut plan, result) = engine.capture(|| {
 			verify(
@@ -1240,7 +1520,7 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 			assert_eq!(result.read::<u32>()?, [1], "{name} NIST SHAKE-256");
 		}
 		bytes[offset as usize] ^= 1;
-		let changed = Matrix::from_slice(&engine, [bytes.len()], &bytes)?;
+		let changed = Matrix::new_from_slice(&engine, [bytes.len()], &bytes)?;
 		plan.bind_matrix_input(&inputs, &changed)?;
 		drop(changed);
 		engine.submit(&plan)?.wait()?;
@@ -1267,8 +1547,8 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 			[u32::MAX, payload_length],
 			[offset, u32::MAX],
 		] {
-			let offsets = Matrix::from_slice(&engine, [1], &row[..1])?;
-			let lengths = Matrix::from_slice(&engine, [1], &row[1..])?;
+			let offsets = Matrix::new_from_slice(&engine, [1], &row[..1])?;
+			let lengths = Matrix::new_from_slice(&engine, [1], &row[1..])?;
 			assert_eq!(
 				verify(
 					parameters,
@@ -1303,8 +1583,8 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 			[0],
 			"prehash signature must reject pure framing"
 		);
-		let empty = Matrix::from_slice(&engine, [0], &[] as &[u8])?;
-		let empty_rows = Matrix::from_slice(&engine, [0], &[] as &[u32])?;
+		let empty = Matrix::new_from_slice(&engine, [0], &[] as &[u8])?;
+		let empty_rows = Matrix::new_from_slice(&engine, [0], &[] as &[u32])?;
 		assert_eq!(
 			verify(
 				parameters,
@@ -1329,10 +1609,53 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 			);
 		}
 		let foreign = secret_test_engine()?;
-		let foreign_offsets = Matrix::from_slice(&foreign, [1], &[offset])?;
+		let foreign_offsets = Matrix::new_from_slice(&foreign, [1], &[offset])?;
 		assert!(
 			matches!(verify(parameters, 12, &inputs, &foreign_offsets, &lengths, &signatures, &keys, ctx), Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 		);
 	}
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires explicitly selected software Vulkan; ML-KEM cache preflight"]
+fn secret_mlkem_consumer_cache_rejects_alias_extent_and_foreign_storage() -> Result<()> {
+	let engine = secret_test_engine()?;
+	let foreign = secret_test_engine()?;
+	let handle = engine.handle();
+	let other = foreign.handle();
+	let device = handle.state.borrow().device.clone();
+	let foreign_device = other.state.borrow().device.clone();
+	let seed = SecretBuffer::new(&device, 32)?;
+	let shared = SecretBuffer::new(&device, 32)?;
+	let private = SecretBuffer::new(&device, 1632)?;
+	let workspace = SecretBuffer::new(&device, 4096)?;
+	let short = SecretBuffer::new(&device, 4092)?;
+	let foreign_workspace = SecretBuffer::new(&foreign_device, 4096)?;
+	let public = Buffer::host_visible_storage(&device, 800)?;
+	let ciphertext = Buffer::host_visible_storage(&device, 768)?;
+	let status = Buffer::host_visible_storage(&device, 4)?;
+	let before = handle.state.borrow().next_epoch;
+	crate::runtime::device::pqc::tests::assert_mlkem_cache_preflight(
+		&device,
+		[
+			&seed,
+			&shared,
+			&private,
+			&workspace,
+			&short,
+			&foreign_workspace,
+		],
+		[&public, &ciphertext, &status],
+	)?;
+	assert_eq!(handle.state.borrow().next_epoch, before);
+	let completion = engine.checkpoint()?;
+	for owner in [seed, shared, private, workspace, short] {
+		handle.erase_secret_buffer(owner, &completion)?.wait()?;
+	}
+	let completion = foreign.checkpoint()?;
+	other
+		.erase_secret_buffer(foreign_workspace, &completion)?
+		.wait()?;
 	Ok(())
 }

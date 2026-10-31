@@ -18,7 +18,7 @@ impl {{name}} {
 	///
 	/// Returns an error when the embedding, mixer, or child registration cannot
 	/// be constructed.
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		vocab_size: usize,
 		config: Mamba3Config,

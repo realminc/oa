@@ -28,7 +28,7 @@ impl<'a> NalUnit<'a> {
 	/// # Errors
 	///
 	/// Returns an error when `payload` is empty.
-	pub fn from_h264_payload(payload: &'a [u8]) -> Result<Self> {
+	pub fn new_from_h264_payload(payload: &'a [u8]) -> Result<Self> {
 		let Some(&header) = payload.first() else {
 			return Err(Error::invalid_argument("H.264 NAL payload is empty"));
 		};
@@ -82,7 +82,7 @@ pub fn parse_nal_annex_b(bytes: &[u8]) -> Vec<NalUnit<'_>> {
 		let payload_start = current + prefix_len;
 		let next = find_start_code(bytes, payload_start);
 		let payload_end = next.map_or(bytes.len(), |(offset, _)| offset);
-		if let Ok(mut unit) = NalUnit::from_h264_payload(&bytes[payload_start..payload_end]) {
+		if let Ok(mut unit) = NalUnit::new_from_h264_payload(&bytes[payload_start..payload_end]) {
 			unit.start_code_offset = Some(current);
 			unit.start_code_len = prefix_len;
 			units.push(unit);

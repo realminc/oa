@@ -12,7 +12,7 @@ use crate::{
 pub struct MediaTimestamp(u64);
 
 impl MediaTimestamp {
-	pub const fn from_microseconds(value: u64) -> Self {
+	pub const fn new_from_microseconds(value: u64) -> Self {
 		Self(value)
 	}
 

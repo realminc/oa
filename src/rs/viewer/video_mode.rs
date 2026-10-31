@@ -14,7 +14,7 @@ pub fn open(engine: &Engine, config: &ViewerConfig) -> Result<VideoPlayer> {
 		start_playing: config.start_playing,
 		..VideoPlayerConfig::default()
 	};
-	VideoPlayer::open_native(engine, &config.path, player_config)
+	VideoPlayer::new_native(engine, &config.path, player_config)
 }
 
 /// Render the current decoded video frame when a Texture bridge is available.

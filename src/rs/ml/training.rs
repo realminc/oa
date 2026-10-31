@@ -10,12 +10,15 @@ mod callbacks;
 mod dqn;
 mod iterator;
 mod ppo;
+mod ppo_program;
 mod program;
 mod rollout;
 mod sac;
 mod schedule;
 mod session;
 mod target;
+mod trading_rollout;
+pub use trading_rollout::TradingRolloutProgram;
 
 pub use callbacks::{
 	CbCheckpoint, CbCsvLogger, CbEarlyStop, CbLrScheduler, CbPhase, CbProgressBar, CbSummary,
@@ -33,6 +36,7 @@ pub use iterator::{
 	TrainingSnapshot,
 };
 pub use ppo::{PpoTrainer, PpoTrainerConfig, PpoTrainerMetrics};
+pub use ppo_program::PpoUpdateProgram;
 pub use rollout::{ItRolloutTraining, ItRolloutTrainingConfig, RolloutTrainingPhase};
 
 pub use program::{

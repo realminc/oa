@@ -7,9 +7,9 @@
 //!   no lighting.
 //! - [`UnlitMaterial`] — textured image/video display; one texture, no
 //!   lighting.
-//! - [`StandardSurfaceMaterial`] — a Standard Surface/OpenPBR-oriented semantic
-//!   parameter value. The current renderer lowers only its scalar base GGX,
-//!   direct-light, ambient, and emission subset.
+//! - [`SurfaceMaterial`] — OA's metallic/roughness PBR parameter value, with
+//!   GGX specular, Lambertian diffuse, direct light, ambient, and emission.
+//!   Additional layer parameters are reserved for future renderer support.
 //!
 //! All color and intensity values are **linear** at this API boundary. sRGB
 //! conversion is handled by the Vulkan image-view format, not in shaders.
@@ -37,7 +37,7 @@ pub struct MaterialId(pub u64);
 
 // ── AlphaMode ─────────────────────────────────────────────────────────────────
 
-/// Alpha blending mode for [`UnlitMaterial`] and [`StandardSurfaceMaterial`].
+/// Alpha blending mode for [`UnlitMaterial`] and [`SurfaceMaterial`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AlphaMode {
 	/// Alpha is ignored; surface is drawn in the opaque pass with depth write.
@@ -146,14 +146,17 @@ impl UnlitMaterial {
 	}
 }
 
-// ── StandardSurfaceMaterial ───────────────────────────────────────────────────
+// ── SurfaceMaterial ───────────────────────────────────────────────────
 
-/// Full Standard Surface PBR material.
+/// Metallic/roughness PBR material for scene geometry.
 ///
-/// Parameterized on Autodesk Standard Surface / OpenPBR. Maps losslessly to
-/// glTF 2.0 `pbrMetallicRoughness` + `KHR_materials_ior`, `KHR_materials_clearcoat`,
-/// `KHR_materials_sheen`, and `KHR_materials_subsurface_scattering`. Arnold
-/// and Cycles `standard_surface` import is a natural correspondence.
+/// OA evaluates GGX specular and Lambertian diffuse using base color,
+/// metalness, perceptual roughness, and dielectric index of refraction.
+/// Direct light, flat ambient, and emission form the current renderer subset.
+/// Base/ORM/normal descriptors are connected, but their sampling variants
+/// are not enabled by the current shader build. Texture sampling, coat,
+/// sheen, subsurface, separate emission/opacity maps, and interchange
+/// adapters remain Planned.
 ///
 /// **Texture channel packing (ORM convention):**
 /// - `orm_texture` R = ambient occlusion, G = roughness, B = metalness.
@@ -162,7 +165,7 @@ impl UnlitMaterial {
 ///
 /// All color values are **linear** at this API boundary.
 #[derive(Clone, Debug, PartialEq)]
-pub struct StandardSurfaceMaterial {
+pub struct SurfaceMaterial {
 	// ── Base lobe ─────────────────────────────────────────────────────────────
 	/// Linear RGB base color. Default `[0.8, 0.8, 0.8]`.
 	pub base_color: [f32; 3],
@@ -172,7 +175,7 @@ pub struct StandardSurfaceMaterial {
 	/// Metalness in `[0, 1]`. Default `0.0` (dielectric).
 	pub metalness: f32,
 	/// Perceptual roughness in `[0, 1]`. Default `0.5`. Squared to α in the
-	/// shader to match Unreal/Filament behaviour.
+	/// shader for the GGX distribution.
 	pub roughness: f32,
 	/// Optional ORM texture (R=occlusion, G=roughness, B=metalness).
 	pub orm_texture: Option<TextureHandle>,
@@ -199,7 +202,7 @@ pub struct StandardSurfaceMaterial {
 	pub emission_texture: Option<TextureHandle>,
 
 	// ── Clear coat ────────────────────────────────────────────────────────────
-	/// Clear coat weight in `[0, 1]`. Default `0.0`.
+	/// Clear coat weight in `[0, 1]`. Default `0.0`. Rendering is Planned.
 	pub coat_weight: f32,
 	/// Clear coat perceptual roughness in `[0, 1]`. Default `0.03`.
 	pub coat_roughness: f32,
@@ -209,7 +212,7 @@ pub struct StandardSurfaceMaterial {
 	pub coat_normal_texture: Option<TextureHandle>,
 
 	// ── Sheen (fabric/cloth) ──────────────────────────────────────────────────
-	/// Sheen weight in `[0, 1]`. Default `0.0`.
+	/// Sheen weight in `[0, 1]`. Default `0.0`. Rendering is Planned.
 	pub sheen_weight: f32,
 	/// Linear RGB sheen color. Default `[1, 1, 1]`.
 	pub sheen_color: [f32; 3],
@@ -217,8 +220,7 @@ pub struct StandardSurfaceMaterial {
 	pub sheen_roughness: f32,
 
 	// ── Subsurface scattering ─────────────────────────────────────────────────
-	/// Subsurface weight in `[0, 1]`. Default `0.0`. When `> 0.5` the diffuse
-	/// lobe is replaced by the pre-integrated normalized diffusion approximation.
+	/// Subsurface weight in `[0, 1]`. Default `0.0`. Rendering is Planned.
 	pub subsurface_weight: f32,
 	/// Linear RGB subsurface color. Default `[1, 1, 1]`.
 	pub subsurface_color: [f32; 3],
@@ -242,7 +244,7 @@ pub struct StandardSurfaceMaterial {
 	pub uv_offset: [f32; 2],
 }
 
-impl Default for StandardSurfaceMaterial {
+impl Default for SurfaceMaterial {
 	/// Neutral gray dielectric: `base_color = [0.8, 0.8, 0.8]`, `roughness = 0.5`,
 	/// `metalness = 0.0`, all optional textures `None`, all optional lobes at
 	/// weight `0.0`.
@@ -280,7 +282,7 @@ impl Default for StandardSurfaceMaterial {
 	}
 }
 
-impl StandardSurfaceMaterial {
+impl SurfaceMaterial {
 	/// Validate that all scalar parameters are finite and in-range.
 	pub fn validate(&self) -> Result<()> {
 		let in_unit = |v: f32| v.is_finite() && (0.0..=1.0).contains(&v);
@@ -325,7 +327,7 @@ impl StandardSurfaceMaterial {
 			|| !finite2(self.uv_offset)
 		{
 			return Err(Error::invalid_argument(
-				"render::StandardSurfaceMaterial parameters must be finite and in-range",
+				"render::SurfaceMaterial parameters must be finite and in-range",
 			));
 		}
 		Ok(())
@@ -339,18 +341,18 @@ impl StandardSurfaceMaterial {
 /// Three tiers correspond to distinct shader pipelines:
 /// - [`Material::FlatColor`] — `flat_color` shader, UI and debug.
 /// - [`Material::Unlit`] — `unlit` shader, image/video display.
-/// - [`Material::Standard`] — `standard_surface` shader, full PBR.
+/// - [`Material::Surface`] — `surface` shader, metallic/roughness PBR.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Material {
 	FlatColor(FlatColorMaterial),
 	Unlit(UnlitMaterial),
-	Standard(StandardSurfaceMaterial),
+	Surface(SurfaceMaterial),
 }
 
 impl Default for Material {
-	/// Neutral gray opaque `Standard` material.
+	/// Neutral gray opaque `Surface` material.
 	fn default() -> Self {
-		Self::Standard(StandardSurfaceMaterial::default())
+		Self::Surface(SurfaceMaterial::default())
 	}
 }
 
@@ -360,7 +362,7 @@ impl Material {
 		match self {
 			Self::FlatColor(m) => m.validate(),
 			Self::Unlit(m) => m.validate(),
-			Self::Standard(m) => m.validate(),
+			Self::Surface(m) => m.validate(),
 		}
 	}
 }

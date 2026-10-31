@@ -1,6 +1,7 @@
 import copy
 import importlib.util
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -48,6 +49,7 @@ class GeneratorTests(unittest.TestCase):
 		self.cryptography_pqc_schema = json.loads(
 			CRYPTOGRAPHY_PQC_SCHEMA_PATH.read_text(encoding="utf-8")
 		)
+		self.bigint_schema = json.loads((GENERATOR_ROOT / "schema/cryptography/cryptography_bigint.json").read_text())
 		self.image_schema = json.loads(IMAGE_SCHEMA_PATH.read_text(encoding="utf-8"))
 		self.vision_schema = json.loads(VISION_SCHEMA_PATH.read_text(encoding="utf-8"))
 		self.ui_schema = json.loads(UI_SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -178,6 +180,36 @@ class GeneratorTests(unittest.TestCase):
 				schema["private_kernels"][0][field] = value
 				with self.assertRaises(ValueError):
 					GENERATOR.validate_cryptography_pqc_schema(schema)
+
+	def test_private_mlkem_keygen_workspace_contract(self):
+		kernel = self.cryptography_pqc_schema["private_kernels"][0]
+		for field, value in (("workspace_bytes", 0), ("workspace_bytes", 4092),
+			("workspace_bytes", 4100), ("workspace_bytes", 4096.0), ("workspace_bytes", True),
+			("secret_bindings", [0, 1]), ("physical_write", {
+				"writes": kernel["physical_write"]["writes"], "workspace": "none"})):
+			with self.subTest(field=field, value=value):
+				schema = copy.deepcopy(self.cryptography_pqc_schema)
+				schema["private_kernels"][0][field] = value
+				with self.assertRaises(ValueError):
+					GENERATOR.validate_cryptography_pqc_schema(schema)
+		shader = GENERATOR.generate_mlkem_keygen_shader(kernel, "0" * 64)
+		self.assertIn("workspace_size != 4096u", shader)
+		self.assertIn("mlkem_keygen_buffer(d, z, push.k", shader)
+		self.assertNotIn("mlkem_keygen_internal(d, z", shader)
+
+	def test_private_mlkem_consumer_workspace_contract(self):
+		for index, suffix in ((1, "encaps"), (2, "decaps")):
+			kernel = self.cryptography_pqc_schema["private_kernels"][index]
+			for extent in (0, 4092, 4100, 4096.0, True):
+				with self.subTest(suffix=suffix, extent=extent):
+					schema = copy.deepcopy(self.cryptography_pqc_schema)
+					schema["private_kernels"][index]["workspace_bytes"] = extent
+					with self.assertRaises(ValueError):
+						GENERATOR.validate_cryptography_pqc_schema(schema)
+			shader = GENERATOR.generate_mlkem_kem_shader(kernel, "0" * 64)
+			self.assertIn("workspace_size != 4096u", shader)
+			self.assertIn(f"mlkem_{suffix}_buffer", shader)
+			self.assertNotIn(f"mlkem_{suffix}_internal", shader)
 
 	def test_private_mlkem_kem_classification_and_abi(self):
 		GENERATOR.validate_cryptography_pqc_schema(self.cryptography_pqc_schema)
@@ -373,7 +405,7 @@ class GeneratorTests(unittest.TestCase):
 				for schema in (self.schema, self.blas_schema, self.reduce_schema, self.rng_schema, self.index_schema, self.view_schema)
 				for op in schema["operations"] if op.get("autograd", {}).get("mode") == "generated"
 			})
-			self.assertEqual(len(outputs), variant_count + 24 + 2 * matrix_autograd_family_count + 3 + 2 * autograd_family_count + 1 + body_family_count + activation_family_count - 1 + len(self.cryptography_pqc_schema["kernels"]) + len(self.cryptography_pqc_schema["private_kernels"]))
+			self.assertEqual(len(outputs), variant_count + 25 + 2 * matrix_autograd_family_count + 3 + 2 * autograd_family_count + 1 + body_family_count + activation_family_count - 1 + len(self.cryptography_pqc_schema["kernels"]) + len(self.cryptography_pqc_schema["private_kernels"]) + 4 + sum("digest" in k or "poseidon2" in k or k["name"].startswith("merkle_proof_") for k in self.cryptography_hash_schema["kernels"]) + 31 + len(self.bigint_schema["kernels"]) + 19)
 			self.assertIn(root / "src/slang/cryptography/pqc/mldsa/mldsa_prehash_digest.slang", outputs)
 			api = outputs[root / "src/rs/matrix/elemwise.gen.rs"]
 			blas_api = outputs[root / "src/rs/matrix/blas.gen.rs"]
@@ -390,11 +422,11 @@ class GeneratorTests(unittest.TestCase):
 
 			registry = outputs[root / "src/rs/runtime/shader/registry.gen.rs"]
 			self.assertIn("Self::CryptographyMlKemKeygenU8 => None", registry)
-			self.assertIn("mlkem_keygen_internal", outputs[root / "src/slang/cryptography/pqc/mlkem/mlkem_keygen.slang"])
+			self.assertIn("mlkem_keygen_buffer", outputs[root / "src/slang/cryptography/pqc/mlkem/mlkem_keygen.slang"])
 			for suffix in ("encaps", "decaps"):
 				self.assertIn(f"Self::CryptographyMlKem{suffix.title()}U8 => None", registry)
 				shader = outputs[root / f"src/slang/cryptography/pqc/mlkem/mlkem_{suffix}.slang"]
-				self.assertIn(f"mlkem_{suffix}_internal", shader)
+				self.assertIn(f"mlkem_{suffix}_buffer", shader)
 			for parameter in (44, 65, 87):
 				self.assertEqual(outputs[root / "src/rs/core/operation/operation.gen.rs"].count(f"const ML_DSA_{parameter}_PUBLIC_KEY_SIZE:"), 1)
 			self.assertIn("Self::CryptographyMlDsaKeygenU8 => None", registry)
@@ -588,6 +620,125 @@ class GeneratorTests(unittest.TestCase):
 			)
 			self.assertIn("GradNodeOperation::CrossEntropy", loss_autograd)
 
+	def test_fixed_hash_helpers_reject_metadata_and_write_abi_drift(self):
+		for field, value in (("bytes", 32), ("bytes", 28.0), ("word_type", "uint2"), ("module", "sha3"), ("helper", "sha2_256")):
+			invalid = copy.deepcopy(self.cryptography_hash_schema)
+			kernel = next(k for k in invalid["kernels"] if k["name"] == "sha224")
+			kernel["digest"][field] = value
+			with self.subTest(field=field, value=value), self.assertRaisesRegex(GENERATOR.SchemaError, "helper ABI"):
+				GENERATOR.validate_cryptography_hash_schema(invalid)
+
+		invalid = copy.deepcopy(self.cryptography_hash_schema)
+		next(k for k in invalid["kernels"] if k["name"] == "sha224")["physical_write"]["writes"][0]["binding"] = 0
+		with self.assertRaisesRegex(GENERATOR.SchemaError, "write ownership"):
+			GENERATOR.validate_cryptography_hash_schema(invalid)
+		invalid = copy.deepcopy(self.cryptography_hash_schema)
+		next(a for a in invalid["rust_api"] if a["name"] == "sha224")["values"]["digest_bytes"] = "32"
+		with self.assertRaisesRegex(GENERATOR.SchemaError, "API extent"):
+			GENERATOR.validate_cryptography_hash_schema(invalid)
+
+	def test_bigint_layout_abi_and_write_ownership_are_checked(self):
+		GENERATOR.validate_bigint_schema(self.bigint_schema)
+		for mutate in (
+			lambda s: s["limb_layout"].update(max_words=129),
+			lambda s: s["limb_layout"].update(word_bits=32.0),
+			lambda s: s["kernels"][0]["push_fields"].reverse(),
+			lambda s: s["kernels"][0]["outputs"][0].update(extent="wide"),
+			lambda s: s["kernels"][0]["physical_write"]["writes"][0].update(binding=0),
+			lambda s: s["contracts"][-3]["output_kinds"].pop(),
+			lambda s: s["kernels"][0].update(stable_id=True),
+			lambda s: s.update(schema_version=True),
+			lambda s: s["kernels"][-1]["physical_write"]["writes"][0].update(binding=True),
+		):
+			with self.subTest(mutate=mutate):
+				invalid = copy.deepcopy(self.bigint_schema)
+				mutate(invalid)
+				with self.assertRaises(GENERATOR.SchemaError):
+					GENERATOR.validate_bigint_schema(invalid)
+
+	def test_bigint_product_and_bit_output_contracts_reject_drift(self):
+		for name in ("multiply_high", "square_wide", "bit_not", "leading_zeros"):
+			for mutate in (
+				lambda k: k["outputs"][0].update(extent="wrong"),
+				lambda k: k["push_fields"].insert(1, ["unused_index", "uint32"]),
+				lambda k: k["physical_write"]["writes"][0].update(extent="wrong"),
+			):
+				invalid = copy.deepcopy(self.bigint_schema)
+				mutate(next(k for k in invalid["kernels"] if k["name"] == name))
+				with self.subTest(name=name, mutate=mutate), self.assertRaises(GENERATOR.SchemaError):
+					GENERATOR.validate_bigint_schema(invalid)
+			invalid = copy.deepcopy(self.bigint_schema)
+			next(c for c in invalid["contracts"] if c["name"] == name)["input_kinds"].append("matrix")
+			with self.subTest(name=name), self.assertRaises(GENERATOR.SchemaError):
+				GENERATOR.validate_bigint_schema(invalid)
+
+	def test_bigint_modular_buffer_abi_rejects_drift(self):
+		for name in ("reduce_mod", "pow_mod", "barrett_multiply"):
+			for mutate in (
+				lambda k: k["push_fields"].pop(),
+				lambda k: k["outputs"][1].update(extent="row"),
+				lambda k: k["physical_write"]["writes"][1].update(binding=0),
+			):
+				invalid = copy.deepcopy(self.bigint_schema)
+				kernel = next(k for k in invalid["kernels"] if k["name"] == name)
+				mutate(kernel)
+				with self.subTest(name=name, mutate=mutate), self.assertRaises(GENERATOR.SchemaError):
+					GENERATOR.validate_bigint_schema(invalid)
+			invalid = copy.deepcopy(self.bigint_schema)
+			next(c for c in invalid["contracts"] if c["name"] == name)["input_kinds"].pop()
+			with self.subTest(name=name), self.assertRaises(GENERATOR.SchemaError):
+				GENERATOR.validate_bigint_schema(invalid)
+
+	def test_merkle_proof_layout_and_auxiliary_ownership_reject_drift(self):
+		for field, value in (("header_bytes", 20), ("version", 1.0), ("max_depth", 33)):
+			invalid = copy.deepcopy(self.cryptography_hash_schema)
+			invalid["proof_layout"][field] = value
+			with self.assertRaisesRegex(GENERATOR.SchemaError, "wire layout"):
+				GENERATOR.validate_cryptography_hash_schema(invalid)
+		invalid = copy.deepcopy(self.cryptography_hash_schema)
+		next(k for k in invalid["kernels"] if k["name"] == "merkle_reduce")["auxiliary_operations"] = ["sha256"]
+		with self.assertRaisesRegex(GENERATOR.SchemaError, "auxiliary ownership"):
+			GENERATOR.validate_cryptography_hash_schema(invalid)
+		invalid = copy.deepcopy(self.cryptography_hash_schema)
+		next(a for a in invalid["rust_api"] if a["name"] == "merkle_proofs")["values"]["header_bytes"] = "20"
+		with self.assertRaisesRegex(GENERATOR.SchemaError, "API wire layout"):
+			GENERATOR.validate_cryptography_hash_schema(invalid)
+
+	def test_fixed_hash_bindings_and_adapters_have_schema_authority(self):
+		schema = self.cryptography_hash_schema
+		with tempfile.TemporaryDirectory() as directory:
+			root = Path(directory)
+			outputs = GENERATOR.cryptography_hash_binding_outputs(root, schema, "0" * 64)
+			GENERATOR.publish(outputs, root)
+			self.assertEqual(GENERATOR.check(outputs, root), [])
+			self.assertEqual(GENERATOR.owned_outputs(root), set(outputs))
+			bindings = outputs[root / "src/py/pyo3/cryptography/hash.gen.rs"]
+			facade = outputs[root / "src/py/oa/_gen/cryptography_hash.py"]
+			for api in schema["rust_api"]:
+				self.assertIn(f"fn crypto_hash_{api['name']}(", bindings)
+				self.assertIn(f"crypto_hash_{api['name']} as hash_{api['name']}", facade)
+		for kernel in schema["kernels"]:
+			if "digest" not in kernel:
+				continue
+			adapter = GENERATOR.generate_fixed_hash_shader(kernel, "0" * 64)
+			self.assertIn(f"import {kernel['digest']['module']};", adapter)
+			self.assertIn(f"!{kernel['digest']['helper']}(storage_buffers[push.input_index]", adapter)
+			self.assertIn("push.count > input_extent / push.message_len", adapter)
+
+	def test_ui_shader_push_and_workgroup_inventory_matches_source(self) -> None:
+		# Compositor kernels have their own image/buffer adapter. Keep this
+		# schema inventory exact rather than accepting stale ABI descriptions.
+		types = {"uint": "uint32", "int": "int32", "float": "float32"}
+		for row in self.ui_schema["kernels"]:
+			with self.subTest(kernel=row["name"]):
+				source = (REPOSITORY_ROOT / row["source"]).read_text()
+				push = source.split("struct PushConstants {", 1)[1].split("};", 1)[0]
+				fields = [[name, types[kind]] for kind, name in re.findall(r"\b(uint|int|float)\s+(\w+)\s*;", push)]
+				self.assertEqual(row["push_fields"], fields)
+				workgroup = re.search(r"\[numthreads\((\d+),\s*(\d+),\s*(\d+)\)\]", source)
+				self.assertIsNotNone(workgroup)
+				self.assertEqual(row["workgroup_size"], [int(value) for value in workgroup.groups()])
+
 	def test_every_slang_entry_point_has_one_schema_owner(self):
 		schema_sources = set()
 		for schema in (
@@ -601,6 +752,9 @@ class GeneratorTests(unittest.TestCase):
 			self.image_schema,
 			self.vision_schema,
 			self.ui_schema,
+			self.bigint_schema,
+			json.loads((GENERATOR_ROOT / "schema/cryptography/cryptography_merkle.json").read_text()),
+			json.loads((GENERATOR_ROOT / "schema/cryptography/cryptography_ntt.json").read_text()),
 		):
 			for row in schema.get("operations", []) + schema.get("kernels", []) + schema.get("private_kernels", []):
 				if source := row.get("source"):

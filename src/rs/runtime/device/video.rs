@@ -1,7 +1,7 @@
+use super::NativeFlagBits;
 use std::sync::{Arc, Mutex};
 
 use crate::{Error, Event, Result, core::memory, video};
-use vk_mem::Alloc;
 
 use crate::runtime::{Device, DevicePhysical, Instance};
 
@@ -10,7 +10,6 @@ mod h264;
 mod h265;
 mod profile;
 mod vp9;
-mod vp9_abi;
 
 use h264::record_h264_picture;
 use h265::record_h265_picture;
@@ -23,10 +22,10 @@ const MAX_VIDEO_FORMATS: u32 = 256;
 const MAX_VIDEO_SESSION_MEMORY_BINDINGS: u32 = 64;
 
 pub(in crate::runtime) struct DecodeSession {
-	handle: ash::vk::VideoSessionKHR,
-	parameters: ash::vk::VideoSessionParametersKHR,
-	result_status_pool: ash::vk::QueryPool,
-	allocations: Vec<vk_mem::Allocation>,
+	handle: vk::VideoSessionKHR,
+	parameters: vk::VideoSessionParametersKHR,
+	result_status_pool: vk::QueryPool,
+	allocations: Vec<vk::mem::Allocation>,
 	images: Arc<DecodeImageStorage>,
 	native_leases: Option<Arc<NativeFrameLeases>>,
 	image_set: DecodeImageSet,
@@ -36,8 +35,6 @@ pub(in crate::runtime) struct DecodeSession {
 	coded_extent: video::VideoExtent,
 	decode_recorded: bool,
 	readback_recorded: bool,
-	loader: ash::khr::video_queue::Device,
-	decode_loader: ash::khr::video_decode_queue::Device,
 	device: Arc<Device>,
 	profile: video::VideoDecodeProfile,
 	h264_dpb_state: Option<h264::DpbState>,
@@ -56,11 +53,11 @@ enum DecodeImageSet {
 }
 
 struct DecodeImage {
-	handle: ash::vk::Image,
-	view: ash::vk::ImageView,
-	allocation: vk_mem::Allocation,
+	handle: vk::Image,
+	view: vk::ImageView,
+	allocation: vk::mem::Allocation,
 	array_layers: u32,
-	format: ash::vk::Format,
+	format: vk::Format,
 }
 
 struct DecodeImageStorage {
@@ -302,25 +299,25 @@ impl Drop for DecodeImageStorage {
 			// SAFETY: every frame lease retaining these images has ended. Each view
 			// is destroyed before its uniquely owned image and VMA allocation.
 			unsafe {
-				self.device.raw().destroy_image_view(image.view, None);
+				let _ = self.device.raw().destroy_image_view(image.view, None);
 			}
 			let mut allocation = image.allocation;
 			// SAFETY: no retained view or frame lease remains for this image.
 			unsafe {
-				self
+				let _ = self
 					.device
 					.allocator()
-					.destroy_image(image.handle, &mut allocation);
+					.with_allocator(|a| a.destroy_image(image.handle, &mut allocation));
 			}
 		}
 	}
 }
 
 struct DecodeBitstream {
-	handle: ash::vk::Buffer,
-	allocation: vk_mem::Allocation,
+	handle: vk::Buffer,
+	allocation: vk::mem::Allocation,
 	payload_len: usize,
-	range: ash::vk::DeviceSize,
+	range: vk::DeviceSize,
 }
 
 pub(super) fn create_decode_session(
@@ -359,30 +356,23 @@ pub(super) fn create_decode_session(
 			std::io::Error::other("driver returned a zero bitstream alignment"),
 		));
 	}
-	let instance_loader = ash::khr::video_queue::Instance::new(instance.entry(), instance.raw());
-	let loader = ash::khr::video_queue::Device::new(instance.raw(), device.raw());
-	let decode_loader = ash::khr::video_decode_queue::Device::new(instance.raw(), device.raw());
 	with_decode_profile(profile, |vk_profile| {
 		let output_usage =
-			ash::vk::ImageUsageFlags::VIDEO_DECODE_DST_KHR | ash::vk::ImageUsageFlags::TRANSFER_SRC;
-		let dpb_usage = ash::vk::ImageUsageFlags::VIDEO_DECODE_DPB_KHR;
+			vk::ImageUsageFlagBits::VIDEO_DECODE_DST_BIT_KHR | vk::ImageUsageFlagBits::TRANSFER_SRC_BIT;
+		let dpb_usage = vk::ImageUsageFlagBits::VIDEO_DECODE_DPB_BIT_KHR;
+		let output_formats: Vec<vk::VideoFormatPropertiesKHR<'_>>;
+		let dpb_formats: Vec<vk::VideoFormatPropertiesKHR<'_>>;
 		let (output_format, dpb_format, coincident_images) = if limits.dpb_and_output_coincide() {
 			let combined_usage = output_usage | dpb_usage;
-			let formats = query_formats(
-				&instance_loader,
-				physical.handle,
-				vk_profile,
-				combined_usage,
-			)?;
-			let format = select_image_format(formats, combined_usage, "coincident decode")?;
+			output_formats = query_formats(instance.raw(), physical.handle, vk_profile, combined_usage)?;
+			let format = select_image_format(&output_formats, combined_usage, "coincident decode")?;
 			(format, format, true)
 		} else if limits.dpb_and_output_distinct() {
-			let output_formats =
-				query_formats(&instance_loader, physical.handle, vk_profile, output_usage)?;
-			let dpb_formats = query_formats(&instance_loader, physical.handle, vk_profile, dpb_usage)?;
+			output_formats = query_formats(instance.raw(), physical.handle, vk_profile, output_usage)?;
+			dpb_formats = query_formats(instance.raw(), physical.handle, vk_profile, dpb_usage)?;
 			(
-				select_image_format(output_formats, output_usage, "decode output")?,
-				select_image_format(dpb_formats, dpb_usage, "decode DPB")?,
+				select_image_format(&output_formats, output_usage, "decode output")?,
+				select_image_format(&dpb_formats, dpb_usage, "decode DPB")?,
 				false,
 			)
 		} else {
@@ -390,7 +380,7 @@ pub(super) fn create_decode_session(
 				"decode profile permits neither coincident nor distinct DPB/output images",
 			));
 		};
-		let create_info = ash::vk::VideoSessionCreateInfoKHR::default()
+		let create_info = vk::VideoSessionCreateInfoKHR::default()
 			.queue_family_index(
 				physical
 					.video
@@ -399,7 +389,7 @@ pub(super) fn create_decode_session(
 			)
 			.video_profile(vk_profile)
 			.picture_format(output_format.format)
-			.max_coded_extent(ash::vk::Extent2D {
+			.max_coded_extent(vk::Extent2D {
 				width: coded_extent.width,
 				height: coded_extent.height,
 			})
@@ -407,19 +397,16 @@ pub(super) fn create_decode_session(
 			.max_dpb_slots(max_dpb_slots)
 			.max_active_reference_pictures(max_active_references)
 			.std_header_version(&details.std_header_version);
-		let mut handle = ash::vk::VideoSessionKHR::null();
+		let mut handle = vk::VideoSessionKHR::default();
 		// SAFETY: the exact profile, supported formats, queried header version,
 		// decode queue family, and bounded extent/counts remain live for this call.
 		let result = unsafe {
-			(loader.fp().create_video_session_khr)(
-				loader.device(),
-				&create_info,
-				std::ptr::null(),
-				&mut handle,
-			)
+			device
+				.raw()
+				.create_video_session_khr(&create_info, std::ptr::null(), &mut handle)
 		};
-		if result != ash::vk::Result::SUCCESS {
-			return Err(Error::backend_failure(
+		if !matches!(result, Ok(vk::Result::SUCCESS)) {
+			return Err(Error::backend_dispatch_failure(
 				"Vulkan",
 				"video-session creation",
 				result,
@@ -454,8 +441,8 @@ pub(super) fn create_decode_session(
 		};
 		let mut session = DecodeSession {
 			handle,
-			parameters: ash::vk::VideoSessionParametersKHR::null(),
-			result_status_pool: ash::vk::QueryPool::null(),
+			parameters: vk::VideoSessionParametersKHR::default(),
+			result_status_pool: vk::QueryPool::default(),
 			allocations: Vec::new(),
 			images: Arc::new(DecodeImageStorage {
 				device: device.clone(),
@@ -469,8 +456,6 @@ pub(super) fn create_decode_session(
 			coded_extent,
 			decode_recorded: false,
 			readback_recorded: false,
-			loader: loader.clone(),
-			decode_loader,
 			device: device.clone(),
 			profile,
 			h264_dpb_state,
@@ -481,11 +466,16 @@ pub(super) fn create_decode_session(
 			pending_decode_acquire_slot: None,
 		};
 		if physical.video.decode_result_status_queries {
-			let mut query_profile = *vk_profile;
-			let query_info = ash::vk::QueryPoolCreateInfo::default()
-				.query_type(ash::vk::QueryType::RESULT_STATUS_ONLY_KHR)
+			let mut query_profile = vk::VideoProfileInfoKHR::default()
+				.video_codec_operation(vk_profile.video_codec_operation)
+				.chroma_subsampling(vk_profile.chroma_subsampling)
+				.luma_bit_depth(vk_profile.luma_bit_depth)
+				.chroma_bit_depth(vk_profile.chroma_bit_depth);
+			let query_info = vk::QueryPoolCreateInfo::default()
+				.query_type(vk::QueryType::RESULT_STATUS_ONLY_KHR)
 				.query_count(1)
-				.push_next(&mut query_profile);
+				.push_next(&mut query_profile)
+				.map_err(Error::from)?;
 			// SAFETY: the selected decode queue family reports result-status support,
 			// and the complete profile chain is identical to the session profile.
 			session.result_status_pool =
@@ -518,24 +508,39 @@ pub(super) fn create_decode_session(
 					),
 				));
 			}
-			let allocation_info = vk_mem::AllocationCreateInfo {
-				usage: vk_mem::MemoryUsage::Unknown,
-				preferred_flags: ash::vk::MemoryPropertyFlags::DEVICE_LOCAL,
+			let allocation_info = vk::mem::AllocationCreateInfo {
+				usage: vk::mem::MemoryUsage::Explicit,
+				preferred_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
 				memory_type_bits: requirement.memory_requirements.memory_type_bits,
 				..Default::default()
 			};
 			// SAFETY: the requirements were returned for this live session, and VMA
 			// constrains selection to the driver's advertised memory-type mask.
 			let allocation = unsafe {
-				session
-					.device
-					.allocator()
-					.allocate_memory(&requirement.memory_requirements, &allocation_info)
+				session.device.allocator().with_allocator(|a| {
+					a.allocate(&vk::mem::AllocRequest {
+						size: requirement.memory_requirements.size,
+						alignment: requirement.memory_requirements.alignment,
+						memory_type_bits: requirement.memory_requirements.memory_type_bits,
+						required_flags: allocation_info.required_flags,
+						preferred_flags: allocation_info.preferred_flags,
+					})
+				})
 			}
 			.map_err(|source| {
 				Error::backend_failure("Vulkan", "video-session memory allocation", source)
+			})?
+			.map_err(|source| {
+				Error::backend_failure("Vulkan", "video-session memory allocation", source)
 			})?;
-			let info = session.device.allocator().get_allocation_info(&allocation);
+			let info = unsafe {
+				session
+					.device
+					.allocator()
+					.with_allocator(|a| a.allocation_info(&allocation))
+			}
+			.map_err(Error::from)?
+			.map_err(Error::from)?;
 			if !info
 				.offset
 				.is_multiple_of(requirement.memory_requirements.alignment)
@@ -543,9 +548,12 @@ pub(super) fn create_decode_session(
 			{
 				let mut allocation = allocation;
 				// SAFETY: this allocation has not been published or bound.
-				unsafe {
-					session.device.allocator().free_memory(&mut allocation);
-				}
+				let _ = unsafe {
+					session
+						.device
+						.allocator()
+						.with_allocator(|a| a.free(&mut allocation))
+				};
 				return Err(Error::backend_failure(
 					"Vulkan",
 					"video-session memory validation",
@@ -553,7 +561,7 @@ pub(super) fn create_decode_session(
 				));
 			}
 			bindings.push(
-				ash::vk::BindVideoSessionMemoryInfoKHR::default()
+				vk::BindVideoSessionMemoryInfoKHR::default()
 					.memory_bind_index(requirement.memory_bind_index)
 					.memory(info.device_memory)
 					.memory_offset(info.offset)
@@ -565,15 +573,14 @@ pub(super) fn create_decode_session(
 			// SAFETY: every binding corresponds one-to-one with a requirement for
 			// this session and its allocation remains owned by `session`.
 			let result = unsafe {
-				(session.loader.fp().bind_video_session_memory_khr)(
-					session.loader.device(),
+				session.device.raw().bind_video_session_memory_khr(
 					session.handle,
 					bindings.len() as u32,
 					bindings.as_ptr(),
 				)
 			};
-			if result != ash::vk::Result::SUCCESS {
-				return Err(Error::backend_failure(
+			if !matches!(result, Ok(vk::Result::SUCCESS)) {
+				return Err(Error::backend_dispatch_failure(
 					"Vulkan",
 					"video-session memory binding",
 					result,
@@ -638,19 +645,19 @@ pub(super) fn create_decode_session(
 	})
 }
 
-fn select_image_format(
-	formats: Vec<ash::vk::VideoFormatPropertiesKHR<'static>>,
-	usage: ash::vk::ImageUsageFlags,
+fn select_image_format<'a>(
+	formats: &'a [vk::VideoFormatPropertiesKHR<'static>],
+	usage: vk::ImageUsageFlags,
 	role: &str,
-) -> Result<ash::vk::VideoFormatPropertiesKHR<'static>> {
+) -> Result<&'a vk::VideoFormatPropertiesKHR<'static>> {
 	formats
-		.into_iter()
+		.iter()
 		.find(|format| {
-			format.image_type == ash::vk::ImageType::TYPE_2D
-				&& format.image_usage_flags.contains(usage)
+			format.image_type == vk::ImageType::_2D
+				&& (format.image_usage_flags & usage) == usage
 				&& !format
 					.image_create_flags
-					.contains(ash::vk::ImageCreateFlags::DISJOINT)
+					.contains(vk::ImageCreateFlagBits::DISJOINT_BIT)
 		})
 		.ok_or_else(|| {
 			Error::missing_capability(format!(
@@ -661,36 +668,39 @@ fn select_image_format(
 
 fn create_decode_image(
 	device: &Arc<Device>,
-	profile: &ash::vk::VideoProfileInfoKHR<'_>,
-	properties: ash::vk::VideoFormatPropertiesKHR<'_>,
+	profile: &vk::VideoProfileInfoKHR<'_>,
+	properties: &vk::VideoFormatPropertiesKHR<'_>,
 	extent: video::VideoExtent,
 	array_layers: u32,
-	usage: ash::vk::ImageUsageFlags,
+	usage: vk::ImageUsageFlags,
 ) -> Result<DecodeImage> {
-	let profiles = [*profile];
-	let mut profile_list = ash::vk::VideoProfileListInfoKHR::default().profiles(&profiles);
-	let image_info = ash::vk::ImageCreateInfo::default()
+	let profiles = std::slice::from_ref(profile);
+	let mut profile_list = vk::VideoProfileListInfoKHR::default()
+		.profiles(profiles)
+		.map_err(Error::from)?;
+	let image_info = vk::ImageCreateInfo::default()
 		.flags(
-			properties.image_create_flags & !ash::vk::ImageCreateFlags::VIDEO_PROFILE_INDEPENDENT_KHR,
+			properties.image_create_flags & !vk::ImageCreateFlagBits::VIDEO_PROFILE_INDEPENDENT_BIT_KHR,
 		)
 		.image_type(properties.image_type)
 		.format(properties.format)
-		.extent(ash::vk::Extent3D {
+		.extent(vk::Extent3D {
 			width: extent.width,
 			height: extent.height,
 			depth: 1,
 		})
 		.mip_levels(1)
 		.array_layers(array_layers)
-		.samples(ash::vk::SampleCountFlags::TYPE_1)
+		.samples(vk::SampleCountFlagBits::_1_BIT)
 		.tiling(properties.image_tiling)
 		.usage(usage)
-		.sharing_mode(ash::vk::SharingMode::EXCLUSIVE)
-		.initial_layout(ash::vk::ImageLayout::UNDEFINED)
-		.push_next(&mut profile_list);
-	let allocation_info = vk_mem::AllocationCreateInfo {
-		usage: vk_mem::MemoryUsage::AutoPreferDevice,
-		required_flags: ash::vk::MemoryPropertyFlags::DEVICE_LOCAL,
+		.sharing_mode(vk::SharingMode::EXCLUSIVE)
+		.initial_layout(vk::ImageLayout::UNDEFINED)
+		.push_next(&mut profile_list)
+		.map_err(Error::from)?;
+	let allocation_info = vk::mem::AllocationCreateInfo {
+		usage: vk::mem::MemoryUsage::PreferDevice,
+		required_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
 		..Default::default()
 	};
 	// SAFETY: the exact video profile and queried format properties remain live,
@@ -699,20 +709,21 @@ fn create_decode_image(
 	let (handle, allocation) = unsafe {
 		device
 			.allocator()
-			.create_image(&image_info, &allocation_info)
+			.with_allocator(|a| a.create_image_with_options(&(image_info), &allocation_info))
+			.map_err(Error::from)?
 	}
 	.map_err(|source| Error::backend_failure("Vulkan", "decode-image allocation", source))?;
-	let view_info = ash::vk::ImageViewCreateInfo::default()
+	let view_info = vk::ImageViewCreateInfo::default()
 		.image(handle)
 		.view_type(if array_layers == 1 {
-			ash::vk::ImageViewType::TYPE_2D
+			vk::ImageViewType::_2D
 		} else {
-			ash::vk::ImageViewType::TYPE_2D_ARRAY
+			vk::ImageViewType::_2D_ARRAY
 		})
 		.format(properties.format)
 		.components(properties.component_mapping)
-		.subresource_range(ash::vk::ImageSubresourceRange {
-			aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+		.subresource_range(vk::ImageSubresourceRange {
+			aspect_mask: vk::ImageAspectFlagBits::COLOR_BIT,
 			base_mip_level: 0,
 			level_count: 1,
 			base_array_layer: 0,
@@ -727,7 +738,9 @@ fn create_decode_image(
 			// SAFETY: image-view publication failed, so this uniquely owned image and
 			// allocation can be destroyed immediately.
 			unsafe {
-				device.allocator().destroy_image(handle, &mut allocation);
+				device
+					.allocator()
+					.with_allocator(|a| a.destroy_image(handle, &mut allocation))??;
 			}
 			return Err(Error::backend_failure(
 				"Vulkan",
@@ -747,7 +760,7 @@ fn create_decode_image(
 
 fn create_decode_bitstream(
 	device: &Arc<Device>,
-	profile: &ash::vk::VideoProfileInfoKHR<'_>,
+	profile: &vk::VideoProfileInfoKHR<'_>,
 	data: &[u8],
 	alignment: u64,
 ) -> Result<DecodeBitstream> {
@@ -767,19 +780,22 @@ fn create_decode_bitstream(
 		.ok_or_else(|| Error::invalid_argument("aligned video packet length overflows"))?;
 	let range = u64::try_from(range_len)
 		.map_err(|_| Error::invalid_argument("aligned video packet length exceeds DeviceSize"))?;
-	let profiles = [*profile];
-	let mut profile_list = ash::vk::VideoProfileListInfoKHR::default().profiles(&profiles);
-	let buffer_info = ash::vk::BufferCreateInfo::default()
+	let profiles = std::slice::from_ref(profile);
+	let mut profile_list = vk::VideoProfileListInfoKHR::default()
+		.profiles(profiles)
+		.map_err(Error::from)?;
+	let buffer_info = vk::BufferCreateInfo::default()
 		.size(range)
-		.usage(ash::vk::BufferUsageFlags::VIDEO_DECODE_SRC_KHR)
-		.sharing_mode(ash::vk::SharingMode::EXCLUSIVE)
-		.push_next(&mut profile_list);
-	let allocation_info = vk_mem::AllocationCreateInfo {
-		flags: vk_mem::AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE
-			| vk_mem::AllocationCreateFlags::DEDICATED_MEMORY,
-		usage: vk_mem::MemoryUsage::AutoPreferDevice,
-		required_flags: ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
-		preferred_flags: ash::vk::MemoryPropertyFlags::DEVICE_LOCAL,
+		.usage(vk::BufferUsageFlagBits::VIDEO_DECODE_SRC_BIT_KHR)
+		.sharing_mode(vk::SharingMode::EXCLUSIVE)
+		.push_next(&mut profile_list)
+		.map_err(Error::from)?;
+	let allocation_info = vk::mem::AllocationCreateInfo {
+		host_access: vk::mem::HostAccess::SequentialWrite,
+		dedicated_memory: true,
+		usage: vk::mem::MemoryUsage::PreferDevice,
+		required_flags: vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT,
+		preferred_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
 		..Default::default()
 	};
 	// SAFETY: the exact decode profile remains live in the required buffer pNext
@@ -788,18 +804,19 @@ fn create_decode_bitstream(
 	let (handle, mut allocation) = unsafe {
 		device
 			.allocator()
-			.create_buffer(&buffer_info, &allocation_info)
+			.with_allocator(|a| a.create_buffer_with_options(&(buffer_info), &allocation_info))
+			.map_err(Error::from)?
 	}
 	.map_err(|source| Error::backend_failure("Vulkan", "decode-bitstream allocation", source))?;
 	let allocator = device.allocator();
 	// SAFETY: VMA selected HOST_VISIBLE memory and this allocation is uniquely
 	// owned until the initialized bitstream is returned.
-	let mapped = match unsafe { allocator.map_memory(&mut allocation) } {
+	let mapped = match unsafe { allocator.with_allocator(|a| a.map(&allocation)) } {
 		Ok(mapped) => mapped,
 		Err(source) => {
 			// SAFETY: mapping failed before publication of this uniquely owned pair.
 			unsafe {
-				allocator.destroy_buffer(handle, &mut allocation);
+				allocator.with_allocator(|a| a.destroy_buffer(handle, &mut allocation))??;
 			}
 			return Err(Error::backend_failure(
 				"Vulkan",
@@ -812,18 +829,22 @@ fn create_decode_bitstream(
 	// an independent host slice; the aligned tail is initialized to zero so the
 	// driver never observes stale allocation contents inside `srcBufferRange`.
 	unsafe {
-		memory::copy_streaming_to_ptr(mapped, data.as_ptr(), data.len());
-		std::ptr::write_bytes(mapped.add(data.len()), 0, range_len - data.len());
+		let mapped_ptr = mapped.map_err(Error::from)? as *mut u8;
+		memory::copy_streaming_to_ptr(mapped_ptr, data.as_ptr(), data.len());
+		std::ptr::write_bytes(mapped_ptr.add(data.len()), 0, range_len - data.len());
 	}
-	let flush = allocator.flush_allocation(&allocation, 0, range);
+	let flush: std::result::Result<(), Error> =
+		unsafe { allocator.with_allocator(|a| a.flush(&allocation, 0, range)) }
+			.map_err(Error::from)
+			.and_then(|result| result.map_err(Error::from));
 	// SAFETY: this exactly balances the successful map after the final host write.
 	unsafe {
-		allocator.unmap_memory(&mut allocation);
+		allocator.with_allocator(|a| a.unmap(&allocation))??;
 	}
 	if let Err(source) = flush {
 		// SAFETY: upload failed before publication of this uniquely owned pair.
 		unsafe {
-			allocator.destroy_buffer(handle, &mut allocation);
+			allocator.with_allocator(|a| a.destroy_buffer(handle, &mut allocation))??;
 		}
 		return Err(Error::backend_failure(
 			"Vulkan",
@@ -840,10 +861,10 @@ fn create_decode_bitstream(
 }
 
 fn yuv420_8bit_copy_layout(
-	format: ash::vk::Format,
+	format: vk::Format,
 	extent: video::VideoExtent,
 	array_layer: u32,
-) -> Result<(usize, Vec<ash::vk::BufferImageCopy>)> {
+) -> Result<(usize, Vec<vk::BufferImageCopy>)> {
 	let width = u64::from(extent.width);
 	let height = u64::from(extent.height);
 	let chroma_width = width.div_ceil(2);
@@ -861,53 +882,54 @@ fn yuv420_8bit_copy_layout(
 				.ok_or_else(|| Error::out_of_range("video chroma size overflows u64"))?,
 		)
 		.ok_or_else(|| Error::out_of_range("video readback size overflows u64"))?;
-	let layer = |aspect_mask| ash::vk::ImageSubresourceLayers {
+	let layer = |aspect_mask| vk::ImageSubresourceLayers {
 		aspect_mask,
 		mip_level: 0,
 		base_array_layer: array_layer,
 		layer_count: 1,
 	};
-	let region = |offset, aspect_mask, plane_width: u64, plane_height: u64| {
-		Ok(
-			ash::vk::BufferImageCopy::default()
-				.buffer_offset(offset)
-				.buffer_row_length(0)
-				.buffer_image_height(0)
-				.image_subresource(layer(aspect_mask))
-				.image_extent(ash::vk::Extent3D {
-					width: u32::try_from(plane_width)
-						.map_err(|_| Error::out_of_range("video plane width exceeds u32"))?,
-					height: u32::try_from(plane_height)
-						.map_err(|_| Error::out_of_range("video plane height exceeds u32"))?,
-					depth: 1,
-				}),
-		)
-	};
+	let region =
+		|offset, aspect_mask, plane_width: u64, plane_height: u64| -> Result<vk::BufferImageCopy> {
+			Ok(
+				vk::BufferImageCopy::default()
+					.buffer_offset(offset)
+					.buffer_row_length(0)
+					.buffer_image_height(0)
+					.image_subresource(layer(aspect_mask))
+					.image_extent(vk::Extent3D {
+						width: u32::try_from(plane_width)
+							.map_err(|_| Error::out_of_range("video plane width exceeds u32"))?,
+						height: u32::try_from(plane_height)
+							.map_err(|_| Error::out_of_range("video plane height exceeds u32"))?,
+						depth: 1,
+					}),
+			)
+		};
 	let mut regions = vec![region(
 		0,
-		ash::vk::ImageAspectFlags::PLANE_0,
+		vk::ImageAspectFlagBits::PLANE_0_BIT,
 		width,
 		height,
 	)?];
 	match format {
-		ash::vk::Format::G8_B8R8_2PLANE_420_UNORM => {
+		vk::Format::G8_B8R8_2PLANE_420_UNORM => {
 			regions.push(region(
 				luma_bytes,
-				ash::vk::ImageAspectFlags::PLANE_1,
+				vk::ImageAspectFlagBits::PLANE_1_BIT,
 				chroma_width,
 				chroma_height,
 			)?);
 		}
-		ash::vk::Format::G8_B8_R8_3PLANE_420_UNORM => {
+		vk::Format::G8_B8_R8_3PLANE_420_UNORM => {
 			regions.push(region(
 				luma_bytes,
-				ash::vk::ImageAspectFlags::PLANE_1,
+				vk::ImageAspectFlagBits::PLANE_1_BIT,
 				chroma_width,
 				chroma_height,
 			)?);
 			regions.push(region(
 				luma_bytes + chroma_plane_bytes,
-				ash::vk::ImageAspectFlags::PLANE_2,
+				vk::ImageAspectFlagBits::PLANE_2_BIT,
 				chroma_width,
 				chroma_height,
 			)?);
@@ -926,14 +948,14 @@ fn yuv420_8bit_copy_layout(
 }
 
 fn normalize_yuv420_8bit(
-	format: ash::vk::Format,
+	format: vk::Format,
 	extent: video::VideoExtent,
 	raw: Vec<u8>,
 ) -> Result<Vec<u8>> {
-	if format == ash::vk::Format::G8_B8_R8_3PLANE_420_UNORM {
+	if format == vk::Format::G8_B8_R8_3PLANE_420_UNORM {
 		return Ok(raw);
 	}
-	if format != ash::vk::Format::G8_B8R8_2PLANE_420_UNORM {
+	if format != vk::Format::G8_B8R8_2PLANE_420_UNORM {
 		return Err(Error::missing_capability(
 			"first-picture normalization requires an 8-bit 4:2:0 output format",
 		));
@@ -1060,7 +1082,7 @@ impl DecodeSession {
 				self
 					.device
 					.allocator()
-					.destroy_buffer(previous.handle, &mut previous.allocation);
+					.destroy_buffer(previous.handle, &mut previous.allocation)?;
 			}
 		}
 		Ok(())
@@ -1147,12 +1169,12 @@ impl DecodeSession {
 				"video session and command device differ",
 			));
 		}
-		if self.parameters == ash::vk::VideoSessionParametersKHR::null() {
+		if self.parameters == vk::VideoSessionParametersKHR::default() {
 			return Err(Error::failed_precondition(
 				"H.264 decode requires session parameters",
 			));
 		}
-		if self.result_status_pool == ash::vk::QueryPool::null() {
+		if self.result_status_pool == vk::QueryPool::default() {
 			return Err(Error::missing_capability(
 				"the selected Vulkan Video decode queue lacks result-status queries",
 			));
@@ -1185,8 +1207,6 @@ impl DecodeSession {
 		let command = device.record_video_decode(|command_buffer| {
 			record_h264_picture(
 				device.raw(),
-				&self.loader,
-				&self.decode_loader,
 				command_buffer,
 				self,
 				sps,
@@ -1247,12 +1267,12 @@ impl DecodeSession {
 				"video session and command device differ",
 			));
 		}
-		if self.parameters == ash::vk::VideoSessionParametersKHR::null() {
+		if self.parameters == vk::VideoSessionParametersKHR::default() {
 			return Err(Error::failed_precondition(
 				"H.265 decode requires session parameters",
 			));
 		}
-		if self.result_status_pool == ash::vk::QueryPool::null() {
+		if self.result_status_pool == vk::QueryPool::default() {
 			return Err(Error::missing_capability(
 				"the selected Vulkan Video decode queue lacks result-status queries",
 			));
@@ -1296,8 +1316,6 @@ impl DecodeSession {
 		let command = device.record_video_decode(|command_buffer| {
 			record_h265_picture(
 				device.raw(),
-				&self.loader,
-				&self.decode_loader,
 				command_buffer,
 				self,
 				sps,
@@ -1378,12 +1396,12 @@ impl DecodeSession {
 				"video session and command device differ",
 			));
 		}
-		if self.parameters == ash::vk::VideoSessionParametersKHR::null() {
+		if self.parameters == vk::VideoSessionParametersKHR::default() {
 			return Err(Error::failed_precondition(
 				"AV1 decode requires session parameters",
 			));
 		}
-		if self.result_status_pool == ash::vk::QueryPool::null() {
+		if self.result_status_pool == vk::QueryPool::default() {
 			return Err(Error::missing_capability(
 				"the selected Vulkan Video decode queue lacks result-status queries",
 			));
@@ -1421,8 +1439,6 @@ impl DecodeSession {
 		let command = device.record_video_decode(|command_buffer| {
 			av1::record_picture(
 				device.raw(),
-				&self.loader,
-				&self.decode_loader,
 				command_buffer,
 				self,
 				sequence,
@@ -1493,7 +1509,7 @@ impl DecodeSession {
 				"video session and command device differ",
 			));
 		}
-		if self.result_status_pool == ash::vk::QueryPool::null() {
+		if self.result_status_pool == vk::QueryPool::default() {
 			return Err(Error::missing_capability(
 				"the selected Vulkan Video decode queue lacks result-status queries",
 			));
@@ -1531,8 +1547,6 @@ impl DecodeSession {
 		let command = device.record_video_decode(|command_buffer| {
 			vp9::record_picture(
 				device.raw(),
-				&self.loader,
-				&self.decode_loader,
 				command_buffer,
 				self,
 				picture,
@@ -1600,7 +1614,7 @@ impl DecodeSession {
 				"H.264 parameters require an H.264 video session",
 			));
 		}
-		if self.parameters != ash::vk::VideoSessionParametersKHR::null() {
+		if self.parameters != vk::VideoSessionParametersKHR::default() {
 			return Err(Error::failed_precondition(
 				"video session parameters were already created",
 			));
@@ -1642,29 +1656,30 @@ impl DecodeSession {
 		)?;
 		let std_sp_ss = [std_sps];
 		let std_pp_ss = [std_pps];
-		let add = ash::vk::VideoDecodeH264SessionParametersAddInfoKHR::default()
+		let add = vk::VideoDecodeH264SessionParametersAddInfoKHR::default()
 			.std_sp_ss(&std_sp_ss)
-			.std_pp_ss(&std_pp_ss);
-		let mut codec = ash::vk::VideoDecodeH264SessionParametersCreateInfoKHR::default()
+			.map_err(Error::from)?
+			.std_pp_ss(&std_pp_ss)
+			.map_err(Error::from)?;
+		let mut codec = vk::VideoDecodeH264SessionParametersCreateInfoKHR::default()
 			.max_std_sps_count(32)
 			.max_std_pps_count(256)
 			.parameters_add_info(&add);
-		let create_info = ash::vk::VideoSessionParametersCreateInfoKHR::default()
+		let create_info = vk::VideoSessionParametersCreateInfoKHR::default()
 			.video_session(self.handle)
 			.push_next(&mut codec);
-		let mut parameters = ash::vk::VideoSessionParametersKHR::null();
+		let mut parameters = vk::VideoSessionParametersKHR::default();
 		// SAFETY: the standard-video records and codec add chain remain live for
 		// this call, match the session profile, and Vulkan copies their contents.
 		let result = unsafe {
-			(self.loader.fp().create_video_session_parameters_khr)(
-				self.loader.device(),
-				&create_info,
+			self.device.raw().create_video_session_parameters_khr(
+				&(create_info).map_err(Error::from)?,
 				std::ptr::null(),
 				&mut parameters,
 			)
 		};
-		if result != ash::vk::Result::SUCCESS {
-			return Err(Error::backend_failure(
+		if !matches!(result, Ok(vk::Result::SUCCESS)) {
+			return Err(Error::backend_dispatch_failure(
 				"Vulkan",
 				"H.264 video-session parameter creation",
 				result,
@@ -1685,7 +1700,7 @@ impl DecodeSession {
 				"H.265 parameters require an H.265 video session",
 			));
 		}
-		if self.parameters != ash::vk::VideoSessionParametersKHR::null() {
+		if self.parameters != vk::VideoSessionParametersKHR::default() {
 			return Err(Error::failed_precondition(
 				"video session parameters were already created",
 			));
@@ -1769,31 +1784,33 @@ impl DecodeSession {
 		let std_vp_ss = [std_vps];
 		let std_sp_ss = [std_sps];
 		let std_pp_ss = [std_pps];
-		let add = ash::vk::VideoDecodeH265SessionParametersAddInfoKHR::default()
+		let add = vk::VideoDecodeH265SessionParametersAddInfoKHR::default()
 			.std_vp_ss(&std_vp_ss)
+			.map_err(Error::from)?
 			.std_sp_ss(&std_sp_ss)
-			.std_pp_ss(&std_pp_ss);
-		let mut codec = ash::vk::VideoDecodeH265SessionParametersCreateInfoKHR::default()
+			.map_err(Error::from)?
+			.std_pp_ss(&std_pp_ss)
+			.map_err(Error::from)?;
+		let mut codec = vk::VideoDecodeH265SessionParametersCreateInfoKHR::default()
 			.max_std_vps_count(16)
 			.max_std_sps_count(16)
 			.max_std_pps_count(64)
 			.parameters_add_info(&add);
-		let create_info = ash::vk::VideoSessionParametersCreateInfoKHR::default()
+		let create_info = vk::VideoSessionParametersCreateInfoKHR::default()
 			.video_session(self.handle)
 			.push_next(&mut codec);
-		let mut parameters = ash::vk::VideoSessionParametersKHR::null();
+		let mut parameters = vk::VideoSessionParametersKHR::default();
 		// SAFETY: every referenced StdVideo record and backing array remains live
 		// for this call, matches the H.265 session profile, and Vulkan copies it.
 		let result = unsafe {
-			(self.loader.fp().create_video_session_parameters_khr)(
-				self.loader.device(),
-				&create_info,
+			self.device.raw().create_video_session_parameters_khr(
+				&(create_info).map_err(Error::from)?,
 				std::ptr::null(),
 				&mut parameters,
 			)
 		};
-		if result != ash::vk::Result::SUCCESS {
-			return Err(Error::backend_failure(
+		if !matches!(result, Ok(vk::Result::SUCCESS)) {
+			return Err(Error::backend_dispatch_failure(
 				"Vulkan",
 				"H.265 video-session parameter creation",
 				result,
@@ -1820,7 +1837,7 @@ impl DecodeSession {
 				"AV1 parameters require an AV1 video session",
 			));
 		};
-		if self.parameters != ash::vk::VideoSessionParametersKHR::null() {
+		if self.parameters != vk::VideoSessionParametersKHR::default() {
 			return Err(Error::failed_precondition(
 				"video session parameters were already created",
 			));
@@ -1856,25 +1873,24 @@ impl DecodeSession {
 				.as_ref()
 				.map_or(std::ptr::null(), |value| value as *const _),
 		)?;
-		let mut codec = ash::vk::VideoDecodeAV1SessionParametersCreateInfoKHR::default()
+		let mut codec = vk::VideoDecodeAV1SessionParametersCreateInfoKHR::default()
 			.std_sequence_header(&std_sequence);
-		let create_info = ash::vk::VideoSessionParametersCreateInfoKHR::default()
+		let create_info = vk::VideoSessionParametersCreateInfoKHR::default()
 			.video_session(self.handle)
 			.push_next(&mut codec);
-		let mut parameters = ash::vk::VideoSessionParametersKHR::null();
+		let mut parameters = vk::VideoSessionParametersKHR::default();
 		// SAFETY: all standard-video records and optional timing/color backing
 		// remain live for this call, match the AV1 session profile, and Vulkan
 		// copies the sequence header into the parameter object.
 		let result = unsafe {
-			(self.loader.fp().create_video_session_parameters_khr)(
-				self.loader.device(),
-				&create_info,
+			self.device.raw().create_video_session_parameters_khr(
+				&(create_info).map_err(Error::from)?,
 				std::ptr::null(),
 				&mut parameters,
 			)
 		};
-		if result != ash::vk::Result::SUCCESS {
-			return Err(Error::backend_failure(
+		if !matches!(result, Ok(vk::Result::SUCCESS)) {
+			return Err(Error::backend_dispatch_failure(
 				"Vulkan",
 				"AV1 video-session parameter creation",
 				result,
@@ -1884,22 +1900,19 @@ impl DecodeSession {
 		Ok(())
 	}
 
-	fn memory_requirements(
-		&self,
-	) -> Result<Vec<ash::vk::VideoSessionMemoryRequirementsKHR<'static>>> {
+	fn memory_requirements(&self) -> Result<Vec<vk::VideoSessionMemoryRequirementsKHR<'static>>> {
 		let mut count = 0_u32;
 		// SAFETY: the loader and session belong to the retained live device, and
 		// a null output pointer requests only the element count.
 		let result = unsafe {
-			(self.loader.fp().get_video_session_memory_requirements_khr)(
-				self.loader.device(),
+			self.device.raw().get_video_session_memory_requirements_khr(
 				self.handle,
 				&mut count,
 				std::ptr::null_mut(),
 			)
 		};
-		if result != ash::vk::Result::SUCCESS {
-			return Err(Error::backend_failure(
+		if !matches!(result, Ok(vk::Result::SUCCESS)) {
+			return Err(Error::backend_dispatch_failure(
 				"Vulkan",
 				"video-session memory-requirement count query",
 				result,
@@ -1910,23 +1923,23 @@ impl DecodeSession {
 				"Vulkan reported {count} video-session bindings, above OA's {MAX_VIDEO_SESSION_MEMORY_BINDINGS} safety bound"
 			)));
 		}
-		let mut requirements =
-			vec![ash::vk::VideoSessionMemoryRequirementsKHR::default(); count as usize];
+		let mut requirements = std::iter::repeat_with(vk::VideoSessionMemoryRequirementsKHR::default)
+			.take(count as usize)
+			.collect::<Vec<_>>();
 		if count == 0 {
 			return Ok(requirements);
 		}
 		// SAFETY: the vector contains `count` initialized structures with valid
 		// sType values, and Vulkan writes at most the supplied count.
 		let result = unsafe {
-			(self.loader.fp().get_video_session_memory_requirements_khr)(
-				self.loader.device(),
+			self.device.raw().get_video_session_memory_requirements_khr(
 				self.handle,
 				&mut count,
 				requirements.as_mut_ptr(),
 			)
 		};
-		if result != ash::vk::Result::SUCCESS {
-			return Err(Error::backend_failure(
+		if !matches!(result, Ok(vk::Result::SUCCESS)) {
+			return Err(Error::backend_dispatch_failure(
 				"Vulkan",
 				"video-session memory-requirement enumeration",
 				result,
@@ -1949,27 +1962,32 @@ impl DecodeSession {
 				"no picture decode was recorded for this session",
 			));
 		}
-		if self.result_status_pool == ash::vk::QueryPool::null() {
+		if self.result_status_pool == vk::QueryPool::default() {
 			return Err(Error::missing_capability(
 				"the selected Vulkan Video decode queue lacks result-status queries",
 			));
 		}
-		let mut raw_status = [ash::vk::QueryResultStatusKHR::NOT_READY.as_raw()];
+		let mut raw_status = [vk::QueryResultStatusKHR::NOT_READY_KHR.as_raw()];
 		// SAFETY: the pool contains one ended result-status query. The caller waits
 		// for the decode event before reading this non-waiting one-i32 result.
 		unsafe {
 			self.device.raw().get_query_pool_results(
 				self.result_status_pool,
 				0,
-				&mut raw_status,
-				ash::vk::QueryResultFlags::WITH_STATUS_KHR,
+				1,
+				std::slice::from_raw_parts_mut(
+					raw_status.as_mut_ptr() as *mut u8,
+					std::mem::size_of::<i32>(),
+				),
+				std::mem::size_of::<i32>() as vk::DeviceSize,
+				vk::QueryResultFlagBits::WITH_STATUS_BIT_KHR,
 			)
 		}
 		.map_err(|source| {
 			Error::backend_failure("Vulkan", "video decode result-status query", source)
 		})?;
-		let status = ash::vk::QueryResultStatusKHR::from_raw(raw_status[0]);
-		if status != ash::vk::QueryResultStatusKHR::COMPLETE {
+		let status = vk::QueryResultStatusKHR::from_raw(raw_status[0]);
+		if status != vk::QueryResultStatusKHR::COMPLETE_KHR {
 			return Err(Error::data_loss(format!(
 				"Vulkan video decode completed with operation status {status:?}"
 			)));
@@ -2013,9 +2031,9 @@ impl DecodeSession {
 			.ok_or_else(|| Error::missing_capability("no Vulkan Video decode queue is enabled"))?;
 		let compute_family = self.device.physical().compute_queue_family;
 		let decoded_layout = if self.image_set == DecodeImageSet::DistinctLayered {
-			ash::vk::ImageLayout::VIDEO_DECODE_DST_KHR
+			vk::ImageLayout::VIDEO_DECODE_DST_KHR
 		} else {
-			ash::vk::ImageLayout::VIDEO_DECODE_DPB_KHR
+			vk::ImageLayout::VIDEO_DECODE_DPB_KHR
 		};
 		let command = device.record_compute_commands(|command_buffer| {
 			record_decode_readback_round_trip(
@@ -2084,9 +2102,9 @@ impl DecodeSession {
 			.ok_or_else(|| Error::missing_capability("no Vulkan Video decode queue is enabled"))?;
 		let compute_family = self.device.physical().compute_queue_family;
 		let decoded_layout = if self.image_set == DecodeImageSet::DistinctLayered {
-			ash::vk::ImageLayout::VIDEO_DECODE_DST_KHR
+			vk::ImageLayout::VIDEO_DECODE_DST_KHR
 		} else {
-			ash::vk::ImageLayout::VIDEO_DECODE_DPB_KHR
+			vk::ImageLayout::VIDEO_DECODE_DPB_KHR
 		};
 		let release = device.record_video_decode(|command_buffer| {
 			record_decode_readback_release(
@@ -2149,85 +2167,90 @@ impl DecodeSession {
 }
 
 fn record_decode_readback_release(
-	device: &ash::Device,
-	command_buffer: ash::vk::CommandBuffer,
+	device: &vk::Device,
+	command_buffer: vk::CommandBuffer,
 	output: &DecodeImage,
 	output_layer: u32,
 	queue_families: (u32, u32),
-	decoded_layout: ash::vk::ImageLayout,
+	decoded_layout: vk::ImageLayout,
 ) -> Result<()> {
 	let (decode_family, compute_family) = queue_families;
 	let same_family = decode_family == compute_family;
-	let release = ash::vk::ImageMemoryBarrier2::default()
-		.src_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
+	let release = vk::ImageMemoryBarrier2::default()
+		.src_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
 		.src_access_mask(
-			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+			vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+				| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 		)
 		.dst_stage_mask(if same_family {
-			ash::vk::PipelineStageFlags2::TRANSFER
+			vk::PipelineStageFlagBits2::TRANSFER_BIT
 		} else {
-			ash::vk::PipelineStageFlags2::NONE
+			vk::PipelineStageFlagBits2::NONE
 		})
 		.dst_access_mask(if same_family {
-			ash::vk::AccessFlags2::TRANSFER_READ
+			vk::AccessFlagBits2::TRANSFER_READ_BIT
 		} else {
-			ash::vk::AccessFlags2::NONE
+			vk::AccessFlagBits2::NONE
 		})
 		.old_layout(decoded_layout)
-		.new_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+		.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 		.src_queue_family_index(if same_family {
-			ash::vk::QUEUE_FAMILY_IGNORED
+			vk::QUEUE_FAMILY_IGNORED
 		} else {
 			decode_family
 		})
 		.dst_queue_family_index(if same_family {
-			ash::vk::QUEUE_FAMILY_IGNORED
+			vk::QUEUE_FAMILY_IGNORED
 		} else {
 			compute_family
 		})
 		.image(output.handle)
 		.subresource_range(decode_image_subresource(output_layer, 1));
 	let dependency =
-		ash::vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
+		vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
 	// SAFETY: the frame's producer event is complete before submission. This
 	// publishes its decode writes and transfers the exact retained layer to the
 	// compute family when the queue families differ.
 	unsafe {
-		device.cmd_pipeline_barrier2(command_buffer, &dependency);
+		device
+			.cmd_pipeline_barrier2(command_buffer, &(dependency).map_err(Error::from)?)
+			.map_err(Error::from)?;
 	}
 	Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
 fn record_decode_readback(
-	device: &ash::Device,
-	command_buffer: ash::vk::CommandBuffer,
+	device: &vk::Device,
+	command_buffer: vk::CommandBuffer,
 	output: &DecodeImage,
 	output_layer: u32,
 	readback: &crate::runtime::Buffer,
-	regions: &[ash::vk::BufferImageCopy],
+	regions: &[vk::BufferImageCopy],
 	queue_families: (u32, u32),
-	decoded_layout: ash::vk::ImageLayout,
+	decoded_layout: vk::ImageLayout,
 ) -> Result<()> {
 	let (decode_family, compute_family) = queue_families;
 	if decode_family != compute_family {
-		let acquire = ash::vk::ImageMemoryBarrier2::default()
-			.src_stage_mask(ash::vk::PipelineStageFlags2::NONE)
-			.src_access_mask(ash::vk::AccessFlags2::NONE)
-			.dst_stage_mask(ash::vk::PipelineStageFlags2::TRANSFER)
-			.dst_access_mask(ash::vk::AccessFlags2::TRANSFER_READ)
+		let acquire = vk::ImageMemoryBarrier2::default()
+			.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+			.src_access_mask(vk::AccessFlagBits2::NONE)
+			.dst_stage_mask(vk::PipelineStageFlagBits2::TRANSFER_BIT)
+			.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
 			.old_layout(decoded_layout)
-			.new_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+			.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 			.src_queue_family_index(decode_family)
 			.dst_queue_family_index(compute_family)
 			.image(output.handle)
 			.subresource_range(decode_image_subresource(output_layer, 1));
 		let dependency =
-			ash::vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&acquire));
+			vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&acquire));
 		// SAFETY: this matches the release recorded on the decode queue. The engine
 		// timeline wait orders this acquire after that queue's signal operation.
 		unsafe {
-			device.cmd_pipeline_barrier2(command_buffer, &dependency);
+			device
+				.cmd_pipeline_barrier2(command_buffer, &(dependency).map_err(Error::from)?)
+				.map_err(Error::from)?;
 		}
 	}
 	// SAFETY: the output layer is transfer-readable and each tightly packed plane
@@ -2236,40 +2259,42 @@ fn record_decode_readback(
 		device.cmd_copy_image_to_buffer(
 			command_buffer,
 			output.handle,
-			ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+			vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
 			readback.raw(),
 			regions,
-		);
+		)?;
 	}
-	let host = ash::vk::BufferMemoryBarrier2::default()
-		.src_stage_mask(ash::vk::PipelineStageFlags2::TRANSFER)
-		.src_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-		.dst_stage_mask(ash::vk::PipelineStageFlags2::HOST)
-		.dst_access_mask(ash::vk::AccessFlags2::HOST_READ)
-		.src_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
-		.dst_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+	let host = vk::BufferMemoryBarrier2::default()
+		.src_stage_mask(vk::PipelineStageFlagBits2::TRANSFER_BIT)
+		.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+		.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+		.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT)
+		.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+		.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
 		.buffer(readback.raw())
 		.offset(0)
 		.size(readback.size());
 	let dependency =
-		ash::vk::DependencyInfo::default().buffer_memory_barriers(std::slice::from_ref(&host));
+		vk::DependencyInfo::default().buffer_memory_barriers(std::slice::from_ref(&host));
 	// SAFETY: the barrier publishes every transfer-written byte to the host domain.
 	unsafe {
-		device.cmd_pipeline_barrier2(command_buffer, &dependency);
+		device
+			.cmd_pipeline_barrier2(command_buffer, &(dependency).map_err(Error::from)?)
+			.map_err(Error::from)?;
 	}
 	Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
 fn record_decode_readback_round_trip(
-	device: &ash::Device,
-	command_buffer: ash::vk::CommandBuffer,
+	device: &vk::Device,
+	command_buffer: vk::CommandBuffer,
 	output: &DecodeImage,
 	output_layer: u32,
 	readback: &crate::runtime::Buffer,
-	regions: &[ash::vk::BufferImageCopy],
+	regions: &[vk::BufferImageCopy],
 	queue_families: (u32, u32),
-	decoded_layout: ash::vk::ImageLayout,
+	decoded_layout: vk::ImageLayout,
 ) -> Result<()> {
 	record_decode_readback(
 		device,
@@ -2283,84 +2308,87 @@ fn record_decode_readback_round_trip(
 	)?;
 	let (decode_family, compute_family) = queue_families;
 	let same_family = decode_family == compute_family;
-	let release = ash::vk::ImageMemoryBarrier2::default()
-		.src_stage_mask(ash::vk::PipelineStageFlags2::TRANSFER)
-		.src_access_mask(ash::vk::AccessFlags2::TRANSFER_READ)
+	let release = vk::ImageMemoryBarrier2::default()
+		.src_stage_mask(vk::PipelineStageFlagBits2::TRANSFER_BIT)
+		.src_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
 		.dst_stage_mask(if same_family {
-			ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR
+			vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR
 		} else {
-			ash::vk::PipelineStageFlags2::NONE
+			vk::PipelineStageFlagBits2::NONE
 		})
 		.dst_access_mask(if same_family {
-			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR
+			vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+				| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR
 		} else {
-			ash::vk::AccessFlags2::NONE
+			vk::AccessFlagBits2::NONE
 		})
-		.old_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+		.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 		.new_layout(decoded_layout)
 		.src_queue_family_index(if same_family {
-			ash::vk::QUEUE_FAMILY_IGNORED
+			vk::QUEUE_FAMILY_IGNORED
 		} else {
 			compute_family
 		})
 		.dst_queue_family_index(if same_family {
-			ash::vk::QUEUE_FAMILY_IGNORED
+			vk::QUEUE_FAMILY_IGNORED
 		} else {
 			decode_family
 		})
 		.image(output.handle)
 		.subresource_range(decode_image_subresource(output_layer, 1));
 	let dependency =
-		ash::vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
+		vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
 	// SAFETY: the transfer read is complete in this command buffer. A different
 	// decode family performs the matching acquire after the engine timeline wait.
 	unsafe {
-		device.cmd_pipeline_barrier2(command_buffer, &dependency);
+		device
+			.cmd_pipeline_barrier2(command_buffer, &(dependency).map_err(Error::from)?)
+			.map_err(Error::from)?;
 	}
 	Ok(())
 }
 
 fn record_decode_readback_acquire(
-	device: &ash::Device,
-	command_buffer: ash::vk::CommandBuffer,
+	device: &vk::Device,
+	command_buffer: vk::CommandBuffer,
 	output: &DecodeImage,
 	output_layer: u32,
 	queue_families: (u32, u32),
-	decoded_layout: ash::vk::ImageLayout,
+	decoded_layout: vk::ImageLayout,
 ) -> Result<()> {
 	let (decode_family, compute_family) = queue_families;
 	if decode_family == compute_family {
 		return Ok(());
 	}
-	let acquire = ash::vk::ImageMemoryBarrier2::default()
-		.src_stage_mask(ash::vk::PipelineStageFlags2::NONE)
-		.src_access_mask(ash::vk::AccessFlags2::NONE)
-		.dst_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
+	let acquire = vk::ImageMemoryBarrier2::default()
+		.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+		.src_access_mask(vk::AccessFlagBits2::NONE)
+		.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
 		.dst_access_mask(
-			ash::vk::AccessFlags2::VIDEO_DECODE_READ_KHR | ash::vk::AccessFlags2::VIDEO_DECODE_WRITE_KHR,
+			vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
+				| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 		)
-		.old_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+		.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 		.new_layout(decoded_layout)
 		.src_queue_family_index(compute_family)
 		.dst_queue_family_index(decode_family)
 		.image(output.handle)
 		.subresource_range(decode_image_subresource(output_layer, 1));
 	let dependency =
-		ash::vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&acquire));
+		vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&acquire));
 	// SAFETY: this matches the compute-family release recorded after the copy.
 	// The Engine timeline orders this acquire after that submission.
 	unsafe {
-		device.cmd_pipeline_barrier2(command_buffer, &dependency);
+		device
+			.cmd_pipeline_barrier2(command_buffer, &(dependency).map_err(Error::from)?)
+			.map_err(Error::from)?;
 	}
 	Ok(())
 }
 
-fn decode_image_subresource(
-	base_array_layer: u32,
-	layer_count: u32,
-) -> ash::vk::ImageSubresourceRange {
-	ash::vk::ImageSubresourceRange {
-		aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+fn decode_image_subresource(base_array_layer: u32, layer_count: u32) -> vk::ImageSubresourceRange {
+	vk::ImageSubresourceRange {
+		aspect_mask: vk::ImageAspectFlagBits::COLOR_BIT,
 		base_mip_level: 0,
 		level_count: 1,
 		base_array_layer,
@@ -2370,18 +2398,18 @@ fn decode_image_subresource(
 
 fn decode_image_barrier(
 	image: &DecodeImage,
-	new_layout: ash::vk::ImageLayout,
-	destination_access: ash::vk::AccessFlags2,
-) -> ash::vk::ImageMemoryBarrier2<'static> {
-	ash::vk::ImageMemoryBarrier2::default()
-		.src_stage_mask(ash::vk::PipelineStageFlags2::NONE)
-		.src_access_mask(ash::vk::AccessFlags2::NONE)
-		.dst_stage_mask(ash::vk::PipelineStageFlags2::VIDEO_DECODE_KHR)
+	new_layout: vk::ImageLayout,
+	destination_access: vk::AccessFlags2,
+) -> vk::ImageMemoryBarrier2<'static> {
+	vk::ImageMemoryBarrier2::default()
+		.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+		.src_access_mask(vk::AccessFlagBits2::NONE)
+		.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
 		.dst_access_mask(destination_access)
-		.old_layout(ash::vk::ImageLayout::UNDEFINED)
+		.old_layout(vk::ImageLayout::UNDEFINED)
 		.new_layout(new_layout)
-		.src_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
-		.dst_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+		.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+		.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
 		.image(image.handle)
 		.subresource_range(decode_image_subresource(0, image.array_layers))
 }
@@ -2392,53 +2420,54 @@ impl Drop for DecodeSession {
 			// SAFETY: no decode submission can exist for this private qualification
 			// session, which uniquely owns the buffer/allocation pair.
 			unsafe {
-				self
+				let _ = self
 					.device
 					.allocator()
 					.destroy_buffer(bitstream.handle, &mut bitstream.allocation);
 			}
 		}
-		if self.result_status_pool != ash::vk::QueryPool::null() {
+		if self.result_status_pool != vk::QueryPool::default() {
 			// SAFETY: this private session owns the pool. Its submitted qualification
 			// command is explicitly completed before session teardown in the test path.
 			unsafe {
-				self
+				let _ = self
 					.device
 					.raw()
 					.destroy_query_pool(self.result_status_pool, None);
 			}
-			self.result_status_pool = ash::vk::QueryPool::null();
+			self.result_status_pool = vk::QueryPool::default();
 		}
-		if self.parameters != ash::vk::VideoSessionParametersKHR::null() {
+		if self.parameters != vk::VideoSessionParametersKHR::default() {
 			// SAFETY: this wrapper owns the parameter object and destroys it before
 			// the video session on which it depends.
 			unsafe {
-				(self.loader.fp().destroy_video_session_parameters_khr)(
-					self.loader.device(),
-					self.parameters,
-					std::ptr::null(),
-				);
+				let _ = self
+					.device
+					.raw()
+					.destroy_video_session_parameters_khr(self.parameters, std::ptr::null());
 			}
-			self.parameters = ash::vk::VideoSessionParametersKHR::null();
+			self.parameters = vk::VideoSessionParametersKHR::default();
 		}
-		if self.handle != ash::vk::VideoSessionKHR::null() {
+		if self.handle != vk::VideoSessionKHR::default() {
 			// SAFETY: this wrapper owns the session and destroys it once before its
 			// bound allocations and retained device are released.
 			unsafe {
-				(self.loader.fp().destroy_video_session_khr)(
-					self.loader.device(),
-					self.handle,
-					std::ptr::null(),
-				);
+				let _ = self
+					.device
+					.raw()
+					.destroy_video_session_khr(self.handle, std::ptr::null());
 			}
-			self.handle = ash::vk::VideoSessionKHR::null();
+			self.handle = vk::VideoSessionKHR::default();
 		}
 		for allocation in &mut self.allocations {
 			// SAFETY: session destruction ended every binding use, and this wrapper
 			// owns each VMA allocation exactly once.
-			unsafe {
-				self.device.allocator().free_memory(allocation);
-			}
+			let _ = unsafe {
+				self
+					.device
+					.allocator()
+					.with_allocator(|a| a.free(allocation))
+			};
 		}
 	}
 }

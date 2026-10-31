@@ -31,3 +31,26 @@ fn buffer_retains_device_after_engine_drop() -> crate::Result<()> {
 	);
 	Ok(())
 }
+
+/// Engine startup admits metadata only; first use publishes one retained pipeline.
+#[test]
+#[ignore = "requires an explicitly selected Vulkan device; first-use pipeline proof"]
+fn compute_pipelines_are_created_once_on_first_use() -> crate::Result<()> {
+	use crate::{DeviceSelection, Engine, matrix};
+	let index = std::env::var("OA_TEST_DEVICE_INDEX")
+		.expect("explicit OA_TEST_DEVICE_INDEX")
+		.parse::<usize>()
+		.expect("device index");
+	let engine = Engine::builder()
+		.devices(DeviceSelection::Index(index))
+		.build()?;
+	let device = engine.handle().state.borrow().device.clone();
+	assert_eq!(device.initialized_pipeline_count(), 0);
+	let a = matrix::from_f32_on(&engine, [1, 3], &[1.0, 2.0, 4.0])?;
+	assert_eq!(device.initialized_pipeline_count(), 0);
+	for _ in 0..2 {
+		assert_eq!(matrix::add(&a, &a)?.read_f32()?, vec![2.0, 4.0, 8.0]);
+		assert_eq!(device.initialized_pipeline_count(), 1);
+	}
+	Ok(())
+}

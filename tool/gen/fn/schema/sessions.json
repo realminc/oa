@@ -1,0 +1,586 @@
+{
+	"schema_version": 1,
+	"family": "sessions",
+	"domain": "sessions",
+	"signature_records": [
+		{
+			"name": "video_decoder_new",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"info",
+						"VideoContainerInfo"
+					]
+				],
+				"returns": "VideoDecoder",
+				"visibility": "pub",
+				"target": "crate::video::VideoDecoder::new"
+			}
+		},
+		{
+			"name": "video_muxer_config_new",
+			"signature": {
+				"parameters": [
+					[
+						"codec",
+						"VideoCodec"
+					],
+					[
+						"width",
+						"u32"
+					],
+					[
+						"height",
+						"u32"
+					]
+				],
+				"returns": "VideoMuxerConfig",
+				"visibility": "pub",
+				"target": "crate::video::VideoMuxerConfig::new"
+			}
+		},
+		{
+			"name": "audio_encoder_new",
+			"signature": {
+				"parameters": [
+					[
+						"profile",
+						"AudioEncodeProfile"
+					]
+				],
+				"returns": "AudioEncoder",
+				"visibility": "pub",
+				"target": "crate::audio::AudioEncoder::new"
+			}
+		},
+		{
+			"name": "ohlcv_view_new_from_frame",
+			"signature": {
+				"parameters": [
+					[
+						"frame",
+						"&'a DataFrame"
+					],
+					[
+						"unit",
+						"UnixTimeUnit"
+					]
+				],
+				"returns": "OhlcvView<'a>",
+				"visibility": "pub",
+				"target": "crate::data::OhlcvView::new_from_frame"
+			}
+		},
+		{
+			"name": "ohlcv_view_new_from_frame_view",
+			"signature": {
+				"parameters": [
+					[
+						"frame",
+						"DataFrameView<'a>"
+					],
+					[
+						"unit",
+						"UnixTimeUnit"
+					]
+				],
+				"returns": "OhlcvView<'a>",
+				"visibility": "pub",
+				"target": "crate::data::OhlcvView::new_from_frame_view"
+			}
+		},
+		{
+			"name": "ohlcv_windows_new",
+			"signature": {
+				"parameters": [
+					[
+						"source",
+						"OhlcvView<'a>"
+					],
+					[
+						"config",
+						"OhlcvWindowConfig"
+					]
+				],
+				"returns": "OhlcvWindows<'a>",
+				"visibility": "pub",
+				"target": "crate::data::OhlcvWindows::new"
+			}
+		},
+		{
+			"name": "ds_ohlcv_new",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&'a Engine"
+					],
+					[
+						"windows",
+						"OhlcvWindows<'a>"
+					]
+				],
+				"returns": "DsOhlcv<'a>",
+				"visibility": "pub",
+				"target": "crate::data::DsOhlcv::new",
+				"raw_return": true
+			}
+		},
+		{
+			"name": "subset_new",
+			"signature": {
+				"parameters": [
+					[
+						"parent",
+						"&'ds dyn Dataset"
+					],
+					[
+						"indices",
+						"Vec<i64>"
+					]
+				],
+				"returns": "Subset<'ds>",
+				"visibility": "pub",
+				"target": "crate::data::Subset::new"
+			}
+		},
+		{
+			"name": "data_loader_new",
+			"signature": {
+				"parameters": [
+					[
+						"dataset",
+						"&'ds dyn Dataset"
+					],
+					[
+						"config",
+						"DataLoaderConfig"
+					]
+				],
+				"returns": "DataLoader<'ds>",
+				"visibility": "pub",
+				"target": "crate::data::DataLoader::new"
+			}
+		},
+		{
+			"name": "environment_execution_new",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&Engine"
+					]
+				],
+				"returns": "EnvironmentExecution",
+				"visibility": "pub",
+				"target": "crate::ml::environment::EnvironmentExecution::new",
+				"raw_return": true
+			}
+		},
+		{
+			"name": "trading_environment_new",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&'engine Engine"
+					],
+					[
+						"config",
+						"TradingConfig"
+					],
+					[
+						"series",
+						"&[TradingSeries]"
+					]
+				],
+				"returns": "TradingEnvironment<'engine>",
+				"visibility": "pub",
+				"target": "crate::ml::environment::TradingEnvironment::new"
+			}
+		},
+		{
+			"name": "trading_environment_new_with_row_capacity",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&'engine Engine"
+					],
+					[
+						"config",
+						"TradingConfig"
+					],
+					[
+						"series",
+						"&[TradingSeries]"
+					],
+					[
+						"row_capacity",
+						"usize"
+					]
+				],
+				"returns": "TradingEnvironment<'engine>",
+				"visibility": "pub",
+				"target": "crate::ml::environment::TradingEnvironment::new_with_row_capacity"
+			}
+		},
+		{
+			"name": "checkpoint_manager_new",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&'engine Engine"
+					],
+					[
+						"config",
+						"CheckpointManagerConfig"
+					]
+				],
+				"returns": "CheckpointManager<'engine>",
+				"visibility": "pub",
+				"target": "crate::ml::checkpoint::CheckpointManager::new"
+			}
+		},
+		{
+			"name": "audio_player_open",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"config",
+						"AudioPlayerConfig"
+					]
+				],
+				"returns": "AudioPlayer",
+				"visibility": "pub",
+				"target": "crate::audio::AudioPlayer::open"
+			}
+		},
+		{
+			"name": "audio_player_new",
+			"signature": {
+				"parameters": [
+					[
+						"uri",
+						"impl Into<PathBuf>"
+					]
+				],
+				"returns": "AudioPlayerConfig",
+				"visibility": "pub",
+				"target": "crate::audio::AudioPlayerConfig::new",
+				"raw_return": true,
+				"parity": [
+					[
+						"uri",
+						"std::path::PathBuf"
+					]
+				]
+			}
+		},
+		{
+			"name": "audio_player_new_from_uri",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"uri",
+						"impl AsRef<Path>"
+					]
+				],
+				"returns": "AudioPlayer",
+				"visibility": "pub",
+				"target": "crate::audio::AudioPlayer::new_from_uri",
+				"parity": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"uri",
+						"&std::path::Path"
+					]
+				]
+			}
+		},
+		{
+			"name": "video_muxer_new",
+			"signature": {
+				"parameters": [
+					[
+						"path",
+						"impl AsRef<Path>"
+					],
+					[
+						"config",
+						"VideoMuxerConfig"
+					]
+				],
+				"returns": "VideoMuxer",
+				"visibility": "pub",
+				"target": "crate::video::VideoMuxer::new",
+				"parity": [
+					[
+						"path",
+						"&std::path::Path"
+					],
+					[
+						"config",
+						"VideoMuxerConfig"
+					]
+				]
+			}
+		},
+		{
+			"name": "video_demuxer_open",
+			"signature": {
+				"parameters": [
+					[
+						"path",
+						"impl AsRef<Path>"
+					]
+				],
+				"returns": "VideoDemuxer",
+				"visibility": "pub",
+				"target": "crate::video::VideoDemuxer::open",
+				"parity": [
+					[
+						"path",
+						"&std::path::Path"
+					]
+				]
+			}
+		},
+		{
+			"name": "video_player_open",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"path",
+						"impl AsRef<Path>"
+					],
+					[
+						"config",
+						"VideoPlayerConfig"
+					]
+				],
+				"returns": "VideoPlayer",
+				"visibility": "pub",
+				"target": "crate::video::VideoPlayer::open",
+				"parity": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"path",
+						"&std::path::Path"
+					],
+					[
+						"config",
+						"VideoPlayerConfig"
+					]
+				]
+			}
+		},
+		{
+			"name": "engine_new",
+			"signature": {
+				"parameters": [],
+				"returns": "Engine",
+				"visibility": "pub",
+				"target": "crate::runtime::Engine::new"
+			}
+		},
+		{
+			"name": "engine_builder",
+			"signature": {
+				"parameters": [],
+				"returns": "EngineBuilder",
+				"visibility": "pub",
+				"target": "crate::runtime::Engine::builder",
+				"raw_return": true
+			}
+		},
+		{
+			"name": "engine_init_default",
+			"signature": {
+				"parameters": [],
+				"returns": "()",
+				"visibility": "pub",
+				"target": "crate::runtime::Engine::init_default"
+			}
+		},
+		{
+			"name": "engine_available_devices",
+			"signature": {
+				"parameters": [],
+				"returns": "Vec<DeviceSummary>",
+				"visibility": "pub",
+				"target": "crate::runtime::Engine::available_devices"
+			}
+		},
+		{
+			"name": "sdl_window_new",
+			"signature": {
+				"parameters": [
+					[
+						"title",
+						"&str"
+					],
+					[
+						"width",
+						"u32"
+					],
+					[
+						"height",
+						"u32"
+					]
+				],
+				"returns": "SdlWindow",
+				"visibility": "pub",
+				"target": "crate::runtime::SdlWindow::new"
+			}
+		},
+		{
+			"name": "log_component_new",
+			"signature": {
+				"parameters": [
+					[
+						"tag",
+						"&str"
+					]
+				],
+				"returns": "LogComponent",
+				"visibility": "pub",
+				"target": "crate::runtime::LogComponent::new"
+			}
+		},
+		{
+			"name": "log_options_new",
+			"signature": {
+				"parameters": [],
+				"returns": "LogOptions",
+				"visibility": "pub",
+				"target": "crate::runtime::LogOptions::new",
+				"raw_return": true
+			}
+		},
+		{
+			"name": "tcp_stream_connect",
+			"signature": {
+				"parameters": [
+					[
+						"host",
+						"&str"
+					],
+					[
+						"port",
+						"u16"
+					]
+				],
+				"returns": "TcpStream",
+				"visibility": "pub",
+				"target": "crate::network::TcpStream::connect"
+			}
+		},
+		{
+			"name": "tcp_listener_bind_any",
+			"signature": {
+				"parameters": [
+					[
+						"port",
+						"u16"
+					]
+				],
+				"returns": "TcpListener",
+				"visibility": "pub",
+				"target": "crate::network::TcpListener::bind_any"
+			}
+		},
+		{
+			"name": "tcp_listener_bind",
+			"signature": {
+				"parameters": [
+					[
+						"host",
+						"&str"
+					],
+					[
+						"port",
+						"u16"
+					],
+					[
+						"backlog",
+						"i32"
+					]
+				],
+				"returns": "TcpListener",
+				"visibility": "pub",
+				"target": "crate::network::TcpListener::bind"
+			}
+		},
+		{
+			"name": "media_player_new",
+			"signature": {
+				"parameters": [
+					[
+						"video_path",
+						"impl Into<PathBuf>"
+					],
+					[
+						"audio_path",
+						"impl Into<PathBuf>"
+					]
+				],
+				"returns": "MediaPlayerConfig",
+				"visibility": "pub",
+				"target": "crate::media::MediaPlayerConfig::new",
+				"raw_return": true,
+				"parity": [
+					[
+						"video_path",
+						"std::path::PathBuf"
+					],
+					[
+						"audio_path",
+						"std::path::PathBuf"
+					]
+				]
+			}
+		},
+		{
+			"name": "media_player_open",
+			"signature": {
+				"parameters": [
+					[
+						"engine",
+						"&Engine"
+					],
+					[
+						"config",
+						"MediaPlayerConfig"
+					]
+				],
+				"returns": "MediaPlayer",
+				"visibility": "pub",
+				"target": "crate::media::MediaPlayer::open"
+			}
+		}
+	]
+}

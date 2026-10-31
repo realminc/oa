@@ -112,7 +112,7 @@ impl Mamba3 {
 	///
 	/// Returns an error for invalid or overflowing geometry, invalid numerical
 	/// bounds, or failed allocation/registration.
-	pub fn with_seed(engine: &Engine, config: Mamba3Config, seed: u64) -> Result<Self> {
+	pub fn new_with_seed(engine: &Engine, config: Mamba3Config, seed: u64) -> Result<Self> {
 		let inner_size = config
 			.model_width
 			.checked_mul(config.expand)
@@ -185,7 +185,7 @@ impl Mamba3 {
 		let in_limit = (6.0_f32 / (projected_width + config.model_width) as f32).sqrt();
 		let in_projection = Parameter::new(
 			"in_proj",
-			Matrix::from_f32(
+			Matrix::new_from_f32(
 				engine,
 				[projected_width, config.model_width],
 				&random::symmetric_uniform(in_count, in_limit, seed),
@@ -205,7 +205,7 @@ impl Mamba3 {
 			.collect::<Vec<_>>();
 		let dt_bias = Parameter::new(
 			"dt_bias",
-			Matrix::from_f32(engine, [num_heads], &dt_bias_values)?,
+			Matrix::new_from_f32(engine, [num_heads], &dt_bias_values)?,
 		)?;
 		let bias_count = num_heads
 			.checked_mul(config.mimo_rank)
@@ -218,11 +218,11 @@ impl Mamba3 {
 		};
 		let b_bias = Parameter::new(
 			"B_bias",
-			Matrix::from_f32(engine, bias_shape.clone(), &vec![1.0; bias_count])?,
+			Matrix::new_from_f32(engine, bias_shape.clone(), &vec![1.0; bias_count])?,
 		)?;
 		let c_bias = Parameter::new(
 			"C_bias",
-			Matrix::from_f32(engine, bias_shape, &vec![1.0; bias_count])?,
+			Matrix::new_from_f32(engine, bias_shape, &vec![1.0; bias_count])?,
 		)?;
 		let mimo_count = num_heads
 			.checked_mul(config.mimo_rank)
@@ -233,7 +233,7 @@ impl Mamba3 {
 			.then(|| {
 				Parameter::new(
 					"mimo_x",
-					Matrix::from_f32(
+					Matrix::new_from_f32(
 						engine,
 						mimo_shape,
 						&vec![1.0 / config.mimo_rank as f32; mimo_count],
@@ -245,7 +245,7 @@ impl Mamba3 {
 			.then(|| {
 				Parameter::new(
 					"mimo_z",
-					Matrix::from_f32(engine, mimo_shape, &vec![1.0; mimo_count])?,
+					Matrix::new_from_f32(engine, mimo_shape, &vec![1.0; mimo_count])?,
 				)
 			})
 			.transpose()?;
@@ -253,7 +253,7 @@ impl Mamba3 {
 			.then(|| {
 				Parameter::new(
 					"mimo_o",
-					Matrix::from_f32(
+					Matrix::new_from_f32(
 						engine,
 						mimo_shape,
 						&vec![1.0 / config.mimo_rank as f32; mimo_count],
@@ -263,7 +263,7 @@ impl Mamba3 {
 			.transpose()?;
 		let d_skip = Parameter::new(
 			"D",
-			Matrix::from_f32(engine, [num_heads], &vec![0.0; num_heads])?,
+			Matrix::new_from_f32(engine, [num_heads], &vec![0.0; num_heads])?,
 		)?;
 		let out_count = config
 			.model_width
@@ -272,7 +272,7 @@ impl Mamba3 {
 		let out_limit = (6.0_f32 / (config.model_width + inner_size) as f32).sqrt();
 		let out_projection = Parameter::new(
 			"out_proj",
-			Matrix::from_f32(
+			Matrix::new_from_f32(
 				engine,
 				[config.model_width, inner_size],
 				&random::symmetric_uniform(out_count, out_limit, seed.wrapping_add(2)),
@@ -283,16 +283,16 @@ impl Mamba3 {
 			.then(|| {
 				Parameter::new(
 					"norm_weight",
-					Matrix::from_f32(engine, [num_heads, config.head_dim], &vec![1.0; inner_size])?,
+					Matrix::new_from_f32(engine, [num_heads, config.head_dim], &vec![1.0; inner_size])?,
 				)
 			})
 			.transpose()?;
 		let norm_identity =
-			Matrix::from_f32(engine, [num_heads, config.head_dim], &vec![1.0; inner_size])?;
+			Matrix::new_from_f32(engine, [num_heads, config.head_dim], &vec![1.0; inner_size])?;
 		let in_projection_bias =
-			Matrix::from_f32(engine, [projected_width], &vec![0.0; projected_width])?;
+			Matrix::new_from_f32(engine, [projected_width], &vec![0.0; projected_width])?;
 		let out_projection_bias =
-			Matrix::from_f32(engine, [config.model_width], &vec![0.0; config.model_width])?;
+			Matrix::new_from_f32(engine, [config.model_width], &vec![0.0; config.model_width])?;
 
 		let mut registry = ModuleRegistry::new();
 		for (name, parameter) in [

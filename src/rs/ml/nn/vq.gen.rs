@@ -70,7 +70,7 @@ impl VectorQuantizer {
 	///
 	/// Returns an error for an invalid configuration, shape overflow, or failed
 	/// state allocation/upload.
-	pub fn with_seed(engine: &Engine, config: VectorQuantizerConfig, seed: u64) -> Result<Self> {
+	pub fn new_with_seed(engine: &Engine, config: VectorQuantizerConfig, seed: u64) -> Result<Self> {
 		validate_config(config)?;
 		let count = config
 			.num_codes
@@ -82,9 +82,10 @@ impl VectorQuantizer {
 			.ok_or_else(|| Error::invalid_argument("VQ Glorot extent overflows usize"))?;
 		let limit = (6.0_f32 / denominator as f32).sqrt();
 		let values = random::symmetric_uniform(count, limit, seed);
-		let codebook = Matrix::from_f32(engine, [config.num_codes, config.code_dim], &values)?;
-		let embed_sum = Matrix::from_f32(engine, [config.num_codes, config.code_dim], &values)?;
-		let cluster_size = Matrix::from_f32(engine, [config.num_codes], &vec![1.0; config.num_codes])?;
+		let codebook = Matrix::new_from_f32(engine, [config.num_codes, config.code_dim], &values)?;
+		let embed_sum = Matrix::new_from_f32(engine, [config.num_codes, config.code_dim], &values)?;
+		let cluster_size =
+			Matrix::new_from_f32(engine, [config.num_codes], &vec![1.0; config.num_codes])?;
 		Self::from_state(config, codebook, embed_sum, cluster_size)
 	}
 
@@ -92,9 +93,9 @@ impl VectorQuantizer {
 	///
 	/// # Errors
 	///
-	/// Returns the same errors as [`Self::with_seed`].
+	/// Returns the same errors as [`Self::new_with_seed`].
 	pub fn new(engine: &Engine, config: VectorQuantizerConfig) -> Result<Self> {
-		Self::with_seed(engine, config, 0)
+		Self::new_with_seed(engine, config, 0)
 	}
 
 	fn from_state(
@@ -240,7 +241,7 @@ impl VectorQuantizer {
 		)?;
 		let seeded = matrix::vq_lookup(latents, &selected.indices)?;
 		let embed_sum = core_matrix::copy(&seeded)?;
-		let cluster_size = Matrix::from_slice_handle(
+		let cluster_size = Matrix::new_from_slice_handle(
 			latents.engine_handle(),
 			vec![self.config.num_codes],
 			&vec![1.0_f32; self.config.num_codes],
@@ -303,7 +304,7 @@ impl ResidualVectorQuantizer {
 	///
 	/// Returns an error when the level count or configuration is invalid, child
 	/// state allocation fails, or module registration fails.
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		config: VectorQuantizerConfig,
 		num_levels: usize,
@@ -317,7 +318,7 @@ impl ResidualVectorQuantizer {
 		let mut registry = ModuleRegistry::new();
 		let mut levels = Vec::with_capacity(num_levels);
 		for level in 0..num_levels {
-			let quantizer = Rc::new(VectorQuantizer::with_seed(
+			let quantizer = Rc::new(VectorQuantizer::new_with_seed(
 				engine,
 				config,
 				seed.wrapping_add(level as u64),
@@ -336,9 +337,9 @@ impl ResidualVectorQuantizer {
 	///
 	/// # Errors
 	///
-	/// Returns the same errors as [`Self::with_seed`].
+	/// Returns the same errors as [`Self::new_with_seed`].
 	pub fn new(engine: &Engine, config: VectorQuantizerConfig, num_levels: usize) -> Result<Self> {
-		Self::with_seed(engine, config, num_levels, 0)
+		Self::new_with_seed(engine, config, num_levels, 0)
 	}
 
 	/// Quantize successive residuals and apply one straight-through estimator.

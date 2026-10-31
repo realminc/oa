@@ -17,13 +17,21 @@ pub fn open(engine: &Engine, config: &ViewerConfig) -> Result<AudioPlayer> {
 		loop_playback: config.loop_media,
 		ring_milliseconds: config.audio_ring_ms,
 	};
-	AudioPlayer::open(engine, cfg)
+	let mut player = AudioPlayer::open(engine, cfg)?;
+	// Donor openAudio honors the viewer's initial transport state.
+	if config.start_playing
+		&& let Err(error) = player.play()
+	{
+		let _ = player.close();
+		return Err(error);
+	}
+	Ok(player)
 }
 
 /// Render the audio visualization.
 pub fn render(
 	ui: &mut Ui<'_>,
-	_player: Option<&mut AudioPlayer>,
+	player: Option<&mut AudioPlayer>,
 	analysis: Option<&AudioAnalysis>,
 	viewport: PixelRect,
 	config: &ViewerConfig,
@@ -31,79 +39,50 @@ pub fn render(
 	let Some(analysis) = analysis else {
 		return Ok(());
 	};
+	let scale = ui.content_scale();
+	let timeline = super::timeline::geometry(viewport, scale);
+	let top = ((43.0 + 24.0) * scale).round() as i32;
+	let bottom = if config.show_timeline {
+		timeline.y - (46.0 * scale).round() as i32
+	} else {
+		viewport.h as i32 - (24.0 * scale).round() as i32
+	};
 	let vis_rect = PixelRect::new(
-		viewport.x,
-		viewport.y,
-		viewport.w,
-		(viewport.h as f32 * 0.6) as u32,
+		timeline.x,
+		top,
+		timeline.w,
+		bottom.saturating_sub(top).max(1) as u32,
 	);
-	if vis_rect.w == 0 || vis_rect.h == 0 {
-		return Ok(());
-	}
+	let mut fraction = player.as_ref().map_or(0.0, |player| {
+		player.position_us() as f64 / player.duration_us().max(1) as f64
+	}) as f32;
 	match config.audio_view {
 		ViewerAudioView::Waveform => {
-			if let Some(env) = &analysis.envelope
-				&& let Ok(values) = env.read_f32()
+			if let Some(envelope) = &analysis.envelope
+				&& ui.waveform_matrix_timeline("viewer-waveform", vis_rect, envelope, &mut fraction)?
+				&& let Some(player) = player
 			{
-				let y_range = values.iter().copied().fold(0.0_f32, f32::max).max(1e-6);
-				ui.plot_line_at(
-					&values,
-					vis_rect,
-					-y_range,
-					y_range,
-					crate::Color::new(0.388, 0.600, 0.945, 1.0),
-					1.5,
-				)?;
+				player.seek((fraction as f64 * player.duration_us() as f64) as u64)?;
 			}
 		}
 		ViewerAudioView::Spectrum => {
-			if let Some(spec) = &analysis.spectrum
-				&& let Ok(values) = spec.read_f32()
-			{
-				let y_max = values
-					.iter()
-					.copied()
-					.fold(f32::NEG_INFINITY, f32::max)
-					.max(1e-6);
-				let y_min = values
-					.iter()
-					.copied()
-					.fold(f32::INFINITY, f32::min)
-					.min(-1e-6);
-				ui.plot_line_at(
-					&values,
-					vis_rect,
-					y_min,
-					y_max,
-					crate::Color::new(0.545, 0.388, 0.945, 1.0),
-					1.5,
-				)?;
+			if let Some(spectrum) = &analysis.spectrum {
+				ui.heatmap_matrix_at(spectrum, vis_rect, [-12.0, 6.5], 1)?;
 			}
 		}
 		ViewerAudioView::Mel => {
-			if let Some(mel) = &analysis.mel
-				&& let Ok(values) = mel.read_f32()
-			{
-				let y_max = values
-					.iter()
-					.copied()
-					.fold(f32::NEG_INFINITY, f32::max)
-					.max(1e-6);
-				let y_min = values
-					.iter()
-					.copied()
-					.fold(f32::INFINITY, f32::min)
-					.min(-1e-6);
-				ui.plot_line_at(
-					&values,
-					vis_rect,
-					y_min,
-					y_max,
-					crate::Color::new(0.388, 0.945, 0.600, 1.0),
-					1.5,
-				)?;
+			if let Some(mel) = &analysis.mel {
+				ui.heatmap_matrix_at(mel, vis_rect, [-12.0, 6.5], 0)?;
 			}
 		}
 	}
+	ui.mask_rounded_rect(vis_rect, 15.0 * scale, config.style.background)?;
+	ui.rect_outline_rounded_at(
+		vis_rect,
+		config.style.border_strong,
+		scale.round().max(1.0) as u32,
+		vis_rect,
+		15.0 * scale,
+	);
 	Ok(())
 }

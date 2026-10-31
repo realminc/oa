@@ -9,6 +9,11 @@ import unittest
 
 
 COMPONENTS = (
+    "bigint",
+    "bigint_bits",
+    "bigint_modular",
+    "bigint_montgomery",
+    "bigint_barrett",
     "dispatch",
     "keccak",
     "mldsa_field",

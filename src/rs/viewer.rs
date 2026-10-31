@@ -27,6 +27,7 @@
 
 mod audio_mode;
 mod audio_view;
+mod decoration;
 mod image_mode;
 mod live_mode;
 mod overlay;
@@ -66,7 +67,7 @@ impl<'src> Viewer<'src> {
 		}
 	}
 
-	pub fn with_path(path: impl Into<String>) -> Self {
+	pub fn new_with_path(path: impl Into<String>) -> Self {
 		Self::new(ViewerConfig {
 			path: path.into(),
 			..ViewerConfig::default()
@@ -197,7 +198,12 @@ impl<'src> Viewer<'src> {
 	fn run_owned(mut self) -> Result<()> {
 		// Create the SDL3 window first — its extensions are required before
 		// the Vulkan instance is created inside Engine::builder().build().
-		let window = SdlWindow::new(&self.config.title, self.config.width, self.config.height)?;
+		let window = SdlWindow::with_client_frame(
+			&self.config.title,
+			self.config.width,
+			self.config.height,
+			true,
+		)?;
 		let extensions = window.required_instance_extensions()?;
 		let engine = Engine::builder()
 			.requirements(crate::EngineRequirements::default().presentation())
@@ -208,13 +214,23 @@ impl<'src> Viewer<'src> {
 
 	/// Run on a borrowed engine (creates its own window).
 	fn run_borrowed(mut self, engine: &Engine) -> Result<()> {
-		let window = SdlWindow::new(&self.config.title, self.config.width, self.config.height)?;
+		let window = SdlWindow::with_client_frame(
+			&self.config.title,
+			self.config.width,
+			self.config.height,
+			true,
+		)?;
 		self.application_loop(engine, window, None)
 	}
 
 	/// Run displaying a borrowed GPU texture.
 	fn run_with_texture(mut self, engine: &Engine, texture: &Texture) -> Result<()> {
-		let window = SdlWindow::new(&self.config.title, self.config.width, self.config.height)?;
+		let window = SdlWindow::with_client_frame(
+			&self.config.title,
+			self.config.width,
+			self.config.height,
+			texture.render_target_image().is_none(),
+		)?;
 		self.application_loop(engine, window, Some(texture))
 	}
 
@@ -225,6 +241,9 @@ impl<'src> Viewer<'src> {
 		window: SdlWindow,
 		borrowed_texture: Option<&Texture>,
 	) -> Result<()> {
+		if self.config.show_help {
+			engine.log(crate::LogLevel::Info, crate::LogComponent::UI, "Viewer: wheel zoom, drag pan, +/- zoom, 0 fit, 9 actual size, 1–5 channels, B background, G grid, Space play/pause, arrows seek, W/S/M audio views, Q/Esc close")?;
+		}
 		// Resolve initial drawable extent.
 		let [w, h] = window.drawable_extent();
 		if w == 0 || h == 0 {
@@ -275,6 +294,9 @@ impl<'src> Viewer<'src> {
 				.map_err(|e| Error::backend_failure("SDL3", "Viewer event pump", e))?;
 
 			let mut running = true;
+			let mut timeline_state = timeline::TransportState::default();
+			let mut pointer_inside = true;
+			let mut controls_idle_ms = 0.0_f32;
 			let mut last_instant = Instant::now();
 			let (mut sx, mut sy) = window_pixel_scale(&window.window);
 
@@ -282,6 +304,7 @@ impl<'src> Viewer<'src> {
 				let now = Instant::now();
 				let delta_ms = now.duration_since(last_instant).as_secs_f32() * 1000.0;
 				last_instant = now;
+				controls_idle_ms += delta_ms;
 
 				// Handle SDL events.
 				for sdl_ev in event_pump.poll_iter() {
@@ -302,15 +325,86 @@ impl<'src> Viewer<'src> {
 								(sx, sy) = window_pixel_scale(&window.window);
 							}
 						}
+						sdl3::event::Event::Window {
+							win_event: sdl3::event::WindowEvent::MouseEnter,
+							..
+						} => {
+							pointer_inside = true;
+							controls_idle_ms = 0.0;
+						}
+						sdl3::event::Event::Window {
+							win_event: sdl3::event::WindowEvent::MouseLeave,
+							..
+						} => {
+							pointer_inside = false;
+						}
 						_ => {}
 					}
 					if let Some(ui_ev) = convert_sdl_event(&sdl_ev, sx, sy) {
+						controls_idle_ms = 0.0;
 						// Quit shortcut.
 						if ui_ev.kind == UiEventKind::KeyDown
 							&& (ui_ev.key == self.config.key_quit || ui_ev.key == self.config.key_quit_q)
 						{
 							running = false;
 							continue;
+						}
+
+						// Donor temporal step shortcuts permit keyboard repeat.
+						if ui_ev.kind == UiEventKind::KeyDown
+							&& media.has_timeline()
+							&& matches!(
+								ui_ev.key,
+								UiKey::Left | UiKey::Right | UiKey::Up | UiKey::Down
+							) {
+							let steps = match ui_ev.key {
+								UiKey::Left => -1,
+								UiKey::Right => 1,
+								UiKey::Up => 5,
+								_ => -5,
+							};
+							media.step_temporal(steps)?;
+							continue;
+						}
+
+						if ui_ev.kind == UiEventKind::KeyDown && !ui_ev.key_repeat {
+							if matches!(media, MediaState::Audio { .. }) {
+								match ui_ev.key {
+									UiKey::W => self.config.audio_view = ViewerAudioView::Waveform,
+									UiKey::S => self.config.audio_view = ViewerAudioView::Spectrum,
+									UiKey::M => self.config.audio_view = ViewerAudioView::Mel,
+									_ => {}
+								}
+							}
+
+							if ui_ev.key == UiKey::L && media.has_timeline() {
+								self.config.loop_media = !self.config.loop_media;
+								match &mut media {
+									MediaState::Audio { player, .. } => {
+										if let Some(player) = player.as_ref() {
+											player.set_loop(self.config.loop_media);
+										}
+									}
+									MediaState::Video { player } => {
+										if let Some(player) = player.as_mut() {
+											player.set_looping(self.config.loop_media)?;
+										}
+									}
+									_ => {}
+								}
+								continue;
+							}
+							if ui_ev.key == self.config.key_canvas_background {
+								self.config.canvas_background = match self.config.canvas_background {
+									ViewerCanvasBackground::Dark => ViewerCanvasBackground::Gradient,
+									ViewerCanvasBackground::Gradient => ViewerCanvasBackground::Dark,
+								};
+								continue;
+							}
+							if ui_ev.key == self.config.key_canvas_grid {
+								self.config.show_canvas_grid = !self.config.show_canvas_grid;
+								continue;
+							}
 						}
 
 						// Live source raw events (before navigation).
@@ -320,8 +414,17 @@ impl<'src> Viewer<'src> {
 							source.on_event(&ui_ev)?;
 						}
 
-						// Navigation consumes scroll/drag/pinch.
-						let nav_consumed = nav.handle_event(&ui_ev);
+						// Header/popups and temporal surfaces own their pointer gestures.
+						let pointer_event = matches!(
+							ui_ev.kind,
+							UiEventKind::MouseDown | UiEventKind::MouseMove | UiEventKind::MouseScroll
+						);
+						let chrome_pointer = pointer_event
+							&& (ui_ev.mouse_y < 43.0 * sy
+								|| media.has_timeline()
+								|| ui.is_popup_open("viewer-window-menu")
+								|| ui.is_popup_open("viewer-volume-menu"));
+						let nav_consumed = !chrome_pointer && nav.handle_event(&ui_ev);
 
 						// Image view shortcuts.
 						if !nav_consumed {
@@ -340,6 +443,7 @@ impl<'src> Viewer<'src> {
 				}
 
 				// Per-frame update.
+				nav.set_motion_speed(self.config.motion_speed);
 				nav.update(delta_ms);
 				media.update(delta_ms, engine)?;
 				if let Some(source) = self.live_source.as_deref_mut() {
@@ -348,7 +452,15 @@ impl<'src> Viewer<'src> {
 
 				// Build frame.
 				let [compose_w, compose_h] = ui.compose_extent().unwrap_or([w, h]);
+				ui.set_content_scale((sx + sy) * 0.5)?;
+				ui.set_motion_speed(self.config.motion_speed)?;
 				ui.begin_frame(delta_ms);
+				let chrome_visible = !media.has_timeline()
+					|| !self.config.auto_hide_controls
+					|| !media.is_playing()
+					|| (pointer_inside && controls_idle_ms < self.config.controls_hide_delay_ms as f32)
+					|| ui.is_popup_open("viewer-window-menu")
+					|| ui.is_popup_open("viewer-volume-menu");
 				render_frame(
 					&mut ui,
 					&mut media,
@@ -356,11 +468,36 @@ impl<'src> Viewer<'src> {
 					&self.config,
 					compose_w,
 					compose_h,
+					(sx + sy) * 0.5,
+					chrome_visible,
+					&mut timeline_state,
 				)?;
 				if matches!(media, MediaState::Live)
 					&& let Some(source) = self.live_source.as_deref_mut()
 				{
 					source.render(&mut ui, compose_w, compose_h)?;
+				}
+				if chrome_visible {
+					running &= decoration::render(
+						&mut ui,
+						&window,
+						&mut media,
+						&mut nav,
+						&mut self.config,
+						[compose_w, compose_h],
+						[sx, sy],
+					)?;
+				}
+				if window.client_frame
+					&& presenter.has_transparent_composition()
+					&& !window.window.is_maximized()
+					&& window.window.fullscreen_state() == sdl3::video::FullscreenType::Off
+				{
+					ui.mask_rounded_rect(
+						PixelRect::new(0, 0, compose_w, compose_h),
+						crate::runtime::window_decoration::CORNER_RADIUS * (sx + sy) * 0.5,
+						crate::Color::new(0.0, 0.0, 0.0, 0.0),
+					)?;
 				}
 				ui.end_frame();
 
@@ -403,6 +540,7 @@ fn preserve_first(result: &mut Result<()>, next: Result<()>) {
 
 // ── Frame render ──────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn render_frame(
 	ui: &mut Ui<'_>,
 	media: &mut MediaState,
@@ -410,12 +548,30 @@ fn render_frame(
 	config: &ViewerConfig,
 	w: u32,
 	h: u32,
+	content_scale: f32,
+	chrome_visible: bool,
+	timeline_state: &mut timeline::TransportState,
 ) -> Result<()> {
 	let full_rect = PixelRect::new(0, 0, w, h);
 
 	// Canvas background.
-	if media.has_visual_content() {
-		overlay::draw_canvas_background(ui, full_rect, config)?;
+	if media.has_visual_content() || matches!(media, MediaState::Audio { .. }) {
+		let (cw, ch) = media.content_size().unwrap_or((w, h));
+		let destination = PixelRect::new(
+			nav.pan_x() as i32,
+			nav.pan_y() as i32,
+			(cw as f32 * nav.zoom()).max(1.0) as u32,
+			(ch as f32 * nav.zoom()).max(1.0) as u32,
+		);
+		overlay::draw_canvas_background(
+			ui,
+			full_rect,
+			destination,
+			nav,
+			content_scale,
+			media.has_visual_content(),
+			config,
+		)?;
 	}
 
 	// Media content area.
@@ -441,8 +597,8 @@ fn render_frame(
 	}
 
 	// Timeline (temporal modes).
-	if config.show_timeline && media.has_timeline() {
-		timeline::render(ui, media, config, full_rect)?;
+	if chrome_visible && config.show_timeline && media.has_timeline() {
+		timeline::render(ui, media, config, full_rect, timeline_state)?;
 	}
 	overlay::draw_hud(ui, full_rect, nav, media.mode_name(), config)?;
 
@@ -496,8 +652,8 @@ impl MediaState {
 			}
 			ViewerMode::Audio => {
 				let (player, analysis) = if !config.path.is_empty() {
+					let a = audio_view::analyze(engine, &config.path, config)?;
 					let p = audio_mode::open(engine, config)?;
-					let a = audio_view::analyze(&config.path, config)?;
 					(Some(p), a)
 				} else {
 					(None, None)
@@ -521,8 +677,14 @@ impl MediaState {
 						player: Box::new(Some(player)),
 					});
 				}
-				if let Ok(player) = audio_mode::open(engine, config) {
-					let analysis = audio_view::analyze(&config.path, config)?;
+				if let Ok(mut player) = audio_mode::open(engine, config) {
+					let analysis = match audio_view::analyze(engine, &config.path, config) {
+						Ok(analysis) => analysis,
+						Err(error) => {
+							let _ = player.close();
+							return Err(error);
+						}
+					};
 					return Ok(Self::Audio {
 						player: Box::new(Some(player)),
 						analysis,
@@ -578,7 +740,7 @@ impl MediaState {
 	}
 
 	fn handle_event(&mut self, ev: &crate::ui::types::UiEvent, config: &ViewerConfig) -> Result<()> {
-		if ev.kind != UiEventKind::KeyDown {
+		if ev.kind != UiEventKind::KeyDown || ev.key_repeat {
 			return Ok(());
 		}
 		match self {
@@ -638,8 +800,9 @@ impl MediaState {
 				.as_ref()
 				.as_ref()
 				.and_then(|p| {
-					// Approximate from frame index at 30 fps.
-					p.current_frame_index().ok().map(|i| i * 1_000_000 / 30)
+					p.current_frame().ok().map(|frame| {
+						u64::try_from(frame.timing().presentation_timestamp().as_micros()).unwrap_or(u64::MAX)
+					})
 				})
 				.unwrap_or(0),
 			Self::Audio { player, .. } => player.as_ref().as_ref().map_or(0, |p| p.position_us()),
@@ -657,7 +820,7 @@ impl MediaState {
 					(d as u128 * tb.numerator() as u128 * 1_000_000 / tb.denominator().max(1) as u128) as u64
 				})
 			}),
-			// AudioPlayer doesn't expose total duration.
+			Self::Audio { player, .. } => player.as_ref().as_ref().map_or(0, |p| p.duration_us()),
 			_ => 0,
 		}
 	}
@@ -695,6 +858,28 @@ impl MediaState {
 			}
 			_ => Ok(()),
 		}
+	}
+
+	/// Donor temporal step: one video frame or five seconds of audio, paused.
+	pub(crate) fn step_temporal(&mut self, steps: i32) -> Result<()> {
+		match self {
+			Self::Video { player } => {
+				if let Some(player) = player.as_mut() {
+					player.pause()?;
+					player.step_frames(steps)?;
+				}
+			}
+			Self::Audio { player, .. } => {
+				if let Some(player) = player.as_mut() {
+					player.pause();
+					let target = (i128::from(player.position_us()) + i128::from(steps) * 5_000_000)
+						.clamp(0, i128::from(player.duration_us())) as u64;
+					player.seek(target)?;
+				}
+			}
+			_ => {}
+		}
+		Ok(())
 	}
 
 	pub(crate) fn seek_fraction(&mut self, fraction: f32) -> Result<()> {

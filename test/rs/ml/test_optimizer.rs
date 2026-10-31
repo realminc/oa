@@ -12,15 +12,15 @@ test_vk!(
 	clip_grad_norm_matches_the_donor_two_pass_operation,
 	engine,
 	{
-		let first = oa::Matrix::from_f32(&engine, [3], &[3.0, 4.0, 0.0])?;
-		let second = oa::Matrix::from_f32(&engine, [2, 2], &[0.0, 12.0, 0.0, 0.0])?;
-		let empty = oa::Matrix::from_f32(&engine, [0], &[])?;
+		let first = oa::Matrix::new_from_f32(&engine, [3], &[3.0, 4.0, 0.0])?;
+		let second = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.0, 12.0, 0.0, 0.0])?;
+		let empty = oa::Matrix::new_from_f32(&engine, [0], &[])?;
 
 		oa::ml::optim::clip_grad_norm(&[first.clone(), empty, second.clone()], 6.5)?;
 		assert_close(&first.read_f32()?, &[1.5, 2.0, 0.0], 1.0e-6);
 		assert_close(&second.read_f32()?, &[0.0, 6.0, 0.0, 0.0], 1.0e-6);
 
-		let below_limit = oa::Matrix::from_f32(&engine, [2], &[3.0, 4.0])?;
+		let below_limit = oa::Matrix::new_from_f32(&engine, [2], &[3.0, 4.0])?;
 		oa::ml::optim::clip_grad_norm(std::slice::from_ref(&below_limit), 5.0)?;
 		assert_close(&below_limit.read_f32()?, &[3.0, 4.0], 0.0);
 		Ok(())
@@ -31,7 +31,7 @@ test_vk!(
 	clip_grad_norm_validates_collection_and_scalar_contracts,
 	engine,
 	{
-		let gradient = oa::Matrix::from_f32(&engine, [1], &[1.0])?;
+		let gradient = oa::Matrix::new_from_f32(&engine, [1], &[1.0])?;
 		let error = oa::ml::optim::clip_grad_norm(std::slice::from_ref(&gradient), f32::NAN)
 			.expect_err("non-finite max norm was accepted");
 		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
@@ -40,13 +40,13 @@ test_vk!(
 			.expect_err("duplicate gradient storage was accepted");
 		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 
-		let integer = oa::Matrix::from_slice(&engine, [1], &[1_i32])?;
+		let integer = oa::Matrix::new_from_slice(&engine, [1], &[1_i32])?;
 		let error =
 			oa::ml::optim::clip_grad_norm(&[integer], 1.0).expect_err("integer gradient was accepted");
 		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 
 		let gradients = (0..17)
-			.map(|_| oa::Matrix::from_f32(&engine, [1], &[1.0]))
+			.map(|_| oa::Matrix::new_from_f32(&engine, [1], &[1.0]))
 			.collect::<oa::Result<Vec<_>>>()?;
 		let error = oa::ml::optim::clip_grad_norm(&gradients, 1.0)
 			.expect_err("more than sixteen gradients were accepted");
@@ -60,7 +60,7 @@ test_vk!(
 	engine,
 	{
 		let gradients = (1..=10)
-			.map(|value| oa::Matrix::from_f32(&engine, [1], &[value as f32]))
+			.map(|value| oa::Matrix::new_from_f32(&engine, [1], &[value as f32]))
 			.collect::<oa::Result<Vec<_>>>()?;
 		let (plan, ()) = engine.capture(|| oa::ml::optim::clip_grad_norm(&gradients, 100.0))?;
 
@@ -87,11 +87,11 @@ test_vk!(sgd_matches_the_donor_fp32_update_order, engine, {
 	const LEARNING_RATE: f32 = 0.05;
 	const WEIGHT_DECAY: f32 = 0.01;
 	let initial = [0.2_f32, -0.1, -0.3, 0.4];
-	let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 2.0, -1.0, 0.5])?;
-	let targets = oa::Matrix::from_slice(&engine, [2], &[1_u32, 0])?;
-	let weight = oa::Matrix::from_f32(&engine, [2, 2], &initial)?;
-	let bias = oa::Matrix::from_f32(&engine, [2], &[0.0, 0.0])?;
-	let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+	let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 2.0, -1.0, 0.5])?;
+	let targets = oa::Matrix::new_from_slice(&engine, [2], &[1_u32, 0])?;
+	let weight = oa::Matrix::new_from_f32(&engine, [2, 2], &initial)?;
+	let bias = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 0.0])?;
+	let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 	let weight_parameter = layer.weight();
 	let mut optimizer = oa::ml::Sgd::new(layer.parameters(), LEARNING_RATE, 0.0, WEIGHT_DECAY)?;
 
@@ -117,11 +117,11 @@ test_vk!(adam_matches_the_donor_first_step_bias_correction, engine, {
 	const LEARNING_RATE: f32 = 0.01;
 	const EPSILON: f32 = 1.0e-8;
 	let initial = [0.2_f32, -0.1, -0.3, 0.4];
-	let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 2.0, -1.0, 0.5])?;
-	let targets = oa::Matrix::from_slice(&engine, [2], &[1_u32, 0])?;
-	let weight = oa::Matrix::from_f32(&engine, [2, 2], &initial)?;
-	let bias = oa::Matrix::from_f32(&engine, [2], &[0.0, 0.0])?;
-	let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+	let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 2.0, -1.0, 0.5])?;
+	let targets = oa::Matrix::new_from_slice(&engine, [2], &[1_u32, 0])?;
+	let weight = oa::Matrix::new_from_f32(&engine, [2, 2], &initial)?;
+	let bias = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 0.0])?;
+	let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 	let weight_parameter = layer.weight();
 	let mut optimizer = oa::ml::Adam::new(layer.parameters(), LEARNING_RATE)?;
 
@@ -151,21 +151,21 @@ test_vk!(muon_matches_the_donor_matrix_and_vector_routes, engine, {
 	const ITERATIONS: u32 = 5;
 	let initial_weight = [-0.15_f32, -0.14, -0.13, -0.12, -0.11, -0.10, -0.09, -0.08];
 	let initial_bias = [0.03_f32, -0.02];
-	let input = oa::Matrix::from_f32(
+	let input = oa::Matrix::new_from_f32(
 		&engine,
 		[4, 4],
 		&[
 			1.0, 0.0, 0.5, -0.5, 0.0, 1.0, -0.25, 0.75, 0.5, -0.5, 1.0, 0.0, -0.5, 0.25, 0.0, 1.0,
 		],
 	)?;
-	let targets = oa::Matrix::from_slice(&engine, [4], &[0_u32, 1, 0, 1])?;
-	let layer = oa::ml::nn::Linear::from_matrices(
-		oa::Matrix::from_f32(&engine, [2, 4], &initial_weight)?,
-		oa::Matrix::from_f32(&engine, [2], &initial_bias)?,
+	let targets = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 1, 0, 1])?;
+	let layer = oa::ml::nn::Linear::new_from_matrices(
+		oa::Matrix::new_from_f32(&engine, [2, 4], &initial_weight)?,
+		oa::Matrix::new_from_f32(&engine, [2], &initial_bias)?,
 	)?;
 	let weight = layer.weight();
 	let bias = layer.bias().expect("biased Linear is missing its bias");
-	let mut optimizer = oa::ml::Muon::with_hyperparameters(
+	let mut optimizer = oa::ml::Muon::new_with_hyperparameters(
 		layer.parameters(),
 		LEARNING_RATE,
 		BETA,
@@ -227,9 +227,9 @@ test_vk!(
 	eager_training_accepts_sgd_through_optimizer_policy,
 	engine,
 	{
-		let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
-		let targets = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
-		let layer = oa::ml::nn::Linear::with_seed(&engine, 2, 2, 0x5347_4401)?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
+		let targets = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
+		let layer = oa::ml::nn::Linear::new_with_seed(&engine, 2, 2, 0x5347_4401)?;
 		let initial = layer.weight().data().read_f32()?;
 		let mut optimizer = oa::ml::Sgd::new(layer.parameters(), 0.1, 0.9, 0.0)?;
 		let mut training = oa::ml::ItTraining::new_eager(
@@ -334,14 +334,14 @@ fn run_muon_matrix_case(engine: &oa::Engine, rows: usize, columns: usize) -> oa:
 	let input_values = (0..2 * columns)
 		.map(|index| ((index * 7 % 29) as f32 - 14.0) * 0.01)
 		.collect::<Vec<_>>();
-	let layer = oa::ml::nn::Linear::from_matrices(
-		oa::Matrix::from_f32(engine, [rows, columns], &weights)?,
-		oa::Matrix::from_f32(engine, [rows], &vec![0.0; rows])?,
+	let layer = oa::ml::nn::Linear::new_from_matrices(
+		oa::Matrix::new_from_f32(engine, [rows, columns], &weights)?,
+		oa::Matrix::new_from_f32(engine, [rows], &vec![0.0; rows])?,
 	)?;
-	let input = oa::Matrix::from_f32(engine, [2, columns], &input_values)?;
-	let targets = oa::Matrix::from_slice(engine, [2], &[0_u32, (rows - 1) as u32])?;
+	let input = oa::Matrix::new_from_f32(engine, [2, columns], &input_values)?;
+	let targets = oa::Matrix::new_from_slice(engine, [2], &[0_u32, (rows - 1) as u32])?;
 	let weight = layer.weight();
-	let mut optimizer = oa::ml::Muon::with_hyperparameters(
+	let mut optimizer = oa::ml::Muon::new_with_hyperparameters(
 		layer.parameters(),
 		LEARNING_RATE,
 		BETA,

@@ -125,13 +125,13 @@ test_vk!(gru_matches_independent_host_scan, engine, {
 		bias_ih: &bias_ih,
 		bias_hh: &bias_hh,
 	});
-	let gru = oa::ml::nn::Gru::from_matrices(
-		oa::Matrix::from_f32(&engine, [6, 2], &weight_ih)?,
-		oa::Matrix::from_f32(&engine, [6, 2], &weight_hh)?,
-		oa::Matrix::from_f32(&engine, [6], &bias_ih)?,
-		oa::Matrix::from_f32(&engine, [6], &bias_hh)?,
+	let gru = oa::ml::nn::Gru::new_from_matrices(
+		oa::Matrix::new_from_f32(&engine, [6, 2], &weight_ih)?,
+		oa::Matrix::new_from_f32(&engine, [6, 2], &weight_hh)?,
+		oa::Matrix::new_from_f32(&engine, [6], &bias_ih)?,
+		oa::Matrix::new_from_f32(&engine, [6], &bias_hh)?,
 	)?;
-	let input = oa::Matrix::from_f32(&engine, [2, 2, 2], &input_values)?;
+	let input = oa::Matrix::new_from_f32(&engine, [2, 2, 2], &input_values)?;
 	let output = gru.forward(&input)?;
 	assert_eq!(output.shape(), [2, 2, 2]);
 	assert_close(&output.read_f32()?, &expected, 3.0e-5);
@@ -169,13 +169,13 @@ test_vk!(gru_canonical_width_matches_independent_host_scan, engine, {
 		bias_ih: &bias_ih,
 		bias_hh: &bias_hh,
 	});
-	let gru = oa::ml::nn::Gru::from_matrices(
-		oa::Matrix::from_f32(&engine, [3 * HIDDEN, INPUT], &weight_ih)?,
-		oa::Matrix::from_f32(&engine, [3 * HIDDEN, HIDDEN], &weight_hh)?,
-		oa::Matrix::from_f32(&engine, [3 * HIDDEN], &bias_ih)?,
-		oa::Matrix::from_f32(&engine, [3 * HIDDEN], &bias_hh)?,
+	let gru = oa::ml::nn::Gru::new_from_matrices(
+		oa::Matrix::new_from_f32(&engine, [3 * HIDDEN, INPUT], &weight_ih)?,
+		oa::Matrix::new_from_f32(&engine, [3 * HIDDEN, HIDDEN], &weight_hh)?,
+		oa::Matrix::new_from_f32(&engine, [3 * HIDDEN], &bias_ih)?,
+		oa::Matrix::new_from_f32(&engine, [3 * HIDDEN], &bias_hh)?,
 	)?;
-	let input = oa::Matrix::from_f32(&engine, [BATCH, SEQUENCE, INPUT], &input_values)?;
+	let input = oa::Matrix::new_from_f32(&engine, [BATCH, SEQUENCE, INPUT], &input_values)?;
 	let output = gru.forward(&input)?;
 	assert_close(&output.read_f32()?, &expected, 3.0e-4);
 	Ok(())
@@ -202,19 +202,19 @@ test_vk!(gru_cell_matches_nonzero_hidden_state_oracle, engine, {
 		bias_ih: &bias_ih,
 		bias_hh: &bias_hh,
 	});
-	let cell = oa::ml::nn::GruCell::from_matrices(
-		oa::Matrix::from_f32(&engine, [6, 2], &weight_ih)?,
-		oa::Matrix::from_f32(&engine, [6, 2], &weight_hh)?,
-		oa::Matrix::from_f32(&engine, [6], &bias_ih)?,
-		oa::Matrix::from_f32(&engine, [6], &bias_hh)?,
+	let cell = oa::ml::nn::GruCell::new_from_matrices(
+		oa::Matrix::new_from_f32(&engine, [6, 2], &weight_ih)?,
+		oa::Matrix::new_from_f32(&engine, [6, 2], &weight_hh)?,
+		oa::Matrix::new_from_f32(&engine, [6], &bias_ih)?,
+		oa::Matrix::new_from_f32(&engine, [6], &bias_hh)?,
 	)?;
 	assert_eq!(cell.input_size(), 2);
 	assert_eq!(cell.hidden_size(), 2);
 	assert!(cell.has_bias());
 	assert_eq!(cell.all_parameters()?.len(), 4);
 	let output = cell.step(
-		&oa::Matrix::from_f32(&engine, [1, 2], &input)?,
-		&oa::Matrix::from_f32(&engine, [1, 2], &hidden)?,
+		&oa::Matrix::new_from_f32(&engine, [1, 2], &input)?,
+		&oa::Matrix::new_from_f32(&engine, [1, 2], &hidden)?,
 	)?;
 	assert_close(&output.read_f32()?, &expected, 3.0e-5);
 	assert_eq!(cell.zero_state(3)?.read_f32()?, vec![0.0; 6]);
@@ -230,15 +230,15 @@ fn gpu_loss_and_gradients(
 	bias_hh: &[f32],
 	backward: bool,
 ) -> oa::Result<(f32, Vec<Vec<f32>>)> {
-	let gru = oa::ml::nn::Gru::from_matrices(
-		oa::Matrix::from_f32(engine, [3, 1], weight_ih)?,
-		oa::Matrix::from_f32(engine, [3, 1], weight_hh)?,
-		oa::Matrix::from_f32(engine, [3], bias_ih)?,
-		oa::Matrix::from_f32(engine, [3], bias_hh)?,
+	let gru = oa::ml::nn::Gru::new_from_matrices(
+		oa::Matrix::new_from_f32(engine, [3, 1], weight_ih)?,
+		oa::Matrix::new_from_f32(engine, [3, 1], weight_hh)?,
+		oa::Matrix::new_from_f32(engine, [3], bias_ih)?,
+		oa::Matrix::new_from_f32(engine, [3], bias_hh)?,
 	)?;
 	let tape = oa::ml::GradientTape::new();
-	let output = gru.forward(&oa::Matrix::from_f32(engine, [1, 2, 1], input)?)?;
-	let target = oa::Matrix::from_f32(engine, [1, 2, 1], &[0.0, 0.0])?;
+	let output = gru.forward(&oa::Matrix::new_from_f32(engine, [1, 2, 1], input)?)?;
+	let target = oa::Matrix::new_from_f32(engine, [1, 2, 1], &[0.0, 0.0])?;
 	let loss = oa::ml::loss::mse(&output, &target)?;
 	if backward {
 		tape.backward(&loss)?;
@@ -269,18 +269,18 @@ fn gpu_cell_loss_and_gradients(
 	values: &[Vec<f32>; 4],
 	backward: bool,
 ) -> oa::Result<(f32, Vec<Vec<f32>>)> {
-	let cell = oa::ml::nn::GruCell::from_matrices(
-		oa::Matrix::from_f32(engine, [3, 1], &values[0])?,
-		oa::Matrix::from_f32(engine, [3, 1], &values[1])?,
-		oa::Matrix::from_f32(engine, [3], &values[2])?,
-		oa::Matrix::from_f32(engine, [3], &values[3])?,
+	let cell = oa::ml::nn::GruCell::new_from_matrices(
+		oa::Matrix::new_from_f32(engine, [3, 1], &values[0])?,
+		oa::Matrix::new_from_f32(engine, [3, 1], &values[1])?,
+		oa::Matrix::new_from_f32(engine, [3], &values[2])?,
+		oa::Matrix::new_from_f32(engine, [3], &values[3])?,
 	)?;
 	let tape = oa::ml::GradientTape::new();
 	let output = cell.step(
-		&oa::Matrix::from_f32(engine, [1, 1], &[input])?,
-		&oa::Matrix::from_f32(engine, [1, 1], &[hidden])?,
+		&oa::Matrix::new_from_f32(engine, [1, 1], &[input])?,
+		&oa::Matrix::new_from_f32(engine, [1, 1], &[hidden])?,
 	)?;
-	let target = oa::Matrix::from_f32(engine, [1, 1], &[0.0])?;
+	let target = oa::Matrix::new_from_f32(engine, [1, 1], &[0.0])?;
 	let loss = oa::ml::loss::mse(&output, &target)?;
 	if backward {
 		tape.backward(&loss)?;
@@ -374,13 +374,13 @@ test_vk!(
 	stacked_and_bias_free_gru_preserve_module_contract,
 	engine,
 	{
-		let biased = oa::ml::nn::Gru::with_seed(&engine, 2, 3, 2, true, 0x4752_5501)?;
+		let biased = oa::ml::nn::Gru::new_with_seed(&engine, 2, 3, 2, true, 0x4752_5501)?;
 		assert_eq!(biased.input_size(), 2);
 		assert_eq!(biased.hidden_size(), 3);
 		assert_eq!(biased.num_layers(), 2);
 		assert!(biased.has_bias());
 		assert_eq!(biased.all_parameters()?.len(), 8);
-		let input = oa::Matrix::from_f32(&engine, [2, 4, 2], &[0.1; 16])?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 4, 2], &[0.1; 16])?;
 		let before_freeze = biased.forward(&input)?.read_f32()?;
 		let layer_parameters = biased.layer_parameters(0).expect("missing layer");
 		layer_parameters[2].set_requires_grad(false);
@@ -388,7 +388,7 @@ test_vk!(
 		let after_freeze = biased.forward(&input)?.read_f32()?;
 		assert_close(&after_freeze, &before_freeze, 1.0e-7);
 
-		let bias_free = oa::ml::nn::Gru::with_seed(&engine, 2, 3, 2, false, 0x4752_5502)?;
+		let bias_free = oa::ml::nn::Gru::new_with_seed(&engine, 2, 3, 2, false, 0x4752_5502)?;
 		assert!(!bias_free.has_bias());
 		assert_eq!(bias_free.all_parameters()?.len(), 4);
 		assert_eq!(
@@ -398,7 +398,7 @@ test_vk!(
 		assert_eq!(bias_free.forward(&input)?.shape(), [2, 4, 3]);
 		assert_eq!(
 			bias_free
-				.forward(&oa::Matrix::from_f32(&engine, [2, 4, 1], &[0.0; 8])?)
+				.forward(&oa::Matrix::new_from_f32(&engine, [2, 4, 1], &[0.0; 8])?)
 				.err()
 				.expect("wrong GRU input width was accepted")
 				.kind(),

@@ -1,15 +1,17 @@
 use crate::{Error, Result};
 
 pub(super) struct Timeline {
-	handle: ash::vk::Semaphore,
+	handle: vk::Semaphore,
 }
 
 impl Timeline {
-	pub(super) fn new(device: &ash::Device) -> Result<Self> {
-		let mut type_info = ash::vk::SemaphoreTypeCreateInfo::default()
-			.semaphore_type(ash::vk::SemaphoreType::TIMELINE)
+	pub(super) fn new(device: &vk::Device) -> Result<Self> {
+		let mut type_info = vk::SemaphoreTypeCreateInfo::default()
+			.semaphore_type(vk::SemaphoreType::TIMELINE)
 			.initial_value(0);
-		let create_info = ash::vk::SemaphoreCreateInfo::default().push_next(&mut type_info);
+		let create_info = vk::SemaphoreCreateInfo::default()
+			.push_next(&mut type_info)
+			.map_err(Error::from)?;
 
 		// SAFETY: timelineSemaphore was queried and enabled for this device. The create
 		// chain remains live for the call and no allocation callbacks are installed.
@@ -18,35 +20,40 @@ impl Timeline {
 		Ok(Self { handle })
 	}
 
-	pub(super) fn is_complete(&self, device: &ash::Device, value: u64) -> Result<bool> {
+	pub(super) fn is_complete(&self, device: &vk::Device, value: u64) -> Result<bool> {
 		// SAFETY: this timeline semaphore belongs to the live device and may be queried
 		// concurrently with queue signals and host waits.
-		let completed = unsafe { device.get_semaphore_counter_value(self.handle) }
+		let mut completed = 0;
+		unsafe { device.get_semaphore_counter_value(self.handle, &mut completed) }
 			.map_err(|source| Error::backend_failure("Vulkan", "timeline query", source))?;
 		Ok(completed >= value)
 	}
 
-	pub(super) fn wait(&self, device: &ash::Device, value: u64) -> Result<()> {
+	pub(super) fn wait(&self, device: &vk::Device, value: u64) -> Result<()> {
 		let semaphores = [self.handle];
 		let values = [value];
-		let wait_info = ash::vk::SemaphoreWaitInfo::default()
-			.semaphores(&semaphores)
-			.values(&values);
+		let wait_info = vk::SemaphoreWaitInfo::default()
+			.semaphores(&semaphores, &values)
+			.map_err(Error::from)?;
 		// SAFETY: the semaphore/value arrays have equal length and remain live for the
 		// call. An infinite timeout makes this the explicit completion boundary.
-		unsafe { device.wait_semaphores(&wait_info, u64::MAX) }
-			.map_err(|source| Error::backend_failure("Vulkan", "timeline wait", source))
+		match unsafe { device.wait_semaphores(&wait_info, u64::MAX) } {
+			Ok(vk::Result::SUCCESS) => Ok(()),
+			result => Err(Error::backend_dispatch_failure(
+				"Vulkan",
+				"timeline wait",
+				result,
+			)),
+		}
 	}
 
-	pub(super) const fn raw(&self) -> ash::vk::Semaphore {
+	pub(super) const fn raw(&self) -> vk::Semaphore {
 		self.handle
 	}
 
-	pub(super) fn destroy(&mut self, device: &ash::Device) {
+	pub(super) fn destroy(&mut self, device: &vk::Device) {
 		// SAFETY: the owning device destroys this semaphore once after the retirement
 		// worker and every event have released their device references.
-		unsafe {
-			device.destroy_semaphore(self.handle, None);
-		}
+		let _ = unsafe { device.destroy_semaphore(self.handle, None) };
 	}
 }

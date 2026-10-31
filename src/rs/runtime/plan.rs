@@ -977,7 +977,7 @@ impl ExecutionPlan {
 					.expect("planned barrier resource must have a lifetime");
 				let source_node = previous_access_node(&self.graph, destination_node, &barrier.buffer)
 					.expect("planned barrier must have a source access");
-				let source_stage = ash::vk::PipelineStageFlags2::COMPUTE_SHADER.as_raw();
+				let source_stage = vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT.as_raw();
 				let source_access = barrier.source.vk_access().as_raw();
 				let destination_access = barrier.destination.vk_access().as_raw();
 				crate::core::push_format(
@@ -1100,10 +1100,6 @@ impl ExecutionPlan {
 		self.graph.validate_training_replay_safety()
 	}
 
-	pub(super) fn graph(&self) -> &ExecutableGraph {
-		&self.graph
-	}
-
 	pub(super) fn reusable_command(&self, device: &Arc<Device>) -> Result<RecordedCommandBuffer> {
 		if let Some(command) = self.cached_command.borrow().as_ref().cloned() {
 			increment(&self.counters.command_cache_hits);
@@ -1119,10 +1115,6 @@ impl ExecutionPlan {
 	pub(super) fn precompile(&self, device: &Arc<Device>) -> Result<()> {
 		let _ = self.reusable_command(device)?;
 		Ok(())
-	}
-
-	pub(super) fn mark_timed_recorded(&self) {
-		increment(&self.counters.command_recordings);
 	}
 
 	pub(super) fn mark_submitted(&self, event: &Event) {

@@ -14,8 +14,8 @@ fn box_iou_has_the_direct_vision_signature() {
 test_vk!(box_iou_matches_independent_pairwise_oracle, engine, {
 	let boxes_a = vec![0.5, 0.5, 1.0, 1.0, 0.0, 0.0, 2.0, 2.0];
 	let boxes_b = vec![0.5, 0.5, 1.0, 1.0, 1.0, 0.5, 1.0, 1.0];
-	let left = Matrix::from_f32(&engine, [2, 4], &boxes_a)?;
-	let right = Matrix::from_f32(&engine, [2, 4], &boxes_b)?;
+	let left = Matrix::new_from_f32(&engine, [2, 4], &boxes_a)?;
+	let right = Matrix::new_from_f32(&engine, [2, 4], &boxes_b)?;
 	let output = oa::vision::box_iou(&left, &right)?;
 	assert_eq!(output.shape(), [2, 2]);
 	assert_eq!(output.dtype(), DType::F32);
@@ -78,8 +78,8 @@ test_vk!(
 			2.0,
 			2.0,
 		];
-		let left = Matrix::from_f32(&engine, [3, 4], &boxes_a)?;
-		let right = Matrix::from_f32(&engine, [5, 4], &boxes_b)?;
+		let left = Matrix::new_from_f32(&engine, [3, 4], &boxes_a)?;
+		let right = Matrix::new_from_f32(&engine, [5, 4], &boxes_b)?;
 		let (plan, output) = engine.capture(|| oa::vision::box_iou(&left, &right))?;
 		assert_eq!(output.shape(), [3, 5]);
 		let graph = plan.semantic_graph();
@@ -116,12 +116,12 @@ test_vk!(
 
 test_vk!(box_iou_rejects_invalid_structural_contracts, engine, {
 	let other_engine = oa::Engine::new()?;
-	let valid = Matrix::from_f32(&engine, [1, 4], &[0.0, 0.0, 1.0, 1.0])?;
-	let rank_one = Matrix::from_f32(&engine, [4], &[0.0, 0.0, 1.0, 1.0])?;
-	let wrong_columns = Matrix::from_f32(&engine, [1, 3], &[0.0, 0.0, 1.0])?;
-	let empty = Matrix::from_f32(&engine, [0, 4], &[])?;
-	let integer = Matrix::from_slice(&engine, [1, 4], &[0_i32, 0, 1, 1])?;
-	let foreign = Matrix::from_f32(&other_engine, [1, 4], &[0.0, 0.0, 1.0, 1.0])?;
+	let valid = Matrix::new_from_f32(&engine, [1, 4], &[0.0, 0.0, 1.0, 1.0])?;
+	let rank_one = Matrix::new_from_f32(&engine, [4], &[0.0, 0.0, 1.0, 1.0])?;
+	let wrong_columns = Matrix::new_from_f32(&engine, [1, 3], &[0.0, 0.0, 1.0])?;
+	let empty = Matrix::new_from_f32(&engine, [0, 4], &[])?;
+	let integer = Matrix::new_from_slice(&engine, [1, 4], &[0_i32, 0, 1, 1])?;
+	let foreign = Matrix::new_from_f32(&other_engine, [1, 4], &[0.0, 0.0, 1.0, 1.0])?;
 	for error in [
 		oa::vision::box_iou(&rank_one, &valid)
 			.err()
@@ -145,7 +145,7 @@ test_vk!(box_iou_rejects_invalid_structural_contracts, engine, {
 });
 
 test_vk!(nms_is_class_aware_score_ranked_and_deterministic, engine, {
-	let boxes = Matrix::from_f32(
+	let boxes = Matrix::new_from_f32(
 		&engine,
 		[5, 4],
 		&[
@@ -153,8 +153,8 @@ test_vk!(nms_is_class_aware_score_ranked_and_deterministic, engine, {
 			0.10, 0.90, 0.90, 0.10, 0.10,
 		],
 	)?;
-	let scores = Matrix::from_f32(&engine, [5], &[0.90, 0.80, 0.85, 0.70, 0.70])?;
-	let classes = Matrix::from_slice(&engine, [5], &[0_i32, 0, 1, 0, 0])?;
+	let scores = Matrix::new_from_f32(&engine, [5], &[0.90, 0.80, 0.85, 0.70, 0.70])?;
+	let classes = Matrix::new_from_slice(&engine, [5], &[0_i32, 0, 1, 0, 0])?;
 	let config = NmsConfig {
 		iou_threshold: 0.5,
 		max_detections: 5,
@@ -186,8 +186,8 @@ test_vk!(
 	confusion_and_binary_counts_match_host_oracles_and_atomic_contract,
 	engine,
 	{
-		let predicted = Matrix::from_slice(&engine, [7], &[0_i32, 1, 2, 1, -1, 3, 2])?;
-		let target = Matrix::from_slice(&engine, [7], &[0_i32, 2, 2, 1, 0, 0, 7])?;
+		let predicted = Matrix::new_from_slice(&engine, [7], &[0_i32, 1, 2, 1, -1, 3, 2])?;
+		let target = Matrix::new_from_slice(&engine, [7], &[0_i32, 2, 2, 1, 0, 0, 7])?;
 		let (plan, confusion) =
 			engine.capture(|| oa::vision::confusion_matrix(&predicted, &target, 3))?;
 		assert_eq!(confusion.shape(), [3, 3]);
@@ -211,8 +211,8 @@ test_vk!(
 		engine.submit(&plan)?.wait()?;
 		assert_eq!(confusion.read::<u32>()?, vec![1, 0, 0, 0, 1, 0, 0, 1, 1]);
 
-		let mask_predicted = Matrix::from_slice(&engine, [7], &[1_u8, 1, 0, 0, 3, 0, 1])?;
-		let mask_target = Matrix::from_slice(&engine, [7], &[1_u8, 0, 1, 0, 1, 0, 0])?;
+		let mask_predicted = Matrix::new_from_slice(&engine, [7], &[1_u8, 1, 0, 0, 3, 0, 1])?;
+		let mask_target = Matrix::new_from_slice(&engine, [7], &[1_u8, 0, 1, 0, 1, 0, 0])?;
 		let (mask_plan, mask_counts) =
 			engine.capture(|| oa::vision::binary_mask_counts(&mask_predicted, &mask_target))?;
 		engine.submit(&mask_plan)?.wait()?;
@@ -227,7 +227,7 @@ test_vk!(
 	detection_evaluation_matches_donor_dataset_oracle_and_split_graph,
 	engine,
 	{
-		let predicted_boxes = Matrix::from_f32(
+		let predicted_boxes = Matrix::new_from_f32(
 			&engine,
 			[4, 4],
 			&[
@@ -235,19 +235,19 @@ test_vk!(
 				0.20,
 			],
 		)?;
-		let predicted_scores = Matrix::from_f32(&engine, [4], &[0.90, 0.80, 0.70, 0.60])?;
-		let predicted_classes = Matrix::from_slice(&engine, [4], &[0_i32, 0, 1, 0])?;
-		let predicted_images = Matrix::from_slice(&engine, [4], &[0_i32, 0, 0, 1])?;
-		let target_boxes = Matrix::from_f32(
+		let predicted_scores = Matrix::new_from_f32(&engine, [4], &[0.90, 0.80, 0.70, 0.60])?;
+		let predicted_classes = Matrix::new_from_slice(&engine, [4], &[0_i32, 0, 1, 0])?;
+		let predicted_images = Matrix::new_from_slice(&engine, [4], &[0_i32, 0, 0, 1])?;
+		let target_boxes = Matrix::new_from_f32(
 			&engine,
 			[3, 4],
 			&[
 				0.20, 0.20, 0.20, 0.20, 0.80, 0.80, 0.20, 0.20, 0.50, 0.50, 0.20, 0.20,
 			],
 		)?;
-		let target_classes = Matrix::from_slice(&engine, [3], &[0_i32, 0, 1])?;
-		let target_images = Matrix::from_slice(&engine, [3], &[0_i32, 1, 0])?;
-		let thresholds = Matrix::from_f32(&engine, [2], &[0.50, 0.75])?;
+		let target_classes = Matrix::new_from_slice(&engine, [3], &[0_i32, 0, 1])?;
+		let target_images = Matrix::new_from_slice(&engine, [3], &[0_i32, 1, 0])?;
+		let thresholds = Matrix::new_from_f32(&engine, [2], &[0.50, 0.75])?;
 		let (plan, result) = engine.capture(|| {
 			oa::vision::evaluate(
 				&predicted_boxes,
@@ -314,8 +314,8 @@ test_vk!(
 	segmentation_evaluation_matches_oracle_and_ignores_invalid_labels,
 	engine,
 	{
-		let predicted = Matrix::from_slice(&engine, [2, 3], &[0_i32, 1, 2, 1, 8, 0])?;
-		let target = Matrix::from_slice(&engine, [2, 3], &[0_i32, 2, 2, 1, 0, -1])?;
+		let predicted = Matrix::new_from_slice(&engine, [2, 3], &[0_i32, 1, 2, 1, 8, 0])?;
+		let target = Matrix::new_from_slice(&engine, [2, 3], &[0_i32, 2, 2, 1, 0, -1])?;
 		let (plan, result) =
 			engine.capture(|| oa::vision::evaluate_segmentation(&predicted, &target, 3))?;
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
@@ -362,16 +362,16 @@ test_vk!(
 	engine,
 	{
 		let other_engine = oa::Engine::new()?;
-		let boxes = Matrix::from_f32(&engine, [1, 4], &[0.0, 0.0, 1.0, 1.0])?;
-		let scores = Matrix::from_f32(&engine, [1], &[1.0])?;
-		let classes = Matrix::from_slice(&engine, [1], &[0_i32])?;
-		let images = Matrix::from_slice(&engine, [1], &[0_i32])?;
-		let thresholds = Matrix::from_f32(&engine, [1], &[0.5])?;
-		let foreign_scores = Matrix::from_f32(&other_engine, [1], &[1.0])?;
-		let labels = Matrix::from_slice(&engine, [2], &[0_i32, 1])?;
-		let short_labels = Matrix::from_slice(&engine, [1], &[0_i32])?;
-		let masks = Matrix::from_slice(&engine, [2], &[0_u8, 1])?;
-		let short_masks = Matrix::from_slice(&engine, [1], &[0_u8])?;
+		let boxes = Matrix::new_from_f32(&engine, [1, 4], &[0.0, 0.0, 1.0, 1.0])?;
+		let scores = Matrix::new_from_f32(&engine, [1], &[1.0])?;
+		let classes = Matrix::new_from_slice(&engine, [1], &[0_i32])?;
+		let images = Matrix::new_from_slice(&engine, [1], &[0_i32])?;
+		let thresholds = Matrix::new_from_f32(&engine, [1], &[0.5])?;
+		let foreign_scores = Matrix::new_from_f32(&other_engine, [1], &[1.0])?;
+		let labels = Matrix::new_from_slice(&engine, [2], &[0_i32, 1])?;
+		let short_labels = Matrix::new_from_slice(&engine, [1], &[0_i32])?;
+		let masks = Matrix::new_from_slice(&engine, [2], &[0_u8, 1])?;
+		let short_masks = Matrix::new_from_slice(&engine, [1], &[0_u8])?;
 
 		for error in [
 			oa::vision::nms(&boxes, &foreign_scores, &classes, NmsConfig::default())

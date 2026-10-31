@@ -19,7 +19,7 @@ pub const SEP: u8 = 0x03;
 ///
 /// Returns an error when allocation or upload fails.
 pub fn encode(engine: &Engine, bytes: &[u8]) -> Result<Matrix> {
-	Matrix::from_slice(engine, [bytes.len()], bytes)
+	Matrix::new_from_slice(engine, [bytes.len()], bytes)
 }
 
 /// Upload raw bytes as one batched U8 sequence `[1, S]`.
@@ -28,7 +28,7 @@ pub fn encode(engine: &Engine, bytes: &[u8]) -> Result<Matrix> {
 ///
 /// Returns an error when allocation or upload fails.
 pub fn encode_batched(engine: &Engine, bytes: &[u8]) -> Result<Matrix> {
-	Matrix::from_slice(engine, [1, bytes.len()], bytes)
+	Matrix::new_from_slice(engine, [1, bytes.len()], bytes)
 }
 
 /// Upload UTF-8 text without tokenization or normalization.

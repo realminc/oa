@@ -48,7 +48,7 @@ impl Path {
 	}
 
 	/// Wrap an existing [`PathBuf`].
-	pub fn from_path_buf(p: PathBuf) -> Self {
+	pub fn new_from_path_buf(p: PathBuf) -> Self {
 		Self(p)
 	}
 

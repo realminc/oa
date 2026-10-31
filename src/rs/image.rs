@@ -13,6 +13,8 @@ mod filter;
 mod geometric;
 #[allow(clippy::module_inception)]
 mod image;
+#[path = "image/image.gen.rs"]
+mod methods;
 #[path = "image/pixel.gen.rs"]
 mod pixel;
 
@@ -42,3 +44,6 @@ pub use pixel::{
 	solarize, threshold_binary, threshold_binary_inv, threshold_to_zero, threshold_to_zero_inv,
 	threshold_truncate,
 };
+
+#[path = "image/parity.gen.rs"]
+mod parity;

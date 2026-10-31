@@ -4,6 +4,11 @@ use crate::{DType, Error, Matrix, OpAttribute, Result, matrix};
 use crate::runtime::{BufferBinding, KernelId, PushConstant, SemanticDispatch};
 
 mod session;
+mod trading;
+pub use trading::{
+	TRADING_ACCOUNT_FEATURES, TRADING_LEDGER_WIDTH, TradingBook, TradingConfig, TradingEnvironment,
+	TradingExecution, TradingMarginTier, TradingSeries, TradingState,
+};
 
 pub use session::{Environment, EnvironmentExecution};
 

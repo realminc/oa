@@ -123,9 +123,9 @@ test_vk!(channel_norm_forward_and_relu_match_host_oracle, engine, {
 		.collect::<Vec<_>>();
 	let weight_values = [0.7_f32, -1.2, 0.4, 1.5, -0.8];
 	let bias_values = [0.1_f32, 0.3, -0.2, 0.0, 0.25];
-	let input = oa::Matrix::from_f32(&engine, shape, &input_values)?;
-	let weight = oa::Matrix::from_f32(&engine, [5], &weight_values)?;
-	let bias = oa::Matrix::from_f32(&engine, [5], &bias_values)?;
+	let input = oa::Matrix::new_from_f32(&engine, shape, &input_values)?;
+	let weight = oa::Matrix::new_from_f32(&engine, [5], &weight_values)?;
+	let bias = oa::Matrix::new_from_f32(&engine, [5], &bias_values)?;
 	let (plan, output) =
 		engine.capture(|| oa::ml::matrix::channel_norm(&input, &weight, &bias, EPSILON))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
@@ -172,10 +172,10 @@ test_vk!(channel_norm_explicit_adjoints_match_host_oracle, engine, {
 	let gradient_values = [
 		0.3_f32, -0.7, 0.1, 0.8, -0.4, 0.2, -0.9, 0.5, 0.6, -0.2, 0.4, -0.1, 0.7, -0.6, 0.9,
 	];
-	let input = oa::Matrix::from_f32(&engine, shape, &input_values)?;
-	let weight = oa::Matrix::from_f32(&engine, [5], &weight_values)?;
-	let bias = oa::Matrix::from_f32(&engine, [5], &bias_values)?;
-	let output_gradient = oa::Matrix::from_f32(&engine, shape, &gradient_values)?;
+	let input = oa::Matrix::new_from_f32(&engine, shape, &input_values)?;
+	let weight = oa::Matrix::new_from_f32(&engine, [5], &weight_values)?;
+	let bias = oa::Matrix::new_from_f32(&engine, [5], &bias_values)?;
+	let output_gradient = oa::Matrix::new_from_f32(&engine, shape, &gradient_values)?;
 	let expected = host_backward(
 		&input_values,
 		shape,
@@ -240,15 +240,18 @@ test_vk!(channel_norm_module_accumulates_complete_adjoint, engine, {
 		EPSILON,
 		true,
 	);
-	let embedding =
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [6, 1], &input_values)?)?;
-	let indices = oa::Matrix::from_slice(&engine, [6], &[0_u32, 1, 2, 3, 4, 5])?;
-	let norm = oa::ml::nn::LayerNorm::from_matrices(
-		oa::Matrix::from_f32(&engine, [3], &weight_values)?,
-		oa::Matrix::from_f32(&engine, [3], &bias_values)?,
+	let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+		&engine,
+		[6, 1],
+		&input_values,
+	)?)?;
+	let indices = oa::Matrix::new_from_slice(&engine, [6], &[0_u32, 1, 2, 3, 4, 5])?;
+	let norm = oa::ml::nn::LayerNorm::new_from_matrices(
+		oa::Matrix::new_from_f32(&engine, [3], &weight_values)?,
+		oa::Matrix::new_from_f32(&engine, [3], &bias_values)?,
 		EPSILON,
 	)?;
-	let target = oa::Matrix::from_f32(&engine, shape, &target_values)?;
+	let target = oa::Matrix::new_from_f32(&engine, shape, &target_values)?;
 	let tape = oa::ml::GradientTape::new();
 	let input = embedding.forward(&indices)?.reshape(shape)?;
 	let loss = oa::ml::loss::mse(&norm.forward_channel_relu(&input)?, &target)?;
@@ -280,9 +283,9 @@ test_vk!(channel_norm_module_accumulates_complete_adjoint, engine, {
 });
 
 test_vk!(channel_norm_rejects_unadmitted_geometry, engine, {
-	let input = oa::Matrix::from_f32(&engine, [1, 3, 2], &[0.0; 6])?;
-	let weight = oa::Matrix::from_f32(&engine, [3], &[1.0; 3])?;
-	let bias = oa::Matrix::from_f32(&engine, [3], &[0.0; 3])?;
+	let input = oa::Matrix::new_from_f32(&engine, [1, 3, 2], &[0.0; 6])?;
+	let weight = oa::Matrix::new_from_f32(&engine, [3], &[1.0; 3])?;
+	let bias = oa::Matrix::new_from_f32(&engine, [3], &[0.0; 3])?;
 	for epsilon in [0.0_f32, -1.0, f32::NAN] {
 		assert_eq!(
 			oa::ml::matrix::channel_norm(&input, &weight, &bias, epsilon)
@@ -292,9 +295,9 @@ test_vk!(channel_norm_rejects_unadmitted_geometry, engine, {
 			oa::ErrorKind::InvalidArgument
 		);
 	}
-	let wide = oa::Matrix::from_f32(&engine, [1, 1025, 1], &[0.0; 1025])?;
-	let wide_weight = oa::Matrix::from_f32(&engine, [1025], &[1.0; 1025])?;
-	let wide_bias = oa::Matrix::from_f32(&engine, [1025], &[0.0; 1025])?;
+	let wide = oa::Matrix::new_from_f32(&engine, [1, 1025, 1], &[0.0; 1025])?;
+	let wide_weight = oa::Matrix::new_from_f32(&engine, [1025], &[1.0; 1025])?;
+	let wide_bias = oa::Matrix::new_from_f32(&engine, [1025], &[0.0; 1025])?;
 	assert_eq!(
 		oa::ml::matrix::channel_norm(&wide, &wide_weight, &wide_bias, EPSILON)
 			.err()

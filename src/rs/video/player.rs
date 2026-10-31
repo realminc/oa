@@ -131,7 +131,7 @@ impl VideoPlayer {
 	/// # Errors
 	///
 	/// Returns the same stream and device errors as [`open`](Self::open).
-	pub fn open_native(
+	pub fn new_native(
 		engine: &Engine,
 		path: impl AsRef<Path>,
 		config: VideoPlayerConfig,
@@ -171,7 +171,7 @@ impl VideoPlayer {
 				duration: ticks_to_duration(ticks, info)?,
 			});
 		}
-		let decoder = VideoDecoder::create(engine, info)?;
+		let decoder = VideoDecoder::new(engine, info)?;
 		let rate = config
 			.frame_rate_override
 			.unwrap_or_else(|| info.frame_rate());

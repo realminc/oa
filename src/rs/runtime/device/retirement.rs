@@ -86,7 +86,7 @@ impl RetirementService {
 					|retirement| {
 						retirement.command.confirm_secret_erasures();
 						worker_device.free(retirement.command);
-						retirement.completion.finish(RetirementState::Retired);
+						(retirement.completion, RetirementState::Retired)
 					},
 					|retirement| {
 						if !leaked_device {
@@ -94,9 +94,11 @@ impl RetirementService {
 							leaked_device = true;
 						}
 						retirement.command.fail_secret_erasures();
-						retirement.completion.finish(RetirementState::Failed);
+						let completion = retirement.completion.clone();
 						mem::forget(retirement);
+						(completion, RetirementState::Failed)
 					},
+					|(completion, state)| completion.finish(state),
 				);
 			})
 			.map_err(|source| Error::backend_failure("Vulkan", "retirement-worker creation", source))?;
@@ -322,12 +324,13 @@ impl RetirementCompletion {
 // Keep receiving after unknown completion: queued and racing submissions also
 // require quarantine. The generic ownership loop permits CPU-only failure proofs
 // without fake Vulkan handles; production supplies the exact device wait/free.
-fn drain_retirement_queue<T>(
+fn drain_retirement_queue<T, Completion>(
 	receiver: mpsc::Receiver<T>,
 	control: &WorkerControl,
 	mut wait: impl FnMut(&T) -> Result<()>,
-	mut retire: impl FnMut(T),
-	mut quarantine: impl FnMut(T),
+	mut retire: impl FnMut(T) -> Completion,
+	mut quarantine: impl FnMut(T) -> Completion,
+	mut publish: impl FnMut(Completion),
 ) {
 	while let Ok(retirement) = receiver.recv() {
 		let completed = if control.failed.load(Ordering::Acquire) {
@@ -341,12 +344,16 @@ fn drain_retirement_queue<T>(
 				}
 			}
 		};
-		if completed {
-			retire(retirement);
+		let completion = if completed {
+			retire(retirement)
 		} else {
-			quarantine(retirement);
-		}
+			quarantine(retirement)
+		};
+		// Finish resource retirement and accounting before waking Event waiters.
+		// Otherwise their Engine drop may observe a spurious pending item and
+		// detach the last Device owner into process/layer shutdown.
 		control.pending.fetch_sub(1, Ordering::AcqRel);
+		publish(completion);
 	}
 }
 

@@ -7,13 +7,7 @@ use std::{
 };
 
 /// Raw Vulkan image and view info returned by [`Texture::render_target_image`].
-type RenderTargetImageInfo = (
-	ash::vk::Image,
-	ash::vk::ImageView,
-	u32,
-	u32,
-	Rc<dyn std::any::Any>,
-);
+type RenderTargetImageInfo = (vk::Image, vk::ImageView, u32, u32, Rc<dyn std::any::Any>);
 
 #[derive(Clone, Copy)]
 pub(super) struct RenderTargetLease {
@@ -39,8 +33,8 @@ enum TextureBacking {
 		engine_handle: crate::runtime::EngineHandle,
 		owner: Rc<std::cell::RefCell<super::renderer::RendererState>>,
 		lease: RenderTargetLease,
-		image: ash::vk::Image,
-		view: ash::vk::ImageView,
+		image: vk::Image,
+		view: vk::ImageView,
 		width: u32,
 		height: u32,
 	},
@@ -228,7 +222,7 @@ pub fn texture_from_rgba8(
 			"render::texture_from_rgba8 requires exactly width * height * 4 bytes",
 		));
 	}
-	let data = Matrix::from_slice(engine, [height, width, 4], rgba)?;
+	let data = Matrix::new_from_slice(engine, [height, width, 4], rgba)?;
 	texture_from_matrix(data, width, height)
 }
 
@@ -255,6 +249,33 @@ pub fn texture_from_image(image: &Image) -> Result<Texture> {
 	let width = image.as_matrix().shape()[1];
 	let height = image.as_matrix().shape()[0];
 	texture_from_matrix(data, width, height)
+}
+
+/// Decode a still-image file directly into a packed RGBA8 Texture.
+///
+/// This host codec boundary uploads the decoded pixels once, without converting
+/// through normalized planar FP32 Image storage or reading device pixels back.
+/// Donor composition: `oa/ui/viewer.cpp::openImage`, `FnImage::decodeFile` and
+/// `FnTexture::fromImage`; adapted to Rust's device-resident Image distinction.
+///
+/// # Errors
+///
+/// Returns an error for inaccessible, unsupported or malformed media, or failed
+/// checked texture allocation/upload.
+pub fn texture_from_file(engine: &Engine, path: impl AsRef<Path>) -> Result<Texture> {
+	let decoded = image_codec::ImageReader::open(path)
+		.map_err(|source| Error::io("texture image file open", source))?
+		.with_guessed_format()
+		.map_err(|source| Error::io("texture image format probe", source))?
+		.decode()
+		.map_err(|source| Error::backend_failure("image", "texture decode", source))?
+		.to_rgba8();
+	texture_from_rgba8(
+		engine,
+		decoded.as_raw(),
+		decoded.width() as usize,
+		decoded.height() as usize,
+	)
 }
 
 /// Deep-copy a packed Texture into independent device storage.
@@ -327,11 +348,10 @@ fn texture_from_matrix(data: Matrix, width: usize, height: usize) -> Result<Text
 		.engine_handle()
 		.upload_native_rgba_image(data.storage(), w32, h32)?;
 	let semantic = Rc::new(TextureSemantic::new()?);
-	// Emit a schema-owned Texture semantic node so the session graph records
-	// this value and its extent, matching the Image/Audio semantic contract.
-	let _ = data
-		.engine_handle()
-		.record_texture_semantic(semantic.id, width, height);
+	// Keep value metadata on the Texture itself. Like Matrix constructors,
+	// construction does not add an unused external value to the eager graph.
+	// A real consuming operation owns semantic admission and physical bindings.
+
 	Ok(Texture {
 		backing: TextureBacking::BufferBacked { data, native },
 		semantic,
@@ -346,8 +366,8 @@ pub(super) fn texture_from_render_target(
 	engine_handle: crate::runtime::EngineHandle,
 	owner: Rc<std::cell::RefCell<super::renderer::RendererState>>,
 	lease: RenderTargetLease,
-	image: ash::vk::Image,
-	view: ash::vk::ImageView,
+	image: vk::Image,
+	view: vk::ImageView,
 	width: u32,
 	height: u32,
 ) -> Texture {

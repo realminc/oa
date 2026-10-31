@@ -6,7 +6,7 @@ import oa
 engine = oa.Engine()
 
 rows = [b"alpha", b"bravo", b"crypt"]
-messages = oa.Matrix.from_u8(
+messages = oa.Matrix.new_from_u8(
 	engine,
 	[3, 5],
 	list(b"".join(rows)),

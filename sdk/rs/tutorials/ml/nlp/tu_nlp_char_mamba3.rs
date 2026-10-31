@@ -96,8 +96,8 @@ fn main() -> oa::Result<()> {
 				last_input.clone_from(&input_values);
 				last_target.clone_from(&target_values);
 				Ok((
-					oa::Matrix::from_slice(&engine, [batch, nlp::CONTEXT_LENGTH], &input_values)?,
-					oa::Matrix::from_slice(&engine, [batch * nlp::CONTEXT_LENGTH], &target_values)?,
+					oa::Matrix::new_from_slice(&engine, [batch, nlp::CONTEXT_LENGTH], &input_values)?,
+					oa::Matrix::new_from_slice(&engine, [batch * nlp::CONTEXT_LENGTH], &target_values)?,
 				))
 			},
 			|(input, target)| {
@@ -122,8 +122,8 @@ fn main() -> oa::Result<()> {
 	let training_result = training.finish()?;
 	let final_training_loss = training_result.last_loss().unwrap_or_default();
 
-	let input = oa::Matrix::from_slice(&engine, [batch, nlp::CONTEXT_LENGTH], &last_input)?;
-	let target = oa::Matrix::from_slice(&engine, [batch * nlp::CONTEXT_LENGTH], &last_target)?;
+	let input = oa::Matrix::new_from_slice(&engine, [batch, nlp::CONTEXT_LENGTH], &last_input)?;
+	let target = oa::Matrix::new_from_slice(&engine, [batch * nlp::CONTEXT_LENGTH], &last_target)?;
 	let logits = model.forward(&input)?;
 	let evaluation_loss = oa::ml::loss::cross_entropy(&logits, &target)?.read_f32()?[0];
 	let accuracy = nlp::accuracy(&logits, &target)?;

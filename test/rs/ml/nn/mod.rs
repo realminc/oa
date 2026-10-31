@@ -22,6 +22,8 @@ mod flow;
 mod gru;
 #[path = "test_layer_norm.rs"]
 mod layer_norm;
+#[path = "test_linear_attention.rs"]
+mod linear_attention;
 #[path = "test_mamba3.rs"]
 mod mamba3;
 #[path = "test_moe.rs"]

@@ -7,29 +7,32 @@ use crate::{Error, Result};
 
 /// Vulkan values selected from one exact surface query for swapchain creation.
 pub(in crate::runtime) struct SwapchainConfig {
-	pub(in crate::runtime) extent: ash::vk::Extent2D,
+	pub(in crate::runtime) extent: vk::Extent2D,
 	pub(in crate::runtime) image_count: u32,
-	pub(in crate::runtime) format: ash::vk::SurfaceFormatKHR,
-	pub(in crate::runtime) present_mode: ash::vk::PresentModeKHR,
-	pub(in crate::runtime) composite_alpha: ash::vk::CompositeAlphaFlagsKHR,
-	pub(in crate::runtime) pre_transform: ash::vk::SurfaceTransformFlagsKHR,
+	pub(in crate::runtime) format: vk::SurfaceFormatKHR,
+	pub(in crate::runtime) present_mode: vk::PresentModeKHR,
+	pub(in crate::runtime) transparent: bool,
+	pub(in crate::runtime) composite_alpha: vk::CompositeAlphaFlagsKHR,
+	pub(in crate::runtime) pre_transform: vk::SurfaceTransformFlagsKHR,
 }
 
 pub(in crate::runtime) struct PresentationSwapchain {
 	_device: Arc<Device>,
-	loader: ash::khr::swapchain::Device,
-	handle: ash::vk::SwapchainKHR,
-	extent: ash::vk::Extent2D,
-	images: Vec<ash::vk::Image>,
-	views: Vec<ash::vk::ImageView>,
+	handle: vk::SwapchainKHR,
+	extent: vk::Extent2D,
+	images: Vec<vk::Image>,
+	views: Vec<vk::ImageView>,
+	// Reacquiring an image proves its previous presentation wait is consumed.
+	present_finished: Vec<vk::Semaphore>,
 	frames: Vec<PresentationFrameSync>,
 	next_frame: usize,
+	composition_failed: bool,
+	transparent: bool,
 }
 
 struct PresentationFrameSync {
-	image_available: ash::vk::Semaphore,
-	render_finished: ash::vk::Semaphore,
-	in_flight: ash::vk::Fence,
+	image_available: vk::Semaphore,
+	in_flight: vk::Fence,
 	command: Option<RecordedCommandBuffer>,
 	source: Option<Rc<dyn std::any::Any>>,
 }
@@ -37,14 +40,16 @@ struct PresentationFrameSync {
 const FRAMES_IN_FLIGHT: usize = 2;
 
 impl PresentationSwapchain {
+	pub(in crate::runtime) fn is_transparent(&self) -> bool {
+		self.transparent
+	}
+
 	pub(in crate::runtime) fn create(
 		device: &Arc<Device>,
-		surface: ash::vk::SurfaceKHR,
+		surface: vk::SurfaceKHR,
 		present_queue_family: Option<u32>,
 		config: SwapchainConfig,
 	) -> Result<Self> {
-		let loader = ash::khr::swapchain::Device::new(device.instance().raw(), device.raw());
-
 		// Use CONCURRENT sharing when graphics and present are distinct families;
 		// EXCLUSIVE otherwise (the common case).
 		let graphics_family = device.physical().graphics_queue_family;
@@ -61,14 +66,11 @@ impl PresentationSwapchain {
 			vec![]
 		};
 		let (sharing_mode, queue_family_indices) = if distinct_families {
-			(
-				ash::vk::SharingMode::CONCURRENT,
-				sharing_families.as_slice(),
-			)
+			(vk::SharingMode::CONCURRENT, sharing_families.as_slice())
 		} else {
-			(ash::vk::SharingMode::EXCLUSIVE, [].as_slice())
+			(vk::SharingMode::EXCLUSIVE, [].as_slice())
 		};
-		let create_info = ash::vk::SwapchainCreateInfoKHR::default()
+		let create_info = vk::SwapchainCreateInfoKHR::default()
 			.surface(surface)
 			.min_image_count(config.image_count)
 			.image_format(config.format.format)
@@ -76,20 +78,36 @@ impl PresentationSwapchain {
 			.image_extent(config.extent)
 			.image_array_layers(1)
 			.image_usage(
-				ash::vk::ImageUsageFlags::COLOR_ATTACHMENT | ash::vk::ImageUsageFlags::TRANSFER_DST,
+				vk::ImageUsageFlagBits::COLOR_ATTACHMENT_BIT | vk::ImageUsageFlagBits::TRANSFER_DST_BIT,
 			)
 			.image_sharing_mode(sharing_mode)
 			.queue_family_indices(queue_family_indices)
+			.map_err(Error::from)?
 			.pre_transform(config.pre_transform)
 			.composite_alpha(config.composite_alpha)
 			.present_mode(config.present_mode)
-			.clipped(true);
-		let handle = unsafe { loader.create_swapchain(&create_info, None) }
-			.map_err(|source| Error::backend_failure("Vulkan", "swapchain creation", source))?;
-		let images = match unsafe { loader.get_swapchain_images(handle) } {
+			.clipped(vk::TRUE);
+		// SAFETY: `create_info` references live for the call; no callbacks are passed.
+		let mut handle = vk::SwapchainKHR::default();
+		match unsafe {
+			device
+				.raw()
+				.create_swapchain_khr(&create_info, std::ptr::null(), &mut handle)
+		} {
+			Ok(vk::Result::SUCCESS) => {}
+			other => {
+				return Err(Error::backend_dispatch_failure(
+					"Vulkan",
+					"swapchain creation",
+					other,
+				));
+			}
+		}
+		let images = match swapchain_images(device.raw(), handle) {
 			Ok(images) => images,
 			Err(source) => {
-				unsafe { loader.destroy_swapchain(handle, None) };
+				// SAFETY: swapchain was just created; no images were bound.
+				let _ = unsafe { device.raw().destroy_swapchain_khr(handle, std::ptr::null()) };
 				return Err(Error::backend_failure(
 					"Vulkan",
 					"swapchain image query",
@@ -99,13 +117,13 @@ impl PresentationSwapchain {
 		};
 		let mut views = Vec::with_capacity(images.len());
 		for image in &images {
-			let view_info = ash::vk::ImageViewCreateInfo::default()
+			let view_info = vk::ImageViewCreateInfo::default()
 				.image(*image)
-				.view_type(ash::vk::ImageViewType::TYPE_2D)
+				.view_type(vk::ImageViewType::_2D)
 				.format(config.format.format)
 				.subresource_range(
-					ash::vk::ImageSubresourceRange::default()
-						.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+					vk::ImageSubresourceRange::default()
+						.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 						.level_count(1)
 						.layer_count(1),
 				);
@@ -113,9 +131,9 @@ impl PresentationSwapchain {
 				Ok(view) => views.push(view),
 				Err(source) => {
 					for view in views {
-						unsafe { device.raw().destroy_image_view(view, None) }
+						let _ = unsafe { device.raw().destroy_image_view(view, None) };
 					}
-					unsafe { loader.destroy_swapchain(handle, None) };
+					let _ = unsafe { device.raw().destroy_swapchain_khr(handle, std::ptr::null()) };
 					return Err(Error::backend_failure(
 						"Vulkan",
 						"swapchain image-view creation",
@@ -126,11 +144,11 @@ impl PresentationSwapchain {
 		}
 		let mut frames = Vec::with_capacity(FRAMES_IN_FLIGHT);
 		for _ in 0..FRAMES_IN_FLIGHT {
-			let semaphore_info = ash::vk::SemaphoreCreateInfo::default();
+			let semaphore_info = vk::SemaphoreCreateInfo::default();
 			let image_available = match unsafe { device.raw().create_semaphore(&semaphore_info, None) } {
 				Ok(semaphore) => semaphore,
 				Err(source) => {
-					destroy_partial_swapchain(device.raw(), &mut views, &mut frames, &loader, handle);
+					destroy_partial_swapchain(device.raw(), &mut views, &mut frames, handle);
 					return Err(Error::backend_failure(
 						"Vulkan",
 						"present image-available semaphore creation",
@@ -138,28 +156,14 @@ impl PresentationSwapchain {
 					));
 				}
 			};
-			let render_finished = match unsafe { device.raw().create_semaphore(&semaphore_info, None) } {
-				Ok(semaphore) => semaphore,
-				Err(source) => {
-					unsafe { device.raw().destroy_semaphore(image_available, None) };
-					destroy_partial_swapchain(device.raw(), &mut views, &mut frames, &loader, handle);
-					return Err(Error::backend_failure(
-						"Vulkan",
-						"present render-finished semaphore creation",
-						source,
-					));
-				}
-			};
-			let fence_info =
-				ash::vk::FenceCreateInfo::default().flags(ash::vk::FenceCreateFlags::SIGNALED);
+			let fence_info = vk::FenceCreateInfo::default().flags(vk::FenceCreateFlagBits::SIGNALED_BIT);
 			let in_flight = match unsafe { device.raw().create_fence(&fence_info, None) } {
 				Ok(fence) => fence,
 				Err(source) => {
 					unsafe {
-						device.raw().destroy_semaphore(render_finished, None);
-						device.raw().destroy_semaphore(image_available, None);
+						device.raw().destroy_semaphore(image_available, None)?;
 					}
-					destroy_partial_swapchain(device.raw(), &mut views, &mut frames, &loader, handle);
+					destroy_partial_swapchain(device.raw(), &mut views, &mut frames, handle);
 					return Err(Error::backend_failure(
 						"Vulkan",
 						"present in-flight fence creation",
@@ -169,28 +173,53 @@ impl PresentationSwapchain {
 			};
 			frames.push(PresentationFrameSync {
 				image_available,
-				render_finished,
 				in_flight,
 				command: None,
 				source: None,
 			});
 		}
+		let mut present_finished = Vec::with_capacity(images.len());
+		for _ in &images {
+			// SAFETY: each image owns one binary semaphore until explicit WSI retirement.
+			match unsafe {
+				device
+					.raw()
+					.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+			} {
+				Ok(semaphore) => present_finished.push(semaphore),
+				Err(source) => {
+					for semaphore in present_finished {
+						unsafe {
+							device.raw().destroy_semaphore(semaphore, None)?;
+						}
+					}
+					destroy_partial_swapchain(device.raw(), &mut views, &mut frames, handle);
+					return Err(Error::backend_failure(
+						"Vulkan",
+						"present image semaphore creation",
+						source,
+					));
+				}
+			}
+		}
 		Ok(Self {
 			_device: device.clone(),
-			loader,
 			handle,
 			extent: config.extent,
 			images,
 			views,
+			present_finished,
 			frames,
 			next_frame: 0,
+			composition_failed: false,
+			transparent: config.transparent,
 		})
 	}
 }
 
 impl PresentationSwapchain {
 	pub(in crate::runtime) fn is_valid(&self) -> bool {
-		self.handle != ash::vk::SwapchainKHR::null()
+		self.handle != vk::SwapchainKHR::default()
 	}
 
 	pub(in crate::runtime) fn image_count(&self) -> usize {
@@ -210,6 +239,11 @@ impl PresentationSwapchain {
 	}
 
 	pub(in crate::runtime) fn present_clear(&mut self, color: [f32; 4]) -> Result<bool> {
+		if self.composition_failed {
+			return Err(Error::failed_precondition(
+				"presentation composition failed after acquisition; recreate the swapchain",
+			));
+		}
 		let slot = self.next_frame;
 		let frame = &mut self.frames[slot];
 		unsafe {
@@ -223,21 +257,26 @@ impl PresentationSwapchain {
 			self._device.free(command);
 		}
 		frame.source = None;
-		let (image_index, acquire_suboptimal) = match unsafe {
-			self.loader.acquire_next_image(
+		let mut image_index = 0_u32;
+		let acquire_result = unsafe {
+			self._device.raw().acquire_next_image_khr(
 				self.handle,
 				u64::MAX,
 				frame.image_available,
-				ash::vk::Fence::null(),
+				vk::Fence::default(),
+				&mut image_index,
 			)
-		} {
-			Ok(acquired) => acquired,
-			Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(true),
-			Err(source) => {
-				return Err(Error::backend_failure(
+		};
+		let acquire_suboptimal = match acquire_result {
+			Ok(vk::Result::SUCCESS) => false,
+			Ok(vk::Result::SUBOPTIMAL_KHR) => true,
+			Err(vk::CallError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR))
+			| Ok(vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(true),
+			other => {
+				return Err(Error::backend_dispatch_failure(
 					"Vulkan",
 					"swapchain image acquisition",
-					source,
+					other,
 				));
 			}
 		};
@@ -250,29 +289,33 @@ impl PresentationSwapchain {
 		self._device.submit_present(
 			&command,
 			frame.image_available,
-			frame.render_finished,
+			self.present_finished[image_index as usize],
 			frame.in_flight,
 		)?;
 		frame.command = Some(command);
-		let waits = [frame.render_finished];
+		let waits = [self.present_finished[image_index as usize]];
 		let chains = [self.handle];
 		let indices = [image_index];
-		let info = ash::vk::PresentInfoKHR::default()
+		let info = vk::PresentInfoKHR::default()
 			.wait_semaphores(&waits)
-			.swapchains(&chains)
-			.image_indices(&indices);
+			.map_err(Error::from)?
+			.swapchains(&chains, &indices, None)
+			.map_err(Error::from)?;
 		let present_suboptimal = match unsafe {
-			self
-				.loader
-				.queue_present(self._device.graphics_queue_handle()?, &info)
+			self._device.raw().queue_present_khr(
+				self._device.graphics_queue_handle()?,
+				std::ptr::from_ref(&info),
+			)
 		} {
-			Ok(suboptimal) => suboptimal,
-			Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => true,
-			Err(source) => {
-				return Err(Error::backend_failure(
+			Ok(vk::Result::SUCCESS) => false,
+			Ok(vk::Result::SUBOPTIMAL_KHR) => true,
+			Err(vk::CallError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR))
+			| Ok(vk::Result::ERROR_OUT_OF_DATE_KHR) => true,
+			other => {
+				return Err(Error::backend_dispatch_failure(
 					"Vulkan",
 					"queue presentation",
-					source,
+					other,
 				));
 			}
 		};
@@ -282,10 +325,15 @@ impl PresentationSwapchain {
 
 	pub(in crate::runtime) fn present_render_target(
 		&mut self,
-		source: ash::vk::Image,
+		source: vk::Image,
 		source_extent: [u32; 2],
 		retention: Rc<dyn std::any::Any>,
 	) -> Result<bool> {
+		if self.composition_failed {
+			return Err(Error::failed_precondition(
+				"presentation composition failed after acquisition; recreate the swapchain",
+			));
+		}
 		let slot = self.next_frame;
 		let frame = &mut self.frames[slot];
 		unsafe {
@@ -299,21 +347,26 @@ impl PresentationSwapchain {
 			self._device.free(command);
 		}
 		frame.source = None;
-		let (image_index, acquire_suboptimal) = match unsafe {
-			self.loader.acquire_next_image(
+		let mut image_index = 0_u32;
+		let acquire_result = unsafe {
+			self._device.raw().acquire_next_image_khr(
 				self.handle,
 				u64::MAX,
 				frame.image_available,
-				ash::vk::Fence::null(),
+				vk::Fence::default(),
+				&mut image_index,
 			)
-		} {
-			Ok(acquired) => acquired,
-			Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(true),
-			Err(source) => {
-				return Err(Error::backend_failure(
+		};
+		let acquire_suboptimal = match acquire_result {
+			Ok(vk::Result::SUCCESS) => false,
+			Ok(vk::Result::SUBOPTIMAL_KHR) => true,
+			Err(vk::CallError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR))
+			| Ok(vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(true),
+			other => {
+				return Err(Error::backend_dispatch_failure(
 					"Vulkan",
 					"swapchain image acquisition",
-					source,
+					other,
 				));
 			}
 		};
@@ -331,30 +384,34 @@ impl PresentationSwapchain {
 		self._device.submit_present(
 			&command,
 			frame.image_available,
-			frame.render_finished,
+			self.present_finished[image_index as usize],
 			frame.in_flight,
 		)?;
 		frame.command = Some(command);
 		frame.source = Some(retention);
-		let waits = [frame.render_finished];
+		let waits = [self.present_finished[image_index as usize]];
 		let chains = [self.handle];
 		let indices = [image_index];
-		let info = ash::vk::PresentInfoKHR::default()
+		let info = vk::PresentInfoKHR::default()
 			.wait_semaphores(&waits)
-			.swapchains(&chains)
-			.image_indices(&indices);
+			.map_err(Error::from)?
+			.swapchains(&chains, &indices, None)
+			.map_err(Error::from)?;
 		let present_suboptimal = match unsafe {
-			self
-				.loader
-				.queue_present(self._device.graphics_queue_handle()?, &info)
+			self._device.raw().queue_present_khr(
+				self._device.graphics_queue_handle()?,
+				std::ptr::from_ref(&info),
+			)
 		} {
-			Ok(suboptimal) => suboptimal,
-			Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => true,
-			Err(source) => {
-				return Err(Error::backend_failure(
+			Ok(vk::Result::SUCCESS) => false,
+			Ok(vk::Result::SUBOPTIMAL_KHR) => true,
+			Err(vk::CallError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR))
+			| Ok(vk::Result::ERROR_OUT_OF_DATE_KHR) => true,
+			other => {
+				return Err(Error::backend_dispatch_failure(
 					"Vulkan",
 					"queue presentation",
-					source,
+					other,
 				));
 			}
 		};
@@ -366,6 +423,11 @@ impl PresentationSwapchain {
 		&mut self,
 		texture: Rc<crate::runtime::NativeRgbaImage>,
 	) -> Result<bool> {
+		if self.composition_failed {
+			return Err(Error::failed_precondition(
+				"presentation composition failed after acquisition; recreate the swapchain",
+			));
+		}
 		let slot = self.next_frame;
 		let frame = &mut self.frames[slot];
 		unsafe {
@@ -379,21 +441,26 @@ impl PresentationSwapchain {
 			self._device.free(command);
 		}
 		frame.source = None;
-		let (image_index, acquire_suboptimal) = match unsafe {
-			self.loader.acquire_next_image(
+		let mut image_index = 0_u32;
+		let acquire_result = unsafe {
+			self._device.raw().acquire_next_image_khr(
 				self.handle,
 				u64::MAX,
 				frame.image_available,
-				ash::vk::Fence::null(),
+				vk::Fence::default(),
+				&mut image_index,
 			)
-		} {
-			Ok(acquired) => acquired,
-			Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(true),
-			Err(source) => {
-				return Err(Error::backend_failure(
+		};
+		let acquire_suboptimal = match acquire_result {
+			Ok(vk::Result::SUCCESS) => false,
+			Ok(vk::Result::SUBOPTIMAL_KHR) => true,
+			Err(vk::CallError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR))
+			| Ok(vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(true),
+			other => {
+				return Err(Error::backend_dispatch_failure(
 					"Vulkan",
 					"swapchain image acquisition",
-					source,
+					other,
 				));
 			}
 		};
@@ -411,30 +478,34 @@ impl PresentationSwapchain {
 		self._device.submit_present(
 			&command,
 			frame.image_available,
-			frame.render_finished,
+			self.present_finished[image_index as usize],
 			frame.in_flight,
 		)?;
 		frame.command = Some(command);
 		frame.source = Some(texture);
-		let waits = [frame.render_finished];
+		let waits = [self.present_finished[image_index as usize]];
 		let chains = [self.handle];
 		let indices = [image_index];
-		let info = ash::vk::PresentInfoKHR::default()
+		let info = vk::PresentInfoKHR::default()
 			.wait_semaphores(&waits)
-			.swapchains(&chains)
-			.image_indices(&indices);
+			.map_err(Error::from)?
+			.swapchains(&chains, &indices, None)
+			.map_err(Error::from)?;
 		let present_suboptimal = match unsafe {
-			self
-				.loader
-				.queue_present(self._device.graphics_queue_handle()?, &info)
+			self._device.raw().queue_present_khr(
+				self._device.graphics_queue_handle()?,
+				std::ptr::from_ref(&info),
+			)
 		} {
-			Ok(suboptimal) => suboptimal,
-			Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => true,
-			Err(source) => {
-				return Err(Error::backend_failure(
+			Ok(vk::Result::SUCCESS) => false,
+			Ok(vk::Result::SUBOPTIMAL_KHR) => true,
+			Err(vk::CallError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR))
+			| Ok(vk::Result::ERROR_OUT_OF_DATE_KHR) => true,
+			other => {
+				return Err(Error::backend_dispatch_failure(
 					"Vulkan",
 					"queue presentation",
-					source,
+					other,
 				));
 			}
 		};
@@ -448,15 +519,22 @@ impl PresentationSwapchain {
 	/// writes into `compose_image` (RGBA8 STORAGE_IMAGE, UNDEFINED at entry).
 	/// The swapchain acquire, compute barrier, blit, and present are submitted
 	/// on the graphics queue as one serialized command buffer — no host readback.
+	#[allow(clippy::too_many_arguments)]
 	pub(in crate::runtime) fn present_compose(
 		&mut self,
-		compose_image: ash::vk::Image,
+		compose_image: vk::Image,
 		compose_width: u32,
 		compose_height: u32,
-		descriptor_set: ash::vk::DescriptorSet,
-		pipeline_layout: ash::vk::PipelineLayout,
-		record: impl FnOnce(&ash::Device, ash::vk::CommandBuffer) -> Result<()>,
+		descriptor_set: vk::DescriptorSet,
+		pipeline_layout: vk::PipelineLayout,
+		retention: Option<Rc<dyn std::any::Any>>,
+		record: impl FnOnce(&vk::Device, vk::CommandBuffer) -> Result<()>,
 	) -> Result<bool> {
+		if self.composition_failed {
+			return Err(Error::failed_precondition(
+				"presentation composition failed after acquisition; recreate the swapchain",
+			));
+		}
 		let slot = self.next_frame;
 		let frame = &mut self.frames[slot];
 		unsafe {
@@ -470,89 +548,98 @@ impl PresentationSwapchain {
 			self._device.free(command);
 		}
 		frame.source = None;
-		let (image_index, acquire_suboptimal) = match unsafe {
-			self.loader.acquire_next_image(
+		let mut image_index = 0_u32;
+		let acquire_result = unsafe {
+			self._device.raw().acquire_next_image_khr(
 				self.handle,
 				u64::MAX,
 				frame.image_available,
-				ash::vk::Fence::null(),
+				vk::Fence::default(),
+				&mut image_index,
 			)
-		} {
-			Ok(acquired) => acquired,
-			Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(true),
-			Err(source) => {
-				return Err(Error::backend_failure(
+		};
+		let acquire_suboptimal = match acquire_result {
+			Ok(vk::Result::SUCCESS) => false,
+			Ok(vk::Result::SUBOPTIMAL_KHR) => true,
+			Err(vk::CallError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR))
+			| Ok(vk::Result::ERROR_OUT_OF_DATE_KHR) => return Ok(true),
+			other => {
+				return Err(Error::backend_dispatch_failure(
 					"Vulkan",
 					"swapchain image acquisition",
-					source,
+					other,
 				));
 			}
 		};
+		// Any subsequent error requires recreation: the acquisition semaphore
+		// cannot be reused until a submission has consumed its signal.
+		self.composition_failed = true;
 		let target = *self.images.get(image_index as usize).ok_or_else(|| {
 			Error::invalid_argument("Vulkan returned an out-of-range swapchain image index")
 		})?;
-		unsafe { self._device.raw().reset_fences(&[frame.in_flight]) }
-			.map_err(|source| Error::backend_failure("Vulkan", "presentation fence reset", source))?;
 
 		let swapchain_extent = [self.extent.width, self.extent.height];
 		let device = self._device.clone();
 
-		let command = device.record_compute_commands(|cmd| {
-			// Bind the shared bindless descriptor set.
-			unsafe {
-				device.raw().cmd_bind_descriptor_sets(
-					cmd,
-					ash::vk::PipelineBindPoint::COMPUTE,
-					pipeline_layout,
-					0,
-					&[descriptor_set],
-					&[],
-				);
+		let command = device.record_presentation_commands(|cmd| {
+			// Strict binds a shared set; bounded composition binds per command.
+			if descriptor_set != vk::DescriptorSet::default() {
+				unsafe {
+					device.raw().cmd_bind_descriptor_sets(
+						cmd,
+						vk::PipelineBindPoint::COMPUTE,
+						pipeline_layout,
+						0,
+						&[descriptor_set],
+						&[],
+					)?;
+				}
 			}
 			// Run UI compute dispatches (writes compose_image).
 			record(device.raw(), cmd)?;
 
-			let subresource_range = ash::vk::ImageSubresourceRange::default()
-				.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+			let subresource_range = vk::ImageSubresourceRange::default()
+				.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 				.level_count(1)
 				.layer_count(1);
-			let subresource_layers = ash::vk::ImageSubresourceLayers::default()
-				.aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+			let subresource_layers = vk::ImageSubresourceLayers::default()
+				.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
 				.layer_count(1);
 
 			// Transition compose: GENERAL → TRANSFER_SRC
 			// Transition swapchain target: UNDEFINED → TRANSFER_DST
-			let compose_to_src = ash::vk::ImageMemoryBarrier2::default()
-				.src_stage_mask(ash::vk::PipelineStageFlags2::COMPUTE_SHADER)
-				.src_access_mask(ash::vk::AccessFlags2::SHADER_STORAGE_WRITE)
-				.dst_stage_mask(ash::vk::PipelineStageFlags2::BLIT)
-				.dst_access_mask(ash::vk::AccessFlags2::TRANSFER_READ)
-				.old_layout(ash::vk::ImageLayout::GENERAL)
-				.new_layout(ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+			let compose_to_src = vk::ImageMemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+				.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+				.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+				.old_layout(vk::ImageLayout::GENERAL)
+				.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
 				.image(compose_image)
 				.subresource_range(subresource_range);
-			let swapchain_to_dst = ash::vk::ImageMemoryBarrier2::default()
-				.src_stage_mask(ash::vk::PipelineStageFlags2::NONE)
-				.dst_stage_mask(ash::vk::PipelineStageFlags2::BLIT)
-				.dst_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-				.old_layout(ash::vk::ImageLayout::UNDEFINED)
-				.new_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+			let swapchain_to_dst = vk::ImageMemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+				.dst_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.old_layout(vk::ImageLayout::UNDEFINED)
+				.new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
 				.image(target)
 				.subresource_range(subresource_range);
 			unsafe {
 				device.pipeline_barrier(
 					cmd,
-					&ash::vk::DependencyInfo::default()
-						.image_memory_barriers(&[compose_to_src, swapchain_to_dst]),
-				);
+					&(vk::DependencyInfo::default())
+						.image_memory_barriers(&[compose_to_src, swapchain_to_dst])
+						.map_err(Error::from)?,
+				)?;
 			}
 
 			// Blit (with linear filter to handle DPI scaling).
-			let blit = ash::vk::ImageBlit::default()
+			let blit = vk::ImageBlit::default()
 				.src_subresource(subresource_layers)
 				.src_offsets([
-					ash::vk::Offset3D::default(),
-					ash::vk::Offset3D {
+					vk::Offset3D::default(),
+					vk::Offset3D {
 						x: compose_width as i32,
 						y: compose_height as i32,
 						z: 1,
@@ -560,8 +647,8 @@ impl PresentationSwapchain {
 				])
 				.dst_subresource(subresource_layers)
 				.dst_offsets([
-					ash::vk::Offset3D::default(),
-					ash::vk::Offset3D {
+					vk::Offset3D::default(),
+					vk::Offset3D {
 						x: swapchain_extent[0] as i32,
 						y: swapchain_extent[1] as i32,
 						z: 1,
@@ -571,63 +658,77 @@ impl PresentationSwapchain {
 				device.raw().cmd_blit_image(
 					cmd,
 					compose_image,
-					ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+					vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
 					target,
-					ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+					vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 					&[blit],
-					ash::vk::Filter::LINEAR,
-				);
+					vk::Filter::LINEAR,
+				)?;
 			}
 
 			// Transition swapchain → PRESENT_SRC.
-			let swapchain_to_present = ash::vk::ImageMemoryBarrier2::default()
-				.src_stage_mask(ash::vk::PipelineStageFlags2::BLIT)
-				.src_access_mask(ash::vk::AccessFlags2::TRANSFER_WRITE)
-				.dst_stage_mask(ash::vk::PipelineStageFlags2::BOTTOM_OF_PIPE)
-				.old_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-				.new_layout(ash::vk::ImageLayout::PRESENT_SRC_KHR)
+			let swapchain_to_present = vk::ImageMemoryBarrier2::default()
+				.src_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+				.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.dst_stage_mask(vk::PipelineStageFlagBits2::BOTTOM_OF_PIPE_BIT)
+				.old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+				.new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
 				.image(target)
 				.subresource_range(subresource_range);
 			unsafe {
 				device.pipeline_barrier(
 					cmd,
-					&ash::vk::DependencyInfo::default()
-						.image_memory_barriers(std::slice::from_ref(&swapchain_to_present)),
-				);
+					&(vk::DependencyInfo::default())
+						.image_memory_barriers(std::slice::from_ref(&swapchain_to_present))
+						.map_err(Error::from)?,
+				)?;
 			}
 			Ok(())
 		})?;
 
+		// Retain resources before submission, including uncertain device-loss
+		// failures. No error path drops work that may still reference them.
+		frame.command = Some(command);
+		frame.source = retention;
+		unsafe { self._device.raw().reset_fences(&[frame.in_flight]) }
+			.map_err(|source| Error::backend_failure("Vulkan", "presentation fence reset", source))?;
 		self._device.submit_present(
-			&command,
+			frame
+				.command
+				.as_ref()
+				.expect("recorded composition retained"),
 			frame.image_available,
-			frame.render_finished,
+			self.present_finished[image_index as usize],
 			frame.in_flight,
 		)?;
-		frame.command = Some(command);
 
-		let waits = [frame.render_finished];
+		let waits = [self.present_finished[image_index as usize]];
 		let chains = [self.handle];
 		let indices = [image_index];
-		let info = ash::vk::PresentInfoKHR::default()
+		let info = vk::PresentInfoKHR::default()
 			.wait_semaphores(&waits)
-			.swapchains(&chains)
-			.image_indices(&indices);
+			.map_err(Error::from)?
+			.swapchains(&chains, &indices, None)
+			.map_err(Error::from)?;
 		let present_suboptimal = match unsafe {
-			self
-				.loader
-				.queue_present(self._device.graphics_queue_handle()?, &info)
+			self._device.raw().queue_present_khr(
+				self._device.graphics_queue_handle()?,
+				std::ptr::from_ref(&info),
+			)
 		} {
-			Ok(suboptimal) => suboptimal,
-			Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => true,
-			Err(source) => {
-				return Err(Error::backend_failure(
+			Ok(vk::Result::SUCCESS) => false,
+			Ok(vk::Result::SUBOPTIMAL_KHR) => true,
+			Err(vk::CallError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR))
+			| Ok(vk::Result::ERROR_OUT_OF_DATE_KHR) => true,
+			other => {
+				return Err(Error::backend_dispatch_failure(
 					"Vulkan",
 					"queue presentation",
-					source,
+					other,
 				));
 			}
 		};
+		self.composition_failed = false;
 		self.next_frame = (self.next_frame + 1) % self.frames.len();
 		Ok(acquire_suboptimal || present_suboptimal)
 	}
@@ -646,24 +747,54 @@ impl PresentationSwapchain {
 	}
 }
 
+fn swapchain_images(device: &vk::Device, handle: vk::SwapchainKHR) -> Result<Vec<vk::Image>> {
+	let mut count = 0_u32;
+	// SAFETY: null output pointer requests only the element count.
+	match unsafe { device.get_swapchain_images_khr(handle, &mut count, std::ptr::null_mut()) } {
+		Ok(vk::Result::SUCCESS) => {}
+		other => {
+			return Err(Error::backend_dispatch_failure(
+				"Vulkan",
+				"swapchain image count",
+				other,
+			));
+		}
+	}
+	let mut images = vec![vk::Image::default(); count as usize];
+	if count == 0 {
+		return Ok(images);
+	}
+	// SAFETY: `images` provides `count` writable handles; Vulkan writes at most
+	// the passed count and reports the actual number through the out count.
+	match unsafe { device.get_swapchain_images_khr(handle, &mut count, images.as_mut_ptr()) } {
+		Ok(vk::Result::SUCCESS) => {
+			images.truncate(count as usize);
+			Ok(images)
+		}
+		other => Err(Error::backend_dispatch_failure(
+			"Vulkan",
+			"swapchain image query",
+			other,
+		)),
+	}
+}
+
 fn destroy_partial_swapchain(
-	device: &ash::Device,
-	views: &mut Vec<ash::vk::ImageView>,
+	device: &vk::Device,
+	views: &mut Vec<vk::ImageView>,
 	frames: &mut Vec<PresentationFrameSync>,
-	loader: &ash::khr::swapchain::Device,
-	handle: ash::vk::SwapchainKHR,
+	handle: vk::SwapchainKHR,
 ) {
 	for frame in frames.drain(..) {
 		unsafe {
-			device.destroy_fence(frame.in_flight, None);
-			device.destroy_semaphore(frame.render_finished, None);
-			device.destroy_semaphore(frame.image_available, None);
+			let _ = device.destroy_fence(frame.in_flight, None);
+			let _ = device.destroy_semaphore(frame.image_available, None);
 		}
 	}
 	for view in views.drain(..) {
-		unsafe { device.destroy_image_view(view, None) };
+		let _ = unsafe { device.destroy_image_view(view, None) };
 	}
-	unsafe { loader.destroy_swapchain(handle, None) };
+	let _ = unsafe { device.destroy_swapchain_khr(handle, std::ptr::null()) };
 }
 
 impl Drop for PresentationSwapchain {
@@ -672,22 +803,27 @@ impl Drop for PresentationSwapchain {
 			!self.has_submitted_frames(),
 			"submitted presentation work must be retired by close_swapchain before destruction"
 		);
+		for semaphore in self.present_finished.drain(..) {
+			// SAFETY: explicit close established WSI retirement before destruction.
+			let _ = unsafe { self._device.raw().destroy_semaphore(semaphore, None) };
+		}
 		for frame in self.frames.drain(..) {
 			unsafe {
-				self._device.raw().destroy_fence(frame.in_flight, None);
-				self
-					._device
-					.raw()
-					.destroy_semaphore(frame.render_finished, None);
-				self
+				let _ = self._device.raw().destroy_fence(frame.in_flight, None);
+				let _ = self
 					._device
 					.raw()
 					.destroy_semaphore(frame.image_available, None);
 			}
 		}
 		for view in self.views.drain(..) {
-			unsafe { self._device.raw().destroy_image_view(view, None) };
+			let _ = unsafe { self._device.raw().destroy_image_view(view, None) };
 		}
-		unsafe { self.loader.destroy_swapchain(self.handle, None) };
+		let _ = unsafe {
+			self
+				._device
+				.raw()
+				.destroy_swapchain_khr(self.handle, std::ptr::null())
+		};
 	}
 }

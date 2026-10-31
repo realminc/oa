@@ -22,7 +22,7 @@ impl Dropout {
 	///
 	/// Returns an error unless `probability` is finite and in `[0, 1)`.
 	pub fn new(probability: f32) -> Result<Self> {
-		Self::with_seed(probability, 0)
+		Self::new_with_seed(probability, 0)
 	}
 
 	/// Construct Dropout with an explicit Philox seed.
@@ -35,7 +35,7 @@ impl Dropout {
 	/// # Errors
 	///
 	/// Returns an error unless `probability` is finite and in `[0, 1)`.
-	pub fn with_seed(probability: f32, seed: u64) -> Result<Self> {
+	pub fn new_with_seed(probability: f32, seed: u64) -> Result<Self> {
 		if !probability.is_finite() || !(0.0..1.0).contains(&probability) {
 			return Err(Error::invalid_argument(
 				"Dropout probability must be finite and in [0, 1)",

@@ -1,6 +1,6 @@
 //! Viewer configuration types. Donor: `ViewerConfig`, `ViewerMode`, etc.
 
-use crate::ui::types::{UiKey, UiStyle};
+use crate::ui::types::{UiKey, UiMotionSpeed, UiStyle};
 
 /// Media source mode for the Viewer.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -41,6 +41,7 @@ pub struct ViewerConfig {
 	pub width: u32,
 	pub height: u32,
 	pub style: UiStyle,
+	pub motion_speed: UiMotionSpeed,
 	pub show_help: bool,
 	pub show_stats: bool,
 	pub show_timeline: bool,
@@ -83,6 +84,7 @@ impl Default for ViewerConfig {
 			width: 1280,
 			height: 720,
 			style: UiStyle::viewer_dark(),
+			motion_speed: UiMotionSpeed::Fast,
 			show_help: true,
 			show_stats: false,
 			show_timeline: true,

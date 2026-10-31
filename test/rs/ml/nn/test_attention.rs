@@ -10,7 +10,7 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 
 test_vk!(split_and_merge_heads_match_donor_permutation, engine, {
 	let values = (0..24).map(|value| value as f32).collect::<Vec<_>>();
-	let input = oa::Matrix::from_f32(&engine, [6, 4], &values)?;
+	let input = oa::Matrix::new_from_f32(&engine, [6, 4], &values)?;
 	let (plan, (split, merged)) = engine.capture(|| {
 		let split = oa::ml::matrix::split_heads(&input, 2, 3, 2)?;
 		let merged = oa::ml::matrix::merge_heads(&split, 2, 3, 2)?;
@@ -47,7 +47,7 @@ test_vk!(split_and_merge_heads_match_donor_permutation, engine, {
 
 test_vk!(one_head_transform_is_a_differentiable_view, engine, {
 	let values = [0.1_f32, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8];
-	let input = oa::Matrix::from_f32(&engine, [2, 4], &values)?;
+	let input = oa::Matrix::new_from_f32(&engine, [2, 4], &values)?;
 	let split = oa::ml::matrix::split_heads(&input, 1, 2, 1)?;
 	let merged = oa::ml::matrix::merge_heads(&split, 1, 2, 1)?;
 	assert_eq!(split.shape(), [1, 2, 4]);
@@ -60,13 +60,13 @@ test_vk!(head_transform_reverse_is_the_exact_inverse, engine, {
 	let values = [0.1_f32, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8];
 	for num_heads in [1, 2] {
 		let embedding =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 4], &values)?)?;
-		let indices = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(&engine, [2, 4], &values)?)?;
+		let indices = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
 		let tape = oa::ml::GradientTape::new();
 		let input = embedding.forward(&indices)?;
 		let split = oa::ml::matrix::split_heads(&input, 1, 2, num_heads)?;
 		let merged = oa::ml::matrix::merge_heads(&split, 1, 2, num_heads)?;
-		let target = oa::Matrix::from_f32(&engine, [2, 4], &[0.0; 8])?;
+		let target = oa::Matrix::new_from_f32(&engine, [2, 4], &[0.0; 8])?;
 		let loss = oa::ml::loss::mse(&merged, &target)?;
 		tape.backward(&loss)?;
 		let gradient = embedding
@@ -81,7 +81,7 @@ test_vk!(head_transform_reverse_is_the_exact_inverse, engine, {
 });
 
 test_vk!(head_transforms_reject_invalid_geometry, engine, {
-	let input = oa::Matrix::from_f32(&engine, [6, 4], &[0.0; 24])?;
+	let input = oa::Matrix::new_from_f32(&engine, [6, 4], &[0.0; 24])?;
 	let split = oa::ml::matrix::split_heads(&input, 2, 4, 2)
 		.err()
 		.expect("incompatible B*S was accepted");
@@ -90,7 +90,7 @@ test_vk!(head_transforms_reject_invalid_geometry, engine, {
 		.err()
 		.expect("indivisible head width was accepted");
 	assert_eq!(split.kind(), oa::ErrorKind::InvalidArgument);
-	let rank_two = oa::Matrix::from_f32(&engine, [6, 4], &[0.0; 24])?;
+	let rank_two = oa::Matrix::new_from_f32(&engine, [6, 4], &[0.0; 24])?;
 	let merge = oa::ml::matrix::merge_heads(&rank_two, 2, 3, 2)
 		.err()
 		.expect("rank-two merge input was accepted");
@@ -144,8 +144,8 @@ test_vk!(
 				})
 				.collect::<Vec<_>>();
 			let expected = host_softmax_scaled_masked(&scores, &mask, rows, columns, 0.7);
-			let scores = oa::Matrix::from_f32(&engine, [rows, columns], &scores)?;
-			let mask = oa::Matrix::from_f32(&engine, [rows, columns], &mask)?;
+			let scores = oa::Matrix::new_from_f32(&engine, [rows, columns], &scores)?;
+			let mask = oa::Matrix::new_from_f32(&engine, [rows, columns], &mask)?;
 			let (plan, output) =
 				engine.capture(|| oa::ml::matrix::softmax_scaled_masked(&scores, &mask, 0.7))?;
 			let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("softmax"))
@@ -168,15 +168,15 @@ test_vk!(
 		let target = [0.1_f32, 0.3, 0.2, 0.4, 0.25, 0.25, 0.25, 0.25];
 		let scale = 0.65_f32;
 		let score_parameter =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 4], &scores)?)?;
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(&engine, [2, 4], &scores)?)?;
 		let mask_parameter =
-			oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 4], &mask)?)?;
-		let indices = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(&engine, [2, 4], &mask)?)?;
+		let indices = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
 		let tape = oa::ml::GradientTape::new();
 		let score_values = score_parameter.forward(&indices)?;
 		let mask_values = mask_parameter.forward(&indices)?;
 		let probability = oa::ml::matrix::softmax_scaled_masked(&score_values, &mask_values, scale)?;
-		let target_matrix = oa::Matrix::from_f32(&engine, [2, 4], &target)?;
+		let target_matrix = oa::Matrix::new_from_f32(&engine, [2, 4], &target)?;
 		let loss = oa::ml::loss::mse(&probability, &target_matrix)?;
 		tape.backward(&loss)?;
 
@@ -285,10 +285,10 @@ test_vk!(
 			0.0_f32, -0.2, -1.0, 0.0, 0.0, -0.4, -0.8, 0.0, 0.0, 0.0, -0.3, 0.0, 0.0, -0.6, -0.1, 0.0,
 			0.0, -0.5,
 		];
-		let query_matrix = oa::Matrix::from_f32(&engine, [2, 3, 2], &query)?;
-		let key_matrix = oa::Matrix::from_f32(&engine, [2, 3, 2], &key)?;
-		let value_matrix = oa::Matrix::from_f32(&engine, [2, 3, 2], &value)?;
-		let mask_matrix = oa::Matrix::from_f32(&engine, [6, 3], &mask_values)?;
+		let query_matrix = oa::Matrix::new_from_f32(&engine, [2, 3, 2], &query)?;
+		let key_matrix = oa::Matrix::new_from_f32(&engine, [2, 3, 2], &key)?;
+		let value_matrix = oa::Matrix::new_from_f32(&engine, [2, 3, 2], &value)?;
+		let mask_matrix = oa::Matrix::new_from_f32(&engine, [6, 3], &mask_values)?;
 		for (additive_mask, causal) in [(None, true), (Some(&mask_matrix), false)] {
 			let expected = host_sdpa(
 				&query,
@@ -401,13 +401,13 @@ test_vk!(standard_sdpa_reverse_matches_finite_differences, engine, {
 	});
 
 	let parameter = |values: &[f32]| {
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 2], values)?)
+		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(&engine, [2, 2], values)?)
 	};
 	let query_parameter = parameter(&query)?;
 	let key_parameter = parameter(&key)?;
 	let value_parameter = parameter(&value)?;
 	let mask_parameter = parameter(&mask)?;
-	let indices = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+	let indices = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
 	let tape = oa::ml::GradientTape::new();
 	let query_matrix = query_parameter.forward(&indices)?.reshape([1, 2, 2])?;
 	let key_matrix = key_parameter.forward(&indices)?.reshape([1, 2, 2])?;
@@ -421,7 +421,10 @@ test_vk!(standard_sdpa_reverse_matches_finite_differences, engine, {
 		scale,
 		true,
 	)?;
-	let loss = oa::ml::loss::mse(&output, &oa::Matrix::from_f32(&engine, [1, 2, 2], &target)?)?;
+	let loss = oa::ml::loss::mse(
+		&output,
+		&oa::Matrix::new_from_f32(&engine, [1, 2, 2], &target)?,
+	)?;
 	tape.backward(&loss)?;
 	for (parameter, expected) in [
 		(&query_parameter, q_expected),
@@ -467,9 +470,9 @@ test_vk!(flash_sdpa_matches_the_standard_causal_route, engine, {
 			causal: true,
 		},
 	);
-	let query = oa::Matrix::from_f32(&engine, [batch_heads, sequence_length, head_dim], &query)?;
-	let key = oa::Matrix::from_f32(&engine, [batch_heads, sequence_length, head_dim], &key)?;
-	let value = oa::Matrix::from_f32(&engine, [batch_heads, sequence_length, head_dim], &value)?;
+	let query = oa::Matrix::new_from_f32(&engine, [batch_heads, sequence_length, head_dim], &query)?;
+	let key = oa::Matrix::new_from_f32(&engine, [batch_heads, sequence_length, head_dim], &key)?;
+	let value = oa::Matrix::new_from_f32(&engine, [batch_heads, sequence_length, head_dim], &value)?;
 	let (plan, output) =
 		engine.capture(|| oa::ml::matrix::flash_attention_causal(&query, &key, &value, scale))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
@@ -516,13 +519,13 @@ test_vk!(flash_sdpa_reverse_matches_finite_differences, engine, {
 		}),
 	];
 	let parameter = |values: &[f32]| {
-		oa::ml::nn::Embedding::from_matrix(oa::Matrix::from_f32(&engine, [2, 2], values)?)
+		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(&engine, [2, 2], values)?)
 	};
 	let query_parameter = parameter(&query)?;
 	let key_parameter = parameter(&key)?;
 	let value_parameter = parameter(&value)?;
-	let indices = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
-	let target = oa::Matrix::from_f32(&engine, [1, 2, 2], &target)?;
+	let indices = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
+	let target = oa::Matrix::new_from_f32(&engine, [1, 2, 2], &target)?;
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let query = query_parameter.forward(&indices)?.reshape([1, 2, 2])?;
@@ -562,7 +565,7 @@ test_vk!(flash_sdpa_reverse_matches_finite_differences, engine, {
 
 test_vk!(flash_sdpa_rejects_the_unverified_long_sequence, engine, {
 	let values = vec![0.0_f32; 1025];
-	let input = oa::Matrix::from_f32(&engine, [1, 1025, 1], &values)?;
+	let input = oa::Matrix::new_from_f32(&engine, [1, 1025, 1], &values)?;
 	let error = oa::ml::matrix::flash_attention_causal(&input, &input, &input, 1.0)
 		.err()
 		.expect("Flash SDPA accepted a sequence longer than 1024");
@@ -576,8 +579,8 @@ test_vk!(multi_head_attention_backend_policy_is_explicit, engine, {
 	let input_values = (0..64)
 		.map(|index| ((index * 7 % 31) as f32 - 15.0) / 17.0)
 		.collect::<Vec<_>>();
-	let input = oa::Matrix::from_f32(&engine, [8, 8], &input_values)?;
-	let attention = MultiHeadAttention::with_seed(&engine, 8, 2, 4, 0x4154_544e)?;
+	let input = oa::Matrix::new_from_f32(&engine, [8, 8], &input_values)?;
+	let attention = MultiHeadAttention::new_with_seed(&engine, 8, 2, 4, 0x4154_544e)?;
 	assert_eq!(attention.backend(), AttentionBackend::Auto);
 	let standard = attention.forward(&input)?.read_f32()?;
 	assert_eq!(attention.last_backend(), AttentionBackend::Standard);
@@ -603,8 +606,8 @@ test_vk!(
 		let input_values = (0..16)
 			.map(|index| ((index * 5 % 17) as f32 - 8.0) / 9.0)
 			.collect::<Vec<_>>();
-		let input = oa::Matrix::from_f32(&engine, [4, 4], &input_values)?;
-		let attention = MultiHeadAttention::with_seed(&engine, 4, 2, 4, 0x4d41_534b)?;
+		let input = oa::Matrix::new_from_f32(&engine, [4, 4], &input_values)?;
+		let attention = MultiHeadAttention::new_with_seed(&engine, 4, 2, 4, 0x4d41_534b)?;
 		assert_eq!(attention.mode(), AttentionMode::Causal);
 		let causal = attention.forward(&input)?.read_f32()?;
 
@@ -618,7 +621,7 @@ test_vk!(
 				.any(|(left, right)| (left - right).abs() > 1.0e-6)
 		);
 
-		let zero_mask = oa::Matrix::from_f32(&engine, [8, 4], &[0.0; 32])?;
+		let zero_mask = oa::Matrix::new_from_f32(&engine, [8, 4], &[0.0; 32])?;
 		let zero_masked = attention.forward_masked(&input, &zero_mask)?.read_f32()?;
 		assert_eq!(attention.last_backend(), AttentionBackend::Standard);
 		assert_close(&zero_masked, &bidirectional, 1.0e-6);
@@ -626,7 +629,7 @@ test_vk!(
 		let mask_values = (0..32)
 			.map(|index| if index % 4 == 3 { -1.0e4 } else { 0.0 })
 			.collect::<Vec<_>>();
-		let mask = oa::Matrix::from_f32(&engine, [8, 4], &mask_values)?;
+		let mask = oa::Matrix::new_from_f32(&engine, [8, 4], &mask_values)?;
 		let masked = attention.forward_masked(&input, &mask)?.read_f32()?;
 		assert!(
 			masked
@@ -659,17 +662,17 @@ test_vk!(
 test_vk!(transformer_block_propagates_attention_visibility, engine, {
 	use oa::ml::nn::{AttentionMode, TransformerBlock};
 
-	let block = TransformerBlock::with_seed(&engine, 8, 16, 3, 2, 1.0e-5, 0x424c_4f43)?;
+	let block = TransformerBlock::new_with_seed(&engine, 8, 16, 3, 2, 1.0e-5, 0x424c_4f43)?;
 	assert_eq!(block.attention_mode(), AttentionMode::Causal);
 	block.set_attention_mode(AttentionMode::Bidirectional);
 	assert_eq!(block.attention_mode(), AttentionMode::Bidirectional);
-	let input = oa::Matrix::from_f32(&engine, [6, 8], &[0.25; 48])?;
+	let input = oa::Matrix::new_from_f32(&engine, [6, 8], &[0.25; 48])?;
 	assert_eq!(block.forward(&input)?.shape(), [6, 8]);
 	block.set_sequence_length(2)?;
 	assert_eq!(block.sequence_length(), 2);
-	let shorter = oa::Matrix::from_f32(&engine, [4, 8], &[0.25; 32])?;
+	let shorter = oa::Matrix::new_from_f32(&engine, [4, 8], &[0.25; 32])?;
 	let unmasked = block.forward(&shorter)?.read_f32()?;
-	let zero_mask = oa::Matrix::from_f32(&engine, [8, 2], &[0.0; 16])?;
+	let zero_mask = oa::Matrix::new_from_f32(&engine, [8, 2], &[0.0; 16])?;
 	let masked = block.forward_masked(&shorter, &zero_mask)?.read_f32()?;
 	assert_close(&masked, &unmasked, 1.0e-6);
 	assert_eq!(
@@ -689,7 +692,8 @@ test_vk!(
 	{
 		use oa::ml::{Module, nn::MultiHeadAttention};
 
-		let attention = MultiHeadAttention::with_seed_and_bias(&engine, 4, 2, 3, false, 0x4e4f_4249)?;
+		let attention =
+			MultiHeadAttention::new_with_seed_and_bias(&engine, 4, 2, 3, false, 0x4e4f_4249)?;
 		assert!(!attention.has_bias());
 		let named = attention.all_named_parameters()?;
 		assert_eq!(named.len(), 4);
@@ -697,10 +701,10 @@ test_vk!(
 		assert_eq!(named[1].path(), "k_proj.weight");
 		assert_eq!(named[2].path(), "v_proj.weight");
 		assert_eq!(named[3].path(), "out_proj.weight");
-		let input = oa::Matrix::from_f32(&engine, [3, 4], &[0.2; 12])?;
+		let input = oa::Matrix::new_from_f32(&engine, [3, 4], &[0.2; 12])?;
 		let tape = oa::ml::GradientTape::new();
 		let output = attention.forward(&input)?;
-		let target = oa::Matrix::from_f32(&engine, [3, 4], &[0.0; 12])?;
+		let target = oa::Matrix::new_from_f32(&engine, [3, 4], &[0.0; 12])?;
 		let loss = oa::ml::loss::mse(&output, &target)?;
 		tape.backward(&loss)?;
 		for parameter in attention.all_parameters()? {
@@ -720,16 +724,16 @@ test_vk!(
 		};
 
 		let attention =
-			MultiHeadAttention::with_seed_and_options(&engine, 4, 2, 3, 0.25, false, 0x4452_4f50)?;
+			MultiHeadAttention::new_with_seed_and_options(&engine, 4, 2, 3, 0.25, false, 0x4452_4f50)?;
 		assert_eq!(attention.dropout_probability(), 0.25);
-		let input = oa::Matrix::from_f32(
+		let input = oa::Matrix::new_from_f32(
 			&engine,
 			[3, 4],
 			&[
 				0.2, -0.1, 0.4, 0.3, -0.3, 0.5, 0.1, -0.2, 0.6, 0.2, -0.4, 0.7,
 			],
 		)?;
-		let target = oa::Matrix::from_f32(&engine, [3, 4], &[0.0; 12])?;
+		let target = oa::Matrix::new_from_f32(&engine, [3, 4], &[0.0; 12])?;
 		let (training_plan, _) = engine.capture(|| {
 			let tape = oa::ml::GradientTape::new();
 			let output = attention.forward(&input)?;

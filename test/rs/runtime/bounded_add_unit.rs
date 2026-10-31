@@ -1,5 +1,4 @@
 use super::Instance;
-use ash::vk;
 
 const SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/matrix_add_f32_bounded.spv"));
 
@@ -14,7 +13,7 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 		return;
 	};
 	let selected = physicals.into_iter().find_map(|physical| {
-		let properties = unsafe { instance.raw().get_physical_device_properties(physical) };
+		let properties = unsafe { instance.raw().get_physical_device_properties(physical) }.ok()?;
 		if properties.api_version < vk::API_VERSION_1_2 || properties.api_version >= vk::API_VERSION_1_3
 		{
 			return None;
@@ -23,16 +22,26 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 			instance
 				.raw()
 				.get_physical_device_queue_family_properties(physical)
-		};
+		}
+		.ok()?;
 		let family = families.iter().position(|family| {
-			family.queue_count > 0 && family.queue_flags.contains(vk::QueueFlags::COMPUTE)
+			family.queue_count > 0
+				&& (family.queue_flags & vk::QueueFlagBits::COMPUTE_BIT) == vk::QueueFlagBits::COMPUTE_BIT
 		})?;
 		Some((physical, family as u32))
 	});
 	let Some((physical, family)) = selected else {
 		return;
 	};
-	let words = ash::util::read_spv(&mut std::io::Cursor::new(SHADER)).expect("SPIR-V words");
+	assert_eq!(SHADER.len() % 4, 0, "SPIR-V byte length");
+	#[allow(
+		clippy::chunks_exact_to_as_chunks,
+		reason = "slice::as_chunks is unstable on the pinned toolchain"
+	)]
+	let words: Vec<u32> = SHADER
+		.chunks_exact(4)
+		.map(|bytes| u32::from_le_bytes(bytes.try_into().expect("word")))
+		.collect();
 	assert!(words[1] <= 0x0001_0500, "probe must target SPIR-V 1.5");
 	let mut offset = 5;
 	while offset < words.len() {
@@ -50,10 +59,16 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 	}
 
 	let priorities = [1.0_f32];
-	let queues = [vk::DeviceQueueCreateInfo::default()
+	let Ok(queue_info) = vk::DeviceQueueCreateInfo::default()
 		.queue_family_index(family)
-		.queue_priorities(&priorities)];
-	let create = vk::DeviceCreateInfo::default().queue_create_infos(&queues);
+		.queue_priorities(&priorities)
+	else {
+		return;
+	};
+	let queues = [queue_info];
+	let Ok(create) = vk::DeviceCreateInfo::default().queue_create_infos(&queues) else {
+		return;
+	};
 	let device = unsafe { instance.raw().create_device(physical, &create, None) }
 		.expect("Vulkan 1.2 logical device");
 	let values = 17_usize;
@@ -62,21 +77,23 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 		instance
 			.raw()
 			.get_physical_device_memory_properties(physical)
-	};
+	}
+	.expect("memory properties");
 	let mut buffers = Vec::new();
 	for _ in 0..3 {
 		let info = vk::BufferCreateInfo::default()
 			.size(byte_count)
-			.usage(vk::BufferUsageFlags::STORAGE_BUFFER)
+			.usage(vk::BufferUsageFlagBits::STORAGE_BUFFER_BIT)
 			.sharing_mode(vk::SharingMode::EXCLUSIVE);
 		let buffer = unsafe { device.create_buffer(&info, None) }.expect("storage buffer");
-		let requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
+		let requirements =
+			unsafe { device.get_buffer_memory_requirements(buffer) }.expect("requirements");
+		let wanted =
+			vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT | vk::MemoryPropertyFlagBits::HOST_COHERENT_BIT;
 		let memory_type = (0..memory.memory_type_count)
 			.find(|&index| {
 				requirements.memory_type_bits & (1 << index) != 0
-					&& memory.memory_types[index as usize].property_flags.contains(
-						vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-					)
+					&& (memory.memory_types[index as usize].property_flags & wanted) == wanted
 			})
 			.expect("host-coherent storage memory");
 		let allocate = vk::MemoryAllocateInfo::default()
@@ -94,31 +111,37 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 				.expect("map input");
 		unsafe {
 			std::ptr::copy_nonoverlapping(source.as_ptr(), mapped.cast::<f32>(), values);
-			device.unmap_memory(buffers[index].1);
+			device.unmap_memory(buffers[index].1).expect("unmap input");
 		}
 	}
 	let binding = vk::DescriptorSetLayoutBinding::default()
 		.binding(0)
 		.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
 		.descriptor_count(crate::runtime::shader::KernelId::MatrixAddF32.bounded_buffer_count())
-		.stage_flags(vk::ShaderStageFlags::COMPUTE);
+		.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT);
 	let bindings = [binding];
-	let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
+	let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
+		.bindings(&bindings)
+		.expect("layout bindings");
 	let descriptor_layout = unsafe { device.create_descriptor_set_layout(&layout_info, None) }
 		.expect("bounded descriptor layout");
 	let pool_size = vk::DescriptorPoolSize::default()
-		.ty(vk::DescriptorType::STORAGE_BUFFER)
+		.r#type(vk::DescriptorType::STORAGE_BUFFER)
 		.descriptor_count(crate::runtime::shader::KernelId::MatrixAddF32.bounded_buffer_count());
 	let pool_sizes = [pool_size];
 	let pool_info = vk::DescriptorPoolCreateInfo::default()
 		.max_sets(1)
-		.pool_sizes(&pool_sizes);
+		.pool_sizes(&pool_sizes)
+		.expect("pool sizes");
 	let pool = unsafe { device.create_descriptor_pool(&pool_info, None) }.expect("descriptor pool");
 	let layouts = [descriptor_layout];
 	let allocate = vk::DescriptorSetAllocateInfo::default()
 		.descriptor_pool(pool)
-		.set_layouts(&layouts);
-	let set = unsafe { device.allocate_descriptor_sets(&allocate) }.expect("bounded set")[0];
+		.set_layouts(&layouts)
+		.expect("set layouts");
+	let mut sets = [vk::DescriptorSet::default()];
+	unsafe { device.allocate_descriptor_sets(&allocate, &mut sets) }.expect("bounded set");
+	let set = sets[0];
 	let infos: Vec<_> = (0..crate::runtime::shader::KernelId::MatrixAddF32.bounded_buffer_count()
 		as usize)
 		.map(|i| {
@@ -131,30 +154,41 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 		.dst_set(set)
 		.dst_binding(0)
 		.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-		.buffer_info(&infos);
-	unsafe { device.update_descriptor_sets(&[write], &[]) };
+		.buffer_info(&infos)
+		.expect("buffer infos");
+	unsafe { device.update_descriptor_sets(&[write], &[]) }.expect("descriptor write");
 
 	let push_range = vk::PushConstantRange::default()
-		.stage_flags(vk::ShaderStageFlags::COMPUTE)
+		.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT)
 		.size(16);
 	let push_ranges = [push_range];
 	let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default()
 		.set_layouts(&layouts)
-		.push_constant_ranges(&push_ranges);
+		.and_then(|info| info.push_constant_ranges(&push_ranges))
+		.expect("pipeline layout info");
 	let pipeline_layout =
 		unsafe { device.create_pipeline_layout(&pipeline_layout_info, None) }.expect("pipeline layout");
 	let shader_info = vk::ShaderModuleCreateInfo::default().code(&words);
 	let shader = unsafe { device.create_shader_module(&shader_info, None) }.expect("shader module");
 	let stage = vk::PipelineShaderStageCreateInfo::default()
-		.stage(vk::ShaderStageFlags::COMPUTE)
+		.stage(vk::ShaderStageFlagBits::COMPUTE_BIT)
 		.module(shader)
 		.name(c"main");
 	let pipeline_info = vk::ComputePipelineCreateInfo::default()
 		.stage(stage)
 		.layout(pipeline_layout);
-	let pipeline =
-		unsafe { device.create_compute_pipelines(vk::PipelineCache::null(), &[pipeline_info], None) }
-			.expect("bounded compute pipeline")[0];
+	let mut pipelines = [vk::Pipeline::NULL];
+	let result = unsafe {
+		device.create_compute_pipelines(
+			vk::PipelineCache::NULL,
+			&[pipeline_info],
+			None,
+			&mut pipelines,
+		)
+	}
+	.expect("bounded compute pipeline");
+	assert_eq!(result, vk::Result::SUCCESS, "pipeline creation status");
+	let pipeline = pipelines[0];
 	let command_pool_info = vk::CommandPoolCreateInfo::default().queue_family_index(family);
 	let command_pool =
 		unsafe { device.create_command_pool(&command_pool_info, None) }.expect("command pool");
@@ -167,31 +201,39 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 		device
 			.begin_command_buffer(command, &vk::CommandBufferBeginInfo::default())
 			.expect("begin command");
-		device.cmd_bind_pipeline(command, vk::PipelineBindPoint::COMPUTE, pipeline);
-		device.cmd_bind_descriptor_sets(
-			command,
-			vk::PipelineBindPoint::COMPUTE,
-			pipeline_layout,
-			0,
-			&[set],
-			&[],
-		);
+		device
+			.cmd_bind_pipeline(command, vk::PipelineBindPoint::COMPUTE, pipeline)
+			.expect("bind pipeline");
+		device
+			.cmd_bind_descriptor_sets(
+				command,
+				vk::PipelineBindPoint::COMPUTE,
+				pipeline_layout,
+				0,
+				&[set],
+				&[],
+			)
+			.expect("bind descriptors");
 		let push = [0_u32, 1, 2, values as u32];
 		let bytes = std::slice::from_raw_parts(push.as_ptr().cast::<u8>(), 16);
-		device.cmd_push_constants(
-			command,
-			pipeline_layout,
-			vk::ShaderStageFlags::COMPUTE,
-			0,
-			bytes,
-		);
-		device.cmd_dispatch(command, 1, 1, 1);
+		device
+			.cmd_push_constants(
+				command,
+				pipeline_layout,
+				vk::ShaderStageFlagBits::COMPUTE_BIT,
+				0,
+				bytes,
+			)
+			.expect("push constants");
+		device.cmd_dispatch(command, 1, 1, 1).expect("dispatch");
 		device.end_command_buffer(command).expect("end command");
 		let commands = [command];
-		let submit = [vk::SubmitInfo::default().command_buffers(&commands)];
-		let queue = device.get_device_queue(family, 0);
+		let submit = [vk::SubmitInfo::default()
+			.command_buffers(&commands)
+			.expect("submit commands")];
+		let queue = device.get_device_queue(family, 0).expect("device queue");
 		device
-			.queue_submit(queue, &submit, vk::Fence::null())
+			.queue_submit(queue, &submit, vk::Fence::NULL)
 			.expect("submit bounded add");
 		device
 			.queue_wait_idle(queue)
@@ -203,17 +245,17 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 		for i in 0..values {
 			assert_eq!(output[i], left[i] + right[i], "element {i}");
 		}
-		device.unmap_memory(buffers[2].1);
-		device.destroy_command_pool(command_pool, None);
-		device.destroy_pipeline(pipeline, None);
-		device.destroy_shader_module(shader, None);
-		device.destroy_pipeline_layout(pipeline_layout, None);
-		device.destroy_descriptor_pool(pool, None);
-		device.destroy_descriptor_set_layout(descriptor_layout, None);
+		device.unmap_memory(buffers[2].1).expect("unmap output");
+		let _ = device.destroy_command_pool(command_pool, None);
+		let _ = device.destroy_pipeline(pipeline, None);
+		let _ = device.destroy_shader_module(shader, None);
+		let _ = device.destroy_pipeline_layout(pipeline_layout, None);
+		let _ = device.destroy_descriptor_pool(pool, None);
+		let _ = device.destroy_descriptor_set_layout(descriptor_layout, None);
 		for (buffer, allocation) in buffers {
-			device.destroy_buffer(buffer, None);
-			device.free_memory(allocation, None);
+			let _ = device.destroy_buffer(buffer, None);
+			let _ = device.free_memory(allocation, None);
 		}
-		device.destroy_device(None);
+		device.destroy(None);
 	}
 }

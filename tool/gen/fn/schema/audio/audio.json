@@ -11,6 +11,29 @@
       "shape_rule": "match_input",
       "dtype_rule": "f32",
       "attributes": [["target_db", "float"], ["mode", "unsigned_integer"]],
+      "python": {
+        "parameters": [
+          [
+            "input",
+            "&Audio"
+          ],
+          [
+            "target_db",
+            "f32"
+          ],
+          [
+            "mode",
+            "NormalizeAudioMode"
+          ]
+        ],
+        "arguments": {
+          "config": "oa::audio::NormalizeAudioConfig { target_db: $target_db, mode: $mode }"
+        },
+        "defaults": {
+          "target_db": -3.0,
+          "mode": "peak"
+        }
+      },
       "rust": {
         "category": "signal",
         "parameters": [["input", "&Audio"], ["config", "NormalizeAudioConfig"]],
@@ -38,6 +61,28 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["out_rate", "unsigned_integer"], ["filter_half_width", "unsigned_integer"]],
+      "python": {
+        "parameters": [
+          [
+            "input",
+            "&Audio"
+          ],
+          [
+            "out_rate",
+            "u32"
+          ],
+          [
+            "filter_half_width",
+            "u32"
+          ]
+        ],
+        "arguments": {
+          "config": "oa::audio::ResampleConfig { out_rate: $out_rate, filter_half_width: $filter_half_width }"
+        },
+        "defaults": {
+          "filter_half_width": 64
+        }
+      },
       "rust": {
         "category": "signal",
         "parameters": [["input", "&Audio"], ["config", "ResampleConfig"]],
@@ -134,6 +179,37 @@
       "shape_rule": "match_input",
       "dtype_rule": "f32",
       "attributes": [["b0", "float"], ["b1", "float"], ["b2", "float"], ["a1", "float"], ["a2", "float"]],
+      "python": {
+        "parameters": [
+          [
+            "input",
+            "&Audio"
+          ],
+          [
+            "b0",
+            "f32"
+          ],
+          [
+            "b1",
+            "f32"
+          ],
+          [
+            "b2",
+            "f32"
+          ],
+          [
+            "a1",
+            "f32"
+          ],
+          [
+            "a2",
+            "f32"
+          ]
+        ],
+        "arguments": {
+          "coefficients": "oa::audio::BiquadCoefficients { b0: $b0, b1: $b1, b2: $b2, a1: $a1, a2: $a2 }"
+        }
+      },
       "rust": {
         "category": "signal",
         "parameters": [["input", "&Audio"], ["coefficients", "BiquadCoefficients"]],
@@ -208,6 +284,21 @@
       "shape_rule": "match_input",
       "dtype_rule": "f32",
       "attributes": [["section_count", "unsigned_integer"], ["coefficient_hash", "unsigned_integer"]],
+      "python": {
+        "parameters": [
+          [
+            "input",
+            "&Audio"
+          ],
+          [
+            "sections",
+            "Vec<[f32; 5]>"
+          ]
+        ],
+        "arguments": {
+          "sections": "&$sections.into_iter().map(|s| oa::audio::BiquadCoefficients { b0: s[0], b1: s[1], b2: s[2], a1: s[3], a2: s[4] }).collect::<Vec<_>>()"
+        }
+      },
       "rust": {
         "category": "signal",
         "parameters": [["input", "&Audio"], ["sections", "&[BiquadCoefficients]"]],
@@ -303,18 +394,18 @@
       "output_kinds": ["audio"],
       "shape_rule": "match_input",
       "dtype_rule": "f32",
-      "attributes": [["gain_a", "float"], ["gain_b", "float"]],
+      "attributes": [["gain_left", "float"], ["gain_right", "float"]],
       "rust": {
         "category": "signal",
-        "parameters": [["a", "&Audio"], ["b", "&Audio"], ["gain_a", "f32"], ["gain_b", "f32"]],
+        "parameters": [["left", "&Audio"], ["right", "&Audio"], ["gain_left", "f32"], ["gain_right", "f32"]],
         "returns": "Audio",
         "doc": "Compute a weighted sum of matching Audio values.",
-        "attribute_sources": {"gain_a": "gain_a", "gain_b": "gain_b"},
+        "attribute_sources": {"gain_left": "gain_left", "gain_right": "gain_right"},
         "bindings": [
-          {"name": "buffers", "values": {"a_index": ["read", "a"], "b_index": ["read", "b"], "output_index": ["write", "output"]}}
+          {"name": "buffers", "values": {"a_index": ["read", "left"], "b_index": ["read", "right"], "output_index": ["write", "output"]}}
         ],
         "push_constants": [
-          {"name": "push", "values": {"count": ["U32", "count"], "gain_a": ["F32", "gain_a"], "gain_b": ["F32", "gain_b"]}}
+          {"name": "push", "values": {"count": ["U32", "count"], "gain_a": ["F32", "gain_left"], "gain_b": ["F32", "gain_right"]}}
         ],
         "dispatches": [
           {"kernel": "AudioMixF32", "buffers": "&buffers", "push_constants": "&push", "workgroups": "KernelId::AudioMixF32.linear_workgroups(count)"}
@@ -376,6 +467,44 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["fft_size", "unsigned_integer"], ["hop_size", "unsigned_integer"], ["win_size", "unsigned_integer"], ["window", "unsigned_integer"], ["center", "boolean"]],
+      "python": {
+        "parameters": [
+          [
+            "input",
+            "&Audio"
+          ],
+          [
+            "fft_size",
+            "u32"
+          ],
+          [
+            "hop_size",
+            "u32"
+          ],
+          [
+            "win_size",
+            "u32"
+          ],
+          [
+            "window",
+            "StftWindow"
+          ],
+          [
+            "center",
+            "bool"
+          ]
+        ],
+        "arguments": {
+          "config": "oa::audio::StftConfig { fft_size: $fft_size, hop_size: $hop_size, win_size: $win_size, window: $window, center: $center }"
+        },
+        "defaults": {
+          "fft_size": 1024,
+          "hop_size": 256,
+          "win_size": 0,
+          "window": "hann",
+          "center": true
+        }
+      },
       "rust": {
         "category": "transform",
         "parameters": [["input", "&Audio"], ["config", "StftConfig"]],
@@ -400,6 +529,54 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["fft_size", "unsigned_integer"], ["hop_size", "unsigned_integer"], ["num_mels", "unsigned_integer"], ["f_min", "float"], ["f_max", "float"], ["log_scale", "boolean"], ["normalize", "boolean"]],
+      "python": {
+        "parameters": [
+          [
+            "input",
+            "&Audio"
+          ],
+          [
+            "fft_size",
+            "u32"
+          ],
+          [
+            "hop_size",
+            "u32"
+          ],
+          [
+            "num_mels",
+            "u32"
+          ],
+          [
+            "f_min",
+            "f32"
+          ],
+          [
+            "f_max",
+            "f32"
+          ],
+          [
+            "log_scale",
+            "bool"
+          ],
+          [
+            "normalize",
+            "bool"
+          ]
+        ],
+        "arguments": {
+          "config": "oa::audio::MelConfig { fft_size: $fft_size, hop_size: $hop_size, num_mels: $num_mels, f_min: $f_min, f_max: $f_max, log_scale: $log_scale, normalize: $normalize }"
+        },
+        "defaults": {
+          "fft_size": 1024,
+          "hop_size": 256,
+          "num_mels": 80,
+          "f_min": 0.0,
+          "f_max": 0.0,
+          "log_scale": true,
+          "normalize": false
+        }
+      },
       "rust": {
         "category": "transform",
         "parameters": [["input", "&Audio"], ["config", "MelConfig"]],
@@ -433,6 +610,59 @@
       "shape_rule": "explicit",
       "dtype_rule": "f32",
       "attributes": [["num_coeffs", "unsigned_integer"], ["fft_size", "unsigned_integer"], ["hop_size", "unsigned_integer"], ["num_mels", "unsigned_integer"], ["f_min", "float"], ["f_max", "float"], ["log_scale", "boolean"], ["normalize", "boolean"]],
+      "python": {
+        "parameters": [
+          [
+            "input",
+            "&Audio"
+          ],
+          [
+            "num_coeffs",
+            "u32"
+          ],
+          [
+            "num_mels",
+            "u32"
+          ],
+          [
+            "fft_size",
+            "u32"
+          ],
+          [
+            "hop_size",
+            "u32"
+          ],
+          [
+            "f_min",
+            "f32"
+          ],
+          [
+            "f_max",
+            "f32"
+          ],
+          [
+            "log_scale",
+            "bool"
+          ],
+          [
+            "normalize",
+            "bool"
+          ]
+        ],
+        "arguments": {
+          "config": "oa::audio::MfccConfig { num_coeffs: $num_coeffs, mel: oa::audio::MelConfig { fft_size: $fft_size, hop_size: $hop_size, num_mels: $num_mels, f_min: $f_min, f_max: $f_max, log_scale: $log_scale, normalize: $normalize } }"
+        },
+        "defaults": {
+          "num_coeffs": 13,
+          "fft_size": 1024,
+          "hop_size": 256,
+          "num_mels": 80,
+          "f_min": 0.0,
+          "f_max": 0.0,
+          "log_scale": true,
+          "normalize": false
+        }
+      },
       "rust": {
         "category": "transform",
         "parameters": [["input", "&Audio"], ["config", "MfccConfig"]],

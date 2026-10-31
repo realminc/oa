@@ -280,9 +280,70 @@ impl RolloutBuffer {
 			self.config.environments,
 			&self.config.observation_shape,
 			self.observation_elements,
+			None,
 		)?;
 		self.size += 1;
 		Ok(())
+	}
+
+	pub(in crate::ml) fn initialize_replay_storage(&self) -> Result<()> {
+		for value in self.replay_slots() {
+			match value.dtype() {
+				DType::F32 => value.write_values(&vec![0_f32; value.num_elements()])?,
+				DType::I32 => value.write_values(&vec![0_i32; value.num_elements()])?,
+				DType::U8 => value.write_values(&vec![0_u8; value.num_elements()])?,
+				_ => return Err(Error::internal("unexpected rollout dtype")),
+			}
+		}
+		Ok(())
+	}
+	pub(in crate::ml) fn replay_slots(&self) -> Vec<&Matrix> {
+		let mut slots = batch_destinations(&self.batch).to_vec();
+		slots.push(self.batch.advantage());
+		slots.push(self.batch.returns());
+		slots
+	}
+
+	pub(in crate::ml) fn append_replay(
+		&self,
+		transition: &RolloutTransition,
+		cursor: &Matrix,
+	) -> Result<()> {
+		append_dispatch(
+			transition,
+			&self.batch,
+			0,
+			self.config.environments,
+			&self.config.observation_shape,
+			self.observation_elements,
+			Some(cursor),
+		)
+	}
+	pub(in crate::ml) fn reset_control(&mut self) {
+		self.size = 0;
+		self.finalized = false;
+	}
+	pub(in crate::ml) fn reset_replay_commands(&self) -> Result<()> {
+		reset_dispatch(&self.batch.valid)
+	}
+	pub(in crate::ml) fn finish_replayed_collection(&mut self) {
+		self.size = self.config.time;
+		self.finalized = true;
+	}
+	pub(in crate::ml) fn finalize_replay_commands(
+		&mut self,
+		config: advantage::GaeConfig,
+	) -> Result<()> {
+		advantage::gae_into(
+			&self.batch.reward,
+			&self.batch.value,
+			&self.batch.next_value,
+			&self.batch.terminated,
+			&self.batch.truncated,
+			&mut self.batch.advantage,
+			&mut self.batch.returns,
+			config,
+		)
 	}
 
 	/// Record generalized advantage estimation into the retained batch.
@@ -383,6 +444,7 @@ fn append_dispatch(
 	environments: usize,
 	observation_shape: &[usize],
 	observation_elements: u32,
+	cursor: Option<&Matrix>,
 ) -> Result<()> {
 	const OPERATION: &str = "oa::ml::rollout::append";
 	let mut expected_observation_shape = Vec::with_capacity(observation_shape.len() + 1);
@@ -452,7 +514,7 @@ fn append_dispatch(
 			Error::resource_exhausted(format!("{OPERATION} observation count exceeds u32"))
 		})?;
 	let work_items = observation_count.max(environments);
-	let inputs = [
+	let mut inputs = vec![
 		transition.observation(),
 		transition.action(),
 		transition.reward(),
@@ -471,8 +533,8 @@ fn append_dispatch(
 		batch.truncated(),
 		batch.valid(),
 	];
-	let outputs = batch_destinations(batch);
-	let buffers = [
+	let mut outputs = batch_destinations(batch).to_vec();
+	let mut buffers = vec![
 		BufferBinding::read(transition.observation().storage()),
 		BufferBinding::read(transition.action().storage()),
 		BufferBinding::read(transition.reward().storage()),
@@ -491,6 +553,12 @@ fn append_dispatch(
 		BufferBinding::write(batch.truncated().storage()),
 		BufferBinding::write(batch.valid().storage()),
 	];
+	if let Some(cursor) = cursor {
+		inputs.push(cursor);
+		outputs.push(cursor);
+		buffers.push(BufferBinding::read_write(cursor.storage()));
+	}
+
 	let push_constants = [
 		PushConstant::U32(step),
 		PushConstant::U32(environments),
@@ -510,7 +578,11 @@ fn append_dispatch(
 			value: u64::from(observation_elements),
 		},
 	];
-	let kernel = KernelId::MlRolloutAppendF32;
+	let kernel = if cursor.is_some() {
+		KernelId::MlRolloutAppendCursorF32
+	} else {
+		KernelId::MlRolloutAppendF32
+	};
 	{
 		let inputs: &[&Matrix] = &inputs;
 		let outputs: &[&Matrix] = &outputs;
@@ -602,4 +674,196 @@ fn batch_destinations(batch: &RolloutBatch) -> [&Matrix; 9] {
 		batch.truncated(),
 		batch.valid(),
 	]
+}
+
+// Aligned detached inputs for a contiguous PPO update tape. The rollout's I32
+// actions never pass through F32 or host readback; generic Slice is F32-only.
+pub(in crate::ml) fn minibatch(
+	inputs: [&Matrix; 5],
+	start: usize,
+	count: usize,
+) -> Result<[Matrix; 5]> {
+	let [batch, width] = inputs[0].shape() else {
+		return Err(Error::invalid_argument(
+			"PPO minibatch observations must be [batch,width]",
+		));
+	};
+	if *width == 0 || count == 0 || start.checked_add(count).is_none_or(|end| end > *batch) {
+		return Err(Error::invalid_argument(
+			"PPO minibatch range is outside the rollout",
+		));
+	}
+	for (index, input) in inputs.iter().enumerate() {
+		let dtype = if index == 1 { DType::I32 } else { DType::F32 };
+		if input.dtype() != dtype
+			|| !input.engine_handle().same_as(inputs[0].engine_handle())
+			|| (index > 0 && input.shape() != [*batch])
+		{
+			return Err(Error::invalid_argument(
+				"PPO minibatch shape/dtype/Engine mismatch",
+			));
+		}
+	}
+	const OP: &str = "oa::ml::rollout::minibatch";
+	shader_u32(inputs[0].element_count(), "source observation elements", OP)?;
+	let elements = count
+		.checked_mul(*width)
+		.ok_or_else(|| Error::resource_exhausted("PPO minibatch observation extent overflows"))?;
+	let items = shader_u32(elements, "output observation elements", OP)?;
+	let engine = inputs[0].engine_handle();
+	let allocate = |shape, count, dtype| Matrix::allocate(engine, shape, count, dtype);
+	let outputs = [
+		allocate(vec![count, *width], elements, DType::F32)?,
+		allocate(vec![count], count, DType::I32)?,
+		allocate(vec![count], count, DType::F32)?,
+		allocate(vec![count], count, DType::F32)?,
+		allocate(vec![count], count, DType::F32)?,
+	];
+	let buffers = [
+		BufferBinding::read(inputs[0].storage()),
+		BufferBinding::read(inputs[1].storage()),
+		BufferBinding::read(inputs[2].storage()),
+		BufferBinding::read(inputs[3].storage()),
+		BufferBinding::read(inputs[4].storage()),
+		BufferBinding::write(outputs[0].storage()),
+		BufferBinding::write(outputs[1].storage()),
+		BufferBinding::write(outputs[2].storage()),
+		BufferBinding::write(outputs[3].storage()),
+		BufferBinding::write(outputs[4].storage()),
+	];
+	let start = shader_u32(start, "start", OP)?;
+	let count = shader_u32(count, "count", OP)?;
+	let push = [
+		PushConstant::U32(start),
+		PushConstant::U32(count),
+		PushConstant::U32(shader_u32(*width, "observation width", OP)?),
+	];
+	let attributes = [
+		OpAttribute::UnsignedInteger {
+			name: "start".into(),
+			value: u64::from(start),
+		},
+		OpAttribute::UnsignedInteger {
+			name: "count".into(),
+			value: u64::from(count),
+		},
+	];
+	engine.record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MlRolloutMinibatchF32,
+			buffers: &buffers,
+			push_constants: &push,
+			workgroups: KernelId::MlRolloutMinibatchF32.linear_workgroups(items),
+		},
+		SemanticDispatch {
+			contract: crate::core::operation::ml::MINIBATCH,
+			inputs: &inputs,
+			outputs: &[
+				&outputs[0],
+				&outputs[1],
+				&outputs[2],
+				&outputs[3],
+				&outputs[4],
+			],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(outputs)
+}
+
+// Cursor bounds are checked by PpoUpdateProgram before each replay.
+pub(in crate::ml) fn minibatch_cursor(
+	inputs: [&Matrix; 5],
+	cursor: &Matrix,
+	count: usize,
+) -> Result<[Matrix; 5]> {
+	let [batch, width] = inputs[0].shape() else {
+		return Err(Error::invalid_argument(
+			"PPO minibatch observations must be [batch,width]",
+		));
+	};
+	if *width == 0 || count == 0 || count > *batch {
+		return Err(Error::invalid_argument(
+			"PPO minibatch range is outside the rollout",
+		));
+	}
+	for (index, input) in inputs.iter().enumerate() {
+		let dtype = if index == 1 { DType::I32 } else { DType::F32 };
+		if input.dtype() != dtype
+			|| !input.engine_handle().same_as(inputs[0].engine_handle())
+			|| (index > 0 && input.shape() != [*batch])
+		{
+			return Err(Error::invalid_argument(
+				"PPO minibatch shape/dtype/Engine mismatch",
+			));
+		}
+	}
+	if cursor.dtype() != DType::U32
+		|| cursor.shape() != [2]
+		|| !cursor.engine_handle().same_as(inputs[0].engine_handle())
+	{
+		return Err(Error::invalid_argument(
+			"PPO cursor must be same-engine U32 [2]",
+		));
+	}
+	const OP: &str = "oa::ml::rollout::minibatch";
+	shader_u32(inputs[0].element_count(), "source observation elements", OP)?;
+	let elements = count
+		.checked_mul(*width)
+		.ok_or_else(|| Error::resource_exhausted("PPO minibatch observation extent overflows"))?;
+	let items = shader_u32(elements, "output observation elements", OP)?;
+	let engine = inputs[0].engine_handle();
+	let allocate = |shape, count, dtype| Matrix::allocate(engine, shape, count, dtype);
+	let outputs = [
+		allocate(vec![count, *width], elements, DType::F32)?,
+		allocate(vec![count], count, DType::I32)?,
+		allocate(vec![count], count, DType::F32)?,
+		allocate(vec![count], count, DType::F32)?,
+		allocate(vec![count], count, DType::F32)?,
+	];
+	let buffers = [
+		BufferBinding::read(inputs[0].storage()),
+		BufferBinding::read(inputs[1].storage()),
+		BufferBinding::read(inputs[2].storage()),
+		BufferBinding::read(inputs[3].storage()),
+		BufferBinding::read(inputs[4].storage()),
+		BufferBinding::write(outputs[0].storage()),
+		BufferBinding::write(outputs[1].storage()),
+		BufferBinding::write(outputs[2].storage()),
+		BufferBinding::write(outputs[3].storage()),
+		BufferBinding::write(outputs[4].storage()),
+		BufferBinding::read(cursor.storage()),
+	];
+	let count = shader_u32(count, "count", OP)?;
+	let push = [
+		PushConstant::U32(count),
+		PushConstant::U32(shader_u32(*width, "observation width", OP)?),
+	];
+	let attributes = [OpAttribute::UnsignedInteger {
+		name: "count".into(),
+		value: u64::from(count),
+	}];
+	engine.record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MlRolloutMinibatchCursorF32,
+			buffers: &buffers,
+			push_constants: &push,
+			workgroups: KernelId::MlRolloutMinibatchCursorF32.linear_workgroups(items),
+		},
+		SemanticDispatch {
+			contract: crate::core::operation::ml::MINIBATCH_CURSOR,
+			inputs: &[
+				inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], cursor,
+			],
+			outputs: &[
+				&outputs[0],
+				&outputs[1],
+				&outputs[2],
+				&outputs[3],
+				&outputs[4],
+			],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(outputs)
 }

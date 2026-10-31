@@ -7,4 +7,4 @@
 __pycache__/
 *.py[cod]
 .venv/
-sdk/py/binding/oa/*.so
+src/py/oa/*.so

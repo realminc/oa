@@ -71,3 +71,6 @@ pub use nal::{
 };
 pub use player::{VideoPlayer, VideoPlayerConfig, VideoPlayerStats};
 pub use texture::{from_texture, from_texture_with_ready};
+
+#[path = "video/parity.gen.rs"]
+mod parity;

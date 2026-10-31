@@ -17,6 +17,7 @@ mod shader;
 mod storage;
 mod window;
 
+pub(crate) use device::commands::SyncCommands;
 pub(crate) use device::dispatch::{BufferAccess, BufferBinding, ComputeDispatch, PushConstant};
 pub use device::{DeviceHardwareInfo, DeviceInfo, DeviceKind, DeviceSoftwareInfo, DeviceSummary};
 pub(crate) use dispatch::{
@@ -24,7 +25,8 @@ pub(crate) use dispatch::{
 	OptionalSemanticDispatch, SemanticDispatch,
 };
 pub(crate) use engine::{
-	CaptureAttempt, EngineHandle, RecordingTransaction, SemanticLoweringScope, VideoDecoderBackend,
+	CaptureAttempt, EngineHandle, MlDsaDeviceKey, MlKemDeviceKey, MlKemSharedSecret,
+	RecordingTransaction, SemanticLoweringScope, VideoDecoderBackend,
 };
 pub use engine::{DeviceSelection, Engine, EngineBuilder, EngineRequirements};
 pub use event::Event;
@@ -44,13 +46,15 @@ pub(crate) use shader::KernelId;
 pub(crate) use storage::Storage;
 
 pub use window::SdlWindow;
+pub(crate) use window::decoration as window_decoration;
 
 pub(in crate::runtime) use device::buffer::Buffer;
 pub(crate) use device::buffer::MeshBuffer;
 pub(in crate::runtime) use device::command::{RecordedCommandBuffer, ReusableCommandBuffer};
 pub(crate) use device::logical::SceneDrawCmd;
 pub(in crate::runtime) use device::retirement::{RetirementService, RetirementTicket};
-pub(in crate::runtime) use device::secret_buffer::{SecretBinding, SecretBuffer, SecretErasure};
+pub(crate) use device::secret_buffer::SecretErasure;
+pub(in crate::runtime) use device::secret_buffer::{SecretBinding, SecretBuffer};
 pub(in crate::runtime) use device::swapchain::PresentationSwapchain;
 pub(in crate::runtime) use device::timestamp::TimestampPair;
 pub(in crate::runtime) use device::video::DecodeSession;
@@ -60,9 +64,9 @@ pub(in crate::runtime) use instance::Instance;
 pub use presentation::{PresentationCapabilities, PresentationSurface};
 
 pub(crate) use device::pipeline::{
-	FlatColorPipeline, GraphicsPipeline, StandardSurfaceBlendPipeline,
-	StandardSurfaceDescriptorArena, StandardSurfaceDescriptorLayouts, StandardSurfacePipeline,
-	UnlitDescriptorArena, UnlitDescriptorLayouts, UnlitPipeline,
+	FlatColorPipeline, GraphicsPipeline, SurfaceBlendPipeline, SurfaceDescriptorArena,
+	SurfaceDescriptorLayouts, SurfacePipeline, UnlitDescriptorArena, UnlitDescriptorLayouts,
+	UnlitPipeline,
 };
 
 pub(crate) use device::image::{NativeRgbaImage, RenderTarget};
@@ -74,3 +78,6 @@ mod bounded_add_unit;
 #[cfg(test)]
 #[path = "../../test/rs/runtime/compatibility_engine_unit.rs"]
 mod compatibility_engine_unit;
+
+#[path = "runtime/parity.gen.rs"]
+mod parity;

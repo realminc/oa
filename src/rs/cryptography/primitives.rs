@@ -61,7 +61,7 @@ impl Hash {
 	/// # Errors
 	///
 	/// Returns an error when `bytes` is not exactly 32 bytes long.
-	pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+	pub fn new_from_bytes(bytes: &[u8]) -> Result<Self> {
 		let bytes = <[u8; Self::SIZE]>::try_from(bytes)
 			.map_err(|_| Error::invalid_argument("Hash requires exactly 32 bytes"))?;
 		Ok(Self(bytes))
@@ -72,7 +72,7 @@ impl Hash {
 	/// # Errors
 	///
 	/// Returns an error for the wrong length or a non-hexadecimal character.
-	pub fn from_hex(hex: &str) -> Result<Self> {
+	pub fn new_from_hex(hex: &str) -> Result<Self> {
 		if hex.len() != Self::SIZE * 2 {
 			return Err(Error::invalid_argument(
 				"Hash hexadecimal text must contain exactly 64 characters",
@@ -442,7 +442,7 @@ impl MerkleProof {
 	/// # Errors
 	///
 	/// Returns an error unless each sibling has one matching direction flag.
-	pub fn from_parts(siblings: Vec<Hash>, is_left: Vec<bool>) -> Result<Self> {
+	pub fn new_from_parts(siblings: Vec<Hash>, is_left: Vec<bool>) -> Result<Self> {
 		if siblings.len() != is_left.len() {
 			return Err(Error::invalid_argument(
 				"Merkle proof sibling and direction counts differ",
@@ -490,7 +490,7 @@ pub fn merkle_proof(tree: &MerkleTree, leaf_index: usize) -> Result<MerkleProof>
 		is_left.push(!index.is_multiple_of(2));
 		index /= 2;
 	}
-	MerkleProof::from_parts(siblings, is_left)
+	MerkleProof::new_from_parts(siblings, is_left)
 }
 
 /// Verify one Merkle inclusion proof against `root`.

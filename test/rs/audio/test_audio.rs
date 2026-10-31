@@ -45,7 +45,7 @@ fn pcm_s16_encoder_packets_flush_and_close_explicitly() -> oa::Result<()> {
 		frames_per_packet: 2,
 		..AudioEncodeProfile::default()
 	};
-	let mut encoder = AudioEncoder::create(profile)?;
+	let mut encoder = AudioEncoder::new(profile)?;
 	assert!(encoder.is_open());
 	assert_eq!(encoder.profile(), Some(&profile));
 	assert!(encoder.codec_config().is_empty());
@@ -107,12 +107,12 @@ fn pcm_s16_encoder_rejects_invalid_profiles_and_partial_frames() -> oa::Result<(
 		},
 	] {
 		assert_eq!(
-			AudioEncoder::create(profile).unwrap_err().kind(),
+			AudioEncoder::new(profile).unwrap_err().kind(),
 			ErrorKind::InvalidArgument
 		);
 	}
 
-	let mut encoder = AudioEncoder::create(AudioEncodeProfile {
+	let mut encoder = AudioEncoder::new(AudioEncodeProfile {
 		channel_count: 2,
 		..AudioEncodeProfile::default()
 	})?;
@@ -201,13 +201,13 @@ test_vk!(
 );
 
 test_vk!(audio_value_rejects_invalid_matrix_metadata, engine, {
-	let mono = oa::Matrix::from_f32(&engine, [1, 4], &[0.0; 4])?;
+	let mono = oa::Matrix::new_from_f32(&engine, [1, 4], &[0.0; 4])?;
 	assert!(Audio::new(mono.clone(), 0, AudioChannelLayout::Mono).is_err());
 	assert!(Audio::new(mono, 48_000, AudioChannelLayout::Stereo).is_err());
 
-	let integer = oa::Matrix::from_slice(&engine, [1, 4], &[0_i32; 4])?;
+	let integer = oa::Matrix::new_from_slice(&engine, [1, 4], &[0_i32; 4])?;
 	assert!(Audio::new(integer, 48_000, AudioChannelLayout::Mono).is_err());
-	let rank_one = oa::Matrix::from_f32(&engine, [4], &[0.0; 4])?;
+	let rank_one = oa::Matrix::new_from_f32(&engine, [4], &[0.0; 4])?;
 	assert!(Audio::new(rank_one, 48_000, AudioChannelLayout::Mono).is_err());
 	assert!(oa::audio::decode_memory(&engine, &[]).is_err());
 	assert!(oa::audio::decode_memory(&engine, b"not audio").is_err());
@@ -227,7 +227,7 @@ test_vk!(audio_signal_operations_match_host_oracles, engine, {
 		}
 	}
 
-	let input = Audio::from_planar_f32(
+	let input = Audio::new_from_planar_f32(
 		&engine,
 		&[0.0, 0.25, -0.5, 1.0, 1.0, 0.5, -0.25, -1.0],
 		2,
@@ -340,7 +340,7 @@ test_vk!(
 	engine,
 	{
 		let samples = vec![1.0_f32; 257];
-		let input = Audio::from_planar_f32(&engine, &samples, 1, 8_000, AudioChannelLayout::Mono)?;
+		let input = Audio::new_from_planar_f32(&engine, &samples, 1, 8_000, AudioChannelLayout::Mono)?;
 		let output = oa::audio::resample(
 			&input,
 			oa::audio::ResampleConfig {
@@ -369,7 +369,7 @@ test_vk!(audio_feature_transforms_have_checked_layouts, engine, {
 	let samples = (0..32)
 		.map(|index| (std::f32::consts::TAU * index as f32 / 8.0).sin())
 		.collect::<Vec<_>>();
-	let input = Audio::from_planar_f32(&engine, &samples, 1, 8_000, AudioChannelLayout::Mono)?;
+	let input = Audio::new_from_planar_f32(&engine, &samples, 1, 8_000, AudioChannelLayout::Mono)?;
 	let stft_config = StftConfig {
 		fft_size: 16,
 		hop_size: 8,
@@ -426,7 +426,7 @@ test_vk!(
 		let temp = TempAudio(path);
 		let wav = oa::audio::encode_interleaved_wav_f32(&vec![0.0; 4_800], 48_000, 1)?;
 		std::fs::write(&temp.0, wav).map_err(|error| oa::Error::callback(error.to_string()))?;
-		let mut player = oa::AudioPlayer::open_uri(&engine, &temp.0)?;
+		let mut player = oa::AudioPlayer::new_from_uri(&engine, &temp.0)?;
 		assert!(player.is_open());
 		assert_eq!(player.sample_rate(), 48_000);
 		assert_eq!(player.channel_count(), 1);
@@ -509,7 +509,7 @@ test_vk!(
 		let samples = (0..16)
 			.map(|index| (std::f32::consts::TAU * index as f32 / 8.0).sin())
 			.collect::<Vec<_>>();
-		let input = Audio::from_planar_f32(&engine, &samples, 1, 8_000, AudioChannelLayout::Mono)?;
+		let input = Audio::new_from_planar_f32(&engine, &samples, 1, 8_000, AudioChannelLayout::Mono)?;
 		for window in [
 			StftWindow::Hann,
 			StftWindow::Hamming,

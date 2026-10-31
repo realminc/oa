@@ -107,3 +107,23 @@ pub(in crate::ml) fn record_flash_attention(
 		scale,
 	})
 }
+
+pub(in crate::ml) fn record_causal_linear_attention(
+	query: &Matrix,
+	key: &Matrix,
+	value: &Matrix,
+	output: &Matrix,
+	denominator: Matrix,
+	epsilon: f32,
+) -> Result<()> {
+	record_node(GradNode::LinearAttention(Box::new(
+		super::super::node::GradNodeLinearAttention {
+			query: query.clone(),
+			key: key.clone(),
+			value: value.clone(),
+			output: output.clone(),
+			denominator,
+			epsilon,
+		},
+	)))
+}

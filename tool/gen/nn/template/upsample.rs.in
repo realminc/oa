@@ -12,7 +12,7 @@ impl {{name}} {
 	///
 	/// Returns an error when `scale_factor` is zero.
 	pub fn new(scale_factor: usize) -> Result<Self> {
-		Self::with_mode(scale_factor, {{default_mode}})
+		Self::new_with_mode(scale_factor, {{default_mode}})
 	}
 
 	/// Construct {{name}} with an explicit interpolation mode.
@@ -20,7 +20,7 @@ impl {{name}} {
 	/// # Errors
 	///
 	/// Returns an error when `scale_factor` is zero.
-	pub fn with_mode(scale_factor: usize, mode: UpsampleMode) -> Result<Self> {
+	pub fn new_with_mode(scale_factor: usize, mode: UpsampleMode) -> Result<Self> {
 		if scale_factor == 0 {
 			return Err(crate::Error::invalid_argument(
 				"{{name}} scale factor must be nonzero",

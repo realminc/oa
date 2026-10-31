@@ -28,11 +28,10 @@ fn bounded_engine_records_eager_and_reusable_graphs() -> crate::Result<()> {
 			difference.read_f32()?,
 			(0..17).map(|i| i as f32 - 2.0).collect::<Vec<_>>()
 		);
-		let ui_error = match crate::ui::Ui::init(&engine, 8, 8) {
-			Ok(_) => panic!("unqualified UI compositor was admitted"),
-			Err(error) => error,
-		};
-		assert_eq!(ui_error.kind(), crate::ErrorKind::MissingCapability);
+		// The bounded compositor is now qualified independently of Vulkan 1.3.
+		// Its lifetime shares this engine with the pending eager Matrix work.
+		let mut ui = crate::ui::Ui::init(&engine, 8, 8)?;
+		ui.close()?;
 	}
 	assert_eq!(
 		second.read_f32()?,

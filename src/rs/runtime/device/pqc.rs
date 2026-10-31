@@ -27,9 +27,10 @@ pub(in crate::runtime) struct PreparedSecretKeygen<'a> {
 	pipeline: &'a ComputePipeline,
 	_seed: SecretBinding<'a>,
 	_private: SecretBinding<'a>,
+	_workspace: Option<SecretBinding<'a>>,
 	public: Buffer,
 	sets: Option<BoundedSets>,
-	push: [u8; 16],
+	push: Vec<u8>,
 }
 
 /// Ownership and wire admission precede fallible pipeline creation.
@@ -37,6 +38,7 @@ pub(super) struct SecretKeygenOperands<'a> {
 	device: &'a Arc<Device>,
 	seed: SecretBinding<'a>,
 	private: SecretBinding<'a>,
+	workspace: Option<SecretBinding<'a>>,
 	public: Buffer,
 	parameter: u32,
 	kernel: KernelId,
@@ -51,6 +53,7 @@ impl<'a> SecretKeygenOperands<'a> {
 		seed: SecretBinding<'a>,
 		private: SecretBinding<'a>,
 		public: &Buffer,
+		workspace: SecretBinding<'a>,
 		k: u32,
 	) -> Result<Self> {
 		if !(2..=4).contains(&k) {
@@ -60,6 +63,7 @@ impl<'a> SecretKeygenOperands<'a> {
 			device,
 			seed,
 			private,
+			Some(workspace),
 			public,
 			SecretKeygenLayout {
 				kernel: KernelId::CryptographyMlKemKeygenU8,
@@ -84,6 +88,7 @@ impl<'a> SecretKeygenOperands<'a> {
 			device,
 			seed,
 			private,
+			None,
 			public,
 			SecretKeygenLayout {
 				kernel: KernelId::CryptographyMlDsaKeygenU8,
@@ -99,6 +104,7 @@ impl<'a> SecretKeygenOperands<'a> {
 		device: &'a Arc<Device>,
 		seed: SecretBinding<'a>,
 		private: SecretBinding<'a>,
+		workspace: Option<SecretBinding<'a>>,
 		public: &Buffer,
 		layout: SecretKeygenLayout,
 	) -> Result<Self> {
@@ -124,10 +130,23 @@ impl<'a> SecretKeygenOperands<'a> {
 				"PQC keygen operand extent mismatch",
 			));
 		}
+		if let Some(workspace) = &workspace {
+			SecretConsumerOperands::validate_secret(
+				device,
+				workspace,
+				KernelId::mlkem_keygen_workspace_bytes() as u64,
+			)?;
+			if [seed.raw(), private.raw(), public.raw()].contains(&workspace.raw()) {
+				return Err(Error::invalid_argument(
+					"PQC keygen workspace must be disjoint",
+				));
+			}
+		}
 		Ok(Self {
 			device,
 			seed,
 			private,
+			workspace,
 			public: public.clone(),
 			parameter,
 			kernel,
@@ -146,6 +165,7 @@ impl<'a> SecretKeygenOperands<'a> {
 			device,
 			seed,
 			private,
+			workspace,
 			public,
 			parameter,
 			kernel,
@@ -153,7 +173,10 @@ impl<'a> SecretKeygenOperands<'a> {
 			el,
 			dl,
 		} = self;
-		if pipeline.push_constant_size() != 16 || pipeline.max_dispatch_group_count().contains(&0) {
+		let push_size = if workspace.is_some() { 20 } else { 16 };
+		if pipeline.push_constant_size() != push_size
+			|| pipeline.max_dispatch_group_count().contains(&0)
+		{
 			return Err(Error::missing_capability("PQC dispatch ABI unavailable"));
 		}
 		let bounded = device.physical().profile == ExecutionProfile::Compatibility;
@@ -161,32 +184,42 @@ impl<'a> SecretKeygenOperands<'a> {
 			let layout = device
 				.bounded_descriptor_layout(kernel.bounded_buffer_count())
 				.ok_or_else(|| Error::missing_capability("PQC bounded descriptor layout unavailable"))?;
-			let buffers = vec![
-				ash::vk::DescriptorBufferInfo::default()
+			let mut buffers = vec![
+				vk::DescriptorBufferInfo::default()
 					.buffer(seed.raw())
 					.range(seed_len),
-				ash::vk::DescriptorBufferInfo::default()
+				vk::DescriptorBufferInfo::default()
 					.buffer(private.raw())
 					.range(dl),
-				ash::vk::DescriptorBufferInfo::default()
+				vk::DescriptorBufferInfo::default()
 					.buffer(public.raw())
 					.range(el),
 			];
+			if let Some(workspace) = &workspace {
+				buffers.push(SecretConsumerOperands::secret_info(workspace));
+			}
 			// BoundedSets retains the Device and descriptors until command retirement.
 			Some(BoundedSets::new(device, &[layout], &[buffers])?)
 		} else {
 			None
 		};
-		let indices = if bounded {
-			[0, 1, 2]
+		let mut indices = if bounded {
+			vec![0, 1, 2]
 		} else {
-			[
+			vec![
 				seed.descriptor_index(),
 				private.descriptor_index(),
 				public.descriptor_index(),
 			]
 		};
-		let mut push = [0; 16];
+		if let Some(workspace) = &workspace {
+			indices.push(if bounded {
+				3
+			} else {
+				workspace.descriptor_index()
+			});
+		}
+		let mut push = vec![0; push_size as usize];
 		for (bytes, value) in push
 			.as_chunks_mut::<4>()
 			.0
@@ -200,6 +233,7 @@ impl<'a> SecretKeygenOperands<'a> {
 			pipeline,
 			_seed: seed,
 			_private: private,
+			_workspace: workspace,
 			public,
 			sets,
 			push,
@@ -208,46 +242,46 @@ impl<'a> SecretKeygenOperands<'a> {
 }
 
 impl PreparedSecretKeygen<'_> {
-	pub(super) fn encode(&self, command: ash::vk::CommandBuffer) {
+	pub(super) fn encode(&self, command: vk::CommandBuffer) -> Result<()> {
 		let set = self
 			.sets
 			.as_ref()
 			.map_or_else(|| self.device.descriptor_set(), |sets| sets.set(0));
 		// SAFETY: the Engine owns this recording command, admitted pipeline and
 		// descriptor layout. Preflight proved ownership, disjoint exact ranges,
-		// the 16-byte push ABI and [1,1,1] dispatch limits. Borrowed secrets and
+		// the parameter-family push ABI and [1,1,1] dispatch limits. Borrowed secrets and
 		// retained public storage keep every descriptor live. The upload recorder
 		// supplies COPY/TRANSFER_WRITE -> compute visibility for the seed.
 		unsafe {
 			self.device.raw().cmd_bind_pipeline(
 				command,
-				ash::vk::PipelineBindPoint::COMPUTE,
+				vk::PipelineBindPoint::COMPUTE,
 				self.pipeline.raw(),
-			);
+			)?;
 			self.device.raw().cmd_bind_descriptor_sets(
 				command,
-				ash::vk::PipelineBindPoint::COMPUTE,
+				vk::PipelineBindPoint::COMPUTE,
 				self.pipeline.layout(),
 				0,
 				&[set],
 				&[],
-			);
+			)?;
 			self.device.raw().cmd_push_constants(
 				command,
 				self.pipeline.layout(),
-				ash::vk::ShaderStageFlags::COMPUTE,
+				vk::ShaderStageFlagBits::COMPUTE_BIT,
 				0,
 				&self.push,
-			);
-			self.device.raw().cmd_dispatch(command, 1, 1, 1);
+			)?;
+			self.device.raw().cmd_dispatch(command, 1, 1, 1)?;
 		}
-		let barrier = ash::vk::BufferMemoryBarrier2::default()
-			.src_stage_mask(ash::vk::PipelineStageFlags2::COMPUTE_SHADER)
-			.src_access_mask(ash::vk::AccessFlags2::SHADER_STORAGE_WRITE)
-			.dst_stage_mask(ash::vk::PipelineStageFlags2::HOST)
-			.dst_access_mask(ash::vk::AccessFlags2::HOST_READ)
-			.src_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
-			.dst_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+		let barrier = vk::BufferMemoryBarrier2::default()
+			.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+			.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+			.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+			.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT)
+			.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+			.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
 			.buffer(self.public.raw())
 			.size(self.public.size());
 		// SAFETY: public encoding is the only host-readable result. Exact Engine
@@ -256,9 +290,12 @@ impl PreparedSecretKeygen<'_> {
 			self.device.sync_commands().pipeline_barrier(
 				self.device.raw(),
 				command,
-				&ash::vk::DependencyInfo::default().buffer_memory_barriers(&[barrier]),
-			);
+				&(vk::DependencyInfo::default()
+					.buffer_memory_barriers(&[barrier])
+					.map_err(Error::from)?),
+			)?;
 		}
+		Ok(())
 	}
 
 	pub(super) fn retention(self) -> (Buffer, Option<BoundedSets>) {
@@ -274,7 +311,7 @@ pub(super) struct SecretConsumerOperands<'a> {
 	_secrets: [SecretBinding<'a>; 2],
 	_workspace: Option<SecretBinding<'a>>,
 	public: Vec<Buffer>,
-	bindings: Vec<ash::vk::DescriptorBufferInfo>,
+	bindings: Vec<vk::DescriptorBufferInfo>,
 	indices: Vec<u32>,
 	host_output_start: usize,
 	scalars: Vec<u32>,
@@ -477,16 +514,21 @@ impl<'a> SecretConsumerOperands<'a> {
 
 	pub(super) fn encaps(
 		device: &'a Arc<Device>,
-		seed: SecretBinding<'a>,
+		secrets: [SecretBinding<'a>; 3],
 		public: &Buffer,
-		shared: SecretBinding<'a>,
 		ciphertext: &Buffer,
 		status: &Buffer,
 		k: u32,
 	) -> Result<Self> {
+		let [seed, shared, workspace] = secrets;
 		Self::validate_parameter(k)?;
 		Self::validate_secret(device, &seed, 32)?;
 		Self::validate_secret(device, &shared, 32)?;
+		Self::validate_secret(
+			device,
+			&workspace,
+			KernelId::mlkem_encaps_workspace_bytes() as u64,
+		)?;
 		Self::validate_public(device, public, u64::from(384 * k + 32))?;
 		Self::validate_public(device, ciphertext, Self::ciphertext_size(k))?;
 		Self::validate_public(device, status, 4)?;
@@ -496,6 +538,7 @@ impl<'a> SecretConsumerOperands<'a> {
 			Self::secret_info(&shared),
 			Self::public_info(ciphertext),
 			Self::public_info(status),
+			Self::secret_info(&workspace),
 		];
 		Self::validate_disjoint(&bindings)?;
 		let indices = vec![
@@ -504,12 +547,13 @@ impl<'a> SecretConsumerOperands<'a> {
 			shared.descriptor_index(),
 			ciphertext.descriptor_index(),
 			status.descriptor_index(),
+			workspace.descriptor_index(),
 		];
 		Ok(Self {
 			device,
 			kernel: KernelId::CryptographyMlKemEncapsU8,
 			_secrets: [seed, shared],
-			_workspace: None,
+			_workspace: Some(workspace),
 			public: vec![public.clone(), ciphertext.clone(), status.clone()],
 			bindings,
 			indices,
@@ -520,31 +564,38 @@ impl<'a> SecretConsumerOperands<'a> {
 
 	pub(super) fn decaps(
 		device: &'a Arc<Device>,
-		private: SecretBinding<'a>,
+		secrets: [SecretBinding<'a>; 3],
 		ciphertext: &Buffer,
-		shared: SecretBinding<'a>,
 		k: u32,
 	) -> Result<Self> {
+		let [private, shared, workspace] = secrets;
 		Self::validate_parameter(k)?;
 		Self::validate_secret(device, &private, u64::from(768 * k + 96))?;
 		Self::validate_secret(device, &shared, 32)?;
+		Self::validate_secret(
+			device,
+			&workspace,
+			KernelId::mlkem_decaps_workspace_bytes() as u64,
+		)?;
 		Self::validate_public(device, ciphertext, Self::ciphertext_size(k))?;
 		let bindings = vec![
 			Self::secret_info(&private),
 			Self::public_info(ciphertext),
 			Self::secret_info(&shared),
+			Self::secret_info(&workspace),
 		];
 		Self::validate_disjoint(&bindings)?;
 		let indices = vec![
 			private.descriptor_index(),
 			ciphertext.descriptor_index(),
 			shared.descriptor_index(),
+			workspace.descriptor_index(),
 		];
 		Ok(Self {
 			device,
 			kernel: KernelId::CryptographyMlKemDecapsU8,
 			_secrets: [private, shared],
-			_workspace: None,
+			_workspace: Some(workspace),
 			public: vec![ciphertext.clone()],
 			bindings,
 			indices,
@@ -582,19 +633,19 @@ impl<'a> SecretConsumerOperands<'a> {
 		Ok(())
 	}
 
-	fn secret_info(secret: &SecretBinding<'_>) -> ash::vk::DescriptorBufferInfo {
-		ash::vk::DescriptorBufferInfo::default()
+	fn secret_info(secret: &SecretBinding<'_>) -> vk::DescriptorBufferInfo {
+		vk::DescriptorBufferInfo::default()
 			.buffer(secret.raw())
 			.range(secret.byte_len())
 	}
 
-	fn public_info(public: &Buffer) -> ash::vk::DescriptorBufferInfo {
-		ash::vk::DescriptorBufferInfo::default()
+	fn public_info(public: &Buffer) -> vk::DescriptorBufferInfo {
+		vk::DescriptorBufferInfo::default()
 			.buffer(public.raw())
 			.range(public.size())
 	}
 
-	fn validate_disjoint(bindings: &[ash::vk::DescriptorBufferInfo]) -> Result<()> {
+	fn validate_disjoint(bindings: &[vk::DescriptorBufferInfo]) -> Result<()> {
 		for (index, binding) in bindings.iter().enumerate() {
 			if bindings[..index]
 				.iter()
@@ -658,7 +709,7 @@ impl<'a> SecretConsumerOperands<'a> {
 }
 
 impl PreparedSecretConsumer<'_> {
-	pub(super) fn encode(&self, command: ash::vk::CommandBuffer) {
+	pub(super) fn encode(&self, command: vk::CommandBuffer) -> Result<()> {
 		let device = self.operands.device;
 		let set = self
 			.sets
@@ -666,14 +717,15 @@ impl PreparedSecretConsumer<'_> {
 			.map_or_else(|| device.descriptor_set(), |sets| sets.set(0));
 		// A queue order is not a memory dependency. Include prior key generation,
 		// ciphertext production and host uploads before this one-shot consumer.
-		let dependency = ash::vk::MemoryBarrier2::default()
+		let dependency = vk::MemoryBarrier2::default()
 			.src_stage_mask(
-				ash::vk::PipelineStageFlags2::ALL_COMMANDS | ash::vk::PipelineStageFlags2::HOST,
+				vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT | vk::PipelineStageFlagBits2::HOST_BIT,
 			)
-			.src_access_mask(ash::vk::AccessFlags2::MEMORY_WRITE | ash::vk::AccessFlags2::HOST_WRITE)
-			.dst_stage_mask(ash::vk::PipelineStageFlags2::COMPUTE_SHADER)
+			.src_access_mask(vk::AccessFlagBits2::MEMORY_WRITE_BIT | vk::AccessFlagBits2::HOST_WRITE_BIT)
+			.dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
 			.dst_access_mask(
-				ash::vk::AccessFlags2::SHADER_STORAGE_READ | ash::vk::AccessFlags2::SHADER_STORAGE_WRITE,
+				vk::AccessFlagBits2::SHADER_STORAGE_READ_BIT
+					| vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT,
 			);
 		// SAFETY: checked constructors prove disjoint exact ranges and originating
 		// Device identity. The one-shot recorder retains every resource and set
@@ -682,40 +734,42 @@ impl PreparedSecretConsumer<'_> {
 			device.sync_commands().pipeline_barrier(
 				device.raw(),
 				command,
-				&ash::vk::DependencyInfo::default().memory_barriers(&[dependency]),
-			);
+				&(vk::DependencyInfo::default()
+					.memory_barriers(&[dependency])
+					.map_err(Error::from)?),
+			)?;
 			device.raw().cmd_bind_pipeline(
 				command,
-				ash::vk::PipelineBindPoint::COMPUTE,
+				vk::PipelineBindPoint::COMPUTE,
 				self.pipeline.raw(),
-			);
+			)?;
 			device.raw().cmd_bind_descriptor_sets(
 				command,
-				ash::vk::PipelineBindPoint::COMPUTE,
+				vk::PipelineBindPoint::COMPUTE,
 				self.pipeline.layout(),
 				0,
 				&[set],
 				&[],
-			);
+			)?;
 			device.raw().cmd_push_constants(
 				command,
 				self.pipeline.layout(),
-				ash::vk::ShaderStageFlags::COMPUTE,
+				vk::ShaderStageFlagBits::COMPUTE_BIT,
 				0,
 				&self.push,
-			);
-			device.raw().cmd_dispatch(command, 1, 1, 1);
+			)?;
+			device.raw().cmd_dispatch(command, 1, 1, 1)?;
 		}
 		let barriers: Vec<_> = self.operands.public[self.operands.host_output_start..]
 			.iter()
 			.map(|buffer| {
-				ash::vk::BufferMemoryBarrier2::default()
-					.src_stage_mask(ash::vk::PipelineStageFlags2::COMPUTE_SHADER)
-					.src_access_mask(ash::vk::AccessFlags2::SHADER_STORAGE_WRITE)
-					.dst_stage_mask(ash::vk::PipelineStageFlags2::HOST)
-					.dst_access_mask(ash::vk::AccessFlags2::HOST_READ)
-					.src_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
-					.dst_queue_family_index(ash::vk::QUEUE_FAMILY_IGNORED)
+				vk::BufferMemoryBarrier2::default()
+					.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+					.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+					.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+					.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT)
+					.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+					.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
 					.buffer(buffer.raw())
 					.size(buffer.size())
 			})
@@ -726,10 +780,13 @@ impl PreparedSecretConsumer<'_> {
 				device.sync_commands().pipeline_barrier(
 					device.raw(),
 					command,
-					&ash::vk::DependencyInfo::default().buffer_memory_barriers(&barriers),
-				);
+					&(vk::DependencyInfo::default()
+						.buffer_memory_barriers(&barriers)
+						.map_err(Error::from)?),
+				)?;
 			}
 		}
+		Ok(())
 	}
 
 	pub(super) fn retention(self) -> (Vec<Buffer>, Option<BoundedSets>) {
@@ -741,3 +798,7 @@ impl PreparedSecretConsumer<'_> {
 		command.retain_secret_public_resources(public, sets)
 	}
 }
+
+#[cfg(test)]
+#[path = "../../../../test/rs/runtime/pqc_unit.rs"]
+pub(in crate::runtime) mod tests;

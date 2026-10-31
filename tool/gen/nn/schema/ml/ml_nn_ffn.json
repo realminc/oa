@@ -15,7 +15,7 @@
 			"template": "ffn",
 			"values": {
 				"norm_constructor": "RmsNorm::new",
-				"projection_constructor": "Linear::with_seed",
+				"projection_constructor": "Linear::new_with_seed",
 				"gate_operation": "swiglu",
 				"residual_operation": "core_matrix::add",
 				"norm_name": "norm",

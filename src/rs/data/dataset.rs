@@ -21,7 +21,7 @@ impl Sample {
 	}
 
 	/// Construct a labeled sample.
-	pub fn with_label(x: Matrix, y: Matrix) -> Self {
+	pub fn new_with_label(x: Matrix, y: Matrix) -> Self {
 		Self { x, y: Some(y) }
 	}
 

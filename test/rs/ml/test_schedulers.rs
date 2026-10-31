@@ -33,14 +33,14 @@ fn donor_learning_rate_schedules_preserve_boundaries_and_step_origins() -> oa::R
 	assert_close(warmup.learning_rate(2), 1.0);
 
 	let warmup_then_cosine =
-		WarmupScheduler::with_after(1.0, 2, Box::new(CosineScheduler::new(1.0, 0.0, 2)?))?;
+		WarmupScheduler::new_with_after(1.0, 2, Box::new(CosineScheduler::new(1.0, 0.0, 2)?))?;
 	assert_close(warmup_then_cosine.learning_rate(1), 1.0);
 	assert_close(warmup_then_cosine.learning_rate(2), 1.0);
 	assert_close(warmup_then_cosine.learning_rate(3), 0.5);
 	assert_close(warmup_then_cosine.learning_rate(4), 0.0);
 
 	let one_cycle = OneCycleScheduler::new(1.0, 10, 0.3, 25.0, 10_000.0)?;
-	let one_cycle_default = OneCycleScheduler::with_defaults(1.0, 10)?;
+	let one_cycle_default = OneCycleScheduler::new_with_defaults(1.0, 10)?;
 	assert_close(one_cycle.learning_rate(0), 0.000_004);
 	assert_close(one_cycle.learning_rate(3), 1.0);
 	assert_close(one_cycle.learning_rate(10), 0.000_004);
@@ -88,7 +88,7 @@ fn donor_learning_rate_schedules_preserve_boundaries_and_step_origins() -> oa::R
 fn plateau_schedule_matches_donor_patience_and_floor_contract() -> oa::Result<()> {
 	let mut schedule = ReduceOnPlateauScheduler::new(1.0, 0.1, 1, 0.01, 0.05, PlateauMode::Min)?;
 	assert_close(
-		ReduceOnPlateauScheduler::with_defaults(1.0)?.learning_rate(0),
+		ReduceOnPlateauScheduler::new_with_defaults(1.0)?.learning_rate(0),
 		1.0,
 	);
 	schedule.step(2.0)?;

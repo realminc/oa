@@ -47,13 +47,13 @@ impl Linear {
 	///
 	/// Returns an error when either feature count is zero, shape arithmetic
 	/// overflows, or parameter allocation/upload fails.
-	pub fn with_seed(
+	pub fn new_with_seed(
 		engine: &Engine,
 		input_features: usize,
 		output_features: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::with_seed_and_bias(engine, input_features, output_features, true, seed)
+		Self::new_with_seed_and_bias(engine, input_features, output_features, true, seed)
 	}
 
 	/// Construct a deterministically initialized linear layer with optional bias.
@@ -65,7 +65,7 @@ impl Linear {
 	///
 	/// Returns an error when either feature count is zero, shape arithmetic
 	/// overflows, or parameter allocation/upload fails.
-	pub fn with_seed_and_bias(
+	pub fn new_with_seed_and_bias(
 		engine: &Engine,
 		input_features: usize,
 		output_features: usize,
@@ -85,9 +85,9 @@ impl Linear {
 			.ok_or_else(|| Error::invalid_argument("linear Xavier extent overflows usize"))?;
 		let limit = (6.0_f32 / denominator as f32).sqrt();
 		let weights = random::symmetric_uniform(weight_count, limit, seed);
-		let weight = Matrix::from_f32(engine, [output_features, input_features], &weights)?;
-		let bias = Matrix::from_f32(engine, [output_features], &vec![0.0; output_features])?;
-		Self::from_parts(weight, bias, trainable_bias)
+		let weight = Matrix::new_from_f32(engine, [output_features, input_features], &weights)?;
+		let bias = Matrix::new_from_f32(engine, [output_features], &vec![0.0; output_features])?;
+		Self::new_from_parts(weight, bias, trainable_bias)
 	}
 
 	/// Construct a linear layer from exact FP32 weight and bias matrices.
@@ -96,8 +96,8 @@ impl Linear {
 	///
 	/// Returns an error unless weight has shape `[O, I]`, bias has shape `[O]`,
 	/// both are nonempty FP32 matrices, and both belong to the same engine.
-	pub fn from_matrices(weight: Matrix, bias: Matrix) -> Result<Self> {
-		Self::from_parts(weight, bias, true)
+	pub fn new_from_matrices(weight: Matrix, bias: Matrix) -> Result<Self> {
+		Self::new_from_parts(weight, bias, true)
 	}
 
 	/// Construct a bias-free linear layer from an exact FP32 weight matrix.
@@ -106,7 +106,7 @@ impl Linear {
 	///
 	/// Returns an error unless weight is a nonempty FP32 `[O, I]` matrix or the
 	/// private physical zero vector cannot be allocated.
-	pub fn from_weight(weight: Matrix) -> Result<Self> {
+	pub fn new_from_weight(weight: Matrix) -> Result<Self> {
 		let [output_features, input_features] = weight.shape() else {
 			return Err(Error::invalid_argument("linear weight must have rank two"));
 		};
@@ -122,10 +122,10 @@ impl Linear {
 			output_features,
 			crate::DType::F32,
 		)?;
-		Self::from_parts(weight, zero, false)
+		Self::new_from_parts(weight, zero, false)
 	}
 
-	fn from_parts(weight: Matrix, bias: Matrix, trainable_bias: bool) -> Result<Self> {
+	fn new_from_parts(weight: Matrix, bias: Matrix, trainable_bias: bool) -> Result<Self> {
 		let [output_features, input_features] = weight.shape() else {
 			return Err(Error::invalid_argument("linear weight must have rank two"));
 		};

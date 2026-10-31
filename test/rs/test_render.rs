@@ -18,3 +18,6 @@ mod texture;
 
 #[path = "render/test_ui.rs"]
 mod ui;
+
+#[path = "render/test_viewer.rs"]
+mod viewer;

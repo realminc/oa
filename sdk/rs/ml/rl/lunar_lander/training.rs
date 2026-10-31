@@ -343,7 +343,7 @@ pub fn pretrain_scripted_teacher(
 			"Lunar teacher could not resolve policy parameters",
 		));
 	}
-	let mut optimizer = AdamW::with_hyperparameters(
+	let mut optimizer = AdamW::new_with_hyperparameters(
 		policy_parameters,
 		config.learning_rate,
 		0.9,
@@ -722,8 +722,8 @@ fn upload_teacher_batch(
 		actions.push(sample.action);
 	}
 	Ok((
-		Matrix::from_f32(engine, [order.len(), LUNAR_OBSERVATION_SIZE], &observations)?,
-		Matrix::from_slice(engine, [order.len()], &actions)?,
+		Matrix::new_from_f32(engine, [order.len(), LUNAR_OBSERVATION_SIZE], &observations)?,
+		Matrix::new_from_slice(engine, [order.len()], &actions)?,
 	))
 }
 

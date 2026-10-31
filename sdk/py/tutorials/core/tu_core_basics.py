@@ -8,7 +8,7 @@ import oa
 
 engine = oa.Engine()
 
-a = oa.Matrix.from_f32(engine, [2, 3], [-2.0, -1.0, 0.0, 1.0, 2.0, 3.0])
+a = oa.Matrix.new_from_f32(engine, [2, 3], [-2.0, -1.0, 0.0, 1.0, 2.0, 3.0])
 b = oa.matrix.ones(engine, [2, 3])
 
 # Element-wise arithmetic via the stateless module API.

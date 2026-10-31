@@ -115,7 +115,7 @@ impl EncodedVideoPacket {
 	/// # Errors
 	///
 	/// Returns an error when `bitstream` is empty.
-	pub fn with_timestamps(
+	pub fn new_with_timestamps(
 		bitstream: Vec<u8>,
 		presentation_timestamp_micros: u64,
 		decode_timestamp_micros: u64,
@@ -182,7 +182,7 @@ impl VideoMuxer {
 	///
 	/// Returns an error for an empty path, invalid or unsupported configuration,
 	/// an unrepresentable MP4 field, or a file create/write failure.
-	pub fn create(path: impl AsRef<Path>, config: VideoMuxerConfig) -> Result<Self> {
+	pub fn new(path: impl AsRef<Path>, config: VideoMuxerConfig) -> Result<Self> {
 		let path = path.as_ref();
 		validate_config(path, config)?;
 		let mut file = File::create(path).map_err(|source| Error::io("MP4 output create", source))?;

@@ -53,3 +53,6 @@ pub use rollout::{RolloutBatch, RolloutBuffer, RolloutConfig, RolloutTransition}
 pub use tokenizer::{BpeMerge, BpeTokenizer};
 pub use training::*;
 pub(crate) use weights::SafeTensorsSource;
+
+#[path = "ml/parity.gen.rs"]
+mod parity;

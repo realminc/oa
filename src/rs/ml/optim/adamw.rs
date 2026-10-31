@@ -508,7 +508,7 @@ impl AdamW {
 	/// finite and non-negative, a parameter handle appears more than once, or moment
 	/// allocation fails.
 	pub fn new(parameters: impl IntoIterator<Item = Parameter>, learning_rate: f32) -> Result<Self> {
-		Self::with_hyperparameters(parameters, learning_rate, 0.9, 0.999, 1.0e-8, 0.01)
+		Self::new_with_hyperparameters(parameters, learning_rate, 0.9, 0.999, 1.0e-8, 0.01)
 	}
 
 	/// Bind AdamW with explicit scalar hyperparameters.
@@ -517,7 +517,7 @@ impl AdamW {
 	///
 	/// Returns an error for non-finite or out-of-range scalars, an empty or
 	/// duplicate parameter set, mixed-engine ownership, or moment allocation.
-	pub fn with_hyperparameters(
+	pub fn new_with_hyperparameters(
 		parameters: impl IntoIterator<Item = Parameter>,
 		learning_rate: f32,
 		beta1: f32,
@@ -692,7 +692,7 @@ impl AdamW {
 			})
 			.collect::<Result<Vec<_>>>()?;
 		let engine = self.parameters[0].parameter.data().engine_handle().clone();
-		let state = Matrix::from_slice_handle(
+		let state = Matrix::new_from_slice_handle(
 			&engine,
 			vec![6],
 			&[

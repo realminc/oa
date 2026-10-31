@@ -28,8 +28,8 @@ fn profile_linear(
 	output_features: usize,
 ) -> oa::Result<Duration> {
 	let input = oa::matrix::full(engine, [batch, input_features], 0.125)?;
-	let target = oa::Matrix::from_slice(engine, [batch], &vec![0_u32; batch])?;
-	let linear = oa::ml::nn::Linear::with_seed(engine, input_features, output_features, 1)?;
+	let target = oa::Matrix::new_from_slice(engine, [batch], &vec![0_u32; batch])?;
+	let linear = oa::ml::nn::Linear::new_with_seed(engine, input_features, output_features, 1)?;
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let logits = linear.forward(&input)?;
@@ -42,7 +42,7 @@ fn profile_linear(
 
 fn profile_layer_norm(engine: &oa::Engine, rows: usize, columns: usize) -> oa::Result<Duration> {
 	let input = oa::matrix::full(engine, [rows, columns], 0.125)?;
-	let target = oa::Matrix::from_slice(engine, [rows], &vec![0_u32; rows])?;
+	let target = oa::Matrix::new_from_slice(engine, [rows], &vec![0_u32; rows])?;
 	let layer_norm = oa::ml::nn::LayerNorm::new(engine, columns, 1.0e-5)?;
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
@@ -65,7 +65,7 @@ fn profile_attention(
 	let query = oa::matrix::full(engine, [rows, width], 0.125)?;
 	let key = oa::matrix::full(engine, [rows, width], -0.25)?;
 	let value = oa::matrix::full(engine, [rows, width], 0.375)?;
-	let target = oa::Matrix::from_slice(engine, [rows], &vec![0_u32; rows])?;
+	let target = oa::Matrix::new_from_slice(engine, [rows], &vec![0_u32; rows])?;
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let logits =

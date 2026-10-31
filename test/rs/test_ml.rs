@@ -88,3 +88,6 @@ mod optimizer_contracts;
 
 #[path = "ml/nn/mod.rs"]
 mod nn;
+
+#[path = "ml/test_trading.rs"]
+mod trading;

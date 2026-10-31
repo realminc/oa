@@ -75,38 +75,22 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 		optimizer: &'engine mut dyn Optimizer,
 		config: ItRolloutTrainingConfig,
 	) -> Result<Self> {
-		if config.rollouts == 0
-			|| config.horizon == 0
-			|| config.environments == 0
-			|| config.update_epochs == 0
-		{
-			return Err(Error::invalid_argument(
-				"rollout training requires nonzero rollouts, horizon, environments, and update epochs",
-			));
-		}
-		let batch_size = config
-			.horizon
-			.checked_mul(config.environments)
-			.ok_or_else(|| Error::resource_exhausted("rollout training batch size overflows"))?;
-		let batch_size = u64::try_from(batch_size)
-			.map_err(|_| Error::resource_exhausted("rollout training batch exceeds u64"))?;
-		let total_steps = config
-			.rollouts
-			.checked_mul(config.update_epochs)
-			.ok_or_else(|| Error::resource_exhausted("rollout training update count overflows"))?;
-		let updates = ItTraining::new_eager(
-			engine,
-			optimizer,
-			ItTrainingConfig {
-				total_steps,
-				steps_per_epoch: config.update_epochs,
-				batch_size,
-				timer_name: config.timer_name.clone(),
-				enable_gpu_timing: config.enable_gpu_timing,
-				..ItTrainingConfig::default()
-			},
-		)?;
-		Ok(Self {
+		let updates = ItTraining::new_eager(engine, optimizer, update_config(&config)?)?;
+		Ok(Self::new_with_updates(config, updates))
+	}
+	pub(super) fn new_compiled(
+		engine: &'engine Engine,
+		optimizer: &'engine mut super::AdamW,
+		config: ItRolloutTrainingConfig,
+	) -> Result<Self> {
+		let updates = ItTraining::new(engine, optimizer, update_config(&config)?)?;
+		Ok(Self::new_with_updates(config, updates))
+	}
+	fn new_with_updates(
+		config: ItRolloutTrainingConfig,
+		updates: ItTraining<'engine, 'hooks>,
+	) -> Self {
+		Self {
 			config,
 			updates,
 			phase: RolloutTrainingPhase::Collect,
@@ -115,7 +99,7 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 			rollout_open: false,
 			update_body_pending: false,
 			active_rollout: None,
-		})
+		}
 	}
 
 	/// Reset and open one matching rollout buffer for collection.
@@ -125,6 +109,12 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 	/// Returns an error outside the idle Collect phase, for mismatched geometry,
 	/// or when device-side validity reset cannot be recorded.
 	pub fn begin_rollout(&mut self, rollout: &mut RolloutBuffer) -> Result<()> {
+		self.begin_rollout_impl(rollout, false)
+	}
+	pub(super) fn begin_replayed_rollout(&mut self, rollout: &mut RolloutBuffer) -> Result<()> {
+		self.begin_rollout_impl(rollout, true)
+	}
+	fn begin_rollout_impl(&mut self, rollout: &mut RolloutBuffer, replayed: bool) -> Result<()> {
 		if self.phase != RolloutTrainingPhase::Collect || self.rollout_open || self.update_body_pending
 		{
 			return Err(Error::failed_precondition(
@@ -138,7 +128,11 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 				"rollout buffer geometry does not match training configuration",
 			));
 		}
-		rollout.reset()?;
+		if replayed {
+			rollout.reset_control();
+		} else {
+			rollout.reset()?;
+		}
 		self.rollout_open = true;
 		self.active_rollout = Some(std::ptr::from_ref(rollout));
 		Ok(())
@@ -229,16 +223,49 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 	/// Returns an error without a matching begin or from optimizer, completion,
 	/// metric, callback, and loss validation.
 	pub fn complete_update(&mut self, loss: &Matrix) -> Result<()> {
+		self.complete_update_with_device_prefix(loss, std::time::Duration::ZERO)
+	}
+
+	pub(super) fn complete_update_with_device_prefix(
+		&mut self,
+		loss: &Matrix,
+		device_prefix: std::time::Duration,
+	) -> Result<()> {
 		if self.phase != RolloutTrainingPhase::Update || !self.update_body_pending {
 			return Err(Error::failed_precondition(
 				"complete_update requires a preceding begin_update",
 			));
 		}
-		if let Err(error) = self.updates.complete_step(loss) {
+		if let Err(error) = self
+			.updates
+			.complete_step_with_device_prefix(loss, device_prefix)
+		{
 			self.update_body_pending = false;
 			self.phase = RolloutTrainingPhase::Complete;
 			return Err(error);
 		}
+		self.advance_update();
+		Ok(())
+	}
+
+	pub(super) fn complete_compiled_update(
+		&mut self,
+		program: &mut super::TrainingProgram,
+		prefix: std::time::Duration,
+	) -> Result<()> {
+		if !self.update_body_pending {
+			return Err(Error::failed_precondition(
+				"compiled update requires begin_update",
+			));
+		}
+		self
+			.updates
+			.complete_program_step_with_device_prefix(program, prefix)?;
+		self.advance_update();
+		Ok(())
+	}
+
+	fn advance_update(&mut self) {
 		self.update_body_pending = false;
 		self.update_epoch += 1;
 		if self.update_epoch == self.config.update_epochs {
@@ -249,7 +276,6 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 				RolloutTrainingPhase::Collect
 			};
 		}
-		Ok(())
 	}
 
 	pub(super) fn fail_update<T>(&mut self, error: Error) -> Result<T> {
@@ -315,4 +341,33 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 			.active_rollout
 			.is_some_and(|active| std::ptr::eq(active, std::ptr::from_ref(rollout)))
 	}
+}
+
+fn update_config(config: &ItRolloutTrainingConfig) -> Result<ItTrainingConfig> {
+	if config.rollouts == 0
+		|| config.horizon == 0
+		|| config.environments == 0
+		|| config.update_epochs == 0
+	{
+		return Err(Error::invalid_argument(
+			"rollout training requires nonzero dimensions",
+		));
+	}
+	let batch = config
+		.horizon
+		.checked_mul(config.environments)
+		.ok_or_else(|| Error::resource_exhausted("rollout training batch overflow"))?;
+	let total_steps = config
+		.rollouts
+		.checked_mul(config.update_epochs)
+		.ok_or_else(|| Error::resource_exhausted("rollout update count overflow"))?;
+	Ok(ItTrainingConfig {
+		total_steps,
+		steps_per_epoch: config.update_epochs,
+		batch_size: u64::try_from(batch)
+			.map_err(|_| Error::resource_exhausted("rollout batch exceeds u64"))?,
+		timer_name: config.timer_name.clone(),
+		enable_gpu_timing: config.enable_gpu_timing,
+		..ItTrainingConfig::default()
+	})
 }

@@ -3,8 +3,6 @@ use std::sync::{
 	atomic::{AtomicBool, Ordering},
 };
 
-use vk_mem::Alloc;
-
 use crate::{Error, Result, core::memory};
 
 use crate::runtime::Device;
@@ -15,20 +13,20 @@ pub(in crate::runtime) struct Buffer {
 }
 
 struct BufferInner {
-	handle: ash::vk::Buffer,
-	allocation: Mutex<Option<vk_mem::Allocation>>,
+	handle: vk::Buffer,
+	allocation: Mutex<Option<vk::mem::Allocation>>,
 	recyclable: AtomicBool,
 	size: usize,
-	device_size: ash::vk::DeviceSize,
+	device_size: vk::DeviceSize,
 	descriptor_index: u32,
 	device: Arc<Device>,
 }
 
 pub(super) struct RecycledBuffer {
-	pub(super) handle: ash::vk::Buffer,
-	pub(super) allocation: vk_mem::Allocation,
+	pub(super) handle: vk::Buffer,
+	pub(super) allocation: vk::mem::Allocation,
 	pub(super) size: usize,
-	pub(super) device_size: ash::vk::DeviceSize,
+	pub(super) device_size: vk::DeviceSize,
 	pub(super) descriptor_index: u32,
 }
 
@@ -52,20 +50,20 @@ impl Buffer {
 		if let Some(recycled) = device.take_recycled_storage_buffer(size) {
 			return Ok(Self::from_recycled(device, recycled));
 		}
-		let buffer_info = ash::vk::BufferCreateInfo::default()
+		let buffer_info = vk::BufferCreateInfo::default()
 			.size(device_size)
 			.usage(
-				ash::vk::BufferUsageFlags::STORAGE_BUFFER
-					| ash::vk::BufferUsageFlags::TRANSFER_SRC
-					| ash::vk::BufferUsageFlags::TRANSFER_DST,
+				vk::BufferUsageFlagBits::STORAGE_BUFFER_BIT
+					| vk::BufferUsageFlagBits::TRANSFER_SRC_BIT
+					| vk::BufferUsageFlagBits::TRANSFER_DST_BIT,
 			)
-			.sharing_mode(ash::vk::SharingMode::EXCLUSIVE);
-		let allocation_info = vk_mem::AllocationCreateInfo {
-			flags: vk_mem::AllocationCreateFlags::HOST_ACCESS_RANDOM,
-			usage: vk_mem::MemoryUsage::AutoPreferDevice,
-			required_flags: ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
-			preferred_flags: ash::vk::MemoryPropertyFlags::HOST_CACHED
-				| ash::vk::MemoryPropertyFlags::DEVICE_LOCAL,
+			.sharing_mode(vk::SharingMode::EXCLUSIVE);
+		let allocation_info = vk::mem::AllocationCreateInfo {
+			host_access: vk::mem::HostAccess::Random,
+			usage: vk::mem::MemoryUsage::PreferDevice,
+			required_flags: vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT,
+			preferred_flags: vk::MemoryPropertyFlagBits::HOST_CACHED_BIT
+				| vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
 			..Default::default()
 		};
 
@@ -74,8 +72,9 @@ impl Buffer {
 		let (handle, allocation) = unsafe {
 			device
 				.allocator()
-				.create_buffer(&buffer_info, &allocation_info)
+				.with_allocator(|a| a.create_buffer_with_options(&buffer_info, &allocation_info))
 		}
+		.map_err(|source| Error::backend_failure("Vulkan", "storage-buffer allocation", source))?
 		.map_err(|source| Error::backend_failure("Vulkan", "storage-buffer allocation", source))?;
 
 		let descriptor_index = match device.bind_storage_buffer(handle, device_size) {
@@ -89,7 +88,9 @@ impl Buffer {
 					Err(error) => {
 						let mut allocation = allocation;
 						unsafe {
-							device.allocator().destroy_buffer(handle, &mut allocation);
+							device
+								.allocator()
+								.with_allocator(|a| a.destroy_buffer(handle, &mut allocation))??;
 						}
 						return Err(error);
 					}
@@ -98,7 +99,9 @@ impl Buffer {
 			Err(error) => {
 				let mut allocation = allocation;
 				unsafe {
-					device.allocator().destroy_buffer(handle, &mut allocation);
+					device
+						.allocator()
+						.with_allocator(|a| a.destroy_buffer(handle, &mut allocation))??;
 				}
 				return Err(error);
 			}
@@ -143,12 +146,12 @@ impl Buffer {
 		let device_size = u64::try_from(size)
 			.map_err(|_| Error::invalid_argument("alias buffer size exceeds Vulkan DeviceSize"))?;
 		let buffer_info = storage_buffer_info(device_size);
-		let allocation_info = vk_mem::AllocationCreateInfo {
-			flags: vk_mem::AllocationCreateFlags::HOST_ACCESS_RANDOM,
-			usage: vk_mem::MemoryUsage::AutoPreferDevice,
-			required_flags: ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
-			preferred_flags: ash::vk::MemoryPropertyFlags::HOST_CACHED
-				| ash::vk::MemoryPropertyFlags::DEVICE_LOCAL,
+		let allocation_info = vk::mem::AllocationCreateInfo {
+			host_access: vk::mem::HostAccess::Random,
+			usage: vk::mem::MemoryUsage::PreferDevice,
+			required_flags: vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT,
+			preferred_flags: vk::MemoryPropertyFlagBits::HOST_CACHED_BIT
+				| vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
 			..Default::default()
 		};
 		// SAFETY: both create structures are initialized and the retained Device
@@ -156,8 +159,9 @@ impl Buffer {
 		let (handle, allocation) = unsafe {
 			device
 				.allocator()
-				.create_buffer(&buffer_info, &allocation_info)
+				.with_allocator(|a| a.create_buffer_with_options(&buffer_info, &allocation_info))
 		}
+		.map_err(|source| Error::backend_failure("Vulkan", "alias backing allocation", source))?
 		.map_err(|source| Error::backend_failure("Vulkan", "alias backing allocation", source))?;
 		let descriptor_index = match device.bind_storage_buffer(handle, device_size) {
 			Ok(index) => index,
@@ -166,7 +170,9 @@ impl Buffer {
 				// SAFETY: VMA returned this uniquely owned buffer/allocation pair and
 				// descriptor publication failed before either escaped.
 				unsafe {
-					device.allocator().destroy_buffer(handle, &mut allocation);
+					device
+						.allocator()
+						.with_allocator(|a| a.destroy_buffer(handle, &mut allocation))??;
 				}
 				return Err(error);
 			}
@@ -215,7 +221,7 @@ impl Buffer {
 				std::io::Error::other("buffer allocation was already recycled"),
 			)
 		})?;
-		let mapped = unsafe { allocator.map_memory(allocation) }
+		let mapped = unsafe { allocator.with_allocator(|a| a.map(allocation)) }
 			.map_err(|source| Error::backend_failure("Vulkan", "buffer mapping", source))?;
 
 		// SAFETY: `validate_range` proved `[offset, offset + data.len())` is contained
@@ -223,16 +229,25 @@ impl Buffer {
 		// host borrow independent of OA's private allocation. GPU upload storage is a
 		// one-way destination that the CPU will not consume before publication.
 		unsafe {
-			memory::copy_streaming_to_ptr(mapped.add(offset), data.as_ptr(), data.len());
+			memory::copy_streaming_to_ptr(
+				(mapped.map_err(Error::from)? as *mut u8).add(offset),
+				data.as_ptr(),
+				data.len(),
+			);
 		}
 
-		let flush_result = allocator.flush_allocation(allocation, offset_u64, length_u64);
+		// SAFETY: same mapping contract as `map` above; the range was validated
+		// against the allocation size and the allocation lock is held.
+		let flush_result =
+			unsafe { allocator.with_allocator(|a| a.flush(allocation, offset_u64, length_u64)) };
 		// SAFETY: this exactly balances the successful map above, after the final host
 		// write and flush attempt.
 		unsafe {
-			allocator.unmap_memory(allocation);
+			allocator.with_allocator(|a| a.unmap(allocation))??;
 		}
-		flush_result.map_err(|source| Error::backend_failure("Vulkan", "buffer flush", source))
+		flush_result
+			.map_err(|source| Error::backend_failure("Vulkan", "buffer flush", source))?
+			.map_err(|source| Error::backend_failure("Vulkan", "buffer flush", source))
 	}
 
 	pub(in crate::runtime) fn read(&self, offset: usize, output: &mut [u8]) -> Result<()> {
@@ -262,24 +277,32 @@ impl Buffer {
 				std::io::Error::other("buffer allocation was already recycled"),
 			)
 		})?;
-		let mapped = unsafe { allocator.map_memory(allocation) }
+		let mapped = unsafe { allocator.with_allocator(|a| a.map(allocation)) }
 			.map_err(|source| Error::backend_failure("Vulkan", "buffer mapping", source))?;
-		let invalidate_result = allocator.invalidate_allocation(allocation, offset_u64, length_u64);
+		// SAFETY: same mapping contract as `map` above; the range was validated
+		// against the allocation size and the allocation lock is held.
+		let invalidate_result =
+			unsafe { allocator.with_allocator(|a| a.invalidate(allocation, offset_u64, length_u64)) };
 
-		if invalidate_result.is_ok() {
+		if matches!(invalidate_result, Ok(Ok(()))) {
 			// SAFETY: `validate_range` proved the source range is contained in the mapped
 			// allocation. `output` is an independent mutable host slice of equal length.
 			unsafe {
-				memory::copy_to_ptr(output.as_mut_ptr(), mapped.add(offset), output.len());
+				memory::copy_to_ptr(
+					output.as_mut_ptr(),
+					(mapped.map_err(Error::from)? as *const u8).add(offset),
+					output.len(),
+				);
 			}
 		}
 
 		// SAFETY: this exactly balances the successful map above, after the final host
 		// read or invalidate failure.
 		unsafe {
-			allocator.unmap_memory(allocation);
+			allocator.with_allocator(|a| a.unmap(allocation))??;
 		}
 		invalidate_result
+			.map_err(|source| Error::backend_failure("Vulkan", "buffer invalidation", source))?
 			.map_err(|source| Error::backend_failure("Vulkan", "buffer invalidation", source))
 	}
 
@@ -295,11 +318,11 @@ impl Buffer {
 		Arc::ptr_eq(&self.inner, &other.inner)
 	}
 
-	pub(in crate::runtime) fn raw(&self) -> ash::vk::Buffer {
+	pub(in crate::runtime) fn raw(&self) -> vk::Buffer {
 		self.inner.handle
 	}
 
-	pub(in crate::runtime) fn size(&self) -> ash::vk::DeviceSize {
+	pub(in crate::runtime) fn size(&self) -> vk::DeviceSize {
 		self.inner.device_size
 	}
 }
@@ -318,10 +341,10 @@ impl Drop for BufferInner {
 			let mut allocation = allocation;
 			// SAFETY: final Buffer ownership uniquely owns the VMA-created pair.
 			unsafe {
-				self
+				let _ = self
 					.device
 					.allocator()
-					.destroy_buffer(self.handle, &mut allocation);
+					.with_allocator(|a| a.destroy_buffer(self.handle, &mut allocation));
 			}
 			return;
 		}
@@ -341,7 +364,7 @@ impl Drop for BufferInner {
 		// SAFETY: `Self` uniquely owns this buffer/allocation pair. Its retained `Device` keeps
 		// the allocator alive throughout this call, and VMA created the pair together.
 		unsafe {
-			self
+			let _ = self
 				.device
 				.allocator()
 				.destroy_buffer(recycled.handle, &mut recycled.allocation);
@@ -349,15 +372,15 @@ impl Drop for BufferInner {
 	}
 }
 
-fn storage_buffer_info(size: ash::vk::DeviceSize) -> ash::vk::BufferCreateInfo<'static> {
-	ash::vk::BufferCreateInfo::default()
+fn storage_buffer_info(size: vk::DeviceSize) -> vk::BufferCreateInfo<'static> {
+	vk::BufferCreateInfo::default()
 		.size(size)
 		.usage(
-			ash::vk::BufferUsageFlags::STORAGE_BUFFER
-				| ash::vk::BufferUsageFlags::TRANSFER_SRC
-				| ash::vk::BufferUsageFlags::TRANSFER_DST,
+			vk::BufferUsageFlagBits::STORAGE_BUFFER_BIT
+				| vk::BufferUsageFlagBits::TRANSFER_SRC_BIT
+				| vk::BufferUsageFlagBits::TRANSFER_DST_BIT,
 		)
-		.sharing_mode(ash::vk::SharingMode::EXCLUSIVE)
+		.sharing_mode(vk::SharingMode::EXCLUSIVE)
 }
 
 fn validate_range(size: usize, offset: usize, length: usize) -> Result<()> {
@@ -381,8 +404,8 @@ fn validate_range(size: usize, offset: usize, length: usize) -> Result<()> {
 /// Donor: `oa::MeshBuffer` / `oa::FnMesh`.
 pub(crate) struct MeshBuffer {
 	device: Arc<Device>,
-	handle: ash::vk::Buffer,
-	allocation: Option<vk_mem::Allocation>,
+	handle: vk::Buffer,
+	allocation: Option<vk::mem::Allocation>,
 	/// Persistently mapped host-write pointer into the allocation.
 	mapped_ptr: *mut u8,
 	pub(crate) capacity: usize,
@@ -393,31 +416,50 @@ impl MeshBuffer {
 	pub(in crate::runtime) fn new(
 		device: &Arc<Device>,
 		size: usize,
-		usage: ash::vk::BufferUsageFlags,
+		usage: vk::BufferUsageFlags,
 	) -> Result<Self> {
 		if size == 0 {
 			return Err(Error::invalid_argument("MeshBuffer size must be non-zero"));
 		}
 		let device_size = u64::try_from(size)
 			.map_err(|_| Error::invalid_argument("geometry buffer size exceeds u64"))?;
-		let buf_info = ash::vk::BufferCreateInfo::default()
+		let buf_info = vk::BufferCreateInfo::default()
 			.size(device_size)
 			.usage(usage)
-			.sharing_mode(ash::vk::SharingMode::EXCLUSIVE);
-		let alloc_info = vk_mem::AllocationCreateInfo {
-			flags: vk_mem::AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE
-				| vk_mem::AllocationCreateFlags::MAPPED,
-			usage: vk_mem::MemoryUsage::AutoPreferDevice,
-			required_flags: ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
+			.sharing_mode(vk::SharingMode::EXCLUSIVE);
+		let alloc_info = vk::mem::AllocationCreateInfo {
+			host_access: vk::mem::HostAccess::SequentialWrite,
+			persistent_map: true,
+			usage: vk::mem::MemoryUsage::PreferDevice,
+			required_flags: vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT,
 			..Default::default()
 		};
-		let (handle, allocation) = unsafe { device.allocator().create_buffer(&buf_info, &alloc_info) }
-			.map_err(|s| Error::backend_failure("Vulkan", "geometry buffer allocation", s))?;
-		let info = device.allocator().get_allocation_info(&allocation);
-		let mapped_ptr = info.mapped_data.cast::<u8>();
+		let (handle, allocation) = unsafe {
+			device
+				.allocator()
+				.with_allocator(|a| a.create_buffer_with_options(&buf_info, &alloc_info))
+		}
+		.map_err(|s| Error::backend_failure("Vulkan", "geometry buffer allocation", s))?
+		.map_err(|s| Error::backend_failure("Vulkan", "geometry buffer allocation", s))?;
+		// SAFETY: `allocation` was just created by this same allocator and is
+		// uniquely owned here.
+		let info = unsafe {
+			device
+				.allocator()
+				.with_allocator(|a| a.allocation_info(&allocation))
+		}
+		.map_err(|s| Error::backend_failure("Vulkan", "geometry allocation info", s))?
+		.map_err(|s| Error::backend_failure("Vulkan", "geometry allocation info", s))?;
+		let mapped_ptr = info
+			.mapped_pointer
+			.map_or(std::ptr::null_mut(), |ptr| ptr.cast::<u8>());
 		if mapped_ptr.is_null() {
-			let mut a = allocation;
-			unsafe { device.allocator().destroy_buffer(handle, &mut a) };
+			let mut alloc = allocation;
+			unsafe {
+				device
+					.allocator()
+					.with_allocator(|a| a.destroy_buffer(handle, &mut alloc))
+			}??;
 			return Err(Error::backend_failure(
 				"Vulkan",
 				"geometry buffer persistent map",
@@ -444,14 +486,18 @@ impl MeshBuffer {
 			std::ptr::copy_nonoverlapping(data.as_ptr(), self.mapped_ptr, data.len());
 		}
 		let alloc = self.allocation.as_ref().expect("mesh allocation live");
-		self
-			.device
-			.allocator()
-			.flush_allocation(alloc, 0, u64::try_from(data.len()).unwrap_or(u64::MAX))
-			.map_err(|s| Error::backend_failure("Vulkan", "mesh buffer flush", s))
+		let size = u64::try_from(data.len()).unwrap_or(u64::MAX);
+		unsafe {
+			self
+				.device
+				.allocator()
+				.with_allocator(|a| a.flush(alloc, 0, size))
+		}
+		.map_err(|s| Error::backend_failure("Vulkan", "mesh buffer flush", s))?
+		.map_err(|s| Error::backend_failure("Vulkan", "mesh buffer flush", s))
 	}
 
-	pub(crate) const fn raw(&self) -> ash::vk::Buffer {
+	pub(crate) const fn raw(&self) -> vk::Buffer {
 		self.handle
 	}
 }
@@ -459,9 +505,9 @@ impl MeshBuffer {
 impl Drop for MeshBuffer {
 	fn drop(&mut self) {
 		if let Some(mut a) = self.allocation.take() {
-			// SAFETY: buffer was created from this device's allocator and is no
+			let _ = // SAFETY: buffer was created from this device's allocator and is no
 			// longer in use (the renderer waited for the producer event before drop).
-			unsafe { self.device.allocator().destroy_buffer(self.handle, &mut a) };
+			unsafe { self.device.allocator().with_allocator(|allocator| allocator.destroy_buffer(self.handle, &mut a)) };
 		}
 	}
 }

@@ -38,7 +38,7 @@ impl EarlyStopping {
 	///
 	/// Returns an error when `min_delta` is not finite and non-negative.
 	pub fn new(patience: u64, min_delta: f64, mode: EarlyStopMode) -> Result<Self> {
-		Self::with_monitor(patience, min_delta, mode, "loss", |snapshot| {
+		Self::new_with_monitor(patience, min_delta, mode, "loss", |snapshot| {
 			snapshot.epoch_mean_loss()
 		})
 	}
@@ -52,7 +52,7 @@ impl EarlyStopping {
 	///
 	/// Returns an error when the metric name is empty or `min_delta` is not finite
 	/// and non-negative.
-	pub fn with_monitor(
+	pub fn new_with_monitor(
 		patience: u64,
 		min_delta: f64,
 		mode: EarlyStopMode,
@@ -95,14 +95,14 @@ impl EarlyStopping {
 	/// # Errors
 	///
 	/// Returns an error when `min_delta` is not finite and non-negative.
-	pub fn with_validation_metric(
+	pub fn new_with_validation_metric(
 		patience: u64,
 		min_delta: f64,
 		mode: EarlyStopMode,
 		metric: ValidationMetric,
 	) -> Result<Self> {
 		let name = metric.name().to_owned();
-		Self::with_monitor(patience, min_delta, mode, name, move |_| metric.result())
+		Self::new_with_monitor(patience, min_delta, mode, name, move |_| metric.result())
 	}
 
 	/// Return whether this callback has requested termination.

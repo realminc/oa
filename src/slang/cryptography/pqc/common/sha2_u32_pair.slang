@@ -137,18 +137,7 @@ void sha2_u32_pair_compress(inout uint2 state[8], uint2 block[16]) {
 	state[6] = sha2_u32_pair_add(state[6], g); state[7] = sha2_u32_pair_add(state[7], h);
 }
 
-bool sha2_u32_pair_digest(
-	RWByteAddressBuffer buf,
-	uint msg_base,
-	uint msg_len,
-	uint bits,
-	inout uint digest[16]
-) {
-	uint extent;
-	buf.GetDimensions(extent);
-	if ((bits != 224u && bits != 256u && bits != 384u && bits != 512u)
-		|| (extent & 3u) != 0u || msg_base > extent || msg_len > extent - msg_base) return false;
-	uint2 state[8];
+void sha2_u32_pair_initialize(uint bits, out uint2 state[8]) {
 	if (bits == 224u) {
 		state[0] = uint2(0x19544da2u, 0x8c3d37c8u);
 		state[1] = uint2(0x89dcd4d6u, 0x73e19966u);
@@ -186,6 +175,21 @@ bool sha2_u32_pair_digest(
 		state[6] = uint2(0xfb41bd6bu, 0x1f83d9abu);
 		state[7] = uint2(0x137e2179u, 0x5be0cd19u);
 	}
+}
+
+bool sha2_u32_pair_digest(
+	RWByteAddressBuffer buf,
+	uint msg_base,
+	uint msg_len,
+	uint bits,
+	inout uint digest[16]
+) {
+	uint extent;
+	buf.GetDimensions(extent);
+	if ((bits != 224u && bits != 256u && bits != 384u && bits != 512u)
+		|| (extent & 3u) != 0u || msg_base > extent || msg_len > extent - msg_base) return false;
+	uint2 state[8];
+	sha2_u32_pair_initialize(bits, state);
 	uint2 block[16];
 	uint offset = 0u;
 	uint remaining = msg_len;

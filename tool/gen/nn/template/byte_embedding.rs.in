@@ -9,7 +9,7 @@ impl {{name}} {
 	/// # Errors
 	///
 	/// Returns an error when `embedding_dim` is zero or initialization fails.
-	pub fn with_seed(engine: &Engine, embedding_dim: usize, seed: u64) -> Result<Self> {
+	pub fn new_with_seed(engine: &Engine, embedding_dim: usize, seed: u64) -> Result<Self> {
 		Ok(Self {
 			inner: {{constructor}}(engine, {{vocabulary}}, embedding_dim, seed)?,
 		})
@@ -20,7 +20,7 @@ impl {{name}} {
 	/// # Errors
 	///
 	/// Returns an error unless the table has exactly 256 nonempty rows.
-	pub fn from_matrix(weight: Matrix) -> Result<Self> {
+	pub fn new_from_matrix(weight: Matrix) -> Result<Self> {
 		if weight.shape().first() != Some(&{{vocabulary}}) {
 			return Err(Error::invalid_argument(
 				"byte embedding weight must have shape [256, D]",

@@ -9,7 +9,17 @@ pub(super) mod operation;
 
 mod validation;
 
+pub(super) struct GradNodeLinearAttention {
+	pub query: Matrix,
+	pub key: Matrix,
+	pub value: Matrix,
+	pub output: Matrix,
+	pub denominator: Matrix,
+	pub epsilon: f32,
+}
+
 pub(super) enum GradNode {
+	LinearAttention(Box<GradNodeLinearAttention>),
 	Matrix(crate::matrix::autograd::GradNodeMatrix),
 	Operation(GradNodeOperation),
 	FlowLinearState {
@@ -249,6 +259,7 @@ pub(super) struct GradNodeChannelNorm {
 impl GradNode {
 	pub(super) fn output_id(&self) -> u64 {
 		match self {
+			Self::LinearAttention(node) => node.output.value_id(),
 			Self::Operation(node) => node.output_id(),
 			Self::Matrix(node) => node.output_id(),
 			Self::FlowLinearState { output_id, .. }

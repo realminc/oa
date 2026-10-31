@@ -115,7 +115,7 @@ test_vk!(
 		});
 		let observer = session.clone();
 		let mut optimizer = oa::ml::NoOpOptimizer::new(0.25)?;
-		let loss = oa::Matrix::from_f32(&engine, [], &[0.5])?;
+		let loss = oa::Matrix::new_from_f32(&engine, [], &[0.5])?;
 		let summary = {
 			let mut training = oa::ml::ItTraining::new_eager(
 				&engine,
@@ -219,12 +219,12 @@ test_vk!(
 	eager_it_training_owns_exact_completion_metrics_and_callbacks,
 	engine,
 	{
-		let weight = oa::Matrix::from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
-		let bias = oa::Matrix::from_f32(&engine, [2], &[0.0, 0.0])?;
-		let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+		let weight = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.01)?;
-		let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
-		let targets = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
+		let targets = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
 		let config = oa::ml::ItTrainingConfig {
 			total_steps: 4,
 			steps_per_epoch: 2,
@@ -311,12 +311,12 @@ test_vk!(
 	captured_it_training_replays_one_program_without_reauthoring_the_graph,
 	engine,
 	{
-		let weight = oa::Matrix::from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
-		let bias = oa::Matrix::from_f32(&engine, [2], &[0.0, 0.0])?;
-		let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+		let weight = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.01)?;
-		let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
-		let targets = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
+		let targets = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
 		let mut program = oa::ml::TrainingProgram::capture(&engine, &mut optimizer, || {
 			let tape = oa::ml::GradientTape::new();
 			let logits = layer.forward(&input)?;
@@ -358,7 +358,8 @@ test_vk!(
 		};
 
 		assert_eq!(program.replay_count(), 3);
-		assert_eq!(program.diagnostics().command_recording_count(), 3);
+		assert_eq!(program.diagnostics().command_recording_count(), 1);
+		assert_eq!(program.diagnostics().command_cache_hit_count(), 2);
 		assert_eq!(optimizer.step_count(), 3);
 		assert_eq!(metric.count(), 3);
 		assert_eq!(summary.step_count(), 3);
@@ -374,9 +375,9 @@ test_vk!(
 	automatic_it_training_prepares_every_step_and_records_only_capture_boundaries,
 	engine,
 	{
-		let weight = oa::Matrix::from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
-		let bias = oa::Matrix::from_f32(&engine, [2], &[0.0, 0.0])?;
-		let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+		let weight = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.01)?;
 		let config = oa::ml::ItTrainingConfig {
 			total_steps: 4,
@@ -392,8 +393,8 @@ test_vk!(
 					|| {
 						prepare_count += 1;
 						let scale = prepare_count as f32;
-						let input = oa::Matrix::from_f32(&engine, [2, 2], &[scale, 0.0, 0.0, scale])?;
-						let targets = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+						let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[scale, 0.0, 0.0, scale])?;
+						let targets = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
 						Ok((input, targets))
 					},
 					|(input, targets)| {
@@ -525,9 +526,9 @@ test_vk!(
 	automatic_it_training_rejects_executable_work_during_preparation,
 	engine,
 	{
-		let weight = oa::Matrix::from_f32(&engine, [1, 1], &[1.0])?;
-		let bias = oa::Matrix::from_f32(&engine, [1], &[0.0])?;
-		let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+		let weight = oa::Matrix::new_from_f32(&engine, [1, 1], &[1.0])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [1], &[0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.01)?;
 		let error = {
 			let mut training = oa::ml::ItTraining::new(
@@ -569,14 +570,14 @@ test_vk!(
 	{
 		use oa::ml::LrScheduler as _;
 
-		let weight = oa::Matrix::from_f32(&engine, [1, 1], &[1.0])?;
-		let bias = oa::Matrix::from_f32(&engine, [1], &[0.0])?;
-		let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+		let weight = oa::Matrix::new_from_f32(&engine, [1, 1], &[1.0])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [1], &[0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.25)?;
 		let schedule = oa::ml::CosineScheduler::new(0.25, 0.05, 4)?;
 		let mut scheduler = oa::ml::LearningRateScheduler::new(&schedule);
 		let mut early_stop = oa::ml::EarlyStopping::new(1, 0.0, oa::ml::EarlyStopMode::Min)?;
-		let loss = oa::Matrix::from_f32(&engine, [], &[1.0])?;
+		let loss = oa::Matrix::new_from_f32(&engine, [], &[1.0])?;
 		let summary = {
 			let mut training = oa::ml::ItTraining::new(
 				&engine,
@@ -625,9 +626,9 @@ test_vk!(
 			}
 		}
 
-		let eager_layer = oa::ml::nn::Linear::from_matrices(
-			oa::Matrix::from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?,
-			oa::Matrix::from_f32(&engine, [2], &[0.0, 0.0])?,
+		let eager_layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?,
+			oa::Matrix::new_from_f32(&engine, [2], &[0.0, 0.0])?,
 		)?;
 		let eager_weight = eager_layer.weight();
 		let eager_bias = eager_layer
@@ -637,8 +638,8 @@ test_vk!(
 		let eager_schedule = oa::ml::CosineScheduler::new(0.25, 0.05, 4)?;
 		let mut eager_scheduler = oa::ml::LearningRateScheduler::new(&eager_schedule);
 		{
-			let input = oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
-			let targets = oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?;
+			let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
+			let targets = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
 			let mut training = oa::ml::ItTraining::new(
 				&engine,
 				&mut eager_optimizer,
@@ -660,9 +661,9 @@ test_vk!(
 			training.finish()?;
 		}
 
-		let captured_layer = oa::ml::nn::Linear::from_matrices(
-			oa::Matrix::from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?,
-			oa::Matrix::from_f32(&engine, [2], &[0.0, 0.0])?,
+		let captured_layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [2, 2], &[0.2, -0.1, -0.3, 0.4])?,
+			oa::Matrix::new_from_f32(&engine, [2], &[0.0, 0.0])?,
 		)?;
 		let captured_weight = captured_layer.weight();
 		let captured_bias = captured_layer
@@ -686,8 +687,8 @@ test_vk!(
 				let ran = training.step(
 					|| {
 						Ok((
-							oa::Matrix::from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?,
-							oa::Matrix::from_slice(&engine, [2], &[0_u32, 1])?,
+							oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?,
+							oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?,
 						))
 					},
 					|(input, targets)| {
@@ -736,13 +737,13 @@ test_vk!(
 			.as_nanos();
 		let path =
 			std::env::temp_dir().join(format!("oars-training-{}-{unique}.csv", std::process::id()));
-		let weight = oa::Matrix::from_f32(&engine, [1, 1], &[1.0])?;
-		let bias = oa::Matrix::from_f32(&engine, [1], &[0.0])?;
-		let layer = oa::ml::nn::Linear::from_matrices(weight, bias)?;
+		let weight = oa::Matrix::new_from_f32(&engine, [1, 1], &[1.0])?;
+		let bias = oa::Matrix::new_from_f32(&engine, [1], &[0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.1)?;
 		let mut logger = oa::ml::CsvLogger::new(&path);
 		assert_eq!(logger.path(), path);
-		let loss = oa::Matrix::from_f32(&engine, [], &[0.5])?;
+		let loss = oa::Matrix::new_from_f32(&engine, [], &[0.5])?;
 		{
 			let mut training = oa::ml::ItTraining::new(
 				&engine,
