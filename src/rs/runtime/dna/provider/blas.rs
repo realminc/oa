@@ -1836,7 +1836,7 @@ pub(in crate::runtime) fn plan_mat_mul_nt_problem(
 }
 
 #[cfg(test)]
-#[path = "../../../../../test/rs/runtime/gemm_tuner.rs"]
+#[path = "../../../../../test/rs/runtime/gemm_tuner_unit.rs"]
 mod gemm_tuner;
 
 #[cfg(test)]
