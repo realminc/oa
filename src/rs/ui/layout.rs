@@ -5,9 +5,8 @@
 //!
 //! Donor reference: `oa::Ui` panel/row/cursor state in `ui.cpp`
 
-use super::types::{PixelRect, UiDirection, UiLayout, UiSizing};
-
 /// One active panel scope (pushed by `begin_panel`, popped by `end_panel`).
+pub use super::types::{PixelRect, UiDirection, UiLayout, UiSizing};
 #[derive(Clone, Debug)]
 pub(super) struct PanelScope {
 	/// Outer bounds of this panel (physical pixels).

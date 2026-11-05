@@ -1,18 +1,9 @@
 //! `ViewerLiveSource` trait and capabilities. Donor: `oa/ui/viewer.h`.
 
-use crate::ui::{Ui, types::UiEvent};
+use crate::input::InputEvent;
+use crate::ui::Ui;
+pub use crate::viewer::types::ViewerLiveCapabilities;
 use crate::{Engine, Result};
-
-/// Which optional callbacks the live source implements.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ViewerLiveCapabilities {
-	/// Source requests raw platform events before Viewer focus/popup ownership.
-	pub receives_events: bool,
-	/// Source publishes a GPU-dependency event for its rendered resources.
-	pub publishes_render_dependency: bool,
-	/// Source wants the exact Viewer submission event after each present.
-	pub retains_consumer_completion: bool,
-}
 
 /// Non-owning live GPU producer attached to the Viewer lifecycle.
 ///
@@ -30,7 +21,7 @@ pub trait ViewerLiveSource {
 	fn render(&mut self, ui: &mut Ui<'_>, width: u32, height: u32) -> Result<()>;
 
 	/// Raw platform event (only called when `receives_events` is true).
-	fn on_event(&mut self, _event: &UiEvent) -> Result<()> {
+	fn on_event(&mut self, _event: &InputEvent) -> Result<()> {
 		Ok(())
 	}
 

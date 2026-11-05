@@ -45,7 +45,7 @@ fn player_steps_through_cache_and_replays_evicted_history() -> oa::Result<()> {
 	)?;
 	let frame_hash = |player: &VideoPlayer| -> oa::Result<String> {
 		Ok(
-			oa::cryptography::hash(
+			oa::crypto::hash(
 				player
 					.current_frame()?
 					.as_yuv420p()
@@ -115,7 +115,7 @@ fn player_composes_decode_pacing_eos_seek_and_close() -> oa::Result<()> {
 	assert!(!player.is_playing());
 	assert_eq!(player.tick(Duration::from_secs(1))?, 0);
 	assert_eq!(
-		oa::cryptography::hash(
+		oa::crypto::hash(
 			player
 				.current_frame()?
 				.as_yuv420p()
@@ -134,7 +134,7 @@ fn player_composes_decode_pacing_eos_seek_and_close() -> oa::Result<()> {
 		previous_pts = pts;
 		if player.current_frame_index()? == 30 {
 			frame_30_hash = Some(
-				oa::cryptography::hash(
+				oa::crypto::hash(
 					player
 						.current_frame()?
 						.as_yuv420p()
@@ -173,7 +173,7 @@ fn player_composes_decode_pacing_eos_seek_and_close() -> oa::Result<()> {
 	player.seek_frame(30)?;
 	assert_eq!(player.current_frame_index()?, 30);
 	assert_eq!(
-		oa::cryptography::hash(
+		oa::crypto::hash(
 			player
 				.current_frame()?
 				.as_yuv420p()

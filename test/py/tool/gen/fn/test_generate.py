@@ -8,11 +8,6 @@ from pathlib import Path
 
 
 GENERATOR_ROOT = Path(__file__).resolve().parents[5] / "tool/gen/fn"
-GENERATOR_PATH = GENERATOR_ROOT / "generate.py"
-SPEC = importlib.util.spec_from_file_location("oa_fn_generate", GENERATOR_PATH)
-assert SPEC is not None and SPEC.loader is not None
-GENERATOR = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(GENERATOR)
 SCHEMA_PATH = GENERATOR_ROOT / "schema/matrix/matrix_elemwise.json"
 BLAS_SCHEMA_PATH = GENERATOR_ROOT / "schema/matrix/matrix_blas.json"
 REDUCE_SCHEMA_PATH = GENERATOR_ROOT / "schema/matrix/matrix_reduce.json"
@@ -22,14 +17,33 @@ INDEX_SCHEMA_PATH = GENERATOR_ROOT / "schema/matrix/matrix_index.json"
 ML_SCHEMA_PATH = GENERATOR_ROOT / "schema/ml/ml_training.json"
 ACTIVATION_SCHEMA_PATH = GENERATOR_ROOT / "schema/ml/ml_activation.json"
 AUDIO_SCHEMA_PATH = GENERATOR_ROOT / "schema/audio/audio.json"
-CRYPTOGRAPHY_HASH_SCHEMA_PATH = GENERATOR_ROOT / "schema/cryptography/cryptography_hash.json"
-CRYPTOGRAPHY_PQC_SCHEMA_PATH = GENERATOR_ROOT / "schema/cryptography/cryptography_pqc.json"
+CRYPTOGRAPHY_HASH_SCHEMA_PATH = GENERATOR_ROOT / "schema/crypto/crypto_hash.json"
+CRYPTOGRAPHY_PQC_SCHEMA_PATH = GENERATOR_ROOT / "schema/crypto/crypto_pqc.json"
 IMAGE_SCHEMA_PATH = GENERATOR_ROOT / "schema/image/image.json"
 VISION_SCHEMA_PATH = GENERATOR_ROOT / "schema/vision/vision_detection.json"
 UI_SCHEMA_PATH = GENERATOR_ROOT / "schema/ui/ui.json"
 REPOSITORY_ROOT = GENERATOR_ROOT.parents[2]
 SLANG_ROOT = REPOSITORY_ROOT / "src/slang"
 SDK_SLANG_ROOT = REPOSITORY_ROOT / "sdk/rs/slang"
+
+import sys
+sys.path.insert(0, str(GENERATOR_ROOT))
+import oafn.audio as oa_audio
+import oafn.bigint as oa_bigint
+import oafn.hash as oa_hash
+import oafn.image as oa_image
+import oafn.matrix as oa_matrix
+import oafn.ml as oa_ml
+import oafn.model as oa_model
+import oafn.pipeline as oa_pipeline
+import oafn.pqc as oa_pqc
+import oafn.publish as oa_publish
+import oafn.registry as oa_registry
+import oafn.schema as oa_schema
+import oafn.signature as oa_signature
+import oafn.util as oa_util
+import oafn.vision as oa_vision
+
 
 
 class GeneratorTests(unittest.TestCase):
@@ -49,18 +63,19 @@ class GeneratorTests(unittest.TestCase):
 		self.cryptography_pqc_schema = json.loads(
 			CRYPTOGRAPHY_PQC_SCHEMA_PATH.read_text(encoding="utf-8")
 		)
-		self.bigint_schema = json.loads((GENERATOR_ROOT / "schema/cryptography/cryptography_bigint.json").read_text())
+		self.bigint_schema = json.loads((GENERATOR_ROOT / "schema/crypto/crypto_bigint.json").read_text())
 		self.image_schema = json.loads(IMAGE_SCHEMA_PATH.read_text(encoding="utf-8"))
 		self.vision_schema = json.loads(VISION_SCHEMA_PATH.read_text(encoding="utf-8"))
 		self.ui_schema = json.loads(UI_SCHEMA_PATH.read_text(encoding="utf-8"))
+		self.video_schema = json.loads((GENERATOR_ROOT / "schema/video/video.json").read_text(encoding="utf-8"))
 
 	def test_ml_activation_templates_emit_complete_operations(self):
-		api = GENERATOR.generate_ml_activation_api(self.activation_schema, "0" * 64)
+		api = oa_ml.generate_ml_activation_api(self.activation_schema, "0" * 64)
 		for helper in ("fn record(", "fn validate_f32(", "fn as_u32(", "\n\t\trecord("):
 			self.assertNotIn(helper, api)
 		self.assertNotIn("{{", api)
 		for operation in self.activation_schema["operations"]:
-			body = GENERATOR._ml_activation_fn(operation)
+			body = oa_ml._ml_activation_fn(operation)
 			self.assertIn("let contract = crate::core::operation::ml::", body)
 			self.assertIn("engine.record_semantic(", body)
 			self.assertIn("u32::try_from(", body)
@@ -74,22 +89,24 @@ class GeneratorTests(unittest.TestCase):
 
 	def test_ml_activation_templates_reject_incomplete_substitution(self):
 		with self.assertRaises(ValueError):
-			GENERATOR._render_ml_activation_template("unary", {"name": "gelu"})
+			oa_ml._render_ml_activation_template("unary", {"name": "gelu"})
 
 	def test_elementwise_module_is_complete_and_routes_are_schema_owned(self):
-		api = GENERATOR.generate_api(self.schema, "0" * 64)
+		api = oa_matrix.generate_api(self.schema, "0" * 64)
 		self.assertIn("struct BroadcastLayout", api)
 		self.assertIn("fn select_kernel(", api)
 		self.assertNotIn("include!", api)
 		self.assertNotIn("contract.hash()", api)
 		self.assertNotIn("{{items}}", api)
 		for operation in self.schema["operations"]:
+			if operation.get("lowering_only", False):
+				continue
 			body = api.split(f"pub fn {operation['name']}(", 1)[1].split("\n///", 1)[0]
 			for candidate in operation.get("additional_lowering_variants", []):
 				self.assertIn(f"KernelId::{candidate['kernel_id']}", body)
 		operation = self.schema["operations"][0]
 		operation["additional_lowering_variants"][0]["kernel_id"] = "SchemaSelectedBroadcast"
-		api = GENERATOR.generate_api(self.schema, "0" * 64)
+		api = oa_matrix.generate_api(self.schema, "0" * 64)
 		self.assertIn("KernelId::SchemaSelectedBroadcast", api)
 		self.assertNotIn("KernelId::MatrixAddBroadcastF32", api)
 
@@ -97,8 +114,8 @@ class GeneratorTests(unittest.TestCase):
 		operation = self.schema["operations"][0]
 		operation["shape_rule"] = "equal_no_broadcast"
 		del operation["additional_lowering_variants"]
-		GENERATOR.validate_schema(self.schema)
-		api = GENERATOR.generate_api(self.schema, "0" * 64)
+		oa_matrix.validate_schema(self.schema)
+		api = oa_matrix.generate_api(self.schema, "0" * 64)
 		self.assertIn("requires equal shapes", api)
 		self.assertNotIn("KernelId::MatrixAddBroadcastF32", api)
 
@@ -111,8 +128,8 @@ class GeneratorTests(unittest.TestCase):
 			with self.subTest(mutate=mutate):
 				schema = copy.deepcopy(self.schema)
 				mutate(schema["operations"][0])
-				with self.assertRaises(GENERATOR.SchemaError):
-					GENERATOR.validate_schema(schema)
+				with self.assertRaises(oa_util.SchemaError):
+					oa_matrix.validate_schema(schema)
 
 	def test_pqc_parameter_identity_rejects_mismatched_or_duplicate_sets(self):
 		for field, value in (("parameter_set", 66), ("parameter_set", True),
@@ -121,21 +138,21 @@ class GeneratorTests(unittest.TestCase):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["kernels"][0][field] = value
 				with self.assertRaises(ValueError):
-					GENERATOR.validate_cryptography_pqc_schema(schema)
+					oa_pqc.validate_cryptography_pqc_schema(schema)
 		schema = copy.deepcopy(self.cryptography_pqc_schema)
 		del schema["kernels"][0]["parameter_set"]
 		with self.assertRaises(ValueError):
-			GENERATOR.validate_cryptography_pqc_schema(schema)
+			oa_pqc.validate_cryptography_pqc_schema(schema)
 		schema = copy.deepcopy(self.cryptography_pqc_schema)
 		schema["kernels"][1]["parameter_set"] = 65
 		with self.assertRaises(ValueError):
-			GENERATOR.validate_cryptography_pqc_schema(schema)
+			oa_pqc.validate_cryptography_pqc_schema(schema)
 
 	def test_prehashed_verification_abi_and_framing_are_distinct(self):
 		for index, kernel in enumerate(self.cryptography_pqc_schema["kernels"]):
 			if not kernel["name"].endswith("_verify_prehashed"):
 				continue
-			shader = GENERATOR.generate_mldsa_verify_shader(kernel, "0" * 64)
+			shader = oa_pqc.generate_mldsa_verify_shader(kernel, "0" * 64)
 			self.assertIn("mldsa_verify_prehashed(", shader)
 			self.assertIn("push.context_length, push.algorithm)", shader)
 			self.assertIn("storage_buffers[push.results_index].Store(output_base, 0u)", shader)
@@ -146,7 +163,7 @@ class GeneratorTests(unittest.TestCase):
 					schema = copy.deepcopy(self.cryptography_pqc_schema)
 					schema["kernels"][index][field] = value
 					with self.assertRaises(ValueError):
-						GENERATOR.validate_cryptography_pqc_schema(schema)
+						oa_pqc.validate_cryptography_pqc_schema(schema)
 
 	def test_hash_message_verification_abi_and_framing_are_distinct(self):
 		seen = set()
@@ -154,7 +171,7 @@ class GeneratorTests(unittest.TestCase):
 			if not kernel["name"].endswith("_verify_hash_message"):
 				continue
 			seen.add(kernel["parameter_set"])
-			shader = GENERATOR.generate_mldsa_verify_shader(kernel, "0" * 64)
+			shader = oa_pqc.generate_mldsa_verify_shader(kernel, "0" * 64)
 			self.assertIn("mldsa_verify_hash_message(", shader)
 			self.assertNotIn("mldsa_verify_prehashed(", shader)
 			self.assertIn("push.context_length, push.algorithm)", shader)
@@ -168,7 +185,7 @@ class GeneratorTests(unittest.TestCase):
 					schema = copy.deepcopy(self.cryptography_pqc_schema)
 					schema["kernels"][index][field] = value
 					with self.assertRaises(ValueError):
-						GENERATOR.validate_cryptography_pqc_schema(schema)
+						oa_pqc.validate_cryptography_pqc_schema(schema)
 		self.assertEqual(seen, {44, 65, 87})
 
 	def test_private_mlkem_abi_rejects_drift(self):
@@ -179,7 +196,7 @@ class GeneratorTests(unittest.TestCase):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["private_kernels"][0][field] = value
 				with self.assertRaises(ValueError):
-					GENERATOR.validate_cryptography_pqc_schema(schema)
+					oa_pqc.validate_cryptography_pqc_schema(schema)
 
 	def test_private_mlkem_keygen_workspace_contract(self):
 		kernel = self.cryptography_pqc_schema["private_kernels"][0]
@@ -191,8 +208,8 @@ class GeneratorTests(unittest.TestCase):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["private_kernels"][0][field] = value
 				with self.assertRaises(ValueError):
-					GENERATOR.validate_cryptography_pqc_schema(schema)
-		shader = GENERATOR.generate_mlkem_keygen_shader(kernel, "0" * 64)
+					oa_pqc.validate_cryptography_pqc_schema(schema)
+		shader = oa_pqc.generate_mlkem_keygen_shader(kernel, "0" * 64)
 		self.assertIn("workspace_size != 4096u", shader)
 		self.assertIn("mlkem_keygen_buffer(d, z, push.k", shader)
 		self.assertNotIn("mlkem_keygen_internal(d, z", shader)
@@ -205,14 +222,14 @@ class GeneratorTests(unittest.TestCase):
 					schema = copy.deepcopy(self.cryptography_pqc_schema)
 					schema["private_kernels"][index]["workspace_bytes"] = extent
 					with self.assertRaises(ValueError):
-						GENERATOR.validate_cryptography_pqc_schema(schema)
-			shader = GENERATOR.generate_mlkem_kem_shader(kernel, "0" * 64)
+						oa_pqc.validate_cryptography_pqc_schema(schema)
+			shader = oa_pqc.generate_mlkem_kem_shader(kernel, "0" * 64)
 			self.assertIn("workspace_size != 4096u", shader)
 			self.assertIn(f"mlkem_{suffix}_buffer", shader)
 			self.assertNotIn(f"mlkem_{suffix}_internal", shader)
 
 	def test_private_mlkem_kem_classification_and_abi(self):
-		GENERATOR.validate_cryptography_pqc_schema(self.cryptography_pqc_schema)
+		oa_pqc.validate_cryptography_pqc_schema(self.cryptography_pqc_schema)
 		for index in (1, 2):
 			for field, value in (("secret_bindings", [0]), ("push_fields", [["k", "uint32"]]),
 				("workgroup_size", [32, 1, 1]), ("name", "unknown"),
@@ -221,11 +238,11 @@ class GeneratorTests(unittest.TestCase):
 					schema = copy.deepcopy(self.cryptography_pqc_schema)
 					schema["private_kernels"][index][field] = value
 					with self.assertRaises(ValueError):
-						GENERATOR.validate_cryptography_pqc_schema(schema)
+						oa_pqc.validate_cryptography_pqc_schema(schema)
 		schema = copy.deepcopy(self.cryptography_pqc_schema)
 		schema["private_kernels"].append(copy.deepcopy(schema["private_kernels"][1]))
 		with self.assertRaises(ValueError):
-			GENERATOR.validate_cryptography_pqc_schema(schema)
+			oa_pqc.validate_cryptography_pqc_schema(schema)
 
 
 	def test_private_mldsa_keygen_layout_and_classification(self):
@@ -238,7 +255,7 @@ class GeneratorTests(unittest.TestCase):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["private_kernels"][index][field] = value
 				with self.assertRaises(ValueError):
-					GENERATOR.validate_cryptography_pqc_schema(schema)
+					oa_pqc.validate_cryptography_pqc_schema(schema)
 
 	def test_private_mldsa_sign_layout_and_secret_outputs(self):
 		index = next(i for i, row in enumerate(self.cryptography_pqc_schema["private_kernels"])
@@ -251,7 +268,7 @@ class GeneratorTests(unittest.TestCase):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["private_kernels"][index][field] = value
 				with self.assertRaises(ValueError):
-					GENERATOR.validate_cryptography_pqc_schema(schema)
+					oa_pqc.validate_cryptography_pqc_schema(schema)
 
 	def test_private_mldsa_sign_workspace_contract(self):
 		index = next(i for i, row in enumerate(self.cryptography_pqc_schema["private_kernels"])
@@ -264,8 +281,8 @@ class GeneratorTests(unittest.TestCase):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["private_kernels"][index][field] = value
 				with self.assertRaises(ValueError):
-					GENERATOR.validate_cryptography_pqc_schema(schema)
-		shader = GENERATOR.generate_mldsa_sign_shader(kernel, "0" * 64)
+					oa_pqc.validate_cryptography_pqc_schema(schema)
+		shader = oa_pqc.generate_mldsa_sign_shader(kernel, "0" * 64)
 		self.assertIn("workspace_size != MLDSA_SIGN_CACHE_BYTES", shader)
 		self.assertIn("mldsa_sign_mu_buffer(parameter", shader)
 		self.assertNotIn("mldsa_sign_mu(parameter", shader)
@@ -283,7 +300,7 @@ class GeneratorTests(unittest.TestCase):
 					schema = copy.deepcopy(self.cryptography_pqc_schema)
 					schema["private_kernels"][index]["workspace_bytes"] = extent
 					with self.assertRaises(ValueError):
-						GENERATOR.validate_cryptography_pqc_schema(schema)
+						oa_pqc.validate_cryptography_pqc_schema(schema)
 
 	def test_private_mldsa_message_framing_abi(self):
 		index = next(i for i, row in enumerate(self.cryptography_pqc_schema["private_kernels"])
@@ -295,8 +312,8 @@ class GeneratorTests(unittest.TestCase):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["private_kernels"][index][field] = value
 				with self.assertRaises(ValueError):
-					GENERATOR.validate_cryptography_pqc_schema(schema)
-		shader = GENERATOR.generate_mldsa_sign_shader(self.cryptography_pqc_schema["private_kernels"][index], "0" * 64)
+					oa_pqc.validate_cryptography_pqc_schema(schema)
+		shader = oa_pqc.generate_mldsa_sign_shader(self.cryptography_pqc_schema["private_kernels"][index], "0" * 64)
 		self.assertIn("push.context_length > 255u", shader)
 		self.assertIn("push.message_length > 0xfffffffcu", shader)
 		self.assertIn("true, storage_buffers[push.workspace_index]", shader)
@@ -311,8 +328,8 @@ class GeneratorTests(unittest.TestCase):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["private_kernels"][index][field] = value
 				with self.assertRaises(ValueError):
-					GENERATOR.validate_cryptography_pqc_schema(schema)
-		shader = GENERATOR.generate_mldsa_sign_shader(self.cryptography_pqc_schema["private_kernels"][index], "0" * 64)
+					oa_pqc.validate_cryptography_pqc_schema(schema)
+		shader = oa_pqc.generate_mldsa_sign_shader(self.cryptography_pqc_schema["private_kernels"][index], "0" * 64)
 		self.assertIn("mldsa_sign_prehashed_buffer(parameter", shader)
 		self.assertIn("message_size != mldsa_prehash_bytes(push.algorithm)", shader)
 		self.assertNotIn("mldsa_sign_message(parameter", shader)
@@ -323,14 +340,14 @@ class GeneratorTests(unittest.TestCase):
 			if row["name"] == "ml_dsa_sign_hash_message")
 		for field, value in (("secret_bindings", [0, 1]), ("parameter_layouts", []),
 			("push_fields", [["algorithm", "uint32"]]),
-			("source", "src/slang/cryptography/pqc/mldsa/mldsa_sign_prehashed_dispatch.slang"),
+			("source", "src/slang/crypto/pqc/mldsa/mldsa_sign_prehashed_dispatch.slang"),
 			("kernel_id", "CryptographyMlDsaSignMessageU8"), ("workspace_bytes", 0)):
 			with self.subTest(field=field):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["private_kernels"][index][field] = value
 				with self.assertRaises(ValueError):
-					GENERATOR.validate_cryptography_pqc_schema(schema)
-		shader = GENERATOR.generate_mldsa_sign_shader(self.cryptography_pqc_schema["private_kernels"][index], "0" * 64)
+					oa_pqc.validate_cryptography_pqc_schema(schema)
+		shader = oa_pqc.generate_mldsa_sign_shader(self.cryptography_pqc_schema["private_kernels"][index], "0" * 64)
 		self.assertIn("mldsa_sign_hash_message_buffer(parameter", shader)
 		self.assertIn("push.message_length > 0xfffffffcu", shader)
 		self.assertIn("mldsa_prehash_bytes(push.algorithm) == 0u", shader)
@@ -345,53 +362,44 @@ class GeneratorTests(unittest.TestCase):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["prehashes"][0][field] = value
 				with self.assertRaises(ValueError):
-					GENERATOR.validate_cryptography_pqc_schema(schema)
+					oa_pqc.validate_cryptography_pqc_schema(schema)
 
 	def test_schema_generates_every_operation_surface(self):
-		GENERATOR.validate_schema(self.schema)
-		GENERATOR.validate_blas_schema(self.blas_schema)
-		GENERATOR.validate_reduce_schema(self.reduce_schema)
-		GENERATOR.validate_rng_schema(self.rng_schema)
-		GENERATOR.validate_index_schema(self.index_schema)
-		GENERATOR.validate_ml_schema(self.ml_schema)
-		GENERATOR.validate_activation_schema(self.activation_schema)
-		GENERATOR.validate_audio_schema(self.audio_schema)
-		GENERATOR.validate_cryptography_hash_schema(self.cryptography_hash_schema)
-		GENERATOR.validate_cryptography_pqc_schema(self.cryptography_pqc_schema)
-		GENERATOR.validate_image_schema(self.image_schema)
-		GENERATOR.validate_vision_schema(self.vision_schema)
+		oa_matrix.validate_schema(self.schema)
+		oa_matrix.validate_blas_schema(self.blas_schema)
+		oa_matrix.validate_reduce_schema(self.reduce_schema)
+		oa_matrix.validate_rng_schema(self.rng_schema)
+		oa_matrix.validate_index_schema(self.index_schema)
+		oa_ml.validate_ml_schema(self.ml_schema)
+		oa_ml.validate_activation_schema(self.activation_schema)
+		oa_audio.validate_audio_schema(self.audio_schema)
+		oa_hash.validate_cryptography_hash_schema(self.cryptography_hash_schema)
+		oa_pqc.validate_cryptography_pqc_schema(self.cryptography_pqc_schema)
+		oa_image.validate_image_schema(self.image_schema)
+		oa_vision.validate_vision_schema(self.vision_schema)
 		with tempfile.TemporaryDirectory() as directory:
 			root = Path(directory)
-			outputs = GENERATOR.expected_outputs(
+			outputs = oa_pipeline.expected_outputs(
 				root,
-				self.schema,
-				"0" * 64,
-				self.blas_schema,
-				"1" * 64,
-				self.reduce_schema,
-				"6" * 64,
-				self.rng_schema,
-				"2" * 64,
-				self.index_schema,
-				"9" * 64,
-				self.ml_schema,
-				"3" * 64,
-				self.activation_schema,
-				"b" * 64,
-				self.audio_schema,
-				"4" * 64,
-				self.cryptography_hash_schema,
-				"5" * 64,
-				self.cryptography_pqc_schema,
-				"a" * 64,
-				self.image_schema,
-				"7" * 64,
-				self.vision_schema,
-				"8" * 64,
+				{
+					"elemwise": (self.schema, "0" * 64),
+					"blas": (self.blas_schema, "1" * 64),
+					"reduce": (self.reduce_schema, "6" * 64),
+					"rng": (self.rng_schema, "2" * 64),
+					"index": (self.index_schema, "9" * 64),
+					"ml": (self.ml_schema, "3" * 64),
+					"ml_activation": (self.activation_schema, "b" * 64),
+					"audio": (self.audio_schema, "4" * 64),
+					"hash": (self.cryptography_hash_schema, "5" * 64),
+					"pqc": (self.cryptography_pqc_schema, "a" * 64),
+					"image": (self.image_schema, "7" * 64),
+					"vision": (self.vision_schema, "8" * 64),
+				},
 			)
 			variant_count = sum(
-				len(GENERATOR.operation_variants(self.schema, operation))
+				len(oa_model.operation_variants(self.schema, operation))
 				for operation in self.schema["operations"]
+				if not operation.get("lowering_only", False)
 			)
 			autograd_family_count = len({
 				operation["autograd"]["family"]
@@ -405,8 +413,33 @@ class GeneratorTests(unittest.TestCase):
 				for schema in (self.schema, self.blas_schema, self.reduce_schema, self.rng_schema, self.index_schema, self.view_schema)
 				for op in schema["operations"] if op.get("autograd", {}).get("mode") == "generated"
 			})
-			self.assertEqual(len(outputs), variant_count + 25 + 2 * matrix_autograd_family_count + 3 + 2 * autograd_family_count + 1 + body_family_count + activation_family_count - 1 + len(self.cryptography_pqc_schema["kernels"]) + len(self.cryptography_pqc_schema["private_kernels"]) + 4 + sum("digest" in k or "poseidon2" in k or k["name"].startswith("merkle_proof_") for k in self.cryptography_hash_schema["kernels"]) + 31 + len(self.bigint_schema["kernels"]) + 19)
-			self.assertIn(root / "src/slang/cryptography/pqc/mldsa/mldsa_prehash_digest.slang", outputs)
+			annex_schemas = [
+				oa_schema.load_schema(name, GENERATOR_ROOT / f"schema/{filename}")[0]
+				for name, filename in (("sessions", "sessions.json"), ("codecs", "codecs.json"), ("ml_parity", "ml_parity.json"))
+			]
+			annex_signatures = oa_signature.domain_signatures("sessions", annex_schemas)
+			parity_domain_count = len({
+				domain for domain in ("video", "audio", "data", "ml", "image", "runtime", "net", "media")
+				if any(signature.get("target", "").startswith(f"crate::{domain}::") for signature in annex_signatures)
+			})
+			# The final constant is the fixed remainder: operation/shader/DNN
+			# registries, domain API, type and binding surfaces, crypto Rust/slang
+			# inventories, Python fragments and generated tests.
+			self.assertEqual(
+				len(outputs),
+				variant_count
+				+ len(self.blas_schema["operations"]) + len(self.blas_schema.get("candidate_kernels", []))
+				+ 2 * matrix_autograd_family_count + 3
+				+ 2 * autograd_family_count + 1
+				+ body_family_count + activation_family_count + 1
+				+ len(oa_image.IMAGE_CATEGORIES) + 1
+				+ parity_domain_count
+				+ len(self.cryptography_pqc_schema["kernels"]) + len(self.cryptography_pqc_schema["private_kernels"]) + 4
+				+ sum("digest" in k or "poseidon2" in k or k["name"].startswith("merkle_proof_") for k in self.cryptography_hash_schema["kernels"])
+				+ len(self.bigint_schema["kernels"])
+				+ 87,
+			)
+			self.assertIn(root / "src/slang/crypto/pqc/mldsa/mldsa_prehash_digest.slang", outputs)
 			api = outputs[root / "src/rs/matrix/elemwise.gen.rs"]
 			blas_api = outputs[root / "src/rs/matrix/blas.gen.rs"]
 			reduce_api = outputs[root / "src/rs/matrix/reduce.gen.rs"]
@@ -420,20 +453,20 @@ class GeneratorTests(unittest.TestCase):
 			self.assertIn("autograd::record_mat_mul_nt", blas_api)
 			self.assertIn("autograd::record_softmax", reduce_api)
 
-			registry = outputs[root / "src/rs/runtime/shader/registry.gen.rs"]
+			registry = outputs[root / "src/rs/runtime/dna/kernel/kernel.gen.rs"]
 			self.assertIn("Self::CryptographyMlKemKeygenU8 => None", registry)
-			self.assertIn("mlkem_keygen_buffer", outputs[root / "src/slang/cryptography/pqc/mlkem/mlkem_keygen.slang"])
+			self.assertIn("mlkem_keygen_buffer", outputs[root / "src/slang/crypto/pqc/mlkem/mlkem_keygen.slang"])
 			for suffix in ("encaps", "decaps"):
 				self.assertIn(f"Self::CryptographyMlKem{suffix.title()}U8 => None", registry)
-				shader = outputs[root / f"src/slang/cryptography/pqc/mlkem/mlkem_{suffix}.slang"]
+				shader = outputs[root / f"src/slang/crypto/pqc/mlkem/mlkem_{suffix}.slang"]
 				self.assertIn(f"mlkem_{suffix}_buffer", shader)
 			for parameter in (44, 65, 87):
 				self.assertEqual(outputs[root / "src/rs/core/operation/operation.gen.rs"].count(f"const ML_DSA_{parameter}_PUBLIC_KEY_SIZE:"), 1)
 			self.assertIn("Self::CryptographyMlDsaKeygenU8 => None", registry)
 			self.assertIn("44 => Some((32, 1312, 2560))", registry)
-			self.assertIn("mldsa_keygen_internal", outputs[root / "src/slang/cryptography/pqc/mldsa/mldsa_keygen_dispatch.slang"])
+			self.assertIn("mldsa_keygen_internal", outputs[root / "src/slang/crypto/pqc/mldsa/mldsa_keygen_dispatch.slang"])
 			operations = outputs[root / "src/rs/core/operation/operation.gen.rs"]
-			dnn_roles = outputs[root / "src/rs/runtime/dnn/generated.rs"]
+			dnn_roles = outputs[root / "src/rs/runtime/dna/provider/dnn/generated.rs"]
 			activation_autograd = outputs[
 				root / "src/rs/ml/autograd/matrix/activation.gen.rs"
 			]
@@ -442,18 +475,21 @@ class GeneratorTests(unittest.TestCase):
 			self.assertIn(root / "test/rs/matrix/test_blas.gen.rs", outputs)
 			self.assertIn(root / "test/rs/matrix/test_reduce.gen.rs", outputs)
 			for operation in self.schema["operations"]:
+				if operation.get("lowering_only", False):
+					self.assertIn(operation["kernel_id"], registry)
+					continue
 				self.assertIn(f"pub fn {operation['name']}", api)
 				body = api.split(f"pub fn {operation['name']}(", 1)[1].split("\npub fn ", 1)[0]
 				self.assertIn("record_semantic(", body)
 				self.assertIn("Matrix::allocate(", body)
 				self.assertIn(
-					f"pub const {GENERATOR.rust_const_name(operation['name'])}", operations
+					f"pub const {oa_util.rust_const_name(operation['name'])}", operations
 				)
 				self.assertIn(
-					f"crate::core::operation::matrix::{GENERATOR.rust_const_name(operation['name'])}",
+					f"crate::core::operation::matrix::{oa_util.rust_const_name(operation['name'])}",
 					api,
 				)
-				for variant in GENERATOR.operation_variants(self.schema, operation):
+				for variant in oa_model.operation_variants(self.schema, operation):
 					self.assertIn(variant["kernel_id"], registry)
 					shader_path = root / f"src/slang/matrix/elemwise/{variant['source_stem']}.gen.slang"
 					self.assertIn(shader_path, outputs)
@@ -466,7 +502,7 @@ class GeneratorTests(unittest.TestCase):
 			for operation in self.blas_schema["operations"]:
 				self.assertIn(f"pub fn {operation['name']}", blas_api)
 				self.assertIn(
-					f"pub const {GENERATOR.rust_const_name(operation['name'])}", operations
+					f"pub const {oa_util.rust_const_name(operation['name'])}", operations
 				)
 				self.assertIn(operation["kernel_id"], registry)
 				shader_path = root / f"src/slang/matrix/blas/{operation['source_stem']}.gen.slang"
@@ -476,10 +512,11 @@ class GeneratorTests(unittest.TestCase):
 			self.assertIn("dispatch_tile_size: [64, 64, 1]", registry)
 			self.assertIn("physical_write: None", registry)
 			for operation in self.reduce_schema["operations"]:
-				self.assertIn(operation["kernel_id"], registry)
+				if "kernel_id" in operation:
+					self.assertIn(operation["kernel_id"], registry)
 				if not operation.get("lowering_only", False):
 					self.assertIn(
-						f"pub const {GENERATOR.rust_const_name(operation['name'])}",
+						f"pub const {oa_util.rust_const_name(operation['name'])}",
 						operations,
 					)
 			self.assertIn("pub fn softmax", reduce_api)
@@ -500,7 +537,7 @@ class GeneratorTests(unittest.TestCase):
 				self.assertIn(operation["kernel_id"], registry)
 				if "contract" in operation:
 					self.assertIn(
-						f"pub const {GENERATOR.rust_const_name(operation['name'])}", operations
+						f"pub const {oa_util.rust_const_name(operation['name'])}", operations
 					)
 			self.assertIn(
 				"Self::MatrixPhiloxUniformF32 => TrainingReplayRole::FrozenRng",
@@ -512,14 +549,14 @@ class GeneratorTests(unittest.TestCase):
 			)
 			for contract in self.cryptography_hash_schema["contracts"]:
 				self.assertIn(
-					f"pub const {GENERATOR.rust_const_name(contract['name'])}",
+					f"pub const {oa_util.rust_const_name(contract['name'])}",
 					operations,
 				)
 			for kernel in self.cryptography_hash_schema["kernels"]:
 				self.assertIn(kernel["kernel_id"], registry)
 			for contract in self.image_schema["contracts"]:
 				self.assertIn(
-					f"pub const {GENERATOR.rust_const_name(contract['name'])}",
+					f"pub const {oa_util.rust_const_name(contract['name'])}",
 					operations,
 				)
 			for kernel in self.image_schema["kernels"]:
@@ -529,12 +566,12 @@ class GeneratorTests(unittest.TestCase):
 			self.assertIn('Self::ImageResizeBilinearF32 => "image.resize_bilinear.f32"', registry)
 			for contract in self.vision_schema["contracts"]:
 				self.assertIn(
-					f"pub const {GENERATOR.rust_const_name(contract['name'])}",
+					f"pub const {oa_util.rust_const_name(contract['name'])}",
 					operations,
 				)
 			for kernel in self.vision_schema["kernels"]:
 				self.assertIn(kernel["kernel_id"], registry)
-			self.assertIn('"oa::vision::box_iou"', operations)
+			self.assertIn('"oa::FnDetection::boxIou"', operations)
 			self.assertIn('Self::VisionBoxIouF32 => "vision.box_iou.f32"', registry)
 			self.assertIn('Self::CryptographyShake256U8 => "uint8"', registry)
 			self.assertIn(
@@ -549,7 +586,7 @@ class GeneratorTests(unittest.TestCase):
 				self.assertIn(operation["kernel_id"], registry)
 				if not operation.get("lowering_only", False):
 					self.assertIn(
-						f"pub const {GENERATOR.rust_const_name(operation['name'])}", operations
+						f"pub const {oa_util.rust_const_name(operation['name'])}", operations
 					)
 			self.assertIn("pub(crate) enum TrainingReplayRole", registry)
 			self.assertIn(
@@ -586,8 +623,8 @@ class GeneratorTests(unittest.TestCase):
 			self.assertIn("DnnOpType::GatedMultiply", dnn_roles)
 			self.assertIn("crate::core::operation::ml::LINEAR", dnn_roles)
 			self.assertIn("DnnEpilogue::Bias", dnn_roles)
-			self.assertIn('"oa::ml::matrix::linear"', operations)
-			self.assertIn('"oa::ml::loss::cross_entropy"', operations)
+			self.assertIn('"oa::FnMatrix::linear"', operations)
+			self.assertIn('"oa::FnLoss::crossEntropy"', operations)
 			self.assertIn('"oa::ml::optim::adamw"', operations)
 			self.assertIn("pub(in crate::ml) fn record_gelu", activation_autograd)
 			self.assertIn("GradNodeOperation::Gelu", activation_autograd)
@@ -605,10 +642,10 @@ class GeneratorTests(unittest.TestCase):
 			self.assertIn("pub(in crate::ml) fn record_cross_entropy", loss_autograd)
 			self.assertIn("pub(in crate::ml) fn record_masked_cross_entropy", loss_autograd)
 			self.assertIn("valid_count: usize", loss_autograd)
-			self.assertIn('"oa::ml::loss::masked_cross_entropy"', operations)
-			for loss in ("smooth_l1", "mse", "l1", "bce"):
+			self.assertIn('"oa::FnLoss::maskedCrossEntropy"', operations)
+			for loss, donor in (("smooth_l1", "smoothL1"), ("mse", "mse"), ("l1", "l1"), ("bce", "bce")):
 				self.assertIn(f"pub(in crate::ml) fn record_{loss}", loss_autograd)
-				self.assertIn(f'"oa::ml::loss::{loss}"', operations)
+				self.assertIn(f'"oa::FnLoss::{donor}"', operations)
 			self.assertIn('Self::MlMseF32 => "ml.loss.mse.f32"', registry)
 			self.assertIn(
 				'Self::MlSmoothL1MeanF32 => "ml.smooth_l1_mean.f32"',
@@ -625,20 +662,20 @@ class GeneratorTests(unittest.TestCase):
 			invalid = copy.deepcopy(self.cryptography_hash_schema)
 			kernel = next(k for k in invalid["kernels"] if k["name"] == "sha224")
 			kernel["digest"][field] = value
-			with self.subTest(field=field, value=value), self.assertRaisesRegex(GENERATOR.SchemaError, "helper ABI"):
-				GENERATOR.validate_cryptography_hash_schema(invalid)
+			with self.subTest(field=field, value=value), self.assertRaisesRegex(oa_util.SchemaError, "helper ABI"):
+				oa_hash.validate_cryptography_hash_schema(invalid)
 
 		invalid = copy.deepcopy(self.cryptography_hash_schema)
 		next(k for k in invalid["kernels"] if k["name"] == "sha224")["physical_write"]["writes"][0]["binding"] = 0
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "write ownership"):
-			GENERATOR.validate_cryptography_hash_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "write ownership"):
+			oa_hash.validate_cryptography_hash_schema(invalid)
 		invalid = copy.deepcopy(self.cryptography_hash_schema)
 		next(a for a in invalid["rust_api"] if a["name"] == "sha224")["values"]["digest_bytes"] = "32"
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "API extent"):
-			GENERATOR.validate_cryptography_hash_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "API extent"):
+			oa_hash.validate_cryptography_hash_schema(invalid)
 
 	def test_bigint_layout_abi_and_write_ownership_are_checked(self):
-		GENERATOR.validate_bigint_schema(self.bigint_schema)
+		oa_bigint.validate_bigint_schema(self.bigint_schema)
 		for mutate in (
 			lambda s: s["limb_layout"].update(max_words=129),
 			lambda s: s["limb_layout"].update(word_bits=32.0),
@@ -653,8 +690,8 @@ class GeneratorTests(unittest.TestCase):
 			with self.subTest(mutate=mutate):
 				invalid = copy.deepcopy(self.bigint_schema)
 				mutate(invalid)
-				with self.assertRaises(GENERATOR.SchemaError):
-					GENERATOR.validate_bigint_schema(invalid)
+				with self.assertRaises(oa_util.SchemaError):
+					oa_bigint.validate_bigint_schema(invalid)
 
 	def test_bigint_product_and_bit_output_contracts_reject_drift(self):
 		for name in ("multiply_high", "square_wide", "bit_not", "leading_zeros"):
@@ -665,12 +702,12 @@ class GeneratorTests(unittest.TestCase):
 			):
 				invalid = copy.deepcopy(self.bigint_schema)
 				mutate(next(k for k in invalid["kernels"] if k["name"] == name))
-				with self.subTest(name=name, mutate=mutate), self.assertRaises(GENERATOR.SchemaError):
-					GENERATOR.validate_bigint_schema(invalid)
+				with self.subTest(name=name, mutate=mutate), self.assertRaises(oa_util.SchemaError):
+					oa_bigint.validate_bigint_schema(invalid)
 			invalid = copy.deepcopy(self.bigint_schema)
 			next(c for c in invalid["contracts"] if c["name"] == name)["input_kinds"].append("matrix")
-			with self.subTest(name=name), self.assertRaises(GENERATOR.SchemaError):
-				GENERATOR.validate_bigint_schema(invalid)
+			with self.subTest(name=name), self.assertRaises(oa_util.SchemaError):
+				oa_bigint.validate_bigint_schema(invalid)
 
 	def test_bigint_modular_buffer_abi_rejects_drift(self):
 		for name in ("reduce_mod", "pow_mod", "barrett_multiply"):
@@ -682,45 +719,45 @@ class GeneratorTests(unittest.TestCase):
 				invalid = copy.deepcopy(self.bigint_schema)
 				kernel = next(k for k in invalid["kernels"] if k["name"] == name)
 				mutate(kernel)
-				with self.subTest(name=name, mutate=mutate), self.assertRaises(GENERATOR.SchemaError):
-					GENERATOR.validate_bigint_schema(invalid)
+				with self.subTest(name=name, mutate=mutate), self.assertRaises(oa_util.SchemaError):
+					oa_bigint.validate_bigint_schema(invalid)
 			invalid = copy.deepcopy(self.bigint_schema)
 			next(c for c in invalid["contracts"] if c["name"] == name)["input_kinds"].pop()
-			with self.subTest(name=name), self.assertRaises(GENERATOR.SchemaError):
-				GENERATOR.validate_bigint_schema(invalid)
+			with self.subTest(name=name), self.assertRaises(oa_util.SchemaError):
+				oa_bigint.validate_bigint_schema(invalid)
 
 	def test_merkle_proof_layout_and_auxiliary_ownership_reject_drift(self):
 		for field, value in (("header_bytes", 20), ("version", 1.0), ("max_depth", 33)):
 			invalid = copy.deepcopy(self.cryptography_hash_schema)
 			invalid["proof_layout"][field] = value
-			with self.assertRaisesRegex(GENERATOR.SchemaError, "wire layout"):
-				GENERATOR.validate_cryptography_hash_schema(invalid)
+			with self.assertRaisesRegex(oa_util.SchemaError, "wire layout"):
+				oa_hash.validate_cryptography_hash_schema(invalid)
 		invalid = copy.deepcopy(self.cryptography_hash_schema)
 		next(k for k in invalid["kernels"] if k["name"] == "merkle_reduce")["auxiliary_operations"] = ["sha256"]
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "auxiliary ownership"):
-			GENERATOR.validate_cryptography_hash_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "auxiliary ownership"):
+			oa_hash.validate_cryptography_hash_schema(invalid)
 		invalid = copy.deepcopy(self.cryptography_hash_schema)
 		next(a for a in invalid["rust_api"] if a["name"] == "merkle_proofs")["values"]["header_bytes"] = "20"
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "API wire layout"):
-			GENERATOR.validate_cryptography_hash_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "API wire layout"):
+			oa_hash.validate_cryptography_hash_schema(invalid)
 
 	def test_fixed_hash_bindings_and_adapters_have_schema_authority(self):
 		schema = self.cryptography_hash_schema
 		with tempfile.TemporaryDirectory() as directory:
 			root = Path(directory)
-			outputs = GENERATOR.cryptography_hash_binding_outputs(root, schema, "0" * 64)
-			GENERATOR.publish(outputs, root)
-			self.assertEqual(GENERATOR.check(outputs, root), [])
-			self.assertEqual(GENERATOR.owned_outputs(root), set(outputs))
-			bindings = outputs[root / "src/py/pyo3/cryptography/hash.gen.rs"]
-			facade = outputs[root / "src/py/oa/_gen/cryptography_hash.py"]
+			outputs = oa_hash.cryptography_hash_binding_outputs(root, schema, "0" * 64)
+			oa_publish.publish(outputs, root)
+			self.assertEqual(oa_publish.check(outputs, root), [])
+			self.assertEqual(oa_publish.owned_outputs(root), set(outputs))
+			bindings = outputs[root / "src/py/pyo3/crypto/hash.gen.rs"]
+			facade = outputs[root / "src/py/oa/_gen/crypto_hash.py"]
 			for api in schema["rust_api"]:
 				self.assertIn(f"fn crypto_hash_{api['name']}(", bindings)
 				self.assertIn(f"crypto_hash_{api['name']} as hash_{api['name']}", facade)
 		for kernel in schema["kernels"]:
 			if "digest" not in kernel:
 				continue
-			adapter = GENERATOR.generate_fixed_hash_shader(kernel, "0" * 64)
+			adapter = oa_hash.generate_fixed_hash_shader(kernel, "0" * 64)
 			self.assertIn(f"import {kernel['digest']['module']};", adapter)
 			self.assertIn(f"!{kernel['digest']['helper']}(storage_buffers[push.input_index]", adapter)
 			self.assertIn("push.count > input_extent / push.message_len", adapter)
@@ -729,7 +766,7 @@ class GeneratorTests(unittest.TestCase):
 		# Compositor kernels have their own image/buffer adapter. Keep this
 		# schema inventory exact rather than accepting stale ABI descriptions.
 		types = {"uint": "uint32", "int": "int32", "float": "float32"}
-		for row in self.ui_schema["kernels"]:
+		for row in self.ui_schema["kernels"] + self.video_schema["kernels"]:
 			with self.subTest(kernel=row["name"]):
 				source = (REPOSITORY_ROOT / row["source"]).read_text()
 				push = source.split("struct PushConstants {", 1)[1].split("};", 1)[0]
@@ -742,6 +779,7 @@ class GeneratorTests(unittest.TestCase):
 	def test_every_slang_entry_point_has_one_schema_owner(self):
 		schema_sources = set()
 		for schema in (
+			self.schema,
 			self.reduce_schema,
 			self.rng_schema,
 			self.index_schema,
@@ -752,9 +790,10 @@ class GeneratorTests(unittest.TestCase):
 			self.image_schema,
 			self.vision_schema,
 			self.ui_schema,
+			self.video_schema,
 			self.bigint_schema,
-			json.loads((GENERATOR_ROOT / "schema/cryptography/cryptography_merkle.json").read_text()),
-			json.loads((GENERATOR_ROOT / "schema/cryptography/cryptography_ntt.json").read_text()),
+			json.loads((GENERATOR_ROOT / "schema/crypto/crypto_merkle.json").read_text()),
+			json.loads((GENERATOR_ROOT / "schema/crypto/crypto_ntt.json").read_text()),
 		):
 			for row in schema.get("operations", []) + schema.get("kernels", []) + schema.get("private_kernels", []):
 				if source := row.get("source"):
@@ -763,16 +802,21 @@ class GeneratorTests(unittest.TestCase):
 		generated_sources = {
 			f"src/slang/matrix/elemwise/{variant['source_stem']}.gen.slang"
 			for operation in self.schema["operations"]
-			for variant in GENERATOR.operation_variants(self.schema, operation)
+			if not operation.get("lowering_only", False)
+			for variant in oa_model.operation_variants(self.schema, operation)
 		}
 		generated_sources.update(
 			lowering["source"]
 			for operation in self.schema["operations"]
-			for lowering in GENERATOR.operation_lowering_variants(operation)
+			for lowering in oa_model.operation_lowering_variants(operation)
 		)
 		generated_sources.update(
 			f"src/slang/matrix/blas/{operation['source_stem']}.gen.slang"
 			for operation in self.blas_schema["operations"]
+		)
+		generated_sources.update(
+			f"src/slang/matrix/blas/{candidate['source_stem']}.gen.slang"
+			for candidate in self.blas_schema.get("candidate_kernels", [])
 		)
 		expected = schema_sources | generated_sources
 		actual = {
@@ -792,14 +836,14 @@ class GeneratorTests(unittest.TestCase):
 	def test_blas_tile_geometry_is_validated(self):
 		invalid = copy.deepcopy(self.blas_schema)
 		invalid["output_tile_size"] = [32, 64, 1]
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "output_tile_size"):
-			GENERATOR.validate_blas_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "output_tile_size"):
+			oa_matrix.validate_blas_schema(invalid)
 
 	def test_reduce_schema_preserves_the_donor_axis_contract(self):
 		invalid = copy.deepcopy(self.reduce_schema)
 		invalid["operations"][0]["semantic_attributes"] = []
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "signed dim attribute"):
-			GENERATOR.validate_reduce_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "signed dim attribute"):
+			oa_matrix.validate_reduce_schema(invalid)
 
 	def test_elemwise_abs_preserves_reverse_differentiation(self):
 		operation = next(
@@ -835,30 +879,30 @@ class GeneratorTests(unittest.TestCase):
 	def test_reduce_schema_requires_complete_physical_write_ownership(self):
 		missing = copy.deepcopy(self.reduce_schema)
 		del missing["operations"][0]["physical_write"]["writes"][0]["collision"]
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "fields are incomplete"):
-			GENERATOR.validate_reduce_schema(missing)
+		with self.assertRaisesRegex(oa_util.SchemaError, "fields are incomplete"):
+			oa_matrix.validate_reduce_schema(missing)
 
 		contradictory = copy.deepcopy(self.reduce_schema)
 		contradictory["operations"][0]["physical_write"]["writes"][0][
 			"partition"
 		] = "exclusive_per_invocation"
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "contradictory"):
-			GENERATOR.validate_reduce_schema(contradictory)
+		with self.assertRaisesRegex(oa_util.SchemaError, "contradictory"):
+			oa_matrix.validate_reduce_schema(contradictory)
 
 		unsupported = copy.deepcopy(self.reduce_schema)
 		unsupported["operations"][0]["physical_write"]["writes"][0][
 			"collision"
 		] = "magic"
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "collision is unsupported"):
-			GENERATOR.validate_reduce_schema(unsupported)
+		with self.assertRaisesRegex(oa_util.SchemaError, "collision is unsupported"):
+			oa_matrix.validate_reduce_schema(unsupported)
 
 		duplicate = copy.deepcopy(self.reduce_schema)
 		duplicate_write = copy.deepcopy(
 			duplicate["operations"][0]["physical_write"]["writes"][0]
 		)
 		duplicate["operations"][0]["physical_write"]["writes"].append(duplicate_write)
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "duplicate"):
-			GENERATOR.validate_reduce_schema(duplicate)
+		with self.assertRaisesRegex(oa_util.SchemaError, "duplicate"):
+			oa_matrix.validate_reduce_schema(duplicate)
 
 	def test_normalization_candidates_require_physical_write_ownership(self):
 		invalid = copy.deepcopy(self.ml_schema)
@@ -866,14 +910,14 @@ class GeneratorTests(unittest.TestCase):
 			operation for operation in invalid["operations"] if operation["name"] == "layer_norm"
 		)
 		del layer_norm["physical_write"]
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "physical_write is required"):
-			GENERATOR.validate_ml_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "physical_write is required"):
+			oa_ml.validate_ml_schema(invalid)
 
 	def test_image_kernels_require_physical_write_ownership(self):
 		invalid = copy.deepcopy(self.image_schema)
 		del invalid["kernels"][0]["physical_write"]
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "physical_write is required"):
-			GENERATOR.validate_image_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "physical_write is required"):
+			oa_image.validate_image_schema(invalid)
 
 	def test_vision_schema_owns_the_complete_detection_surface(self):
 		self.assertEqual(
@@ -892,41 +936,41 @@ class GeneratorTests(unittest.TestCase):
 	def test_atomic_writes_require_shared_u32_collision_contract(self):
 		invalid = copy.deepcopy(self.vision_schema)
 		invalid["kernels"][2]["physical_write"]["writes"][0]["collision"] = "exclusive"
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "shared contributors"):
-			GENERATOR.validate_vision_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "shared contributors"):
+			oa_vision.validate_vision_schema(invalid)
 
 		invalid = copy.deepcopy(self.vision_schema)
 		invalid["kernels"][2]["physical_write"]["writes"][0][
 			"partition"
 		] = "exclusive_per_invocation"
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "atomic_u32 requires"):
-			GENERATOR.validate_vision_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "atomic_u32 requires"):
+			oa_vision.validate_vision_schema(invalid)
 
 	def test_unknown_dnn_provider_is_rejected(self):
 		invalid = copy.deepcopy(self.blas_schema)
 		invalid["operations"][0]["dnn"]["providers"] = ["magic_vendor"]
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "dnn.providers"):
-			GENERATOR.validate_blas_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "dnn.providers"):
+			oa_matrix.validate_blas_schema(invalid)
 
 	def test_invalid_semantic_attribute_is_rejected(self):
 		invalid = copy.deepcopy(self.ml_schema)
 		invalid["operations"][0]["semantic_attributes"] = [["epsilon", "pointer"]]
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "kind is unsupported"):
-			GENERATOR.validate_ml_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "kind is unsupported"):
+			oa_ml.validate_ml_schema(invalid)
 
 	def test_unknown_training_replay_role_is_rejected(self):
 		invalid = copy.deepcopy(self.ml_schema)
 		invalid["operations"][0]["training_replay_role"] = "host_magic"
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "training_replay_role"):
-			GENERATOR.validate_ml_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "training_replay_role"):
+			oa_ml.validate_ml_schema(invalid)
 
 	def test_unknown_rng_differentiation_is_rejected(self):
 		invalid = copy.deepcopy(self.rng_schema)
 		next(
 			operation for operation in invalid["operations"] if operation["name"] == "dropout"
 		)["differentiation"] = "symbolic_magic"
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "differentiation"):
-			GENERATOR.validate_rng_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "differentiation"):
+			oa_matrix.validate_rng_schema(invalid)
 
 	def test_categorical_matrix_dependencies_have_stable_schema_ownership(self):
 		gather = next(
@@ -943,7 +987,7 @@ class GeneratorTests(unittest.TestCase):
 		self.assertEqual(gather_backward["stable_id"], 389)
 		self.assertEqual(gather["differentiation"], "reverse")
 		self.assertEqual(
-			gather["contract"]["dtype_rule"], "f32_values_i32_indices"
+			gather["contract"]["dtype_rule"], "match_input"
 		)
 
 		sampling = {
@@ -988,6 +1032,9 @@ class GeneratorTests(unittest.TestCase):
 			"evaluate_categorical",
 			"sample_tanh_normal",
 			"evaluate_tanh_normal",
+			"quantize",
+			"dequantize",
+			"mat_mul_nt_quantized",
 		])
 		for name in ("normalize_observation", "scale_action", "clip_reward"):
 			self.assertEqual(operations[name]["semantic_domain"], "ml::environment")
@@ -1038,38 +1085,40 @@ class GeneratorTests(unittest.TestCase):
 	def test_stable_ids_must_be_unique_across_schema_families(self):
 		invalid = copy.deepcopy(self.blas_schema)
 		invalid["operations"][0]["stable_id"] = self.schema["operations"][0]["stable_id"]
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "across schemas"):
-			GENERATOR.registry_entries(
-				self.schema,
-				invalid,
-				self.reduce_schema,
-				self.rng_schema,
-				self.index_schema,
-				self.ml_schema,
-				self.audio_schema,
-				self.cryptography_hash_schema,
-				self.cryptography_pqc_schema,
-				self.image_schema,
-				self.vision_schema,
+		with self.assertRaisesRegex(oa_util.SchemaError, "across schemas"):
+			oa_registry.registry_entries(
+				{
+					"elemwise": (self.schema, ""),
+					"blas": (invalid, ""),
+					"reduce": (self.reduce_schema, ""),
+					"rng": (self.rng_schema, ""),
+					"index": (self.index_schema, ""),
+					"ml": (self.ml_schema, ""),
+					"audio": (self.audio_schema, ""),
+					"hash": (self.cryptography_hash_schema, ""),
+					"pqc": (self.cryptography_pqc_schema, ""),
+					"image": (self.image_schema, ""),
+					"vision": (self.vision_schema, ""),
+				},
 			)
 
 	def test_duplicate_stable_id_is_rejected_before_publication(self):
 		invalid = copy.deepcopy(self.schema)
 		invalid["operations"][1]["stable_id"] = invalid["operations"][0]["stable_id"]
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "duplicate"):
-			GENERATOR.validate_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "duplicate"):
+			oa_matrix.validate_schema(invalid)
 
 	def test_scalar_contract_mismatch_is_rejected(self):
 		invalid = copy.deepcopy(self.schema)
 		invalid["operations"][0]["scalar_name"] = "scalar"
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "unary_scalar"):
-			GENERATOR.validate_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "unary_scalar"):
+			oa_matrix.validate_schema(invalid)
 
 	def test_integer_variant_rejects_float_oracle_values(self):
 		invalid = copy.deepcopy(self.schema)
 		invalid["operations"][0]["additional_dtype_variants"][0]["test"]["expected"][0] = 1.5
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "i32 values"):
-			GENERATOR.validate_schema(invalid)
+		with self.assertRaisesRegex(oa_util.SchemaError, "i32 values"):
+			oa_matrix.validate_schema(invalid)
 
 
 if __name__ == "__main__":

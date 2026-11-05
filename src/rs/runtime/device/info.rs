@@ -6,6 +6,7 @@
 /// discrete, virtual, and other hardware all compete using queried features
 /// and resource capacities.
 use super::NativeFlagBits;
+pub use crate::runtime::types::DeviceInfo;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeviceKind {
@@ -15,58 +16,6 @@ pub enum DeviceKind {
 	/// Software Vulkan executing on the CPU. Selected explicitly by index.
 	Cpu,
 	Other,
-}
-
-/// Hardware identity and resource facts captured at engine construction.
-///
-/// Vulkan limits and exposed memory capacity can change with driver policy.
-/// Budget and usage are snapshots, not immutable hardware properties.
-/// Descriptor capacities describe the allocated heap after negotiation.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DeviceHardwareInfo {
-	pub(crate) index: usize,
-	pub(crate) name: String,
-	pub(crate) kind: DeviceKind,
-	pub(crate) vendor_id: u32,
-	pub(crate) device_id: u32,
-	pub(crate) local_memory_bytes: u64,
-	pub(crate) local_memory_budget_bytes: Option<u64>,
-	pub(crate) local_memory_usage_bytes: Option<u64>,
-	pub(crate) max_compute_shared_memory_bytes: u32,
-	pub(crate) max_compute_workgroup_invocations: u32,
-	pub(crate) subgroup_size: u32,
-	pub(crate) storage_buffer_descriptors: u32,
-	pub(crate) storage_image_descriptors: u32,
-	pub(crate) graphics: bool,
-	pub(crate) swapchain: bool,
-}
-
-/// Immutable software facts for the device owned by one engine.
-///
-/// These reflect the installed driver: API version, driver version, driver
-/// identity, and queried feature support. They may change across driver
-/// updates without any hardware change.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DeviceSoftwareInfo {
-	pub(crate) api_version: String,
-	pub(crate) driver_name: String,
-	pub(crate) driver_info: String,
-	pub(crate) driver_version: u32,
-	pub(crate) capability_identity: u64,
-	pub(crate) shader_float16: bool,
-	pub(crate) shader_float64: bool,
-	pub(crate) shader_integer_dot_product: bool,
-	pub(crate) cooperative_matrix_tuple_count: usize,
-}
-
-/// Immutable device facts captured for the device owned by one engine.
-///
-/// Composes [`DeviceHardwareInfo`] (PCI, local memory, limits, queue presence) and
-/// [`DeviceSoftwareInfo`] (driver/API version, feature booleans).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DeviceInfo {
-	pub hardware: DeviceHardwareInfo,
-	pub software: DeviceSoftwareInfo,
 }
 
 impl DeviceInfo {

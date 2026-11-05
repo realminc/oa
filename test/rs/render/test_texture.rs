@@ -657,6 +657,67 @@ fn quad_geometry_has_donor_winding_and_top_origin_uvs() {
 	);
 }
 
+test_vk!(
+	headless_renderer_draws_procedural_canvas_grid,
+	engine,
+	"requires a hardware Vulkan graphics device",
+	{
+		let renderer = oa::render::Renderer::new(
+			&engine,
+			oa::render::RendererConfig {
+				width: 64,
+				height: 64,
+				target_slot_count: 1,
+				max_vertex_count: 4,
+				max_index_count: 6,
+				clear_color: oa::Color::new(0.0, 0.0, 0.0, 1.0),
+				..Default::default()
+			},
+		)?;
+		// Background + minor-grid only: cell interiors keep the gradient,
+		// line pixels take the minor color.
+		let frame = oa::render::CanvasGridFrame {
+			dst_x: 0,
+			dst_y: 0,
+			dst_w: 64,
+			dst_h: 64,
+			origin: [32.0, 32.0],
+			minor_spacing: [16.0, 16.0],
+			major_every: 4,
+			super_major_every: 4,
+			thickness: [1.5, 2.0, 2.5, 3.0],
+			background_top_rgba: 0xFF0000FF,
+			background_bottom_rgba: 0xFF0000FF,
+			minor_rgba: 0x00FF00FF,
+			major_rgba: 0x0000FFFF,
+			super_major_rgba: 0x0000FFFF,
+			axis_rgba: 0xFFFFFFFF,
+			fade_center: [32.0, 32.0],
+			fade_radii: [16.0, 64.0],
+			flags: 1 | 4,
+		};
+		renderer.begin_frame_canvas_grid(&frame)?;
+		let pixels = renderer.submit_frame()?.consume_readback()?;
+		let px = |x: usize, y: usize| pixels.as_chunks::<4>().0[y * 64 + x];
+		// Cell interior (8,8): nearest minor line is 8px away — pure red
+		// gradient background.
+		let interior = px(8, 8);
+		assert!(
+			interior[0] > 200 && interior[1] < 40 && interior[2] < 40,
+			"grid cell interior lost the red background: {interior:?}"
+		);
+		// (32,8) sits on the vertical minor line through the origin — the
+		// 1.5px-thick green minor tier dominates.
+		let line = px(32, 8);
+		assert!(
+			line[1] > 120 && line[0] < 120,
+			"minor grid line missing at (32,8): {line:?}"
+		);
+		renderer.close()?;
+		Ok(())
+	}
+);
+
 fn temporary_path() -> std::path::PathBuf {
 	let nonce = SystemTime::now()
 		.duration_since(UNIX_EPOCH)

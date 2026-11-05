@@ -5,20 +5,8 @@ use crate::runtime::SemanticDispatch;
 use crate::runtime::{BufferBinding, KernelId, PushConstant};
 use crate::{DType, Engine, Error, Matrix, OpAttribute, Result};
 
+pub use super::types::ReplayConfig;
 use super::validation::shader_u32;
-
-/// Shape, capacity, and action representation of one replay buffer.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ReplayConfig {
-	/// Maximum number of retained transitions.
-	pub capacity: usize,
-	/// Per-transition observation shape, excluding the batch axis.
-	pub observation_shape: Vec<usize>,
-	/// Per-transition action shape; empty denotes one scalar action.
-	pub action_shape: Vec<usize>,
-	/// Action storage representation; currently F32 or I32.
-	pub action_dtype: DType,
-}
 
 /// One batch of transitions to append to a [`ReplayBuffer`].
 #[derive(Clone)]
@@ -447,6 +435,7 @@ fn append_dispatch(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(observation_count.max(action_count).max(batch_u32)),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -580,6 +569,7 @@ fn sample_dispatch(
 			push_constants: &push_constants,
 			workgroups: kernel
 				.linear_workgroups(observation_count_u32.max(action_count_u32).max(batch_u32)),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

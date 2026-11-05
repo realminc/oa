@@ -21,10 +21,10 @@ test_vk!(
 		let (plan, loss) =
 			engine.capture(|| ppo_clipped_policy(&new_log, &old_log, &advantage, 0.2))?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
-		assert_eq!(plan.diagnostics().node_count(), 3);
+		assert_eq!(plan.diagnostics().node_count(), 2);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
-			"oa::ml::loss::ppo_clipped_policy"
+			"oa::FnLoss::ppoClippedPolicy"
 		);
 		engine.submit(&plan)?.wait()?;
 		assert_close(&loss.read_f32()?, &[-0.2], 1.0e-6);
@@ -80,7 +80,7 @@ test_vk!(
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
-			"oa::ml::loss::ppo"
+			"oa::FnLoss::ppo"
 		);
 		assert_eq!(plan.semantic_graph().operations()[0].attributes().len(), 3);
 		engine.submit(&plan)?.wait()?;

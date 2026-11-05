@@ -1,5 +1,5 @@
 // OA_DOC_BEGIN: crypto-shake256
-use oa::{Engine, Matrix, cryptography};
+use oa::{Engine, Matrix, crypto};
 
 fn main() -> oa::Result<()> {
 	let engine = Engine::new()?;
@@ -9,7 +9,7 @@ fn main() -> oa::Result<()> {
 	let flat: Vec<u8> = rows.iter().flat_map(|r| r.iter().copied()).collect();
 	let messages = Matrix::new_from_slice::<u8>(&engine, [3, 5], &flat)?;
 
-	let digests = cryptography::hash::shake256(&messages, 32)?;
+	let digests = crypto::hash::shake256(&messages, 32)?;
 
 	// Verify GPU digests match the independent CPU reference.
 	let gpu = digests.read::<u8>()?;
@@ -17,7 +17,7 @@ fn main() -> oa::Result<()> {
 		.iter()
 		.flat_map(|row| {
 			let mut digest = [0u8; 32];
-			cryptography::shake256(row, &mut digest);
+			crypto::shake256(row, &mut digest);
 			digest
 		})
 		.collect();

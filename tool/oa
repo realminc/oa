@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Unified entry point for OA repository tooling.
+
+Dispatches to the underlying tools under tool/; each subcommand execs the
+owning script directly so existing task, CI, and documentation call paths
+remain valid.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+
+PYTHON_ROUTES: dict[tuple[str, ...], str] = {
+	("gen", "fn"): "gen/fn/generate.py",
+	("gen", "nn"): "gen/nn/generate.py",
+	("gen", "font"): "gen/font/generate.py",
+	("gen", "donor"): "gen/fn/extract_donor_contracts.py",
+	("gen", "drift"): "gen/checkDrift.py",
+	("build",): "build/workflow.py",
+	("stage",): "build/stage.py",
+	("audit", "crate"): "build/audit_crate.py",
+	("profile", "bench"): "profiling/bench.py",
+	("profile", "suite"): "profiling/suite.py",
+	("profile", "memory"): "profiling/memory_compare.py",
+	("profile", "memory-rust"): "profiling/memory_rust.py",
+	("profile", "vlm"): "profiling/vlm_compare.py",
+}
+
+SHELL_ROUTES: dict[tuple[str, ...], str] = {
+	("profile", "clocks"): "profiling/stable_clocks.sh",
+	("release", "snapshot"): "release/createPublicSnapshot.sh",
+}
+
+TEST_SCOPES: dict[str, str] = {
+	"py": "test/py",
+	"tool": "test/py/tool",
+	"gen": "test/py/tool/gen",
+	"fn": "test/py/tool/gen/fn",
+	"nn": "test/py/tool/gen/nn",
+}
+
+USAGE = """usage: oa <command> [args]
+
+generation
+  gen fn [--check|--live|--output-dir DIR]   operation generator
+  gen nn [--check|--live|--output-dir DIR]   NN layer generator
+  gen font [args]                            font asset generator
+  gen donor [--check]                        donor contract extraction
+  gen drift                                  fn+NN determinism gate
+
+build
+  build [--profile debug|release] [args]     build workflow
+  stage [args]                               staging
+  audit crate <crate-file> <version>         crate audit
+
+profile
+  profile bench|suite|memory|memory-rust|vlm|clocks [args]
+
+release
+  release snapshot [args]                    public snapshot
+
+test
+  test [py|tool|gen|fn|nn] [unittest args]   unittest discovery
+"""
+
+
+def route(argv: list[str]) -> tuple[tuple[str, ...], list[str]]:
+	for length in (2, 1):
+		candidate = tuple(argv[:length])
+		if candidate in PYTHON_ROUTES or candidate in SHELL_ROUTES:
+			return candidate, argv[length:]
+	return (), argv
+
+
+def run(argv: list[str]) -> None:
+	command, rest = route(argv)
+	if command in PYTHON_ROUTES:
+		target = ROOT / PYTHON_ROUTES[command]
+		os.execv(sys.executable, [sys.executable, str(target), *rest])
+	if command in SHELL_ROUTES:
+		target = ROOT / SHELL_ROUTES[command]
+		os.execv("/bin/bash", ["bash", str(target), *rest])
+	if argv[0] == "test":
+		rest = argv[1:]
+		scope = rest[0] if rest else "py"
+		extra = rest[1:] if rest else []
+		directory = TEST_SCOPES.get(scope)
+		if directory is None:
+			print(f"oa: unknown test scope '{scope}'", file=sys.stderr)
+			print(USAGE, file=sys.stderr)
+			sys.exit(2)
+		os.execv(
+			sys.executable,
+			[sys.executable, "-m", "unittest", "discover", "-s", str(ROOT.parent / directory), *extra],
+		)
+	print(USAGE, file=sys.stderr)
+	sys.exit(2)
+
+
+def main() -> None:
+	argv = sys.argv[1:]
+	if not argv or argv[0] in ("-h", "--help", "help"):
+		print(USAGE)
+		return
+	run(argv)
+
+
+if __name__ == "__main__":
+	main()

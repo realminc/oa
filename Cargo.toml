@@ -1,6 +1,6 @@
 [package]
 name = "oarust"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2024"
 rust-version = "1.98"
 autotests = false
@@ -16,10 +16,10 @@ include = [
   "/sdk/rs/mod.rs", "/sdk/rs/data.rs", "/sdk/rs/data/**/*.rs",
   "/sdk/rs/ml.rs", "/sdk/rs/ml/**/*.rs",
   "/test/rs/matrix/*.gen.rs", "/tool/gen/**", "/test/rs/**/*_unit.rs",
-  "/test/fixtures/cryptography/mldsa/keyGen-*.json", "/test/fixtures/cryptography/mldsa/sigGen-*.json",
-  "/test/fixtures/cryptography/mlkem/keyGen-*.json",
-  "/test/fixtures/cryptography/mlkem/encapDecap-*.json",
-  "/test/fixtures/cryptography/mlkem/engine-roundtrip.json",
+  "/test/fixtures/crypto/mldsa/keyGen-*.json", "/test/fixtures/crypto/mldsa/sigGen-*.json",
+  "/test/fixtures/crypto/mlkem/keyGen-*.json",
+  "/test/fixtures/crypto/mlkem/encapDecap-*.json",
+  "/test/fixtures/crypto/mlkem/engine-roundtrip.json",
   "!**/__pycache__/**", "!**/*.pyc",
 ]
 
@@ -31,6 +31,10 @@ resolver = "3"
 [lib]
 name = "oa"
 path = "src/rs/lib.rs"
+
+[[bin]]
+name = "oa"
+path = "src/rs/app/oa/main.rs"
 
 [[test]]
 name = "core"
@@ -61,8 +65,8 @@ name = "vision"
 path = "test/rs/test_vision.rs"
 
 [[test]]
-name = "cryptography"
-path = "test/rs/test_cryptography.rs"
+name = "crypto"
+path = "test/rs/test_crypto.rs"
 
 [[test]]
 name = "video"
@@ -73,8 +77,12 @@ name = "media"
 path = "test/rs/test_media.rs"
 
 [[test]]
-name = "network"
-path = "test/rs/test_network.rs"
+name = "net"
+path = "test/rs/test_net.rs"
+
+[[test]]
+name = "anim"
+path = "test/rs/test_anim.rs"
 
 [[test]]
 name = "data"
@@ -107,6 +115,10 @@ path = "sdk/rs/benchmarks/core/mat_mul.rs"
 [[example]]
 name = "core_memory_bench"
 path = "sdk/rs/benchmarks/core/memory.rs"
+
+[[example]]
+name = "core_elemwise_chain_bench"
+path = "sdk/rs/benchmarks/core/elemwise_chain.rs"
 
 [[example]]
 name = "core_vlm_bench"
@@ -181,6 +193,10 @@ name = "ml_nlp_char_transformer_profile"
 path = "sdk/rs/benchmarks/ml/nlp/char_transformer.rs"
 
 [[example]]
+name = "tu_audio_commands"
+path = "sdk/rs/tutorials/ml/audio/tu_audio_commands.rs"
+
+[[example]]
 name = "tu_rl_cart_pole_ppo"
 path = "sdk/rs/tutorials/ml/rl/tu_rl_cart_pole_ppo.rs"
 
@@ -253,7 +269,7 @@ default = ["bundled-sdl"]
 bundled-sdl = ["sdl3/build-from-source-static"]
 
 [dependencies]
-vkrust = { version = "0.9", features = ["allocator"] }
+vkrust = { version = "0.11", features = ["allocator"] }
 sdl3 = { version = "0.20", features = ["use-pkg-config"] }
 
 bitflags = "2"
@@ -264,8 +280,17 @@ unicode-normalization = "0.1"
 unicode-general-category = "1"
 cpal = { version = "0.18.2", default-features = false }
 rtrb = "0.4"
-symphonia = { version = "0.6", default-features = false, features = ["flac", "mp3", "pcm", "wav"] }
-image-codec = { package = "image", version = "0.25.10", default-features = false, features = ["bmp", "jpeg", "png", "tga", "webp"] }
+symphonia = { version = "0.6", default-features = false, features = [
+	"aac",
+	"flac",
+	"isomp4",
+	"mkv",
+	"mp3",
+	"pcm",
+	"vorbis",
+	"wav",
+] }
+image-codec = { package = "image", version = "0.25.10", default-features = false, features = ["bmp", "hdr", "jpeg", "png", "tga", "webp"] }
 webp-codec = { package = "webp", version = "0.3.1", default-features = false }
 libc = "0.2"
 getrandom = "0.4.3"

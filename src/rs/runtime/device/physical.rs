@@ -43,6 +43,8 @@ pub(in crate::runtime) struct DevicePhysical {
 	pub(in crate::runtime) transfer_queue_family: Option<u32>,
 	pub(in crate::runtime) transfer_queue_count: u32,
 	pub(in crate::runtime) swapchain_supported: bool,
+	pub(in crate::runtime) calibrated_timestamps_khr: bool,
+	pub(in crate::runtime) calibrated_timestamps_ext: bool,
 	pub(in crate::runtime) video: VideoPhysicalCapabilities,
 	pub(in crate::runtime) features: DeviceFeatures,
 	pub(in crate::runtime) cooperative_matrix: CooperativeMatrixCapabilities,
@@ -294,11 +296,11 @@ impl DevicePhysical {
 
 			// SAFETY: `handle` was returned by this live instance. Both queries only read
 			// immutable physical-device properties.
-			let mut subgroup_properties = vk::PhysicalDeviceSubgroupProperties::default();
-			let mut driver_properties = vk::PhysicalDeviceDriverProperties::default();
-			let mut id_properties = vk::PhysicalDeviceIDProperties::default();
-			let mut properties12 = vk::PhysicalDeviceVulkan12Properties::default();
-			let mut properties2 = vk::PhysicalDeviceProperties2::default()
+			let mut subgroup_properties = vk::PhysicalDeviceSubgroupProperties::new();
+			let mut driver_properties = vk::PhysicalDeviceDriverProperties::new();
+			let mut id_properties = vk::PhysicalDeviceIDProperties::new();
+			let mut properties12 = vk::PhysicalDeviceVulkan12Properties::new();
+			let mut properties2 = vk::PhysicalDeviceProperties2::new()
 				.push_next(&mut properties12)
 				.map_err(Error::from)?
 				.push_next(&mut subgroup_properties)
@@ -390,6 +392,16 @@ impl DevicePhysical {
 				handle,
 				vk::KHR_SHADER_INTEGER_DOT_PRODUCT_EXTENSION_NAME,
 			)?;
+			let calibrated_timestamps_khr = has_device_extension(
+				instance,
+				handle,
+				vk::KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
+			)?;
+			let calibrated_timestamps_ext = has_device_extension(
+				instance,
+				handle,
+				vk::EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
+			)?;
 			let features = DeviceFeatures::query(
 				instance,
 				handle,
@@ -446,7 +458,7 @@ impl DevicePhysical {
 					.limits
 					.max_per_stage_descriptor_storage_buffers
 					.min(properties.limits.max_descriptor_set_storage_buffers)
-					.min(crate::runtime::shader::MAX_BOUNDED_STORAGE_BUFFERS);
+					.min(crate::runtime::dna::kernel::MAX_BOUNDED_STORAGE_BUFFERS);
 				(available >= 3).then_some((available, 0))
 			};
 			let Some((storage_buffer_descriptors, storage_image_descriptors)) = budget else {
@@ -524,6 +536,8 @@ impl DevicePhysical {
 				transfer_queue_family,
 				transfer_queue_count,
 				swapchain_supported,
+				calibrated_timestamps_khr,
+				calibrated_timestamps_ext,
 				video,
 				features,
 				cooperative_matrix,
@@ -790,8 +804,8 @@ fn query_local_memory(
 	handle: vk::PhysicalDevice,
 	memory_budget_extension: bool,
 ) -> Result<LocalMemoryFacts> {
-	let mut budget = vk::PhysicalDeviceMemoryBudgetPropertiesEXT::default();
-	let properties2 = vk::PhysicalDeviceMemoryProperties2::default();
+	let mut budget = vk::PhysicalDeviceMemoryBudgetPropertiesEXT::new();
+	let properties2 = vk::PhysicalDeviceMemoryProperties2::new();
 	let mut properties2 = if memory_budget_extension {
 		properties2.push_next(&mut budget).map_err(Error::from)?
 	} else {
@@ -840,8 +854,8 @@ fn query_cooperative_matrix_capabilities(
 		return Ok(CooperativeMatrixCapabilities::default());
 	}
 
-	let mut properties = vk::PhysicalDeviceCooperativeMatrixPropertiesKHR::default();
-	let mut properties2 = vk::PhysicalDeviceProperties2::default()
+	let mut properties = vk::PhysicalDeviceCooperativeMatrixPropertiesKHR::new();
+	let mut properties2 = vk::PhysicalDeviceProperties2::new()
 		.push_next(&mut properties)
 		.map_err(Error::from)?;
 	// SAFETY: the feature and extension were queried from `handle`; the output
@@ -1036,7 +1050,7 @@ fn query_video_result_status_support(
 		.collect::<Vec<_>>();
 	let mut properties = status
 		.iter_mut()
-		.map(|status| vk::QueueFamilyProperties2::default().push_next(status))
+		.map(|status| vk::QueueFamilyProperties2::new().push_next(status))
 		.collect::<std::result::Result<Vec<_>, _>>()
 		.map_err(Error::from)?;
 	// SAFETY: `handle` belongs to the live instance. Every output structure and

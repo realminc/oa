@@ -19,6 +19,7 @@ mod moe;
 #[path = "matrix/parity.gen.rs"]
 mod parity;
 mod pool;
+mod quant;
 mod recurrent;
 mod rms_norm;
 mod rnn;
@@ -32,6 +33,10 @@ mod upsample;
 mod vq;
 pub(in crate::ml) use training::{sample_categorical_cursor, training_accumulate};
 
+pub use super::types::{
+	BatchNorm2dResult, Mamba3PreprocessConfig, Mamba3PreprocessResult, MaxPool2dResult, SsmConfig,
+	VqAssignResult,
+};
 pub use activation::{elu, gelu, leaky_relu, mish, relu, sigmoid, silu, softplus, tanh};
 pub(in crate::ml) use activation::{
 	elu_backward, gelu_backward, leaky_relu_backward, mish_backward, relu_backward, sigmoid_backward,
@@ -46,7 +51,7 @@ pub(in crate::ml) use attention::{
 	causal_linear_attention_backward, flash_attention_causal_backward, merge_heads_dispatch,
 	softmax_scaled_masked_backward, split_heads_dispatch,
 };
-pub use batch_norm::{BatchNorm2dResult, batch_norm_2d, batch_norm_2d_with_stats};
+pub use batch_norm::{batch_norm_2d, batch_norm_2d_with_stats};
 pub(in crate::ml) use batch_norm::{
 	batch_norm_2d_backward, batch_norm_2d_forward, batch_norm_2d_running_update,
 	batch_norm_2d_with_stats_forward,
@@ -70,19 +75,20 @@ pub(in crate::ml) use gru::{
 pub(in crate::ml) use layer_norm::{layer_norm, layer_norm_backward};
 pub(in crate::ml) use linear::{linear, linear_backward};
 pub use mamba3::{
-	Mamba3MimoBackward, Mamba3PreprocessBackward, Mamba3PreprocessConfig, Mamba3PreprocessResult,
-	SsmBackward, SsmConfig, mamba3_mimo, mamba3_mimo_backward, mamba3_mimo_step, mamba3_preprocess,
-	mamba3_preprocess_backward, mamba3_siso, mamba3_siso_backward, mamba3_siso_step,
+	Mamba3MimoBackward, Mamba3PreprocessBackward, SsmBackward, mamba3_mimo, mamba3_mimo_backward,
+	mamba3_mimo_step, mamba3_preprocess, mamba3_preprocess_backward, mamba3_siso,
+	mamba3_siso_backward, mamba3_siso_step,
 };
 pub use moe::{grouped_gemm_m, grouped_linear_m, moe_combine, moe_gather, moe_route_weights};
 pub(in crate::ml) use moe::{
 	grouped_gemm_m_backward, grouped_linear_m_backward, grouped_linear_m_parameterized,
 	moe_combine_backward, moe_gather_backward, moe_route_weights_backward,
 };
-pub use pool::{MaxPool2dResult, adaptive_avg_pool_2d, avg_pool_2d, max_pool_2d};
+pub use pool::{adaptive_avg_pool_2d, avg_pool_2d, max_pool_2d};
 pub(in crate::ml) use pool::{
 	adaptive_avg_pool_2d_backward, avg_pool_2d_backward, max_pool_2d_backward,
 };
+pub use quant::{QuantMatrix, Quantization, dequantize, mat_mul_nt, quantize};
 pub use rms_norm::{RmsNormGatedBackward, rms_norm, rms_norm_gated, rms_norm_gated_backward};
 pub(in crate::ml) use rms_norm::{rms_norm_backward, rms_norm_forward, rms_norm_gated_forward};
 pub use rnn::{rnn_cell, rnn_scan};
@@ -93,7 +99,7 @@ pub use rope::rope;
 pub(in crate::ml) use rope::rope_backward;
 pub(in crate::ml) use upsample::upsample_2d_backward;
 pub use upsample::{UpsampleMode, upsample_2d};
-pub use vq::{VqAssignResult, VqEmaState, detach, vq_assign, vq_ema_update, vq_lookup};
+pub use vq::{VqEmaState, detach, vq_assign, vq_ema_update, vq_lookup};
 
 pub use swiglu::{silu_mul, swiglu};
 pub(in crate::ml) use swiglu::{silu_mul_backward, swiglu_backward};

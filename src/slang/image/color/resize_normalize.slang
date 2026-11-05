@@ -5,6 +5,7 @@ struct PushConstants {
 	uint input_index, output_index, batch_size, channels;
 	uint input_height, input_width, output_height, output_width;
 	float mean_0, mean_1, mean_2, std_0, std_1, std_2;
+	uint swap_rb;
 };
 [[vk::push_constant]] PushConstants push;
 [[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
@@ -26,11 +27,13 @@ void main(uint3 thread_id : SV_DispatchThreadID) {
 	uint x0 = uint(floor(source_x)), y0 = uint(floor(source_y));
 	uint x1 = min(x0 + 1u, push.input_width - 1u), y1 = min(y0 + 1u, push.input_height - 1u);
 	float fx = source_x - float(x0), fy = source_y - float(y0);
-	uint base = plane_index * push.input_height * push.input_width;
+	uint channel = plane_index % push.channels;
+	uint source_channel = (push.swap_rb != 0u && channel < 3u) ? 2u - channel : channel;
+	uint source_plane = (plane_index / push.channels) * push.channels + source_channel;
+	uint base = source_plane * push.input_height * push.input_width;
 	float top = lerp(load_f32(storage_buffers[push.input_index], base + y0 * push.input_width + x0), load_f32(storage_buffers[push.input_index], base + y0 * push.input_width + x1), fx);
 	float bottom = lerp(load_f32(storage_buffers[push.input_index], base + y1 * push.input_width + x0), load_f32(storage_buffers[push.input_index], base + y1 * push.input_width + x1), fx);
 	float value = lerp(top, bottom, fy);
-	uint channel = plane_index % push.channels;
 	float mean = channel == 0u ? push.mean_0 : channel == 1u ? push.mean_1 : push.mean_2;
 	float stddev = channel == 0u ? push.std_0 : channel == 1u ? push.std_1 : push.std_2;
 	uint target = (plane_index * push.output_height + y) * push.output_width + x;

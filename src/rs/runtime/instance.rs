@@ -37,12 +37,12 @@ impl Instance {
 			));
 		}
 
-		let app_info = vk::ApplicationInfo::default()
-			.application_name(c"oa")
-			.application_version(vk::make_api_version(0, 0, 1, 0))
-			.engine_name(c"oa")
-			.engine_version(vk::make_api_version(0, 0, 1, 0))
-			.api_version(available_api_version.min(vk::API_VERSION_1_3));
+		let app_info = vk::ApplicationInfo::new()
+			.set_application_name(c"oa")
+			.set_application_version(vk::make_api_version(0, 0, 1, 0))
+			.set_engine_name(c"oa")
+			.set_engine_version(vk::make_api_version(0, 0, 1, 0))
+			.set_api_version(available_api_version.min(vk::API_VERSION_1_3));
 		let extension_names = required_extensions
 			.iter()
 			.map(|name| {
@@ -57,9 +57,9 @@ impl Instance {
 			.iter()
 			.map(|name| name.as_ptr())
 			.collect::<Vec<_>>();
-		let create_info = vk::InstanceCreateInfo::default()
-			.application_info(&app_info)
-			.enabled_extension_names(&extension_pointers)
+		let create_info = vk::InstanceCreateInfo::new()
+			.set_application_info(&app_info)
+			.set_enabled_extension_names(&extension_pointers)
 			.map_err(|source| Error::backend_failure("Vulkan", "instance create-info", source))?;
 
 		// SAFETY: the create information references only values alive for this call.

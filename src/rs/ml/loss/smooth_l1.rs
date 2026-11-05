@@ -42,6 +42,7 @@ pub fn smooth_l1(prediction: &Matrix, target: &Matrix) -> Result<Matrix> {
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [1, 1, 1],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

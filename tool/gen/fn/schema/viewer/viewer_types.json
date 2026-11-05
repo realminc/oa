@@ -1,0 +1,338 @@
+{
+	"schema_version": 1,
+	"domain": "viewer",
+	"family": "viewer_types",
+	"imports": [
+		"use super::config::{ViewerAudioView, ViewerCanvasBackground, ViewerMode};",
+		"use crate::input::{Key, MotionSpeed};",
+		"use crate::ui::UiStyle;"
+	],
+	"types": [
+		{
+			"class": "config",
+			"name": "ViewerConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "mode",
+					"type": "ViewerMode",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "path",
+					"type": "String",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "title",
+					"type": "String",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "width",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "height",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "style",
+					"type": "UiStyle",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "motion_speed",
+					"type": "MotionSpeed",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "show_help",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "show_stats",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "show_timeline",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "vsync",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "loop_media",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "start_playing",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "auto_hide_controls",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "controls_hide_delay_ms",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "canvas_background",
+					"type": "ViewerCanvasBackground",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "show_canvas_grid",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "audio_view",
+					"type": "ViewerAudioView",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "audio_waveform_bins",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "audio_analysis_frames",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "audio_fft_size",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "audio_hop_size",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "audio_mel_bins",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "audio_ring_ms",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_quit",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_quit_q",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_red",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_green",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_blue",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_alpha",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_rgb",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_zoom_in",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_zoom_out",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_zoom_fit",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_zoom_100",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_canvas_background",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "key_canvas_grid",
+					"type": "Key",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "capabilities",
+			"name": "ViewerLiveCapabilities",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"Default"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "receives_events",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Source requests raw platform events before Viewer focus/popup ownership."
+				},
+				{
+					"name": "publishes_render_dependency",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Source publishes a GPU-dependency event for its rendered resources."
+				},
+				{
+					"name": "retains_consumer_completion",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Source wants the exact Viewer submission event after each present."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "TrainingViewerConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "title",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Window title shown in the header card."
+				},
+				{
+					"name": "history_capacity",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Samples retained per metric series (minimum 2)."
+				},
+				{
+					"name": "max_metric_plots",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Maximum distinct metric cards (clamped to 1..=12)."
+				},
+				{
+					"name": "show_gpu_timing",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Append per-step GPU milliseconds to the series list."
+				},
+				{
+					"name": "show_wall_timing",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Append per-step wall-clock milliseconds to the series list."
+				},
+				{
+					"name": "show_preview",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Show the published preview texture panel."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

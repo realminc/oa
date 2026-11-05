@@ -9,7 +9,7 @@ test_vk!(captures_and_replays_an_immutable_plan, engine, {
 	let semantic = plan.semantic_graph();
 	assert_eq!(semantic.operations().len(), 2);
 	assert_eq!(semantic.values().len(), 4);
-	assert_eq!(semantic.operations()[0].name(), "oa::matrix::add");
+	assert_eq!(semantic.operations()[0].name(), "oa::FnMatrix::add");
 	assert_eq!(
 		semantic.operations()[0].contract_hash(),
 		oa::core::operation::matrix::ADD.hash()
@@ -19,9 +19,11 @@ test_vk!(captures_and_replays_an_immutable_plan, engine, {
 		semantic.operations()[0].outputs().first().copied()
 	);
 	let lowering = plan.semantic_lowering();
-	assert_eq!(lowering.schema_owned_node_count(), 2);
+	assert_eq!(lowering.schema_owned_node_count(), 1);
 	assert_eq!(lowering.compatibility_node_count(), 0);
-	assert_eq!(lowering.direct_op_count(), 2);
+	assert_eq!(lowering.direct_op_count(), 0);
+	assert_eq!(lowering.fused_op_count(), 2);
+	assert_eq!(lowering.fused_node_count(), 1);
 	assert_eq!(lowering.maximum_nodes_per_op(), 1);
 	let report = plan.debug_report_json("graph\n\"probe");
 	assert_eq!(report, plan.debug_report_json("graph\n\"probe"));
@@ -32,8 +34,8 @@ test_vk!(captures_and_replays_an_immutable_plan, engine, {
 	assert_eq!(report["compiled"], false);
 	assert_eq!(report["completion"]["submitted"], false);
 	assert_eq!(report["completion"]["timeline_value"], 0);
-	assert_eq!(report["stats"]["dispatches"], 2);
-	assert_eq!(report["stats"]["barriers"], 1);
+	assert_eq!(report["stats"]["dispatches"], 1);
+	assert_eq!(report["stats"]["barriers"], 0);
 	assert_eq!(report["stats"]["war_barriers"], 0);
 	assert_eq!(report["stats"]["descriptor_sets"], 0);
 	assert_eq!(
@@ -46,33 +48,33 @@ test_vk!(captures_and_replays_an_immutable_plan, engine, {
 	assert_eq!(report["resources"][0]["id"], 0);
 	assert_eq!(report["resources"][0]["hazard_domain"], 0);
 	assert_eq!(report["alias_groups"], serde_json::json!([]));
-	assert_eq!(report["barriers"][0]["reason"], "read_after_write");
 	assert_eq!(
-		report["barriers"][0]["source_nodes"],
-		serde_json::json!([0, 0])
+		report["barriers"]
+			.as_array()
+			.expect("barriers must be an array")
+			.len(),
+		0
 	);
-	assert_eq!(report["barriers"][0]["destination_node"], 1);
-	assert_eq!(report["barriers"][0]["source_resource"], 2);
-	assert_eq!(report["barriers"][0]["destination_resource"], 2);
 	assert_eq!(
-		report["barriers"][0]["source_stages"],
-		serde_json::json!(["compute_shader"])
+		report["nodes"]
+			.as_array()
+			.expect("nodes must be an array")
+			.len(),
+		1
 	);
-	assert_eq!(report["nodes"][0]["operation"], "oa::matrix::add");
+	assert_eq!(report["nodes"][0]["operation"], "matrix.fused_chain.f32");
 	assert_eq!(
 		report["nodes"][0]["semantic_operations"],
-		serde_json::json!([0])
+		serde_json::json!([0, 1])
 	);
-	assert_eq!(report["nodes"][0]["kernel"], "matrix.add.f32");
+	assert_eq!(report["nodes"][0]["kernel"], "matrix.fused_chain.f32");
 	assert_eq!(report["nodes"][0]["dtype_class"], serde_json::Value::Null);
 	assert_eq!(report["nodes"][0]["dtype"], "float32");
 	assert_eq!(report["nodes"][0]["kernel_selection"], "direct");
 	assert_eq!(
-		report["nodes"][0]["physical_write"],
-		serde_json::Value::Null
+		report["nodes"][0]["physical_write"]["uniform_store"]["partition"],
+		"exclusive_per_invocation"
 	);
-	assert_eq!(report["nodes"][0]["effects"][0]["resource"], 0);
-	assert_eq!(report["nodes"][0]["effects"][0]["access"], "read");
 	let serialized = report.to_string();
 	assert!(!serialized.contains("descriptor_index"));
 	assert!(!serialized.contains("device_address"));
@@ -116,6 +118,276 @@ test_vk!(captures_and_replays_an_immutable_plan, engine, {
 	assert_eq!(six.read_f32()?, [6.0; 6]);
 	plan.reset()?;
 	assert_eq!(six.read_f32()?, [6.0; 6]);
+	Ok(())
+});
+
+test_vk!(fused_chain_materializes_observed_intermediates, engine, {
+	let one = oa::matrix::ones(&engine, [4])?;
+	let two = oa::matrix::full(&engine, [4], 2.0)?;
+	let (plan, (three, six)) = engine.capture(|| {
+		let three = oa::matrix::add(&one, &two)?;
+		let six = oa::matrix::add(&three, &three)?;
+		Ok((three, six))
+	})?;
+	let lowering = plan.semantic_lowering();
+	assert_eq!(lowering.fused_op_count(), 2);
+	assert_eq!(lowering.fused_node_count(), 1);
+	let submitted = engine.submit(&plan)?;
+	drop(submitted);
+	plan.wait()?;
+	assert_eq!(three.read_f32()?, [3.0; 4]);
+	assert_eq!(six.read_f32()?, [6.0; 4]);
+	Ok(())
+});
+
+test_vk!(epilogue_fuses_linear_residual_pair, engine, {
+	let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
+	let weight = oa::Matrix::new_from_f32(
+		&engine,
+		[4, 3],
+		&[
+			0.5, -1.0, 2.0, //
+			1.0, 2.0, -1.5, //
+			-0.25, 0.5, -2.0, //
+			1.75, -0.75, 0.25,
+		],
+	)?;
+	let bias = oa::Matrix::new_from_f32(&engine, [4], &[0.5, -1.0, 2.0, -0.25])?;
+	let residual = oa::Matrix::new_from_f32(
+		&engine,
+		[2, 4],
+		&[1.0, 0.0, -1.0, 2.0, -0.5, 1.5, 0.25, -2.0],
+	)?;
+	let linear = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
+	let reference = {
+		let pre_activation = linear.forward(&input)?;
+		oa::matrix::add(&pre_activation, &residual)?.read_f32()?
+	};
+	let (plan, output) = engine.capture(|| {
+		let pre_activation = linear.forward(&input)?;
+		oa::matrix::add(&pre_activation, &residual)
+	})?;
+
+	let lowering = plan.semantic_lowering();
+	assert_eq!(lowering.fused_op_count(), 2);
+	assert_eq!(lowering.fused_node_count(), 1);
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("epilogue"))
+		.expect("fused epilogue executable report must be valid JSON");
+	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
+	assert_eq!(report["nodes"][0]["kernel"], "ml.linear_residual.f32");
+
+	engine.submit(&plan)?.wait()?;
+	assert_eq!(output.read_f32()?, reference);
+	Ok(())
+});
+
+test_vk!(epilogue_fuses_linear_activation_pair, engine, {
+	let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
+	let weight = oa::Matrix::new_from_f32(
+		&engine,
+		[4, 3],
+		&[
+			0.5, -1.0, 2.0, //
+			1.0, 2.0, -1.5, //
+			-0.25, 0.5, -2.0, //
+			1.75, -0.75, 0.25,
+		],
+	)?;
+	let bias = oa::Matrix::new_from_f32(&engine, [4], &[0.5, -1.0, 2.0, -0.25])?;
+	let linear = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
+	let reference = {
+		let pre_activation = linear.forward(&input)?;
+		oa::ml::matrix::gelu(&pre_activation)?.read_f32()?
+	};
+	let (plan, output) = engine.capture(|| {
+		let pre_activation = linear.forward(&input)?;
+		oa::ml::matrix::gelu(&pre_activation)
+	})?;
+
+	let lowering = plan.semantic_lowering();
+	assert_eq!(lowering.fused_op_count(), 2);
+	assert_eq!(lowering.fused_node_count(), 1);
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("epilogue"))
+		.expect("fused epilogue executable report must be valid JSON");
+	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
+	assert_eq!(report["nodes"][0]["kernel"], "ml.linear_act.f32");
+
+	engine.submit(&plan)?.wait()?;
+	assert_eq!(output.read_f32()?, reference);
+	Ok(())
+});
+
+test_vk!(epilogue_fuses_residual_layer_norm_pair, engine, {
+	// [512, 4]: the elementwise add launches eight workgroups while the fused
+	// kernel needs one per row — a mismatched dispatch leaves 504 rows unwritten.
+	let input_a = oa::Matrix::new_from_f32(
+		&engine,
+		[512, 4],
+		&(0..2048)
+			.map(|index| (index % 97) as f32 * 0.05 - 2.0)
+			.collect::<Vec<_>>(),
+	)?;
+	let input_b = oa::Matrix::new_from_f32(
+		&engine,
+		[512, 4],
+		&(0..2048)
+			.map(|index| (index % 53) as f32 * -0.04 + 1.0)
+			.collect::<Vec<_>>(),
+	)?;
+	let weight = oa::Matrix::new_from_f32(&engine, [4], &[1.0, -0.5, 2.0, 0.75])?;
+	let bias = oa::Matrix::new_from_f32(&engine, [4], &[0.25, -1.0, 0.5, -0.125])?;
+	let norm = oa::ml::nn::LayerNorm::new_from_matrices(weight, bias, 1.0e-5)?;
+	let reference = {
+		let summed = oa::matrix::add(&input_a, &input_b)?;
+		norm.forward(&summed)?.read_f32()?
+	};
+	let (plan, output) = engine.capture(|| {
+		let summed = oa::matrix::add(&input_a, &input_b)?;
+		norm.forward(&summed)
+	})?;
+
+	let lowering = plan.semantic_lowering();
+	assert_eq!(lowering.fused_op_count(), 2);
+	assert_eq!(lowering.fused_node_count(), 1);
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("epilogue"))
+		.expect("fused epilogue executable report must be valid JSON");
+	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
+	assert_eq!(report["nodes"][0]["kernel"], "ml.residual_layer_norm.f32");
+
+	engine.submit(&plan)?.wait()?;
+	assert_eq!(output.read_f32()?, reference);
+	Ok(())
+});
+
+test_vk!(epilogue_fuses_shared_input_linear_triple, engine, {
+	let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
+	let weights: Vec<oa::Matrix> = (0..3)
+		.map(|index| {
+			oa::Matrix::new_from_f32(
+				&engine,
+				[4, 3],
+				&[
+					0.5 + index as f32,
+					-1.0,
+					2.0, //
+					1.0,
+					2.0,
+					-1.5, //
+					-0.25,
+					0.5,
+					-2.0 + index as f32, //
+					1.75,
+					-0.75,
+					0.25,
+				],
+			)
+		})
+		.collect::<oa::Result<_>>()?;
+	let biases: Vec<oa::Matrix> = (0..3)
+		.map(|index| oa::Matrix::new_from_f32(&engine, [4], &[0.5, -1.0 + index as f32, 2.0, -0.25]))
+		.collect::<oa::Result<_>>()?;
+	let projections: Vec<oa::ml::nn::Linear> = weights
+		.into_iter()
+		.zip(biases)
+		.map(|(weight, bias)| oa::ml::nn::Linear::new_from_matrices(weight, bias))
+		.collect::<oa::Result<_>>()?;
+	let reference: Vec<Vec<f32>> = projections
+		.iter()
+		.map(|projection| projection.forward(&input)?.read_f32())
+		.collect::<oa::Result<_>>()?;
+	let (plan, (out_q, out_k, out_v)) = engine.capture(|| {
+		Ok((
+			projections[0].forward(&input)?,
+			projections[1].forward(&input)?,
+			projections[2].forward(&input)?,
+		))
+	})?;
+
+	let lowering = plan.semantic_lowering();
+	assert_eq!(lowering.fused_op_count(), 3);
+	assert_eq!(lowering.fused_node_count(), 1);
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("epilogue"))
+		.expect("fused triple executable report must be valid JSON");
+	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
+	assert_eq!(report["nodes"][0]["kernel"], "ml.linear_triple.f32");
+	assert_eq!(report["nodes"][0]["groups"][2], 3);
+
+	engine.submit(&plan)?.wait()?;
+	assert_eq!(out_q.read_f32()?, reference[0]);
+	assert_eq!(out_k.read_f32()?, reference[1]);
+	assert_eq!(out_v.read_f32()?, reference[2]);
+	Ok(())
+});
+
+test_vk!(epilogue_fuses_embedding_pair_sum, engine, {
+	let tokens = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 2, 1, 3])?;
+	let positions = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 1, 2, 3])?;
+	let token_table = oa::Matrix::new_from_f32(
+		&engine,
+		[4, 3],
+		&[
+			0.5, -1.0, 2.0, //
+			1.0, 2.0, -1.5, //
+			-0.25, 0.5, -2.0, //
+			1.75, -0.75, 0.25,
+		],
+	)?;
+	let position_table = oa::Matrix::new_from_f32(
+		&engine,
+		[4, 3],
+		&[
+			1.0, 0.0, -1.0, //
+			2.0, -0.5, 1.5, //
+			0.25, -2.0, 0.75, //
+			-1.25, 0.5, 1.0,
+		],
+	)?;
+	let token_embedding = oa::ml::nn::Embedding::new_from_matrix(token_table)?;
+	let position_embedding = oa::ml::nn::Embedding::new_from_matrix(position_table)?;
+	let reference = {
+		let token_values = token_embedding.forward(&tokens)?;
+		let position_values = position_embedding.forward(&positions)?;
+		oa::matrix::add(&token_values, &position_values)?.read_f32()?
+	};
+	let (plan, output) = engine.capture(|| {
+		let token_values = token_embedding.forward(&tokens)?;
+		let position_values = position_embedding.forward(&positions)?;
+		oa::matrix::add(&token_values, &position_values)
+	})?;
+
+	let lowering = plan.semantic_lowering();
+	assert_eq!(lowering.fused_node_count(), 1);
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("epilogue"))
+		.expect("fused embedding report must be valid JSON");
+	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
+	assert_eq!(report["nodes"][0]["kernel"], "ml.embedding_pair.f32");
+
+	engine.submit(&plan)?.wait()?;
+	assert_eq!(output.read_f32()?, reference);
+	Ok(())
+});
+
+test_vk!(epilogue_fuses_sum_axis_scale_pair, engine, {
+	let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
+	let reference = {
+		let summed = oa::matrix::sum(&input, 1)?;
+		oa::matrix::scale(&summed, 0.25)?.read_f32()?
+	};
+	let (plan, output) = engine.capture(|| {
+		let summed = oa::matrix::sum(&input, 1)?;
+		oa::matrix::scale(&summed, 0.25)
+	})?;
+
+	let lowering = plan.semantic_lowering();
+	assert_eq!(lowering.fused_op_count(), 2);
+	assert_eq!(lowering.fused_node_count(), 1);
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("epilogue"))
+		.expect("fused reduction report must be valid JSON");
+	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
+	assert_eq!(report["nodes"][0]["kernel"], "ml.sum_axis_scale.f32");
+
+	engine.submit(&plan)?.wait()?;
+	assert_eq!(output.read_f32()?, reference);
 	Ok(())
 });
 
@@ -210,7 +482,7 @@ test_vk!(
 			oa::ErrorKind::FailedPrecondition
 		);
 
-		let mismatched = oa::matrix::ones(&engine, [1, 2])?;
+		let mismatched = oa::matrix::ones(&engine, [3])?;
 		let mut escaped = None;
 		let failed = engine.capture(|| {
 			escaped = Some(oa::matrix::add(&one, &two)?);
@@ -268,10 +540,10 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 
 	let initial = plan.diagnostics();
 	assert_ne!(initial.graph_id(), 0);
-	assert_eq!(initial.node_count(), 2);
-	assert_eq!(initial.barrier_count(), 1);
+	assert_eq!(initial.node_count(), 1);
+	assert_eq!(initial.barrier_count(), 0);
 	assert_eq!(initial.semantic_operation_count(), 2);
-	assert_eq!(initial.schema_owned_node_count(), 2);
+	assert_eq!(initial.schema_owned_node_count(), 1);
 	assert_eq!(initial.compatibility_node_count(), 0);
 	assert_ne!(initial.dnn_graph_hash(), 0);
 	assert_eq!(initial.dnn_value_count(), 4);
@@ -282,7 +554,7 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 	assert_eq!(initial.dnn_portable_partition_count(), 2);
 	assert_eq!(initial.dnn_captured_operation_count(), 2);
 	assert_eq!(initial.input_binding_count(), 2);
-	assert_eq!(initial.captured_resource_count(), 4);
+	assert_eq!(initial.captured_resource_count(), 5);
 	assert_eq!(initial.semantic_binding_count(), 4);
 	assert_eq!(initial.observed_output_count(), 0);
 	assert_eq!(plan.semantic_bindings().len(), 4);
@@ -329,15 +601,24 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 
 	let third = engine.submit(&plan)?;
 	let fourth = engine.submit(&plan)?;
+	plan.bind_matrix_input(&one, &one)?;
+	let restored_report: serde_json::Value =
+		serde_json::from_str(&plan.debug_report_json("restored"))
+			.expect("restored executable report must be valid JSON");
+	assert_eq!(restored_report["compiled"], true);
+	let fifth = engine.submit(&plan)?;
+	let sixth = engine.submit(&plan)?;
 	let final_diagnostics = plan.diagnostics();
 	assert_eq!(final_diagnostics.command_recording_count(), 2);
-	assert_eq!(final_diagnostics.command_cache_hit_count(), 2);
-	assert_eq!(final_diagnostics.submission_count(), 4);
+	assert_eq!(final_diagnostics.command_cache_hit_count(), 4);
+	assert_eq!(final_diagnostics.submission_count(), 6);
 	assert_eq!(final_diagnostics.fallback_count(), 0);
 	drop(plan);
 	third.wait()?;
 	fourth.wait()?;
-	assert_eq!(output.read_f32()?, [10.0; 6]);
+	fifth.wait()?;
+	sixth.wait()?;
+	assert_eq!(output.read_f32()?, [4.0; 6]);
 	Ok(())
 });
 
@@ -589,6 +870,177 @@ test_vk!(
 		assert_eq!(plan.diagnostics().dnn_captured_operation_count(), 0);
 		engine.submit(&plan)?.wait()?;
 		assert_eq!(output.read_f32()?, vec![5.0]);
+		Ok(())
+	}
+);
+
+test_vk!(
+	dnn_lowering_fuses_the_donor_qualified_vision_preprocess,
+	engine,
+	{
+		let rgb = oa::Image::new(
+			oa::Matrix::new_from_f32(
+				&engine,
+				[1, 3, 2, 4],
+				&[
+					1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, //
+					10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, //
+					100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0,
+				],
+			)?,
+			oa::ImageLayout::Nchw,
+			oa::ImageFormat::Rgb,
+		)?;
+		let parameters = oa::image::NormalizationConfig {
+			mean: [1.0, 2.0, 4.0],
+			std: [2.0, 4.0, 8.0],
+		};
+		let reference = oa::image::resize_normalize(
+			&oa::image::convert_color(&rgb, oa::ImageFormat::Bgr)?,
+			2,
+			2,
+			parameters,
+		)?
+		.as_matrix()
+		.read_f32()?;
+		let (plan, output) = engine.capture(|| {
+			let converted = oa::image::convert_color(&rgb, oa::ImageFormat::Bgr)?;
+			oa::image::resize_normalize(&converted, 2, 2, parameters)
+		})?;
+
+		let diagnostics = plan.diagnostics();
+		assert_eq!(diagnostics.dnn_recognized_partition_count(), 1);
+		assert_eq!(diagnostics.dnn_applied_partition_count(), 1);
+		assert_eq!(diagnostics.dnn_fallback_partition_count(), 0);
+		assert_eq!(diagnostics.dnn_unexpected_fallback_count(), 0);
+		assert_eq!(plan.semantic_lowering().fused_op_count(), 2);
+		assert_eq!(plan.semantic_lowering().fused_node_count(), 1);
+		let report: serde_json::Value =
+			serde_json::from_str(&plan.debug_report_json("vision_preprocess"))
+				.expect("fused vision preprocess executable report must be valid JSON");
+		assert_eq!(report["nodes"][0]["operation"], "oa::Dnn::VisionPreprocess");
+		assert_eq!(report["nodes"][0]["kernel"], "image.resize_normalize.f32");
+
+		engine.submit(&plan)?.wait()?;
+		assert_eq!(output.as_matrix().read_f32()?, reference);
+		Ok(())
+	}
+);
+
+test_vk!(dnn_lowering_fuses_linear_bias_epilogue, engine, {
+	let a = oa::Matrix::new_from_f32(
+		&engine,
+		[4, 8],
+		&[
+			1.0, -2.0, 0.5, 3.0, -1.5, 2.0, 0.25, 4.0, //
+			-3.0, 1.0, 2.5, -0.5, 1.25, -2.5, 3.5, 0.75, //
+			2.0, 0.0, -1.0, 1.5, -3.5, 0.5, 2.25, -4.0, //
+			0.5, 1.5, -2.25, 3.25, 4.5, -0.75, -1.25, 2.75,
+		],
+	)?;
+	let b = oa::Matrix::new_from_f32(
+		&engine,
+		[6, 8],
+		&[
+			0.5, -1.0, 2.0, 1.0, -0.5, 3.0, -2.0, 1.5, //
+			1.0, 2.0, -1.5, 0.25, 2.5, -3.0, 0.75, -1.25, //
+			-0.25, 3.5, 1.25, -2.5, 4.0, 0.5, -1.75, 2.25, //
+			2.5, -0.75, -3.25, 1.75, -4.5, 2.75, 0.25, -0.5, //
+			-1.5, 0.25, 3.75, -2.25, 1.75, -0.25, 4.25, -3.5, //
+			0.75, -2.75, -0.5, 3.25, -3.75, 1.25, -1.0, 0.5,
+		],
+	)?;
+	let bias = oa::Matrix::new_from_f32(&engine, [6], &[0.5, -1.0, 2.0, -0.25, 1.5, -3.0])?;
+	let reference = oa::matrix::bias_add(&oa::matrix::mat_mul_nt(&a, &b)?, &bias)?.read_f32()?;
+	let (plan, output) = engine.capture(|| {
+		let product = oa::matrix::mat_mul_nt(&a, &b)?;
+		oa::matrix::bias_add(&product, &bias)
+	})?;
+
+	let diagnostics = plan.diagnostics();
+	assert_eq!(diagnostics.dnn_recognized_partition_count(), 1);
+	assert_eq!(diagnostics.dnn_applied_partition_count(), 1);
+	assert_eq!(diagnostics.dnn_fallback_partition_count(), 0);
+	assert_eq!(diagnostics.dnn_unexpected_fallback_count(), 0);
+	assert_eq!(plan.semantic_lowering().fused_op_count(), 2);
+	assert_eq!(plan.semantic_lowering().fused_node_count(), 1);
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("linear_epilogue"))
+		.expect("fused linear epilogue executable report must be valid JSON");
+	assert_eq!(report["nodes"][0]["operation"], "oa::Dnn::LinearEpilogue");
+	assert_eq!(report["nodes"][0]["kernel"], "matrix.mat_mul_nt_bias.f32");
+
+	engine.submit(&plan)?.wait()?;
+	assert_eq!(output.read_f32()?, reference);
+	Ok(())
+});
+
+test_vk!(
+	dnn_lowering_fuses_linear_bias_activation_epilogues,
+	engine,
+	{
+		let a = oa::Matrix::new_from_f32(
+			&engine,
+			[4, 8],
+			&[
+				1.0, -2.0, 0.5, 3.0, -1.5, 2.0, 0.25, 4.0, //
+				-3.0, 1.0, 2.5, -0.5, 1.25, -2.5, 3.5, 0.75, //
+				2.0, 0.0, -1.0, 1.5, -3.5, 0.5, 2.25, -4.0, //
+				0.5, 1.5, -2.25, 3.25, 4.5, -0.75, -1.25, 2.75,
+			],
+		)?;
+		let b = oa::Matrix::new_from_f32(
+			&engine,
+			[6, 8],
+			&[
+				0.5, -1.0, 2.0, 1.0, -0.5, 3.0, -2.0, 1.5, //
+				1.0, 2.0, -1.5, 0.25, 2.5, -3.0, 0.75, -1.25, //
+				-0.25, 3.5, 1.25, -2.5, 4.0, 0.5, -1.75, 2.25, //
+				2.5, -0.75, -3.25, 1.75, -4.5, 2.75, 0.25, -0.5, //
+				-1.5, 0.25, 3.75, -2.25, 1.75, -0.25, 4.25, -3.5, //
+				0.75, -2.75, -0.5, 3.25, -3.75, 1.25, -1.0, 0.5,
+			],
+		)?;
+		let bias = oa::Matrix::new_from_f32(&engine, [6], &[0.5, -1.0, 2.0, -0.25, 1.5, -3.0])?;
+		for (activate, kernel) in [
+			(
+				oa::ml::matrix::relu as fn(&oa::Matrix) -> oa::Result<oa::Matrix>,
+				"matrix.mat_mul_nt_bias_relu.f32",
+			),
+			(oa::ml::matrix::gelu, "matrix.mat_mul_nt_bias_gelu.f32"),
+			(oa::ml::matrix::silu, "matrix.mat_mul_nt_bias_silu.f32"),
+		] {
+			let reference = activate(&oa::matrix::bias_add(
+				&oa::matrix::mat_mul_nt(&a, &b)?,
+				&bias,
+			)?)?
+			.read_f32()?;
+			let (plan, output) = engine.capture(|| {
+				let product = oa::matrix::mat_mul_nt(&a, &b)?;
+				activate(&oa::matrix::bias_add(&product, &bias)?)
+			})?;
+
+			let diagnostics = plan.diagnostics();
+			assert_eq!(diagnostics.dnn_recognized_partition_count(), 1);
+			assert_eq!(diagnostics.dnn_applied_partition_count(), 1);
+			assert_eq!(diagnostics.dnn_fallback_partition_count(), 0);
+			assert_eq!(diagnostics.dnn_unexpected_fallback_count(), 0);
+			assert_eq!(plan.semantic_lowering().fused_op_count(), 3);
+			assert_eq!(plan.semantic_lowering().fused_node_count(), 1);
+			let report: serde_json::Value =
+				serde_json::from_str(&plan.debug_report_json("linear_epilogue"))
+					.expect("fused linear epilogue executable report must be valid JSON");
+			assert_eq!(report["nodes"][0]["operation"], "oa::Dnn::LinearEpilogue");
+			assert_eq!(report["nodes"][0]["kernel"], kernel);
+
+			engine.submit(&plan)?.wait()?;
+			let fused = output.read_f32()?;
+			for (index, (actual, expected)) in fused.iter().zip(&reference).enumerate() {
+				assert!(
+					(actual - expected).abs() <= 2e-5,
+					"{kernel} output[{index}]: {actual} != {expected}"
+				);
+			}
+		}
 		Ok(())
 	}
 );

@@ -1,22 +1,13 @@
 //! Batch norm Matrix operation implementations.
 
 use crate::ml::autograd;
+pub use crate::ml::types::BatchNorm2dResult;
 use crate::ml::validation::{shader_u32, validate_f32_same_engine};
 use crate::{
 	DType, Error, Matrix, OpAttribute, Result,
 	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
 };
 
-/// Batch-normalized values and the per-channel statistics saved for backward.
-#[must_use]
-pub struct BatchNorm2dResult {
-	/// Normalized and affine-transformed NCHW values.
-	pub output: Matrix,
-	/// Population mean for each channel.
-	pub mean: Matrix,
-	/// Population variance for each channel.
-	pub variance: Matrix,
-}
 /// Normalize an NCHW Matrix using statistics computed from the current batch.
 ///
 /// # Errors
@@ -219,12 +210,14 @@ pub(in crate::ml) fn batch_norm_2d_forward(
 			buffers: &stats_buffers,
 			push_constants: &stats_push_constants,
 			workgroups: [geometry.channels, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlBatchNorm2dWithStatsF32,
 			buffers: &normalize_buffers,
 			push_constants: &normalize_push_constants,
 			workgroups: geometry.normalization_workgroups(),
+			indirect: None,
 		},
 	];
 	let inputs = [input, weight, bias];
@@ -305,6 +298,7 @@ pub(in crate::ml) fn batch_norm_2d_with_stats_forward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: geometry.normalization_workgroups(),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -396,6 +390,7 @@ pub(in crate::ml) fn batch_norm_2d_running_update(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: KernelId::MlBatchNorm2dRunningUpdateF32.linear_workgroups(channels),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -509,12 +504,14 @@ pub(in crate::ml) fn batch_norm_2d_backward(
 			buffers: &stats_buffers,
 			push_constants: &stats_push_constants,
 			workgroups: [geometry.channels, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlBatchNorm2dInputBackwardF32,
 			buffers: &input_buffers,
 			push_constants: &input_push_constants,
 			workgroups: KernelId::MlBatchNorm2dInputBackwardF32.linear_workgroups(geometry.element_count),
+			indirect: None,
 		},
 	];
 	let inputs = [input, weight, mean, variance, output_gradient];

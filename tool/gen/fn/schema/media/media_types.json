@@ -1,0 +1,44 @@
+{
+	"schema_version": 1,
+	"domain": "media",
+	"family": "media_types",
+	"imports": [
+		"use std::path::PathBuf;"
+	],
+	"types": [
+		{
+			"class": "config",
+			"name": "MediaPlayerConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "video_path",
+					"type": "PathBuf",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "audio_path",
+					"type": "PathBuf",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "audio_ring_milliseconds",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

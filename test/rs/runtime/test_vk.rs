@@ -284,6 +284,16 @@ test_vk!(
 	}
 );
 
+test_vk!(fused_eager_chain_matches_unfused_oracle, engine, {
+	let one = oa::matrix::ones(&engine, [4])?;
+	let two = oa::matrix::full(&engine, [4], 2.0)?;
+	let six = oa::matrix::add(&oa::matrix::add(&one, &two)?, &oa::matrix::add(&one, &two)?)?;
+	let submitted = engine.checkpoint()?;
+	submitted.wait()?;
+	assert_eq!(six.read_f32()?, [6.0; 4]);
+	Ok(())
+});
+
 test_vk!(checkpoint_submits_the_pending_eager_batch, engine, {
 	let one = oa::matrix::ones(&engine, [4])?;
 	let two = oa::matrix::full(&engine, [4], 2.0)?;
@@ -382,11 +392,11 @@ fn software_vulkan_index_executes_compute_and_crypto() -> oa::Result<()> {
 		[3, 3],
 		&[11_u8, 48, 85, 122, 159, 196, 233, 14, 51],
 	)?;
-	let digest = oa::cryptography::hash::shake256(&input, 32)?;
+	let digest = oa::crypto::hash::shake256(&input, 32)?;
 	let mut expected = Vec::new();
 	for row in [11_u8, 48, 85, 122, 159, 196, 233, 14, 51].chunks(3) {
 		let mut bytes = [0_u8; 32];
-		oa::cryptography::shake256(row, &mut bytes);
+		oa::crypto::shake256(row, &mut bytes);
 		expected.extend_from_slice(&bytes);
 	}
 	assert_eq!(digest.read::<u8>()?, expected);

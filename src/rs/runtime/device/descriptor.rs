@@ -55,16 +55,16 @@ impl DescriptorHeap {
 	}
 
 	fn try_new(device: &vk::Device, limits: DeviceLimits) -> Result<Self> {
-		let buffer_binding = vk::DescriptorSetLayoutBinding::default()
-			.binding(0)
-			.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-			.descriptor_count(limits.storage_buffer_descriptors)
-			.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT);
-		let image_binding = vk::DescriptorSetLayoutBinding::default()
-			.binding(1)
-			.descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-			.descriptor_count(limits.storage_image_descriptors)
-			.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT);
+		let buffer_binding = vk::DescriptorSetLayoutBinding::new()
+			.set_binding(0)
+			.set_descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+			.set_descriptor_count(limits.storage_buffer_descriptors)
+			.set_stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT);
+		let image_binding = vk::DescriptorSetLayoutBinding::new()
+			.set_binding(1)
+			.set_descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+			.set_descriptor_count(limits.storage_image_descriptors)
+			.set_stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT);
 		let bindings = [buffer_binding, image_binding];
 		let binding_flags = [
 			vk::DescriptorBindingFlagBits::UPDATE_AFTER_BIND_BIT
@@ -74,12 +74,12 @@ impl DescriptorHeap {
 				| vk::DescriptorBindingFlagBits::UPDATE_UNUSED_WHILE_PENDING_BIT
 				| vk::DescriptorBindingFlagBits::PARTIALLY_BOUND_BIT,
 		];
-		let mut binding_flags_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
-			.binding_flags(&binding_flags)
+		let mut binding_flags_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::new()
+			.set_binding_flags(&binding_flags)
 			.map_err(Error::from)?;
-		let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
-			.flags(vk::DescriptorSetLayoutCreateFlagBits::UPDATE_AFTER_BIND_POOL_BIT)
-			.bindings(&bindings)
+		let layout_info = vk::DescriptorSetLayoutCreateInfo::new()
+			.set_flags(vk::DescriptorSetLayoutCreateFlagBits::UPDATE_AFTER_BIND_POOL_BIT)
+			.set_bindings(&bindings)
 			.map_err(Error::from)?
 			.push_next(&mut binding_flags_info)
 			.map_err(Error::from)?;
@@ -92,17 +92,17 @@ impl DescriptorHeap {
 			})?;
 
 		let pool_sizes = [
-			vk::DescriptorPoolSize::default()
-				.r#type(vk::DescriptorType::STORAGE_BUFFER)
-				.descriptor_count(limits.storage_buffer_descriptors),
-			vk::DescriptorPoolSize::default()
-				.r#type(vk::DescriptorType::STORAGE_IMAGE)
-				.descriptor_count(limits.storage_image_descriptors),
+			vk::DescriptorPoolSize::new()
+				.set_type(vk::DescriptorType::STORAGE_BUFFER)
+				.set_descriptor_count(limits.storage_buffer_descriptors),
+			vk::DescriptorPoolSize::new()
+				.set_type(vk::DescriptorType::STORAGE_IMAGE)
+				.set_descriptor_count(limits.storage_image_descriptors),
 		];
-		let pool_info = vk::DescriptorPoolCreateInfo::default()
-			.flags(vk::DescriptorPoolCreateFlagBits::UPDATE_AFTER_BIND_BIT)
-			.max_sets(1)
-			.pool_sizes(&pool_sizes)
+		let pool_info = vk::DescriptorPoolCreateInfo::new()
+			.set_flags(vk::DescriptorPoolCreateFlagBits::UPDATE_AFTER_BIND_BIT)
+			.set_max_sets(1)
+			.set_pool_sizes(&pool_sizes)
 			.map_err(Error::from)?;
 		// SAFETY: the requested descriptor counts are bounded by queried update-after-bind limits.
 		let pool = match unsafe { device.create_descriptor_pool(&pool_info, None) } {
@@ -118,9 +118,9 @@ impl DescriptorHeap {
 		};
 
 		let layouts = [layout];
-		let allocate_info = vk::DescriptorSetAllocateInfo::default()
-			.descriptor_pool(pool)
-			.set_layouts(&layouts)
+		let allocate_info = vk::DescriptorSetAllocateInfo::new()
+			.set_descriptor_pool(pool)
+			.set_set_layouts(&layouts)
 			.map_err(Error::from)?;
 		let mut sets = [vk::DescriptorSet::default()];
 		// SAFETY: the pool has capacity for one set containing the complete layout.
@@ -160,13 +160,13 @@ impl DescriptorHeap {
 		}
 		let mut bounded_layouts = Vec::new();
 		for count in 1..=capacity {
-			let binding = vk::DescriptorSetLayoutBinding::default()
-				.binding(0)
-				.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-				.descriptor_count(count)
-				.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT);
-			let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
-				.bindings(std::slice::from_ref(&binding))
+			let binding = vk::DescriptorSetLayoutBinding::new()
+				.set_binding(0)
+				.set_descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+				.set_descriptor_count(count)
+				.set_stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT);
+			let layout_info = vk::DescriptorSetLayoutCreateInfo::new()
+				.set_bindings(std::slice::from_ref(&binding))
 				.map_err(Error::from)?;
 			// SAFETY: each fixed array fits the queried per-stage/set budget;
 			// the conventional binding needs no descriptor-indexing extension.
@@ -236,17 +236,17 @@ impl DescriptorHeap {
 		let index = free
 			.pop()
 			.ok_or_else(|| Error::resource_exhausted("Vulkan storage descriptor capacity exhausted"))?;
-		let buffer_info = vk::DescriptorBufferInfo::default()
-			.buffer(buffer)
-			.offset(0)
-			.range(size);
+		let buffer_info = vk::DescriptorBufferInfo::new()
+			.set_buffer(buffer)
+			.set_offset(0)
+			.set_range(size);
 		let buffer_infos = [buffer_info];
-		let write = vk::WriteDescriptorSet::default()
-			.dst_set(self.set)
-			.dst_binding(0)
-			.dst_array_element(index)
-			.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-			.buffer_info(&buffer_infos);
+		let write = vk::WriteDescriptorSet::new()
+			.set_dst_set(self.set)
+			.set_dst_binding(0)
+			.set_dst_array_element(index)
+			.set_descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+			.set_buffer_info(&buffer_infos);
 		// SAFETY: the descriptor set, buffer, and range are live. The allocator lock
 		// serializes host updates, and update-after-bind plus update-unused-while-pending
 		// permit a newly allocated, currently unused slot to be written while submitted
@@ -286,16 +286,16 @@ impl DescriptorHeap {
 		let index = free.pop().ok_or_else(|| {
 			Error::resource_exhausted("Vulkan storage image descriptor capacity exhausted")
 		})?;
-		let image_info = vk::DescriptorImageInfo::default()
-			.image_view(view)
-			.image_layout(vk::ImageLayout::GENERAL);
+		let image_info = vk::DescriptorImageInfo::new()
+			.set_image_view(view)
+			.set_image_layout(vk::ImageLayout::GENERAL);
 		let image_infos = [image_info];
-		let write = vk::WriteDescriptorSet::default()
-			.dst_set(self.set)
-			.dst_binding(1)
-			.dst_array_element(index)
-			.descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-			.image_info(&image_infos);
+		let write = vk::WriteDescriptorSet::new()
+			.set_dst_set(self.set)
+			.set_dst_binding(1)
+			.set_dst_array_element(index)
+			.set_descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+			.set_image_info(&image_infos);
 		unsafe {
 			device
 				.update_descriptor_sets(&[write.map_err(Error::from)?], &[])
@@ -391,21 +391,21 @@ impl BoundedSets {
 				.checked_add(len)
 				.ok_or_else(|| Error::resource_exhausted("bounded descriptor count overflow"))
 		})?;
-		let sizes = [vk::DescriptorPoolSize::default()
-			.r#type(vk::DescriptorType::STORAGE_BUFFER)
-			.descriptor_count(descriptor_count)];
-		let info = vk::DescriptorPoolCreateInfo::default()
-			.max_sets(count)
-			.pool_sizes(&sizes)
+		let sizes = [vk::DescriptorPoolSize::new()
+			.set_type(vk::DescriptorType::STORAGE_BUFFER)
+			.set_descriptor_count(descriptor_count)];
+		let info = vk::DescriptorPoolCreateInfo::new()
+			.set_max_sets(count)
+			.set_pool_sizes(&sizes)
 			.map_err(Error::from)?;
 		// SAFETY: the nonzero pool sizes exactly sum the validated live layouts;
 		// no optional pool flags or allocation callbacks are used.
 		let pool = unsafe { device.create_descriptor_pool(&info, None) }.map_err(|source| {
 			Error::backend_failure("Vulkan", "bounded descriptor-pool creation", source)
 		})?;
-		let allocate = vk::DescriptorSetAllocateInfo::default()
-			.descriptor_pool(pool)
-			.set_layouts(layouts)
+		let allocate = vk::DescriptorSetAllocateInfo::new()
+			.set_descriptor_pool(pool)
+			.set_set_layouts(layouts)
 			.map_err(Error::from)?;
 		// SAFETY: every layout belongs to this device and the new pool has the
 		// exact set/descriptor capacity. All arrays live throughout the call.
@@ -422,11 +422,11 @@ impl BoundedSets {
 			}
 		};
 		for (&set, infos) in sets.iter().zip(buffers) {
-			let write = vk::WriteDescriptorSet::default()
-				.dst_set(set)
-				.dst_binding(0)
-				.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-				.buffer_info(infos);
+			let write = vk::WriteDescriptorSet::new()
+				.set_dst_set(set)
+				.set_dst_binding(0)
+				.set_descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+				.set_buffer_info(infos);
 			// SAFETY: every slot has a retained live buffer/range; this fresh set
 			// has not been bound or submitted and its capacity matches `infos`.
 			unsafe {

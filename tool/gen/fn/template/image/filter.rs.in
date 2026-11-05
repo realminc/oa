@@ -14,6 +14,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -41,6 +42,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -67,6 +69,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -89,6 +92,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -111,6 +115,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -132,6 +137,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -159,6 +165,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -187,6 +194,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -215,6 +223,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -243,6 +252,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -271,6 +281,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -299,6 +310,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -327,6 +339,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -355,6 +368,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -387,6 +401,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -420,6 +435,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -442,6 +458,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -471,6 +488,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -495,6 +513,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,
@@ -530,6 +549,7 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ImageSemanticDispatch {
 			contract,

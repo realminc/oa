@@ -218,6 +218,38 @@ impl PythonMoeExpertPlan {
 	}
 }
 
+// CompactRowsResult result type
+#[pyclass(name = "CompactRowsResult", unsendable)]
+pub(crate) struct PythonCompactRowsResult {
+	pub values: PythonMatrix,
+	pub row_map: PythonMatrix,
+	pub count: PythonMatrix,
+	pub dispatch_args: PythonMatrix,
+}
+
+#[pymethods]
+impl PythonCompactRowsResult {
+	#[getter]
+	fn values(&self) -> PythonMatrix {
+		PythonMatrix::wrap(self.values.inner.clone())
+	}
+
+	#[getter]
+	fn row_map(&self) -> PythonMatrix {
+		PythonMatrix::wrap(self.row_map.inner.clone())
+	}
+
+	#[getter]
+	fn count(&self) -> PythonMatrix {
+		PythonMatrix::wrap(self.count.inner.clone())
+	}
+
+	#[getter]
+	fn dispatch_args(&self) -> PythonMatrix {
+		PythonMatrix::wrap(self.dispatch_args.inner.clone())
+	}
+}
+
 #[pyfunction]
 pub(crate) fn matrix_set_rng_seed(seed: u64) {
 	oa::matrix::set_rng_seed(seed);
@@ -226,6 +258,7 @@ pub(crate) fn matrix_set_rng_seed(seed: u64) {
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	module.add_class::<PythonMatrix>()?;
 	module.add_class::<PythonMoeExpertPlan>()?;
+	module.add_class::<PythonCompactRowsResult>()?;
 	macro_rules! add_functions {
 		($($function:ident),+ $(,)?) => { $(module.add_function(wrap_pyfunction!($function, module)?)?;)+ };
 	}

@@ -3,7 +3,10 @@
 use crate::{
 	DType, Error, Matrix, OpAttribute, OperationContract, Result,
 	matrix::autograd,
-	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
+	runtime::{
+		BufferBinding, ComputeDispatch, EngineHandle, IndirectDispatch, KernelId,
+		OptionalSemanticDispatch, PushConstant, SemanticDispatch,
+	},
 };
 
 const TOP_K_LIMIT: usize = 1024;
@@ -68,6 +71,7 @@ pub fn gather(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MatrixGatherF32.linear_workgroups(output_count_u32),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract: CONTRACT,
@@ -138,6 +142,7 @@ pub(crate) fn gather_backward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [rows_u32, 1, 1],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: CONTRACT,
@@ -173,6 +178,25 @@ pub struct MoeExpertPlan {
 	pub packed_slot: Matrix,
 	/// U32 packed position for each original token-major route.
 	pub inverse: Matrix,
+}
+
+/// Device-resident row-compaction plan returned by [`compact_rows`].
+///
+/// `row_map`, `count`, and `dispatch_args` are auxiliary device values; only
+/// `values` participates in differentiation. `dispatch_args` is consumed by
+/// the indirect-dispatch variants [`scatter_rows_indirect`],
+/// [`crate::matrix::compact_rows_backward`], and
+/// [`crate::matrix::scatter_rows_backward`].
+#[must_use]
+pub struct CompactRowsResult {
+	/// FP32 packed selected rows, shaped `[T, D]` with unselected slots zeroed.
+	pub values: Matrix,
+	/// U32 source row for each packed slot, shaped `[T]`.
+	pub row_map: Matrix,
+	/// U32 selected-row count, shaped `[1]`.
+	pub count: Matrix,
+	/// U32 indirect-dispatch extents `[(count * D + 255) / 256, 1, 1]`.
+	pub dispatch_args: Matrix,
 }
 
 /// Compare every FP32 element with one scalar and return an FP32 zero/one mask.
@@ -219,6 +243,7 @@ pub fn equal(input: &Matrix, value: f32) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MatrixEqualF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract: CONTRACT,
@@ -229,6 +254,184 @@ pub fn equal(input: &Matrix, value: f32) -> Result<Matrix> {
 		)?;
 	}
 	Ok(output)
+}
+
+/// Apply the additive causal mask to the final two score dimensions.
+///
+/// Every `[.., Tq, Tk]` plane keeps positions `k <= q` and writes `-1e9` above
+/// the diagonal, matching OA C++ `FnMatrix::causalMask`. Inputs require at
+/// least two axes; earlier axes are treated as a flattened batch.
+///
+/// # Errors
+///
+/// Returns an error when `input` is not FP32, has fewer than two axes or an
+/// empty extent, its element count exceeds the shader ABI, allocation fails,
+/// or runtime recording fails.
+pub fn causal_mask(input: &Matrix) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::CAUSAL_MASK;
+	let operation = CONTRACT.name();
+	let (tq, tk) = causal_mask_axes(input, operation)?;
+	let element_count = u32::try_from(input.element_count())
+		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.element_count(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(element_count),
+		PushConstant::U32(tq),
+		PushConstant::U32(tk),
+	];
+	let inputs = [input];
+	let outputs = [&output];
+	input.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MatrixCausalMaskF32,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: KernelId::MatrixCausalMaskF32.linear_workgroups(element_count),
+			indirect: None,
+		},
+		SemanticDispatch {
+			contract: CONTRACT,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &[],
+		},
+	)?;
+	autograd::record_causal_mask(input, &output)?;
+	Ok(output)
+}
+
+/// Zero the causal-mask adjoint above the diagonal of the final two axes.
+///
+/// This numerical provider performs Matrix/device operations only; it does not
+/// inspect or mutate a gradient tape.
+///
+/// # Errors
+///
+/// Returns an error under the same contract as [`causal_mask`].
+pub(crate) fn causal_mask_backward(output_gradient: &Matrix) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::CAUSAL_MASK_BACKWARD;
+	let operation = CONTRACT.name();
+	let (tq, tk) = causal_mask_axes(output_gradient, operation)?;
+	let element_count = u32::try_from(output_gradient.element_count())
+		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+	let input_gradient = Matrix::allocate(
+		output_gradient.engine_handle(),
+		output_gradient.shape().to_vec(),
+		output_gradient.element_count(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(input_gradient.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(element_count),
+		PushConstant::U32(tq),
+		PushConstant::U32(tk),
+	];
+	let inputs = [output_gradient];
+	let outputs = [&input_gradient];
+	output_gradient.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MatrixCausalMaskBackwardF32,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: KernelId::MatrixCausalMaskBackwardF32.linear_workgroups(element_count),
+			indirect: None,
+		},
+		SemanticDispatch {
+			contract: CONTRACT,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &[],
+		},
+	)?;
+	Ok(input_gradient)
+}
+
+/// Compare every FP32 element with one scalar and return an FP32 zero/one mask
+/// for `input >= value`.
+///
+/// Ordering follows the device's ordinary IEEE comparison: NaN always produces
+/// zero. The result is intentionally detached because a discrete mask has no
+/// admitted adjoint.
+///
+/// # Errors
+///
+/// Returns an error under the same contract as [`equal`].
+pub fn greater_equal(input: &Matrix, value: f32) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::GREATER_EQUAL;
+	let operation = CONTRACT.name();
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires an F32 input"
+		)));
+	}
+	let element_count = u32::try_from(input.element_count())
+		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.element_count(),
+		DType::F32,
+	)?;
+	if element_count != 0 {
+		let buffers = [
+			BufferBinding::read(input.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let push_constants = [PushConstant::U32(element_count), PushConstant::F32(value)];
+		let inputs = [input];
+		let outputs = [&output];
+		let attributes = [OpAttribute::Float {
+			name: "value".into(),
+			value: f64::from(value),
+		}];
+		input.engine_handle().record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::MatrixGreaterEqualF32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: KernelId::MatrixGreaterEqualF32.linear_workgroups(element_count),
+				indirect: None,
+			},
+			SemanticDispatch {
+				contract: CONTRACT,
+				inputs: &inputs,
+				outputs: &outputs,
+				attributes: &attributes,
+			},
+		)?;
+	}
+	Ok(output)
+}
+
+fn causal_mask_axes(input: &Matrix, operation: &'static str) -> Result<(u32, u32)> {
+	if input.dtype() != DType::F32 || input.shape().len() < 2 || input.element_count() == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a nonempty FP32 matrix with at least two axes"
+		)));
+	}
+	let tq = as_u32(
+		input.shape()[input.shape().len() - 2],
+		operation,
+		"query extent",
+	)?;
+	let tk = as_u32(
+		input.shape()[input.shape().len() - 1],
+		operation,
+		"key extent",
+	)?;
+	Ok((tq, tk))
 }
 
 /// Return the largest `k` FP32 values and their I32 indices on the last axis.
@@ -325,6 +528,7 @@ pub fn top_k(input: &Matrix, k: i32, dim: i32) -> Result<TopKResult> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: [rows, 1, 1],
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract: CONTRACT,
@@ -386,7 +590,7 @@ pub fn top_k_mask(indices: &Matrix, num_experts: usize) -> Result<Matrix> {
 	let inputs = [indices];
 	let outputs = [&output];
 	let attributes = [OpAttribute::SignedInteger {
-		name: "num_experts".into(),
+		name: "numExperts".into(),
 		value: i64::try_from(num_experts)
 			.map_err(|_| Error::invalid_argument(format!("{operation} expert count exceeds i64")))?,
 	}];
@@ -396,6 +600,7 @@ pub fn top_k_mask(indices: &Matrix, num_experts: usize) -> Result<Matrix> {
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: KernelId::MatrixTopKMaskF32.linear_workgroups(output_count_u32),
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: CONTRACT,
@@ -477,7 +682,7 @@ pub fn moe_expert_plan(indices: &Matrix, num_experts: usize) -> Result<MoeExpert
 		&inverse,
 	];
 	let attributes = [OpAttribute::SignedInteger {
-		name: "num_experts".into(),
+		name: "numExperts".into(),
 		value: i64::try_from(num_experts).expect("expert limit fits i64"),
 	}];
 	engine.record_semantic(
@@ -486,6 +691,7 @@ pub fn moe_expert_plan(indices: &Matrix, num_experts: usize) -> Result<MoeExpert
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [1, 1, 1],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: CONTRACT,
@@ -595,6 +801,7 @@ pub fn moe_routing_bias_update(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: KernelId::MatrixMoeRoutingBiasUpdateF32.linear_workgroups(experts_u32),
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: CONTRACT,
@@ -686,6 +893,7 @@ pub fn repeat_interleave(input: &Matrix, repeats: usize, dim: i32) -> Result<Mat
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MatrixRepeatInterleaveF32.linear_workgroups(count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract: CONTRACT,
@@ -776,6 +984,7 @@ pub(crate) fn repeat_interleave_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MatrixRepeatInterleaveBackwardF32.linear_workgroups(count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract: CONTRACT,
@@ -854,6 +1063,7 @@ pub fn gather_last_dim(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MatrixGatherLastDimF32.linear_workgroups(output_count_u32),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract: CONTRACT,
@@ -927,6 +1137,7 @@ pub(crate) fn gather_last_dim_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MatrixGatherLastDimBackwardF32.linear_workgroups(output_count_u32),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract: CONTRACT,
@@ -1047,6 +1258,7 @@ pub fn concat(inputs: &[Matrix], dim: i32) -> Result<Matrix> {
 				buffers,
 				push_constants,
 				workgroups: *workgroups,
+				indirect: None,
 			})
 			.collect::<Vec<_>>();
 		let semantic_inputs = inputs.iter().collect::<Vec<_>>();
@@ -1166,6 +1378,7 @@ pub fn transpose(input: &Matrix, dim0: i32, dim1: i32) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: [columns.div_ceil(32), rows.div_ceil(32), batch_size],
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract: CONTRACT,
@@ -1265,6 +1478,7 @@ pub fn slice(input: &Matrix, dim: i32, start: i64, end: i64) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MatrixSliceF32.linear_workgroups(count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract: CONTRACT,
@@ -1363,6 +1577,7 @@ pub(crate) fn slice_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MatrixSliceBackwardF32.linear_workgroups(copy_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract: CONTRACT,
@@ -1373,6 +1588,640 @@ pub(crate) fn slice_backward(
 		)?;
 	}
 	Ok(output)
+}
+
+/// Split `input` along `dim` into one device-resident matrix per `sizes` entry.
+///
+/// Every output owns an independent copy of its `[offset, offset + size)` slice
+/// along `dim`, matching OA C++ `FnMatrix::split`. The family records as one
+/// variadic semantic operation whose physical lowering is one slice dispatch
+/// per output; each output also carries a `Slice` adjoint, so reverse
+/// differentiation flows only through the segments used downstream.
+///
+/// # Errors
+///
+/// Returns an error when `input` is not FP32 or has rank outside 1..=4, `dim`
+/// is outside the rank, `sizes` is empty, contains a non-positive extent, or
+/// does not sum to the `dim` extent, an output size exceeds the shader ABI,
+/// allocation fails, or runtime recording fails.
+pub fn split(input: &Matrix, sizes: &[i64], dim: i32) -> Result<Vec<Matrix>> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::SPLIT;
+	let operation = CONTRACT.name();
+	let rank = input.shape().len();
+	if input.dtype() != DType::F32 || !(1..=4).contains(&rank) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a rank-one through rank-four F32 matrix"
+		)));
+	}
+	let dim = usize::try_from(dim)
+		.map_err(|_| Error::invalid_argument(format!("{operation} dim must be nonnegative")))?;
+	if dim >= rank {
+		return Err(Error::invalid_argument(format!(
+			"{operation} dim {dim} is outside rank {rank}"
+		)));
+	}
+	if sizes.is_empty() {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires at least one size"
+		)));
+	}
+	let mut extents = Vec::with_capacity(sizes.len());
+	let mut total = 0usize;
+	for &size in sizes {
+		let extent = usize::try_from(size)
+			.map_err(|_| Error::invalid_argument(format!("{operation} sizes must be nonnegative")))?;
+		if extent == 0 {
+			return Err(Error::invalid_argument(format!(
+				"{operation} sizes must be positive"
+			)));
+		}
+		total = total
+			.checked_add(extent)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} sizes overflow usize")))?;
+		extents.push(extent);
+	}
+	if total != input.shape()[dim] {
+		return Err(Error::invalid_argument(format!(
+			"{operation} sizes must sum to the dim extent"
+		)));
+	}
+	let engine = input.engine_handle();
+	let lowering = engine.begin_semantic_lowering()?;
+	let mut outputs = Vec::with_capacity(extents.len());
+	let mut offset = 0usize;
+	for &extent in &extents {
+		let mut output_shape = input.shape().to_vec();
+		output_shape[dim] = extent;
+		let output_count = output_shape.iter().try_fold(1_usize, |count, axis| {
+			count
+				.checked_mul(*axis)
+				.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))
+		})?;
+		let count = as_u32(output_count, operation, "output element count")?;
+		let output = Matrix::allocate(engine, output_shape.clone(), output_count, DType::F32)?;
+		if count != 0 {
+			let buffers = [
+				BufferBinding::read(input.storage()),
+				BufferBinding::write(output.storage()),
+			];
+			let push_constants = region_push_constants(
+				count,
+				rank,
+				dim,
+				offset,
+				0,
+				input.shape(),
+				&output_shape,
+				&output_shape,
+				operation,
+			)?;
+			lowering.record_physical(ComputeDispatch {
+				kernel: KernelId::MatrixSliceF32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: KernelId::MatrixSliceF32.linear_workgroups(count),
+				indirect: None,
+			})?;
+		}
+		outputs.push(output);
+		offset += extent;
+	}
+	let inputs = [input];
+	let output_refs: Vec<&Matrix> = outputs.iter().collect();
+	let attributes = [OpAttribute::SignedInteger {
+		name: "dim".into(),
+		value: dim as i64,
+	}];
+	lowering.commit(SemanticDispatch {
+		contract: CONTRACT,
+		inputs: &inputs,
+		outputs: &output_refs,
+		attributes: &attributes,
+	})?;
+	let mut start = 0usize;
+	for (output, &extent) in outputs.iter().zip(&extents) {
+		autograd::record_slice(input, output, dim, start, start + extent)?;
+		start += extent;
+	}
+	Ok(outputs)
+}
+
+/// Compact the selected rows of `input` on device without host readback.
+///
+/// `input` is `[T, D]` FP32 and `mask` is `[T]` FP32; one workgroup runs the
+/// donor chunked prefix scan so `row_map`, `count`, and `dispatch_args` stay
+/// device-resident, matching OA C++ `FnMatrix::compactRows`. `values` keeps
+/// fixed `[T, D]` capacity with unselected slots zeroed.
+///
+/// # Errors
+///
+/// Returns an error when `input` is not rank-two FP32, `mask` is not FP32 with
+/// `T` elements, an extent exceeds the shader ABI, allocation fails, or
+/// runtime recording fails.
+pub fn compact_rows(input: &Matrix, mask: &Matrix) -> Result<CompactRowsResult> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::COMPACT_ROWS;
+	let operation = CONTRACT.name();
+	let [t, d] = input.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a rank-two [T,D] input"
+		)));
+	};
+	if input.dtype() != DType::F32
+		|| mask.dtype() != DType::F32
+		|| mask.num_elements() != *t
+		|| !input.engine_handle().same_as(mask.engine_handle())
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires an FP32 [T,D] input and same-engine FP32 [T] mask"
+		)));
+	}
+	let element_count = t
+		.checked_mul(*d)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} element count overflows usize")))?;
+	let engine = input.engine_handle();
+	let values = Matrix::allocate(engine, input.shape().to_vec(), element_count, DType::F32)?;
+	let row_map = Matrix::allocate(engine, vec![*t], *t, DType::U32)?;
+	let t = as_u32(*t, operation, "row count")?;
+	let d = as_u32(*d, operation, "row width")?;
+	// Producer-side bound proof: the emitted X group count cannot be inspected
+	// by later indirect consumers, so it must fit the device limit here.
+	let emitted_groups = KernelId::MatrixCompactRowsF32.linear_workgroups(as_u32(
+		element_count,
+		operation,
+		"element count",
+	)?)[0];
+	if emitted_groups > engine.max_compute_work_group_count()[0] {
+		return Err(Error::invalid_argument(format!(
+			"{operation} indirect group count {emitted_groups} exceeds the device limit"
+		)));
+	}
+	let count = Matrix::allocate(engine, vec![1], 1, DType::U32)?;
+	let dispatch_args = Matrix::allocate(engine, vec![3], 3, DType::U32)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::read(mask.storage()),
+		BufferBinding::write(values.storage()),
+		BufferBinding::write(row_map.storage()),
+		BufferBinding::write(count.storage()),
+		BufferBinding::write(dispatch_args.storage()),
+	];
+	let push_constants = [PushConstant::U32(t), PushConstant::U32(d)];
+	let inputs = [input, mask];
+	let outputs = [&values, &row_map, &count, &dispatch_args];
+	input.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MatrixCompactRowsF32,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: [1, 1, 1],
+			indirect: None,
+		},
+		SemanticDispatch {
+			contract: CONTRACT,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &[],
+		},
+	)?;
+	autograd::record_compact_rows(input, &values, &row_map, &count, &dispatch_args)?;
+	Ok(CompactRowsResult {
+		values,
+		row_map,
+		count,
+		dispatch_args,
+	})
+}
+
+/// Expand a packed compact-rows gradient back to the saved `[T,D]` geometry.
+///
+/// With `dispatch_args` the GPU-authored group count drives a
+/// `vkCmdDispatchIndirect` launch and selected packed rows store into their
+/// mapped source rows; without it the direct-dispatch variant covers the full
+/// `[T,D]` extent. Both match OA C++ `FnMatrix::compactRowsBwd`. This
+/// numerical provider does not inspect a tape.
+///
+/// # Errors
+///
+/// Returns an error when the auxiliary inputs are not U32, shapes disagree, or
+/// recording fails.
+pub(crate) fn compact_rows_backward(
+	output_gradient: &Matrix,
+	row_map: &Matrix,
+	count: &Matrix,
+	dispatch_args: Option<&Matrix>,
+	input_shape: &[usize],
+) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::COMPACT_ROWS_BACKWARD;
+	let operation = CONTRACT.name();
+	let [t, d] = input_shape else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a rank-two [T,D] input shape"
+		)));
+	};
+	if output_gradient.dtype() != DType::F32 || output_gradient.shape() != input_shape {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires an FP32 [T,D] output gradient"
+		)));
+	}
+	if row_map.dtype() != DType::U32 || row_map.num_elements() < *t {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a U32 row map with at least T entries"
+		)));
+	}
+	if count.dtype() != DType::U32 || count.num_elements() != 1 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a U32 [1] count"
+		)));
+	}
+	let t = as_u32(*t, operation, "row count")?;
+	let d = as_u32(*d, operation, "row width")?;
+	let element_count = output_gradient.num_elements();
+	let element_count_u32 = as_u32(element_count, operation, "element count")?;
+	let engine = output_gradient.engine_handle();
+	let indirect = indirect_plan(
+		dispatch_args,
+		engine,
+		element_count_u32,
+		KernelId::MatrixCompactRowsBackwardIndirectF32,
+		operation,
+	)?;
+	let input_gradient = Matrix::allocate(engine, input_shape.to_vec(), element_count, DType::F32)?;
+	let direct_buffers = [
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::read(row_map.storage()),
+		BufferBinding::read(count.storage()),
+		BufferBinding::read_write(input_gradient.storage()),
+	];
+	let indirect_buffers = dispatch_args.map(|dispatch_args| {
+		[
+			BufferBinding::read(output_gradient.storage()),
+			BufferBinding::read(row_map.storage()),
+			BufferBinding::read(count.storage()),
+			BufferBinding::read(dispatch_args.storage()),
+			BufferBinding::read_write(input_gradient.storage()),
+		]
+	});
+	let (kernel, workgroups, buffers) = if let Some(indirect_buffers) = &indirect_buffers {
+		(
+			KernelId::MatrixCompactRowsBackwardIndirectF32,
+			[0, 0, 0],
+			indirect_buffers.as_slice(),
+		)
+	} else {
+		(
+			KernelId::MatrixCompactRowsBackwardF32,
+			KernelId::MatrixCompactRowsBackwardF32.linear_workgroups(element_count_u32),
+			direct_buffers.as_slice(),
+		)
+	};
+	let push_constants = [PushConstant::U32(t), PushConstant::U32(d)];
+	let inputs = [
+		Some(output_gradient),
+		Some(row_map),
+		Some(count),
+		dispatch_args,
+	];
+	let outputs = [&input_gradient];
+	let attributes = [OpAttribute::Shape {
+		name: "inputShape".into(),
+		value: input_shape.to_vec(),
+	}];
+	engine.record_optional_semantic(
+		ComputeDispatch {
+			kernel,
+			buffers,
+			push_constants: &push_constants,
+			workgroups,
+			indirect,
+		},
+		OptionalSemanticDispatch {
+			contract: CONTRACT,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(input_gradient)
+}
+
+/// Add the compacted `source` rows into `input` at their saved positions.
+///
+/// Both matrices are matching `[T, D]` FP32; `row_map` and `count` are the U32
+/// device plan from [`compact_rows`]. Each output element is `input[i]`
+/// plus `source[packed_row, d]` when the row is selected, matching OA C++
+/// `FnMatrix::scatterRows` in its direct-dispatch form.
+///
+/// # Errors
+///
+/// Returns an error when shapes or dtypes disagree, the auxiliary inputs are
+/// not U32, an extent exceeds the shader ABI, or recording fails.
+pub fn scatter_rows(
+	input: &Matrix,
+	source: &Matrix,
+	row_map: &Matrix,
+	count: &Matrix,
+) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::SCATTER_ROWS;
+	let operation = CONTRACT.name();
+	let [t, d] = input.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a rank-two [T,D] input"
+		)));
+	};
+	if input.dtype() != DType::F32 || source.shape() != input.shape() || source.dtype() != DType::F32
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires matching FP32 [T,D] input and source"
+		)));
+	}
+	if row_map.dtype() != DType::U32 || row_map.num_elements() < *t {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a U32 row map with at least T entries"
+		)));
+	}
+	if count.dtype() != DType::U32 || count.num_elements() != 1 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a U32 [1] count"
+		)));
+	}
+	for auxiliary in [source, row_map, count] {
+		if !auxiliary.engine_handle().same_as(input.engine_handle()) {
+			return Err(Error::invalid_argument(format!(
+				"{operation} inputs must share one engine"
+			)));
+		}
+	}
+	let t = as_u32(*t, operation, "row count")?;
+	let d = as_u32(*d, operation, "row width")?;
+	let element_count = input.num_elements();
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		element_count,
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::read(source.storage()),
+		BufferBinding::read(row_map.storage()),
+		BufferBinding::read(count.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let push_constants = [PushConstant::U32(t), PushConstant::U32(d)];
+	let inputs = [Some(input), Some(source), Some(row_map), Some(count), None];
+	let outputs = [&output];
+	input.engine_handle().record_optional_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MatrixScatterRowsF32,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: KernelId::MatrixScatterRowsF32.linear_workgroups(as_u32(
+				element_count,
+				operation,
+				"element count",
+			)?),
+			indirect: None,
+		},
+		OptionalSemanticDispatch {
+			contract: CONTRACT,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &[],
+		},
+	)?;
+	autograd::record_scatter_rows(input, source, &output, row_map, count, None)?;
+	Ok(output)
+}
+
+/// Add the compacted `source` rows into a copy of `input` through a
+/// GPU-authored indirect dispatch.
+///
+/// `plan` is the [`CompactRowsResult`] produced by [`compact_rows`]. Every
+/// unselected row is preserved by the initial copy and only `count * D`
+/// selected values are touched, matching OA C++ `FnMatrix::scatterRows` in its
+/// indirect plan-taking form.
+///
+/// # Errors
+///
+/// Returns an error when shapes or dtypes disagree, the plan does not hold a
+/// valid U32 `[T]`/`[1]`/`[3]` triple, an extent exceeds the shader ABI or
+/// device dispatch limit, or recording fails.
+pub fn scatter_rows_indirect(
+	input: &Matrix,
+	source: &Matrix,
+	plan: &CompactRowsResult,
+) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::SCATTER_ROWS;
+	let operation = CONTRACT.name();
+	let [t, d] = input.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a rank-two [T,D] input"
+		)));
+	};
+	if input.dtype() != DType::F32 || source.shape() != input.shape() || source.dtype() != DType::F32
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires matching FP32 [T,D] input and source"
+		)));
+	}
+	let CompactRowsResult {
+		row_map,
+		count,
+		dispatch_args,
+		..
+	} = plan;
+	if row_map.dtype() != DType::U32 || row_map.num_elements() < *t {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a U32 row map with at least T entries"
+		)));
+	}
+	if count.dtype() != DType::U32 || count.num_elements() != 1 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a U32 [1] count"
+		)));
+	}
+	let engine = input.engine_handle();
+	for auxiliary in [source, row_map, count, dispatch_args] {
+		if !auxiliary.engine_handle().same_as(engine) {
+			return Err(Error::invalid_argument(format!(
+				"{operation} inputs must share one engine"
+			)));
+		}
+	}
+	let t = as_u32(*t, operation, "row count")?;
+	let d = as_u32(*d, operation, "row width")?;
+	let element_count_u32 = as_u32(input.num_elements(), operation, "element count")?;
+	let indirect = indirect_plan(
+		Some(dispatch_args),
+		engine,
+		element_count_u32,
+		KernelId::MatrixScatterRowsIndirectF32,
+		operation,
+	)?;
+	let scope = engine.begin_semantic_lowering()?;
+	// Preserve every unselected row first, then touch only count*D selected
+	// values through the GPU-authored indirect launch dimensions.
+	let output = input.copy()?;
+	let buffers = [
+		BufferBinding::read(source.storage()),
+		BufferBinding::read(row_map.storage()),
+		BufferBinding::read(count.storage()),
+		BufferBinding::read(dispatch_args.storage()),
+		BufferBinding::read_write(output.storage()),
+	];
+	let push_constants = [PushConstant::U32(t), PushConstant::U32(d)];
+	let inputs = [
+		Some(input),
+		Some(source),
+		Some(row_map),
+		Some(count),
+		Some(dispatch_args),
+	];
+	let outputs = [&output];
+	let semantic = OptionalSemanticDispatch {
+		contract: CONTRACT,
+		inputs: &inputs,
+		outputs: &outputs,
+		attributes: &[],
+	};
+	semantic.validate_kernel(KernelId::MatrixScatterRowsIndirectF32)?;
+	scope.record_physical(ComputeDispatch {
+		kernel: KernelId::MatrixScatterRowsIndirectF32,
+		buffers: &buffers,
+		push_constants: &push_constants,
+		workgroups: [0, 0, 0],
+		indirect,
+	})?;
+	scope.commit_optional(semantic)?;
+	autograd::record_scatter_rows(input, source, &output, row_map, count, Some(dispatch_args))?;
+	Ok(output)
+}
+
+/// Gather the scatter-rows output gradient into packed source geometry.
+///
+/// With `dispatch_args` the GPU-authored group count drives a
+/// `vkCmdDispatchIndirect` launch; without it the direct-dispatch variant
+/// covers the full `[T,D]` extent. Each packed row copies its mapped output
+/// row into the zero-initialized result, matching OA C++
+/// `FnMatrix::scatterRowsBwdSource`. This numerical provider does not inspect
+/// a tape.
+///
+/// # Errors
+///
+/// Returns an error when the auxiliary inputs are not U32, shapes disagree, or
+/// recording fails.
+pub(crate) fn scatter_rows_backward_source(
+	output_gradient: &Matrix,
+	row_map: &Matrix,
+	count: &Matrix,
+	dispatch_args: Option<&Matrix>,
+) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::SCATTER_ROWS_BACKWARD_SOURCE;
+	let operation = CONTRACT.name();
+	let [t, d] = output_gradient.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a rank-two [T,D] output gradient"
+		)));
+	};
+	if output_gradient.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires an FP32 output gradient"
+		)));
+	}
+	if row_map.dtype() != DType::U32 || row_map.num_elements() < *t {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a U32 row map with at least T entries"
+		)));
+	}
+	if count.dtype() != DType::U32 || count.num_elements() != 1 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a U32 [1] count"
+		)));
+	}
+	let t = as_u32(*t, operation, "row count")?;
+	let d = as_u32(*d, operation, "row width")?;
+	let element_count = output_gradient.num_elements();
+	let element_count_u32 = as_u32(element_count, operation, "element count")?;
+	let engine = output_gradient.engine_handle();
+	let indirect = indirect_plan(
+		dispatch_args,
+		engine,
+		element_count_u32,
+		KernelId::MatrixScatterRowsBackwardSourceIndirectF32,
+		operation,
+	)?;
+	let source_gradient = Matrix::allocate(
+		engine,
+		output_gradient.shape().to_vec(),
+		element_count,
+		DType::F32,
+	)?;
+	let direct_buffers = [
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::read(row_map.storage()),
+		BufferBinding::read(count.storage()),
+		BufferBinding::write(source_gradient.storage()),
+	];
+	let indirect_buffers = dispatch_args.map(|dispatch_args| {
+		[
+			BufferBinding::read(output_gradient.storage()),
+			BufferBinding::read(row_map.storage()),
+			BufferBinding::read(count.storage()),
+			BufferBinding::read(dispatch_args.storage()),
+			BufferBinding::write(source_gradient.storage()),
+		]
+	});
+	let (kernel, workgroups, buffers) = if let Some(indirect_buffers) = &indirect_buffers {
+		(
+			KernelId::MatrixScatterRowsBackwardSourceIndirectF32,
+			[0, 0, 0],
+			indirect_buffers.as_slice(),
+		)
+	} else {
+		(
+			KernelId::MatrixScatterRowsBackwardSourceF32,
+			KernelId::MatrixScatterRowsBackwardSourceF32.linear_workgroups(element_count_u32),
+			direct_buffers.as_slice(),
+		)
+	};
+	let push_constants = [PushConstant::U32(t), PushConstant::U32(d)];
+	let inputs = [
+		Some(output_gradient),
+		Some(row_map),
+		Some(count),
+		dispatch_args,
+	];
+	let outputs = [&source_gradient];
+	engine.record_optional_semantic(
+		ComputeDispatch {
+			kernel,
+			buffers,
+			push_constants: &push_constants,
+			workgroups,
+			indirect,
+		},
+		OptionalSemanticDispatch {
+			contract: CONTRACT,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &[],
+		},
+	)?;
+	Ok(source_gradient)
+}
+
+/// Reverse numerical provider for `scatter_rows` returning `(input, source)`
+/// gradients. The base input flows through unchanged, so its gradient is the
+/// output gradient itself rather than a redundant device copy.
+pub(crate) fn scatter_rows_backward(
+	output_gradient: Matrix,
+	row_map: &Matrix,
+	count: &Matrix,
+	dispatch_args: Option<&Matrix>,
+) -> Result<(Matrix, Matrix)> {
+	let source_gradient =
+		scatter_rows_backward_source(&output_gradient, row_map, count, dispatch_args)?;
+	Ok((output_gradient, source_gradient))
 }
 
 #[allow(
@@ -1409,6 +2258,44 @@ fn region_push_constants(
 		}
 	}
 	Ok(push_constants)
+}
+
+/// Validate an optional compact-rows indirect plan and return its dispatch
+/// descriptor.
+///
+/// `element_count` bounds the X group count the producer could have emitted;
+/// the host cannot inspect the GPU-authored values, so the producer-side
+/// limit proof is re-asserted here from the admitted `[T,D]` extent.
+fn indirect_plan<'a>(
+	dispatch_args: Option<&'a Matrix>,
+	engine: &EngineHandle,
+	element_count: u32,
+	kernel: KernelId,
+	operation: &'static str,
+) -> Result<Option<IndirectDispatch<'a>>> {
+	let Some(dispatch_args) = dispatch_args else {
+		return Ok(None);
+	};
+	if dispatch_args.dtype() != DType::U32 || dispatch_args.num_elements() != 3 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a U32 [3] dispatch-args plan"
+		)));
+	}
+	if !dispatch_args.engine_handle().same_as(engine) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must share one engine"
+		)));
+	}
+	let emitted_groups = kernel.linear_workgroups(element_count)[0];
+	if emitted_groups > engine.max_compute_work_group_count()[0] {
+		return Err(Error::invalid_argument(format!(
+			"{operation} indirect group count {emitted_groups} exceeds the device limit"
+		)));
+	}
+	Ok(Some(IndirectDispatch {
+		storage: dispatch_args.storage(),
+		offset: 0,
+	}))
 }
 
 fn as_u32(value: usize, operation: &'static str, label: &str) -> Result<u32> {

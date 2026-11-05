@@ -1,0 +1,54 @@
+	let operation = contract.name();
+	if input.dtype() != DType::F32 || input.shape().is_empty() || input.num_elements() == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a nonempty FP32 input"
+		)));
+	}
+	for (matrix, label) in [(maximum, "maximum"), (output_gradient, "output_gradient")] {
+		if matrix.dtype() != DType::F32 || matrix.shape() != [1] {
+			return Err(Error::invalid_argument(format!(
+				"{operation} {label} has shape {:?} {}; expected [1] F32",
+				matrix.shape(),
+				matrix.dtype().token()
+			)));
+		}
+	}
+	let engine = input.engine_handle();
+	if !engine.same_as(maximum.engine_handle()) || !engine.same_as(output_gradient.engine_handle()) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must belong to the same engine"
+		)));
+	}
+	let element_count = u32::try_from(input.num_elements())
+		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+	let input_gradient = Matrix::allocate(
+		engine,
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::read(maximum.storage()),
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(input_gradient.storage()),
+	];
+	let push_constants = [PushConstant::U32(element_count)];
+	let inputs = [input, maximum, output_gradient];
+	let outputs = [&input_gradient];
+	engine.record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MatrixMaxBackwardF32,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: KernelId::MatrixMaxBackwardF32.linear_workgroups(element_count),
+			indirect: None,
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &[],
+		},
+	)?;
+	Ok(input_gradient)

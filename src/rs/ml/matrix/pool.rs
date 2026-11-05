@@ -1,5 +1,6 @@
 //! ML-owned Matrix pooling operations.
 
+pub use crate::ml::types::MaxPool2dResult;
 use crate::{
 	DType, Error, Matrix, OpAttribute, Result,
 	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
@@ -246,15 +247,6 @@ impl AdaptivePool2dGeometry {
 
 // ── public operations ─────────────────────────────────────────────────────────
 
-/// Pooled values and their exact U32 input argmax indices.
-#[must_use]
-pub struct MaxPool2dResult {
-	/// Maximum value selected from each pooling window.
-	pub output: Matrix,
-	/// Flat input index selected for each output element.
-	pub indices: Matrix,
-}
-
 /// Apply two-dimensional average pooling to an NCHW Matrix.
 ///
 /// Padding positions do not contribute to either the sum or divisor. The
@@ -324,6 +316,7 @@ pub(in crate::ml) fn avg_pool_2d_backward(
 				geometry.input_width.div_ceil(16),
 				geometry.batch * geometry.channels,
 			],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,
@@ -424,6 +417,7 @@ pub(in crate::ml) fn max_pool_2d_backward(
 				geometry.input_width.div_ceil(16),
 				geometry.batch * geometry.channels,
 			],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,
@@ -499,6 +493,7 @@ pub(in crate::ml) fn adaptive_avg_pool_2d_backward(
 				geometry.input_width.div_ceil(16),
 				geometry.batch * geometry.channels,
 			],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,
@@ -557,6 +552,7 @@ fn avg_pool_2d_dispatch(
 				geometry.output_width.div_ceil(16),
 				geometry.batch * geometry.channels,
 			],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,
@@ -620,6 +616,7 @@ fn max_pool_2d_dispatch(
 				geometry.output_width.div_ceil(16),
 				geometry.batch * geometry.channels,
 			],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,
@@ -669,6 +666,7 @@ fn adaptive_avg_pool_2d_dispatch(
 				geometry.output_width.div_ceil(16),
 				geometry.batch * geometry.channels,
 			],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,

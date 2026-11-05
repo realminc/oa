@@ -7,16 +7,18 @@ use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 use crate::{Error, LogComponent, LogLevel, LogOptions, Matrix, Result};
 
 use super::{
-	AudioSemanticDispatch, Buffer, ComputeDispatch, DecodeSession, Device, DevicePhysical, Event,
-	ExecutionPlan, FlatColorPipeline, GraphicsPipeline, ImageSemanticDispatch, Instance, MeshBuffer,
-	NativeRgbaImage, OptionalSemanticDispatch, PresentationSurface, RecordedCommandBuffer,
-	RenderTarget, RetirementService, SceneDrawCmd, SecretBinding, SecretBuffer, SecretErasure,
-	SemanticDispatch, Storage, SurfaceBlendPipeline, SurfaceDescriptorArena,
-	SurfaceDescriptorLayouts, SurfacePipeline, UnlitDescriptorArena, UnlitDescriptorLayouts,
-	UnlitPipeline,
+	AudioSemanticDispatch, Buffer, CanvasGridPipeline, ClockCalibration, ComputeDispatch,
+	DecodeSession, DeferredRetirement, Device, DevicePhysical, EncodeSession, Event, ExecutionPlan,
+	FlatColorPipeline, GraphicsPipeline, ImageSemanticDispatch, Instance, MeshBuffer,
+	NativeRgbaImage, OptionalSemanticDispatch, PresentationSurface, QuantSemanticDispatch,
+	RecordedCommandBuffer, RenderTarget, RetirementService, RetirementTicket, SceneDrawCmd,
+	SecretBinding, SecretBuffer, SecretErasure, SemanticDispatch, Storage, SurfaceBlendPipeline,
+	SurfaceDescriptorArena, SurfaceDescriptorLayouts, SurfacePipeline, Timer, UnlitDescriptorArena,
+	UnlitDescriptorLayouts, UnlitPipeline,
 	log::{LogSelection, Logger},
 	session::ExecutionSession,
 };
+pub use crate::runtime::types::EngineRequirements;
 
 /// Policy for selecting the local device owned by an engine.
 #[non_exhaustive]
@@ -28,22 +30,6 @@ pub enum DeviceSelection {
 	/// Select an exact physical-device ordinal, including software Vulkan CPU.
 	/// Use [`Engine::available_devices`] to discover current ordinals.
 	Index(usize),
-}
-
-/// Optional services that the selected device must provide.
-///
-/// Compute is always required. These predicates constrain physical-device
-/// admission before the logical device is created; they do not expose kernel
-/// selection or vendor policy. Presentation readiness proves a graphics queue
-/// and swapchain support for an instance created with surface extensions. The
-/// eventual [`Presenter`](super::Presenter) still verifies the concrete
-/// window surface.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct EngineRequirements {
-	pub(crate) graphics: bool,
-	pub(crate) presentation: bool,
-	pub(crate) video_decode: Vec<crate::video::VideoDecodeProfile>,
-	pub(crate) video_encode: Vec<crate::video::VideoEncodeProfile>,
 }
 
 impl EngineRequirements {
@@ -569,6 +555,190 @@ impl VideoDecoderBackend {
 	}
 }
 
+/// BT.709 color-space selector for the RGBA→NV12 conversion kernel.
+const ENCODE_COLOR_SPACE_BT709: u32 = 1;
+
+/// Runtime-owned implementation for public hardware video encoder sessions.
+///
+/// Owns the encode-slot event ring: each submitted job holds the completion
+/// event of its encode-queue submission until the slot is harvested. Packets
+/// harvested ahead of their caller-visible return point accumulate in `ready`
+/// and drain through `submit_rgba` and `flush`, so no encoded frame is lost.
+pub(crate) struct VideoEncoderBackend {
+	engine: EngineHandle,
+	session: EncodeSession,
+	pending: Vec<Option<Event>>,
+	ready: Vec<crate::video::EncodedVideoPacket>,
+	next_slot: usize,
+}
+
+impl VideoEncoderBackend {
+	pub(crate) fn create(engine: &Engine, settings: crate::video::VideoEncodeConfig) -> Result<Self> {
+		let capabilities = engine.query_video_encode_capabilities(settings.profile)?;
+		let plan = settings.validate_for_device(capabilities)?;
+		let session = engine
+			.handle
+			.state
+			.borrow()
+			.device
+			.create_video_encode_session(&settings, plan)?;
+		let slots = session.slot_count();
+		Ok(Self {
+			engine: engine.handle.clone(),
+			session,
+			pending: vec![None; slots],
+			ready: Vec::new(),
+			next_slot: 0,
+		})
+	}
+
+	pub(crate) const fn coded_extent(&self) -> crate::video::VideoExtent {
+		self.session.coded_extent()
+	}
+
+	pub(crate) const fn visible_extent(&self) -> crate::video::VideoExtent {
+		self.session.visible_extent()
+	}
+
+	pub(crate) fn cached_headers(&self) -> &[u8] {
+		self.session.cached_headers()
+	}
+
+	/// Encode one RGBA8 frame synchronously and return its access unit.
+	///
+	/// The job uses the shared slot ring: if the target slot still carries a
+	/// pending async job it is harvested into `ready` first, then this frame's
+	/// own event is awaited before the packet is returned.
+	pub(crate) fn encode_rgba(
+		&mut self,
+		rgba: &[u8],
+		presentation_timestamp_micros: u64,
+	) -> Result<crate::video::EncodedVideoPacket> {
+		let index = self.submit_slot(
+			rgba,
+			presentation_timestamp_micros,
+			ENCODE_COLOR_SPACE_BT709,
+			false,
+			true,
+		)?;
+		self.harvest_slot(index)
+	}
+
+	/// Queue one RGBA8 frame asynchronously and harvest every completed packet.
+	pub(crate) fn submit_rgba(
+		&mut self,
+		rgba: &[u8],
+		presentation_timestamp_micros: u64,
+		color_space: u32,
+		full_range: bool,
+	) -> Result<Vec<crate::video::EncodedVideoPacket>> {
+		self.submit_slot(
+			rgba,
+			presentation_timestamp_micros,
+			color_space,
+			full_range,
+			false,
+		)?;
+		Ok(std::mem::take(&mut self.ready))
+	}
+
+	/// Wait for every pending encode job and return all remaining packets.
+	pub(crate) fn flush(&mut self) -> Result<Vec<crate::video::EncodedVideoPacket>> {
+		let mut packets = std::mem::take(&mut self.ready);
+		for index in 0..self.pending.len() {
+			if self.session.slot_pending(index) {
+				packets.push(self.harvest_slot(index)?);
+			}
+		}
+		Ok(packets)
+	}
+
+	/// Upload and submit one frame on the next ring slot, returning its index.
+	///
+	/// The target slot's prior pending job (if any) is waited and harvested
+	/// first. When `synchronous` is clear, completed slots elsewhere in the
+	/// ring are also harvested non-blockingly into `ready`.
+	fn submit_slot(
+		&mut self,
+		rgba: &[u8],
+		presentation_timestamp_micros: u64,
+		color_space: u32,
+		full_range: bool,
+		synchronous: bool,
+	) -> Result<usize> {
+		let device = self.engine.state.borrow().device.clone();
+		let index = self.next_slot;
+		self.next_slot = (self.next_slot + 1) % self.pending.len();
+		if self.session.slot_pending(index) {
+			let packet = self.harvest_slot(index)?;
+			self.ready.push(packet);
+		}
+		self.session.write_rgba(index, rgba)?;
+		let conversion = self.session.record_conversion(
+			&device,
+			index,
+			self.session.visible_extent(),
+			color_space,
+			full_range,
+		)?;
+		{
+			let mut state = self.engine.state.borrow_mut();
+			let _conversion_event = submit_recorded(&mut state, conversion)?;
+		}
+		let command = self.session.record_frame(&device, index)?;
+		let event = {
+			let mut state = self.engine.state.borrow_mut();
+			submit_recorded(&mut state, command)?
+		};
+		self
+			.session
+			.mark_pending(index, presentation_timestamp_micros);
+		self.pending[index] = Some(event);
+		if !synchronous {
+			for slot in 0..self.pending.len() {
+				if slot == index {
+					continue;
+				}
+				let complete = match &self.pending[slot] {
+					Some(candidate) => candidate.is_complete()?,
+					None => false,
+				};
+				if complete {
+					let packet = self.harvest_slot(slot)?;
+					self.ready.push(packet);
+				}
+			}
+		}
+		Ok(index)
+	}
+
+	/// Wait the slot's event, read its feedback and bitstream, and build the
+	/// access unit. Cached codec headers are prepended to keyframe packets so
+	/// every random-access point is self-describing Annex-B.
+	fn harvest_slot(&mut self, index: usize) -> Result<crate::video::EncodedVideoPacket> {
+		let event = self.pending[index]
+			.take()
+			.ok_or_else(|| Error::failed_precondition("encode slot has no pending submission"))?;
+		event.wait()?;
+		let feedback = self.session.read_feedback(index)?;
+		let keyframe = self.session.slot_is_keyframe(index);
+		let pts = self.session.slot_presentation_timestamp(index);
+		self.session.mark_completed(index);
+		let mut bitstream = vec![0_u8; feedback.bytes_written as usize];
+		self
+			.session
+			.read_bitstream(index, u64::from(feedback.bitstream_offset), &mut bitstream)?;
+		let headers = self.session.cached_headers();
+		if keyframe && !headers.is_empty() {
+			let mut framed = Vec::with_capacity(headers.len() + bitstream.len());
+			framed.extend_from_slice(headers);
+			framed.append(&mut bitstream);
+			bitstream = framed;
+		}
+		crate::video::EncodedVideoPacket::new(bitstream, pts, keyframe)
+	}
+}
+
 /// Engine-tracked compose image allocation — cleaned up on `destroy_compose_image`.
 struct ComposeImageEntry {
 	image: vk::Image,
@@ -585,14 +755,51 @@ struct EngineState {
 	device: Arc<Device>,
 	next_epoch: u64,
 	capture_active: bool,
+	/// Active deferred secret-lowering batch. While set, every recorded
+	/// submission defers into this ordered batch instead of queueing.
+	secret_scope: Option<SecretScopeState>,
 	/// Live compose images allocated for UI layers.
 	compose_images: RefCell<Vec<ComposeImageEntry>>,
+	/// Measured matmul winners recorded by qualification, replayed only after
+	/// full revalidation against the live registry and problem/device contract.
+	matmul_route_cache: super::dna::provider::blas::MatmulRouteCache,
+}
+
+/// Classification metadata for one deferred node. The scope records whether a
+/// command consumes secrets, records erasure, or retains public outputs —
+/// never secret bytes, handles, or raw descriptor data.
+#[derive(Clone, Copy)]
+pub(crate) struct SecretScopeNode {
+	pub(crate) uses_secret: bool,
+	pub(crate) records_erasure: bool,
+	pub(crate) retains_public: bool,
+}
+
+struct DeferredSubmission {
+	epoch: u64,
+	command: RecordedCommandBuffer,
+	deferred: DeferredRetirement,
+	ticket: RetirementTicket,
+}
+
+struct SecretScopeState {
+	pending: Vec<DeferredSubmission>,
+	nodes: Vec<SecretScopeNode>,
 }
 
 /// Thread-affine shared access to the execution owner retained by its values.
 #[derive(Clone)]
 pub(crate) struct EngineHandle {
 	state: Rc<RefCell<EngineState>>,
+}
+
+/// Timestamp placement for one eager flush or checkpoint. `Borrowed` records a
+/// caller-owned named-timer pair; the timer owns the reading, so the submission
+/// event does not expose a duration.
+enum FlushTiming {
+	Untimed,
+	Fresh,
+	Borrowed(super::TimestampPair),
 }
 
 /// Unique private value; only in-flight commands may share its storage lifetime.
@@ -631,6 +838,100 @@ pub(crate) struct MlKemSharedSecret {
 pub(crate) struct SemanticLoweringScope {
 	engine: EngineHandle,
 	active: bool,
+}
+
+/// Deferred secret-execution batch owned by one Engine.
+///
+/// While this scope is active, recorded secret and ordinary submissions defer
+/// into an ordered batch carrying secret classification metadata only — never
+/// secret bytes. `commit` submits the batch in order; abandoning it frees the
+/// recorded commands and fails their reserved completions without submission
+/// or waiting.
+pub(crate) struct SecretLoweringScope {
+	engine: EngineHandle,
+	active: bool,
+}
+
+impl SecretLoweringScope {
+	/// Classification snapshot of the deferred nodes. Diagnostics may observe
+	/// flags and order only; no secret bytes or native handles are exposed.
+	pub(crate) fn nodes(&self) -> Vec<SecretScopeNode> {
+		self
+			.engine
+			.state
+			.borrow()
+			.secret_scope
+			.as_ref()
+			.map(|scope| scope.nodes.clone())
+			.unwrap_or_default()
+	}
+
+	/// Submit every deferred command in recorded order. Per-operation events
+	/// and erasure tickets issued during the scope resolve through their own
+	/// exact epochs; the returned event describes the final node.
+	///
+	/// On failure, unsubmitted nodes are freed and their completions failed;
+	/// already-submitted nodes retire normally.
+	pub(crate) fn commit(mut self) -> Result<Event> {
+		let mut state = self.engine.state.borrow_mut();
+		let Some(scope) = state.secret_scope.take() else {
+			return Err(Error::failed_precondition(
+				"secret lowering scope is no longer active",
+			));
+		};
+		self.active = false;
+		let mut pending = scope.pending;
+		if pending.is_empty() {
+			return Err(Error::invalid_argument(
+				"secret lowering scope recorded no submissions",
+			));
+		}
+		let mut result = Ok(None);
+		while let Some(item) = pending.first() {
+			if let Err(error) = state.device.submit(&item.command, item.epoch) {
+				result = Err(error);
+				break;
+			}
+			state.next_epoch = item.epoch;
+			let timing = item.command.timing();
+			let ticket = item.ticket.clone();
+			let item = pending.remove(0);
+			if let Err(error) = state
+				.retirement
+				.retire_deferred(item.deferred, item.command, item.epoch)
+			{
+				result = Err(error);
+				break;
+			}
+			result = Ok(Some(Event::new(
+				state.device.clone(),
+				item.epoch,
+				ticket,
+				timing,
+			)));
+		}
+		for item in pending {
+			item.deferred.fail();
+			state.device.free(item.command);
+		}
+		result.and_then(|event| event.ok_or_else(|| Error::internal("secret batch produced no event")))
+	}
+}
+
+impl Drop for SecretLoweringScope {
+	fn drop(&mut self) {
+		if !self.active {
+			return;
+		}
+		let mut state = self.engine.state.borrow_mut();
+		let Some(scope) = state.secret_scope.take() else {
+			return;
+		};
+		for item in scope.pending {
+			item.deferred.fail();
+			state.device.free(item.command);
+		}
+	}
 }
 
 impl Engine {
@@ -707,6 +1008,39 @@ impl Engine {
 	/// per-surface present-support negotiation.
 	pub fn has_graphics(&self) -> bool {
 		self.handle.state.borrow().device.has_graphics_queue()
+	}
+
+	/// Return whether this Engine's device can calibrate its timestamp domain
+	/// against a POSIX monotonic host clock.
+	pub fn supports_clock_calibration(&self) -> bool {
+		self
+			.handle
+			.state
+			.borrow()
+			.device
+			.supports_clock_calibration()
+	}
+
+	/// Sample paired device/host timestamps and retain the lowest-deviation
+	/// pair.
+	///
+	/// `sample_count` selects the best of `[1, 1024]` quasi-simultaneous
+	/// samples; recalibrate long-running traces periodically because a value
+	/// farther than half a device-clock period from the sample is inherently
+	/// ambiguous.
+	///
+	/// # Errors
+	///
+	/// Returns `InvalidArgument` when `sample_count` is outside `[1, 1024]`,
+	/// `Unavailable` when the device lacks calibrated timestamps or usable
+	/// domains, and a backend error when sampling fails.
+	pub fn calibrate_clock(&self, sample_count: u32) -> Result<ClockCalibration> {
+		self
+			.handle
+			.state
+			.borrow()
+			.device
+			.calibrate_clock(sample_count)
 	}
 
 	/// Create one SDL3 Vulkan surface borrowing this Engine and window.
@@ -838,6 +1172,25 @@ impl Engine {
 			);
 		}
 
+		// Best-effort measured-route replay: a missing cache is normal; a
+		// present but malformed one is evidence worth surfacing before it is
+		// discarded. Either way the empty cache fails closed to structural
+		// routing — never to a partially accepted record.
+		let route_cache_path = super::dna::provider::blas::route_cache_path();
+		let matmul_route_cache =
+			match super::dna::provider::blas::MatmulRouteCache::load(&route_cache_path) {
+				Ok(cache) => cache,
+				Err(error) => {
+					if route_cache_path.is_file() {
+						crate::log_warn!(
+							crate::LogComponent::RUNTIME,
+							"discarding persisted matmul route cache: {error}"
+						);
+					}
+					super::dna::provider::blas::MatmulRouteCache::new()
+				}
+			};
+
 		Ok(Self {
 			_log_selection: log_selection,
 			logger,
@@ -848,7 +1201,9 @@ impl Engine {
 					device,
 					next_epoch: 0,
 					capture_active: false,
+					secret_scope: None,
 					compose_images: RefCell::new(Vec::new()),
+					matmul_route_cache,
 				})),
 			},
 			_not_send_sync: PhantomData,
@@ -880,6 +1235,45 @@ impl Engine {
 	/// timestamps are unavailable, or `FailedPrecondition` for an empty batch.
 	pub fn checkpoint_timed(&self) -> Result<Event> {
 		self.handle.checkpoint(true)
+	}
+
+	/// Submit pending eager work bracketed by a device [`Timer`]'s timestamps.
+	///
+	/// The timer must be initialized for `TimerDomain::Device` on this engine
+	/// and is single-flight: a new tagged submission is rejected while the
+	/// previous one is pending. The returned event carries no timing; the
+	/// elapsed device duration is committed through [`Timer::commit`].
+	///
+	/// Donor: `oa::Engine::submit(oa::Timer*)` in
+	/// `oacpp/source/cpp/lib/oa/runtime/engine/engine.cpp`.
+	///
+	/// # Errors
+	///
+	/// Returns the errors from [`Engine::checkpoint_timed`], or
+	/// `FailedPrecondition` when the timer is host-domain, uninitialized, or
+	/// still pending, or `InvalidArgument` when it was initialized by another
+	/// engine.
+	pub fn checkpoint_with_timer(&self, timer: &mut Timer) -> Result<Event> {
+		let device = self.handle.state.borrow().device.clone();
+		timer.prepare_device_submit(&device)?;
+		let pair = timer
+			.device_pair()
+			.expect("device timer was checked")
+			.clone();
+		let event = self.handle.checkpoint_timed_with(&pair)?;
+		timer.attach_event(event.clone());
+		Ok(event)
+	}
+
+	/// Create a device timestamp pair for a named [`Timer`].
+	pub(crate) fn device_timestamp_pair(&self) -> Result<super::TimestampPair> {
+		self
+			.handle
+			.state
+			.borrow()
+			.device
+			.clone()
+			.new_timestamp_pair()
 	}
 
 	/// Capture an isolated operation sequence as an immutable execution plan.
@@ -1028,9 +1422,101 @@ impl Engine {
 	}
 }
 
+impl Drop for Engine {
+	fn drop(&mut self) {
+		// Best-effort persistence of measured routes, matching the donor's
+		// engine-teardown save. The cache is small, the write is local, and a
+		// missing var tree or write failure never fails engine destruction.
+		if let Ok(state) = self.handle.state.try_borrow() {
+			let _ = state
+				.matmul_route_cache
+				.save(&super::dna::provider::blas::route_cache_path());
+		}
+	}
+}
+
 impl EngineHandle {
 	pub(crate) fn device_info(&self) -> crate::DeviceInfo {
 		self.state.borrow().device.device_info()
+	}
+
+	/// The admission profile of the selected device — whether descriptor
+	/// indices baked into fused op tapes are bound-slot positions
+	/// (Compatibility) or global heap indices (Strict).
+	pub(in crate::runtime) fn execution_profile(&self) -> super::device::features::ExecutionProfile {
+		self.state.borrow().device.physical().profile
+	}
+
+	/// Snapshot the device facts matmul planning reads.
+	///
+	/// The contract records queried limits plus the *enabled* capability
+	/// surface so candidate legality never claims a feature that device
+	/// admission left disabled.
+	pub(in crate::runtime) fn matmul_device_contract(
+		&self,
+	) -> super::dna::provider::blas::MatmulDeviceContract {
+		super::dna::provider::blas::MatmulDeviceContract::from_device(
+			self.state.borrow().device.as_ref(),
+		)
+	}
+
+	/// Admits and lazily builds one kernel's pipeline against the live device
+	/// contract — the donor's plan revalidation immediately before recording.
+	/// Provider-fused dispatches introduce kernels that source nodes never
+	/// required, so lowering must admit them here rather than inferring
+	/// availability from source-node admission.
+	pub(in crate::runtime) fn require_kernel(
+		&self,
+		kernel: super::dna::kernel::KernelId,
+	) -> Result<()> {
+		self.state.borrow().device.require_kernel(kernel)
+	}
+
+	/// Measured winner recorded for one exact route key, if any.
+	///
+	/// Returns `None` when the donor's `OA_DISABLE_GEMM_ROUTE_CACHE` opt-out is
+	/// set; the flag is read once, matching the donor's cached env semantics.
+	pub(in crate::runtime) fn matmul_measured_route(
+		&self,
+		key: &super::dna::provider::blas::MatmulRouteKey,
+	) -> Option<u64> {
+		if super::dna::provider::blas::measured_route_cache_disabled() {
+			return None;
+		}
+		self.state.borrow().matmul_route_cache.query(key)
+	}
+
+	/// Record one measured winner. Callers must prove the variant is legal
+	/// for the route key's complete problem and device contract first.
+	///
+	/// Only the device-gated tuning driver produces measurements; production
+	/// code paths read but never write.
+	#[cfg(test)]
+	pub(in crate::runtime) fn record_matmul_route(
+		&self,
+		key: super::dna::provider::blas::MatmulRouteKey,
+		value: super::dna::provider::blas::MatmulRouteValue,
+	) {
+		self.state.borrow_mut().matmul_route_cache.publish(
+			key,
+			value.winner_variant,
+			value.median_gpu_time_ms,
+			value.p95_gpu_time_ms,
+			value.sample_count,
+		);
+	}
+
+	/// Persist measured routes immediately — the donor's explicit
+	/// `GemmTuner::saveCache` after a tuning sweep. Engine teardown also
+	/// saves best-effort; an explicit save keeps a qualification result
+	/// durable even if the process does not reach a clean drop.
+	#[cfg(test)]
+	pub(in crate::runtime) fn save_matmul_route_cache(&self) -> Result<()> {
+		self
+			.state
+			.borrow()
+			.matmul_route_cache
+			.save(&super::dna::provider::blas::route_cache_path())
 	}
 
 	pub(crate) fn owns_event(&self, event: &Event) -> bool {
@@ -1054,34 +1540,34 @@ impl EngineHandle {
 			.raw();
 		let handle = image.handle;
 		let command = state.device.record_compute_commands(|command| {
-			let range = vk::ImageSubresourceRange::default()
-				.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-				.level_count(1)
-				.layer_count(1);
-			let to_transfer = vk::ImageMemoryBarrier2::default()
-				.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
-				.dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-				.dst_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-				.old_layout(vk::ImageLayout::UNDEFINED)
-				.new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-				.image(handle)
-				.subresource_range(range);
+			let range = vk::ImageSubresourceRange::new()
+				.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+				.set_level_count(1)
+				.set_layer_count(1);
+			let to_transfer = vk::ImageMemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.set_dst_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.set_old_layout(vk::ImageLayout::UNDEFINED)
+				.set_new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+				.set_image(handle)
+				.set_subresource_range(range);
 			let barriers = [to_transfer];
 			unsafe {
 				state.device.pipeline_barrier(
 					command,
-					&(vk::DependencyInfo::default()
-						.image_memory_barriers(&barriers)
+					&(vk::DependencyInfo::new()
+						.set_image_memory_barriers(&barriers)
 						.map_err(Error::from)?),
 				)?;
 			}
-			let copy = vk::BufferImageCopy::default()
-				.image_subresource(
-					vk::ImageSubresourceLayers::default()
-						.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-						.layer_count(1),
+			let copy = vk::BufferImageCopy::new()
+				.set_image_subresource(
+					vk::ImageSubresourceLayers::new()
+						.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+						.set_layer_count(1),
 				)
-				.image_extent(vk::Extent3D {
+				.set_image_extent(vk::Extent3D {
 					width,
 					height,
 					depth: 1,
@@ -1095,21 +1581,21 @@ impl EngineHandle {
 					&[copy],
 				)
 			}?;
-			let to_read = vk::ImageMemoryBarrier2::default()
-				.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-				.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-				.dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
-				.dst_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
-				.old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-				.new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-				.image(handle)
-				.subresource_range(range);
+			let to_read = vk::ImageMemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+				.set_dst_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
+				.set_old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+				.set_new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+				.set_image(handle)
+				.set_subresource_range(range);
 			let barriers = [to_read];
 			unsafe {
 				state.device.pipeline_barrier(
 					command,
-					&(vk::DependencyInfo::default()
-						.image_memory_barriers(&barriers)
+					&(vk::DependencyInfo::new()
+						.set_image_memory_barriers(&barriers)
 						.map_err(Error::from)?),
 				)?;
 			}
@@ -1161,7 +1647,7 @@ impl EngineHandle {
 	}
 
 	pub(crate) fn prepare_ui_sources(&self) -> Result<()> {
-		self.flush_impl(false)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		Ok(())
 	}
 
@@ -1206,9 +1692,9 @@ impl EngineHandle {
 			.buffer()
 			.ok_or_else(|| Error::invalid_argument("UI source is empty"))?;
 		Ok(
-			vk::DescriptorBufferInfo::default()
-				.buffer(buffer.raw())
-				.range(buffer.size()),
+			vk::DescriptorBufferInfo::new()
+				.set_buffer(buffer.raw())
+				.set_range(buffer.size()),
 		)
 	}
 
@@ -1246,25 +1732,25 @@ impl EngineHandle {
 	pub(crate) fn create_compose_image(&self, width: u32, height: u32) -> Result<(vk::Image, u32)> {
 		let state = self.state.borrow();
 		let device = &state.device;
-		let image_info = vk::ImageCreateInfo::default()
-			.image_type(vk::ImageType::_2D)
-			.format(vk::Format::R8G8B8A8_UNORM)
-			.extent(vk::Extent3D {
+		let image_info = vk::ImageCreateInfo::new()
+			.set_image_type(vk::ImageType::_2D)
+			.set_format(vk::Format::R8G8B8A8_UNORM)
+			.set_extent(vk::Extent3D {
 				width,
 				height,
 				depth: 1,
 			})
-			.mip_levels(1)
-			.array_layers(1)
-			.samples(vk::SampleCountFlagBits::_1_BIT)
-			.tiling(vk::ImageTiling::OPTIMAL)
-			.usage(
+			.set_mip_levels(1)
+			.set_array_layers(1)
+			.set_samples(vk::SampleCountFlagBits::_1_BIT)
+			.set_tiling(vk::ImageTiling::OPTIMAL)
+			.set_usage(
 				vk::ImageUsageFlagBits::STORAGE_BIT
 					| vk::ImageUsageFlagBits::TRANSFER_SRC_BIT
 					| vk::ImageUsageFlagBits::TRANSFER_DST_BIT,
 			)
-			.sharing_mode(vk::SharingMode::EXCLUSIVE)
-			.initial_layout(vk::ImageLayout::UNDEFINED);
+			.set_sharing_mode(vk::SharingMode::EXCLUSIVE)
+			.set_initial_layout(vk::ImageLayout::UNDEFINED);
 		let alloc_info = vk::mem::AllocationCreateInfo {
 			usage: vk::mem::MemoryUsage::PreferDevice,
 			..Default::default()
@@ -1276,15 +1762,15 @@ impl EngineHandle {
 		}
 		.map_err(|source| Error::backend_failure("Vulkan", "UI compose image allocation", source))?
 		.map_err(Error::from)?;
-		let view_info = vk::ImageViewCreateInfo::default()
-			.image(image)
-			.view_type(vk::ImageViewType::_2D)
-			.format(vk::Format::R8G8B8A8_UNORM)
-			.subresource_range(
-				vk::ImageSubresourceRange::default()
-					.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-					.level_count(1)
-					.layer_count(1),
+		let view_info = vk::ImageViewCreateInfo::new()
+			.set_image(image)
+			.set_view_type(vk::ImageViewType::_2D)
+			.set_format(vk::Format::R8G8B8A8_UNORM)
+			.set_subresource_range(
+				vk::ImageSubresourceRange::new()
+					.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+					.set_level_count(1)
+					.set_layer_count(1),
 			);
 		let view = match unsafe { device.raw().create_image_view(&view_info, None) } {
 			Ok(view) => view,
@@ -1381,24 +1867,24 @@ impl EngineHandle {
 		let device = state.device.clone();
 		let command = device.record_compute_commands(|command_buffer| {
 			record(device.raw(), command_buffer)?;
-			let range = vk::ImageSubresourceRange::default()
-				.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-				.level_count(1)
-				.layer_count(1);
-			let to_copy = vk::ImageMemoryBarrier2::default()
-				.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-				.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
-				.dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-				.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
-				.old_layout(vk::ImageLayout::GENERAL)
-				.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-				.image(image)
-				.subresource_range(range);
+			let range = vk::ImageSubresourceRange::new()
+				.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+				.set_level_count(1)
+				.set_layer_count(1);
+			let to_copy = vk::ImageMemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+				.set_src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.set_dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+				.set_old_layout(vk::ImageLayout::GENERAL)
+				.set_new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+				.set_image(image)
+				.set_subresource_range(range);
 			unsafe {
 				device.pipeline_barrier(
 					command_buffer,
-					&(vk::DependencyInfo::default()
-						.image_memory_barriers(std::slice::from_ref(&to_copy))
+					&(vk::DependencyInfo::new()
+						.set_image_memory_barriers(std::slice::from_ref(&to_copy))
 						.map_err(Error::from)?),
 				)?;
 				device.raw().cmd_copy_image_to_buffer(
@@ -1406,13 +1892,13 @@ impl EngineHandle {
 					image,
 					vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
 					readback_buffer,
-					&[vk::BufferImageCopy::default()
-						.image_subresource(
-							vk::ImageSubresourceLayers::default()
-								.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-								.layer_count(1),
+					&[vk::BufferImageCopy::new()
+						.set_image_subresource(
+							vk::ImageSubresourceLayers::new()
+								.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+								.set_layer_count(1),
 						)
-						.image_extent(vk::Extent3D {
+						.set_image_extent(vk::Extent3D {
 							width,
 							height,
 							depth: 1,
@@ -1450,6 +1936,37 @@ impl EngineHandle {
 			vertex_buf.raw(),
 			index_buf.raw(),
 			index_count,
+			clear_color,
+			push_data,
+			push_stages,
+			pipeline,
+			pipeline_layout,
+			descriptor_sets,
+		)?;
+		submit_recorded(&mut state, command)
+	}
+
+	/// Record one vertexless graphics frame and submit it on the graphics queue.
+	///
+	/// No vertex or index buffers are bound; the vertex shader derives
+	/// geometry from `SV_VertexID` (fullscreen-triangle pipelines such as the
+	/// canvas grid).
+	#[allow(clippy::too_many_arguments)]
+	pub(crate) fn record_and_submit_vertexless_frame(
+		&self,
+		target: &mut RenderTarget,
+		vertex_count: u32,
+		clear_color: [f32; 4],
+		push_data: &[u8],
+		push_stages: vk::ShaderStageFlags,
+		pipeline: vk::Pipeline,
+		pipeline_layout: vk::PipelineLayout,
+		descriptor_sets: &[vk::DescriptorSet],
+	) -> Result<Event> {
+		let mut state = self.state.borrow_mut();
+		let command = state.device.record_vertexless_frame(
+			target,
+			vertex_count,
 			clear_color,
 			push_data,
 			push_stages,
@@ -1498,6 +2015,11 @@ impl EngineHandle {
 	/// Create the flat-color material Vulkan pipeline, borrowing the device.
 	pub(crate) fn create_flat_color_pipeline(&self) -> Result<FlatColorPipeline> {
 		self.state.borrow().device.create_flat_color_pipeline()
+	}
+
+	/// Create the procedural canvas-grid Vulkan pipeline, borrowing the device.
+	pub(crate) fn create_canvas_grid_pipeline(&self) -> Result<CanvasGridPipeline> {
+		self.state.borrow().device.create_canvas_grid_pipeline()
 	}
 
 	/// Create the owned descriptor set layouts for the unlit pipeline.
@@ -1663,6 +2185,35 @@ impl EngineHandle {
 		})
 	}
 
+	/// Begin a deferred secret-lowering batch. While the returned scope is
+	/// active, every recorded submission on this engine defers into the
+	/// scope's ordered batch instead of queueing; `commit` submits it in
+	/// order and `Drop` abandons it without submission or waiting.
+	pub(crate) fn begin_secret_lowering(&self) -> Result<SecretLoweringScope> {
+		{
+			let state = self.state.borrow();
+			if state.capture_active {
+				return Err(Error::failed_precondition(
+					"secret lowering cannot begin during capture",
+				));
+			}
+			if state.secret_scope.is_some() {
+				return Err(Error::failed_precondition(
+					"a secret lowering scope is already active",
+				));
+			}
+		}
+		let mut state = self.state.borrow_mut();
+		state.secret_scope = Some(SecretScopeState {
+			pending: Vec::new(),
+			nodes: Vec::new(),
+		});
+		Ok(SecretLoweringScope {
+			engine: self.clone(),
+			active: true,
+		})
+	}
+
 	#[cfg_attr(
 		not(test),
 		expect(
@@ -1707,7 +2258,7 @@ impl EngineHandle {
 		}
 		// Flush only at this explicit execution boundary. Queue submission waits
 		// on the preceding engine epoch, including the exact final consumer.
-		self.flush_impl(false)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		let mut state = self.state.borrow_mut();
 		let (command, witness) = secret.record_erasure()?;
 		let event = submit_recorded(&mut state, command)?;
@@ -1723,7 +2274,7 @@ impl EngineHandle {
 	)]
 	pub(super) fn consume_secret_entropy<const N: usize>(
 		&self,
-		entropy: crate::cryptography::entropy::Entropy<N>,
+		entropy: crate::crypto::entropy::Entropy<N>,
 		consumer: impl FnOnce(&Arc<Device>, vk::CommandBuffer, SecretBinding<'_>) -> Result<()>,
 	) -> Result<SecretErasure> {
 		if self.state.borrow().capture_active {
@@ -1731,7 +2282,7 @@ impl EngineHandle {
 				"secret entropy cannot enter capture",
 			));
 		}
-		self.flush_impl(false)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		entropy.consume(|bytes| {
 			let mut state = self.state.borrow_mut();
 			let secret = SecretBuffer::new(&state.device, N)?;
@@ -1750,7 +2301,7 @@ impl EngineHandle {
 	pub(super) fn prove_mlkem_keygen(
 		&self,
 		k: u32,
-		entropy: crate::cryptography::entropy::Entropy<64>,
+		entropy: crate::crypto::entropy::Entropy<64>,
 	) -> Result<(Buffer, SecretErasure)> {
 		if !(2..=4).contains(&k) {
 			return Err(Error::invalid_argument("ML-KEM k must be 2, 3 or 4"));
@@ -1764,8 +2315,8 @@ impl EngineHandle {
 			.state
 			.borrow()
 			.device
-			.require_kernel(super::shader::KernelId::CryptographyMlKemKeygenU8)?;
-		self.flush_impl(false)?;
+			.require_kernel(super::dna::kernel::KernelId::CryptographyMlKemKeygenU8)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		entropy.consume(|bytes| {
 			let mut state = self.state.borrow_mut();
 			let public = Buffer::host_visible_storage(
@@ -1790,7 +2341,7 @@ impl EngineHandle {
 	pub(super) fn generate_mlkem_key(
 		&self,
 		k: u32,
-		entropy: crate::cryptography::entropy::Entropy<64>,
+		entropy: crate::crypto::entropy::Entropy<64>,
 	) -> Result<(MlKemDeviceKey, SecretErasure)> {
 		if !(2..=4).contains(&k) {
 			return Err(Error::invalid_argument("ML-KEM k must be 2, 3 or 4"));
@@ -1804,9 +2355,9 @@ impl EngineHandle {
 			}
 			state
 				.device
-				.require_kernel(super::shader::KernelId::CryptographyMlKemKeygenU8)?;
+				.require_kernel(super::dna::kernel::KernelId::CryptographyMlKemKeygenU8)?;
 		}
-		self.flush_impl(false)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		entropy.consume(|bytes| {
 			let mut state = self.state.borrow_mut();
 			let public = Buffer::host_visible_storage(
@@ -1836,6 +2387,58 @@ impl EngineHandle {
 		})
 	}
 
+	/// Import caller-supplied FIPS 203 decapsulation-key bytes. The encapsulation
+	/// key embedded in dk supplies the public transport through a fresh exclusive
+	/// buffer. Import reports an upload boundary, not a key-validity proof.
+	pub(super) fn import_mlkem_key(
+		&self,
+		k: u32,
+		decapsulation_key: &[u8],
+	) -> Result<(MlKemDeviceKey, SecretErasure)> {
+		if !(2..=4).contains(&k) {
+			return Err(Error::invalid_argument("ML-KEM k must be 2, 3 or 4"));
+		}
+		let private_len = usize::try_from(768 * k + 96)
+			.map_err(|_| Error::invalid_argument("ML-KEM private extent overflow"))?;
+		let public_len = usize::try_from(384 * k + 32)
+			.map_err(|_| Error::invalid_argument("ML-KEM public extent overflow"))?;
+		if decapsulation_key.len() != private_len {
+			return Err(Error::invalid_argument(
+				"ML-KEM decapsulation-key extent mismatch",
+			));
+		}
+		{
+			let state = self.state.borrow();
+			if state.capture_active {
+				return Err(Error::failed_precondition(
+					"ML-KEM secret execution cannot enter capture",
+				));
+			}
+		}
+		self.flush_impl(FlushTiming::Untimed)?;
+		let mut state = self.state.borrow_mut();
+		let public = Buffer::host_visible_storage(&state.device, public_len)?;
+		// FIPS 203 dk is dkPKE (384k) || ek (384k+32) || H(ek) || z; the ek
+		// range is public material by construction.
+		let ek_offset = usize::try_from(384 * k)
+			.map_err(|_| Error::invalid_argument("ML-KEM public offset overflow"))?;
+		public.write(0, &decapsulation_key[ek_offset..ek_offset + public_len])?;
+		let private = Arc::new(SecretBuffer::new(&state.device, private_len)?);
+		let (command, witness) = private.record_secret_import(decapsulation_key, |_, _| Ok(()))?;
+		let ready = submit_recorded(&mut state, command)?;
+		let erasure = SecretErasure::new(ready.clone(), witness);
+		Ok((
+			MlKemDeviceKey {
+				engine: self.clone(),
+				private,
+				public,
+				k,
+				ready,
+			},
+			erasure,
+		))
+	}
+
 	/// Explicit consuming boundary. Submission order includes key generation
 	/// and all previous consumers; failure leaves storage quarantined.
 	pub(super) fn erase_mlkem_key(&self, key: MlKemDeviceKey) -> Result<SecretErasure> {
@@ -1855,7 +2458,7 @@ impl EngineHandle {
 				));
 			}
 		}
-		self.flush_impl(false)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		let mut state = self.state.borrow_mut();
 		let (command, witness) = key.private.record_retained_erasure()?;
 		let event = submit_recorded(&mut state, command)?;
@@ -1865,10 +2468,10 @@ impl EngineHandle {
 	pub(super) fn generate_mldsa_key(
 		&self,
 		parameter: u32,
-		entropy: crate::cryptography::entropy::Entropy<32>,
+		entropy: crate::crypto::entropy::Entropy<32>,
 	) -> Result<(MlDsaDeviceKey, SecretErasure)> {
 		let (seed_len, public_len, private_len) =
-			super::shader::KernelId::mldsa_keygen_layout(parameter)
+			super::dna::kernel::KernelId::mldsa_keygen_layout(parameter)
 				.ok_or_else(|| Error::invalid_argument("ML-DSA parameter set must be 44, 65 or 87"))?;
 		{
 			let state = self.state.borrow();
@@ -1879,9 +2482,9 @@ impl EngineHandle {
 			}
 			state
 				.device
-				.require_kernel(super::shader::KernelId::CryptographyMlDsaKeygenU8)?;
+				.require_kernel(super::dna::kernel::KernelId::CryptographyMlDsaKeygenU8)?;
 		}
-		self.flush_impl(false)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		entropy.consume(|bytes| {
 			let mut state = self.state.borrow_mut();
 			let public = Buffer::host_visible_storage(
@@ -1916,6 +2519,69 @@ impl EngineHandle {
 		})
 	}
 
+	/// Import caller-supplied FIPS 204 signing-key bytes with their public key.
+	/// The public value is copied into fresh exclusive storage in the same
+	/// submission, so later caller-side mutation cannot alias the retained key.
+	/// Import reports an upload boundary, not a key-pair consistency proof.
+	pub(super) fn import_mldsa_key(
+		&self,
+		parameter: u32,
+		secret_key: &[u8],
+		public_key: &Buffer,
+	) -> Result<(MlDsaDeviceKey, SecretErasure)> {
+		let (_, public_len, private_len) = super::dna::kernel::KernelId::mldsa_keygen_layout(parameter)
+			.ok_or_else(|| Error::invalid_argument("ML-DSA parameter set must be 44, 65 or 87"))?;
+		let private_len = usize::try_from(private_len)
+			.map_err(|_| Error::invalid_argument("ML-DSA private extent overflow"))?;
+		let public_len = usize::try_from(public_len)
+			.map_err(|_| Error::invalid_argument("ML-DSA public extent overflow"))?;
+		if secret_key.len() != private_len || public_key.byte_len() != public_len {
+			return Err(Error::invalid_argument("ML-DSA key extent mismatch"));
+		}
+		{
+			let state = self.state.borrow();
+			if state.capture_active {
+				return Err(Error::failed_precondition(
+					"ML-DSA secret execution cannot enter capture",
+				));
+			}
+			if !public_key.belongs_to(&state.device) {
+				return Err(Error::invalid_argument(
+					"ML-DSA public key requires the same Engine device",
+				));
+			}
+		}
+		self.flush_impl(FlushTiming::Untimed)?;
+		let mut state = self.state.borrow_mut();
+		let public = Buffer::host_visible_storage(&state.device, public_len)?;
+		let private = Arc::new(SecretBuffer::new(&state.device, private_len)?);
+		let (command, witness) = private.record_secret_import(secret_key, |device, command| {
+			// SAFETY: both public buffers are live, disjoint, equally sized and
+			// carry transfer usage; the barrier above already orders the copy.
+			unsafe {
+				device.raw().cmd_copy_buffer(
+					command,
+					public_key.raw(),
+					public.raw(),
+					&[vk::BufferCopy::new().set_size(public_len as u64)],
+				)?;
+			}
+			Ok(())
+		})?;
+		let ready = submit_recorded(&mut state, command)?;
+		let erasure = SecretErasure::new(ready.clone(), witness);
+		Ok((
+			MlDsaDeviceKey {
+				engine: self.clone(),
+				private,
+				public,
+				parameter,
+				ready,
+			},
+			erasure,
+		))
+	}
+
 	/// Explicit consuming boundary. Submission order includes key generation
 	/// and all previous consumers; failure leaves storage quarantined.
 	pub(super) fn erase_mldsa_key(&self, key: MlDsaDeviceKey) -> Result<SecretErasure> {
@@ -1936,7 +2602,7 @@ impl EngineHandle {
 				));
 			}
 		}
-		self.flush_impl(false)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		let mut state = self.state.borrow_mut();
 		let (command, witness) = key.private.record_retained_erasure()?;
 		let event = submit_recorded(&mut state, command)?;
@@ -1955,10 +2621,11 @@ impl EngineHandle {
 		&self,
 		key: &MlDsaDeviceKey,
 		mu: &Buffer,
-		entropy: crate::cryptography::entropy::Entropy<32>,
+		entropy: crate::crypto::entropy::Entropy<32>,
 	) -> Result<(Buffer, Buffer, SecretErasure)> {
-		let (seed_len, _, mu_len, sig_len) = super::shader::KernelId::mldsa_sign_layout(key.parameter)
-			.ok_or_else(|| Error::invalid_argument("ML-DSA parameter set must be 44, 65 or 87"))?;
+		let (seed_len, _, mu_len, sig_len) =
+			super::dna::kernel::KernelId::mldsa_sign_layout(key.parameter)
+				.ok_or_else(|| Error::invalid_argument("ML-DSA parameter set must be 44, 65 or 87"))?;
 		{
 			let state = self.state.borrow();
 			if state.capture_active {
@@ -1979,9 +2646,9 @@ impl EngineHandle {
 			}
 			state
 				.device
-				.require_kernel(super::shader::KernelId::CryptographyMlDsaSignU8)?;
+				.require_kernel(super::dna::kernel::KernelId::CryptographyMlDsaSignU8)?;
 		}
-		self.flush_impl(false)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		entropy.consume(|bytes| {
 			let mut state = self.state.borrow_mut();
 			let signature = Buffer::host_visible_storage(
@@ -2016,7 +2683,7 @@ impl EngineHandle {
 		message: &Buffer,
 		context: &Buffer,
 		lengths: [u32; 2],
-		entropy: crate::cryptography::entropy::Entropy<32>,
+		entropy: crate::crypto::entropy::Entropy<32>,
 	) -> Result<(Buffer, Buffer, SecretErasure)> {
 		self.sign_mldsa_message_impl(key, message, context, lengths, None, entropy)
 	}
@@ -2030,7 +2697,7 @@ impl EngineHandle {
 		context: &Buffer,
 		lengths: [u32; 2],
 		algorithm: u32,
-		entropy: crate::cryptography::entropy::Entropy<32>,
+		entropy: crate::crypto::entropy::Entropy<32>,
 	) -> Result<(Buffer, Buffer, SecretErasure)> {
 		self.sign_mldsa_message_impl(key, message, context, lengths, Some(algorithm), entropy)
 	}
@@ -2042,18 +2709,18 @@ impl EngineHandle {
 		context: &Buffer,
 		lengths: [u32; 2],
 		algorithm: Option<u32>,
-		entropy: crate::cryptography::entropy::Entropy<32>,
+		entropy: crate::crypto::entropy::Entropy<32>,
 	) -> Result<(Buffer, Buffer, SecretErasure)> {
 		if let Some(algorithm) = algorithm {
-			super::shader::KernelId::mldsa_prehash_bytes(algorithm)
+			super::dna::kernel::KernelId::mldsa_prehash_bytes(algorithm)
 				.ok_or_else(|| Error::invalid_argument("ML-DSA prehash identity is unknown"))?;
 		}
 		let kernel = if algorithm.is_some() {
-			super::shader::KernelId::CryptographyMlDsaSignHashMessageU8
+			super::dna::kernel::KernelId::CryptographyMlDsaSignHashMessageU8
 		} else {
-			super::shader::KernelId::CryptographyMlDsaSignMessageU8
+			super::dna::kernel::KernelId::CryptographyMlDsaSignMessageU8
 		};
-		let (seed_len, _, _, sig_len) = super::shader::KernelId::mldsa_sign_layout(key.parameter)
+		let (seed_len, _, _, sig_len) = super::dna::kernel::KernelId::mldsa_sign_layout(key.parameter)
 			.ok_or_else(|| Error::invalid_argument("ML-DSA parameter set must be 44, 65 or 87"))?;
 		if lengths[1] > 255 {
 			return Err(Error::invalid_argument("ML-DSA context exceeds 255 bytes"));
@@ -2085,7 +2752,7 @@ impl EngineHandle {
 			}
 			state.device.require_kernel(kernel)?;
 		}
-		self.flush_impl(false)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		entropy.consume(|bytes| {
 			let mut state = self.state.borrow_mut();
 			let signature = Buffer::host_visible_storage(
@@ -2122,14 +2789,14 @@ impl EngineHandle {
 		context: &Buffer,
 		algorithm: u32,
 		context_length: u32,
-		entropy: crate::cryptography::entropy::Entropy<32>,
+		entropy: crate::crypto::entropy::Entropy<32>,
 	) -> Result<(Buffer, Buffer, SecretErasure)> {
-		let (seed_len, _, _, sig_len) = super::shader::KernelId::mldsa_sign_layout(key.parameter)
+		let (seed_len, _, _, sig_len) = super::dna::kernel::KernelId::mldsa_sign_layout(key.parameter)
 			.ok_or_else(|| Error::invalid_argument("ML-DSA parameter set must be 44, 65 or 87"))?;
 		if context_length > 255 {
 			return Err(Error::invalid_argument("ML-DSA context exceeds 255 bytes"));
 		}
-		let digest_extent = super::shader::KernelId::mldsa_prehash_bytes(algorithm)
+		let digest_extent = super::dna::kernel::KernelId::mldsa_prehash_bytes(algorithm)
 			.ok_or_else(|| Error::invalid_argument("ML-DSA prehash identity is unknown"))?;
 		let context_extent = u64::from(((context_length + 3) & !3).max(4));
 		{
@@ -2155,9 +2822,9 @@ impl EngineHandle {
 			}
 			state
 				.device
-				.require_kernel(super::shader::KernelId::CryptographyMlDsaSignPrehashedU8)?;
+				.require_kernel(super::dna::kernel::KernelId::CryptographyMlDsaSignPrehashedU8)?;
 		}
-		self.flush_impl(false)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		entropy.consume(|bytes| {
 			let mut state = self.state.borrow_mut();
 			let signature = Buffer::host_visible_storage(
@@ -2212,7 +2879,7 @@ impl EngineHandle {
 	pub(super) fn encapsulate_mlkem(
 		&self,
 		key: &MlKemDeviceKey,
-		entropy: crate::cryptography::entropy::Entropy<32>,
+		entropy: crate::crypto::entropy::Entropy<32>,
 	) -> Result<(MlKemSharedSecret, Buffer, Buffer, SecretErasure)> {
 		self.validate_mlkem_key(key)?;
 		self.encapsulate_mlkem_public(key.k, &key.public, entropy)
@@ -2224,7 +2891,7 @@ impl EngineHandle {
 		&self,
 		k: u32,
 		public: &Buffer,
-		entropy: crate::cryptography::entropy::Entropy<32>,
+		entropy: crate::crypto::entropy::Entropy<32>,
 	) -> Result<(MlKemSharedSecret, Buffer, Buffer, SecretErasure)> {
 		if !(2..=4).contains(&k) {
 			return Err(Error::invalid_argument("ML-KEM k must be 2, 3 or 4"));
@@ -2246,8 +2913,8 @@ impl EngineHandle {
 			.state
 			.borrow()
 			.device
-			.require_kernel(super::shader::KernelId::CryptographyMlKemEncapsU8)?;
-		self.flush_impl(false)?;
+			.require_kernel(super::dna::kernel::KernelId::CryptographyMlKemEncapsU8)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		entropy.consume(|bytes| {
 			let mut state = self.state.borrow_mut();
 			let ciphertext_size = 32 * if k == 4 { 11 * k + 5 } else { 10 * k + 4 };
@@ -2300,9 +2967,9 @@ impl EngineHandle {
 			}
 			state
 				.device
-				.require_kernel(super::shader::KernelId::CryptographyMlKemDecapsU8)?;
+				.require_kernel(super::dna::kernel::KernelId::CryptographyMlKemDecapsU8)?;
 		}
-		self.flush_impl(false)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		let mut state = self.state.borrow_mut();
 		let private = Arc::new(SecretBuffer::new(&state.device, 32)?);
 		let (command, witness) = key
@@ -2340,15 +3007,77 @@ impl EngineHandle {
 				));
 			}
 		}
-		self.flush_impl(false)?;
+		self.flush_impl(FlushTiming::Untimed)?;
 		let mut state = self.state.borrow_mut();
 		let (command, witness) = secret.private.record_retained_erasure()?;
 		let event = submit_recorded(&mut state, command)?;
 		Ok(SecretErasure::new(event, witness))
 	}
 
+	/// Declassification boundary: the shared secret stays private while a
+	/// keyed hash absorbs public info and emits only public derived bytes.
+	pub(super) fn derive_mlkem_shared_secret(
+		&self,
+		secret: &MlKemSharedSecret,
+		info: &Buffer,
+		info_len: u32,
+		output_len: u32,
+	) -> Result<(Buffer, SecretErasure)> {
+		{
+			let state = self.state.borrow();
+			if state.capture_active {
+				return Err(Error::failed_precondition(
+					"ML-KEM shared-secret derivation cannot enter capture",
+				));
+			}
+			if !Rc::ptr_eq(&secret.engine.state, &self.state)
+				|| !secret.private.belongs_to(&state.device)
+				|| !secret.ready.comes_from(&state.device)
+			{
+				return Err(Error::invalid_argument(
+					"ML-KEM shared secret requires its originating Engine",
+				));
+			}
+			if !info.belongs_to(&state.device) {
+				return Err(Error::invalid_argument(
+					"ML-KEM derivation info requires the originating device",
+				));
+			}
+			state
+				.device
+				.require_kernel(super::dna::kernel::KernelId::CryptographyMlKemSharedDeriveU8)?;
+		}
+		self.flush_impl(FlushTiming::Untimed)?;
+		let mut state = self.state.borrow_mut();
+		let output = Buffer::host_visible_storage(
+			&state.device,
+			usize::try_from(output_len)
+				.map_err(|_| Error::invalid_argument("ML-KEM derivation extent overflow"))?,
+		)?;
+		let (command, witness) = secret
+			.private
+			.record_shared_derive(info, &output, info_len, output_len)?;
+		let event = submit_recorded(&mut state, command)?;
+		Ok((output, SecretErasure::new(event, witness)))
+	}
+
 	pub(crate) fn checkpoint(&self, timed: bool) -> Result<Event> {
-		if let Some(event) = self.flush_impl(timed)? {
+		self.checkpoint_impl(if timed {
+			FlushTiming::Fresh
+		} else {
+			FlushTiming::Untimed
+		})
+	}
+
+	/// Checkpoint with a caller-owned timestamp pair. The pair is retained
+	/// through command retirement but not exposed on the returned event.
+	pub(crate) fn checkpoint_timed_with(&self, pair: &super::TimestampPair) -> Result<Event> {
+		self.checkpoint_impl(FlushTiming::Borrowed(pair.clone()))
+	}
+
+	fn checkpoint_impl(&self, timing: FlushTiming) -> Result<Event> {
+		let timed = !matches!(timing, FlushTiming::Untimed);
+		if let Some(event) = self.flush_impl(timing)? {
 			return Ok(event);
 		}
 		if timed {
@@ -2375,12 +3104,22 @@ impl EngineHandle {
 		self.state.borrow().device.compute_shared_memory_bytes()
 	}
 
+	pub(crate) fn uses_compatibility_profile(&self) -> bool {
+		self.state.borrow().device.physical().profile
+			== super::device::features::ExecutionProfile::Compatibility
+	}
+
 	pub(crate) fn linear_dispatch_grid(&self, count: u32, group_size: u32) -> Result<[u32; 3]> {
 		self
 			.state
 			.borrow()
 			.device
 			.linear_dispatch_grid(count, group_size)
+	}
+
+	/// Queried per-dimension compute dispatch group limits of the selected device.
+	pub(crate) fn max_compute_work_group_count(&self) -> [u32; 3] {
+		self.state.borrow().device.max_compute_work_group_count()
 	}
 
 	pub(crate) fn record_optional_semantic(
@@ -2498,24 +3237,34 @@ impl EngineHandle {
 	}
 
 	pub(crate) fn flush(&self) -> Result<Option<Event>> {
-		self.flush_impl(false)
+		self.flush_impl(FlushTiming::Untimed)
 	}
 
-	fn flush_impl(&self, timed: bool) -> Result<Option<Event>> {
+	fn flush_impl(&self, timing: FlushTiming) -> Result<Option<Event>> {
 		let mut state = self.state.borrow_mut();
 		if state.capture_active {
 			return Err(Error::failed_precondition(
 				"cannot submit eager work while execution capture is active",
 			));
 		}
-		let Some(pending) = state.session.take(&[])? else {
+		let device = state.device.clone();
+		let Some(pending) = state.session.take(&device, &[])? else {
 			return Ok(None);
 		};
-		let recorded = if timed {
-			state.device.record_timed_compute_graph(&pending.graph)
-		} else {
-			state.device.record_compute_graph(&pending.graph)
+		let borrowed = matches!(timing, FlushTiming::Borrowed(_));
+		let recorded = match timing {
+			FlushTiming::Untimed => state.device.record_compute_graph(&pending.graph),
+			FlushTiming::Fresh => state.device.record_timed_compute_graph(&pending.graph),
+			FlushTiming::Borrowed(pair) => state
+				.device
+				.record_timed_compute_graph_with(&pending.graph, pair),
 		};
+		let recorded = recorded.map(|mut command| {
+			if borrowed {
+				command.suppress_event_timing();
+			}
+			command
+		});
 		match recorded {
 			Ok(command) => match submit_recorded(&mut state, command) {
 				Ok(event) => {
@@ -2587,6 +3336,28 @@ impl SemanticLoweringScope {
 		self.active = false;
 		result.map(|_| ())
 	}
+
+	pub(crate) fn commit_optional(mut self, semantic: OptionalSemanticDispatch<'_>) -> Result<()> {
+		let result = self
+			.engine
+			.state
+			.borrow_mut()
+			.session
+			.finish_optional_semantic_lowering(semantic);
+		self.active = false;
+		result.map(|_| ())
+	}
+
+	pub(crate) fn commit_quant(mut self, semantic: QuantSemanticDispatch<'_>) -> Result<()> {
+		let result = self
+			.engine
+			.state
+			.borrow_mut()
+			.session
+			.finish_quant_semantic_lowering(semantic);
+		self.active = false;
+		result.map(|_| ())
+	}
 }
 
 impl Drop for SemanticLoweringScope {
@@ -2654,7 +3425,8 @@ impl CaptureGuard {
 	fn finish(mut self, observed_outputs: &[&Matrix]) -> Result<ExecutionPlan> {
 		let pending = {
 			let mut state = self.engine.state.borrow_mut();
-			let pending = match state.session.take(observed_outputs) {
+			let device = state.device.clone();
+			let pending = match state.session.take(&device, observed_outputs) {
 				Ok(pending) => pending,
 				Err(error) => {
 					state.session.abort_capture();
@@ -2680,7 +3452,7 @@ impl CaptureGuard {
 	fn finish_preserving(mut self, observed_outputs: &[&Matrix]) -> Result<ExecutionPlan> {
 		let pending = {
 			let mut state = self.engine.state.borrow_mut();
-			let pending = state.session.snapshot(observed_outputs);
+			let pending = state.session.snapshot(&state.device, observed_outputs);
 			state.capture_active = false;
 			self.active = false;
 			state.session.end_capture();
@@ -2712,6 +3484,36 @@ impl Drop for CaptureGuard {
 }
 
 fn submit_recorded(state: &mut EngineState, command: RecordedCommandBuffer) -> Result<Event> {
+	if let Some(scope) = &mut state.secret_scope {
+		let index = u64::try_from(scope.pending.len())
+			.ok()
+			.and_then(|index| index.checked_add(1));
+		let Some(epoch) = index.and_then(|index| state.next_epoch.checked_add(index)) else {
+			state.device.free(command);
+			return Err(Error::resource_exhausted(
+				"Vulkan submission epoch exhausted",
+			));
+		};
+		if let Err(error) = state.retirement.prepare() {
+			state.device.free(command);
+			return Err(error);
+		}
+		let (deferred, ticket) = state.retirement.reserve();
+		let node = SecretScopeNode {
+			uses_secret: command.has_secret_use(),
+			records_erasure: command.has_secret_erasure(),
+			retains_public: command.has_public_resources(),
+		};
+		scope.nodes.push(node);
+		let timing = command.timing();
+		scope.pending.push(DeferredSubmission {
+			epoch,
+			command,
+			deferred,
+			ticket: ticket.clone(),
+		});
+		return Ok(Event::new(state.device.clone(), epoch, ticket, timing));
+	}
 	let Some(epoch) = state.next_epoch.checked_add(1) else {
 		state.device.free(command);
 		return Err(Error::resource_exhausted(

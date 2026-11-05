@@ -1,6 +1,8 @@
 //! Viewer configuration types. Donor: `ViewerConfig`, `ViewerMode`, etc.
 
-use crate::ui::types::{UiKey, UiMotionSpeed, UiStyle};
+use crate::input::{Key, MotionSpeed};
+use crate::ui::types::UiStyle;
+pub use crate::viewer::types::ViewerConfig;
 
 /// Media source mode for the Viewer.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -32,49 +34,6 @@ pub enum ViewerCanvasBackground {
 	Gradient,
 }
 
-/// Full configuration block. Donor: `oa::ViewerConfig`.
-#[derive(Clone, Debug)]
-pub struct ViewerConfig {
-	pub mode: ViewerMode,
-	pub path: String,
-	pub title: String,
-	pub width: u32,
-	pub height: u32,
-	pub style: UiStyle,
-	pub motion_speed: UiMotionSpeed,
-	pub show_help: bool,
-	pub show_stats: bool,
-	pub show_timeline: bool,
-	pub vsync: bool,
-	pub loop_media: bool,
-	pub start_playing: bool,
-	pub auto_hide_controls: bool,
-	pub controls_hide_delay_ms: u32,
-	pub canvas_background: ViewerCanvasBackground,
-	pub show_canvas_grid: bool,
-	pub audio_view: ViewerAudioView,
-	pub audio_waveform_bins: u32,
-	pub audio_analysis_frames: u32,
-	pub audio_fft_size: u32,
-	pub audio_hop_size: u32,
-	pub audio_mel_bins: u32,
-	pub audio_ring_ms: u32,
-	// Keyboard bindings.
-	pub key_quit: UiKey,
-	pub key_quit_q: UiKey,
-	pub key_red: UiKey,
-	pub key_green: UiKey,
-	pub key_blue: UiKey,
-	pub key_alpha: UiKey,
-	pub key_rgb: UiKey,
-	pub key_zoom_in: UiKey,
-	pub key_zoom_out: UiKey,
-	pub key_zoom_fit: UiKey,
-	pub key_zoom_100: UiKey,
-	pub key_canvas_background: UiKey,
-	pub key_canvas_grid: UiKey,
-}
-
 impl Default for ViewerConfig {
 	fn default() -> Self {
 		Self {
@@ -84,7 +43,7 @@ impl Default for ViewerConfig {
 			width: 1280,
 			height: 720,
 			style: UiStyle::viewer_dark(),
-			motion_speed: UiMotionSpeed::Fast,
+			motion_speed: MotionSpeed::Fast,
 			show_help: true,
 			show_stats: false,
 			show_timeline: true,
@@ -102,19 +61,19 @@ impl Default for ViewerConfig {
 			audio_hop_size: 256,
 			audio_mel_bins: 80,
 			audio_ring_ms: 500,
-			key_quit: UiKey::Escape,
-			key_quit_q: UiKey::Q,
-			key_red: UiKey::Num1,
-			key_green: UiKey::Num2,
-			key_blue: UiKey::Num3,
-			key_alpha: UiKey::Num4,
-			key_rgb: UiKey::Num5,
-			key_zoom_in: UiKey::Equals,
-			key_zoom_out: UiKey::Minus,
-			key_zoom_fit: UiKey::Num0,
-			key_zoom_100: UiKey::Num9,
-			key_canvas_background: UiKey::B,
-			key_canvas_grid: UiKey::G,
+			key_quit: Key::Escape,
+			key_quit_q: Key::Q,
+			key_red: Key::Num1,
+			key_green: Key::Num2,
+			key_blue: Key::Num3,
+			key_alpha: Key::Num4,
+			key_rgb: Key::Num5,
+			key_zoom_in: Key::Equals,
+			key_zoom_out: Key::Minus,
+			key_zoom_fit: Key::Num0,
+			key_zoom_100: Key::Num9,
+			key_canvas_background: Key::B,
+			key_canvas_grid: Key::G,
 		}
 	}
 }

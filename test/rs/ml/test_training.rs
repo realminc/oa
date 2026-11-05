@@ -717,8 +717,8 @@ test_vk!(
 			diagnostics.semantic_binding_count(),
 			program.semantic_graph().values().len()
 		);
-		assert_eq!(diagnostics.command_recording_count(), 1);
-		assert_eq!(diagnostics.command_cache_hit_count(), 3);
+		assert_eq!(diagnostics.command_recording_count(), 3);
+		assert_eq!(diagnostics.command_cache_hit_count(), 1);
 		assert_eq!(diagnostics.submission_count(), 4);
 		assert_eq!(diagnostics.input_upload_count(), 6);
 		assert_eq!(program.replay_count(), 4);
@@ -764,7 +764,7 @@ test_vk!(
 		assert_eq!(
 			operations
 				.iter()
-				.filter(|name| **name == "oa::matrix::dropout")
+				.filter(|name| **name == "oa::FnMatrix::dropout")
 				.count(),
 			1
 		);

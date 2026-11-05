@@ -5,6 +5,7 @@ use std::rc::Rc;
 use crate::{DType, Engine, Error, Matrix, Result, matrix as core_matrix};
 
 use super::{Module, ModuleRegistry, matrix, nn::Linear};
+pub use crate::ml::types::CategoricalActorCriticConfig;
 
 /// Policy logits and scalar critic value produced from one observation batch.
 pub struct ActorCriticOutput {
@@ -33,19 +34,6 @@ pub trait ActorCritic: Module {
 	fn auxiliary_loss(&self, task: &Matrix) -> Result<Matrix> {
 		Ok(task.clone())
 	}
-}
-
-/// Dimensions and deterministic initialization seed for the default MLP.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CategoricalActorCriticConfig {
-	/// Number of scalar features in each observation.
-	pub observation_size: usize,
-	/// Number of discrete actions; must be at least two.
-	pub action_count: usize,
-	/// Width of both hidden layers in each independent tower.
-	pub hidden_size: usize,
-	/// Seed for the first of six independent Xavier-uniform projections.
-	pub seed: u64,
 }
 
 /// Default two-tower categorical actor/critic MLP.

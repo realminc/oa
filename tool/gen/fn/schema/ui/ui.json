@@ -33,7 +33,7 @@
       "stable_id": 454, "name": "blit_rgba", "kernel_id": "UiBlitRgba",
       "source": "src/slang/ui/blit_rgba.slang",
       "workgroup_size": [8, 8, 1],
-      "push_fields": [["src_idx","uint32"],["dst_idx","uint32"],["src_w","uint32"],["src_h","uint32"],["dst_x","int32"],["dst_y","int32"],["dst_w","uint32"],["dst_h","uint32"],["clip_x","int32"],["clip_y","int32"],["clip_w","uint32"],["clip_h","uint32"],["channel","uint32"],["imageWidth","uint32"],["imageHeight","uint32"]]
+      "push_fields": [["src_idx","uint32"],["dst_idx","uint32"],["src_w","uint32"],["src_h","uint32"],["dst_x","int32"],["dst_y","int32"],["dst_w","uint32"],["dst_h","uint32"],["clip_x","int32"],["clip_y","int32"],["clip_w","uint32"],["clip_h","uint32"],["channel","uint32"],["base_x","uint32"],["base_y","uint32"]]
     },
     {
       "stable_id": 455, "name": "draw_plot_line", "kernel_id": "UiDrawPlotLine",
@@ -76,6 +76,55 @@
       "source": "src/slang/ui/draw_waveform.slang",
       "workgroup_size": [64, 1, 1],
       "push_fields": [["envelope_idx","uint32"],["bins","uint32"],["dst_idx","uint32"],["dst_x","int32"],["dst_y","int32"],["dst_w","uint32"],["dst_h","uint32"],["fraction","float32"],["played_rgba","uint32"],["remaining_rgba","uint32"],["clip_x","int32"],["clip_y","int32"],["clip_w","uint32"],["clip_h","uint32"]]
-    }
+    },
+ {
+  "stable_id": 565,
+  "name": "blit_planar",
+  "kernel_id": "UiBlitPlanar",
+  "source": "src/slang/ui/blit_planar.slang",
+  "workgroup_size": [8, 8, 1],
+  "push_fields": [
+   ["r_idx", "uint32"],
+   ["g_idx", "uint32"],
+   ["b_idx", "uint32"],
+   ["a_idx", "uint32"],
+   ["dst_idx", "uint32"],
+   ["src_w", "uint32"],
+   ["src_h", "uint32"],
+   ["dst_x", "int32"],
+   ["dst_y", "int32"],
+   ["dtypes", "uint32"],
+   ["channels", "uint32"],
+   ["dst_w", "uint32"],
+   ["dst_h", "uint32"],
+   ["clip_x", "int32"],
+   ["clip_y", "int32"],
+   ["clip_w", "uint32"],
+   ["clip_h", "uint32"],
+   ["base_x", "uint32"],
+   ["base_y", "uint32"]
   ]
+ },
+ {
+  "stable_id": 566,
+  "name": "draw_rect_outlines",
+  "kernel_id": "UiDrawRectOutlines",
+  "source": "src/slang/ui/draw_rect_outlines.slang",
+  "workgroup_size": [64, 1, 1],
+  "push_fields": [
+   ["rect_idx", "uint32"],
+   ["count", "uint32"],
+   ["dst_idx", "uint32"],
+   ["dst_x", "int32"],
+   ["dst_y", "int32"],
+   ["dst_w", "uint32"],
+   ["dst_h", "uint32"],
+   ["clip_x", "int32"],
+   ["clip_y", "int32"],
+   ["clip_w", "uint32"],
+   ["clip_h", "uint32"],
+   ["thickness", "uint32"],
+   ["rgba", "uint32"]
+  ]
+ }]
 }

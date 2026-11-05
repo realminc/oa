@@ -43,6 +43,7 @@
 			buffers: &buffers,
 			push_constants,
 			workgroups,
+		indirect: None,
 		},
 		SemanticDispatch {
 			contract,

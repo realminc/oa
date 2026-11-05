@@ -1,6 +1,6 @@
-use crate::{Audio, Error, Image, Matrix, OpAttribute, OperationContract, Result};
+use crate::{Audio, Error, Image, Matrix, OpAttribute, OperationContract, Result, ml::QuantMatrix};
 
-use super::shader::KernelId;
+use super::dna::kernel::KernelId;
 
 /// Borrowed semantic inputs and outputs for one executable lowering.
 pub(crate) struct SemanticDispatch<'a> {
@@ -90,6 +90,29 @@ impl AudioSemanticDispatch<'_> {
 		}
 		Ok(())
 	}
+}
+
+/// Semantic input accepted by a quantized-weight operation.
+pub(crate) enum QuantSemanticInput<'a> {
+	Matrix(&'a Matrix),
+	QuantMatrix(&'a QuantMatrix),
+}
+
+/// Semantic output produced by a quantized-weight operation.
+pub(crate) enum QuantSemanticOutput<'a> {
+	Matrix(&'a Matrix),
+	QuantMatrix(&'a QuantMatrix),
+}
+
+/// Borrowed quantized-weight semantic operation for one composite lowering.
+///
+/// The executable nodes always bind ordinary [`Matrix`] storage; only the
+/// committed parent contract carries the [`QuantMatrix`] value kind.
+pub(crate) struct QuantSemanticDispatch<'a> {
+	pub(crate) contract: OperationContract,
+	pub(crate) inputs: &'a [QuantSemanticInput<'a>],
+	pub(crate) outputs: &'a [QuantSemanticOutput<'a>],
+	pub(crate) attributes: &'a [OpAttribute],
 }
 
 /// Semantic input accepted by an Image operation.

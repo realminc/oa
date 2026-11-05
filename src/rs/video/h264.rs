@@ -3,6 +3,7 @@
 use crate::{Error, Result};
 
 use super::bitstream::{BitReader, remove_emulation_prevention};
+pub use crate::video::types::H264TimingInfo;
 
 const MAX_H264_POC_CYCLE: usize = 256;
 
@@ -78,14 +79,6 @@ pub struct H264VideoSignal {
 pub struct H264ChromaLocation {
 	pub top_field: u32,
 	pub bottom_field: u32,
-}
-
-/// H.264 VUI timing syntax.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct H264TimingInfo {
-	pub num_units_in_tick: u32,
-	pub time_scale: u32,
-	pub fixed_frame_rate: bool,
 }
 
 /// One H.264 hypothetical-reference-decoder CPB schedule entry.

@@ -2,24 +2,13 @@
 
 use std::path::PathBuf;
 
+pub use crate::media::types::MediaPlayerConfig;
 use crate::{
 	AudioPlayer, Engine, Error, Result, VideoFrame, VideoPlayer, audio::AudioPlayerConfig,
 	video::VideoPlayerConfig,
 };
 
 use super::MediaTimestamp;
-
-/// Two local tracks whose presentation timestamps share a zero-based epoch.
-///
-/// Audio currently uses the incremental WAV/FLAC/MP3 source boundary of
-/// [`AudioPlayer`]. An audio track embedded in MP4 or Matroska is not yet
-/// extracted by OA; callers must provide a separately decodable audio file.
-#[derive(Clone, Debug)]
-pub struct MediaPlayerConfig {
-	pub video_path: PathBuf,
-	pub audio_path: PathBuf,
-	pub audio_ring_milliseconds: u32,
-}
 
 impl MediaPlayerConfig {
 	pub fn new(video_path: impl Into<PathBuf>, audio_path: impl Into<PathBuf>) -> Self {
@@ -28,6 +17,14 @@ impl MediaPlayerConfig {
 			audio_path: audio_path.into(),
 			audio_ring_milliseconds: 500,
 		}
+	}
+
+	/// Play one container as both tracks: the video demuxer indexes its video
+	/// track while `AudioPlayer` decodes the embedded audio track. The two
+	/// decoders share the container's own timestamp epoch.
+	pub fn embedded(path: impl Into<PathBuf>) -> Self {
+		let path = path.into();
+		Self::new(path.clone(), path)
 	}
 }
 

@@ -2,33 +2,8 @@
 
 use crate::{DType, Error, Matrix, OpAttribute, OperationContract, Result, matrix};
 
+pub use super::types::{ContinuousPolicyResult, PolicyResult};
 use crate::runtime::SemanticDispatch;
-
-/// One categorical action and its differentiable policy statistics.
-pub struct PolicyResult {
-	/// I32 action index for every environment.
-	pub action: Matrix,
-	/// Log probability of each selected action.
-	pub log_probability: Matrix,
-	/// Categorical entropy for every environment.
-	pub entropy: Matrix,
-	/// Critic value passed through without a storage copy.
-	pub value: Matrix,
-}
-
-/// One bounded continuous action and its differentiable policy statistics.
-pub struct ContinuousPolicyResult {
-	/// Action after tanh squashing and affine mapping to the requested range.
-	pub action: Matrix,
-	/// Unsquashed normal sample, retained for exact policy reevaluation.
-	pub raw_action: Matrix,
-	/// Summed corrected log probability for every environment.
-	pub log_probability: Matrix,
-	/// Summed base-normal entropy for every environment.
-	pub entropy: Matrix,
-	/// Critic value passed through without a storage copy.
-	pub value: Matrix,
-}
 
 #[derive(Clone, Copy)]
 struct ContinuousRange {

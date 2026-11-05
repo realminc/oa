@@ -2749,12 +2749,12 @@
           ]
         ],
         "arguments": {
-          "parameters": "oa::image::NormalizationParams { mean: $mean, std: $std }"
+          "parameters": "oa::image::NormalizationConfig { mean: $mean, std: $std }"
         }
       },
       "rust": {
         "category": "color",
-        "parameters": [["input", "&Image"], ["parameters", "NormalizationParams"]],
+        "parameters": [["input", "&Image"], ["parameters", "NormalizationConfig"]],
         "returns": "Image",
         "doc": ["Apply `(pixel - mean[channel]) / std[channel]` to up to three channels."],
         "attribute_sources": {
@@ -2799,13 +2799,21 @@
       "output_kinds": ["image"],
       "shape_rule": "explicit",
       "dtype_rule": "f32",
-      "attributes": [["destination_format", "enum"]],
+      "dnn": {
+        "role": "color_convert",
+        "providers": ["vision_preprocess"]
+      },
+      "attributes": [["source_format", "enum"], ["destination_format", "enum"], ["layout", "enum"]],
       "rust": {
         "category": "color",
         "parameters": [["input", "&Image"], ["destination_format", "crate::ImageFormat"]],
         "returns": "Image",
         "doc": ["Convert between three-channel RGB and BGR semantics, including identity."],
-        "attribute_sources": {"destination_format": {"encoding": "enumeration", "value": "format_token(destination_format)"}},
+        "attribute_sources": {
+          "source_format": {"encoding": "enumeration", "value": "format_token(input.format())"},
+          "destination_format": {"encoding": "enumeration", "value": "format_token(destination_format)"},
+          "layout": {"encoding": "enumeration", "value": "layout_token(input.layout())"}
+        },
         "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
         "push_constants": [
           {
@@ -2830,19 +2838,25 @@
     },
     {
       "name": "resize_normalize",
+      "control_flow": "conditional",
+      "donor_op": "oa::FnImage::resizeNormalize",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
       "dtype_rule": "f32",
+      "dnn": {
+        "role": "resize_normalize",
+        "providers": ["vision_preprocess"]
+      },
       "attributes": [
-        ["target_width", "unsigned_integer"],
-        ["target_height", "unsigned_integer"],
-        ["mean_0", "float"],
-        ["mean_1", "float"],
-        ["mean_2", "float"],
-        ["std_0", "float"],
-        ["std_1", "float"],
-        ["std_2", "float"]
+        ["width", "unsigned_integer"],
+        ["height", "unsigned_integer"],
+        ["mean0", "float"],
+        ["mean1", "float"],
+        ["mean2", "float"],
+        ["std0", "float"],
+        ["std1", "float"],
+        ["std2", "float"]
       ],
       "python": {
         "parameters": [
@@ -2868,23 +2882,23 @@
           ]
         ],
         "arguments": {
-          "parameters": "oa::image::NormalizationParams { mean: $mean, std: $std }"
+          "parameters": "oa::image::NormalizationConfig { mean: $mean, std: $std }"
         }
       },
       "rust": {
         "category": "color",
-        "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["parameters", "NormalizationParams"]],
+        "parameters": [["input", "&Image"], ["width", "u32"], ["height", "u32"], ["parameters", "NormalizationConfig"]],
         "returns": "Image",
         "doc": ["Bilinearly resize and normalize in one semantic and executable operation."],
         "attribute_sources": {
-          "target_width": {"encoding": "unsigned", "value": "width"},
-          "target_height": {"encoding": "unsigned", "value": "height"},
-          "mean_0": {"encoding": "float", "value": "parameters.mean[0]"},
-          "mean_1": {"encoding": "float", "value": "parameters.mean[1]"},
-          "mean_2": {"encoding": "float", "value": "parameters.mean[2]"},
-          "std_0": {"encoding": "float", "value": "parameters.std[0]"},
-          "std_1": {"encoding": "float", "value": "parameters.std[1]"},
-          "std_2": {"encoding": "float", "value": "parameters.std[2]"}
+          "width": {"encoding": "unsigned", "value": "width"},
+          "height": {"encoding": "unsigned", "value": "height"},
+          "mean0": {"encoding": "float", "value": "parameters.mean[0]"},
+          "mean1": {"encoding": "float", "value": "parameters.mean[1]"},
+          "mean2": {"encoding": "float", "value": "parameters.mean[2]"},
+          "std0": {"encoding": "float", "value": "parameters.std[0]"},
+          "std1": {"encoding": "float", "value": "parameters.std[1]"},
+          "std2": {"encoding": "float", "value": "parameters.std[2]"}
         },
         "bindings": [{"name": null, "values": {"input_index": ["read", "input"], "output_index": ["write", "output"]}}],
         "push_constants": [
@@ -2902,7 +2916,8 @@
               "mean_2": ["F32", "parameters.mean[2]"],
               "std_0": ["F32", "parameters.std[0]"],
               "std_1": ["F32", "parameters.std[1]"],
-              "std_2": ["F32", "parameters.std[2]"]
+              "std_2": ["F32", "parameters.std[2]"],
+              "swap_rb": ["U32", "0"]
             }
           }
         ],
@@ -4995,7 +5010,8 @@
         ["mean_2", "float32"],
         ["std_0", "float32"],
         ["std_1", "float32"],
-        ["std_2", "float32"]
+        ["std_2", "float32"],
+        ["swap_rb", "uint32"]
       ]
     },
     {
@@ -5036,6 +5052,7 @@
   "types": [
     {
       "category": "geometric",
+      "class": "mode",
       "name": "InterpolationMode",
       "before": "resize",
       "kind": "enum",
@@ -5069,6 +5086,7 @@
     },
     {
       "category": "geometric",
+      "class": "mode",
       "name": "BorderMode",
       "before": "resize",
       "kind": "enum",
@@ -5102,6 +5120,7 @@
     },
     {
       "category": "geometric",
+      "class": "record",
       "name": "ImageExtent",
       "before": "resize",
       "kind": "struct",
@@ -5120,7 +5139,8 @@
     },
     {
       "category": "color",
-      "name": "NormalizationParams",
+      "class": "config",
+      "name": "NormalizationConfig",
       "before": "normalize",
       "kind": "struct",
       "visibility": "pub",

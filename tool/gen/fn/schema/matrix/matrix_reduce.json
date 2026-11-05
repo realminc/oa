@@ -10,19 +10,23 @@
       "tools/gen/fn/schema/core/coreFnMatrixReduce.toml",
       "source/cpp/lib/oa/core/fnmatrix/reduce/fnMatrixReduce.cpp",
       "source/cpp/lib/oa/core/autograd/matrix/autogradReduce.h",
+      "source/cpp/lib/oa/core/shader/compute/flat/argmax.slang",
       "source/cpp/lib/oa/core/shader/compute/flat/categoricalAccuracyCount.slang",
       "source/cpp/lib/oa/core/shader/compute/flat/maskedCategoricalAccuracyCount.slang",
+      "source/cpp/lib/oa/core/shader/compute/flat/max.slang",
+      "source/cpp/lib/oa/ml/shader/compute/nn/reduction/maxBwd.slang",
       "source/cpp/lib/oa/ml/shader/compute/nn/softmax/softmax.slang",
       "source/cpp/lib/oa/ml/shader/compute/nn/softmax/softmaxBwd.slang",
       "source/cpp/lib/oa/ml/shader/compute/nn/softmax/logSoftmax.slang",
       "source/cpp/lib/oa/ml/shader/compute/nn/softmax/logSoftmaxBwd.slang"
     ],
-    "reason": "Preserves the donor axis-aware stable FP32 Softmax, full and keep-dimension Sum schedules and adjoints, plus device-resident categorical accuracy counters while adapting names, attributes, and the bindless ABI to OARS."
+    "reason": "Preserves the donor axis-aware stable FP32 Softmax, full and keep-dimension Sum, composite Sum+Scale Mean, full Max/Argmax reductions and their adjoints, plus device-resident categorical accuracy counters while adapting names, attributes, and the bindless ABI to OARS."
   },
   "operations": [
     {
       "stable_id": 118,
       "name": "softmax",
+      "donor_op": "oa::FnMatrix::softmax",
       "signature": {
         "parameters": [["input", "&Matrix"], ["dim", "i32"]],
         "returns": "Matrix",
@@ -138,6 +142,7 @@
     {
       "stable_id": 270,
       "name": "log_softmax",
+      "donor_op": "oa::FnMatrix::logSoftmax",
       "signature": {
         "parameters": [["input", "&Matrix"], ["dim", "i32"]],
         "returns": "Matrix",
@@ -253,6 +258,7 @@
     {
       "stable_id": 120,
       "name": "sum",
+      "donor_op": "oa::FnMatrix::sum",
       "signature": {
         "parameters": [["input", "&Matrix"], ["dim", "i32"]],
         "returns": "Matrix",
@@ -385,8 +391,195 @@
       }
     },
     {
+      "stable_id": 621,
+      "name": "mean",
+      "donor_op": "oa::FnMatrix::mean",
+      "signature": {
+        "parameters": [["input", "&Matrix"], ["dim", "i32"]],
+        "returns": "Matrix",
+        "visibility": "pub"
+      },
+      "python": {"defaults": {"dim": -1}},
+      "autograd": {
+        "mode": "generated",
+        "family": "reduce",
+        "node": "Mean",
+        "saved_fields": [
+          ["input", "matrix"], ["output_id", "output_identity"],
+          ["dim", "i32"]
+        ]
+      },
+      "composite": true,
+      "differentiation": "reverse",
+      "semantic_attributes": [["dim", "signed_integer"]],
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "explicit",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "shape": [2, 3, 4],
+        "dim": 1,
+        "tolerance": 0.00002
+      }
+    },
+    {
+      "stable_id": 622,
+      "name": "max",
+      "donor_op": "oa::FnMatrix::max",
+      "signature": {
+        "parameters": [["input", "&Matrix"], ["dim", "i32"]],
+        "returns": "Matrix",
+        "visibility": "pub"
+      },
+      "python": {"defaults": {"dim": -1}},
+      "autograd": {
+        "mode": "generated",
+        "family": "reduce",
+        "node": "Max",
+        "saved_fields": [
+          ["input", "matrix"], ["output", "matrix"],
+          ["output_id", "output_identity"]
+        ]
+      },
+      "kernel_id": "MatrixMaxF32",
+      "source": "src/slang/matrix/reduce/max.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "scalar",
+          "partition": "exclusive_per_workgroup",
+          "extent": "one_scalar",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "reverse",
+      "semantic_attributes": [],
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "explicit",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["element_count", "uint32"]
+      ],
+      "test": {
+        "shape": [2, 3, 4],
+        "dim": -1,
+        "tolerance": 0
+      }
+    },
+    {
+      "stable_id": 623,
+      "name": "max_backward",
+      "signature": {
+        "parameters": [
+          ["input", "&Matrix"], ["maximum", "&Matrix"],
+          ["output_gradient", "&Matrix"]
+        ],
+        "returns": "Matrix",
+        "visibility": "pub(crate)"
+      },
+      "kernel_id": "MatrixMaxBackwardF32",
+      "source": "src/slang/matrix/reduce/max_backward.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{
+          "binding": 3,
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "none"
+      },
+      "differentiation": "none",
+      "semantic_attributes": [],
+      "contract": {
+        "input_kinds": ["matrix", "matrix", "matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "explicit",
+        "dtype_rule": "all_f32",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["maximum_index", "uint32"],
+        ["output_gradient_index", "uint32"],
+        ["input_gradient_index", "uint32"], ["element_count", "uint32"]
+      ],
+      "test": {
+        "shape": [2, 3, 4],
+        "dim": -1,
+        "tolerance": 0
+      }
+    },
+    {
+      "stable_id": 624,
+      "name": "argmax",
+      "signature": {
+        "parameters": [["input", "&Matrix"], ["dim", "i32"]],
+        "returns": "i64",
+        "visibility": "pub"
+      },
+      "python": {"defaults": {"dim": -1}},
+      "kernel_id": "MatrixArgmaxF32",
+      "source": "src/slang/matrix/reduce/argmax.slang",
+      "variant": "generic",
+      "physical_write": {
+        "writes": [{
+          "binding": 1,
+          "domain": "scalar",
+          "partition": "exclusive_per_workgroup",
+          "extent": "one_scalar",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        }],
+        "workspace": "exclusive_per_workgroup"
+      },
+      "differentiation": "none",
+      "semantic_attributes": [],
+      "contract": {
+        "input_kinds": ["matrix"],
+        "output_kinds": ["matrix"],
+        "shape_rule": "explicit",
+        "dtype_rule": "f32_input_u32_output",
+        "effects": ["read_inputs", "write_output"],
+        "mutated_inputs": [],
+        "output_alias_inputs": [-1],
+        "lowering": "compute_dispatch"
+      },
+      "push_fields": [
+        ["input_index", "uint32"], ["output_index", "uint32"],
+        ["element_count", "uint32"]
+      ],
+      "test": {
+        "shape": [2, 3, 4],
+        "dim": -1,
+        "tolerance": 0
+      }
+    },
+    {
       "stable_id": 310,
       "name": "categorical_accuracy_count",
+      "donor_op": "oa::FnMatrix::categoricalAccuracyCount",
       "signature": {
         "parameters": [["logits", "&Matrix"], ["labels", "&Matrix"]],
         "returns": "Matrix",
@@ -431,6 +624,7 @@
     {
       "stable_id": 234,
       "name": "masked_categorical_accuracy_count",
+      "donor_op": "oa::FnMatrix::maskedCategoricalAccuracyCount",
       "signature": {
         "parameters": [["logits", "&Matrix"], ["labels", "&Matrix"], ["mask", "&Matrix"]],
         "returns": "Matrix",

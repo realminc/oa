@@ -3,11 +3,8 @@
 //! Donor: `oa::Viewer::openImage`, `oa::Viewer::renderImage`.
 
 use super::config::ViewerConfig;
-use crate::ui::{
-	Ui,
-	navigation::Navigation,
-	types::{PixelRect, UiEvent, UiEventKind},
-};
+use crate::input::{InputEvent, InputEventKind, Navigation};
+use crate::ui::{Ui, types::PixelRect};
 use crate::{Engine, Result, Texture};
 
 /// Channel display mode — mirrors `oa::Viewer::ImageViewMode`.
@@ -57,16 +54,16 @@ pub fn render(
 /// Map navigation pan/zoom to a destination pixel rect for the given content size.
 fn nav_dst_rect(nav: &Navigation, content_w: f32, content_h: f32) -> PixelRect {
 	PixelRect {
-		x: nav.pan_x() as i32,
-		y: nav.pan_y() as i32,
-		w: (content_w * nav.zoom()).max(1.0) as u32,
-		h: (content_h * nav.zoom()).max(1.0) as u32,
+		x: nav.pan_x().round() as i32,
+		y: nav.pan_y().round() as i32,
+		w: (content_w * nav.zoom()).round().max(1.0) as u32,
+		h: (content_h * nav.zoom()).round().max(1.0) as u32,
 	}
 }
 
 /// Route keyboard events to channel mode.
-pub fn handle_event(ev: &UiEvent, mode: &mut ChannelMode, config: &ViewerConfig) {
-	if ev.kind != UiEventKind::KeyDown {
+pub fn handle_event(ev: &InputEvent, mode: &mut ChannelMode, config: &ViewerConfig) {
+	if ev.kind != InputEventKind::KeyDown {
 		return;
 	}
 	if ev.key == config.key_red {

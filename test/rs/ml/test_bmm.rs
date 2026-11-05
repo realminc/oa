@@ -16,9 +16,9 @@ impl Layout {
 
 	const fn operation(self) -> &'static str {
 		match self {
-			Self::Nn => "oa::ml::matrix::bmm",
-			Self::Nt => "oa::ml::matrix::bmm_nt",
-			Self::Tn => "oa::ml::matrix::bmm_tn",
+			Self::Nn => "oa::FnMatrix::bmm",
+			Self::Nt => "oa::FnMatrix::bmmNt",
+			Self::Tn => "oa::FnMatrix::bmmTn",
 		}
 	}
 

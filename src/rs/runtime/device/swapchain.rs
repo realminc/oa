@@ -70,23 +70,23 @@ impl PresentationSwapchain {
 		} else {
 			(vk::SharingMode::EXCLUSIVE, [].as_slice())
 		};
-		let create_info = vk::SwapchainCreateInfoKHR::default()
-			.surface(surface)
-			.min_image_count(config.image_count)
-			.image_format(config.format.format)
-			.image_color_space(config.format.color_space)
-			.image_extent(config.extent)
-			.image_array_layers(1)
-			.image_usage(
+		let create_info = vk::SwapchainCreateInfoKHR::new()
+			.set_surface(surface)
+			.set_min_image_count(config.image_count)
+			.set_image_format(config.format.format)
+			.set_image_color_space(config.format.color_space)
+			.set_image_extent(config.extent)
+			.set_image_array_layers(1)
+			.set_image_usage(
 				vk::ImageUsageFlagBits::COLOR_ATTACHMENT_BIT | vk::ImageUsageFlagBits::TRANSFER_DST_BIT,
 			)
-			.image_sharing_mode(sharing_mode)
-			.queue_family_indices(queue_family_indices)
+			.set_image_sharing_mode(sharing_mode)
+			.set_queue_family_indices(queue_family_indices)
 			.map_err(Error::from)?
-			.pre_transform(config.pre_transform)
-			.composite_alpha(config.composite_alpha)
-			.present_mode(config.present_mode)
-			.clipped(vk::TRUE);
+			.set_pre_transform(config.pre_transform)
+			.set_composite_alpha(config.composite_alpha)
+			.set_present_mode(config.present_mode)
+			.set_clipped(vk::TRUE);
 		// SAFETY: `create_info` references live for the call; no callbacks are passed.
 		let mut handle = vk::SwapchainKHR::default();
 		match unsafe {
@@ -117,15 +117,15 @@ impl PresentationSwapchain {
 		};
 		let mut views = Vec::with_capacity(images.len());
 		for image in &images {
-			let view_info = vk::ImageViewCreateInfo::default()
-				.image(*image)
-				.view_type(vk::ImageViewType::_2D)
-				.format(config.format.format)
-				.subresource_range(
-					vk::ImageSubresourceRange::default()
-						.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-						.level_count(1)
-						.layer_count(1),
+			let view_info = vk::ImageViewCreateInfo::new()
+				.set_image(*image)
+				.set_view_type(vk::ImageViewType::_2D)
+				.set_format(config.format.format)
+				.set_subresource_range(
+					vk::ImageSubresourceRange::new()
+						.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+						.set_level_count(1)
+						.set_layer_count(1),
 				);
 			match unsafe { device.raw().create_image_view(&view_info, None) } {
 				Ok(view) => views.push(view),
@@ -144,7 +144,7 @@ impl PresentationSwapchain {
 		}
 		let mut frames = Vec::with_capacity(FRAMES_IN_FLIGHT);
 		for _ in 0..FRAMES_IN_FLIGHT {
-			let semaphore_info = vk::SemaphoreCreateInfo::default();
+			let semaphore_info = vk::SemaphoreCreateInfo::new();
 			let image_available = match unsafe { device.raw().create_semaphore(&semaphore_info, None) } {
 				Ok(semaphore) => semaphore,
 				Err(source) => {
@@ -156,7 +156,7 @@ impl PresentationSwapchain {
 					));
 				}
 			};
-			let fence_info = vk::FenceCreateInfo::default().flags(vk::FenceCreateFlagBits::SIGNALED_BIT);
+			let fence_info = vk::FenceCreateInfo::new().set_flags(vk::FenceCreateFlagBits::SIGNALED_BIT);
 			let in_flight = match unsafe { device.raw().create_fence(&fence_info, None) } {
 				Ok(fence) => fence,
 				Err(source) => {
@@ -184,7 +184,7 @@ impl PresentationSwapchain {
 			match unsafe {
 				device
 					.raw()
-					.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+					.create_semaphore(&vk::SemaphoreCreateInfo::new(), None)
 			} {
 				Ok(semaphore) => present_finished.push(semaphore),
 				Err(source) => {
@@ -296,10 +296,10 @@ impl PresentationSwapchain {
 		let waits = [self.present_finished[image_index as usize]];
 		let chains = [self.handle];
 		let indices = [image_index];
-		let info = vk::PresentInfoKHR::default()
-			.wait_semaphores(&waits)
+		let info = vk::PresentInfoKHR::new()
+			.set_wait_semaphores(&waits)
 			.map_err(Error::from)?
-			.swapchains(&chains, &indices, None)
+			.set_swapchains(&chains, &indices, None)
 			.map_err(Error::from)?;
 		let present_suboptimal = match unsafe {
 			self._device.raw().queue_present_khr(
@@ -392,10 +392,10 @@ impl PresentationSwapchain {
 		let waits = [self.present_finished[image_index as usize]];
 		let chains = [self.handle];
 		let indices = [image_index];
-		let info = vk::PresentInfoKHR::default()
-			.wait_semaphores(&waits)
+		let info = vk::PresentInfoKHR::new()
+			.set_wait_semaphores(&waits)
 			.map_err(Error::from)?
-			.swapchains(&chains, &indices, None)
+			.set_swapchains(&chains, &indices, None)
 			.map_err(Error::from)?;
 		let present_suboptimal = match unsafe {
 			self._device.raw().queue_present_khr(
@@ -486,10 +486,10 @@ impl PresentationSwapchain {
 		let waits = [self.present_finished[image_index as usize]];
 		let chains = [self.handle];
 		let indices = [image_index];
-		let info = vk::PresentInfoKHR::default()
-			.wait_semaphores(&waits)
+		let info = vk::PresentInfoKHR::new()
+			.set_wait_semaphores(&waits)
 			.map_err(Error::from)?
-			.swapchains(&chains, &indices, None)
+			.set_swapchains(&chains, &indices, None)
 			.map_err(Error::from)?;
 		let present_suboptimal = match unsafe {
 			self._device.raw().queue_present_khr(
@@ -598,56 +598,56 @@ impl PresentationSwapchain {
 			// Run UI compute dispatches (writes compose_image).
 			record(device.raw(), cmd)?;
 
-			let subresource_range = vk::ImageSubresourceRange::default()
-				.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-				.level_count(1)
-				.layer_count(1);
-			let subresource_layers = vk::ImageSubresourceLayers::default()
-				.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-				.layer_count(1);
+			let subresource_range = vk::ImageSubresourceRange::new()
+				.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+				.set_level_count(1)
+				.set_layer_count(1);
+			let subresource_layers = vk::ImageSubresourceLayers::new()
+				.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+				.set_layer_count(1);
 
 			// Transition compose: GENERAL → TRANSFER_SRC
 			// Transition swapchain target: UNDEFINED → TRANSFER_DST
-			let compose_to_src = vk::ImageMemoryBarrier2::default()
-				.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-				.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
-				.dst_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
-				.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
-				.old_layout(vk::ImageLayout::GENERAL)
-				.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-				.image(compose_image)
-				.subresource_range(subresource_range);
-			let swapchain_to_dst = vk::ImageMemoryBarrier2::default()
-				.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
-				.dst_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
-				.dst_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-				.old_layout(vk::ImageLayout::UNDEFINED)
-				.new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-				.image(target)
-				.subresource_range(subresource_range);
+			let compose_to_src = vk::ImageMemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+				.set_src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+				.set_dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+				.set_old_layout(vk::ImageLayout::GENERAL)
+				.set_new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+				.set_image(compose_image)
+				.set_subresource_range(subresource_range);
+			let swapchain_to_dst = vk::ImageMemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+				.set_dst_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.set_old_layout(vk::ImageLayout::UNDEFINED)
+				.set_new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+				.set_image(target)
+				.set_subresource_range(subresource_range);
 			unsafe {
 				device.pipeline_barrier(
 					cmd,
-					&(vk::DependencyInfo::default())
-						.image_memory_barriers(&[compose_to_src, swapchain_to_dst])
+					&(vk::DependencyInfo::new())
+						.set_image_memory_barriers(&[compose_to_src, swapchain_to_dst])
 						.map_err(Error::from)?,
 				)?;
 			}
 
 			// Blit (with linear filter to handle DPI scaling).
-			let blit = vk::ImageBlit::default()
-				.src_subresource(subresource_layers)
-				.src_offsets([
-					vk::Offset3D::default(),
+			let blit = vk::ImageBlit::new()
+				.set_src_subresource(subresource_layers)
+				.set_src_offsets([
+					vk::Offset3D::new(),
 					vk::Offset3D {
 						x: compose_width as i32,
 						y: compose_height as i32,
 						z: 1,
 					},
 				])
-				.dst_subresource(subresource_layers)
-				.dst_offsets([
-					vk::Offset3D::default(),
+				.set_dst_subresource(subresource_layers)
+				.set_dst_offsets([
+					vk::Offset3D::new(),
 					vk::Offset3D {
 						x: swapchain_extent[0] as i32,
 						y: swapchain_extent[1] as i32,
@@ -667,19 +667,19 @@ impl PresentationSwapchain {
 			}
 
 			// Transition swapchain → PRESENT_SRC.
-			let swapchain_to_present = vk::ImageMemoryBarrier2::default()
-				.src_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
-				.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-				.dst_stage_mask(vk::PipelineStageFlagBits2::BOTTOM_OF_PIPE_BIT)
-				.old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-				.new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-				.image(target)
-				.subresource_range(subresource_range);
+			let swapchain_to_present = vk::ImageMemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+				.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::BOTTOM_OF_PIPE_BIT)
+				.set_old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+				.set_new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+				.set_image(target)
+				.set_subresource_range(subresource_range);
 			unsafe {
 				device.pipeline_barrier(
 					cmd,
-					&(vk::DependencyInfo::default())
-						.image_memory_barriers(std::slice::from_ref(&swapchain_to_present))
+					&(vk::DependencyInfo::new())
+						.set_image_memory_barriers(std::slice::from_ref(&swapchain_to_present))
 						.map_err(Error::from)?,
 				)?;
 			}
@@ -705,10 +705,10 @@ impl PresentationSwapchain {
 		let waits = [self.present_finished[image_index as usize]];
 		let chains = [self.handle];
 		let indices = [image_index];
-		let info = vk::PresentInfoKHR::default()
-			.wait_semaphores(&waits)
+		let info = vk::PresentInfoKHR::new()
+			.set_wait_semaphores(&waits)
 			.map_err(Error::from)?
-			.swapchains(&chains, &indices, None)
+			.set_swapchains(&chains, &indices, None)
 			.map_err(Error::from)?;
 		let present_suboptimal = match unsafe {
 			self._device.raw().queue_present_khr(

@@ -1,4 +1,4 @@
 OA sanitized public source snapshot
-source_commit=575f7dfd7696fdb74377abaf5df110062048950b
-private_version=0.5.19
-public_version=0.9.0
+source_commit=fded4180acf697a0687c738b793bd446ef0d934b
+private_version=0.10.0
+public_version=0.10.0

@@ -43,7 +43,7 @@ fn secret_entropy_upload_reaches_consumer_before_both_wipes() -> Result<()> {
 #[test]
 #[ignore = "requires a Vulkan device; disposable entropy-upload validation"]
 fn secret_entropy_engine_consumes_and_rejects_capture() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let entropy = Entropy::<32>::generate()?;
@@ -69,7 +69,7 @@ fn secret_entropy_engine_consumes_and_rejects_capture() -> Result<()> {
 #[test]
 #[ignore = "requires a Vulkan device; disposable entropy-upload validation"]
 fn secret_entropy_recording_failure_does_not_submit() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let before = handle.state.borrow().next_epoch;
@@ -276,15 +276,15 @@ fn secret_descriptor_rejects_extent_above_queried_limit() -> Result<()> {
 #[test]
 #[ignore = "requires explicitly selected Vulkan device; NIST public-key/secret-erasure proof"]
 fn secret_mlkem_keygen_nist_all_parameters() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let prompt: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/cryptography/mlkem/keyGen-prompt.json"
+		"../../fixtures/crypto/mlkem/keyGen-prompt.json"
 	))
 	.expect("pinned NIST prompt");
 	let expected: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/cryptography/mlkem/keyGen-expectedResults.json"
+		"../../fixtures/crypto/mlkem/keyGen-expectedResults.json"
 	))
 	.expect("pinned NIST results");
 	fn decode(value: &serde_json::Value) -> Vec<u8> {
@@ -358,11 +358,11 @@ fn secret_mlkem_keygen_rejects_alias_extent_and_foreign_storage() -> Result<()> 
 	let private = SecretBuffer::new(&device, 1632)?;
 	let workspace = SecretBuffer::new(
 		&device,
-		crate::runtime::shader::KernelId::mlkem_keygen_workspace_bytes(),
+		crate::runtime::dna::kernel::KernelId::mlkem_keygen_workspace_bytes(),
 	)?;
 	let wrong_workspace = SecretBuffer::new(
 		&device,
-		crate::runtime::shader::KernelId::mlkem_keygen_workspace_bytes() - 4,
+		crate::runtime::dna::kernel::KernelId::mlkem_keygen_workspace_bytes() - 4,
 	)?;
 	let public = Buffer::host_visible_storage(&device, 800)?;
 	let wrong = Buffer::host_visible_storage(&device, 804)?;
@@ -389,7 +389,7 @@ fn secret_mlkem_keygen_rejects_alias_extent_and_foreign_storage() -> Result<()> 
 	);
 	let foreign_workspace = SecretBuffer::new(
 		&foreign_device,
-		crate::runtime::shader::KernelId::mlkem_keygen_workspace_bytes(),
+		crate::runtime::dna::kernel::KernelId::mlkem_keygen_workspace_bytes(),
 	)?;
 	for candidate in [&wrong_workspace, &foreign_workspace, &private] {
 		assert!(
@@ -419,7 +419,7 @@ fn secret_mlkem_keygen_rejects_alias_extent_and_foreign_storage() -> Result<()> 
 #[test]
 #[ignore = "requires Vulkan; retained ML-KEM key lifetime validation"]
 fn secret_mlkem_retained_key_erases_without_waiting_for_generation() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	for k in [2, 3, 4] {
@@ -454,7 +454,7 @@ fn secret_mlkem_retained_key_erases_without_waiting_for_generation() -> Result<(
 #[test]
 #[ignore = "requires Vulkan; abandoned retained-key quarantine validation"]
 fn secret_mlkem_retained_key_drop_never_submits_or_erases() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let (key, seed_erasure) = handle.generate_mlkem_key(2, Entropy::generate()?)?;
@@ -476,7 +476,7 @@ fn secret_mlkem_retained_key_drop_never_submits_or_erases() -> Result<()> {
 #[test]
 #[ignore = "requires explicit Vulkan selection; private KEM ownership integration"]
 fn secret_mlkem_kem_chains_without_host_waits_and_erases_all_owners() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	for k in [2, 3, 4] {
@@ -514,7 +514,7 @@ fn secret_mlkem_kem_chains_without_host_waits_and_erases_all_owners() -> Result<
 #[test]
 #[ignore = "requires explicit Vulkan selection; private KEM validation"]
 fn secret_mlkem_kem_rejects_capture_and_wrong_ciphertext_before_submission() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let (key, erasure) = handle.generate_mlkem_key(2, Entropy::generate()?)?;
@@ -537,18 +537,18 @@ fn secret_mlkem_kem_rejects_capture_and_wrong_ciphertext_before_submission() -> 
 #[test]
 #[ignore = "requires explicit software Vulkan selection; NIST external encapsulation proof"]
 fn secret_mlkem_external_encapsulation_matches_nist_ciphertext_all_parameters() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	assert!(std::env::var_os("OA_TEST_DEVICE_INDEX").is_some());
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let device = handle.state.borrow().device.clone();
 	assert_eq!(device.physical().info.kind, crate::runtime::DeviceKind::Cpu);
 	let prompt: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/cryptography/mlkem/encapDecap-prompt.json"
+		"../../fixtures/crypto/mlkem/encapDecap-prompt.json"
 	))
 	.expect("pinned NIST prompt");
 	let expected: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/cryptography/mlkem/encapDecap-expectedResults.json"
+		"../../fixtures/crypto/mlkem/encapDecap-expectedResults.json"
 	))
 	.expect("pinned NIST answers");
 	let decode = |value: &serde_json::Value| -> Vec<u8> {
@@ -627,7 +627,7 @@ fn secret_mlkem_external_encapsulation_matches_nist_ciphertext_all_parameters() 
 #[test]
 #[ignore = "requires explicit software Vulkan selection; external-key admission"]
 fn secret_mlkem_external_encapsulation_rejects_invalid_ownership_before_submission() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	assert!(std::env::var_os("OA_TEST_DEVICE_INDEX").is_some());
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
@@ -663,14 +663,14 @@ fn secret_mlkem_external_encapsulation_rejects_invalid_ownership_before_submissi
 #[test]
 #[ignore = "requires explicit software Vulkan selection; disposable ML-KEM-512 known-secret proof"]
 fn secret_mlkem512_known_fixture_agreement_and_implicit_rejection() -> Result<()> {
-	use crate::cryptography::{entropy::Entropy, shake256};
+	use crate::crypto::{entropy::Entropy, shake256};
 	assert!(std::env::var_os("OA_TEST_DEVICE_INDEX").is_some());
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let device = handle.state.borrow().device.clone();
 	assert_eq!(device.physical().info.kind, crate::runtime::DeviceKind::Cpu);
 	let fixture: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/cryptography/mlkem/engine-roundtrip.json"
+		"../../fixtures/crypto/mlkem/engine-roundtrip.json"
 	))
 	.expect("independent fixture");
 	let decode = |name: &str| -> Vec<u8> {
@@ -775,15 +775,15 @@ fn secret_mlkem512_known_fixture_agreement_and_implicit_rejection() -> Result<()
 #[test]
 #[ignore = "requires explicitly selected Vulkan device; NIST public-key/secret-erasure proof"]
 fn secret_mldsa_keygen_nist_public_keys_and_retained_erasure() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let prompt: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/cryptography/mldsa/keyGen-prompt.json"
+		"../../fixtures/crypto/mldsa/keyGen-prompt.json"
 	))
 	.expect("pinned NIST prompt");
 	let expected: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/cryptography/mldsa/keyGen-expectedResults.json"
+		"../../fixtures/crypto/mldsa/keyGen-expectedResults.json"
 	))
 	.expect("pinned NIST results");
 	fn decode(value: &serde_json::Value) -> Vec<u8> {
@@ -846,7 +846,7 @@ fn secret_mldsa_keygen_nist_public_keys_and_retained_erasure() -> Result<()> {
 #[test]
 #[ignore = "requires explicit Vulkan selection; ML-DSA ownership preflight"]
 fn secret_mldsa_keygen_rejects_invalid_parameter_and_capture() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let before = handle.state.borrow().next_epoch;
@@ -868,17 +868,17 @@ fn secret_mldsa_keygen_rejects_invalid_parameter_and_capture() -> Result<()> {
 #[test]
 #[ignore = "requires explicitly selected Vulkan device; private ML-DSA signing integration"]
 fn secret_mldsa_sign_mu_all_parameters_and_immediate_key_erasure() -> Result<()> {
-	use crate::cryptography::{entropy::Entropy, shake256};
+	use crate::crypto::{entropy::Entropy, shake256};
 	use ml_dsa::{MlDsa44, MlDsa65, MlDsa87, Signature, Verifier as _, VerifyingKey};
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let device = handle.state.borrow().device.clone();
 	let prompt: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/cryptography/mldsa/keyGen-prompt.json"
+		"../../fixtures/crypto/mldsa/keyGen-prompt.json"
 	))
 	.expect("NIST prompt");
 	let expected: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/cryptography/mldsa/keyGen-expectedResults.json"
+		"../../fixtures/crypto/mldsa/keyGen-expectedResults.json"
 	))
 	.expect("NIST results");
 	fn decode(value: &serde_json::Value) -> Vec<u8> {
@@ -924,7 +924,7 @@ fn secret_mldsa_sign_mu_all_parameters_and_immediate_key_erasure() -> Result<()>
 		erased.wait()?;
 		assert!(key_seed_erasure.try_is_complete()?);
 		let (_, _, _, wire_len) =
-			crate::runtime::shader::KernelId::mldsa_sign_layout(parameter).expect("layout");
+			crate::runtime::dna::kernel::KernelId::mldsa_sign_layout(parameter).expect("layout");
 		let mut encodings = Vec::new();
 		for (signature, status, entropy_erasure) in signatures {
 			// Device entropy, locked staging and the secret signing cache share
@@ -965,7 +965,7 @@ fn secret_mldsa_sign_mu_all_parameters_and_immediate_key_erasure() -> Result<()>
 #[test]
 #[ignore = "requires explicitly selected Vulkan device; signing preflight rejection"]
 fn secret_mldsa_sign_rejects_extent_foreign_engine_and_capture() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let device = handle.state.borrow().device.clone();
@@ -1002,7 +1002,7 @@ fn secret_mldsa_sign_rejects_extent_foreign_engine_and_capture() -> Result<()> {
 #[test]
 #[ignore = "requires explicitly selected Vulkan device; pure ML-DSA framing and input retention"]
 fn secret_mldsa_message_context_all_parameters() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	use ml_dsa::{MlDsa44, MlDsa65, MlDsa87, Signature, VerifyingKey};
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
@@ -1043,7 +1043,7 @@ fn secret_mldsa_message_context_all_parameters() -> Result<()> {
 		let mut pk = vec![0; public.size() as usize];
 		public.read(0, &mut pk)?;
 		let (_, _, _, wire_len) =
-			crate::runtime::shader::KernelId::mldsa_sign_layout(parameter).expect("layout");
+			crate::runtime::dna::kernel::KernelId::mldsa_sign_layout(parameter).expect("layout");
 		for (message, context, (signature, status, entropy_erasure)) in cases {
 			assert_eq!(entropy_erasure.test_retained_allocation_count(), 3);
 			assert!(entropy_erasure.try_is_complete()?);
@@ -1079,7 +1079,7 @@ fn secret_mldsa_message_context_all_parameters() -> Result<()> {
 #[test]
 #[ignore = "requires explicitly selected Vulkan device; pure signing preflight rejection"]
 fn secret_mldsa_message_rejects_invalid_inputs() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let device = handle.state.borrow().device.clone();
@@ -1124,7 +1124,7 @@ fn secret_mldsa_message_rejects_invalid_inputs() -> Result<()> {
 #[test]
 #[ignore = "requires explicitly selected Vulkan device; HashML-DSA signing preflight rejection"]
 fn secret_mldsa_hash_message_rejects_invalid_inputs() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let device = handle.state.borrow().device.clone();
@@ -1176,7 +1176,7 @@ fn secret_mldsa_hash_message_rejects_invalid_inputs() -> Result<()> {
 #[test]
 #[ignore = "requires explicitly selected Vulkan device; prehashed signing integration"]
 fn secret_mldsa_prehashed_all_parameters() -> Result<()> {
-	use crate::cryptography::{entropy::Entropy, shake256};
+	use crate::crypto::{entropy::Entropy, shake256};
 	use ml_dsa::{MlDsa44, MlDsa65, MlDsa87, Signature, VerifyingKey};
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
@@ -1221,7 +1221,7 @@ fn secret_mldsa_prehashed_all_parameters() -> Result<()> {
 		let mut bytes = vec![0; signature.size() as usize];
 		signature.read(0, &mut bytes)?;
 		let (_, _, _, wire_len) =
-			crate::runtime::shader::KernelId::mldsa_sign_layout(parameter).expect("layout");
+			crate::runtime::dna::kernel::KernelId::mldsa_sign_layout(parameter).expect("layout");
 		assert!(bytes[wire_len as usize..].iter().all(|&n| n == 0));
 		bytes.truncate(wire_len as usize);
 		macro_rules! verify {
@@ -1250,7 +1250,7 @@ fn secret_mldsa_prehashed_all_parameters() -> Result<()> {
 #[test]
 #[ignore = "requires explicitly selected Vulkan device; message-taking HashML-DSA signing integration"]
 fn secret_mldsa_hash_message_all_parameters() -> Result<()> {
-	use crate::cryptography::{entropy::Entropy, shake256};
+	use crate::crypto::{entropy::Entropy, shake256};
 	use ml_dsa::{MlDsa44, MlDsa65, MlDsa87, Signature, VerifyingKey};
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
@@ -1297,7 +1297,7 @@ fn secret_mldsa_hash_message_all_parameters() -> Result<()> {
 		let mut bytes = vec![0; signature.size() as usize];
 		signature.read(0, &mut bytes)?;
 		let (_, _, _, wire_len) =
-			crate::runtime::shader::KernelId::mldsa_sign_layout(parameter).expect("layout");
+			crate::runtime::dna::kernel::KernelId::mldsa_sign_layout(parameter).expect("layout");
 		assert!(bytes[wire_len as usize..].iter().all(|&n| n == 0));
 		bytes.truncate(wire_len as usize);
 		macro_rules! verify {
@@ -1326,7 +1326,7 @@ fn secret_mldsa_hash_message_all_parameters() -> Result<()> {
 #[test]
 #[ignore = "requires explicitly selected Vulkan device; prehashed signing rejection"]
 fn secret_mldsa_prehashed_rejects_identity_extent_and_context() -> Result<()> {
-	use crate::cryptography::entropy::Entropy;
+	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let device = handle.state.borrow().device.clone();
@@ -1389,7 +1389,7 @@ fn mldsa_hash_message_verifier_nist_capture() -> Result<()> {
 )]
 fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 	use crate::Matrix;
-	use crate::cryptography::{
+	use crate::crypto::{
 		pqc::{
 			MlDsaParameters,
 			verification::{verify_hash_message_batch, verify_prehashed_batch},
@@ -1408,11 +1408,11 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 		verify_prehashed_batch
 	};
 	let prompt: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/cryptography/mldsa/sigGen-prompt.json"
+		"../../fixtures/crypto/mldsa/sigGen-prompt.json"
 	))
 	.expect("pinned prompt");
 	let answers: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/cryptography/mldsa/sigGen-expectedResults.json"
+		"../../fixtures/crypto/mldsa/sigGen-expectedResults.json"
 	))
 	.expect("pinned answers");
 	let decode = |value: &serde_json::Value| -> Vec<u8> {
@@ -1570,7 +1570,7 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 			);
 		}
 		assert_eq!(
-			crate::cryptography::pqc::verify_batch_with_context(
+			crate::crypto::pqc::verify_batch_with_context(
 				parameters,
 				&inputs,
 				&offsets,

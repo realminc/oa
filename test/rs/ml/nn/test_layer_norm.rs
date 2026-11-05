@@ -239,21 +239,25 @@ test_vk!(layer_norm_backward_matches_finite_differences, engine, {
 	})?;
 	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("LayerNorm"))
 		.expect("LayerNorm executable report must be valid JSON");
-	let sum_axis_nodes = report["nodes"]
+	let sum_axis_pair_nodes = report["nodes"]
 		.as_array()
 		.expect("LayerNorm executable nodes must be an array")
 		.iter()
-		.filter(|node| node["kernel"] == "matrix.sum_axis.f32")
+		.filter(|node| node["kernel"] == "ml.sum_axis_pair.f32")
 		.collect::<Vec<_>>();
-	assert_eq!(sum_axis_nodes.len(), 2);
-	for node in sum_axis_nodes {
-		assert_eq!(node["physical_write"]["writes"][0]["binding"], 1);
-		assert_eq!(
-			node["physical_write"]["writes"][0]["partition"],
-			"exclusive_per_invocation"
-		);
-		assert_eq!(node["physical_write"]["workspace"], "none");
+	assert_eq!(sum_axis_pair_nodes.len(), 1);
+	let pair_writes = sum_axis_pair_nodes[0]["physical_write"]["writes"]
+		.as_array()
+		.expect("SumAxisPair writes must be an array");
+	assert_eq!(pair_writes.len(), 2);
+	for (index, write) in pair_writes.iter().enumerate() {
+		assert_eq!(write["binding"], index + 2);
+		assert_eq!(write["partition"], "exclusive_per_invocation");
 	}
+	assert_eq!(
+		sum_axis_pair_nodes[0]["physical_write"]["workspace"],
+		"none"
+	);
 	let layer_norm_backward = report["nodes"]
 		.as_array()
 		.expect("LayerNorm executable nodes must be an array")

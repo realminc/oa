@@ -496,7 +496,7 @@
 				],
 				"returns": "TcpStream",
 				"visibility": "pub",
-				"target": "crate::network::TcpStream::connect"
+				"target": "crate::net::TcpStream::connect"
 			}
 		},
 		{
@@ -510,7 +510,7 @@
 				],
 				"returns": "TcpListener",
 				"visibility": "pub",
-				"target": "crate::network::TcpListener::bind_any"
+				"target": "crate::net::TcpListener::bind_any"
 			}
 		},
 		{
@@ -532,7 +532,7 @@
 				],
 				"returns": "TcpListener",
 				"visibility": "pub",
-				"target": "crate::network::TcpListener::bind"
+				"target": "crate::net::TcpListener::bind"
 			}
 		},
 		{
@@ -559,6 +559,27 @@
 					],
 					[
 						"audio_path",
+						"std::path::PathBuf"
+					]
+				]
+			}
+		},
+		{
+			"name": "media_player_new_embedded",
+			"signature": {
+				"parameters": [
+					[
+						"video_path",
+						"impl Into<PathBuf>"
+					]
+				],
+				"returns": "MediaPlayerConfig",
+				"visibility": "pub",
+				"target": "crate::media::MediaPlayerConfig::embedded",
+				"raw_return": true,
+				"parity": [
+					[
+						"video_path",
 						"std::path::PathBuf"
 					]
 				]

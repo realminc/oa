@@ -1,0 +1,109 @@
+{
+	"schema_version": 1,
+	"domain": "net",
+	"family": "net_types",
+	"imports": [
+		"use super::mcp::McpCacheScope;"
+	],
+	"types": [
+		{
+			"class": "config",
+			"name": "McpServerConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "name",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Server name reported during initialization and discovery."
+				},
+				{
+					"name": "version",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Server version string."
+				},
+				{
+					"name": "instructions",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Optional human-readable instructions for the model."
+				},
+				{
+					"name": "max_message_bytes",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Maximum accepted and emitted message size in bytes (minimum 1024)."
+				},
+				{
+					"name": "max_nesting_depth",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Maximum JSON nesting depth accepted during parsing (1\u2013256)."
+				},
+				{
+					"name": "max_json_nodes",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Maximum JSON node count accepted during parsing (minimum 1)."
+				},
+				{
+					"name": "cache_ttl_ms",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Cache TTL in milliseconds for discovery/list responses."
+				},
+				{
+					"name": "cache_scope",
+					"type": "McpCacheScope",
+					"visibility": "pub",
+					"doc": "Cache scope for discovery/list responses."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "McpToolResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"Default"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "text",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Human-readable or machine-readable text content."
+				},
+				{
+					"name": "structured_content_json",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Optional structured JSON content (must be one valid JSON value when set)."
+				},
+				{
+					"name": "is_error",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Whether this represents an error condition."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

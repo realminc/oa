@@ -18,27 +18,10 @@
 //! let log = oa::LogConfig::default();
 //! ```
 
+pub use super::types::{CheckpointConfig, LogConfig};
 use crate::Path;
 
 // ─── CheckpointConfig ────────────────────────────────────────────────────────
-
-/// Shared checkpoint-save configuration.
-///
-/// Used as a building block in CLI configs and passed to
-/// [`crate::ml::training::CbCheckpoint`].
-#[derive(Clone, Debug, PartialEq)]
-pub struct CheckpointConfig {
-	/// Directory that receives checkpoint files.
-	pub dir: Path,
-	/// Base filename stem for checkpoint files.
-	pub name: String,
-	/// Environment tag appended to checkpoint paths (e.g. `"dev"`, `"prod"`).
-	pub env: String,
-	/// Save the best-validation-loss checkpoint automatically.
-	pub save_best: bool,
-	/// Save the latest checkpoint at every epoch boundary.
-	pub save_last: bool,
-}
 
 impl Default for CheckpointConfig {
 	fn default() -> Self {
@@ -53,24 +36,6 @@ impl Default for CheckpointConfig {
 }
 
 // ─── LogConfig ───────────────────────────────────────────────────────────────
-
-/// Shared logging configuration.
-///
-/// Used as a building block in CLI configs and passed to
-/// [`crate::runtime::LogOptions`] or [`crate::LogMetrics`].
-#[derive(Clone, Debug, PartialEq)]
-pub struct LogConfig {
-	/// Directory for log files and `events.jsonl` metrics.
-	pub dir: Path,
-	/// Minimum level string (`"trace"`, `"debug"`, `"info"`, `"warn"`, `"error"`).
-	pub level: String,
-	/// Write records to stderr.
-	pub console: bool,
-	/// Write records to a file inside `dir`.
-	pub file: bool,
-	/// Write scalar metrics to `{dir}/events.jsonl`.
-	pub metrics: bool,
-}
 
 impl Default for LogConfig {
 	fn default() -> Self {

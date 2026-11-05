@@ -22,34 +22,45 @@
 
 pub(crate) mod command;
 mod compose_image;
+mod cv;
+mod detection_overlay;
 mod icons;
+mod image;
 mod layout;
-pub mod navigation;
 mod pipeline;
-pub mod sdl_events;
 mod text;
+#[path = "ui/type.gen.rs"]
+mod type_gen;
+#[path = "ui/type.rs"]
 pub mod types;
+mod viewport;
 
 use crate::Color;
+use crate::input::{InputEvent, InputEventKind, InputState, Key, MotionSpeed};
 use crate::{
 	Error, Result,
 	runtime::{EngineHandle, SyncCommands},
 };
-use command::{UiCmd, UiCmdList, clip_words, div_ceil};
+use command::{UiCmd, UiCmdList, clip_words, div_ceil, visible_blit_region};
 use compose_image::ComposeImage;
+pub use cv::{CvBbox, CvFrame, CvOverlay};
+pub use detection_overlay::{DetectionOverlay, DetectionOverlayItem};
+pub use image::{IMAGE_MAX_PLANES, ImageDtype, ImagePlanes};
 use layout::{LayoutStack, PanelScope, default_item_height, resolve_width, separator_rect};
 use pipeline::{UiFrameBindings, UiPipelines};
-pub use text::{FontId, GlyphInfo, PositionedGlyph, TextAtlas, TextLayout, TextLayoutConfig};
-pub use types::{
-	NodeCanvas, NodeCanvasState, PixelRect, UI_MOD_ALT, UI_MOD_CTRL, UI_MOD_NONE, UI_MOD_SHIFT,
-	UI_MOD_SUPER, UiAccessibilityRole, UiAccessibilitySnapshot, UiAlign, UiChevronDirection,
-	UiDirection, UiDropdownConfig, UiEdge, UiEvent, UiEventKind, UiGridConfig, UiHeatmapConfig,
-	UiIcon, UiIconButtonStyle, UiInputState, UiKey, UiLayout, UiModifiers, UiMotionSpeed,
-	UiPinchPhase, UiPopupConfig, UiPropertyRegion, UiPropertyRowConfig, UiScrollConfig,
-	UiScrollGesture, UiScrollRegion, UiSizing, UiSplitConfig, UiSplitRegion, UiStyle, UiTabBarResult,
-	UiTabBarState, UiTabItem, UiTooltipConfig, UiTreeRowConfig, UiTreeRowResult, UiVirtualRange,
-	classify_scroll,
+pub use text::{FontId, GlyphBuffer, GlyphInstance, PositionedGlyph, TextAtlas, TextLayout};
+pub use type_gen::{
+	CvBboxesConfig, DetectionOverlayConfig, GlyphInfo, TextLayoutConfig, UiDropdownConfig,
+	UiGridConfig, UiHeatmapConfig, UiPlotConfig, UiPopupConfig, UiPropertyRowConfig, UiScrollConfig,
+	UiSplitConfig, UiTabBarResult, UiTooltipConfig, UiTreeRowConfig, UiTreeRowResult,
 };
+pub use types::{
+	NodeCanvas, NodeCanvasGrid, NodeCanvasHit, NodeCanvasHitItem, NodeCanvasState, PixelRect,
+	UiAccessibilityRole, UiAccessibilitySnapshot, UiAlign, UiChevronDirection, UiDirection, UiEdge,
+	UiIcon, UiIconButtonStyle, UiLayout, UiPropertyRegion, UiScrollRegion, UiSizing, UiSplitRegion,
+	UiStyle, UiTabBarState, UiTabItem, UiVirtualRange, WorldAabb,
+};
+pub use viewport::{RenderLayer, ScissorDesc, Viewport, ViewportDesc, ViewportMode};
 
 // ── Ui ────────────────────────────────────────────────────────────────────────
 
@@ -80,9 +91,9 @@ pub(crate) struct UiState {
 	style_stack: Vec<UiStyle>,
 	layout: LayoutStack,
 	pub(crate) cmds: UiCmdList,
-	input: UiInputState,
+	input: InputState,
 	content_scale: f32,
-	motion_speed: UiMotionSpeed,
+	motion_speed: MotionSpeed,
 	frame_delta_ms: f32,
 	frame_index: u64,
 	widget_motion: std::collections::HashMap<u64, WidgetMotion>,
@@ -152,9 +163,9 @@ impl<'engine> Ui<'engine> {
 				style_stack: vec![style],
 				layout: LayoutStack::default(),
 				cmds: UiCmdList::default(),
-				input: UiInputState::default(),
+				input: InputState::default(),
 				content_scale: 1.0,
-				motion_speed: UiMotionSpeed::Normal,
+				motion_speed: MotionSpeed::Normal,
 				frame_delta_ms: 0.0,
 				frame_index: 0,
 				widget_motion: std::collections::HashMap::new(),
@@ -216,7 +227,7 @@ impl<'engine> Ui<'engine> {
 	}
 
 	/// Select donor widget transition timing without recreating GPU resources.
-	pub fn set_motion_speed(&mut self, speed: UiMotionSpeed) -> Result<()> {
+	pub fn set_motion_speed(&mut self, speed: MotionSpeed) -> Result<()> {
 		let state = self
 			.state
 			.as_mut()
@@ -262,12 +273,12 @@ impl<'engine> Ui<'engine> {
 	}
 
 	/// Route a platform event.  Returns `true` if a widget consumed it.
-	pub fn route_event(&mut self, event: &UiEvent) -> bool {
+	pub fn route_event(&mut self, event: &InputEvent) -> bool {
 		let Some(state) = self.state.as_mut() else {
 			return false;
 		};
 		match event.kind {
-			UiEventKind::MouseMove => {
+			InputEventKind::MouseMove => {
 				state.input.pointer_x = event.mouse_x;
 				state.input.pointer_y = event.mouse_y;
 				state.input.mouse_x = event.mouse_x;
@@ -275,7 +286,7 @@ impl<'engine> Ui<'engine> {
 				state.input.mouse_dx = event.mouse_dx;
 				state.input.mouse_dy = event.mouse_dy;
 			}
-			UiEventKind::MouseDown => {
+			InputEventKind::MouseDown => {
 				state.input.pointer_x = event.mouse_x;
 				state.input.pointer_y = event.mouse_y;
 				state.input.mouse_x = event.mouse_x;
@@ -296,7 +307,7 @@ impl<'engine> Ui<'engine> {
 					return true;
 				}
 			}
-			UiEventKind::MouseUp => {
+			InputEventKind::MouseUp => {
 				state.input.pointer_x = event.mouse_x;
 				state.input.pointer_y = event.mouse_y;
 				if event.button == 1 {
@@ -309,39 +320,39 @@ impl<'engine> Ui<'engine> {
 					state.input.r_button = false;
 				}
 			}
-			UiEventKind::MouseScroll => {
+			InputEventKind::MouseScroll => {
 				state.input.scroll_x += event.scroll_x;
 				state.input.scroll_y += event.scroll_y;
 			}
-			UiEventKind::KeyDown => {
+			InputEventKind::KeyDown => {
 				state.input.modifiers = event.modifiers;
 				state.input.shift = event.shift();
 				state.input.ctrl = event.ctrl();
-				if event.key == UiKey::Tab {
+				if event.key == Key::Tab {
 					// Tab focus advance — handled implicitly by widget hashing.
 					return state.focused != 0;
 				}
-				if event.key == UiKey::Backspace && state.focused != 0 {
+				if event.key == Key::Backspace && state.focused != 0 {
 					state.input_pending_backspace += 1;
 					return true;
 				}
-				if event.key == UiKey::Escape {
+				if event.key == Key::Escape {
 					state.focused = 0;
 				}
 			}
-			UiEventKind::KeyChar => {
+			InputEventKind::KeyChar => {
 				// Committed UTF-8 text from the platform IME / SDL TextInput event.
 				if state.focused != 0 && !event.text.is_empty() {
 					state.input_pending_chars.extend(event.text.chars());
 					return true;
 				}
 			}
-			UiEventKind::KeyUp => {
+			InputEventKind::KeyUp => {
 				state.input.modifiers = event.modifiers;
 				state.input.shift = event.shift();
 				state.input.ctrl = event.ctrl();
 			}
-			UiEventKind::WindowResize => {}
+			InputEventKind::WindowResize => {}
 			_ => {}
 		}
 		false
@@ -365,11 +376,8 @@ impl<'engine> Ui<'engine> {
 	}
 
 	/// Current input snapshot.
-	pub fn input(&self) -> &UiInputState {
-		self
-			.state
-			.as_ref()
-			.map_or(&UiInputState::EMPTY, |s| &s.input)
+	pub fn input(&self) -> &InputState {
+		self.state.as_ref().map_or(&InputState::EMPTY, |s| &s.input)
 	}
 
 	// ── Style ──────────────────────────────────────────────────────────────────
@@ -390,8 +398,36 @@ impl<'engine> Ui<'engine> {
 		}
 	}
 
-	fn current_style(state: &UiState) -> &UiStyle {
+	fn current_style_ref(state: &UiState) -> &UiStyle {
 		state.style_stack.last().expect("style stack is non-empty")
+	}
+
+	/// Resolve the effective draw clip for `rect`: the current panel scope's
+	/// clip intersected with `rect` and the compose bounds.
+	///
+	/// Donor: `oa::Ui::Impl::clipFor`.
+	fn compose_clip(state: &UiState, rect: PixelRect) -> PixelRect {
+		let bounds = PixelRect {
+			x: 0,
+			y: 0,
+			w: state.compose.width,
+			h: state.compose.height,
+		};
+		let clipped = bounds.clip(&rect);
+		state
+			.layout
+			.top()
+			.map_or(clipped, |scope| scope.clip().clip(&clipped))
+	}
+
+	/// Return the current ambient widget style.
+	///
+	/// Donor: `oa::Ui::currentStyle`.
+	#[must_use]
+	pub fn current_style(&self) -> UiStyle {
+		self.state.as_ref().map_or_else(UiStyle::default, |state| {
+			Self::current_style_ref(state).clone()
+		})
 	}
 
 	// ── Layout ─────────────────────────────────────────────────────────────────
@@ -406,7 +442,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let clip = state
 			.layout
 			.top()
@@ -455,7 +491,7 @@ impl<'engine> Ui<'engine> {
 			};
 			(separator_rect(scope), scope.clip())
 		};
-		let color = Self::current_style(state).border;
+		let color = Self::current_style_ref(state).border;
 		state.cmds.push(UiCmd::Rect {
 			rect: sep_rect,
 			color,
@@ -506,7 +542,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return false;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let id = widget_hash(label, state.layout.top().map(|s| s.outer));
 
 		let (rect, clip) = allocate_widget(state, style.padding);
@@ -565,7 +601,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return false;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let id = widget_hash(label, state.layout.top().map(|s| s.outer));
 
 		let (rect, clip) = allocate_widget(state, style.padding);
@@ -609,7 +645,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return false;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let id = widget_hash(label, state.layout.top().map(|s| s.outer));
 
 		let (rect, clip) = allocate_widget(state, style.padding);
@@ -681,7 +717,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let (rect, clip) = allocate_widget(state, style.padding);
 		// Background.
 		state.cmds.push(UiCmd::Rect {
@@ -724,7 +760,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let (rect, _clip) = allocate_widget(state, style.padding);
 		if rect.w == 0 || rect.h == 0 {
 			return;
@@ -747,7 +783,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return false;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let id = widget_hash(label, state.layout.top().map(|s| s.outer));
 
 		let (rect, clip) = allocate_widget(state, style.padding);
@@ -815,7 +851,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return false;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let id = widget_hash(label, state.layout.top().map(|s| s.outer));
 
 		let (rect, clip) = allocate_widget(state, style.padding);
@@ -891,7 +927,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let clip = state.layout.top().map(|s| s.clip()).unwrap_or_default();
 		let Some(scope) = state.layout.top_mut() else {
 			return;
@@ -936,7 +972,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return result;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let clip = rect;
 
 		// Bar background.
@@ -1084,7 +1120,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return result;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let clip = rect;
 		let widget_id = widget_hash(id, Some(rect));
 
@@ -1202,7 +1238,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 
 		// Canvas background.
 		let bg = Color::new(
@@ -1313,7 +1349,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let (rect, clip) = allocate_plot(state, style.padding);
 		state.cmds.push(UiCmd::PlotLine {
 			values_idx,
@@ -1387,6 +1423,113 @@ impl<'engine> Ui<'engine> {
 			explicit_xy: false,
 			antialias_samples: 4,
 			line_width,
+		});
+		state.frame_matrices.push(matrix);
+		Ok(())
+	}
+
+	/// Draw one F32 line series with the donor chart widget contract.
+	///
+	/// Donor: `oa::Ui::plotLine`. Y bounds come from `config` or resolve from
+	/// finite samples when `auto_scale` is set; a degenerate resolved range is
+	/// expanded by a small margin. `show_grid`/`draw_surface` paint the chart
+	/// grid first; `fill` shades under the series. The samples are uploaded
+	/// through this UI's Engine and retained until the exact composition
+	/// submission completes.
+	///
+	/// A series whose auto-scaled range contains no finite sample draws
+	/// nothing, matching the donor's silent skip.
+	pub fn plot_line(
+		&mut self,
+		values: &[f32],
+		rect: PixelRect,
+		config: &UiPlotConfig,
+	) -> Result<()> {
+		if values.is_empty() {
+			return Ok(());
+		}
+		if rect.w == 0 || rect.h == 0 {
+			return Err(Error::invalid_argument(
+				"UI line plot requires a positive rectangle",
+			));
+		}
+		if !config.x_min.is_finite() || !config.x_max.is_finite() {
+			return Err(Error::invalid_argument(
+				"UI line plot requires finite X limits",
+			));
+		}
+		if !config.auto_scale && (!config.y_min.is_finite() || !config.y_max.is_finite()) {
+			return Err(Error::invalid_argument(
+				"UI line plot requires finite Y limits",
+			));
+		}
+		let (mut y_min, mut y_max) = if config.auto_scale {
+			let mut lo = f32::INFINITY;
+			let mut hi = f32::NEG_INFINITY;
+			for &value in values {
+				if !value.is_finite() {
+					continue;
+				}
+				lo = lo.min(value);
+				hi = hi.max(value);
+			}
+			(lo, hi)
+		} else {
+			(config.y_min, config.y_max)
+		};
+		if !y_min.is_finite() || !y_max.is_finite() {
+			return Ok(());
+		}
+		if y_max <= y_min {
+			let margin = (y_min.abs() * 0.05).max(1.0e-4);
+			y_min -= margin;
+			y_max += margin;
+		}
+		if config.draw_surface || config.show_grid {
+			self.grid(
+				rect,
+				chart_grid_config(
+					rect,
+					self.content_scale(),
+					config.draw_surface,
+					config.show_grid,
+				),
+			);
+		}
+		let matrix = crate::Matrix::new_from_f32(self.engine, [values.len()], values)?;
+		let descriptor = matrix
+			.engine_handle()
+			.storage_descriptor_index(matrix.storage())?;
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		let clip = Self::compose_clip(state, rect);
+		if clip.w == 0 || clip.h == 0 {
+			return Ok(());
+		}
+		state.cmds.push(UiCmd::PlotLine {
+			values_idx: descriptor,
+			count: u32::try_from(values.len())
+				.map_err(|_| Error::out_of_range("UI plot sample count exceeds u32"))?,
+			rect,
+			clip,
+			x_min: config.x_min,
+			x_max: config.x_max,
+			y_min,
+			y_max,
+			color: config.color,
+			fill: config.fill,
+			explicit_xy: false,
+			antialias_samples: match config.antialias_samples {
+				1 | 8 => config.antialias_samples,
+				_ => 4,
+			},
+			line_width: if config.line_width.is_finite() {
+				config.line_width.clamp(0.5, 16.0)
+			} else {
+				1.35
+			},
 		});
 		state.frame_matrices.push(matrix);
 		Ok(())
@@ -1482,6 +1625,22 @@ impl<'engine> Ui<'engine> {
 		Ok(())
 	}
 
+	/// Measure the advance width of `text` at `config.size`, in pixels.
+	pub(crate) fn measure_text(&self, text: &str, config: TextLayoutConfig) -> Result<f32> {
+		let state = self
+			.state
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		let shaped = TextLayout::shape(
+			&state.text_atlas,
+			text,
+			[0.0, 0.0],
+			config,
+			Color::default(),
+		)?;
+		Ok(shaped.iter().map(|g| g.advance).sum())
+	}
+
 	/// Shape and draw text at a pixel-space baseline origin.
 	pub fn text_at(
 		&mut self,
@@ -1540,6 +1699,7 @@ impl<'engine> Ui<'engine> {
 			glyph_idx,
 			atlas_idx: state.text_atlas.descriptor(),
 			count,
+			dst: None,
 			clip,
 			atlas_w: state.text_atlas.width(),
 			atlas_h: state.text_atlas.height(),
@@ -1595,6 +1755,177 @@ impl<'engine> Ui<'engine> {
 		}
 	}
 
+	/// Alpha-blend a filled rect clipped to the current panel scope.
+	///
+	/// Donor: `oa::Ui::rect`. Nonpositive or out-of-scope rects draw nothing.
+	/// `corner_radius` must be finite and non-negative; it is clamped to half
+	/// the smaller side exactly like the donor.
+	pub fn rect(&mut self, rect: PixelRect, color: Color, corner_radius: f32) -> Result<()> {
+		if !corner_radius.is_finite() || corner_radius < 0.0 {
+			return Err(Error::invalid_argument(
+				"Ui::rect requires a finite non-negative corner radius",
+			));
+		}
+		if rect.w == 0 || rect.h == 0 {
+			return Ok(());
+		}
+		let Some(state) = self.state.as_mut() else {
+			return Ok(());
+		};
+		let clip = Self::compose_clip(state, rect);
+		if clip.w == 0 || clip.h == 0 {
+			return Ok(());
+		}
+		state.cmds.push(UiCmd::Rect {
+			rect,
+			color,
+			clip,
+			corner_radius: corner_radius.min(0.5 * rect.w.min(rect.h) as f32),
+		});
+		Ok(())
+	}
+
+	/// Alpha-blend a rect outline clipped to the current panel scope.
+	///
+	/// Donor: `oa::Ui::rectOutline`.
+	pub fn rect_outline(
+		&mut self,
+		rect: PixelRect,
+		color: Color,
+		thickness: u32,
+		corner_radius: f32,
+	) -> Result<()> {
+		if !corner_radius.is_finite() || corner_radius < 0.0 {
+			return Err(Error::invalid_argument(
+				"Ui::rect_outline requires a finite non-negative corner radius",
+			));
+		}
+		if rect.w == 0 || rect.h == 0 {
+			return Ok(());
+		}
+		let Some(state) = self.state.as_mut() else {
+			return Ok(());
+		};
+		let clip = Self::compose_clip(state, rect);
+		if clip.w == 0 || clip.h == 0 {
+			return Ok(());
+		}
+		state.cmds.push(UiCmd::RectOutline {
+			rect,
+			color,
+			thickness: thickness.max(1),
+			clip,
+			corner_radius: corner_radius.min(0.5 * rect.w.min(rect.h) as f32),
+		});
+		Ok(())
+	}
+
+	/// Draw normalized rectangle records from a GPU detection buffer in one
+	/// dispatch.
+	///
+	/// `dst` maps the records' normalized source-image coordinates into the
+	/// compose image; `clip` bounds rasterization and is intersected with
+	/// `dst`. Records carry an optional per-instance `0xRRGGBBAA` color that
+	/// falls back to `color`. Donor: `oa::Ui::rectOutlines`.
+	pub fn rect_outlines(
+		&mut self,
+		detections: &crate::vision::DetectionBuffer,
+		dst: PixelRect,
+		clip: PixelRect,
+		color: Color,
+		thickness: u32,
+	) -> Result<()> {
+		if !detections.engine_handle().same_as(&self.engine.handle()) {
+			return Err(Error::invalid_argument(
+				"Ui::rect_outlines requires a DetectionBuffer from its engine",
+			));
+		}
+		if detections.count() == 0 || dst.w == 0 || dst.h == 0 || clip.w == 0 || clip.h == 0 {
+			return Ok(());
+		}
+		let clip = dst.clip(&clip);
+		if clip.w == 0 || clip.h == 0 {
+			return Ok(());
+		}
+		let rect_idx = detections.bindless_index()?;
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		state.cmds.push(UiCmd::RectOutlines {
+			rect_idx,
+			count: detections.count(),
+			dst,
+			clip,
+			thickness: thickness.max(1),
+			rgba: color.to_u32(),
+		});
+		state
+			.frame_storages
+			.push(detections.storage().storage().clone());
+		Ok(())
+	}
+
+	/// Draw a source-anchored glyph batch from one GPU record buffer through
+	/// this `Ui`'s coverage atlas.
+	///
+	/// `dst` maps the records' normalized source-image anchors into the
+	/// compose image while offsets and glyph extents stay in pixels; `clip`
+	/// bounds rasterization and is intersected with `dst`. Donor:
+	/// `oa::Ui::glyphs`.
+	pub fn glyphs(&mut self, buffer: &GlyphBuffer, dst: PixelRect, clip: PixelRect) -> Result<()> {
+		if !buffer.engine_handle().same_as(&self.engine.handle()) {
+			return Err(Error::invalid_argument(
+				"Ui::glyphs requires a GlyphBuffer from its engine",
+			));
+		}
+		if buffer.count() == 0 || dst.w == 0 || dst.h == 0 || clip.w == 0 || clip.h == 0 {
+			return Ok(());
+		}
+		let clip = dst.clip(&clip);
+		if clip.w == 0 || clip.h == 0 {
+			return Ok(());
+		}
+		let glyph_idx = buffer.bindless_index()?;
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		state.cmds.push(UiCmd::Glyphs {
+			glyph_idx,
+			atlas_idx: state.text_atlas.descriptor(),
+			count: buffer.count(),
+			dst: Some(dst),
+			clip,
+			atlas_w: state.text_atlas.width(),
+			atlas_h: state.text_atlas.height(),
+		});
+		state
+			.frame_storages
+			.push(buffer.storage().storage().clone());
+		Ok(())
+	}
+
+	/// Return this `Ui`'s shared coverage atlas for shaping record buffers.
+	///
+	/// Glyph records store atlas coordinates; this atlas is the only producer
+	/// of those coordinates, so [`Ui::glyphs`] consumers shape against the
+	/// same instance their rasterization samples.
+	///
+	/// # Errors
+	///
+	/// Returns an error when the `Ui` is closed.
+	pub fn text_atlas(&self) -> Result<&TextAtlas> {
+		Ok(
+			self
+				.state
+				.as_ref()
+				.ok_or_else(|| Error::failed_precondition("Ui is closed"))?
+				.text_atlas
+				.as_ref(),
+		)
+	}
+
 	// ── Record and submit ──────────────────────────────────────────────────────
 
 	// ── Tier 1: Timeline widgets ───────────────────────────────────────────────
@@ -1615,7 +1946,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return false;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let widget_id = widget_hash(id, Some(rect));
 		let clip = rect;
 
@@ -1725,7 +2056,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return false;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let clip = rect;
 
 		// Waveform background.
@@ -1856,7 +2187,7 @@ impl<'engine> Ui<'engine> {
 		let clip = panel_clip.clip(&viewport);
 
 		// Draw panel background.
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		state.cmds.push(UiCmd::Rect {
 			rect,
 			color: style.background,
@@ -2016,7 +2347,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return UiSplitRegion::default();
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 
 		let (_, handle_rect, _) = split_rects(rect, config.direction, handle_px as u32, *ratio);
 
@@ -2079,7 +2410,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return UiPropertyRegion::default();
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let clip = rect;
 
 		let label_w = (rect.w as f32 * config.label_fraction) as u32;
@@ -2191,7 +2522,7 @@ impl<'engine> Ui<'engine> {
 			return false;
 		}
 		let anchor = state.popup_anchor;
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 
 		// Donor placement: anchor left, prefer below, fall back above, then clamp.
 		let width = i64::from(state.compose.width);
@@ -2264,7 +2595,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return false;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let id = widget_hash(label, state.layout.top().map(|s| s.outer));
 		let height = ((style.font_size + 8.0) * state.content_scale)
 			.ceil()
@@ -2356,7 +2687,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return false;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let id = widget_hash(label, state.layout.top().map(|s| s.outer));
 		let popup_id = widget_hash(&format!("__dd_{label}"), None);
 
@@ -2507,7 +2838,7 @@ impl<'engine> Ui<'engine> {
 		if state.hovered == 0 {
 			return;
 		}
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let px = state.input.pointer_x;
 		let py = state.input.pointer_y;
 		let pad = _config.padding;
@@ -2585,7 +2916,7 @@ impl<'engine> Ui<'engine> {
 			let Some(state) = self.state.as_mut() else {
 				return Ok(());
 			};
-			style = Self::current_style(state).clone();
+			style = Self::current_style_ref(state).clone();
 			let alloc_h = (config.rows as u32) * (default_item_height(style.padding));
 			let (r, c) = allocate_widget_explicit(state, style.padding, alloc_h);
 			rect = r;
@@ -2647,7 +2978,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let (rect, _clip) = allocate_widget(state, style.padding);
 		if rect.w == 0 || rect.h == 0 {
 			return;
@@ -2747,7 +3078,7 @@ impl<'engine> Ui<'engine> {
 		if state.focused == widget_id {
 			state.cmds.push(UiCmd::RectOutline {
 				rect,
-				color: Self::current_style(state).accent,
+				color: Self::current_style_ref(state).accent,
 				thickness: 1,
 				clip: rect,
 				corner_radius: rect.w.min(rect.h) as f32 * 0.5,
@@ -2998,7 +3329,7 @@ impl<'engine> Ui<'engine> {
 			changed = next != *fraction;
 			*fraction = next;
 		}
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let scale = state.content_scale;
 		let remaining = Color {
 			a: 0.60,
@@ -3095,7 +3426,7 @@ impl<'engine> Ui<'engine> {
 		let Some(state) = self.state.as_mut() else {
 			return false;
 		};
-		let style = Self::current_style(state).clone();
+		let style = Self::current_style_ref(state).clone();
 		let widget_id = widget_hash(id, Some(rect));
 		let clip = rect;
 
@@ -3227,7 +3558,7 @@ impl<'engine> Ui<'engine> {
 			(right - left) as u32,
 			(bottom - top) as u32,
 		);
-		let style = Self::current_style(state);
+		let style = Self::current_style_ref(state);
 		let light = style.background.r + style.background.g + style.background.b > 1.5;
 		let resolve = |requested: Color, fallback: Color| {
 			if requested.a <= 0.0 {
@@ -3312,40 +3643,134 @@ impl<'engine> Ui<'engine> {
 
 	// ── Tier 3: Planar image ──────────────────────────────────────────────────
 
-	/// Blit one channel of a planar image (e.g. YUV plane) as grayscale.
+	/// Composite all channels of a planar multi-dtype image into one image.
 	///
-	/// `channel` is 0-indexed (0 = first plane).
+	/// Inside a panel the image scales to the panel rectangle; otherwise it
+	/// draws at native size at `(dst_x, dst_y)`. Plane buffers stay retained
+	/// until the frame completes.
+	///
+	/// Donor: `oa::Ui::imagePlanar`.
+	pub fn image_planar(
+		&mut self,
+		planes: &crate::ui::ImagePlanes,
+		dst_x: i32,
+		dst_y: i32,
+	) -> Result<()> {
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		if !planes.is_valid() || !planes.engine_handle().same_as(&state.engine_handle) {
+			return Err(Error::invalid_argument(
+				"UI image_planar requires valid planes from its engine",
+			));
+		}
+		let mut slots = [u32::MAX; crate::ui::IMAGE_MAX_PLANES];
+		for (channel, slot) in slots.iter_mut().enumerate() {
+			*slot = planes.plane_index(channel)?;
+		}
+		self.push_planar_cmd(
+			planes,
+			slots,
+			(0..planes.channel_count()).fold(0_u32, |packed, channel| {
+				packed | ((planes.plane_dtype(channel) as u32) & 0x3) << (channel * 2)
+			}),
+			u32::try_from(planes.channel_count())
+				.map_err(|_| Error::out_of_range("plane count exceeds donor ABI"))?,
+			dst_x,
+			dst_y,
+		)
+	}
+
+	/// Blit one channel of a planar image as grayscale.
 	///
 	/// Donor: `oa::Ui::imagePlane`.
 	pub fn image_plane(
 		&mut self,
-		texture: &crate::Texture,
-		channel: u32,
+		planes: &crate::ui::ImagePlanes,
+		channel: usize,
 		dst_x: i32,
 		dst_y: i32,
 	) -> Result<()> {
-		if channel > 3 {
-			return Err(Error::invalid_argument("image_plane channel must be 0..=3"));
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		if !planes.is_valid()
+			|| !planes.engine_handle().same_as(&state.engine_handle)
+			|| channel >= planes.channel_count()
+		{
+			return Err(Error::invalid_argument(
+				"UI image_plane requires a valid channel from its engine",
+			));
 		}
-		let (w, h) = (texture.width() as u32, texture.height() as u32);
-		let rect = PixelRect {
-			x: dst_x,
-			y: dst_y,
-			w,
-			h,
-		};
-		// channel+1 because BlitRgba channel=0 means RGBA, 1..=4 select planes.
-		self.image_at_channel(texture, rect, channel + 1)
+		let index = planes.plane_index(channel)?;
+		self.push_planar_cmd(
+			planes,
+			[index, u32::MAX, u32::MAX, u32::MAX],
+			u32::from(planes.plane_dtype(channel) as u8) & 0x3,
+			1,
+			dst_x,
+			dst_y,
+		)
 	}
 
-	/// Blit all planes of a planar image side-by-side.
-	///
-	/// Donor: `oa::Ui::imagePlanar`.
-	pub fn image_planar(&mut self, texture: &crate::Texture, dst_x: i32, dst_y: i32) -> Result<()> {
-		let w = texture.width() as i32;
-		for ch in 0..3u32 {
-			self.image_plane(texture, ch, dst_x + ch as i32 * (w + 4), dst_y)?;
+	fn push_planar_cmd(
+		&mut self,
+		planes: &crate::ui::ImagePlanes,
+		slots: [u32; 4],
+		dtypes: u32,
+		channels: u32,
+		dst_x: i32,
+		dst_y: i32,
+	) -> Result<()> {
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		let native_w =
+			u32::try_from(planes.width()).map_err(|_| Error::out_of_range("plane width exceeds u32"))?;
+		let native_h = u32::try_from(planes.height())
+			.map_err(|_| Error::out_of_range("plane height exceeds u32"))?;
+		let (x, y, w, h) = state.layout.top().map_or_else(
+			|| (dst_x, dst_y, native_w, native_h),
+			|panel| {
+				(
+					panel.outer.x + dst_x,
+					panel.outer.y + dst_y,
+					panel.outer.w,
+					panel.outer.h,
+				)
+			},
+		);
+		let viewport = PixelRect::new(0, 0, state.compose.width, state.compose.height);
+		let destination = PixelRect::new(x, y, w, h);
+		let clip = state
+			.layout
+			.top()
+			.map_or(viewport, |panel| viewport.clip(&panel.clip()))
+			.clip(&destination);
+		if clip.w == 0 || clip.h == 0 {
+			return Ok(());
 		}
+		state.cmds.push(UiCmd::BlitPlanar {
+			r_idx: slots[0],
+			g_idx: slots[1],
+			b_idx: slots[2],
+			a_idx: slots[3],
+			src_w: u32::try_from(planes.width())
+				.map_err(|_| Error::out_of_range("plane width exceeds donor ABI"))?,
+			src_h: u32::try_from(planes.height())
+				.map_err(|_| Error::out_of_range("plane height exceeds donor ABI"))?,
+			dst_x: x,
+			dst_y: y,
+			dtypes,
+			channels,
+			dst_w: w,
+			dst_h: h,
+			clip,
+		});
+		planes.retain_planes(&mut state.frame_matrices);
 		Ok(())
 	}
 
@@ -3487,35 +3912,6 @@ impl<'engine> Ui<'engine> {
 		})
 	}
 
-	// ── Tier 4: rect_outlines public path ────────────────────────────────────
-
-	/// Draw a batch of rectangle outlines (e.g. detection bounding boxes).
-	///
-	/// Each entry in `rects` is `(x, y, w, h)` in physical pixels, clipped to
-	/// `clip`.  All outlines use `color` and `thickness`.
-	///
-	/// Donor: `oa::Ui::rectOutlines`.
-	pub fn rect_outlines(
-		&mut self,
-		rects: &[PixelRect],
-		clip: PixelRect,
-		color: Color,
-		thickness: u32,
-	) {
-		let Some(state) = self.state.as_mut() else {
-			return;
-		};
-		for &r in rects {
-			state.cmds.push(UiCmd::RectOutline {
-				rect: r,
-				color,
-				thickness,
-				clip,
-				corner_radius: 0.0,
-			});
-		}
-	}
-
 	/// Emit positioned glyph quads from a pre-shaped buffer.
 	///
 	/// `glyphs` is a slice of `(x, y, codepoint, color_rgba)` values built by
@@ -3596,6 +3992,7 @@ impl<'engine> Ui<'engine> {
 			glyph_idx,
 			atlas_idx: state.text_atlas.descriptor(),
 			count,
+			dst: None,
 			clip,
 			atlas_w: state.text_atlas.width(),
 			atlas_h: state.text_atlas.height(),
@@ -3671,28 +4068,28 @@ impl<'engine> Ui<'engine> {
 		};
 
 		// Transition compose image to GENERAL for compute writes.
-		let range = vk::ImageSubresourceRange::default()
-			.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-			.level_count(1)
-			.layer_count(1);
+		let range = vk::ImageSubresourceRange::new()
+			.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+			.set_level_count(1)
+			.set_layer_count(1);
 		let prior_layout = state.compose.layout();
-		let barrier_in = vk::ImageMemoryBarrier2::default()
-			.src_stage_mask(if prior_layout == vk::ImageLayout::UNDEFINED {
+		let barrier_in = vk::ImageMemoryBarrier2::new()
+			.set_src_stage_mask(if prior_layout == vk::ImageLayout::UNDEFINED {
 				vk::PipelineStageFlagBits2::NONE
 			} else {
 				vk::PipelineStageFlagBits2::ALL_TRANSFER_BIT
 			})
-			.src_access_mask(if prior_layout == vk::ImageLayout::UNDEFINED {
+			.set_src_access_mask(if prior_layout == vk::ImageLayout::UNDEFINED {
 				vk::AccessFlagBits2::NONE
 			} else {
 				vk::AccessFlagBits2::TRANSFER_READ_BIT
 			})
-			.dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-			.dst_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
-			.old_layout(prior_layout)
-			.new_layout(vk::ImageLayout::GENERAL)
-			.image(state.compose.raw_image())
-			.subresource_range(range);
+			.set_dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+			.set_dst_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+			.set_old_layout(prior_layout)
+			.set_new_layout(vk::ImageLayout::GENERAL)
+			.set_image(state.compose.raw_image())
+			.set_subresource_range(range);
 
 		// SAFETY: the Engine supplies a recording command buffer and retains the
 		// compose image. The barrier preserves its prior layout and compute-write scope.
@@ -3700,16 +4097,16 @@ impl<'engine> Ui<'engine> {
 			state.sync_commands.pipeline_barrier(
 				device,
 				command_buffer,
-				&vk::DependencyInfo::default()
-					.image_memory_barriers(&[barrier_in])
+				&vk::DependencyInfo::new()
+					.set_image_memory_barriers(&[barrier_in])
 					.map_err(Error::from)?
-					.memory_barriers(&[vk::MemoryBarrier2::default()
-						.src_stage_mask(
+					.set_memory_barriers(&[vk::MemoryBarrier2::new()
+						.set_src_stage_mask(
 							vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT | vk::PipelineStageFlagBits2::HOST_BIT,
 						)
-						.src_access_mask(vk::AccessFlagBits2::MEMORY_WRITE_BIT)
-						.dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-						.dst_access_mask(
+						.set_src_access_mask(vk::AccessFlagBits2::MEMORY_WRITE_BIT)
+						.set_dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+						.set_dst_access_mask(
 							vk::AccessFlagBits2::SHADER_STORAGE_READ_BIT
 								| vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT,
 						)])
@@ -3750,11 +4147,11 @@ impl<'engine> Ui<'engine> {
 				}
 			}
 			if index != 0 {
-				let dependency = vk::MemoryBarrier2::default()
-					.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-					.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
-					.dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-					.dst_access_mask(
+				let dependency = vk::MemoryBarrier2::new()
+					.set_src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+					.set_src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+					.set_dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+					.set_dst_access_mask(
 						vk::AccessFlagBits2::SHADER_STORAGE_READ_BIT
 							| vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT,
 					);
@@ -3764,8 +4161,8 @@ impl<'engine> Ui<'engine> {
 					state.sync_commands.pipeline_barrier(
 						device,
 						command_buffer,
-						&(vk::DependencyInfo::default()
-							.memory_barriers(std::slice::from_ref(&dependency))
+						&(vk::DependencyInfo::new()
+							.set_memory_barriers(std::slice::from_ref(&dependency))
 							.map_err(Error::from)?),
 					)?;
 				}
@@ -4049,34 +4446,98 @@ impl<'engine> Ui<'engine> {
 				clip,
 				channel,
 			} => {
-				let pipeline = &state.pipelines.blit_rgba;
-				let layout = pipeline.layout();
-				// push: source/destination geometry, clip, channel selector.
-				let mut push = [0u8; 52];
-				write_u32(&mut push, 0, *src_idx);
-				write_u32(&mut push, 4, dst_idx);
-				write_u32(&mut push, 8, *src_w);
-				write_u32(&mut push, 12, *src_h);
-				write_i32(&mut push, 16, *dst_x);
-				write_i32(&mut push, 20, *dst_y);
-				write_u32(&mut push, 24, *dst_w);
-				write_u32(&mut push, 28, *dst_h);
-				let cw = clip_words(*clip);
-				write_i32(&mut push, 32, cw[0]);
-				write_i32(&mut push, 36, cw[1]);
-				write_i32(&mut push, 40, cw[2]);
-				write_i32(&mut push, 44, cw[3]);
-				write_u32(&mut push, 48, *channel);
-				unsafe {
-					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
-					device.cmd_push_constants(
-						cmd_buf,
-						layout,
-						vk::ShaderStageFlagBits::COMPUTE_BIT,
-						0,
-						&push,
-					)?;
-					device.cmd_dispatch(cmd_buf, div_ceil(*dst_w, 8), div_ceil(*dst_h, 8), 1)?;
+				// Dispatch only the clip-visible region: the destination rect
+				// grows with zoom, so launching over it exhausts workgroups.
+				let (vis_w, vis_h, base_x, base_y) =
+					visible_blit_region(*dst_x, *dst_y, *dst_w, *dst_h, *clip);
+				if vis_w > 0 && vis_h > 0 {
+					let pipeline = &state.pipelines.blit_rgba;
+					let layout = pipeline.layout();
+					// push: source/destination geometry, clip, channel selector.
+					let mut push = [0u8; 60];
+					write_u32(&mut push, 0, *src_idx);
+					write_u32(&mut push, 4, dst_idx);
+					write_u32(&mut push, 8, *src_w);
+					write_u32(&mut push, 12, *src_h);
+					write_i32(&mut push, 16, *dst_x);
+					write_i32(&mut push, 20, *dst_y);
+					write_u32(&mut push, 24, *dst_w);
+					write_u32(&mut push, 28, *dst_h);
+					let cw = clip_words(*clip);
+					write_i32(&mut push, 32, cw[0]);
+					write_i32(&mut push, 36, cw[1]);
+					write_i32(&mut push, 40, cw[2]);
+					write_i32(&mut push, 44, cw[3]);
+					write_u32(&mut push, 48, *channel);
+					write_u32(&mut push, 52, base_x);
+					write_u32(&mut push, 56, base_y);
+					unsafe {
+						device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
+						device.cmd_push_constants(
+							cmd_buf,
+							layout,
+							vk::ShaderStageFlagBits::COMPUTE_BIT,
+							0,
+							&push,
+						)?;
+						device.cmd_dispatch(cmd_buf, div_ceil(vis_w, 8), div_ceil(vis_h, 8), 1)?;
+					}
+				}
+			}
+			UiCmd::BlitPlanar {
+				r_idx,
+				g_idx,
+				b_idx,
+				a_idx,
+				src_w,
+				src_h,
+				dst_x,
+				dst_y,
+				dtypes,
+				channels,
+				dst_w,
+				dst_h,
+				clip,
+			} => {
+				// Dispatch only the clip-visible region; see BlitRgba.
+				let (vis_w, vis_h, base_x, base_y) =
+					visible_blit_region(*dst_x, *dst_y, *dst_w, *dst_h, *clip);
+				if vis_w > 0 && vis_h > 0 {
+					let pipeline = &state.pipelines.blit_planar;
+					let layout = pipeline.layout();
+					// push: plane/destination indices, geometry, dtype pack, clip.
+					let mut push = [0u8; 76];
+					write_u32(&mut push, 0, *r_idx);
+					write_u32(&mut push, 4, *g_idx);
+					write_u32(&mut push, 8, *b_idx);
+					write_u32(&mut push, 12, *a_idx);
+					write_u32(&mut push, 16, dst_idx);
+					write_u32(&mut push, 20, *src_w);
+					write_u32(&mut push, 24, *src_h);
+					write_i32(&mut push, 28, *dst_x);
+					write_i32(&mut push, 32, *dst_y);
+					write_u32(&mut push, 36, *dtypes);
+					write_u32(&mut push, 40, *channels);
+					write_u32(&mut push, 44, *dst_w);
+					write_u32(&mut push, 48, *dst_h);
+					let cw = clip_words(*clip);
+					write_i32(&mut push, 52, cw[0]);
+					write_i32(&mut push, 56, cw[1]);
+					write_i32(&mut push, 60, cw[2]);
+					write_i32(&mut push, 64, cw[3]);
+					write_u32(&mut push, 68, base_x);
+					write_u32(&mut push, 72, base_y);
+					unsafe {
+						device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
+						device.cmd_push_constants(
+							cmd_buf,
+							layout,
+							vk::ShaderStageFlagBits::COMPUTE_BIT,
+							0,
+							&push,
+						)?;
+						device.cmd_dispatch(cmd_buf, div_ceil(vis_w, 8), div_ceil(vis_h, 8), 1)?;
+					}
 				}
 			}
 			UiCmd::PlotLine {
@@ -4142,12 +4603,15 @@ impl<'engine> Ui<'engine> {
 				glyph_idx,
 				atlas_idx,
 				count,
+				dst,
 				clip,
 				atlas_w,
 				atlas_h,
 			} => {
 				let pipeline = &state.pipelines.draw_glyphs;
 				let layout = pipeline.layout();
+				let (dst_x, dst_y, dst_w, dst_h) =
+					dst.map_or((0, 0, w, h), |rect| (rect.x, rect.y, rect.w, rect.h));
 				let mut push = [0_u8; 72];
 				write_u32(&mut push, 0, *glyph_idx);
 				write_u32(&mut push, 4, 0);
@@ -4156,10 +4620,10 @@ impl<'engine> Ui<'engine> {
 				write_u32(&mut push, 16, 0);
 				write_u32(&mut push, 20, 1);
 				write_u32(&mut push, 24, dst_idx);
-				write_i32(&mut push, 28, 0);
-				write_i32(&mut push, 32, 0);
-				write_u32(&mut push, 36, w);
-				write_u32(&mut push, 40, h);
+				write_i32(&mut push, 28, dst_x);
+				write_i32(&mut push, 32, dst_y);
+				write_u32(&mut push, 36, dst_w);
+				write_u32(&mut push, 40, dst_h);
 				let cw = clip_words(*clip);
 				write_i32(&mut push, 44, cw[0]);
 				write_i32(&mut push, 48, cw[1]);
@@ -4168,6 +4632,43 @@ impl<'engine> Ui<'engine> {
 				write_u32(&mut push, 60, *atlas_w);
 				write_u32(&mut push, 64, *atlas_h);
 				write_f32(&mut push, 68, 0.0);
+				unsafe {
+					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
+					device.cmd_push_constants(
+						cmd_buf,
+						layout,
+						vk::ShaderStageFlagBits::COMPUTE_BIT,
+						0,
+						&push,
+					)?;
+					device.cmd_dispatch(cmd_buf, *count, 1, 1)?;
+				}
+			}
+			UiCmd::RectOutlines {
+				rect_idx,
+				count,
+				dst,
+				clip,
+				thickness,
+				rgba,
+			} => {
+				let pipeline = &state.pipelines.draw_rect_outlines;
+				let layout = pipeline.layout();
+				let mut push = [0_u8; 52];
+				write_u32(&mut push, 0, *rect_idx);
+				write_u32(&mut push, 4, *count);
+				write_u32(&mut push, 8, dst_idx);
+				write_i32(&mut push, 12, dst.x);
+				write_i32(&mut push, 16, dst.y);
+				write_u32(&mut push, 20, dst.w);
+				write_u32(&mut push, 24, dst.h);
+				let cw = clip_words(*clip);
+				write_i32(&mut push, 28, cw[0]);
+				write_i32(&mut push, 32, cw[1]);
+				write_i32(&mut push, 36, cw[2]);
+				write_i32(&mut push, 40, cw[3]);
+				write_u32(&mut push, 44, *thickness);
+				write_u32(&mut push, 48, *rgba);
 				unsafe {
 					device.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::COMPUTE, pipeline.raw())?;
 					device.cmd_push_constants(
@@ -4405,6 +4906,35 @@ fn allocate_widget(state: &mut UiState, padding: f32) -> (PixelRect, PixelRect) 
 	let w = resolve_width(&scope.layout.width.clone(), scope.content_width());
 	let r = scope.allocate(w.max(1), h);
 	(r, clip)
+}
+
+/// Resolve a chart grid for a plot rect the way the donor's
+/// `resolveChartGridConfig` does: centered origin, a minor spacing that puts
+/// 4–6 major cells across the shorter side at ~144 logical px per major, and
+/// themed opacity.
+fn chart_grid_config(
+	rect: PixelRect,
+	content_scale: f32,
+	fill_background: bool,
+	draw_grid: bool,
+) -> UiGridConfig {
+	let short_side = (rect.w.min(rect.h).saturating_sub(1)).max(1) as f32;
+	let target_major_pixels = (144.0 * content_scale).max(1.0);
+	let short_side_cells = (short_side / target_major_pixels).round() as i32;
+	let short_side_cells = short_side_cells.clamp(4, 6);
+	let minor_spacing = (short_side / (short_side_cells * 10) as f32).max(1.0);
+	UiGridConfig {
+		origin: [
+			rect.x as f32 + 0.5 * (rect.w - 1) as f32,
+			rect.y as f32 + 0.5 * (rect.h - 1) as f32,
+		],
+		minor_spacing: [minor_spacing, minor_spacing],
+		opacity: 0.65,
+		fill_background,
+		draw_grid,
+		draw_axes: draw_grid,
+		..UiGridConfig::default()
+	}
 }
 
 /// Allocate a widget area with an explicit height (used by multi-row widgets).

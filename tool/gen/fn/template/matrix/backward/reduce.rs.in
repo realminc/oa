@@ -1,0 +1,18 @@
+// Numerical adjoints mechanically extracted from the admitted recipes.
+
+// @operation mean
+// @fields input,output_id,dim
+/// Compute the mean adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn mean_backward(input: &Matrix, output_gradient: &Matrix, dim: i32) -> Result<Matrix> {
+	let count = if dim >= 0 && (dim as usize) < input.shape().len() {
+		input.shape()[dim as usize]
+	} else {
+		input.num_elements()
+	};
+	matrix::scale(
+		&sum_backward(input, output_gradient, dim)?,
+		(1.0 / count as f64) as f32,
+	)
+}

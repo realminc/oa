@@ -1355,7 +1355,7 @@ fn merge_access(
 	}
 }
 
-fn dense_strides(shape: &[usize]) -> Result<Vec<isize>> {
+pub(super) fn dense_strides(shape: &[usize]) -> Result<Vec<isize>> {
 	let mut stride = 1_usize;
 	let mut strides = vec![0_isize; shape.len()];
 	for (index, dimension) in shape.iter().copied().enumerate().rev() {

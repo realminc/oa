@@ -19,18 +19,21 @@ mod transform;
 
 pub(crate) use audio::validate_sample_buffer;
 pub use audio::{Audio, AudioChannelLayout};
-pub use capture::{AudioCapture, AudioCaptureChunk, AudioCaptureConfig};
+pub use capture::{AudioCapture, AudioCaptureChunk};
 pub use codec::{
 	decode_file, decode_memory, encode_interleaved_wav_f32, encode_wav_f32, save_wav_f32,
 };
 pub use encoder::{AudioCodec, AudioEncodeProfile, AudioEncoder, EncodedAudioPacket};
-pub use player::{AudioPlayer, AudioPlayerConfig};
+pub use player::AudioPlayer;
 pub use signal::{
 	BiquadCoefficients, NormalizeAudioConfig, NormalizeAudioMode, ResampleConfig, amplitude_to_db,
 	biquad, clip, fade, gain, mix, normalize, pre_emphasis, resample, reverb, saturate, sos_filter,
 	to_mono, waveform_envelope,
 };
 pub use transform::{MelConfig, MfccConfig, StftConfig, StftWindow, mel_spectrogram, mfcc, stft};
+pub use types::{AudioCaptureConfig, AudioPlayerConfig};
 
 #[path = "audio/parity.gen.rs"]
 mod parity;
+#[path = "audio/type.gen.rs"]
+mod types;

@@ -10,7 +10,7 @@ const END_QUERY: u32 = 1;
 
 /// Shared ownership of one immutable timestamp result pair.
 #[derive(Clone)]
-pub(in crate::runtime) struct TimestampPair {
+pub(crate) struct TimestampPair {
 	inner: Arc<TimestampPairInner>,
 }
 
@@ -28,9 +28,9 @@ impl TimestampPair {
 				"selected Vulkan compute queue does not support device timestamps",
 			));
 		}
-		let create_info = vk::QueryPoolCreateInfo::default()
-			.query_type(vk::QueryType::TIMESTAMP)
-			.query_count(QUERY_COUNT);
+		let create_info = vk::QueryPoolCreateInfo::new()
+			.set_query_type(vk::QueryType::TIMESTAMP)
+			.set_query_count(QUERY_COUNT);
 		// SAFETY: `device` is live, the timestamp query count is nonzero, and no
 		// allocation callbacks are installed. The returned pool is owned by the
 		// timestamp pair and destroyed through the same device.
@@ -84,6 +84,11 @@ impl TimestampPair {
 			)?;
 		}
 		Ok(())
+	}
+
+	/// Return whether this pair was created on `device`.
+	pub(in crate::runtime) fn belongs_to(&self, device: &Arc<Device>) -> bool {
+		self.inner.device.same_as(device)
 	}
 
 	pub(in crate::runtime) fn duration(&self) -> Result<Duration> {

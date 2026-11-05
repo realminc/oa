@@ -3,29 +3,9 @@
 //! Donor: `oa/ml/mcpTraining.h` and its implementation.
 
 use super::training::{TrainingCommandDisposition, TrainingSession, TrainingState, TrainingValue};
-use crate::network::mcp::{McpArguments, McpServer, McpTool, McpToolResult};
+pub use super::types::McpTrainingConfig;
+use crate::net::mcp::{McpArguments, McpServer, McpTool, McpToolResult};
 use crate::{Error, Result, core::push_json_string};
-
-/// Gates controlling which MCP tools are registered for a training session.
-///
-/// Calling [`McpTraining::register_tools`] is the opt-in boundary.
-#[derive(Clone, Debug)]
-pub struct McpTrainingConfig {
-	/// Enable safe-point pause/resume/checkpoint/evaluate/parameter/recapture commands.
-	pub enable_commands: bool,
-	/// Enable `training_pause` and `training_resume`.
-	pub enable_pause_resume: bool,
-	/// Enable `training_checkpoint`.
-	pub enable_checkpoint: bool,
-	/// Enable `training_evaluate`.
-	pub enable_evaluate: bool,
-	/// Enable `training_set_parameter`.
-	pub enable_set_parameter: bool,
-	/// Enable `training_request_recapture`.
-	pub enable_recapture: bool,
-	/// Enable `training_stop` (separately gated because it changes the terminal path).
-	pub enable_stop: bool,
-}
 
 impl Default for McpTrainingConfig {
 	fn default() -> Self {

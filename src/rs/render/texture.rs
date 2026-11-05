@@ -339,7 +339,7 @@ fn texture_from_rgba8_from_engine(texture: &Texture, rgba: &[u8]) -> Result<Text
 	texture_from_matrix(data, texture.width(), texture.height())
 }
 
-fn texture_from_matrix(data: Matrix, width: usize, height: usize) -> Result<Texture> {
+pub(crate) fn texture_from_matrix(data: Matrix, width: usize, height: usize) -> Result<Texture> {
 	let w32 =
 		u32::try_from(width).map_err(|_| Error::out_of_range("texture width exceeds Vulkan limits"))?;
 	let h32 = u32::try_from(height)

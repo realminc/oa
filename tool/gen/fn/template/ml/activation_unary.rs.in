@@ -33,6 +33,7 @@ pub fn {{name}}(input: &Matrix) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::{{kernel}}.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,

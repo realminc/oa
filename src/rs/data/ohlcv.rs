@@ -2,6 +2,7 @@
 //! and `trade/lib/oa/core/dataframe.cpp` (FromOhlcvData). Explicit timestamp
 //! units, full validation and borrowed windows replace donor copies/f64 time.
 
+pub use super::types::OhlcvWindowConfig;
 use super::{DataFrame, DataFrameView, Dataset, Sample, SeriesView};
 use crate::{Engine, Error, Matrix, Result};
 use std::ops::Range;
@@ -154,17 +155,6 @@ impl<'a> OhlcvView<'a> {
 			self.slice(validation_end..self.len())?,
 		])
 	}
-}
-
-/// Window shape; targets are the immediately following future close prices.
-#[derive(Clone, Copy, Debug)]
-pub struct OhlcvWindowConfig {
-	/// Number of history candles per input.
-	pub lookback: usize,
-	/// Number of future closes per label.
-	pub horizon: usize,
-	/// Advance between consecutive window starts.
-	pub stride: usize,
 }
 
 /// Host-only borrowed sliding windows. Construct separately within each split.

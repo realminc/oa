@@ -1,5 +1,5 @@
 // Donor: oa/ui/shader/compute/drawGlyphs.slang.
-// One workgroup rasterizes one exact-strike grayscale glyph.
+// One workgroup per coverage/SDF glyph instance.
 struct PushConstants {
     uint glyph_idx; uint first; uint atlas_idx; uint count;
     uint batch; uint batch_count; uint dst_idx;
@@ -48,18 +48,40 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     float4 color = unpack_rgba(heap[pc.glyph_idx].Load(offset + 40));
     uint flags = heap[pc.glyph_idx].Load(offset + 44);
     if ((flags >> 1) != pc.batch) return;
+    bool bottom_to_top = (flags & 1) != 0;
+    bool solid = atlas_w == 0 || atlas_h == 0;
+    bool sdf = pc.px_range > 0.0;
+
     int x0 = int(floor(float(pc.dst_x) + anchor_x * float(pc.dst_w) + offset_x));
     int y0 = int(floor(float(pc.dst_y) + anchor_y * float(pc.dst_h) + offset_y));
-    uint quad_w = uint(max(1.0, ceil(width))), quad_h = uint(max(1.0, ceil(height)));
+    uint quad_w = uint(max(1.0, ceil(bottom_to_top ? height : width)));
+    uint quad_h = uint(max(1.0, ceil(bottom_to_top ? width : height)));
+    float smoothing = 0.0;
+    if (!solid && sdf) {
+        smoothing = clamp(
+            0.5 * max(float(atlas_w) / width, float(atlas_h) / height) / pc.px_range,
+            0.01, 0.25);
+    }
+
     for (uint y = lid.y; y < quad_h; y += 8) {
         int dy = y0 + int(y);
         if (dy < pc.clip_y || uint(dy - pc.clip_y) >= pc.clip_h || dy < 0 || dy >= int(image_h)) continue;
         for (uint x = lid.x; x < quad_w; x += 8) {
             int dx = x0 + int(x);
             if (dx < pc.clip_x || uint(dx - pc.clip_x) >= pc.clip_w || dx < 0 || dx >= int(image_w)) continue;
-            float2 uv = (float2(float(x), float(y)) + 0.5) / float2(width, height);
-            float coverage = sample_atlas(float2(atlas_x, atlas_y) + uv * float2(atlas_w, atlas_h) - 0.5);
-            float alpha = color.a * coverage;
+            float alpha = color.a;
+            if (!solid) {
+                float2 source_position = bottom_to_top
+                    ? float2(width - (float(y) + 0.5), float(x) + 0.5)
+                    : float2(float(x) + 0.5, float(y) + 0.5);
+                float2 uv = source_position / float2(width, height);
+                float2 atlas_position = float2(float(atlas_x), float(atlas_y))
+                    + uv * float2(float(atlas_w), float(atlas_h)) - 0.5;
+                float coverage = sample_atlas(atlas_position);
+                alpha *= sdf
+                    ? smoothstep(0.5 - smoothing, 0.5 + smoothing, coverage)
+                    : coverage;
+            }
             if (alpha <= 0.001) continue;
             float4 dst = images[pc.dst_idx][uint2(dx, dy)];
             images[pc.dst_idx][uint2(dx, dy)] = float4(color.rgb * alpha + dst.rgb * (1.0 - alpha), alpha + dst.a * (1.0 - alpha));

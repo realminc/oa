@@ -2,7 +2,7 @@
 
 use crate::{
 	DType, Error, Matrix, OpAttribute, Result,
-	matrix::autograd,
+	matrix::{self, autograd},
 	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
 };
 

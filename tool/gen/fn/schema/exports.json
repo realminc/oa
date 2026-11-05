@@ -53,7 +53,7 @@
 	"submodules": [
 		"audio",
 		"core",
-		"cryptography",
+		"crypto",
 		"data",
 		"image",
 		"matrix",

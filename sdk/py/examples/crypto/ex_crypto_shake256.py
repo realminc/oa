@@ -12,7 +12,7 @@ messages = oa.Matrix.new_from_u8(
 	list(b"".join(rows)),
 )
 
-digests = oa.cryptography.hash_shake256(messages, 32)
+digests = oa.crypto.hash_shake256(messages, 32)
 
 gpu = bytes(digests.read_u8())
 cpu = b"".join(hashlib.shake_256(row).digest(32) for row in rows)

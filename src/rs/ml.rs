@@ -27,22 +27,18 @@ pub mod training;
 mod validation;
 mod weights;
 
-pub use actor_critic::{
-	ActorCritic, ActorCriticOutput, CategoricalActorCritic, CategoricalActorCriticConfig,
-};
+pub use actor_critic::{ActorCritic, ActorCriticOutput, CategoricalActorCritic};
 pub use autograd::GradientTape;
-pub use checkpoint::{
-	CheckpointManager, CheckpointManagerConfig, load_checkpoint, save_checkpoint,
-};
+pub use checkpoint::{CheckpointManager, load_checkpoint, save_checkpoint};
 pub(crate) use checkpoint::{
 	DenseArtifactTensor, ModuleArtifact, ModuleArtifactMetadata, save_dense_artifact,
 	save_module_artifact,
 };
-pub use collector::{RolloutCollector, RolloutCollectorConfig, RolloutCollectorMetrics};
+pub use collector::{RolloutCollector, RolloutCollectorMetrics};
 pub use environment::{
 	EnvironmentSpace, EnvironmentSpaceKind, EnvironmentSpec, EnvironmentTransition,
 };
-pub use matrix::UpsampleMode;
+pub use matrix::{QuantMatrix, Quantization, UpsampleMode};
 pub use mcp_training::{McpTraining, McpTrainingConfig};
 pub use module::{Module, ModuleRegistry, NamedBuffer, NamedParameter, NamedStateU32, ScopedEval};
 pub use optim::{Adam, AdamW, CheckpointOptimizer, Muon, NoOpOptimizer, Optimizer, Sgd};
@@ -52,7 +48,10 @@ pub use replay::{ReplayBatch, ReplayBuffer, ReplayConfig, ReplayTransition};
 pub use rollout::{RolloutBatch, RolloutBuffer, RolloutConfig, RolloutTransition};
 pub use tokenizer::{BpeMerge, BpeTokenizer};
 pub use training::*;
+pub use types::{CategoricalActorCriticConfig, CheckpointManagerConfig, RolloutCollectorConfig};
 pub(crate) use weights::SafeTensorsSource;
 
 #[path = "ml/parity.gen.rs"]
 mod parity;
+#[path = "ml/type.gen.rs"]
+mod types;

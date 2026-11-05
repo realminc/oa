@@ -4,28 +4,12 @@ use crate::runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, Sem
 use crate::{DType, Error, Matrix, OpAttribute, OperationContract, Result, matrix};
 
 use super::smooth_l1::smooth_l1;
-
-/// Discount applied to the non-terminal next-state value in DQN.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct DqnLossConfig {
-	/// Next-state value discount in the inclusive range `[0, 1]`.
-	pub discount: f32,
-}
+pub use crate::ml::types::{DqnLossConfig, DqnLossResult};
 
 impl Default for DqnLossConfig {
 	fn default() -> Self {
 		Self { discount: 0.99 }
 	}
-}
-
-/// Selected action values, detached targets, and scalar DQN loss.
-pub struct DqnLossResult {
-	/// Q values selected by the batch's action indices, shaped `[batch]`.
-	pub selected_q: Matrix,
-	/// Detached Bellman targets, shaped `[batch]`.
-	pub target_q: Matrix,
-	/// Mean unit-beta Smooth L1 loss between selected and target Q values.
-	pub loss: Matrix,
 }
 
 /// Compose the donor DQN selected-action and detached Bellman-target loss.
@@ -169,6 +153,7 @@ fn dqn_target_impl(
 		buffers: &buffers,
 		push_constants: &push_constants,
 		workgroups: kernel.linear_workgroups(batch),
+		indirect: None,
 	})?;
 	Ok(output)
 }

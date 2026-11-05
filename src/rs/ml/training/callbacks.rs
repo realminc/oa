@@ -1,5 +1,6 @@
 //! Donor-backed built-in training presentation callbacks.
 
+pub use crate::ml::types::ValidationResult;
 use std::{
 	io::{self, Write},
 	time::{Duration, Instant},
@@ -21,7 +22,7 @@ pub use checkpoint::{CbCheckpoint, Checkpoint};
 pub use csv::{CbCsvLogger, CsvLogger};
 pub use phase::{CbPhase, PhaseSchedule, TrainingPhase};
 pub use policy::{CbEarlyStop, CbLrScheduler, EarlyStopMode, EarlyStopping, LearningRateScheduler};
-pub use validation::{CbValidation, Validation, ValidationMetric, ValidationResult};
+pub use validation::{CbValidation, Validation, ValidationMetric};
 
 /// Throttled Keras/tqdm-style wall-throughput progress display.
 pub struct ProgressBar {

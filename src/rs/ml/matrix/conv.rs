@@ -844,12 +844,14 @@ pub(in crate::ml) fn conv_1d_backward(
 				"input element count",
 				operation,
 			)?),
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: parameter_kernel,
 			buffers: &parameter_buffers,
 			push_constants: &parameter_constants,
 			workgroups: parameter_kernel.linear_workgroups(geometry.parameter_count),
+			indirect: None,
 		},
 	];
 	let attributes = geometry.attributes();
@@ -1009,16 +1011,17 @@ pub(in crate::ml) fn conv_transpose_1d_backward(
 		PushConstant::U32(forward.dilation),
 		PushConstant::U32(forward.output_length),
 	];
-	let gemm_buffers = [
-		BufferBinding::read(columns.storage()),
-		BufferBinding::read(weight.storage()),
-		BufferBinding::write(projected.storage()),
-	];
-	let gemm_constants = [
-		PushConstant::U32(rows),
-		PushConstant::U32(forward.output_channels),
-		PushConstant::U32(inner_size),
-	];
+	let gemm_plan = crate::runtime::plan_mat_mul_nt(
+		input.engine_handle(),
+		rows,
+		forward.output_channels,
+		inner_size,
+	)?;
+	let gemm_launch =
+		crate::runtime::lower_mat_mul_nt(&gemm_plan, rows, forward.output_channels, inner_size)?;
+	let gemm_buffers =
+		gemm_launch.bindings(&[columns.storage(), weight.storage(), projected.storage()])?;
+	let gemm_constants = &gemm_launch.push_constants[..gemm_launch.push_count];
 	let transpose_buffers = [
 		BufferBinding::read(projected.storage()),
 		BufferBinding::write(input_gradient.storage()),
@@ -1042,12 +1045,14 @@ pub(in crate::ml) fn conv_transpose_1d_backward(
 			buffers: &unfold_buffers,
 			push_constants: &unfold_constants,
 			workgroups: KernelId::MlConvTranspose1dBackwardF32.linear_workgroups(forward.columns_count),
+			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MatrixMatMulNtTiledF32,
+			kernel: gemm_launch.kernel_id,
 			buffers: &gemm_buffers,
-			push_constants: &gemm_constants,
-			workgroups: KernelId::MatrixMatMulNtTiledF32.output_workgroups(rows, forward.output_channels),
+			push_constants: gemm_constants,
+			workgroups: gemm_launch.grid,
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlConv1dTransposeF32,
@@ -1058,12 +1063,14 @@ pub(in crate::ml) fn conv_transpose_1d_backward(
 				forward.output_length.div_ceil(32),
 				forward.batch_size,
 			],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlConv1dParameterBackwardF32,
 			buffers: &parameter_buffers,
 			push_constants: &parameter_constants,
 			workgroups: KernelId::MlConv1dParameterBackwardF32.linear_workgroups(forward.parameter_count),
+			indirect: None,
 		},
 	];
 	let attributes = transposed.attributes();
@@ -1205,6 +1212,7 @@ pub(in crate::ml) fn conv_transpose_2d_backward(
 				"input element count",
 				operation,
 			)?),
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlConvTranspose2dParameterBackwardF32,
@@ -1212,6 +1220,7 @@ pub(in crate::ml) fn conv_transpose_2d_backward(
 			push_constants: &parameter_constants,
 			workgroups: KernelId::MlConvTranspose2dParameterBackwardF32
 				.linear_workgroups(geometry.parameter_count),
+			indirect: None,
 		},
 	];
 	let attributes = geometry.attributes();
@@ -1360,12 +1369,14 @@ pub(in crate::ml) fn conv_2d_backward(
 				"input element count",
 				operation,
 			)?),
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: parameter_kernel,
 			buffers: &parameter_buffers,
 			push_constants: &parameter_dimensions,
 			workgroups: parameter_kernel.linear_workgroups(geometry.parameter_count),
+			indirect: None,
 		},
 	];
 	let attributes = geometry.attributes();
@@ -1443,16 +1454,17 @@ fn conv_1d_dispatch(
 		PushConstant::U32(geometry.dilation),
 		PushConstant::U32(geometry.output_length),
 	];
-	let gemm_buffers = [
-		BufferBinding::read(columns.storage()),
-		BufferBinding::read(weight.storage()),
-		BufferBinding::write(projected.storage()),
-	];
-	let gemm_constants = [
-		PushConstant::U32(rows),
-		PushConstant::U32(geometry.output_channels),
-		PushConstant::U32(inner_size),
-	];
+	let gemm_plan = crate::runtime::plan_mat_mul_nt(
+		input.engine_handle(),
+		rows,
+		geometry.output_channels,
+		inner_size,
+	)?;
+	let gemm_launch =
+		crate::runtime::lower_mat_mul_nt(&gemm_plan, rows, geometry.output_channels, inner_size)?;
+	let gemm_buffers =
+		gemm_launch.bindings(&[columns.storage(), weight.storage(), projected.storage()])?;
+	let gemm_constants = &gemm_launch.push_constants[..gemm_launch.push_count];
 	let bias_buffers = [
 		BufferBinding::read_write(projected.storage()),
 		BufferBinding::read(bias.storage()),
@@ -1476,19 +1488,21 @@ fn conv_1d_dispatch(
 			buffers: &unfold_buffers,
 			push_constants: &unfold_constants,
 			workgroups: KernelId::MlConv1dIm2ColF32.linear_workgroups(geometry.columns_count),
+			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MatrixMatMulNtTiledF32,
+			kernel: gemm_launch.kernel_id,
 			buffers: &gemm_buffers,
-			push_constants: &gemm_constants,
-			workgroups: KernelId::MatrixMatMulNtTiledF32
-				.output_workgroups(rows, geometry.output_channels),
+			push_constants: gemm_constants,
+			workgroups: gemm_launch.grid,
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlConv1dBiasAddF32,
 			buffers: &bias_buffers,
 			push_constants: &bias_constants,
 			workgroups: KernelId::MlConv1dBiasAddF32.linear_workgroups(geometry.output_count),
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlConv1dTransposeF32,
@@ -1499,6 +1513,7 @@ fn conv_1d_dispatch(
 				geometry.output_length.div_ceil(32),
 				geometry.batch_size,
 			],
+			indirect: None,
 		},
 	];
 	let attributes = geometry.attributes();
@@ -1555,6 +1570,7 @@ fn conv_transpose_1d_dispatch(
 			buffers: &buffers,
 			push_constants: &dimensions,
 			workgroups: kernel.linear_workgroups(geometry.output_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -1624,12 +1640,14 @@ fn conv_transpose_2d_dispatch(
 			buffers: &convolution_buffers,
 			push_constants: &dimensions,
 			workgroups: KernelId::MlConvTranspose2dF32.linear_workgroups(geometry.output_count),
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlConvTranspose2dBiasAddF32,
 			buffers: &bias_buffers,
 			push_constants: &bias_constants,
 			workgroups: KernelId::MlConvTranspose2dBiasAddF32.linear_workgroups(geometry.output_count),
+			indirect: None,
 		},
 	];
 	let attributes = geometry.attributes();
@@ -1696,6 +1714,7 @@ fn conv_2d_dispatch(
 			buffers: &buffers,
 			push_constants: &dimensions,
 			workgroups: kernel.linear_workgroups(geometry.output_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

@@ -1,5 +1,8 @@
 //! Backend-neutral reporting for hardware video queue and codec support.
 
+pub use crate::video::types::{
+	VideoDecodeCapabilities, VideoDeviceCapabilities, VideoEncodeCapabilities,
+};
 use crate::{Engine, Result};
 
 /// Chroma sampling carried by a video codec profile.
@@ -320,25 +323,6 @@ pub enum VideoDecodeLevel {
 	Vp9(u32),
 }
 
-/// Exact device limits for one supported decode profile.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct VideoDecodeCapabilities {
-	pub(crate) profile: VideoDecodeProfile,
-	pub(crate) min_coded_extent: VideoExtent,
-	pub(crate) max_coded_extent: VideoExtent,
-	pub(crate) picture_access_granularity: VideoExtent,
-	pub(crate) min_bitstream_offset_alignment: u64,
-	pub(crate) min_bitstream_size_alignment: u64,
-	pub(crate) max_dpb_slots: u32,
-	pub(crate) max_active_reference_pictures: u32,
-	pub(crate) level: VideoDecodeLevel,
-	pub(crate) field_offset_granularity: Option<(i32, i32)>,
-	pub(crate) dpb_and_output_coincide: bool,
-	pub(crate) dpb_and_output_distinct: bool,
-	pub(crate) protected_content: bool,
-	pub(crate) separate_reference_images: bool,
-}
-
 /// Codec-specific limits returned with an exact encode capability query.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VideoEncodeCodecCapabilities {
@@ -370,32 +354,6 @@ pub enum VideoEncodeCodecCapabilities {
 		min_qp: i32,
 		max_qp: i32,
 	},
-}
-
-/// Backend-neutral device limits for one exact encode profile.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct VideoEncodeCapabilities {
-	pub(crate) profile: VideoEncodeProfile,
-	pub(crate) min_coded_extent: VideoExtent,
-	pub(crate) max_coded_extent: VideoExtent,
-	pub(crate) picture_access_granularity: VideoExtent,
-	pub(crate) input_picture_granularity: VideoExtent,
-	pub(crate) min_bitstream_offset_alignment: u64,
-	pub(crate) min_bitstream_size_alignment: u64,
-	pub(crate) max_dpb_slots: u32,
-	pub(crate) max_active_reference_pictures: u32,
-	pub(crate) max_rate_control_layers: u32,
-	pub(crate) max_bitrate: u64,
-	pub(crate) max_quality_levels: u32,
-	pub(crate) constant_qp: bool,
-	pub(crate) cbr: bool,
-	pub(crate) vbr: bool,
-	pub(crate) feedback_offset: bool,
-	pub(crate) feedback_bytes_written: bool,
-	pub(crate) feedback_overrides: bool,
-	pub(crate) protected_content: bool,
-	pub(crate) separate_reference_images: bool,
-	pub(crate) codec: VideoEncodeCodecCapabilities,
 }
 
 impl VideoEncodeCapabilities {
@@ -534,30 +492,6 @@ impl VideoDecodeCapabilities {
 	pub const fn separate_reference_images(self) -> bool {
 		self.separate_reference_images
 	}
-}
-
-/// Hardware video queue and codec-extension capabilities for the Engine's device.
-///
-/// Hardware advertisement is distinct from OA session availability. The
-/// Engine creation enables advertised video queue/codec extensions, while
-/// Session availability is narrower than hardware advertisement: it becomes
-/// true only when OA has enabled and qualified at least one corresponding path.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct VideoDeviceCapabilities {
-	pub(crate) decode_queue_family: Option<u32>,
-	pub(crate) encode_queue_family: Option<u32>,
-	pub(crate) decode_result_status_queries: bool,
-	pub(crate) encode_result_status_queries: bool,
-	pub(crate) h264_decode: bool,
-	pub(crate) h265_decode: bool,
-	pub(crate) av1_decode: bool,
-	pub(crate) vp9_decode: bool,
-	pub(crate) h264_encode: bool,
-	pub(crate) h265_encode: bool,
-	pub(crate) av1_encode: bool,
-	pub(crate) video_queues_enabled: bool,
-	pub(crate) decoder_sessions_available: bool,
-	pub(crate) encoder_sessions_available: bool,
 }
 
 impl VideoDeviceCapabilities {

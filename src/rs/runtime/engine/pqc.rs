@@ -4,7 +4,7 @@ use super::{
 	Buffer, EngineHandle, Event, MlDsaDeviceKey, MlKemDeviceKey, MlKemSharedSecret, SecretErasure,
 	Storage,
 };
-use crate::{DType, Error, Matrix, Result, cryptography::entropy::Entropy};
+use crate::{DType, Error, Matrix, Result, crypto::entropy::Entropy};
 
 impl EngineHandle {
 	fn pqc_public_matrix(
@@ -68,6 +68,40 @@ impl EngineHandle {
 		Ok((key, public, erasure))
 	}
 
+	pub(crate) fn pqc_mlkem_import(
+		&self,
+		k: u32,
+		decapsulation_key: &[u8],
+	) -> Result<(MlKemDeviceKey, Matrix, SecretErasure)> {
+		let (key, erasure) = self.import_mlkem_key(k, decapsulation_key)?;
+		let bytes = key.public.byte_len();
+		let public = self.pqc_public_matrix(
+			key.public.clone(),
+			key.ready.clone(),
+			vec![1, bytes],
+			DType::U8,
+		)?;
+		Ok((key, public, erasure))
+	}
+
+	pub(crate) fn pqc_mldsa_import(
+		&self,
+		parameter: u32,
+		secret_key: &[u8],
+		public_key: &Matrix,
+	) -> Result<(MlDsaDeviceKey, Matrix, SecretErasure)> {
+		let public_source = self.pqc_public_buffer(public_key)?;
+		let (key, erasure) = self.import_mldsa_key(parameter, secret_key, &public_source)?;
+		let bytes = key.public.byte_len();
+		let public = self.pqc_public_matrix(
+			key.public.clone(),
+			key.ready.clone(),
+			vec![1, bytes],
+			DType::U8,
+		)?;
+		Ok((key, public, erasure))
+	}
+
 	pub(crate) fn pqc_mldsa_sign(
 		&self,
 		key: &MlDsaDeviceKey,
@@ -101,8 +135,9 @@ impl EngineHandle {
 				entropy,
 			)?,
 		};
-		let (_, _, _, length) = super::super::shader::KernelId::mldsa_sign_layout(key.parameter)
-			.ok_or_else(|| Error::internal("retained ML-DSA key has invalid parameter metadata"))?;
+		let (_, _, _, length) =
+			super::super::dna::kernel::KernelId::mldsa_sign_layout(key.parameter)
+				.ok_or_else(|| Error::internal("retained ML-DSA key has invalid parameter metadata"))?;
 		let bytes = self.pqc_public_matrix(
 			signature,
 			erasure.event().clone(),
@@ -127,8 +162,9 @@ impl EngineHandle {
 		let context = self.pqc_public_buffer(context)?;
 		let (signature, status, erasure) =
 			self.sign_mldsa_prehashed(key, &digest, &context, algorithm, context_length, entropy)?;
-		let (_, _, _, length) = super::super::shader::KernelId::mldsa_sign_layout(key.parameter)
-			.ok_or_else(|| Error::internal("retained ML-DSA key has invalid parameter metadata"))?;
+		let (_, _, _, length) =
+			super::super::dna::kernel::KernelId::mldsa_sign_layout(key.parameter)
+				.ok_or_else(|| Error::internal("retained ML-DSA key has invalid parameter metadata"))?;
 		let bytes = self.pqc_public_matrix(
 			signature,
 			erasure.event().clone(),
@@ -167,6 +203,22 @@ impl EngineHandle {
 		let ciphertext = self.pqc_public_buffer(ciphertext)?;
 		self.decapsulate_mlkem(key, &ciphertext)
 	}
+
+	pub(crate) fn pqc_mlkem_derive(
+		&self,
+		secret: &MlKemSharedSecret,
+		info: &Matrix,
+		output_len: u32,
+	) -> Result<(Matrix, SecretErasure)> {
+		let info_len = u32::try_from(info.num_elements())
+			.map_err(|_| Error::invalid_argument("ML-KEM derivation info exceeds u32"))?;
+		let info = self.pqc_public_buffer(info)?;
+		let (output, erasure) = self.derive_mlkem_shared_secret(secret, &info, info_len, output_len)?;
+		let bytes = output.byte_len();
+		let derived =
+			self.pqc_public_matrix(output, erasure.event().clone(), vec![1, bytes], DType::U8)?;
+		Ok((derived, erasure))
+	}
 }
 
 impl MlDsaDeviceKey {
@@ -188,6 +240,9 @@ impl MlKemDeviceKey {
 }
 
 impl MlKemSharedSecret {
+	pub(crate) fn engine(&self) -> &EngineHandle {
+		&self.engine
+	}
 	pub(crate) fn erase(self) -> Result<SecretErasure> {
 		self.engine.clone().erase_mlkem_shared_secret(self)
 	}

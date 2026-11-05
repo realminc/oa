@@ -13,6 +13,7 @@ use crate::{Error, Result};
 // Embedded compiled SPIR-V — one per UI shader.
 static CLEAR_COMPOSE_SPV: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/ui_clear_compose.spv"));
 static BLIT_RGBA_SPV: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/ui_blit_rgba.spv"));
+static BLIT_PLANAR_SPV: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/ui_blit_planar.spv"));
 static DRAW_RECT_SPV: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/ui_draw_rect.spv"));
 static DRAW_RECT_OUTLINE_SPV: &[u8] =
 	include_bytes!(concat!(env!("OUT_DIR"), "/ui_draw_rect_outline.spv"));
@@ -20,12 +21,17 @@ static DRAW_LINE_SPV: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/ui_draw_
 static DRAW_PLOT_LINE_SPV: &[u8] =
 	include_bytes!(concat!(env!("OUT_DIR"), "/ui_draw_plot_line.spv"));
 static DRAW_GLYPHS_SPV: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/ui_draw_glyphs.spv"));
+static DRAW_RECT_OUTLINES_SPV: &[u8] =
+	include_bytes!(concat!(env!("OUT_DIR"), "/ui_draw_rect_outlines.spv"));
 
 static CLEAR_COMPOSE_BOUNDED_SPV: &[u8] =
 	include_bytes!(concat!(env!("OUT_DIR"), "/ui_clear_compose_bounded.spv"));
 
 static BLIT_RGBA_BOUNDED_SPV: &[u8] =
 	include_bytes!(concat!(env!("OUT_DIR"), "/ui_blit_rgba_bounded.spv"));
+
+static BLIT_PLANAR_BOUNDED_SPV: &[u8] =
+	include_bytes!(concat!(env!("OUT_DIR"), "/ui_blit_planar_bounded.spv"));
 
 static DRAW_RECT_BOUNDED_SPV: &[u8] =
 	include_bytes!(concat!(env!("OUT_DIR"), "/ui_draw_rect_bounded.spv"));
@@ -43,6 +49,10 @@ static DRAW_PLOT_LINE_BOUNDED_SPV: &[u8] =
 
 static DRAW_GLYPHS_BOUNDED_SPV: &[u8] =
 	include_bytes!(concat!(env!("OUT_DIR"), "/ui_draw_glyphs_bounded.spv"));
+static DRAW_RECT_OUTLINES_BOUNDED_SPV: &[u8] = include_bytes!(concat!(
+	env!("OUT_DIR"),
+	"/ui_draw_rect_outlines_bounded.spv"
+));
 
 static DRAW_CANVAS_GRID_SPV: &[u8] =
 	include_bytes!(concat!(env!("OUT_DIR"), "/ui_draw_canvas_grid.spv"));
@@ -67,15 +77,17 @@ static DRAW_HEATMAP_SPV: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/ui_dr
 static DRAW_HEATMAP_BOUNDED_SPV: &[u8] =
 	include_bytes!(concat!(env!("OUT_DIR"), "/ui_draw_heatmap_bounded.spv"));
 
-/// All twelve UI compute pipelines owned by one `Ui` instance.
+/// All fourteen UI compute pipelines owned by one `Ui` instance.
 pub(super) struct UiPipelines {
 	pub(super) clear_compose: UiPipeline,
 	pub(super) blit_rgba: UiPipeline,
+	pub(super) blit_planar: UiPipeline,
 	pub(super) draw_rect: UiPipeline,
 	pub(super) draw_rect_outline: UiPipeline,
 	pub(super) draw_line: UiPipeline,
 	pub(super) draw_plot_line: UiPipeline,
 	pub(super) draw_glyphs: UiPipeline,
+	pub(super) draw_rect_outlines: UiPipeline,
 	pub(super) draw_canvas_grid: UiPipeline,
 	pub(super) draw_triangle: UiPipeline,
 	pub(super) mask_rounded_viewport: UiPipeline,
@@ -119,6 +131,16 @@ impl UiPipelines {
 					BLIT_RGBA_BOUNDED_SPV
 				} else {
 					BLIT_RGBA_SPV
+				},
+				cache,
+			)?,
+			blit_planar: UiPipeline::new(
+				device,
+				select(4),
+				if bounded {
+					BLIT_PLANAR_BOUNDED_SPV
+				} else {
+					BLIT_PLANAR_SPV
 				},
 				cache,
 			)?,
@@ -169,6 +191,16 @@ impl UiPipelines {
 					DRAW_GLYPHS_BOUNDED_SPV
 				} else {
 					DRAW_GLYPHS_SPV
+				},
+				cache,
+			)?,
+			draw_rect_outlines: UiPipeline::new(
+				device,
+				select(1),
+				if bounded {
+					DRAW_RECT_OUTLINES_BOUNDED_SPV
+				} else {
+					DRAW_RECT_OUTLINES_SPV
 				},
 				cache,
 			)?,
@@ -244,13 +276,13 @@ impl UiPipeline {
 		let words = decode_spirv(spv)?;
 		let module = create_shader_module(device, &words)?;
 		let entry = c"main";
-		let stage = vk::PipelineShaderStageCreateInfo::default()
-			.stage(vk::ShaderStageFlagBits::COMPUTE_BIT)
-			.module(module)
-			.name(entry);
-		let create_info = vk::ComputePipelineCreateInfo::default()
-			.stage(stage)
-			.layout(layout);
+		let stage = vk::PipelineShaderStageCreateInfo::new()
+			.set_stage(vk::ShaderStageFlagBits::COMPUTE_BIT)
+			.set_module(module)
+			.set_name(entry);
+		let create_info = vk::ComputePipelineCreateInfo::new()
+			.set_stage(stage)
+			.set_layout(layout);
 		let mut pipelines = [vk::Pipeline::default(); 1];
 		// SAFETY: the create-info and output slot remain live and writable for the
 		// call; partial output is destroyed on failure below.
@@ -324,7 +356,7 @@ fn decode_spirv(bytes: &[u8]) -> Result<Vec<u32>> {
 }
 
 fn create_shader_module(device: &vk::Device, words: &[u32]) -> Result<vk::ShaderModule> {
-	let info = vk::ShaderModuleCreateInfo::default().code(words);
+	let info = vk::ShaderModuleCreateInfo::new().set_code(words);
 	unsafe { device.create_shader_module(&info, None) }
 		.map_err(|source| Error::backend_failure("Vulkan", "UI shader module creation", source))
 }
@@ -344,28 +376,28 @@ impl UiLayouts {
 			descriptors: Vec::new(),
 			pipelines: Vec::new(),
 		};
-		for count in 0..=2 {
+		for count in 0..=4 {
 			let mut bindings = vec![
-				vk::DescriptorSetLayoutBinding::default()
-					.binding(1)
-					.descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-					.descriptor_count(1)
-					.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT),
+				vk::DescriptorSetLayoutBinding::new()
+					.set_binding(1)
+					.set_descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+					.set_descriptor_count(1)
+					.set_stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT),
 			];
 			if count != 0 {
 				bindings.push(
-					vk::DescriptorSetLayoutBinding::default()
-						.binding(0)
-						.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-						.descriptor_count(count)
-						.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT),
+					vk::DescriptorSetLayoutBinding::new()
+						.set_binding(0)
+						.set_descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+						.set_descriptor_count(count)
+						.set_stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT),
 				);
 			}
 			// SAFETY: fixed counts match the bounded artifacts; no indexing flags.
 			let descriptor = unsafe {
 				device.create_descriptor_set_layout(
-					&(vk::DescriptorSetLayoutCreateInfo::default()
-						.bindings(&bindings)
+					&(vk::DescriptorSetLayoutCreateInfo::new()
+						.set_bindings(&bindings)
 						.map_err(Error::from)?),
 					None,
 				)
@@ -373,16 +405,16 @@ impl UiLayouts {
 			.map_err(|e| Error::backend_failure("Vulkan", "bounded UI descriptor layout", e))?;
 			result.descriptors.push(descriptor);
 			let descriptors = [descriptor];
-			let push = [vk::PushConstantRange::default()
-				.size(128)
-				.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT)];
+			let push = [vk::PushConstantRange::new()
+				.set_size(128)
+				.set_stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT)];
 			// SAFETY: the descriptor layout is retained by result and push range is legal.
 			let pipeline = unsafe {
 				device.create_pipeline_layout(
-					&vk::PipelineLayoutCreateInfo::default()
-						.set_layouts(&descriptors)
+					&vk::PipelineLayoutCreateInfo::new()
+						.set_set_layouts(&descriptors)
 						.map_err(Error::from)?
-						.push_constant_ranges(&push)
+						.set_push_constant_ranges(&push)
 						.map_err(Error::from)?,
 					None,
 				)
@@ -437,6 +469,29 @@ impl UiFrameBindings {
 					*src_idx = 0;
 					vec![index]
 				}
+				UiCmd::BlitPlanar {
+					r_idx,
+					g_idx,
+					b_idx,
+					a_idx,
+					..
+				} => {
+					// The bounded artifact declares four buffer slots; absent
+					// channels bind the R plane and are never read.
+					let source = *r_idx;
+					let resolve = |index: u32| if index == u32::MAX { source } else { index };
+					let indices = vec![
+						resolve(*r_idx),
+						resolve(*g_idx),
+						resolve(*b_idx),
+						resolve(*a_idx),
+					];
+					*r_idx = 0;
+					*g_idx = 1;
+					*b_idx = 2;
+					*a_idx = 3;
+					indices
+				}
 				UiCmd::PlotLine { values_idx, .. }
 				| UiCmd::Waveform { values_idx, .. }
 				| UiCmd::Heatmap { values_idx, .. } => {
@@ -453,6 +508,11 @@ impl UiFrameBindings {
 					*glyph_idx = 0;
 					*atlas_idx = 1;
 					indices
+				}
+				UiCmd::RectOutlines { rect_idx, .. } => {
+					let index = *rect_idx;
+					*rect_idx = 0;
+					vec![index]
 				}
 				_ => Vec::new(),
 			};
@@ -471,23 +531,23 @@ impl UiFrameBindings {
 				.ok_or_else(|| Error::resource_exhausted("UI descriptor count overflow"))
 		})?;
 		let mut sizes = vec![
-			vk::DescriptorPoolSize::default()
-				.r#type(vk::DescriptorType::STORAGE_IMAGE)
-				.descriptor_count(count.max(1)),
+			vk::DescriptorPoolSize::new()
+				.set_type(vk::DescriptorType::STORAGE_IMAGE)
+				.set_descriptor_count(count.max(1)),
 		];
 		if buffer_count != 0 {
 			sizes.push(
-				vk::DescriptorPoolSize::default()
-					.r#type(vk::DescriptorType::STORAGE_BUFFER)
-					.descriptor_count(buffer_count),
+				vk::DescriptorPoolSize::new()
+					.set_type(vk::DescriptorType::STORAGE_BUFFER)
+					.set_descriptor_count(buffer_count),
 			);
 		}
 		// SAFETY: sizes cover all exact per-command layouts; sets are immutable.
 		let pool = unsafe {
 			device.create_descriptor_pool(
-				&(vk::DescriptorPoolCreateInfo::default())
-					.max_sets(count.max(1))
-					.pool_sizes(&sizes)
+				&(vk::DescriptorPoolCreateInfo::new())
+					.set_max_sets(count.max(1))
+					.set_pool_sizes(&sizes)
 					.map_err(Error::from)?,
 				None,
 			)
@@ -512,34 +572,34 @@ impl UiFrameBindings {
 		// SAFETY: layouts belong to device and the new pool has exact capacity.
 		unsafe {
 			device.allocate_descriptor_sets(
-				&vk::DescriptorSetAllocateInfo::default()
-					.descriptor_pool(pool)
-					.set_layouts(&descriptors)
+				&vk::DescriptorSetAllocateInfo::new()
+					.set_descriptor_pool(pool)
+					.set_set_layouts(&descriptors)
 					.map_err(Error::from)?,
 				&mut sets,
 			)
 		}
 		.map_err(|e| Error::backend_failure("Vulkan", "bounded UI descriptor allocation", e))?;
 		result.sets = sets;
-		let images = [vk::DescriptorImageInfo::default()
-			.image_view(image)
-			.image_layout(vk::ImageLayout::GENERAL)];
+		let images = [vk::DescriptorImageInfo::new()
+			.set_image_view(image)
+			.set_image_layout(vk::ImageLayout::GENERAL)];
 		for (&set, buffers) in result.sets.iter().zip(&buffers) {
 			let mut writes = vec![
-				vk::WriteDescriptorSet::default()
-					.dst_set(set)
-					.dst_binding(1)
-					.descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-					.image_info(&images)
+				vk::WriteDescriptorSet::new()
+					.set_dst_set(set)
+					.set_dst_binding(1)
+					.set_descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+					.set_image_info(&images)
 					.map_err(Error::from)?,
 			];
 			if !buffers.is_empty() {
 				writes.push(
-					vk::WriteDescriptorSet::default()
-						.dst_set(set)
-						.dst_binding(0)
-						.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-						.buffer_info(buffers)
+					vk::WriteDescriptorSet::new()
+						.set_dst_set(set)
+						.set_dst_binding(0)
+						.set_descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+						.set_buffer_info(buffers)
 						.map_err(Error::from)?,
 				);
 			}

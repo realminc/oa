@@ -20,14 +20,14 @@
 mod dataframe;
 mod dataset;
 mod ohlcv;
+#[path = "data/type.gen.rs"]
+mod types;
 
 pub use dataframe::{DataFrame, DataFrameView, Series, SeriesView, SeriesViewMut};
-pub use ohlcv::{DsOhlcv, OhlcvView, OhlcvWindowConfig, OhlcvWindows, UnixTimeUnit};
+pub use ohlcv::{DsOhlcv, OhlcvView, OhlcvWindows, UnixTimeUnit};
+pub use types::{Batch, DataLoaderConfig, OhlcvWindowConfig, SplitResult};
 
-pub use dataset::{
-	Batch, DataLoader, DataLoaderConfig, Dataset, Sample, SplitResult, Subset, collate, random_split,
-	shuffle,
-};
+pub use dataset::{DataLoader, Dataset, Sample, Subset, collate, random_split, shuffle};
 
 #[path = "data/parity.gen.rs"]
 mod parity;

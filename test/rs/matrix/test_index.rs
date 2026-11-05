@@ -29,6 +29,124 @@ test_vk!(equal_matches_fp32_scalar_mask_oracle, engine, {
 	Ok(())
 });
 
+test_vk!(
+	causal_mask_matches_additive_last_axis_oracle_and_rejects_rank,
+	engine,
+	{
+		let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
+		assert_eq!(
+			oa::matrix::causal_mask(&input)?.read_f32()?,
+			[1.0, -1.0e9, -1.0e9, 4.0, 5.0, -1.0e9]
+		);
+		let batched = oa::Matrix::new_from_f32(
+			&engine,
+			[2, 2, 3],
+			&[1.0; 6]
+				.iter()
+				.chain([2.0; 6].iter())
+				.copied()
+				.collect::<Vec<_>>(),
+		)?;
+		assert_eq!(
+			oa::matrix::causal_mask(&batched)?.read_f32()?,
+			[
+				1.0, -1.0e9, -1.0e9, 1.0, 1.0, -1.0e9, 2.0, -1.0e9, -1.0e9, 2.0, 2.0, -1.0e9
+			]
+		);
+		for error in [
+			rejected(
+				oa::matrix::causal_mask(&oa::Matrix::new_from_f32(&engine, [3], &[1.0; 3])?),
+				"rank-one input was accepted",
+			),
+			rejected(
+				oa::matrix::causal_mask(&oa::Matrix::new_from_slice(&engine, [2, 2], &[0_i32; 4])?),
+				"I32 input was accepted",
+			),
+		] {
+			assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
+		}
+		Ok(())
+	}
+);
+
+test_vk!(greater_equal_matches_fp32_scalar_mask_oracle, engine, {
+	let input = oa::Matrix::new_from_f32(
+		&engine,
+		[6],
+		&[-1.0, 0.0, 1.0, 0.5, f32::NAN, f32::INFINITY],
+	)?;
+	assert_eq!(
+		oa::matrix::greater_equal(&input, 0.5)?.read_f32()?,
+		[0.0, 0.0, 1.0, 1.0, 0.0, 1.0]
+	);
+	let integers = oa::Matrix::new_from_slice(&engine, [1], &[0_i32])?;
+	assert_eq!(
+		rejected(
+			oa::matrix::greater_equal(&integers, 0.0),
+			"I32 comparison exceeded the admitted FP32 slice",
+		)
+		.kind(),
+		oa::ErrorKind::InvalidArgument
+	);
+	Ok(())
+});
+
+test_vk!(
+	split_returns_independent_segment_copies_and_rejects_bad_contracts,
+	engine,
+	{
+		let input = oa::Matrix::new_from_f32(
+			&engine,
+			[2, 6],
+			&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0],
+		)?;
+		let parts = oa::matrix::split(&input, &[2, 3, 1], 1)?;
+		assert_eq!(parts.len(), 3);
+		assert_eq!(parts[0].shape(), &[2, 2]);
+		assert_eq!(parts[1].shape(), &[2, 3]);
+		assert_eq!(parts[2].shape(), &[2, 1]);
+		assert_eq!(parts[0].read_f32()?, [0.0, 1.0, 6.0, 7.0]);
+		assert_eq!(parts[1].read_f32()?, [2.0, 3.0, 4.0, 8.0, 9.0, 10.0]);
+		assert_eq!(parts[2].read_f32()?, [5.0, 11.0]);
+		let rows = oa::matrix::split(&input, &[1, 1], 0)?;
+		assert_eq!(rows[0].shape(), &[1, 6]);
+		assert_eq!(rows[1].read_f32()?, [6.0, 7.0, 8.0, 9.0, 10.0, 11.0]);
+		for error in [
+			rejected(
+				oa::matrix::split(&input, &[], 1),
+				"empty sizes were accepted",
+			),
+			rejected(
+				oa::matrix::split(&input, &[2, 0, 4], 1),
+				"zero-sized segment was accepted",
+			),
+			rejected(
+				oa::matrix::split(&input, &[2, 3], 1),
+				"sizes not summing to the dim extent were accepted",
+			),
+			rejected(
+				oa::matrix::split(&input, &[6], 2),
+				"out-of-range dim was accepted",
+			),
+			rejected(
+				oa::matrix::split(&input, &[-1, 7], 1),
+				"negative size was accepted",
+			),
+			rejected(
+				oa::matrix::split(
+					&oa::Matrix::new_from_slice(&engine, [4], &[0_i32; 4])?,
+					&[4],
+					0,
+				),
+				"I32 input was accepted",
+			),
+		] {
+			assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
+		}
+		Ok(())
+	}
+);
+
 test_vk!(top_k_matches_deterministic_last_axis_oracle, engine, {
 	let input = oa::Matrix::new_from_f32(
 		&engine,
@@ -377,7 +495,7 @@ test_vk!(
 		assert_eq!(top_k_plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			top_k_plan.semantic_graph().operations()[0].name(),
-			"oa::matrix::top_k"
+			"oa::FnMatrix::topK"
 		);
 		engine.submit(&top_k_plan)?.wait()?;
 		assert_eq!(selected.indices.read::<i32>()?, vec![1, 2, 0, 2]);
@@ -387,7 +505,7 @@ test_vk!(
 		assert_eq!(route_plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			route_plan.semantic_graph().operations()[0].name(),
-			"oa::matrix::moe_expert_plan"
+			"oa::FnMatrix::moeExpertPlan"
 		);
 		engine.submit(&route_plan)?.wait()?;
 		assert_eq!(packed.offsets.read::<u32>()?, vec![0, 1, 2, 4]);
@@ -407,7 +525,7 @@ test_vk!(
 		assert_eq!(slice_plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			slice_plan.semantic_graph().operations()[0].name(),
-			"oa::matrix::slice"
+			"oa::FnMatrix::slice"
 		);
 		engine.submit(&slice_plan)?.wait()?;
 		assert_eq!(slice.read_f32()?, vec![3.0, 2.0, 4.0, 5.0]);
@@ -416,7 +534,7 @@ test_vk!(
 		assert_eq!(repeat_plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			repeat_plan.semantic_graph().operations()[0].name(),
-			"oa::matrix::repeat_interleave"
+			"oa::FnMatrix::repeatInterleave"
 		);
 		engine.submit(&repeat_plan)?.wait()?;
 		assert_eq!(
@@ -430,7 +548,7 @@ test_vk!(
 		assert_eq!(concat_plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			concat_plan.semantic_graph().operations()[0].name(),
-			"oa::matrix::concat"
+			"oa::FnMatrix::concat"
 		);
 		engine.submit(&concat_plan)?.wait()?;
 		assert_eq!(
@@ -530,3 +648,148 @@ test_vk!(matrix_index_rejects_invalid_public_contracts, engine, {
 	}
 	Ok(())
 });
+
+test_vk!(
+	compact_rows_packs_selected_rows_and_publishes_device_metadata,
+	engine,
+	{
+		let input =
+			oa::Matrix::new_from_f32(&engine, [4, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])?;
+		let mask = oa::Matrix::new_from_f32(&engine, [4], &[1.0, 0.0, 1.0, 0.0])?;
+		let result = oa::matrix::compact_rows(&input, &mask)?;
+		assert_eq!(
+			result.values.read_f32()?,
+			[1.0, 2.0, 5.0, 6.0, 0.0, 0.0, 0.0, 0.0]
+		);
+		assert_eq!(result.row_map.read::<u32>()?, [0, 2, 0, 0]);
+		assert_eq!(result.count.read::<u32>()?, [2]);
+		assert_eq!(result.dispatch_args.read::<u32>()?, [1, 1, 1]);
+		let empty = oa::Matrix::new_from_f32(&engine, [4], &[0.0; 4])?;
+		let result = oa::matrix::compact_rows(&input, &empty)?;
+		assert_eq!(result.values.read_f32()?, [0.0; 8]);
+		assert_eq!(result.count.read::<u32>()?, [0]);
+		for error in [
+			rejected(
+				oa::matrix::compact_rows(&oa::Matrix::new_from_f32(&engine, [4], &[1.0; 4])?, &mask),
+				"rank-one input was accepted",
+			),
+			rejected(
+				oa::matrix::compact_rows(&input, &oa::Matrix::new_from_f32(&engine, [3], &[1.0; 3])?),
+				"short mask was accepted",
+			),
+			rejected(
+				oa::matrix::compact_rows(
+					&input,
+					&oa::Matrix::new_from_slice(&engine, [4], &[1_i32; 4])?,
+				),
+				"I32 mask was accepted",
+			),
+		] {
+			assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
+		}
+		Ok(())
+	}
+);
+
+test_vk!(
+	scatter_rows_adds_mapped_source_rows_and_leaves_unmapped_rows,
+	engine,
+	{
+		let input =
+			oa::Matrix::new_from_f32(&engine, [4, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])?;
+		let mask = oa::Matrix::new_from_f32(&engine, [4], &[1.0, 0.0, 1.0, 0.0])?;
+		let packed = oa::matrix::compact_rows(&input, &mask)?;
+		let base = oa::Matrix::new_from_f32(
+			&engine,
+			[4, 2],
+			&[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
+		)?;
+		assert_eq!(
+			oa::matrix::scatter_rows(&base, &packed.values, &packed.row_map, &packed.count)?
+				.read_f32()?,
+			[11.0, 22.0, 30.0, 40.0, 55.0, 66.0, 70.0, 80.0]
+		);
+		for error in [
+			rejected(
+				oa::matrix::scatter_rows(
+					&oa::Matrix::new_from_f32(&engine, [4], &[0.0; 4])?,
+					&packed.values,
+					&packed.row_map,
+					&packed.count,
+				),
+				"rank-one base was accepted",
+			),
+			rejected(
+				oa::matrix::scatter_rows(
+					&base,
+					&oa::Matrix::new_from_f32(&engine, [2, 3], &[0.0; 6])?,
+					&packed.row_map,
+					&packed.count,
+				),
+				"mismatched source was accepted",
+			),
+			rejected(
+				oa::matrix::scatter_rows(&base, &packed.values, &mask, &packed.count),
+				"F32 row map was accepted",
+			),
+			rejected(
+				oa::matrix::scatter_rows(
+					&base,
+					&packed.values,
+					&packed.row_map,
+					&oa::Matrix::new_from_slice(&engine, [2], &[2_u32, 0])?,
+				),
+				"wide count was accepted",
+			),
+		] {
+			assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
+		}
+		Ok(())
+	}
+);
+
+test_vk!(
+	scatter_rows_indirect_matches_the_direct_variant_and_tolerates_empty_plans,
+	engine,
+	{
+		let input =
+			oa::Matrix::new_from_f32(&engine, [4, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])?;
+		let mask = oa::Matrix::new_from_f32(&engine, [4], &[1.0, 0.0, 1.0, 0.0])?;
+		let packed = oa::matrix::compact_rows(&input, &mask)?;
+		let base = oa::Matrix::new_from_f32(
+			&engine,
+			[4, 2],
+			&[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
+		)?;
+		assert_eq!(
+			oa::matrix::scatter_rows_indirect(&base, &packed.values, &packed)?.read_f32()?,
+			oa::matrix::scatter_rows(&base, &packed.values, &packed.row_map, &packed.count)?
+				.read_f32()?
+		);
+		// A zero-count plan records a legal zero-work indirect dispatch, so the
+		// output is exactly the preserved input copy.
+		let none =
+			oa::matrix::compact_rows(&input, &oa::Matrix::new_from_f32(&engine, [4], &[0.0; 4])?)?;
+		assert_eq!(
+			oa::matrix::scatter_rows_indirect(&base, &none.values, &none)?.read_f32()?,
+			base.read_f32()?
+		);
+		let mut wrong_map = oa::matrix::compact_rows(&input, &mask)?;
+		wrong_map.row_map = oa::Matrix::new_from_f32(&engine, [4], &[0.0; 4])?;
+		let mut wrong_args = oa::matrix::compact_rows(&input, &mask)?;
+		wrong_args.dispatch_args = oa::Matrix::new_from_slice(&engine, [2], &[1_u32, 1])?;
+		for error in [
+			rejected(
+				oa::matrix::scatter_rows_indirect(&base, &packed.values, &wrong_map),
+				"F32 row map was accepted",
+			),
+			rejected(
+				oa::matrix::scatter_rows_indirect(&base, &packed.values, &wrong_args),
+				"two-element dispatch args were accepted",
+			),
+		] {
+			assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
+		}
+		Ok(())
+	}
+);

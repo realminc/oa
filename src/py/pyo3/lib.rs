@@ -3,7 +3,7 @@ use pyo3::types::PyType;
 
 mod audio;
 mod core;
-mod cryptography;
+mod crypto;
 mod data;
 mod error;
 mod image;
@@ -21,7 +21,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	audio::register(module)?;
 	core::register(module)?;
 	data::register(module)?;
-	cryptography::register(module)?;
+	crypto::register(module)?;
 	image::register(module)?;
 	runtime::register(module)?;
 	matrix::register(module)?;

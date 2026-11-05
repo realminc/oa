@@ -57,6 +57,7 @@
     {
       "stable_id": 1,
       "name": "add",
+      "donor_op": "oa::FnMatrix::add",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
@@ -163,8 +164,63 @@
       ]
     },
     {
+      "stable_id": 615,
+      "name": "bias_add",
+      "donor_op": "oa::FnMatrix::biasAdd",
+      "autograd": {
+        "mode": "alias",
+        "family": "elemwise",
+        "target": "add"
+      },
+      "kind": "binary",
+      "differentiation": "reverse",
+      "shape_rule": "broadcast",
+      "doc": "Add a bias matrix to another matrix elementwise using multidirectional broadcasting.",
+      "kernel_id": "MatrixBiasAddF32",
+      "dnn": {
+        "role": "bias_add",
+        "providers": ["blaslt_epilogue"]
+      },
+      "expression": "left + right",
+      "test": {
+        "left": [1.0, 2.0, 3.0],
+        "right": [0.5, -0.5, 1.5],
+        "expected": [1.5, 1.5, 4.5],
+        "tolerance": 0.0001
+      },
+      "additional_lowering_variants": [
+        {
+          "stable_id": 616,
+          "name": "bias_add_broadcast",
+          "kernel_id": "MatrixBiasAddBroadcastF32",
+          "source": "src/slang/matrix/elemwise/bias_add_broadcast.slang",
+          "dtype": "f32",
+          "variant": "broadcast",
+          "workgroup_size": [256, 1, 1],
+          "dispatch_tile_size": [256, 1, 1],
+          "physical_write": {
+            "writes": [
+              {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+            ],
+            "workspace": "none"
+          },
+          "push_fields": [
+            ["left_index", "uint32"], ["right_index", "uint32"], ["output_index", "uint32"],
+            ["element_count", "uint32"], ["rank", "uint32"],
+            ["output_dim_0", "uint32"], ["output_dim_1", "uint32"], ["output_dim_2", "uint32"], ["output_dim_3", "uint32"],
+            ["output_dim_4", "uint32"], ["output_dim_5", "uint32"], ["output_dim_6", "uint32"], ["output_dim_7", "uint32"],
+            ["left_stride_0", "uint32"], ["left_stride_1", "uint32"], ["left_stride_2", "uint32"], ["left_stride_3", "uint32"],
+            ["left_stride_4", "uint32"], ["left_stride_5", "uint32"], ["left_stride_6", "uint32"], ["left_stride_7", "uint32"],
+            ["right_stride_0", "uint32"], ["right_stride_1", "uint32"], ["right_stride_2", "uint32"], ["right_stride_3", "uint32"],
+            ["right_stride_4", "uint32"], ["right_stride_5", "uint32"], ["right_stride_6", "uint32"], ["right_stride_7", "uint32"]
+          ]
+        }
+      ]
+    },
+    {
       "stable_id": 2,
       "name": "sub",
+      "donor_op": "oa::FnMatrix::sub",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
@@ -228,6 +284,7 @@
     {
       "stable_id": 3,
       "name": "mul",
+      "donor_op": "oa::FnMatrix::mul",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
@@ -295,6 +352,7 @@
     {
       "stable_id": 4,
       "name": "div",
+      "donor_op": "oa::FnMatrix::div",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
@@ -358,6 +416,7 @@
     {
       "stable_id": 5,
       "name": "scale",
+      "donor_op": "oa::FnMatrix::scale",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
@@ -404,6 +463,7 @@
     {
       "stable_id": 6,
       "name": "neg",
+      "donor_op": "oa::FnMatrix::neg",
       "autograd": {
         "mode": "alias",
         "family": "elemwise",
@@ -423,6 +483,7 @@
     {
       "stable_id": 7,
       "name": "abs",
+      "donor_op": "oa::FnMatrix::abs",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
@@ -452,6 +513,7 @@
     {
       "stable_id": 8,
       "name": "log",
+      "donor_op": "oa::FnMatrix::log",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
@@ -481,6 +543,7 @@
     {
       "stable_id": 9,
       "name": "sqrt",
+      "donor_op": "oa::FnMatrix::sqrt",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
@@ -529,6 +592,7 @@
     {
       "stable_id": 11,
       "name": "add_scalar",
+      "donor_op": "oa::FnMatrix::addScalar",
       "autograd": {
         "mode": "alias",
         "family": "elemwise",
@@ -550,6 +614,7 @@
     {
       "stable_id": 12,
       "name": "sub_scalar",
+      "donor_op": "oa::FnMatrix::subScalar",
       "autograd": {
         "mode": "alias",
         "family": "elemwise",
@@ -571,6 +636,7 @@
     {
       "stable_id": 13,
       "name": "div_scalar",
+      "donor_op": "oa::FnMatrix::divScalar",
       "autograd": {
         "mode": "alias",
         "family": "elemwise",
@@ -592,6 +658,7 @@
     {
       "stable_id": 14,
       "name": "exp",
+      "donor_op": "oa::FnMatrix::exp",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
@@ -651,6 +718,7 @@
     {
       "stable_id": 17,
       "name": "reciprocal",
+      "donor_op": "oa::FnMatrix::reciprocal",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
@@ -684,31 +752,19 @@
     {
       "stable_id": 18,
       "name": "clamp_max",
+      "donor_op": "oa::FnMatrix::clampMax",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
         "node": "ClampMax",
-        "saved_fields": [
-          [
-            "input",
-            "matrix"
-          ],
-          [
-            "output_id",
-            "output_identity"
-          ],
-          [
-            "maximum",
-            "f32"
-          ]
-        ]
+        "saved_fields": [["input", "matrix"], ["output_id", "output_identity"], ["maximum", "f32"]]
       },
       "kind": "unary_scalar",
       "differentiation": "reverse",
       "doc": "Cap every FP32 matrix element at an upper bound.",
       "kernel_id": "MatrixClampMaxF32",
       "expression": "min(input, push.scalar)",
-      "scalar_name": "maximum",
+      "scalar_name": "max",
       "test": {
         "input": [-2.0, 0.5, 4.0],
         "scalar": 1.0,
@@ -719,31 +775,19 @@
     {
       "stable_id": 19,
       "name": "clamp_min",
+      "donor_op": "oa::FnMatrix::clampMin",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
         "node": "ClampMin",
-        "saved_fields": [
-          [
-            "input",
-            "matrix"
-          ],
-          [
-            "output_id",
-            "output_identity"
-          ],
-          [
-            "minimum",
-            "f32"
-          ]
-        ]
+        "saved_fields": [["input", "matrix"], ["output_id", "output_identity"], ["minimum", "f32"]]
       },
       "kind": "unary_scalar",
       "differentiation": "reverse",
       "doc": "Raise every FP32 matrix element to a lower bound.",
       "kernel_id": "MatrixClampMinF32",
       "expression": "max(input, push.scalar)",
-      "scalar_name": "minimum",
+      "scalar_name": "min",
       "test": {
         "input": [-2.0, 0.5, 4.0],
         "scalar": 0.0,
@@ -754,6 +798,7 @@
     {
       "stable_id": 400,
       "name": "copy",
+      "donor_op": "oa::FnMatrix::copy",
       "autograd": {
         "mode": "generated",
         "family": "elemwise",
@@ -814,6 +859,51 @@
             "expected": [0, 17, 4294967295]
           }
         }
+      ]
+    },
+    {
+      "stable_id": 637,
+      "name": "fused_chain",
+      "lowering_only": true,
+      "kernel_id": "MatrixFusedChainF32",
+      "source": "src/slang/matrix/elemwise/fused_chain.slang",
+      "variant": "generic",
+      "physical_write": {
+        "uniform_stores": {
+          "domain": "output_elements",
+          "partition": "exclusive_per_invocation",
+          "extent": "one_element",
+          "collision": "exclusive",
+          "tail": "bounds_checked"
+        },
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["operand0_index", "uint32"],
+        ["operand1_index", "uint32"],
+        ["operand2_index", "uint32"],
+        ["operand3_index", "uint32"],
+        ["operand4_index", "uint32"],
+        ["operand5_index", "uint32"],
+        ["operand6_index", "uint32"],
+        ["operand7_index", "uint32"],
+        ["operand8_index", "uint32"],
+        ["operand9_index", "uint32"],
+        ["operand10_index", "uint32"],
+        ["operand11_index", "uint32"],
+        ["operand12_index", "uint32"],
+        ["operand13_index", "uint32"],
+        ["operand14_index", "uint32"],
+        ["operand15_index", "uint32"],
+        ["store0_index", "uint32"],
+        ["store1_index", "uint32"],
+        ["store2_index", "uint32"],
+        ["store3_index", "uint32"],
+        ["store4_index", "uint32"],
+        ["store5_index", "uint32"],
+        ["tape_index", "uint32"],
+        ["element_count", "uint32"],
+        ["step_count", "uint32"]
       ]
     }
   ]

@@ -4,6 +4,9 @@
 // @operation add
 	autograd::record_add(left, right, &output)?;
 
+// @operation bias_add
+	autograd::record_add(left, right, &output)?;
+
 // @operation add_scalar
 	autograd::record_scale(input, &output, 1.0)?;
 

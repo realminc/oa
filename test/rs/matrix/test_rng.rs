@@ -150,7 +150,7 @@ test_vk!(
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 2);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
-			"oa::matrix::philox_uniform"
+			"oa::FnMatrix::philoxUniform"
 		);
 		assert_eq!(
 			plan.semantic_graph().operations()[1].name(),
@@ -291,7 +291,7 @@ test_vk!(
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
-			"oa::matrix::sample_logits"
+			"oa::FnMatrix::sampleLogits"
 		);
 		engine.submit(&plan)?.wait()?;
 		let first = sampled.read::<i32>()?;

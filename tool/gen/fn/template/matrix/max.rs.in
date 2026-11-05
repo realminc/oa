@@ -1,0 +1,38 @@
+	let operation = contract.name();
+	if dim != -1 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} is a full reduction; axis maxima are not admitted (found dim {dim})"
+		)));
+	}
+	if input.dtype() != DType::F32 || input.shape().is_empty() || input.num_elements() == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a nonempty FP32 matrix"
+		)));
+	}
+	let element_count = u32::try_from(input.num_elements())
+		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+	let output = Matrix::allocate(input.engine_handle(), vec![1], 1, DType::F32)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let push_constants = [PushConstant::U32(element_count)];
+	let inputs = [input];
+	let outputs = [&output];
+	input.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MatrixMaxF32,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: [1, 1, 1],
+			indirect: None,
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &[],
+		},
+	)?;
+	autograd::record_max(input, &output)?;
+	Ok(output)

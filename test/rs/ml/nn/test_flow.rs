@@ -202,7 +202,7 @@ test_vk!(flow_operations_keep_one_semantic_identity_each, engine, {
 	assert_eq!(match_plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		match_plan.semantic_graph().operations()[0].name(),
-		"oa::ml::flow::linear_match"
+		"oa::FnFlow::linearMatch"
 	);
 	engine.submit(&match_plan)?.wait()?;
 
@@ -211,7 +211,7 @@ test_vk!(flow_operations_keep_one_semantic_identity_each, engine, {
 	assert_eq!(euler_plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		euler_plan.semantic_graph().operations()[0].name(),
-		"oa::ml::flow::euler_step"
+		"oa::FnFlow::eulerStep"
 	);
 	engine.submit(&euler_plan)?.wait()?;
 
@@ -220,7 +220,7 @@ test_vk!(flow_operations_keep_one_semantic_identity_each, engine, {
 	assert_eq!(loss_plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		loss_plan.semantic_graph().operations()[0].name(),
-		"oa::ml::flow::masked_mse"
+		"oa::FnFlow::maskedMse"
 	);
 	engine.submit(&loss_plan)?.wait()?;
 	Ok(())

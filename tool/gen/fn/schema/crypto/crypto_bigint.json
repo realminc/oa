@@ -1,0 +1,4455 @@
+{
+ "schema_version": 1,
+ "family": "cryptography_bigint",
+ "domain": "crypto::bigint",
+ "dtype": "u32",
+ "limb_layout": {
+  "word_bits": 32,
+  "min_words": 1,
+  "max_words": 128,
+  "order": "little_endian"
+ },
+ "contracts": [
+  {
+   "name": "add",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "subtract",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "multiply_low",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "multiply_wide",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "bit_and",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "bit_or",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "bit_xor",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "compare",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "div_rem",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "shift_left",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ],
+    [
+     "shift",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "shift_right",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ],
+    [
+     "shift",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "reduce_mod",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "add_mod",
+   "input_kinds": [
+    "matrix",
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "subtract_mod",
+   "input_kinds": [
+    "matrix",
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "multiply_mod",
+   "input_kinds": [
+    "matrix",
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "square_mod",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "inverse_mod",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "pow_mod",
+   "input_kinds": [
+    "matrix",
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "to_montgomery",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "from_montgomery",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "montgomery_multiply",
+   "input_kinds": [
+    "matrix",
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "barrett_multiply",
+   "input_kinds": [
+    "matrix",
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "multiply_high",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "square_wide",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "bit_not",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "leading_zeros",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "add_scalar",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ],
+    [
+     "scalar",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "compare_scalar",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ],
+    [
+     "scalar",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "div_rem_mixed",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ],
+    [
+     "quotient_words",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "div_rem_narrow",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "div_rem_scalar",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ],
+    [
+     "scalar",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "div_rem_wide",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "from_u32",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ],
+    [
+     "output_words",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "from_u64",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ],
+    [
+     "output_words",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "multiply_scalar",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ],
+    [
+     "scalar",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "reduce_montgomery",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "subtract_scalar",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ],
+    [
+     "scalar",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "to_u32",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "to_u64",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "setup_barrett",
+   "input_kinds": [
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  },
+  {
+   "name": "reduce_barrett",
+   "input_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "output_kinds": [
+    "matrix",
+    "matrix"
+   ],
+   "shape_rule": "explicit",
+   "dtype_rule": "u32",
+   "attributes": [
+    [
+     "width_bits",
+     "unsigned_integer"
+    ]
+   ]
+  }
+ ],
+ "kernels": [
+  {
+   "name": "add",
+   "stable_id": 478,
+   "kernel_id": "CryptographyBigIntAddU32",
+   "source": "src/slang/crypto/bigint/add.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "add",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "subtract",
+   "stable_id": 479,
+   "kernel_id": "CryptographyBigIntSubtractU32",
+   "source": "src/slang/crypto/bigint/subtract.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "subtract",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "multiply_low",
+   "stable_id": 480,
+   "kernel_id": "CryptographyBigIntMultiplyLowU32",
+   "source": "src/slang/crypto/bigint/multiply_low.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "multiply_low",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "multiply_wide",
+   "stable_id": 481,
+   "kernel_id": "CryptographyBigIntMultiplyWideU32",
+   "source": "src/slang/crypto/bigint/multiply_wide.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "multiply_wide",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "wide"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "bit_and",
+   "stable_id": 482,
+   "kernel_id": "CryptographyBigIntBitAndU32",
+   "source": "src/slang/crypto/bigint/bit_and.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "bit_and",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "bit_or",
+   "stable_id": 483,
+   "kernel_id": "CryptographyBigIntBitOrU32",
+   "source": "src/slang/crypto/bigint/bit_or.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "bit_or",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "bit_xor",
+   "stable_id": 484,
+   "kernel_id": "CryptographyBigIntBitXorU32",
+   "source": "src/slang/crypto/bigint/bit_xor.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "bit_xor",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "compare",
+   "stable_id": 485,
+   "kernel_id": "CryptographyBigIntCompareU32",
+   "source": "src/slang/crypto/bigint/compare.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "compare",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "div_rem",
+   "stable_id": 486,
+   "kernel_id": "CryptographyBigIntDivRemU32",
+   "source": "src/slang/crypto/bigint/div_rem.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "quotient_index",
+     "uint32"
+    ],
+    [
+     "remainder_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "div_rem",
+   "outputs": [
+    {
+     "name": "quotient",
+     "extent": "row"
+    },
+    {
+     "name": "remainder",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 4,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "shift_left",
+   "stable_id": 487,
+   "kernel_id": "CryptographyBigIntShiftLeftU32",
+   "source": "src/slang/crypto/bigint/shift_left.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "shift",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "shift_left",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "shift_right",
+   "stable_id": 488,
+   "kernel_id": "CryptographyBigIntShiftRightU32",
+   "source": "src/slang/crypto/bigint/shift_right.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "shift",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "shift_right",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "reduce_mod",
+   "stable_id": 489,
+   "kernel_id": "CryptographyBigIntReduceModU32",
+   "source": "src/slang/crypto/bigint/reduce_mod.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "modulus_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "reduce_mod",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "add_mod",
+   "stable_id": 490,
+   "kernel_id": "CryptographyBigIntAddModU32",
+   "source": "src/slang/crypto/bigint/add_mod.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "modulus_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "add_mod",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 4,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "subtract_mod",
+   "stable_id": 491,
+   "kernel_id": "CryptographyBigIntSubtractModU32",
+   "source": "src/slang/crypto/bigint/subtract_mod.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "modulus_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "subtract_mod",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 4,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "multiply_mod",
+   "stable_id": 492,
+   "kernel_id": "CryptographyBigIntMultiplyModU32",
+   "source": "src/slang/crypto/bigint/multiply_mod.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "modulus_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "multiply_mod",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 4,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "square_mod",
+   "stable_id": 493,
+   "kernel_id": "CryptographyBigIntSquareModU32",
+   "source": "src/slang/crypto/bigint/square_mod.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "modulus_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "square_mod",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "inverse_mod",
+   "stable_id": 494,
+   "kernel_id": "CryptographyBigIntInverseModU32",
+   "source": "src/slang/crypto/bigint/inverse_mod.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "modulus_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "inverse_mod",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "pow_mod",
+   "stable_id": 495,
+   "kernel_id": "CryptographyBigIntPowModU32",
+   "source": "src/slang/crypto/bigint/pow_mod.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "modulus_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "pow_mod",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 4,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "to_montgomery",
+   "stable_id": 496,
+   "kernel_id": "CryptographyBigIntToMontgomeryU32",
+   "source": "src/slang/crypto/bigint/to_montgomery.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "modulus_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "to_montgomery",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "from_montgomery",
+   "stable_id": 497,
+   "kernel_id": "CryptographyBigIntFromMontgomeryU32",
+   "source": "src/slang/crypto/bigint/from_montgomery.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "modulus_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "from_montgomery",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "montgomery_multiply",
+   "stable_id": 498,
+   "kernel_id": "CryptographyBigIntMontgomeryMultiplyU32",
+   "source": "src/slang/crypto/bigint/montgomery_multiply.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "modulus_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "montgomery_multiply",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 4,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "barrett_multiply",
+   "stable_id": 499,
+   "kernel_id": "CryptographyBigIntBarrettMultiplyU32",
+   "source": "src/slang/crypto/bigint/barrett_multiply.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "modulus_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "barrett_multiply",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 4,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "multiply_high",
+   "stable_id": 500,
+   "kernel_id": "CryptographyBigIntMultiplyHighU32",
+   "source": "src/slang/crypto/bigint/multiply_high.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "multiply_high",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "square_wide",
+   "stable_id": 501,
+   "kernel_id": "CryptographyBigIntSquareWideU32",
+   "source": "src/slang/crypto/bigint/square_wide.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "square_wide",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "wide"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "bit_not",
+   "stable_id": 502,
+   "kernel_id": "CryptographyBigIntBitNotU32",
+   "source": "src/slang/crypto/bigint/bit_not.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "bit_not",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "leading_zeros",
+   "stable_id": 503,
+   "kernel_id": "CryptographyBigIntLeadingZerosU32",
+   "source": "src/slang/crypto/bigint/leading_zeros.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "leading_zeros",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "add_scalar",
+   "stable_id": 504,
+   "kernel_id": "CryptographyBigIntAddScalarU32",
+   "source": "src/slang/crypto/bigint/add_scalar.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ],
+    [
+     "scalar",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "add_scalar",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "compare_scalar",
+   "stable_id": 505,
+   "kernel_id": "CryptographyBigIntCompareScalarU32",
+   "source": "src/slang/crypto/bigint/compare_scalar.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ],
+    [
+     "scalar",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "compare_scalar",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "div_rem_mixed",
+   "stable_id": 506,
+   "kernel_id": "CryptographyBigIntDivRemMixedU32",
+   "source": "src/slang/crypto/bigint/div_rem_mixed.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "quotient_index",
+     "uint32"
+    ],
+    [
+     "remainder_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ],
+    [
+     "quotient_words",
+     "uint32"
+    ],
+    [
+     "right_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "div_rem_mixed",
+   "outputs": [
+    {
+     "name": "quotient",
+     "extent": "quotient"
+    },
+    {
+     "name": "remainder",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 4,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "div_rem_narrow",
+   "stable_id": 507,
+   "kernel_id": "CryptographyBigIntDivRemNarrowU32",
+   "source": "src/slang/crypto/bigint/div_rem_narrow.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "quotient_index",
+     "uint32"
+    ],
+    [
+     "remainder_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ],
+    [
+     "right_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "div_rem_narrow",
+   "outputs": [
+    {
+     "name": "quotient",
+     "extent": "row"
+    },
+    {
+     "name": "remainder",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 4,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "div_rem_scalar",
+   "stable_id": 508,
+   "kernel_id": "CryptographyBigIntDivRemScalarU32",
+   "source": "src/slang/crypto/bigint/div_rem_scalar.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "quotient_index",
+     "uint32"
+    ],
+    [
+     "remainder_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ],
+    [
+     "scalar",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "div_rem_scalar",
+   "outputs": [
+    {
+     "name": "quotient",
+     "extent": "row"
+    },
+    {
+     "name": "remainder",
+     "extent": "scalar"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "div_rem_wide",
+   "stable_id": 509,
+   "kernel_id": "CryptographyBigIntDivRemWideU32",
+   "source": "src/slang/crypto/bigint/div_rem_wide.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "quotient_index",
+     "uint32"
+    ],
+    [
+     "remainder_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ],
+    [
+     "right_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "div_rem_wide",
+   "outputs": [
+    {
+     "name": "quotient",
+     "extent": "wide"
+    },
+    {
+     "name": "remainder",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 4,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "from_u32",
+   "stable_id": 510,
+   "kernel_id": "CryptographyBigIntFromU32U32",
+   "source": "src/slang/crypto/bigint/from_u32.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ],
+    [
+     "output_words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "from_u32",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "from_u64",
+   "stable_id": 511,
+   "kernel_id": "CryptographyBigIntFromU64U32",
+   "source": "src/slang/crypto/bigint/from_u64.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ],
+    [
+     "output_words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "from_u64",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "multiply_scalar",
+   "stable_id": 512,
+   "kernel_id": "CryptographyBigIntMultiplyScalarU32",
+   "source": "src/slang/crypto/bigint/multiply_scalar.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ],
+    [
+     "scalar",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "multiply_scalar",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "reduce_montgomery",
+   "stable_id": 513,
+   "kernel_id": "CryptographyBigIntReduceMontgomeryU32",
+   "source": "src/slang/crypto/bigint/reduce_montgomery.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ],
+    [
+     "right_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "reduce_montgomery",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "subtract_scalar",
+   "stable_id": 514,
+   "kernel_id": "CryptographyBigIntSubtractScalarU32",
+   "source": "src/slang/crypto/bigint/subtract_scalar.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ],
+    [
+     "scalar",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "subtract_scalar",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "to_u32",
+   "stable_id": 515,
+   "kernel_id": "CryptographyBigIntToU32U32",
+   "source": "src/slang/crypto/bigint/to_u32.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "to_u32",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "scalar"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "to_u64",
+   "stable_id": 516,
+   "kernel_id": "CryptographyBigIntToU64U32",
+   "source": "src/slang/crypto/bigint/to_u64.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "input_words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "to_u64",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "pair"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "setup_barrett",
+   "stable_id": 525,
+   "kernel_id": "CryptographyBigIntSetupBarrettU32",
+   "source": "src/slang/crypto/bigint/setup_barrett.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "modulus_index",
+     "uint32"
+    ],
+    [
+     "encoded_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "setup_barrett",
+   "outputs": [
+    {
+     "name": "encoded",
+     "extent": "prepared"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 1,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "reduce_barrett",
+   "stable_id": 526,
+   "kernel_id": "CryptographyBigIntReduceBarrettU32",
+   "source": "src/slang/crypto/bigint/reduce_barrett.gen.slang",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "encoded_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "status_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ],
+    [
+     "prepared_count",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "reduce_barrett",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    },
+    {
+     "name": "status",
+     "extent": "scalar"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     },
+     {
+      "binding": 3,
+      "domain": "rows",
+      "partition": "exclusive_per_invocation",
+      "extent": "one_scalar",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "add_cooperative",
+   "stable_id": 541,
+   "kernel_id": "CryptographyBigIntAddCooperativeU32",
+   "source": "src/slang/crypto/bigint/add_cooperative.gen.slang",
+   "provider_of": "add",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "grid_width",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "add",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_workgroup",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "subtract_cooperative",
+   "stable_id": 542,
+   "kernel_id": "CryptographyBigIntSubtractCooperativeU32",
+   "source": "src/slang/crypto/bigint/subtract_cooperative.gen.slang",
+   "provider_of": "subtract",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "grid_width",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "subtract",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "row"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_workgroup",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "multiply_wide_cooperative",
+   "stable_id": 543,
+   "kernel_id": "CryptographyBigIntMultiplyWideCooperativeU32",
+   "source": "src/slang/crypto/bigint/multiply_wide_cooperative.gen.slang",
+   "provider_of": "multiply_wide",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "grid_width",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "multiply_wide",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "wide"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_workgroup",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  },
+  {
+   "name": "square_wide_cooperative",
+   "stable_id": 554,
+   "kernel_id": "CryptographyBigIntSquareWideCooperativeU32",
+   "source": "src/slang/crypto/bigint/square_wide_cooperative.gen.slang",
+   "provider_of": "square_wide",
+   "workgroup_size": [
+    32,
+    1,
+    1
+   ],
+   "push_fields": [
+    [
+     "left_index",
+     "uint32"
+    ],
+    [
+     "right_index",
+     "uint32"
+    ],
+    [
+     "output_index",
+     "uint32"
+    ],
+    [
+     "count",
+     "uint32"
+    ],
+    [
+     "grid_width",
+     "uint32"
+    ],
+    [
+     "words",
+     "uint32"
+    ]
+   ],
+   "semantic_operation": "square_wide",
+   "outputs": [
+    {
+     "name": "output",
+     "extent": "wide"
+    }
+   ],
+   "physical_write": {
+    "writes": [
+     {
+      "binding": 2,
+      "domain": "rows",
+      "partition": "exclusive_per_workgroup",
+      "extent": "row_width",
+      "collision": "exclusive",
+      "tail": "bounds_checked"
+     }
+    ],
+    "workspace": "none"
+   }
+  }
+ ],
+ "signature_records": [
+  {
+   "name": "add",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "subtract",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "multiply_low",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "multiply_wide",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "bit_and",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "bit_or",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "bit_xor",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "compare",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "div_rem",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "shift_left",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "shift",
+      "u32"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "shift_right",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "shift",
+      "u32"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "reduce_mod",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "add_mod",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ],
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "subtract_mod",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ],
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "multiply_mod",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ],
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "square_mod",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "inverse_mod",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "pow_mod",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ],
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "to_montgomery",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "from_montgomery",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "montgomery_multiply",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ],
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "barrett_multiply",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ],
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "multiply_high",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "square_wide",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "bit_not",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "leading_zeros",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "add_scalar",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "scalar",
+      "u32"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "compare_scalar",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "scalar",
+      "u32"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "div_rem_mixed",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ],
+     [
+      "quotient_words",
+      "u32"
+     ]
+    ],
+    "returns": "(Matrix, Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "div_rem_narrow",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "div_rem_scalar",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "scalar",
+      "u32"
+     ]
+    ],
+    "returns": "(Matrix, Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "div_rem_wide",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "right",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "from_u32",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "output_words",
+      "u32"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "from_u64",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "output_words",
+      "u32"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "multiply_scalar",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "scalar",
+      "u32"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "reduce_montgomery",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "subtract_scalar",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "scalar",
+      "u32"
+     ]
+    ],
+    "returns": "Matrix",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "to_u32",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "to_u64",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "setup_barrett",
+   "signature": {
+    "parameters": [
+     [
+      "modulus",
+      "&Matrix"
+     ]
+    ],
+    "returns": "BarrettParameters",
+    "visibility": "pub"
+   }
+  },
+  {
+   "name": "reduce_barrett",
+   "signature": {
+    "parameters": [
+     [
+      "left",
+      "&Matrix"
+     ],
+     [
+      "parameters",
+      "&BarrettParameters"
+     ]
+    ],
+    "returns": "(Matrix, Matrix)",
+    "visibility": "pub"
+   }
+  }
+ ]
+}

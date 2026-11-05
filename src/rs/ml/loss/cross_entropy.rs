@@ -26,7 +26,6 @@ pub fn cross_entropy(logits: &Matrix, targets: &Matrix) -> Result<Matrix> {
 		rows as usize,
 		DType::F32,
 	)?;
-	let sum = Matrix::allocate(logits.engine_handle(), Vec::new(), 1, DType::F32)?;
 	let output = Matrix::allocate(logits.engine_handle(), Vec::new(), 1, DType::F32)?;
 	let loss_buffers = [
 		BufferBinding::read(logits.storage()),
@@ -39,34 +38,28 @@ pub fn cross_entropy(logits: &Matrix, targets: &Matrix) -> Result<Matrix> {
 		PushConstant::U32(classes),
 		PushConstant::U32(target_dtype_u32),
 	];
-	let sum_buffers = [
-		BufferBinding::read(per_row.storage()),
-		BufferBinding::write(sum.storage()),
-	];
-	let sum_push_constants = [PushConstant::U32(rows)];
 	let mean_buffers = [
-		BufferBinding::read(sum.storage()),
+		BufferBinding::read(per_row.storage()),
 		BufferBinding::write(output.storage()),
 	];
-	let mean_push_constants = [PushConstant::U32(1), PushConstant::F32(1.0 / rows as f32)];
+	let mean_push_constants = [
+		PushConstant::U32(rows),
+		PushConstant::F32(1.0 / rows as f32),
+	];
 	let dispatches = [
 		ComputeDispatch {
 			kernel: KernelId::MlCrossEntropyF32,
 			buffers: &loss_buffers,
 			push_constants: &loss_push_constants,
 			workgroups: portable_row_workgroups(rows),
+			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MlCrossEntropySumF32,
-			buffers: &sum_buffers,
-			push_constants: &sum_push_constants,
-			workgroups: [1, 1, 1],
-		},
-		ComputeDispatch {
-			kernel: KernelId::MatrixScaleF32,
+			kernel: KernelId::MlSumScaleF32,
 			buffers: &mean_buffers,
 			push_constants: &mean_push_constants,
 			workgroups: [1, 1, 1],
+			indirect: None,
 		},
 	];
 	logits.engine_handle().record_split_semantic(
@@ -109,7 +102,6 @@ pub fn cross_entropy_masked(
 		rows as usize,
 		DType::F32,
 	)?;
-	let sum = Matrix::allocate(logits.engine_handle(), Vec::new(), 1, DType::F32)?;
 	let output = Matrix::allocate(logits.engine_handle(), Vec::new(), 1, DType::F32)?;
 	let loss_buffers = [
 		BufferBinding::read(logits.storage()),
@@ -122,38 +114,29 @@ pub fn cross_entropy_masked(
 		PushConstant::U32(classes),
 		PushConstant::U32(target_dtype(targets.dtype())),
 	];
-	let sum_buffers = [
-		BufferBinding::read(per_row.storage()),
-		BufferBinding::write(sum.storage()),
-	];
-	let sum_push_constants = [PushConstant::U32(rows)];
 	let mean_buffers = [
-		BufferBinding::read(sum.storage()),
+		BufferBinding::read(per_row.storage()),
 		BufferBinding::write(output.storage()),
 	];
 	let mean_push_constants = [
-		PushConstant::U32(1),
+		PushConstant::U32(rows),
 		PushConstant::F32(1.0 / valid_count as f32),
 	];
-	let attributes = [valid_count_attribute(valid_count)];
+	let attributes = [valid_count_attribute("validCount", valid_count)];
 	let dispatches = [
 		ComputeDispatch {
 			kernel: KernelId::MlMaskedCrossEntropyF32,
 			buffers: &loss_buffers,
 			push_constants: &loss_push_constants,
 			workgroups: portable_row_workgroups(rows),
+			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MatrixSumF32,
-			buffers: &sum_buffers,
-			push_constants: &sum_push_constants,
-			workgroups: [1, 1, 1],
-		},
-		ComputeDispatch {
-			kernel: KernelId::MatrixScaleF32,
+			kernel: KernelId::MlSumScaleF32,
 			buffers: &mean_buffers,
 			push_constants: &mean_push_constants,
 			workgroups: [1, 1, 1],
+			indirect: None,
 		},
 	];
 	logits.engine_handle().record_split_semantic(
@@ -202,6 +185,7 @@ pub(in crate::ml) fn cross_entropy_backward(logits: &Matrix, targets: &Matrix) -
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: portable_row_workgroups(rows),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -253,7 +237,7 @@ pub(in crate::ml) fn cross_entropy_masked_backward(
 		PushConstant::U32(target_dtype(targets.dtype())),
 		PushConstant::U32(valid_count),
 	];
-	let attributes = [valid_count_attribute(valid_count)];
+	let attributes = [valid_count_attribute("valid_count", valid_count)];
 	let kernel = KernelId::MlMaskedCrossEntropyBackwardF32;
 	{
 		let inputs: &[&Matrix] = &[logits, targets, mask];
@@ -264,6 +248,7 @@ pub(in crate::ml) fn cross_entropy_masked_backward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: portable_row_workgroups(rows),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

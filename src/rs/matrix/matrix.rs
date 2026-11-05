@@ -480,7 +480,7 @@ impl Matrix {
 	}
 }
 
-fn byte_storage_len(logical_byte_len: usize, dtype: DType) -> Result<usize> {
+pub(crate) fn byte_storage_len(logical_byte_len: usize, dtype: DType) -> Result<usize> {
 	if dtype != DType::U8 {
 		return Ok(logical_byte_len);
 	}

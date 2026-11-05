@@ -1,15 +1,16 @@
-//! Hardware-independent encoder settings and exact device preflight.
+//! Hardware-independent encoder settings, exact device preflight, and the
+//! public hardware encoder session.
 //!
 //! Donor: `source/cpp/include/oa/vision/videoEncoder.h` and
 //! `source/cpp/lib/oa/vision/video/encoder/videoEncoder.cpp`.
-//! This module does not create an encoder session or claim hardware encode.
 
-use crate::{Error, Result};
+use crate::{Engine, Error, Result, runtime::VideoEncoderBackend};
 
 use super::{
 	VideoChromaSubsampling, VideoComponentBitDepth, VideoEncodeCapabilities,
 	VideoEncodeCodecCapabilities, VideoEncodeProfile, VideoExtent,
 };
+pub use crate::video::types::VideoEncodeConfig;
 
 /// Rate-control policy requested for a future Vulkan Video encoder session.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -19,28 +20,7 @@ pub enum VideoRateControl {
 	Vbr,
 }
 
-/// Checked settings for the donor's H.264 High or H.265 Main encode path.
-///
-/// Construct this value independently of hardware, then call
-/// [`validate_for_device`](Self::validate_for_device) with the exact profile's
-/// capability query. A successful preflight is not proof of session support.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct VideoEncodeSettings {
-	pub profile: VideoEncodeProfile,
-	pub width: u32,
-	pub height: u32,
-	pub frame_rate: u32,
-	pub gop_size: u32,
-	pub rate_control: VideoRateControl,
-	pub bitrate: u32,
-	pub max_bitrate: u32,
-	pub constant_qp: u32,
-	pub quality_level: u32,
-	pub async_depth: u32,
-	pub max_b_frames: u32,
-}
-
-impl VideoEncodeSettings {
+impl VideoEncodeConfig {
 	/// Construct the donor's default encode settings for a visible extent.
 	pub const fn new(profile: VideoEncodeProfile, width: u32, height: u32) -> Self {
 		Self {
@@ -56,6 +36,7 @@ impl VideoEncodeSettings {
 			quality_level: 0,
 			async_depth: 3,
 			max_b_frames: 0,
+			max_dpb_slots: 0,
 		}
 	}
 
@@ -288,4 +269,139 @@ fn align_up(value: u32, granularity: u32) -> Result<u32> {
 	blocks
 		.checked_mul(granularity)
 		.ok_or_else(|| Error::out_of_range("encode coded extent alignment overflow"))
+}
+
+/// Stateful hardware encoder session for H.264 High or H.265 Main.
+///
+/// One encoder owns a private Vulkan Video encode session, per-slot NV12 input
+/// pictures, and the RGBA→NV12 conversion on the selected [`Engine`]'s queues.
+/// Frames enter as packed RGBA8 bytes sized exactly
+/// `visible_extent().width * visible_extent().height * 4`; conversion, GOP
+/// cadence, rate control, DPB management, and Annex-B framing stay private.
+/// Every emitted [`EncodedVideoPacket`] is one access unit; keyframe packets
+/// carry the session's cached SPS/PPS (and VPS for H.265) parameter sets so
+/// each random-access point is self-describing.
+///
+/// `encode` waits for the submitted frame and returns its packet. `flush`
+/// waits for every outstanding encode job and drains the remainder — required
+/// before `close` when asynchronous submissions left frames in flight.
+pub struct VideoEncoder {
+	state: Option<VideoEncoderBackend>,
+}
+
+impl VideoEncoder {
+	/// Create a session admitted by exact capability preflight.
+	///
+	/// Settings are validated against the engine's queried encode capabilities;
+	/// session creation then performs the Vulkan-level admission a second time.
+	/// A device without an encode queue family for the requested codec profile
+	/// fails here, not on the first `encode` call.
+	///
+	/// # Errors
+	///
+	/// Returns an error when settings fail preflight or the engine's device
+	/// does not admit a hardware encode session for the profile.
+	pub fn new(engine: &Engine, settings: VideoEncodeConfig) -> Result<Self> {
+		Ok(Self {
+			state: Some(VideoEncoderBackend::create(engine, settings)?),
+		})
+	}
+
+	/// Encode one packed RGBA8 frame and return its access unit.
+	///
+	/// `rgba` must contain exactly
+	/// `visible_extent().width * visible_extent().height * 4` bytes in
+	/// row-major RGBA8 order. The frame is converted to the session's coded
+	/// NV12 extent, queued on the hardware encode queue, and awaited before the
+	/// packet is returned; presentation timestamps are in microseconds.
+	///
+	/// # Errors
+	///
+	/// Returns an error after close, for a mismatched input size, or when
+	/// conversion, encode submission, feedback, or bitstream readback fails.
+	pub fn encode(
+		&mut self,
+		rgba: &[u8],
+		presentation_timestamp_micros: u64,
+	) -> Result<super::EncodedVideoPacket> {
+		self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("VideoEncoder is closed"))?
+			.encode_rgba(rgba, presentation_timestamp_micros)
+	}
+
+	/// Wait for every outstanding encode job and drain all remaining packets.
+	///
+	/// Synchronous [`encode`](Self::encode) leaves nothing pending; flush is the
+	/// tail drain for asynchronous submissions and returns an empty list when
+	/// the session is already drained.
+	///
+	/// # Errors
+	///
+	/// Returns an error after close or when an outstanding job fails feedback
+	/// or bitstream readback.
+	pub fn flush(&mut self) -> Result<Vec<super::EncodedVideoPacket>> {
+		self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("VideoEncoder is closed"))?
+			.flush()
+	}
+
+	/// Close the encoder and release its session resources.
+	///
+	/// Unharvested asynchronous jobs are released without being drained;
+	/// call [`flush`](Self::flush) first to keep every submitted frame.
+	pub fn close(&mut self) {
+		self.state = None;
+	}
+
+	/// Return whether the encoder still accepts frames.
+	#[must_use]
+	pub const fn is_open(&self) -> bool {
+		self.state.is_some()
+	}
+
+	/// Return the aligned NV12 coded extent the driver encodes at.
+	#[must_use]
+	pub fn coded_extent(&self) -> Option<VideoExtent> {
+		self.state.as_ref().map(VideoEncoderBackend::coded_extent)
+	}
+
+	/// Return the visible input extent expected by `encode`.
+	#[must_use]
+	pub fn visible_extent(&self) -> Option<VideoExtent> {
+		self.state.as_ref().map(VideoEncoderBackend::visible_extent)
+	}
+
+	/// Borrow the session's cached codec parameter sets in Annex-B form.
+	///
+	/// H.264 sessions carry SPS+PPS and H.265 sessions carry VPS+SPS+PPS; the
+	/// bytes are already prepended to every keyframe packet, so muxers that
+	/// need out-of-band codec configuration should derive it from a keyframe
+	/// or use this reference directly.
+	#[must_use]
+	pub fn codec_headers(&self) -> Option<&[u8]> {
+		self.state.as_ref().map(VideoEncoderBackend::cached_headers)
+	}
+
+	/// Queue one RGBA8 frame asynchronously and harvest completed packets.
+	///
+	/// Crate-internal media bridge — the donor's `VideoEncoderAccess` route
+	/// used by `VideoRecorder`. `color_space` selects the conversion matrix
+	/// (0 = BT.601, 1 = BT.709, 2 = BT.2020); `full_range` selects PC range.
+	pub(crate) fn submit_rgba(
+		&mut self,
+		rgba: &[u8],
+		presentation_timestamp_micros: u64,
+		color_space: u32,
+		full_range: bool,
+	) -> Result<Vec<super::EncodedVideoPacket>> {
+		self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("VideoEncoder is closed"))?
+			.submit_rgba(rgba, presentation_timestamp_micros, color_space, full_range)
+	}
 }

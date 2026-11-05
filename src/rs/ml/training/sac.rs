@@ -7,30 +7,8 @@
 use crate::{DType, Engine, Error, Matrix, Result, matrix};
 
 use super::{ItTraining, ItTrainingConfig, Optimizer, target};
+pub use crate::ml::types::SacTrainerConfig;
 use crate::ml::{GradientTape, Module, ReplayBuffer, loss, policy};
-
-/// Fixed SAC update, shape, action-range, target, and loss policy.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SacTrainerConfig {
-	/// Number of critic/actor update pairs to complete.
-	pub updates: u64,
-	/// Replay transitions consumed by each pair.
-	pub batch_size: usize,
-	/// Number of scalar continuous action dimensions.
-	pub action_dimensions: usize,
-	/// Completed-pair interval between exact critic-to-target copies.
-	pub target_update_interval: u64,
-	/// Per-transition observation shape expected from replay.
-	pub observation_shape: Vec<usize>,
-	/// Inclusive lower action mapping bound.
-	pub action_minimum: f32,
-	/// Inclusive upper action mapping bound.
-	pub action_maximum: f32,
-	/// Base deterministic replay and policy seed.
-	pub seed: u64,
-	/// Critic discount and fixed entropy coefficient.
-	pub loss: loss::SacLossConfig,
-}
 
 impl Default for SacTrainerConfig {
 	fn default() -> Self {

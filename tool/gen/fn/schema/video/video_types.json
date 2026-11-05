@@ -1,0 +1,984 @@
+{
+	"schema_version": 1,
+	"domain": "video",
+	"family": "video_types",
+	"imports": [
+		"use super::{Av1ChromaSamplePosition, Av1ColorDescription, VideoChromaSubsampling, VideoCodec, VideoColorMatrix, VideoColorRange, VideoComponentBitDepth, VideoEncodeCodecCapabilities, VideoContainerKind, VideoDecodeLevel, VideoDecodeProfile, VideoEncodeProfile, VideoExtent, VideoRateControl, VideoTimeBase};",
+		"use crate::audio::AudioEncodeProfile;"
+	],
+	"types": [
+		{
+			"class": "info",
+			"name": "Av1TimingInfo",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "num_units_in_display_tick",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "time_scale",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "equal_picture_interval",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "num_ticks_per_picture_minus_1",
+					"type": "Option<u32>",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "Av1ColorConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "bit_depth",
+					"type": "VideoComponentBitDepth",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "monochrome",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "color_description",
+					"type": "Option<Av1ColorDescription>",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "full_range",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "chroma_subsampling",
+					"type": "VideoChromaSubsampling",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "chroma_sample_position",
+					"type": "Av1ChromaSamplePosition",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "separate_uv_delta_q",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "info",
+			"name": "Av1AccessUnitInfo",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"Default",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "sequence_headers",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "frames",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "frame_headers",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "tile_groups",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "ivf_timestamp",
+					"type": "Option<u64>",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "capabilities",
+			"name": "VideoDecodeCapabilities",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "profile",
+					"type": "VideoDecodeProfile",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "min_coded_extent",
+					"type": "VideoExtent",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "max_coded_extent",
+					"type": "VideoExtent",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "picture_access_granularity",
+					"type": "VideoExtent",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "min_bitstream_offset_alignment",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "min_bitstream_size_alignment",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "max_dpb_slots",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "max_active_reference_pictures",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "level",
+					"type": "VideoDecodeLevel",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "field_offset_granularity",
+					"type": "Option<(i32, i32)>",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "dpb_and_output_coincide",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "dpb_and_output_distinct",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "protected_content",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "separate_reference_images",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "capabilities",
+			"name": "VideoEncodeCapabilities",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "profile",
+					"type": "VideoEncodeProfile",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "min_coded_extent",
+					"type": "VideoExtent",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "max_coded_extent",
+					"type": "VideoExtent",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "picture_access_granularity",
+					"type": "VideoExtent",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "input_picture_granularity",
+					"type": "VideoExtent",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "min_bitstream_offset_alignment",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "min_bitstream_size_alignment",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "max_dpb_slots",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "max_active_reference_pictures",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "max_rate_control_layers",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "max_bitrate",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "max_quality_levels",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "constant_qp",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "cbr",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "vbr",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "feedback_offset",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "feedback_bytes_written",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "feedback_overrides",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "protected_content",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "separate_reference_images",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "codec",
+					"type": "VideoEncodeCodecCapabilities",
+					"visibility": "pub(crate)",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "capabilities",
+			"name": "VideoDeviceCapabilities",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "decode_queue_family",
+					"type": "Option<u32>",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "encode_queue_family",
+					"type": "Option<u32>",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "decode_result_status_queries",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "encode_result_status_queries",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "h264_decode",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "h265_decode",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "av1_decode",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "vp9_decode",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "h264_encode",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "h265_encode",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "av1_encode",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "video_queues_enabled",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "decoder_sessions_available",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "encoder_sessions_available",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "info",
+			"name": "VideoContainerInfo",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "kind",
+					"type": "VideoContainerKind",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "codec",
+					"type": "VideoCodec",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "width",
+					"type": "u32",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "height",
+					"type": "u32",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "time_base",
+					"type": "VideoTimeBase",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "duration",
+					"type": "u64",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "sample_count",
+					"type": "u32",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "track_id",
+					"type": "u32",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "track_count",
+					"type": "u32",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "decode_profile",
+					"type": "Option<VideoDecodeProfile>",
+					"visibility": "pub(super)",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "info",
+			"name": "H264TimingInfo",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "num_units_in_tick",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "time_scale",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "fixed_frame_rate",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "info",
+			"name": "H265TimingInfo",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"Default",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "num_units_in_tick",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "time_scale",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "num_ticks_poc_diff_one_minus_1",
+					"type": "Option<u32>",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "info",
+			"name": "VideoColorInfo",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "matrix",
+					"type": "VideoColorMatrix",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "range",
+					"type": "VideoColorRange",
+					"visibility": "pub(super)",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "VideoMuxerAudioConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "sample_rate",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Audio sample rate in hertz."
+				},
+				{
+					"name": "channel_count",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Number of interleaved channels."
+				},
+				{
+					"name": "priming_frames",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Encoder-delay frames omitted from presentation through an edit list."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "VideoMuxerConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "codec",
+					"type": "VideoCodec",
+					"visibility": "pub",
+					"doc": "Elementary video codec. Only H.264 and H.265 are admitted."
+				},
+				{
+					"name": "width",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Coded width in pixels."
+				},
+				{
+					"name": "height",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Coded height in pixels."
+				},
+				{
+					"name": "frame_rate",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Nominal frame rate used for the final sample duration."
+				},
+				{
+					"name": "time_base",
+					"type": "VideoTimeBase",
+					"visibility": "pub",
+					"doc": "MP4 video-track time base. Its numerator must currently be one."
+				},
+				{
+					"name": "audio",
+					"type": "Option<VideoMuxerAudioConfig>",
+					"visibility": "pub",
+					"doc": "Optional native PCM-S16 audio track."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "VideoPlayerConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "loop_playback",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Restart at the beginning after the final display-order frame."
+				},
+				{
+					"name": "frame_rate_override",
+					"type": "Option<f64>",
+					"visibility": "pub",
+					"doc": "Override the container average frame rate when pacing [`VideoPlayer::tick`]."
+				},
+				{
+					"name": "start_playing",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Begin in the playing state. Manual [`VideoPlayer::advance`] calls ignore this."
+				},
+				{
+					"name": "presentation_cache_frames",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Maximum display-order frames retained for exact backward/forward stepping."
+				},
+				{
+					"name": "presentation_cache_bytes",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Maximum retained planar bytes across the presentation cache."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "VideoEncodeConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "profile",
+					"type": "VideoEncodeProfile",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "width",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "height",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "frame_rate",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "gop_size",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "rate_control",
+					"type": "VideoRateControl",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "bitrate",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "max_bitrate",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "constant_qp",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "quality_level",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "async_depth",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "max_b_frames",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "max_dpb_slots",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Requested DPB ring depth. `0` selects the donor's two-slot ping-pong."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "VideoRecorderConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "output_path",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Container output path."
+				},
+				{
+					"name": "encode",
+					"type": "VideoEncodeConfig",
+					"visibility": "pub",
+					"doc": "Hardware encode profile: codec, extent, rate control, and GOP cadence."
+				},
+				{
+					"name": "color_space",
+					"type": "VideoColorMatrix",
+					"visibility": "pub",
+					"doc": "Input RGBA\u2192NV12 conversion matrix. `Unspecified` selects BT.709."
+				},
+				{
+					"name": "full_range",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Use full (PC) component range instead of limited (TV) range."
+				},
+				{
+					"name": "audio",
+					"type": "Option<AudioEncodeProfile>",
+					"visibility": "pub",
+					"doc": "Optional interleaved F32 audio track encoded to PCM-S16."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

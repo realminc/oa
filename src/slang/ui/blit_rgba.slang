@@ -4,7 +4,8 @@
 // Donor: oacpp/source/cpp/lib/oa/ui/shader/compute/blitRgba.slang
 // Adaptation: exact donor shader body; import path adjusted for Rust tree.
 //
-// Dispatch: (ceil(dst_w / 8), ceil(dst_h / 8), 1)
+// Dispatch: (ceil(visible_w / 8), ceil(visible_h / 8), 1) — the host dispatches
+// only the clip-visible region and passes its origin as (base_x, base_y).
 
 import storage;
 #include "compositor_common.slang"
@@ -23,7 +24,9 @@ struct PushConstants {
 	uint clip_w;
 	uint clip_h;
 	uint channel;
-}
+	uint base_x;    // dispatch origin within the destination rect
+	uint base_y;
+};
 
 [[vk::push_constant]] PushConstants pc;
 [[vk::binding(0, 0)]] RWByteAddressBuffer heap[];
@@ -34,8 +37,8 @@ struct PushConstants {
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
-	uint x = gid.x * 8 + lid.x;
-	uint y = gid.y * 8 + lid.y;
+	uint x = pc.base_x + gid.x * 8 + lid.x;
+	uint y = pc.base_y + gid.y * 8 + lid.y;
 	if (x >= pc.dst_w || y >= pc.dst_h || pc.src_w == 0 || pc.src_h == 0) return;
 
 	int dstX = pc.dst_x + int(x);

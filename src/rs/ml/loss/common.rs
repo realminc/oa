@@ -49,9 +49,9 @@ pub(super) fn portable_row_workgroups(rows: u32) -> [u32; 3] {
 	[rows.min(PORTABLE_WIDTH), rows.div_ceil(PORTABLE_WIDTH), 1]
 }
 
-pub(super) fn valid_count_attribute(valid_count: u32) -> OpAttribute {
+pub(super) fn valid_count_attribute(name: &'static str, valid_count: u32) -> OpAttribute {
 	OpAttribute::SignedInteger {
-		name: "valid_count".into(),
+		name: name.into(),
 		value: i64::from(valid_count),
 	}
 }
@@ -60,7 +60,7 @@ pub(super) fn valid_count_attribute(valid_count: u32) -> OpAttribute {
 // Shared physical-dispatch patterns
 // ---------------------------------------------------------------------------
 
-/// Three-dispatch pipeline: per-element kernel → atomic sum → scale to mean.
+/// Two-dispatch pipeline: per-element kernel → scaled sum to mean.
 pub(super) fn mean_pointwise_loss(
 	prediction: &Matrix,
 	target: &Matrix,
@@ -74,7 +74,6 @@ pub(super) fn mean_pointwise_loss(
 		prediction.num_elements(),
 		DType::F32,
 	)?;
-	let sum = Matrix::allocate(prediction.engine_handle(), Vec::new(), 1, DType::F32)?;
 	let output = Matrix::allocate(prediction.engine_handle(), Vec::new(), 1, DType::F32)?;
 	let loss_buffers = [
 		BufferBinding::read(prediction.storage()),
@@ -82,17 +81,12 @@ pub(super) fn mean_pointwise_loss(
 		BufferBinding::write(per_element.storage()),
 	];
 	let loss_push_constants = [PushConstant::U32(element_count)];
-	let sum_buffers = [
-		BufferBinding::read(per_element.storage()),
-		BufferBinding::write(sum.storage()),
-	];
-	let sum_push_constants = [PushConstant::U32(element_count)];
 	let mean_buffers = [
-		BufferBinding::read(sum.storage()),
+		BufferBinding::read(per_element.storage()),
 		BufferBinding::write(output.storage()),
 	];
 	let mean_push_constants = [
-		PushConstant::U32(1),
+		PushConstant::U32(element_count),
 		PushConstant::F32(1.0 / element_count as f32),
 	];
 	let dispatches = [
@@ -101,18 +95,14 @@ pub(super) fn mean_pointwise_loss(
 			buffers: &loss_buffers,
 			push_constants: &loss_push_constants,
 			workgroups: kernel.linear_workgroups(element_count),
+			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MatrixSumF32,
-			buffers: &sum_buffers,
-			push_constants: &sum_push_constants,
-			workgroups: [1, 1, 1],
-		},
-		ComputeDispatch {
-			kernel: KernelId::MatrixScaleF32,
+			kernel: KernelId::MlSumScaleF32,
 			buffers: &mean_buffers,
 			push_constants: &mean_push_constants,
 			workgroups: [1, 1, 1],
+			indirect: None,
 		},
 	];
 	let inputs = [prediction, target];
@@ -158,6 +148,7 @@ pub(super) fn pointwise_loss_backward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(element_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

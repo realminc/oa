@@ -55,6 +55,7 @@ pub fn {{name}}(input: &Matrix, intermediate_size: usize) -> Result<Matrix> {
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: KernelId::{{kernel}}.linear_workgroups(output_count_u32),
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,

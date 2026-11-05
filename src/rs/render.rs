@@ -20,11 +20,12 @@ pub use mesh::{
 	Aabb, compute_bounds, create_cube, create_fullscreen_quad, create_quad, flip_uvs_y, scale,
 	transform, translate,
 };
-pub use renderer::{RenderFrame, Renderer, RendererConfig};
+pub use renderer::{CanvasGridFrame, RenderFrame, Renderer, RendererConfig};
 pub use scene::{
 	MeshData, MeshVertex, Scene, SceneDrawPacket, SceneMaterial, SceneMesh, SceneMeshId, SceneNode,
 	SceneNodeId, compile_scene, compile_scene_packets, validate_scene,
 };
+pub(crate) use texture::texture_from_matrix;
 pub use texture::{
 	Texture, blit, clear, save_texture_file, texture_from_file, texture_from_image,
 	texture_from_rgba8,

@@ -109,7 +109,7 @@ test_vk!(
 		}
 		assert_eq!(
 			plan.semantic_graph().operations()[3].name(),
-			"oa::ml::advantage::gae"
+			"oa::FnAdvantage::gae"
 		);
 		engine.submit(&plan)?.wait()?;
 

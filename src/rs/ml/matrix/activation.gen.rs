@@ -44,6 +44,7 @@ pub fn gelu(input: &Matrix) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlGeluF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -103,6 +104,7 @@ pub(in crate::ml) fn gelu_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlGeluBackwardF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -150,6 +152,7 @@ pub fn silu(input: &Matrix) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlSiluF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -209,6 +212,7 @@ pub(in crate::ml) fn silu_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlSiluBackwardF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -256,6 +260,7 @@ pub fn relu(input: &Matrix) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlReluF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -315,6 +320,7 @@ pub(in crate::ml) fn relu_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlReluBackwardF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -362,6 +368,7 @@ pub fn tanh(input: &Matrix) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlTanhF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -421,6 +428,7 @@ pub(in crate::ml) fn tanh_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlTanhBackwardF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -468,6 +476,7 @@ pub fn sigmoid(input: &Matrix) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlSigmoidF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -527,6 +536,7 @@ pub(in crate::ml) fn sigmoid_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlSigmoidBackwardF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -578,6 +588,7 @@ pub fn leaky_relu(input: &Matrix, alpha: f32) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlLeakyReluF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -642,6 +653,7 @@ pub(in crate::ml) fn leaky_relu_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlLeakyReluBackwardF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -693,6 +705,7 @@ pub fn elu(input: &Matrix, alpha: f32) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlEluF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -757,6 +770,7 @@ pub(in crate::ml) fn elu_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlEluBackwardF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -804,6 +818,7 @@ pub fn mish(input: &Matrix) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlMishF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -863,6 +878,7 @@ pub(in crate::ml) fn mish_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlMishBackwardF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -910,6 +926,7 @@ pub fn softplus(input: &Matrix) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlSoftplusF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -969,6 +986,7 @@ pub(in crate::ml) fn softplus_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlSoftplusBackwardF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,

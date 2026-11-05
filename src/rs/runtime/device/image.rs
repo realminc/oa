@@ -96,10 +96,10 @@ impl RenderTarget {
 			.checked_mul(height as u64)
 			.and_then(|pixels| pixels.checked_mul(4))
 			.ok_or_else(|| Error::out_of_range("render target readback size overflows u64"))?;
-		let buf_info = vk::BufferCreateInfo::default()
-			.size(readback_bytes)
-			.usage(vk::BufferUsageFlagBits::TRANSFER_DST_BIT)
-			.sharing_mode(vk::SharingMode::EXCLUSIVE);
+		let buf_info = vk::BufferCreateInfo::new()
+			.set_size(readback_bytes)
+			.set_usage(vk::BufferUsageFlagBits::TRANSFER_DST_BIT)
+			.set_sharing_mode(vk::SharingMode::EXCLUSIVE);
 		let alloc_info = vk::mem::AllocationCreateInfo {
 			usage: vk::mem::MemoryUsage::PreferHost,
 			host_access: vk::mem::HostAccess::Random,
@@ -214,21 +214,21 @@ fn alloc_image(
 	format: vk::Format,
 	usage: vk::ImageUsageFlags,
 ) -> Result<(vk::Image, vk::mem::Allocation)> {
-	let info = vk::ImageCreateInfo::default()
-		.image_type(vk::ImageType::_2D)
-		.format(format)
-		.extent(vk::Extent3D {
+	let info = vk::ImageCreateInfo::new()
+		.set_image_type(vk::ImageType::_2D)
+		.set_format(format)
+		.set_extent(vk::Extent3D {
 			width,
 			height,
 			depth: 1,
 		})
-		.mip_levels(1)
-		.array_layers(1)
-		.samples(vk::SampleCountFlagBits::_1_BIT)
-		.tiling(vk::ImageTiling::OPTIMAL)
-		.usage(usage)
-		.sharing_mode(vk::SharingMode::EXCLUSIVE)
-		.initial_layout(vk::ImageLayout::UNDEFINED);
+		.set_mip_levels(1)
+		.set_array_layers(1)
+		.set_samples(vk::SampleCountFlagBits::_1_BIT)
+		.set_tiling(vk::ImageTiling::OPTIMAL)
+		.set_usage(usage)
+		.set_sharing_mode(vk::SharingMode::EXCLUSIVE)
+		.set_initial_layout(vk::ImageLayout::UNDEFINED);
 	let alloc_info = vk::mem::AllocationCreateInfo {
 		usage: vk::mem::MemoryUsage::PreferDevice,
 		required_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
@@ -249,15 +249,15 @@ fn create_view(
 	format: vk::Format,
 	aspect: vk::ImageAspectFlags,
 ) -> Result<vk::ImageView> {
-	let range = vk::ImageSubresourceRange::default()
-		.aspect_mask(aspect)
-		.level_count(1)
-		.layer_count(1);
-	let info = vk::ImageViewCreateInfo::default()
-		.image(image)
-		.view_type(vk::ImageViewType::_2D)
-		.format(format)
-		.subresource_range(range);
+	let range = vk::ImageSubresourceRange::new()
+		.set_aspect_mask(aspect)
+		.set_level_count(1)
+		.set_layer_count(1);
+	let info = vk::ImageViewCreateInfo::new()
+		.set_image(image)
+		.set_view_type(vk::ImageViewType::_2D)
+		.set_format(format)
+		.set_subresource_range(range);
 	unsafe { device.create_image_view(&info, None) }
 		.map_err(|s| Error::backend_failure("Vulkan", "render target image-view creation", s))
 }
@@ -273,25 +273,25 @@ pub(crate) struct NativeRgbaImage {
 
 impl NativeRgbaImage {
 	pub(in crate::runtime) fn new(device: &Arc<Device>, width: u32, height: u32) -> Result<Self> {
-		let info = vk::ImageCreateInfo::default()
-			.image_type(vk::ImageType::_2D)
-			.format(vk::Format::R8G8B8A8_UNORM)
-			.extent(vk::Extent3D {
+		let info = vk::ImageCreateInfo::new()
+			.set_image_type(vk::ImageType::_2D)
+			.set_format(vk::Format::R8G8B8A8_UNORM)
+			.set_extent(vk::Extent3D {
 				width,
 				height,
 				depth: 1,
 			})
-			.mip_levels(1)
-			.array_layers(1)
-			.samples(vk::SampleCountFlagBits::_1_BIT)
-			.tiling(vk::ImageTiling::OPTIMAL)
-			.usage(
+			.set_mip_levels(1)
+			.set_array_layers(1)
+			.set_samples(vk::SampleCountFlagBits::_1_BIT)
+			.set_tiling(vk::ImageTiling::OPTIMAL)
+			.set_usage(
 				vk::ImageUsageFlagBits::TRANSFER_DST_BIT
 					| vk::ImageUsageFlagBits::TRANSFER_SRC_BIT
 					| vk::ImageUsageFlagBits::SAMPLED_BIT,
 			)
-			.sharing_mode(vk::SharingMode::EXCLUSIVE)
-			.initial_layout(vk::ImageLayout::UNDEFINED);
+			.set_sharing_mode(vk::SharingMode::EXCLUSIVE)
+			.set_initial_layout(vk::ImageLayout::UNDEFINED);
 		let allocation_info = vk::mem::AllocationCreateInfo {
 			usage: vk::mem::MemoryUsage::PreferDevice,
 			required_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
@@ -304,15 +304,15 @@ impl NativeRgbaImage {
 		}
 		.map_err(|source| Error::backend_failure("Vulkan", "RGBA texture-image allocation", source))?
 		.map_err(|source| Error::backend_failure("Vulkan", "RGBA texture-image allocation", source))?;
-		let range = vk::ImageSubresourceRange::default()
-			.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-			.level_count(1)
-			.layer_count(1);
-		let view_info = vk::ImageViewCreateInfo::default()
-			.image(handle)
-			.view_type(vk::ImageViewType::_2D)
-			.format(vk::Format::R8G8B8A8_UNORM)
-			.subresource_range(range);
+		let range = vk::ImageSubresourceRange::new()
+			.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+			.set_level_count(1)
+			.set_layer_count(1);
+		let view_info = vk::ImageViewCreateInfo::new()
+			.set_image(handle)
+			.set_view_type(vk::ImageViewType::_2D)
+			.set_format(vk::Format::R8G8B8A8_UNORM)
+			.set_subresource_range(range);
 		let view = match unsafe { device.raw().create_image_view(&view_info, None) } {
 			Ok(view) => view,
 			Err(source) => {

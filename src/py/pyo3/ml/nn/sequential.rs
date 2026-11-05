@@ -15,6 +15,15 @@ pub(crate) struct PythonSequential {
 	py_layers: Vec<Py<PyAny>>,
 }
 
+impl PythonSequential {
+	pub(crate) fn wrap(inner: oa::ml::nn::Sequential) -> Self {
+		Self {
+			inner,
+			py_layers: Vec::new(),
+		}
+	}
+}
+
 #[pymethods]
 impl PythonSequential {
 	/// Construct an empty sequence, or a sequence from a Python list of layers.

@@ -183,20 +183,20 @@ pub(in crate::ml) fn channel_norm_forward(
 		PushConstant::F32(epsilon),
 	];
 	let attributes = [
-		OpAttribute::UnsignedInteger {
+		OpAttribute::SignedInteger {
 			name: "batch".into(),
-			value: u64::from(batch),
+			value: i64::from(batch),
 		},
-		OpAttribute::UnsignedInteger {
+		OpAttribute::SignedInteger {
 			name: "channels".into(),
-			value: u64::from(channels),
+			value: i64::from(channels),
 		},
-		OpAttribute::UnsignedInteger {
-			name: "sequence_length".into(),
-			value: u64::from(sequence_length),
+		OpAttribute::SignedInteger {
+			name: "sequenceLength".into(),
+			value: i64::from(sequence_length),
 		},
 		OpAttribute::Float {
-			name: "epsilon".into(),
+			name: "eps".into(),
 			value: f64::from(epsilon),
 		},
 	];
@@ -220,6 +220,7 @@ pub(in crate::ml) fn channel_norm_forward(
 				1,
 				1,
 			],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -341,12 +342,10 @@ pub(in crate::ml) fn channel_norm_backward_saved(
 		PushConstant::U32(rows),
 		PushConstant::U32(channels),
 	];
-	let weight_buffers = [
+	let parameter_buffers = [
 		BufferBinding::read(weight_contribution.storage()),
-		BufferBinding::write(weight_gradient.storage()),
-	];
-	let bias_buffers = [
 		BufferBinding::read(bias_contribution.storage()),
+		BufferBinding::write(weight_gradient.storage()),
 		BufferBinding::write(bias_gradient.storage()),
 	];
 	let primary = ComputeDispatch {
@@ -360,21 +359,17 @@ pub(in crate::ml) fn channel_norm_backward_saved(
 			.map_or(&plain_buffers[..], |buffers| &buffers[..]),
 		push_constants: &push_constants,
 		workgroups: [rows, 1, 1],
+		indirect: None,
 	};
-	let sum_workgroups = KernelId::MatrixSumAxisF32.linear_workgroups(channels);
+	let sum_workgroups = KernelId::MlSumAxisPairF32.linear_workgroups(channels);
 	let dispatches = [
 		primary,
 		ComputeDispatch {
-			kernel: KernelId::MatrixSumAxisF32,
-			buffers: &weight_buffers,
+			kernel: KernelId::MlSumAxisPairF32,
+			buffers: &parameter_buffers,
 			push_constants: &sum_push_constants,
 			workgroups: sum_workgroups,
-		},
-		ComputeDispatch {
-			kernel: KernelId::MatrixSumAxisF32,
-			buffers: &bias_buffers,
-			push_constants: &sum_push_constants,
-			workgroups: sum_workgroups,
+			indirect: None,
 		},
 	];
 	let mut inputs = vec![input, weight];

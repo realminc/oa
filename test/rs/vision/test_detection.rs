@@ -84,7 +84,7 @@ test_vk!(
 		assert_eq!(output.shape(), [3, 5]);
 		let graph = plan.semantic_graph();
 		assert_eq!(graph.operations().len(), 1);
-		assert_eq!(graph.operations()[0].name(), "oa::vision::box_iou");
+		assert_eq!(graph.operations()[0].name(), "oa::FnDetection::boxIou");
 		assert_eq!(
 			graph.operations()[0].contract_hash(),
 			oa::core::operation::vision::BOX_IOU.hash()
@@ -265,7 +265,7 @@ test_vk!(
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
-			"oa::vision::evaluate"
+			"oa::FnDetection::evaluate"
 		);
 		assert_eq!(plan.semantic_lowering().decomposed_op_count(), 1);
 		let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("evaluate"))
@@ -321,7 +321,7 @@ test_vk!(
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
-			"oa::vision::evaluate_segmentation"
+			"oa::FnDetection::evaluateSegmentation"
 		);
 		assert_eq!(plan.semantic_lowering().decomposed_op_count(), 1);
 		engine.submit(&plan)?.wait()?;
@@ -489,3 +489,118 @@ fn box_iou_reference(a: &[f32], b: &[f32]) -> f32 {
 		0.0
 	}
 }
+
+#[test]
+fn detection_record_has_the_donor_32_byte_abi() {
+	let detection = oa::vision::Detection {
+		center_x: 0.25,
+		center_y: 0.75,
+		width: 0.5,
+		height: 0.25,
+		confidence: 0.9,
+		class_id: 7,
+		color_rgba: 0x11223344,
+		track_id: 9,
+	};
+	assert_eq!(std::mem::size_of::<oa::vision::Detection>(), 32);
+	assert_eq!(std::mem::offset_of!(oa::vision::Detection, color_rgba), 24);
+	assert_eq!(std::mem::offset_of!(oa::vision::Detection, track_id), 28);
+	let bytes = unsafe {
+		std::slice::from_raw_parts(
+			(&detection as *const oa::vision::Detection).cast::<u8>(),
+			32,
+		)
+	};
+	assert_eq!(f32::from_le_bytes(bytes[0..4].try_into().unwrap()), 0.25);
+	assert_eq!(f32::from_le_bytes(bytes[8..12].try_into().unwrap()), 0.5);
+	assert_eq!(
+		u32::from_le_bytes(bytes[24..28].try_into().unwrap()),
+		0x11223344
+	);
+	assert_eq!(u32::from_le_bytes(bytes[28..32].try_into().unwrap()), 9);
+	assert_eq!(detection, detection);
+	assert_eq!(oa::vision::Detection::default().color_rgba, 0);
+}
+
+test_vk!(
+	detection_buffer_enforces_capacity_and_consumer_readiness,
+	engine,
+	{
+		use oa::{ErrorKind, vision::Detection, vision::DetectionBuffer};
+
+		assert_eq!(
+			DetectionBuffer::create_host_upload(&engine, 0)
+				.map(|_| ())
+				.expect_err("zero capacity must be rejected")
+				.kind(),
+			ErrorKind::InvalidArgument
+		);
+		let mut buffer = DetectionBuffer::create_host_upload(&engine, 2)?;
+		assert_eq!(buffer.capacity(), 2);
+		assert_eq!(buffer.count(), 0);
+		assert!(buffer.is_ready()?);
+		assert_eq!(
+			buffer
+				.upload(&[Detection::default(); 3])
+				.expect_err("over-capacity upload must be rejected")
+				.kind(),
+			ErrorKind::ResourceExhausted
+		);
+		buffer.upload(&[
+			Detection {
+				center_x: 0.5,
+				center_y: 0.5,
+				width: 0.5,
+				height: 0.5,
+				confidence: 0.8,
+				class_id: 1,
+				color_rgba: 0,
+				track_id: 0,
+			},
+			Detection {
+				center_x: 0.25,
+				center_y: 0.25,
+				width: 0.25,
+				height: 0.25,
+				confidence: 0.9,
+				class_id: 2,
+				color_rgba: 0xFF0000FF,
+				track_id: 4,
+			},
+		])?;
+		assert_eq!(buffer.count(), 2);
+
+		let other_engine = oa::Engine::new()?;
+		let source = Matrix::new_from_f32(&engine, [4], &[1.0; 4])?;
+		let (plan, _) = engine.capture(|| source.add(&source))?;
+		let foreign = other_engine.submit(&{
+			let foreign_source = Matrix::new_from_f32(&other_engine, [4], &[1.0; 4])?;
+			let (foreign_plan, _) = other_engine.capture(|| foreign_source.add(&foreign_source))?;
+			foreign_plan
+		})?;
+		assert_eq!(
+			buffer
+				.mark_consumed(&foreign)
+				.expect_err("a foreign-engine event must be rejected")
+				.kind(),
+			ErrorKind::InvalidArgument
+		);
+		foreign.wait()?;
+
+		let event = engine.submit(&plan)?;
+		buffer.mark_consumed(&event)?;
+		assert!(!buffer.is_ready()?);
+		assert_eq!(
+			buffer
+				.upload(&[Detection::default()])
+				.expect_err("upload must fail while the consumer event is in flight")
+				.kind(),
+			ErrorKind::NotReady
+		);
+		event.wait()?;
+		assert!(buffer.is_ready()?);
+		buffer.upload(&[Detection::default()])?;
+		assert_eq!(buffer.count(), 1);
+		Ok(())
+	}
+);

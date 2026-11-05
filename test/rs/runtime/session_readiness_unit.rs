@@ -20,6 +20,7 @@ fn split_recording_requires_an_earlier_exhaustive_producer() -> Result<()> {
 			buffers,
 			push_constants: &[],
 			workgroups: [1, 1, 1],
+			indirect: None,
 		}
 	}
 	validate_split_recording_access(&[node(&writes), node(&reads)])?;

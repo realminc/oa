@@ -10,40 +10,11 @@ use super::{
 	ItRolloutTraining, ItRolloutTrainingConfig, Optimizer, RolloutTrainingPhase, TrainingCallback,
 	TrainingMetric, TrainingSnapshot,
 };
+pub use crate::ml::types::PpoTrainerConfig;
 use crate::ml::{
 	ActorCritic, GradientTape, PolicyResult, RolloutBatch, RolloutBuffer, RolloutConfig,
 	RolloutTransition, advantage, loss, policy,
 };
-
-/// Complete categorical PPO collection and update policy.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct PpoTrainerConfig {
-	/// Number of complete rollout/update cycles.
-	pub rollouts: u64,
-	/// Time steps collected in each rollout.
-	pub horizon: usize,
-	/// Vector environments represented by each step.
-	pub environments: usize,
-	/// Full-batch optimizer passes over each finalized rollout.
-	pub update_epochs: u64,
-	/// Maximum sequences evaluated by one update tape; zero means full batch.
-	/// Minibatches accumulate sample-weighted gradients with unchanged parameters
-	/// and one optimizer step per epoch. Advantages normalize over the rollout.
-	/// Each minibatch completes before the next to bound live device memory.
-	pub update_minibatch_size: usize,
-	/// Per-environment observation shape, excluding the environment axis.
-	pub observation_shape: Vec<usize>,
-	/// Base deterministic categorical sampling seed.
-	pub seed: u64,
-	/// Whether optimizer updates collect Vulkan timestamp statistics.
-	/// Time all update submissions, summing disjoint minibatch and optimizer
-	/// intervals into one sample per epoch. Collection remains caller-owned.
-	pub enable_gpu_timing: bool,
-	/// Generalized-advantage estimator policy.
-	pub gae: advantage::GaeConfig,
-	/// Clipped PPO objective coefficients.
-	pub loss: loss::PpoLossConfig,
-}
 
 /// Scalar results from the last completed PPO update epoch.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

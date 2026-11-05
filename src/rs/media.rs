@@ -7,7 +7,10 @@ mod clock;
 mod player;
 
 pub use clock::MediaTimestamp;
-pub use player::{MediaPlayer, MediaPlayerConfig};
+pub use player::MediaPlayer;
+pub use types::MediaPlayerConfig;
 
 #[path = "media/parity.gen.rs"]
 mod parity;
+#[path = "media/type.gen.rs"]
+mod types;

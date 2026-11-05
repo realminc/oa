@@ -8,6 +8,7 @@
 //! Donor reference: `oa/ui/plot/figure.h`, `oa/ui/plot/figure.cpp`
 
 use super::axes::{Axes, HeatmapCmd};
+pub use super::types::FigureConfig;
 use crate::ui::{TextLayoutConfig, Ui, types::PixelRect};
 use crate::{Color, Engine, Error, Image, Result, Texture};
 
@@ -80,28 +81,6 @@ impl Theme {
 }
 
 // ── FigureConfig ──────────────────────────────────────────────────────────────
-
-/// Top-level figure configuration.
-///
-/// Donor: `oa::plot::FigureConfig`.
-#[derive(Clone, Debug)]
-pub struct FigureConfig {
-	pub title: String,
-	pub rows: i32,
-	pub cols: i32,
-	pub width: u32,
-	pub height: u32,
-	/// Horizontal spacing between axes cells in pixels.
-	pub h_spacing: i32,
-	/// Vertical spacing between axes cells in pixels.
-	pub v_spacing: i32,
-	/// Outer padding around the entire grid.
-	pub padding: i32,
-	/// Color theme (Dark or Light).  Donor: `oa::plot::Theme`.
-	pub theme: Theme,
-	/// Override background color.  Alpha-zero uses the theme background.
-	pub background: Color,
-}
 
 impl Default for FigureConfig {
 	fn default() -> Self {

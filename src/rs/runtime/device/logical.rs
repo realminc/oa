@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
 	Error, Result,
-	runtime::{executable_graph::ExecutableGraph, shader::KernelId},
+	runtime::{dna::kernel::KernelId, executable_graph::ExecutableGraph},
 };
 
 use super::{
@@ -47,6 +47,23 @@ pub(crate) struct SceneDrawCmd {
 	pub is_blend: bool,
 }
 
+/// Geometry source for one graphics frame record.
+///
+/// `Indexed` binds the shared vertex/index buffers and issues
+/// `vkCmdDrawIndexed`; `Vertexless` binds nothing and issues `vkCmdDraw` —
+/// the vertex shader derives positions from `SV_VertexID` (fullscreen
+/// triangle and generated-geometry pipelines).
+pub(in crate::runtime) enum FrameDraw {
+	Indexed {
+		vertex_buffer: vk::Buffer,
+		index_buffer: vk::Buffer,
+		index_count: u32,
+	},
+	Vertexless {
+		vertex_count: u32,
+	},
+}
+
 /// Vulkan executor resources, owned once by Device; never independently retained.
 pub(in crate::runtime) struct DeviceLogical {
 	handle: ManuallyDrop<std::sync::Arc<vk::Device>>,
@@ -56,6 +73,7 @@ pub(in crate::runtime) struct DeviceLogical {
 	command_pool: Mutex<CommandPool>,
 	graphics_command_pool: Mutex<Option<CommandPool>>,
 	video_decode_command_pool: Mutex<Option<CommandPool>>,
+	video_encode_command_pool: Mutex<Option<CommandPool>>,
 	timeline: Timeline,
 	descriptors: DescriptorHeap,
 	/// Shared pipeline layout for UI compute pipelines (128-byte push range).
@@ -117,7 +135,7 @@ impl Device {
 		info
 	}
 
-	pub(super) fn configuration(&self) -> &DeviceConfiguration {
+	pub(in crate::runtime) fn configuration(&self) -> &DeviceConfiguration {
 		&self.configuration
 	}
 
@@ -151,6 +169,8 @@ impl Device {
 		let decoder_available = self.logical.video_decode_queue.is_some()
 			&& video.decode_result_status_queries
 			&& (video.h264_decode || video.h265_decode || video.av1_decode || video.vp9_decode);
+		let encoder_available =
+			self.logical.video_encode_queue.is_some() && (video.h264_encode || video.h265_encode);
 
 		Ok(crate::video::VideoDeviceCapabilities {
 			decode_queue_family: video.decode_queue_family,
@@ -167,7 +187,7 @@ impl Device {
 			video_queues_enabled: self.logical.video_decode_queue.is_some()
 				|| self.logical.video_encode_queue.is_some(),
 			decoder_sessions_available: decoder_available,
-			encoder_sessions_available: false,
+			encoder_sessions_available: encoder_available,
 		})
 	}
 
@@ -202,7 +222,7 @@ impl Device {
 	) -> bool {
 		// SAFETY: the physical device and its owning instance are retained by this
 		// Device. This query only reads immutable format capabilities.
-		let mut properties = vk::FormatProperties::default();
+		let mut properties = vk::FormatProperties::new();
 		// SAFETY: the physical device and its owning instance are retained by this
 		// Device; `properties` is live and writable for the call.
 		let result = unsafe {
@@ -252,6 +272,35 @@ impl Device {
 		let cache = self.pipeline_cache()?;
 		super::pipeline::FlatColorPipeline::new(
 			std::sync::Arc::clone(&self.logical.handle),
+			self.physical.limits,
+			cache.raw(),
+		)
+	}
+
+	/// Create the procedural canvas-grid pipeline for this device.
+	pub(in crate::runtime) fn create_canvas_grid_pipeline(
+		&self,
+	) -> Result<super::pipeline::CanvasGridPipeline> {
+		let cache = self.pipeline_cache()?;
+		super::pipeline::CanvasGridPipeline::new(
+			std::sync::Arc::clone(&self.logical.handle),
+			self.physical.limits,
+			cache.raw(),
+		)
+	}
+
+	/// Create a compute pipeline for an ad-hoc embedded artifact on the shared
+	/// bindless descriptor layout. Reserved for non-registry kernels such as
+	/// the video encoder's RGBA→NV12 conversion.
+	pub(in crate::runtime) fn create_compute_pipeline(
+		&self,
+		artifact: &'static crate::runtime::dna::kernel::ShaderArtifact,
+	) -> Result<super::pipeline::ComputePipeline> {
+		let cache = self.pipeline_cache()?;
+		super::pipeline::ComputePipeline::new(
+			std::sync::Arc::clone(&self.logical.handle),
+			self.descriptor_layout(),
+			artifact,
 			self.physical.limits,
 			cache.raw(),
 		)
@@ -421,6 +470,14 @@ impl Device {
 		)
 	}
 
+	pub(in crate::runtime) fn create_video_encode_session(
+		self: &Arc<Self>,
+		settings: &crate::video::VideoEncodeConfig,
+		plan: crate::video::VideoEncodePlan,
+	) -> Result<super::video::EncodeSession> {
+		super::video::create_encode_session(self, settings, plan)
+	}
+
 	pub(in crate::runtime) fn allocator(&self) -> &vk::mem::SynchronizedAllocator<'static> {
 		&self.logical.allocator
 	}
@@ -443,6 +500,11 @@ impl Device {
 	/// Return the shared descriptor set for command recording.
 	pub(in crate::runtime) fn descriptor_set(&self) -> vk::DescriptorSet {
 		self.logical.descriptors.set()
+	}
+
+	/// Return the shared bindless descriptor set layout for pipeline creation.
+	pub(in crate::runtime) fn descriptor_layout(&self) -> vk::DescriptorSetLayout {
+		self.logical.descriptors.layout()
 	}
 
 	pub(in crate::runtime) fn bounded_descriptor_layout(
@@ -961,19 +1023,19 @@ impl Device {
 			.as_mut()
 			.expect("graphics command pool initialized")
 			.record_custom(&self.logical.handle, |command| {
-				let range = vk::ImageSubresourceRange::default()
-					.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-					.level_count(1)
-					.layer_count(1);
-				let barrier = vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
-					.dst_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
-					.old_layout(vk::ImageLayout::UNDEFINED)
-					.new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-					.image(image)
-					.subresource_range(range);
+				let range = vk::ImageSubresourceRange::new()
+					.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+					.set_level_count(1)
+					.set_layer_count(1);
+				let barrier = vk::ImageMemoryBarrier2::new()
+					.set_src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+					.set_dst_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
+					.set_old_layout(vk::ImageLayout::UNDEFINED)
+					.set_new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+					.set_image(image)
+					.set_subresource_range(range);
 				let barriers = [barrier];
-				let dependency = vk::DependencyInfo::default().image_memory_barriers(&barriers);
+				let dependency = vk::DependencyInfo::new().set_image_memory_barriers(&barriers);
 				unsafe {
 					self.logical.sync_commands.pipeline_barrier(
 						&self.logical.handle,
@@ -991,16 +1053,16 @@ impl Device {
 						&[range],
 					)
 				}?;
-				let barrier = vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
-					.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-					.dst_stage_mask(vk::PipelineStageFlagBits2::NONE)
-					.old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-					.new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-					.image(image)
-					.subresource_range(range);
+				let barrier = vk::ImageMemoryBarrier2::new()
+					.set_src_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
+					.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+					.set_dst_stage_mask(vk::PipelineStageFlagBits2::NONE)
+					.set_old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+					.set_new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+					.set_image(image)
+					.set_subresource_range(range);
 				let barriers = [barrier];
-				let dependency = vk::DependencyInfo::default().image_memory_barriers(&barriers);
+				let dependency = vk::DependencyInfo::new().set_image_memory_barriers(&barriers);
 				unsafe {
 					self.logical.sync_commands.pipeline_barrier(
 						&self.logical.handle,
@@ -1039,28 +1101,28 @@ impl Device {
 			.as_mut()
 			.expect("graphics command pool initialized")
 			.record_custom(&self.logical.handle, |command| {
-				let range = vk::ImageSubresourceRange::default()
-					.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-					.level_count(1)
-					.layer_count(1);
+				let range = vk::ImageSubresourceRange::new()
+					.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+					.set_level_count(1)
+					.set_layer_count(1);
 				let barriers = [
-					vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
-						.src_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
-						.dst_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
-						.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
-						.old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-						.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-						.image(source)
-						.subresource_range(range),
-					vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
-						.dst_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
-						.dst_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-						.old_layout(vk::ImageLayout::UNDEFINED)
-						.new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-						.image(target)
-						.subresource_range(range),
+					vk::ImageMemoryBarrier2::new()
+						.set_src_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+						.set_src_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
+						.set_dst_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+						.set_dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+						.set_old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+						.set_new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+						.set_image(source)
+						.set_subresource_range(range),
+					vk::ImageMemoryBarrier2::new()
+						.set_src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+						.set_dst_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+						.set_dst_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+						.set_old_layout(vk::ImageLayout::UNDEFINED)
+						.set_new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+						.set_image(target)
+						.set_subresource_range(range),
 				];
 				unsafe {
 					self
@@ -1069,32 +1131,32 @@ impl Device {
 						.pipeline_barrier(
 							&self.logical.handle,
 							command,
-							&(vk::DependencyInfo::default().image_memory_barriers(&barriers))
+							&(vk::DependencyInfo::new().set_image_memory_barriers(&barriers))
 								.map_err(Error::from)?,
 						)
 						.map_err(Error::from)?
 				};
-				let region = vk::ImageBlit::default()
-					.src_subresource(
-						vk::ImageSubresourceLayers::default()
-							.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-							.layer_count(1),
+				let region = vk::ImageBlit::new()
+					.set_src_subresource(
+						vk::ImageSubresourceLayers::new()
+							.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+							.set_layer_count(1),
 					)
-					.src_offsets([
-						vk::Offset3D::default(),
+					.set_src_offsets([
+						vk::Offset3D::new(),
 						vk::Offset3D {
 							x: source_extent[0] as i32,
 							y: source_extent[1] as i32,
 							z: 1,
 						},
 					])
-					.dst_subresource(
-						vk::ImageSubresourceLayers::default()
-							.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-							.layer_count(1),
+					.set_dst_subresource(
+						vk::ImageSubresourceLayers::new()
+							.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+							.set_layer_count(1),
 					)
-					.dst_offsets([
-						vk::Offset3D::default(),
+					.set_dst_offsets([
+						vk::Offset3D::new(),
 						vk::Offset3D {
 							x: target_extent[0] as i32,
 							y: target_extent[1] as i32,
@@ -1113,23 +1175,23 @@ impl Device {
 					)
 				}?;
 				let barriers = [
-					vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
-						.src_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
-						.dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
-						.dst_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
-						.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-						.new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-						.image(source)
-						.subresource_range(range),
-					vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
-						.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-						.dst_stage_mask(vk::PipelineStageFlagBits2::NONE)
-						.old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-						.new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-						.image(target)
-						.subresource_range(range),
+					vk::ImageMemoryBarrier2::new()
+						.set_src_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+						.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+						.set_dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+						.set_dst_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
+						.set_old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+						.set_new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+						.set_image(source)
+						.set_subresource_range(range),
+					vk::ImageMemoryBarrier2::new()
+						.set_src_stage_mask(vk::PipelineStageFlagBits2::BLIT_BIT)
+						.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+						.set_dst_stage_mask(vk::PipelineStageFlagBits2::NONE)
+						.set_old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+						.set_new_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+						.set_image(target)
+						.set_subresource_range(range),
 				];
 				unsafe {
 					self
@@ -1138,7 +1200,7 @@ impl Device {
 						.pipeline_barrier(
 							&self.logical.handle,
 							command,
-							&(vk::DependencyInfo::default().image_memory_barriers(&barriers))
+							&(vk::DependencyInfo::new().set_image_memory_barriers(&barriers))
 								.map_err(Error::from)?,
 						)
 						.map_err(Error::from)?
@@ -1159,19 +1221,19 @@ impl Device {
 			.graphics_queue
 			.as_ref()
 			.ok_or_else(|| Error::missing_capability("no Vulkan graphics queue is enabled"))?;
-		let waits = [vk::SemaphoreSubmitInfo::default()
-			.semaphore(wait)
-			.stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)];
-		let commands = [vk::CommandBufferSubmitInfo::default().command_buffer(command.raw())];
-		let signals = [vk::SemaphoreSubmitInfo::default()
-			.semaphore(signal)
-			.stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)];
-		let submits = [vk::SubmitInfo2::default()
-			.wait_semaphore_infos(&waits)
+		let waits = [vk::SemaphoreSubmitInfo::new()
+			.set_semaphore(wait)
+			.set_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)];
+		let commands = [vk::CommandBufferSubmitInfo::new().set_command_buffer(command.raw())];
+		let signals = [vk::SemaphoreSubmitInfo::new()
+			.set_semaphore(signal)
+			.set_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)];
+		let submits = [vk::SubmitInfo2::new()
+			.set_wait_semaphore_infos(&waits)
 			.map_err(Error::from)?
-			.command_buffer_infos(&commands)
+			.set_command_buffer_infos(&commands)
 			.map_err(Error::from)?
-			.signal_semaphore_infos(&signals)
+			.set_signal_semaphore_infos(&signals)
 			.map_err(Error::from)?];
 		unsafe {
 			self
@@ -1194,6 +1256,60 @@ impl Device {
 		vertex_buffer: vk::Buffer,
 		index_buffer: vk::Buffer,
 		index_count: u32,
+		clear_color: [f32; 4],
+		push_data: &[u8],
+		push_stages: vk::ShaderStageFlags,
+		pipeline: vk::Pipeline,
+		pipeline_layout: vk::PipelineLayout,
+		descriptor_sets: &[vk::DescriptorSet],
+	) -> Result<RecordedCommandBuffer> {
+		self.record_draw_frame(
+			target,
+			FrameDraw::Indexed {
+				vertex_buffer,
+				index_buffer,
+				index_count,
+			},
+			clear_color,
+			push_data,
+			push_stages,
+			pipeline,
+			pipeline_layout,
+			descriptor_sets,
+		)
+	}
+
+	/// Record one vertexless graphics frame — the vertex shader derives
+	/// geometry from SV_VertexID, so no vertex or index buffers are bound.
+	#[allow(clippy::too_many_arguments)]
+	pub(in crate::runtime) fn record_vertexless_frame(
+		&self,
+		target: &mut RenderTarget,
+		vertex_count: u32,
+		clear_color: [f32; 4],
+		push_data: &[u8],
+		push_stages: vk::ShaderStageFlags,
+		pipeline: vk::Pipeline,
+		pipeline_layout: vk::PipelineLayout,
+		descriptor_sets: &[vk::DescriptorSet],
+	) -> Result<RecordedCommandBuffer> {
+		self.record_draw_frame(
+			target,
+			FrameDraw::Vertexless { vertex_count },
+			clear_color,
+			push_data,
+			push_stages,
+			pipeline,
+			pipeline_layout,
+			descriptor_sets,
+		)
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn record_draw_frame(
+		&self,
+		target: &mut RenderTarget,
+		draw: FrameDraw,
 		clear_color: [f32; 4],
 		push_data: &[u8],
 		push_stages: vk::ShaderStageFlags,
@@ -1225,55 +1341,55 @@ impl Device {
 		let width = target.width;
 		let height = target.height;
 		let old_color_layout = target.color_layout;
-		let color_range = vk::ImageSubresourceRange::default()
-			.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-			.level_count(1)
-			.layer_count(1);
-		let depth_range = vk::ImageSubresourceRange::default()
-			.aspect_mask(vk::ImageAspectFlagBits::DEPTH_BIT)
-			.level_count(1)
-			.layer_count(1);
+		let color_range = vk::ImageSubresourceRange::new()
+			.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+			.set_level_count(1)
+			.set_layer_count(1);
+		let depth_range = vk::ImageSubresourceRange::new()
+			.set_aspect_mask(vk::ImageAspectFlagBits::DEPTH_BIT)
+			.set_level_count(1)
+			.set_layer_count(1);
 		let result = slot
 			.as_mut()
 			.expect("graphics command pool initialized")
 			.record_custom(&self.logical.handle, |cmd| {
 				// 1. barrier: transition color attachment and depth to write layouts.
 				let to_attachment = [
-					vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(
+					vk::ImageMemoryBarrier2::new()
+						.set_src_stage_mask(
 							if old_color_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
 								vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT
 							} else {
 								vk::PipelineStageFlags2::empty()
 							},
 						)
-						.src_access_mask(
+						.set_src_access_mask(
 							if old_color_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
 								vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT
 							} else {
 								vk::AccessFlags2::empty()
 							},
 						)
-						.dst_stage_mask(vk::PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT_BIT)
-						.dst_access_mask(vk::AccessFlagBits2::COLOR_ATTACHMENT_WRITE_BIT)
-						.old_layout(old_color_layout)
-						.new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-						.image(color_image)
-						.subresource_range(color_range),
-					vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(vk::PipelineStageFlags2::empty())
-						.dst_stage_mask(
+						.set_dst_stage_mask(vk::PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT_BIT)
+						.set_dst_access_mask(vk::AccessFlagBits2::COLOR_ATTACHMENT_WRITE_BIT)
+						.set_old_layout(old_color_layout)
+						.set_new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+						.set_image(color_image)
+						.set_subresource_range(color_range),
+					vk::ImageMemoryBarrier2::new()
+						.set_src_stage_mask(vk::PipelineStageFlags2::empty())
+						.set_dst_stage_mask(
 							vk::PipelineStageFlagBits2::EARLY_FRAGMENT_TESTS_BIT
 								| vk::PipelineStageFlagBits2::LATE_FRAGMENT_TESTS_BIT,
 						)
-						.dst_access_mask(
+						.set_dst_access_mask(
 							vk::AccessFlagBits2::DEPTH_STENCIL_ATTACHMENT_READ_BIT
 								| vk::AccessFlagBits2::DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 						)
-						.old_layout(vk::ImageLayout::UNDEFINED)
-						.new_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-						.image(depth_image)
-						.subresource_range(depth_range),
+						.set_old_layout(vk::ImageLayout::UNDEFINED)
+						.set_new_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+						.set_image(depth_image)
+						.set_subresource_range(depth_range),
 				];
 				unsafe {
 					self
@@ -1282,8 +1398,8 @@ impl Device {
 						.pipeline_barrier(
 							&self.logical.handle,
 							cmd,
-							&(vk::DependencyInfo::default()
-								.image_memory_barriers(&to_attachment)
+							&(vk::DependencyInfo::new()
+								.set_image_memory_barriers(&to_attachment)
 								.map_err(Error::from)?),
 						)
 						.map_err(Error::from)?
@@ -1296,29 +1412,29 @@ impl Device {
 					depth: 1.0,
 					stencil: 0,
 				};
-				let color_att = vk::RenderingAttachmentInfo::default()
-					.image_view(color_view)
-					.image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-					.load_op(vk::AttachmentLoadOp::CLEAR)
-					.store_op(vk::AttachmentStoreOp::STORE)
-					.clear_value(vk::ClearValue { color: clear_cv });
-				let depth_att = vk::RenderingAttachmentInfo::default()
-					.image_view(depth_view)
-					.image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-					.load_op(vk::AttachmentLoadOp::CLEAR)
-					.store_op(vk::AttachmentStoreOp::DONT_CARE)
-					.clear_value(vk::ClearValue {
+				let color_att = vk::RenderingAttachmentInfo::new()
+					.set_image_view(color_view)
+					.set_image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+					.set_load_op(vk::AttachmentLoadOp::CLEAR)
+					.set_store_op(vk::AttachmentStoreOp::STORE)
+					.set_clear_value(vk::ClearValue { color: clear_cv });
+				let depth_att = vk::RenderingAttachmentInfo::new()
+					.set_image_view(depth_view)
+					.set_image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+					.set_load_op(vk::AttachmentLoadOp::CLEAR)
+					.set_store_op(vk::AttachmentStoreOp::DONT_CARE)
+					.set_clear_value(vk::ClearValue {
 						depth_stencil: clear_dv,
 					});
-				let rendering_info = vk::RenderingInfo::default()
-					.render_area(vk::Rect2D {
-						offset: vk::Offset2D::default(),
+				let rendering_info = vk::RenderingInfo::new()
+					.set_render_area(vk::Rect2D {
+						offset: vk::Offset2D::new(),
 						extent: vk::Extent2D { width, height },
 					})
-					.layer_count(1)
-					.color_attachments(std::slice::from_ref(&color_att))
+					.set_layer_count(1)
+					.set_color_attachments(std::slice::from_ref(&color_att))
 					.map_err(Error::from)?
-					.depth_attachment(&depth_att);
+					.set_depth_attachment(&depth_att);
 				unsafe {
 					self
 						.logical
@@ -1335,7 +1451,7 @@ impl Device {
 					max_depth: 1.0,
 				};
 				let scissor = vk::Rect2D {
-					offset: vk::Offset2D::default(),
+					offset: vk::Offset2D::new(),
 					extent: vk::Extent2D { width, height },
 				};
 				unsafe {
@@ -1366,20 +1482,33 @@ impl Device {
 						)?;
 					}
 				};
-				// 5. bind vertex/index buffers and draw
+				// 5. bind vertex/index buffers (indexed) and draw
 				unsafe {
-					self
-						.logical
-						.handle
-						.cmd_bind_vertex_buffers(cmd, 0, &[vertex_buffer], &[0])?;
-					self
-						.logical
-						.handle
-						.cmd_bind_index_buffer(cmd, index_buffer, 0, vk::IndexType::UINT32)?;
-					self
-						.logical
-						.handle
-						.cmd_draw_indexed(cmd, index_count, 1, 0, 0, 0)?;
+					match draw {
+						FrameDraw::Indexed {
+							vertex_buffer,
+							index_buffer,
+							index_count,
+						} => {
+							self
+								.logical
+								.handle
+								.cmd_bind_vertex_buffers(cmd, 0, &[vertex_buffer], &[0])?;
+							self.logical.handle.cmd_bind_index_buffer(
+								cmd,
+								index_buffer,
+								0,
+								vk::IndexType::UINT32,
+							)?;
+							self
+								.logical
+								.handle
+								.cmd_draw_indexed(cmd, index_count, 1, 0, 0, 0)?;
+						}
+						FrameDraw::Vertexless { vertex_count } => {
+							self.logical.handle.cmd_draw(cmd, vertex_count, 1, 0, 0)?;
+						}
+					}
 				};
 				// 6. end rendering
 				unsafe {
@@ -1389,15 +1518,15 @@ impl Device {
 						.end(&self.logical.handle, cmd)
 				}?;
 				// 7. barrier: color attachment → TRANSFER_SRC for readback
-				let to_transfer = vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(vk::PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT_BIT)
-					.src_access_mask(vk::AccessFlagBits2::COLOR_ATTACHMENT_WRITE_BIT)
-					.dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-					.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
-					.old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-					.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-					.image(color_image)
-					.subresource_range(color_range);
+				let to_transfer = vk::ImageMemoryBarrier2::new()
+					.set_src_stage_mask(vk::PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT_BIT)
+					.set_src_access_mask(vk::AccessFlagBits2::COLOR_ATTACHMENT_WRITE_BIT)
+					.set_dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+					.set_dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+					.set_old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+					.set_new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+					.set_image(color_image)
+					.set_subresource_range(color_range);
 				unsafe {
 					self
 						.logical
@@ -1405,20 +1534,20 @@ impl Device {
 						.pipeline_barrier(
 							&self.logical.handle,
 							cmd,
-							&(vk::DependencyInfo::default())
-								.image_memory_barriers(std::slice::from_ref(&to_transfer))
+							&(vk::DependencyInfo::new())
+								.set_image_memory_barriers(std::slice::from_ref(&to_transfer))
 								.map_err(Error::from)?,
 						)
 						.map_err(Error::from)?
 				};
 				// 8. copy color image to host-visible readback buffer
-				let copy = vk::BufferImageCopy::default()
-					.image_subresource(
-						vk::ImageSubresourceLayers::default()
-							.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-							.layer_count(1),
+				let copy = vk::BufferImageCopy::new()
+					.set_image_subresource(
+						vk::ImageSubresourceLayers::new()
+							.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+							.set_layer_count(1),
 					)
-					.image_extent(vk::Extent3D {
+					.set_image_extent(vk::Extent3D {
 						width,
 						height,
 						depth: 1,
@@ -1433,15 +1562,15 @@ impl Device {
 					)
 				}?;
 				// 9. barrier: TRANSFER_SRC → SHADER_READ_ONLY for future Presenter blit
-				let to_sampled = vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-					.src_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
-					.dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
-					.dst_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
-					.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-					.new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-					.image(color_image)
-					.subresource_range(color_range);
+				let to_sampled = vk::ImageMemoryBarrier2::new()
+					.set_src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+					.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+					.set_dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+					.set_dst_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
+					.set_old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+					.set_new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+					.set_image(color_image)
+					.set_subresource_range(color_range);
 				unsafe {
 					self
 						.logical
@@ -1449,8 +1578,8 @@ impl Device {
 						.pipeline_barrier(
 							&self.logical.handle,
 							cmd,
-							&(vk::DependencyInfo::default())
-								.image_memory_barriers(std::slice::from_ref(&to_sampled))
+							&(vk::DependencyInfo::new())
+								.set_image_memory_barriers(std::slice::from_ref(&to_sampled))
 								.map_err(Error::from)?,
 						)
 						.map_err(Error::from)?
@@ -1510,55 +1639,55 @@ impl Device {
 		let width = target.width;
 		let height = target.height;
 		let old_color_layout = target.color_layout;
-		let color_range = vk::ImageSubresourceRange::default()
-			.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-			.level_count(1)
-			.layer_count(1);
-		let depth_range = vk::ImageSubresourceRange::default()
-			.aspect_mask(vk::ImageAspectFlagBits::DEPTH_BIT)
-			.level_count(1)
-			.layer_count(1);
+		let color_range = vk::ImageSubresourceRange::new()
+			.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+			.set_level_count(1)
+			.set_layer_count(1);
+		let depth_range = vk::ImageSubresourceRange::new()
+			.set_aspect_mask(vk::ImageAspectFlagBits::DEPTH_BIT)
+			.set_level_count(1)
+			.set_layer_count(1);
 		let result = slot
 			.as_mut()
 			.expect("graphics command pool initialized")
 			.record_custom(&self.logical.handle, |cmd| {
 				// 1. barrier: transition color attachment and depth to write layouts.
 				let to_attachment = [
-					vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(
+					vk::ImageMemoryBarrier2::new()
+						.set_src_stage_mask(
 							if old_color_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
 								vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT
 							} else {
 								vk::PipelineStageFlags2::empty()
 							},
 						)
-						.src_access_mask(
+						.set_src_access_mask(
 							if old_color_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
 								vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT
 							} else {
 								vk::AccessFlags2::empty()
 							},
 						)
-						.dst_stage_mask(vk::PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT_BIT)
-						.dst_access_mask(vk::AccessFlagBits2::COLOR_ATTACHMENT_WRITE_BIT)
-						.old_layout(old_color_layout)
-						.new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-						.image(color_image)
-						.subresource_range(color_range),
-					vk::ImageMemoryBarrier2::default()
-						.src_stage_mask(vk::PipelineStageFlags2::empty())
-						.dst_stage_mask(
+						.set_dst_stage_mask(vk::PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT_BIT)
+						.set_dst_access_mask(vk::AccessFlagBits2::COLOR_ATTACHMENT_WRITE_BIT)
+						.set_old_layout(old_color_layout)
+						.set_new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+						.set_image(color_image)
+						.set_subresource_range(color_range),
+					vk::ImageMemoryBarrier2::new()
+						.set_src_stage_mask(vk::PipelineStageFlags2::empty())
+						.set_dst_stage_mask(
 							vk::PipelineStageFlagBits2::EARLY_FRAGMENT_TESTS_BIT
 								| vk::PipelineStageFlagBits2::LATE_FRAGMENT_TESTS_BIT,
 						)
-						.dst_access_mask(
+						.set_dst_access_mask(
 							vk::AccessFlagBits2::DEPTH_STENCIL_ATTACHMENT_READ_BIT
 								| vk::AccessFlagBits2::DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 						)
-						.old_layout(vk::ImageLayout::UNDEFINED)
-						.new_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-						.image(depth_image)
-						.subresource_range(depth_range),
+						.set_old_layout(vk::ImageLayout::UNDEFINED)
+						.set_new_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+						.set_image(depth_image)
+						.set_subresource_range(depth_range),
 				];
 				unsafe {
 					self
@@ -1567,8 +1696,8 @@ impl Device {
 						.pipeline_barrier(
 							&self.logical.handle,
 							cmd,
-							&(vk::DependencyInfo::default()
-								.image_memory_barriers(&to_attachment)
+							&(vk::DependencyInfo::new()
+								.set_image_memory_barriers(&to_attachment)
 								.map_err(Error::from)?),
 						)
 						.map_err(Error::from)?
@@ -1581,29 +1710,29 @@ impl Device {
 					depth: 1.0,
 					stencil: 0,
 				};
-				let color_att = vk::RenderingAttachmentInfo::default()
-					.image_view(color_view)
-					.image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-					.load_op(vk::AttachmentLoadOp::CLEAR)
-					.store_op(vk::AttachmentStoreOp::STORE)
-					.clear_value(vk::ClearValue { color: clear_cv });
-				let depth_att = vk::RenderingAttachmentInfo::default()
-					.image_view(depth_view)
-					.image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-					.load_op(vk::AttachmentLoadOp::CLEAR)
-					.store_op(vk::AttachmentStoreOp::DONT_CARE)
-					.clear_value(vk::ClearValue {
+				let color_att = vk::RenderingAttachmentInfo::new()
+					.set_image_view(color_view)
+					.set_image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+					.set_load_op(vk::AttachmentLoadOp::CLEAR)
+					.set_store_op(vk::AttachmentStoreOp::STORE)
+					.set_clear_value(vk::ClearValue { color: clear_cv });
+				let depth_att = vk::RenderingAttachmentInfo::new()
+					.set_image_view(depth_view)
+					.set_image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+					.set_load_op(vk::AttachmentLoadOp::CLEAR)
+					.set_store_op(vk::AttachmentStoreOp::DONT_CARE)
+					.set_clear_value(vk::ClearValue {
 						depth_stencil: clear_dv,
 					});
-				let rendering_info = vk::RenderingInfo::default()
-					.render_area(vk::Rect2D {
-						offset: vk::Offset2D::default(),
+				let rendering_info = vk::RenderingInfo::new()
+					.set_render_area(vk::Rect2D {
+						offset: vk::Offset2D::new(),
 						extent: vk::Extent2D { width, height },
 					})
-					.layer_count(1)
-					.color_attachments(std::slice::from_ref(&color_att))
+					.set_layer_count(1)
+					.set_color_attachments(std::slice::from_ref(&color_att))
 					.map_err(Error::from)?
-					.depth_attachment(&depth_att);
+					.set_depth_attachment(&depth_att);
 				unsafe {
 					self
 						.logical
@@ -1620,7 +1749,7 @@ impl Device {
 					max_depth: 1.0,
 				};
 				let scissor = vk::Rect2D {
-					offset: vk::Offset2D::default(),
+					offset: vk::Offset2D::new(),
 					extent: vk::Extent2D { width, height },
 				};
 				unsafe {
@@ -1728,15 +1857,15 @@ impl Device {
 						.end(&self.logical.handle, cmd)
 				}?;
 				// 7. barrier: color attachment → TRANSFER_SRC for readback
-				let to_transfer = vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(vk::PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT_BIT)
-					.src_access_mask(vk::AccessFlagBits2::COLOR_ATTACHMENT_WRITE_BIT)
-					.dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-					.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
-					.old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-					.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-					.image(color_image)
-					.subresource_range(color_range);
+				let to_transfer = vk::ImageMemoryBarrier2::new()
+					.set_src_stage_mask(vk::PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT_BIT)
+					.set_src_access_mask(vk::AccessFlagBits2::COLOR_ATTACHMENT_WRITE_BIT)
+					.set_dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+					.set_dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+					.set_old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+					.set_new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+					.set_image(color_image)
+					.set_subresource_range(color_range);
 				unsafe {
 					self
 						.logical
@@ -1744,20 +1873,20 @@ impl Device {
 						.pipeline_barrier(
 							&self.logical.handle,
 							cmd,
-							&(vk::DependencyInfo::default())
-								.image_memory_barriers(std::slice::from_ref(&to_transfer))
+							&(vk::DependencyInfo::new())
+								.set_image_memory_barriers(std::slice::from_ref(&to_transfer))
 								.map_err(Error::from)?,
 						)
 						.map_err(Error::from)?
 				};
 				// 8. copy color image to host-visible readback buffer
-				let copy = vk::BufferImageCopy::default()
-					.image_subresource(
-						vk::ImageSubresourceLayers::default()
-							.aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
-							.layer_count(1),
+				let copy = vk::BufferImageCopy::new()
+					.set_image_subresource(
+						vk::ImageSubresourceLayers::new()
+							.set_aspect_mask(vk::ImageAspectFlagBits::COLOR_BIT)
+							.set_layer_count(1),
 					)
-					.image_extent(vk::Extent3D {
+					.set_image_extent(vk::Extent3D {
 						width,
 						height,
 						depth: 1,
@@ -1772,15 +1901,15 @@ impl Device {
 					)
 				}?;
 				// 9. barrier: TRANSFER_SRC → SHADER_READ_ONLY for future Presenter blit
-				let to_sampled = vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-					.src_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
-					.dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
-					.dst_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
-					.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-					.new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-					.image(color_image)
-					.subresource_range(color_range);
+				let to_sampled = vk::ImageMemoryBarrier2::new()
+					.set_src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+					.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+					.set_dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+					.set_dst_access_mask(vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT)
+					.set_old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+					.set_new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+					.set_image(color_image)
+					.set_subresource_range(color_range);
 				unsafe {
 					self
 						.logical
@@ -1788,8 +1917,8 @@ impl Device {
 						.pipeline_barrier(
 							&self.logical.handle,
 							cmd,
-							&(vk::DependencyInfo::default())
-								.image_memory_barriers(std::slice::from_ref(&to_sampled))
+							&(vk::DependencyInfo::new())
+								.set_image_memory_barriers(std::slice::from_ref(&to_sampled))
 								.map_err(Error::from)?,
 						)
 						.map_err(Error::from)?
@@ -1866,6 +1995,32 @@ impl Device {
 			.record_custom(&self.logical.handle, record)
 	}
 
+	pub(in crate::runtime) fn record_video_encode(
+		&self,
+		record: impl FnOnce(vk::CommandBuffer) -> Result<()>,
+	) -> Result<RecordedCommandBuffer> {
+		let family = self
+			.physical
+			.video
+			.encode_queue_family
+			.ok_or_else(|| Error::missing_capability("no Vulkan Video encode queue is enabled"))?;
+		let mut slot = match self.logical.video_encode_command_pool.lock() {
+			Ok(slot) => slot,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		if slot.is_none() {
+			*slot = Some(CommandPool::new(
+				&self.logical.handle,
+				family,
+				CommandPoolKind::VideoEncode,
+			)?);
+		}
+		slot
+			.as_mut()
+			.expect("video encode command pool was initialized")
+			.record_custom(&self.logical.handle, record)
+	}
+
 	pub(in crate::runtime) fn record_compute_graph(
 		self: &Arc<Self>,
 		graph: &ExecutableGraph,
@@ -1909,15 +2064,31 @@ impl Device {
 		})
 	}
 
+	/// Create a fresh timestamp pair against this device's compute queue
+	/// timestamp capability.
+	pub(in crate::runtime) fn new_timestamp_pair(self: &Arc<Self>) -> Result<TimestampPair> {
+		TimestampPair::new(
+			self,
+			self.logical.timestamp_period_ns,
+			self.logical.compute_timestamp_valid_bits,
+		)
+	}
+
 	pub(in crate::runtime) fn record_timed_compute_graph(
 		self: &Arc<Self>,
 		graph: &ExecutableGraph,
 	) -> Result<RecordedCommandBuffer> {
-		let timing = TimestampPair::new(
-			self,
-			self.logical.timestamp_period_ns,
-			self.logical.compute_timestamp_valid_bits,
-		)?;
+		let timing = self.new_timestamp_pair()?;
+		self.record_timed_compute_graph_with(graph, timing)
+	}
+
+	/// Record a timed compute graph using a caller-owned timestamp pair. A
+	/// reusable named device timer shares one pair across submissions.
+	pub(in crate::runtime) fn record_timed_compute_graph_with(
+		self: &Arc<Self>,
+		graph: &ExecutableGraph,
+		timing: TimestampPair,
+	) -> Result<RecordedCommandBuffer> {
 		let mut command_pool = match self.logical.command_pool.lock() {
 			Ok(command_pool) => command_pool,
 			Err(poisoned) => poisoned.into_inner(),
@@ -1936,11 +2107,17 @@ impl Device {
 		self: &Arc<Self>,
 		command: RecordedCommandBuffer,
 	) -> Result<RecordedCommandBuffer> {
-		let timing = TimestampPair::new(
-			self,
-			self.logical.timestamp_period_ns,
-			self.logical.compute_timestamp_valid_bits,
-		)?;
+		let timing = self.new_timestamp_pair()?;
+		self.time_reusable_command_with(command, timing)
+	}
+
+	/// Wrap a reusable command in begin/end timestamp brackets using a
+	/// caller-owned pair.
+	pub(in crate::runtime) fn time_reusable_command_with(
+		self: &Arc<Self>,
+		command: RecordedCommandBuffer,
+		timing: TimestampPair,
+	) -> Result<RecordedCommandBuffer> {
 		let mut pool = self
 			.logical
 			.command_pool
@@ -1965,27 +2142,27 @@ impl Device {
 		let command_infos = command
 			.submission_handles()
 			.into_iter()
-			.map(|handle| vk::CommandBufferSubmitInfo::default().command_buffer(handle))
+			.map(|handle| vk::CommandBufferSubmitInfo::new().set_command_buffer(handle))
 			.collect::<Vec<_>>();
-		let signal_infos = [vk::SemaphoreSubmitInfo::default()
-			.semaphore(self.logical.timeline.raw())
-			.value(epoch)
-			.stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)];
-		let wait_info = vk::SemaphoreSubmitInfo::default()
-			.semaphore(self.logical.timeline.raw())
-			.value(epoch.saturating_sub(1))
-			.stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT);
+		let signal_infos = [vk::SemaphoreSubmitInfo::new()
+			.set_semaphore(self.logical.timeline.raw())
+			.set_value(epoch)
+			.set_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)];
+		let wait_info = vk::SemaphoreSubmitInfo::new()
+			.set_semaphore(self.logical.timeline.raw())
+			.set_value(epoch.saturating_sub(1))
+			.set_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT);
 		let wait_infos = if epoch > 1 {
 			std::slice::from_ref(&wait_info)
 		} else {
 			&[]
 		};
-		let submit_infos = [vk::SubmitInfo2::default()
-			.wait_semaphore_infos(wait_infos)
+		let submit_infos = [vk::SubmitInfo2::new()
+			.set_wait_semaphore_infos(wait_infos)
 			.map_err(Error::from)?
-			.command_buffer_infos(&command_infos)
+			.set_command_buffer_infos(&command_infos)
 			.map_err(Error::from)?
-			.signal_semaphore_infos(&signal_infos)
+			.set_signal_semaphore_infos(&signal_infos)
 			.map_err(Error::from)?];
 		let queue = match command.pool_kind() {
 			CommandPoolKind::Compute => self.logical.compute_queue,
@@ -1999,6 +2176,11 @@ impl Device {
 				.video_decode_queue
 				.as_ref()
 				.ok_or_else(|| Error::missing_capability("no Vulkan Video decode queue is enabled"))?,
+			CommandPoolKind::VideoEncode => *self
+				.logical
+				.video_encode_queue
+				.as_ref()
+				.ok_or_else(|| Error::missing_capability("no Vulkan Video encode queue is enabled"))?,
 		};
 
 		// SAFETY: synchronization2 and timeline semaphores were enabled; the recorded
@@ -2051,6 +2233,15 @@ impl Device {
 			}
 			CommandPoolKind::VideoDecode => {
 				let mut slot = match self.logical.video_decode_command_pool.lock() {
+					Ok(slot) => slot,
+					Err(poisoned) => poisoned.into_inner(),
+				};
+				if let Some(command_pool) = slot.as_mut() {
+					command_pool.free_handle(&self.logical.handle, handle);
+				}
+			}
+			CommandPoolKind::VideoEncode => {
+				let mut slot = match self.logical.video_encode_command_pool.lock() {
 					Ok(slot) => slot,
 					Err(poisoned) => poisoned.into_inner(),
 				};
@@ -2220,15 +2411,15 @@ impl DeviceLogical {
 		let ui_pipeline_layout = {
 			let desc_layout = descriptors.layout();
 			let descriptor_layouts = [desc_layout];
-			let push_range = vk::PushConstantRange::default()
-				.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT)
-				.offset(0)
-				.size(128);
+			let push_range = vk::PushConstantRange::new()
+				.set_stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT)
+				.set_offset(0)
+				.set_size(128);
 			let push_ranges = [push_range];
-			let layout_info = vk::PipelineLayoutCreateInfo::default()
-				.set_layouts(&descriptor_layouts)
+			let layout_info = vk::PipelineLayoutCreateInfo::new()
+				.set_set_layouts(&descriptor_layouts)
 				.map_err(Error::from)?
-				.push_constant_ranges(&push_ranges);
+				.set_push_constant_ranges(&push_ranges);
 			match unsafe { handle.create_pipeline_layout(&(layout_info).map_err(Error::from)?, None) } {
 				Ok(layout) => layout,
 				Err(source) => {
@@ -2265,6 +2456,7 @@ impl DeviceLogical {
 			command_pool: Mutex::new(command_pool),
 			graphics_command_pool: Mutex::new(None),
 			video_decode_command_pool: Mutex::new(None),
+			video_encode_command_pool: Mutex::new(None),
 			timeline,
 			descriptors,
 			ui_pipeline_layout,
@@ -2391,6 +2583,13 @@ impl Drop for DeviceLogical {
 			Err(poisoned) => poisoned.into_inner(),
 		};
 		if let Some(pool) = video_decode_pool.as_mut() {
+			pool.destroy(&self.handle);
+		}
+		let video_encode_pool = match self.video_encode_command_pool.get_mut() {
+			Ok(pool) => pool,
+			Err(poisoned) => poisoned.into_inner(),
+		};
+		if let Some(pool) = video_encode_pool.as_mut() {
 			pool.destroy(&self.handle);
 		}
 		let graphics_pool = match self.graphics_command_pool.get_mut() {

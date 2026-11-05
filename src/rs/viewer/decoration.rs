@@ -1,10 +1,11 @@
 //! Donor viewerApplication.cpp header geometry and popup actions.
 //! Mechanical port; SDL requests borrow the window retained by Presenter.
 
-use super::{MediaState, ViewerAudioView, ViewerCanvasBackground, ViewerConfig};
+use super::{MediaState, OpenFileRequest, ViewerAudioView, ViewerCanvasBackground, ViewerConfig};
 use crate::Result;
+use crate::input::Navigation;
 use crate::runtime::{SdlWindow, window_decoration as metrics};
-use crate::ui::{PixelRect, Ui, UiIcon, UiIconButtonStyle, UiPopupConfig, navigation::Navigation};
+use crate::ui::{PixelRect, Ui, UiIcon, UiIconButtonStyle, UiPopupConfig};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render(
@@ -15,6 +16,7 @@ pub(super) fn render(
 	config: &mut ViewerConfig,
 	extent: [u32; 2],
 	scale: [f32; 2],
+	open_files: &mut OpenFileRequest,
 ) -> Result<bool> {
 	let [w, _] = extent;
 	let px = |value: i32| (value as f32 * scale[0]).round().max(1.0) as i32;
@@ -84,7 +86,7 @@ pub(super) fn render(
 	}
 	let visual = media.has_visual_content();
 	let audio = matches!(media, MediaState::Audio { .. });
-	let count = 7 + usize::from(visual) * 3 + usize::from(audio) * 3;
+	let count = 8 + usize::from(visual) * 3 + usize::from(audio) * 3;
 	let scale = (scale[0] + scale[1]) * 0.5;
 	if ui.begin_popup(
 		"viewer-window-menu",
@@ -98,6 +100,13 @@ pub(super) fn render(
 			padding: 6.0 * scale,
 		},
 	) {
+		if ui.menu_item(
+			"Open File (Ctrl+O)",
+			false,
+			!matches!(media, MediaState::Live),
+		) {
+			open_files.request(window)?;
+		}
 		if ui.menu_item("Fit to Window", false, visual) {
 			nav.fit_to_window_animated(true)?;
 		}
@@ -181,27 +190,6 @@ pub(super) fn render(
 		}
 		if ui.menu_item("Close", false, true) {
 			running = false;
-		}
-		ui.end_popup();
-	}
-	if ui.begin_popup(
-		"viewer-volume-menu",
-		UiPopupConfig {
-			width: 176.0 * scale,
-			height: (12.0 + config.style.font_size + 8.0) * scale,
-			gap: 6.0 * scale,
-			padding: 6.0 * scale,
-		},
-	) {
-		if let MediaState::Audio { player, .. } = media {
-			if let Some(player) = player.as_ref() {
-				let muted = player.is_muted();
-				if ui.menu_item("Mute", muted, true) {
-					player.set_muted(!muted)?;
-				}
-			}
-		} else {
-			ui.menu_item("No audio stream", false, false);
 		}
 		ui.end_popup();
 	}

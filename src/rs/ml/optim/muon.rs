@@ -3,7 +3,8 @@
 use crate::ml::Parameter;
 use crate::ml::validation::{shader_u32, validate_f32_same_engine};
 use crate::runtime::{
-	BufferAccess, BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch,
+	BufferAccess, BufferBinding, ComputeDispatch, EngineHandle, KernelId, PushConstant,
+	SemanticDispatch,
 };
 use crate::{DType, Engine, Error, Matrix, OpAttribute, Result};
 
@@ -77,6 +78,7 @@ fn muon(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: kernel.linear_workgroups(element_count),
+				indirect: None,
 			};
 			let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 				Error::internal(format!(
@@ -187,13 +189,14 @@ fn muon_matrix(
 			&mut temporaries,
 		)?;
 		stages.push(muon_mat_mul_nt_stage(
+			parameter.engine_handle(),
 			z,
 			z,
 			a,
 			operation_rows,
 			operation_rows,
 			operation_columns,
-		));
+		)?);
 		let next_z = allocate_muon_temp(
 			parameter,
 			&[operation_rows, operation_columns],
@@ -234,13 +237,14 @@ fn muon_matrix(
 				&mut temporaries,
 			)?;
 			stages.push(muon_mat_mul_nt_stage(
+				parameter.engine_handle(),
 				a,
 				a,
 				aa,
 				operation_rows,
 				operation_rows,
 				operation_rows,
-			));
+			)?);
 			let b = allocate_muon_temp(
 				parameter,
 				&[operation_rows, operation_rows],
@@ -271,13 +275,14 @@ fn muon_matrix(
 				&mut temporaries,
 			)?;
 			stages.push(muon_mat_mul_nt_stage(
+				parameter.engine_handle(),
 				b,
 				z_transpose,
 				bz,
 				operation_rows,
 				operation_columns,
 				operation_rows,
-			));
+			)?);
 			stages.push(muon_linear_stage(z, bz, next_z, count, NS_A, 1.0));
 		}
 		z = next_z;
@@ -337,6 +342,7 @@ fn muon_matrix(
 			buffers: bindings,
 			push_constants: &stage.push_constants,
 			workgroups: stage.workgroups,
+			indirect: None,
 		})
 		.collect::<Vec<_>>();
 	let inputs = [parameter, gradient, momentum];
@@ -411,27 +417,33 @@ fn muon_transpose_stage(input: MuonSlot, output: MuonSlot, rows: u32, columns: u
 }
 
 fn muon_mat_mul_nt_stage(
+	engine: &EngineHandle,
 	left: MuonSlot,
 	right: MuonSlot,
 	output: MuonSlot,
 	m: u32,
 	n: u32,
 	k: u32,
-) -> MuonStage {
-	MuonStage {
-		kernel: KernelId::MatrixMatMulNtTiledF32,
-		bindings: vec![
-			(left, BufferAccess::Read),
-			(right, BufferAccess::Read),
-			(output, BufferAccess::Write),
-		],
-		push_constants: vec![
-			PushConstant::U32(m),
-			PushConstant::U32(n),
-			PushConstant::U32(k),
-		],
-		workgroups: KernelId::MatrixMatMulNtTiledF32.output_workgroups(m, n),
+) -> Result<MuonStage> {
+	let plan = crate::runtime::plan_mat_mul_nt(engine, m, n, k)?;
+	let launch = crate::runtime::lower_mat_mul_nt(&plan, m, n, k)?;
+	let problem_slots = [left, right, output];
+	let mut bindings = Vec::with_capacity(launch.buffer_count);
+	for slot in 0..launch.buffer_count {
+		let index = usize::from(launch.buffer_order[slot]);
+		let problem_slot = problem_slots.get(index).copied().ok_or_else(|| {
+			Error::invalid_argument(format!(
+				"matmul launch slot {slot} binds missing problem buffer {index}"
+			))
+		})?;
+		bindings.push((problem_slot, launch.buffer_accesses[slot]));
 	}
+	Ok(MuonStage {
+		kernel: launch.kernel_id,
+		bindings,
+		push_constants: launch.push_constants[..launch.push_count].to_vec(),
+		workgroups: launch.grid,
+	})
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -51,31 +51,30 @@
 		})?;
 	}
 
+	let launch = if m != 0 && n != 0 && k != 0 {
+		let plan = crate::runtime::plan_mat_mul_nt(engine, m, n, k)?;
+		Some(crate::runtime::lower_mat_mul_nt(&plan, m, n, k)?)
+	} else {
+		None
+	};
 	let output = Matrix::allocate(
 		engine,
 		vec![m as usize, n as usize],
 		output_count,
 		DType::F32,
 	)?;
-	if m != 0 && n != 0 && k != 0 {
-		let buffers = [
-			BufferBinding::read(left.storage()),
-			BufferBinding::read(right.storage()),
-			BufferBinding::write(output.storage()),
-		];
-		let push_constants = [
-			PushConstant::U32(m),
-			PushConstant::U32(n),
-			PushConstant::U32(k),
-		];
+	if let Some(launch) = launch {
+		let buffers = launch.bindings(&[left.storage(), right.storage(), output.storage()])?;
+		let push_constants = &launch.push_constants[..launch.push_count];
 		let inputs = [left, right];
 		let outputs = [&output];
 		engine.record_semantic(
 			ComputeDispatch {
-				kernel,
+				kernel: launch.kernel_id,
 				buffers: &buffers,
-				push_constants: &push_constants,
-				workgroups: kernel.output_workgroups(m, n),
+				push_constants,
+				workgroups: launch.grid,
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,

@@ -6,10 +6,10 @@ pub(super) struct Timeline {
 
 impl Timeline {
 	pub(super) fn new(device: &vk::Device) -> Result<Self> {
-		let mut type_info = vk::SemaphoreTypeCreateInfo::default()
-			.semaphore_type(vk::SemaphoreType::TIMELINE)
-			.initial_value(0);
-		let create_info = vk::SemaphoreCreateInfo::default()
+		let mut type_info = vk::SemaphoreTypeCreateInfo::new()
+			.set_semaphore_type(vk::SemaphoreType::TIMELINE)
+			.set_initial_value(0);
+		let create_info = vk::SemaphoreCreateInfo::new()
 			.push_next(&mut type_info)
 			.map_err(Error::from)?;
 
@@ -32,8 +32,8 @@ impl Timeline {
 	pub(super) fn wait(&self, device: &vk::Device, value: u64) -> Result<()> {
 		let semaphores = [self.handle];
 		let values = [value];
-		let wait_info = vk::SemaphoreWaitInfo::default()
-			.semaphores(&semaphores, &values)
+		let wait_info = vk::SemaphoreWaitInfo::new()
+			.set_semaphores(&semaphores, &values)
 			.map_err(Error::from)?;
 		// SAFETY: the semaphore/value arrays have equal length and remain live for the
 		// call. An infinite timeout makes this the explicit completion boundary.

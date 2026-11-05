@@ -5,18 +5,8 @@ use crate::runtime::SemanticDispatch;
 use crate::runtime::{BufferBinding, KernelId, PushConstant};
 use crate::{DType, Engine, Error, Matrix, OpAttribute, Result};
 
+pub use super::types::RolloutConfig;
 use super::{advantage, validation::shader_u32};
-
-/// Shape and capacity of one categorical on-policy rollout.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RolloutConfig {
-	/// Number of time steps retained per collection cycle.
-	pub time: usize,
-	/// Number of vector environments represented by every step.
-	pub environments: usize,
-	/// Per-environment observation shape, excluding the environment axis.
-	pub observation_shape: Vec<usize>,
-}
 
 /// One vector-environment transition whose values remain device-resident.
 #[derive(Clone)]
@@ -592,6 +582,7 @@ fn append_dispatch(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(work_items),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -635,6 +626,7 @@ fn reset_dispatch(valid: &Matrix) -> Result<()> {
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -754,6 +746,7 @@ pub(in crate::ml) fn minibatch(
 			buffers: &buffers,
 			push_constants: &push,
 			workgroups: KernelId::MlRolloutMinibatchF32.linear_workgroups(items),
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: crate::core::operation::ml::MINIBATCH,
@@ -849,6 +842,7 @@ pub(in crate::ml) fn minibatch_cursor(
 			buffers: &buffers,
 			push_constants: &push,
 			workgroups: KernelId::MlRolloutMinibatchCursorF32.linear_workgroups(items),
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: crate::core::operation::ml::MINIBATCH_CURSOR,

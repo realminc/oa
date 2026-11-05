@@ -8,7 +8,7 @@ use super::{
 	secret_buffer::SecretBinding,
 };
 use crate::runtime::{Buffer, Device};
-use crate::{Error, Result, runtime::shader::KernelId};
+use crate::{Error, Result, runtime::dna::kernel::KernelId};
 
 /// Constructed only by the algorithm-specific checked constructors below.
 struct SecretKeygenLayout {
@@ -185,15 +185,15 @@ impl<'a> SecretKeygenOperands<'a> {
 				.bounded_descriptor_layout(kernel.bounded_buffer_count())
 				.ok_or_else(|| Error::missing_capability("PQC bounded descriptor layout unavailable"))?;
 			let mut buffers = vec![
-				vk::DescriptorBufferInfo::default()
-					.buffer(seed.raw())
-					.range(seed_len),
-				vk::DescriptorBufferInfo::default()
-					.buffer(private.raw())
-					.range(dl),
-				vk::DescriptorBufferInfo::default()
-					.buffer(public.raw())
-					.range(el),
+				vk::DescriptorBufferInfo::new()
+					.set_buffer(seed.raw())
+					.set_range(seed_len),
+				vk::DescriptorBufferInfo::new()
+					.set_buffer(private.raw())
+					.set_range(dl),
+				vk::DescriptorBufferInfo::new()
+					.set_buffer(public.raw())
+					.set_range(el),
 			];
 			if let Some(workspace) = &workspace {
 				buffers.push(SecretConsumerOperands::secret_info(workspace));
@@ -275,23 +275,23 @@ impl PreparedSecretKeygen<'_> {
 			)?;
 			self.device.raw().cmd_dispatch(command, 1, 1, 1)?;
 		}
-		let barrier = vk::BufferMemoryBarrier2::default()
-			.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-			.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
-			.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
-			.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT)
-			.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-			.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-			.buffer(self.public.raw())
-			.size(self.public.size());
+		let barrier = vk::BufferMemoryBarrier2::new()
+			.set_src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+			.set_src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+			.set_dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+			.set_dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT)
+			.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+			.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+			.set_buffer(self.public.raw())
+			.set_size(self.public.size());
 		// SAFETY: public encoding is the only host-readable result. Exact Engine
 		// completion and Buffer::read invalidation precede host observation.
 		unsafe {
 			self.device.sync_commands().pipeline_barrier(
 				self.device.raw(),
 				command,
-				&(vk::DependencyInfo::default()
-					.buffer_memory_barriers(&[barrier])
+				&(vk::DependencyInfo::new()
+					.set_buffer_memory_barriers(&[barrier])
 					.map_err(Error::from)?),
 			)?;
 		}
@@ -308,7 +308,7 @@ impl PreparedSecretKeygen<'_> {
 pub(super) struct SecretConsumerOperands<'a> {
 	device: &'a Arc<Device>,
 	kernel: KernelId,
-	_secrets: [SecretBinding<'a>; 2],
+	_secrets: Vec<SecretBinding<'a>>,
 	_workspace: Option<SecretBinding<'a>>,
 	public: Vec<Buffer>,
 	bindings: Vec<vk::DescriptorBufferInfo>,
@@ -365,7 +365,7 @@ impl<'a> SecretConsumerOperands<'a> {
 		Ok(Self {
 			device,
 			kernel: KernelId::CryptographyMlDsaSignU8,
-			_secrets: [seed, private],
+			_secrets: vec![seed, private],
 			_workspace: Some(workspace),
 			public: public.into_iter().cloned().collect(),
 			bindings,
@@ -439,7 +439,7 @@ impl<'a> SecretConsumerOperands<'a> {
 			} else {
 				KernelId::CryptographyMlDsaSignMessageU8
 			},
-			_secrets: [seed, private],
+			_secrets: vec![seed, private],
 			_workspace: Some(workspace),
 			public: public.into_iter().cloned().collect(),
 			bindings,
@@ -502,7 +502,7 @@ impl<'a> SecretConsumerOperands<'a> {
 		Ok(Self {
 			device,
 			kernel: KernelId::CryptographyMlDsaSignPrehashedU8,
-			_secrets: [seed, private],
+			_secrets: vec![seed, private],
 			_workspace: Some(workspace),
 			public: public.into_iter().cloned().collect(),
 			bindings,
@@ -552,7 +552,7 @@ impl<'a> SecretConsumerOperands<'a> {
 		Ok(Self {
 			device,
 			kernel: KernelId::CryptographyMlKemEncapsU8,
-			_secrets: [seed, shared],
+			_secrets: vec![seed, shared],
 			_workspace: Some(workspace),
 			public: vec![public.clone(), ciphertext.clone(), status.clone()],
 			bindings,
@@ -594,13 +594,60 @@ impl<'a> SecretConsumerOperands<'a> {
 		Ok(Self {
 			device,
 			kernel: KernelId::CryptographyMlKemDecapsU8,
-			_secrets: [private, shared],
+			_secrets: vec![private, shared],
 			_workspace: Some(workspace),
 			public: vec![ciphertext.clone()],
 			bindings,
 			indices,
 			host_output_start: 1,
 			scalars: vec![k],
+		})
+	}
+
+	/// One-shot declassification consumer: the 32-byte shared secret stays in
+	/// private storage while a keyed hash emits only public derived bytes.
+	pub(super) fn shared_derive(
+		device: &'a Arc<Device>,
+		shared: SecretBinding<'a>,
+		info: &Buffer,
+		output: &Buffer,
+		info_len: u32,
+		output_len: u32,
+	) -> Result<Self> {
+		Self::validate_secret(device, &shared, 32)?;
+		if output_len == 0 || output_len > 4096 || !output_len.is_multiple_of(4) {
+			return Err(Error::invalid_argument(
+				"shared-secret derivation extent must be a nonzero multiple of four within 4096",
+			));
+		}
+		Self::validate_public(device, output, u64::from(output_len))?;
+		let info_extent = u64::from(((info_len + 3) & !3).max(4));
+		if !info.belongs_to(device) || info.size() < info_extent {
+			return Err(Error::invalid_argument(
+				"shared-secret info ownership or extent mismatch",
+			));
+		}
+		let bindings = vec![
+			Self::secret_info(&shared),
+			Self::public_info(info),
+			Self::public_info(output),
+		];
+		Self::validate_disjoint(&bindings)?;
+		let indices = vec![
+			shared.descriptor_index(),
+			info.descriptor_index(),
+			output.descriptor_index(),
+		];
+		Ok(Self {
+			device,
+			kernel: KernelId::CryptographyMlKemSharedDeriveU8,
+			_secrets: vec![shared],
+			_workspace: None,
+			public: vec![info.clone(), output.clone()],
+			bindings,
+			indices,
+			host_output_start: 1,
+			scalars: vec![info_len, output_len],
 		})
 	}
 
@@ -634,15 +681,15 @@ impl<'a> SecretConsumerOperands<'a> {
 	}
 
 	fn secret_info(secret: &SecretBinding<'_>) -> vk::DescriptorBufferInfo {
-		vk::DescriptorBufferInfo::default()
-			.buffer(secret.raw())
-			.range(secret.byte_len())
+		vk::DescriptorBufferInfo::new()
+			.set_buffer(secret.raw())
+			.set_range(secret.byte_len())
 	}
 
 	fn public_info(public: &Buffer) -> vk::DescriptorBufferInfo {
-		vk::DescriptorBufferInfo::default()
-			.buffer(public.raw())
-			.range(public.size())
+		vk::DescriptorBufferInfo::new()
+			.set_buffer(public.raw())
+			.set_range(public.size())
 	}
 
 	fn validate_disjoint(bindings: &[vk::DescriptorBufferInfo]) -> Result<()> {
@@ -717,13 +764,15 @@ impl PreparedSecretConsumer<'_> {
 			.map_or_else(|| device.descriptor_set(), |sets| sets.set(0));
 		// A queue order is not a memory dependency. Include prior key generation,
 		// ciphertext production and host uploads before this one-shot consumer.
-		let dependency = vk::MemoryBarrier2::default()
-			.src_stage_mask(
+		let dependency = vk::MemoryBarrier2::new()
+			.set_src_stage_mask(
 				vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT | vk::PipelineStageFlagBits2::HOST_BIT,
 			)
-			.src_access_mask(vk::AccessFlagBits2::MEMORY_WRITE_BIT | vk::AccessFlagBits2::HOST_WRITE_BIT)
-			.dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-			.dst_access_mask(
+			.set_src_access_mask(
+				vk::AccessFlagBits2::MEMORY_WRITE_BIT | vk::AccessFlagBits2::HOST_WRITE_BIT,
+			)
+			.set_dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+			.set_dst_access_mask(
 				vk::AccessFlagBits2::SHADER_STORAGE_READ_BIT
 					| vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT,
 			);
@@ -734,8 +783,8 @@ impl PreparedSecretConsumer<'_> {
 			device.sync_commands().pipeline_barrier(
 				device.raw(),
 				command,
-				&(vk::DependencyInfo::default()
-					.memory_barriers(&[dependency])
+				&(vk::DependencyInfo::new()
+					.set_memory_barriers(&[dependency])
 					.map_err(Error::from)?),
 			)?;
 			device.raw().cmd_bind_pipeline(
@@ -763,15 +812,15 @@ impl PreparedSecretConsumer<'_> {
 		let barriers: Vec<_> = self.operands.public[self.operands.host_output_start..]
 			.iter()
 			.map(|buffer| {
-				vk::BufferMemoryBarrier2::default()
-					.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-					.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
-					.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
-					.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT)
-					.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-					.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-					.buffer(buffer.raw())
-					.size(buffer.size())
+				vk::BufferMemoryBarrier2::new()
+					.set_src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+					.set_src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+					.set_dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+					.set_dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT)
+					.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+					.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+					.set_buffer(buffer.raw())
+					.set_size(buffer.size())
 			})
 			.collect();
 		if !barriers.is_empty() {
@@ -780,8 +829,8 @@ impl PreparedSecretConsumer<'_> {
 				device.sync_commands().pipeline_barrier(
 					device.raw(),
 					command,
-					&(vk::DependencyInfo::default()
-						.buffer_memory_barriers(&barriers)
+					&(vk::DependencyInfo::new()
+						.set_buffer_memory_barriers(&barriers)
 						.map_err(Error::from)?),
 				)?;
 			}

@@ -219,8 +219,13 @@ impl TrainingProgram {
 
 	/// Upload a new fixed-shape host batch into a captured input slot.
 	///
-	/// A pending prior replay is completed before the stable input buffer is
-	/// overwritten. The cached command remains valid.
+	/// The slot rotates through a bounded triple-buffered staging ring: each
+	/// upload writes the next ring buffer and rebinds it, so a pending prior
+	/// replay stalls only while its submission still consumes the target ring
+	/// buffer. Each distinct ring binding records one command on first use and
+	/// reuses the cached command afterwards. The captured Matrix's own buffer
+	/// mirrors each upload, so the stable value remains coherent for host
+	/// reads.
 	///
 	/// # Errors
 	///
@@ -231,6 +236,22 @@ impl TrainingProgram {
 		values: &[T],
 	) -> Result<()> {
 		self.plan.upload_matrix_input(captured, values)
+	}
+
+	/// Rebind a captured input slot to a different same-shape Matrix without
+	/// waiting for in-flight replays.
+	///
+	/// Unlike [`TrainingProgram::upload_input`], rebinding does not wait for the
+	/// pending replay because it never overwrites the buffer the GPU still reads.
+	/// Rotating through a bounded set of input Matrices therefore pipelines
+	/// uploads with replays; each distinct binding set pays one command record on
+	/// its first submission and reuses the cached command afterwards.
+	///
+	/// # Errors
+	///
+	/// Returns the input-slot validation error.
+	pub fn bind_input(&mut self, captured: &Matrix, replacement: &Matrix) -> Result<()> {
+		self.plan.bind_matrix_input(captured, replacement)
 	}
 
 	/// Submit one replay without waiting.

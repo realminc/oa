@@ -23,9 +23,10 @@ use crate::{
 	Color, Engine, Error, Event, Result,
 	render::material::{FlatColorMaterial, SurfaceMaterial, TextureHandle, UnlitMaterial},
 	runtime::{
-		FlatColorPipeline, GraphicsPipeline, MeshBuffer, NativeRgbaImage, RenderTarget, SceneDrawCmd,
-		SurfaceBlendPipeline, SurfaceDescriptorArena, SurfaceDescriptorLayouts, SurfacePipeline,
-		UnlitDescriptorArena, UnlitDescriptorLayouts, UnlitPipeline,
+		CanvasGridPipeline, FlatColorPipeline, GraphicsPipeline, MeshBuffer, NativeRgbaImage,
+		RenderTarget, SceneDrawCmd, SurfaceBlendPipeline, SurfaceDescriptorArena,
+		SurfaceDescriptorLayouts, SurfacePipeline, UnlitDescriptorArena, UnlitDescriptorLayouts,
+		UnlitPipeline,
 	},
 };
 
@@ -127,6 +128,8 @@ pub(super) struct RendererState {
 	/// the layout — but after `surface_pipeline` so destroy order is
 	/// opaque then blend then layouts.
 	surface_blend_pipeline: Option<SurfaceBlendPipeline>,
+	/// Procedural canvas-grid pipeline (vertexless fullscreen triangle).
+	canvas_grid_pipeline: Option<CanvasGridPipeline>,
 	surface_descriptors: Option<SurfaceDescriptorArena>,
 	/// Owned descriptor set layouts for the Surface pipeline (sets 0+1).
 	/// Must be declared after `surface_pipeline` so it drops after.
@@ -203,6 +206,10 @@ enum BuildingSource {
 		scene_data: Box<[u8; SCENE_LIGHTS_SIZE]>,
 		draws: Vec<PendingDraw>,
 	},
+	/// Procedural canvas grid — 100-byte push, vertexless 3-vertex draw.
+	CanvasGrid {
+		push_data: [u8; 100],
+	},
 }
 
 enum SlotState {
@@ -264,6 +271,8 @@ impl Drop for RendererState {
 		std::mem::forget(self.unlit_descriptors.take());
 		std::mem::forget(self._unlit_layouts.take());
 		std::mem::forget(self.surface_pipeline.take());
+		std::mem::forget(self.surface_blend_pipeline.take());
+		std::mem::forget(self.canvas_grid_pipeline.take());
 		std::mem::forget(self.surface_descriptors.take());
 		std::mem::forget(self._surface_layouts.take());
 	}
@@ -286,6 +295,137 @@ type DrawParams = (
 const VERTEX_STRIDE: usize = 48;
 const SCENE_LIGHTS_SIZE: usize = 416;
 const MATERIAL_PARAMS_SIZE: usize = 80;
+
+/// Parameters for one procedural canvas-grid frame.
+///
+/// Fields map 1:1 onto the 100-byte fragment push block consumed by
+/// `src/slang/ui/canvas_grid.frag.slang`; colors are packed `0xRRGGBBAA`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CanvasGridFrame {
+	/// Destination rect inside the render target, in pixels.
+	pub dst_x: i32,
+	pub dst_y: i32,
+	pub dst_w: u32,
+	pub dst_h: u32,
+	/// Grid-line origin in target pixels (lines pass through this point).
+	pub origin: [f32; 2],
+	/// Minor-tier spacing in pixels on each axis. Must be finite and `>= 1`.
+	pub minor_spacing: [f32; 2],
+	/// Lines every `major_every` minors promote to the major tier (>= 1).
+	pub major_every: u32,
+	/// Lines every `super_major_every` majors promote further (>= 1).
+	pub super_major_every: u32,
+	/// Coverage thickness in pixels: minor, major, super-major, axis.
+	pub thickness: [f32; 4],
+	pub background_top_rgba: u32,
+	pub background_bottom_rgba: u32,
+	pub minor_rgba: u32,
+	pub major_rgba: u32,
+	pub super_major_rgba: u32,
+	pub axis_rgba: u32,
+	/// Radial-fade center in target pixels.
+	pub fade_center: [f32; 2],
+	/// Inner (full opacity) and outer (zero opacity) fade radii.
+	pub fade_radii: [f32; 2],
+	/// Layer enable bits, matching the fragment shader: bit 0 gradient
+	/// background, bit 1 axes, bit 2 grid tiers, bit 3 radial fade,
+	/// bit 4 background dither.
+	pub flags: u32,
+}
+
+impl CanvasGridFrame {
+	/// Flag mask enabling every layer (background, axes, grid, fade, dither).
+	pub const ALL_FLAGS: u32 = 1 | 2 | 4 | 8 | 16;
+
+	pub(crate) fn validate(&self) -> Result<()> {
+		if self.dst_w == 0 || self.dst_h == 0 {
+			return Err(Error::invalid_argument(
+				"canvas-grid destination size must be non-zero",
+			));
+		}
+		if self
+			.thickness
+			.iter()
+			.chain(self.minor_spacing.iter())
+			.chain(self.origin.iter())
+			.chain(self.fade_center.iter())
+			.chain(self.fade_radii.iter())
+			.any(|v| !v.is_finite())
+		{
+			return Err(Error::invalid_argument(
+				"canvas-grid parameters must be finite",
+			));
+		}
+		if self.minor_spacing.iter().any(|v| *v <= 0.0) {
+			return Err(Error::invalid_argument(
+				"canvas-grid minor spacing must be positive",
+			));
+		}
+		if self.major_every == 0 || self.super_major_every == 0 {
+			return Err(Error::invalid_argument(
+				"canvas-grid tier multipliers must be non-zero",
+			));
+		}
+		if self.flags & !Self::ALL_FLAGS != 0 {
+			return Err(Error::invalid_argument(
+				"canvas-grid flags contain an unknown layer bit",
+			));
+		}
+		Ok(())
+	}
+
+	pub(crate) fn pack_push(&self) -> [u8; 100] {
+		let mut data = [0u8; 100];
+		let ints = [self.dst_x as u32, self.dst_y as u32, self.dst_w, self.dst_h];
+		let floats = [
+			self.origin[0],
+			self.origin[1],
+			self.minor_spacing[0],
+			self.minor_spacing[1],
+		];
+		let tier = [self.major_every, self.super_major_every];
+		let colors = [
+			self.background_top_rgba,
+			self.background_bottom_rgba,
+			self.minor_rgba,
+			self.major_rgba,
+			self.super_major_rgba,
+			self.axis_rgba,
+		];
+		let fade = [
+			self.fade_center[0],
+			self.fade_center[1],
+			self.fade_radii[0],
+			self.fade_radii[1],
+		];
+		let mut off = 0;
+		let mut put_u32 = |v: u32| {
+			data[off..off + 4].copy_from_slice(&v.to_le_bytes());
+			off += 4;
+		};
+		for v in ints {
+			put_u32(v);
+		}
+		for v in floats {
+			put_u32(v.to_bits());
+		}
+		for v in tier {
+			put_u32(v);
+		}
+		for v in self.thickness {
+			put_u32(v.to_bits());
+		}
+		for v in colors {
+			put_u32(v);
+		}
+		for v in fade {
+			put_u32(v.to_bits());
+		}
+		put_u32(self.flags);
+		debug_assert_eq!(off, 100);
+		data
+	}
+}
 
 /// Build the 80-byte vertex-color-lit push block (MVP + light/ambient).
 fn build_vcl_push(vp: &crate::vlm::Mat4, light: [f32; 3], ambient: f32) -> [u8; 80] {
@@ -463,6 +603,7 @@ impl<'engine> Renderer<'engine> {
 			unlit_layouts,
 			surface_pipeline,
 			surface_blend_pipeline,
+			canvas_grid_pipeline,
 			surface_descriptors,
 			surface_layouts,
 		) = if mesh_enabled {
@@ -485,6 +626,7 @@ impl<'engine> Renderer<'engine> {
 			)?;
 			// The blend pipeline reuses the opaque pipeline's layout.
 			let surface_blend = handle.create_surface_blend_pipeline(surface.layout())?;
+			let canvas_grid = handle.create_canvas_grid_pipeline()?;
 			(
 				Some(vcl),
 				Some(fc),
@@ -493,11 +635,12 @@ impl<'engine> Renderer<'engine> {
 				Some(unlit_layouts),
 				Some(surface),
 				Some(surface_blend),
+				Some(canvas_grid),
 				Some(surface_descriptors),
 				Some(surface_layouts),
 			)
 		} else {
-			(None, None, None, None, None, None, None, None, None)
+			(None, None, None, None, None, None, None, None, None, None)
 		};
 		let white_texture = mesh_enabled
 			.then(|| texture_from_rgba8(engine, &[255, 255, 255, 255], 1, 1))
@@ -553,6 +696,7 @@ impl<'engine> Renderer<'engine> {
 				_unlit_layouts: unlit_layouts,
 				surface_pipeline,
 				surface_blend_pipeline,
+				canvas_grid_pipeline,
 				surface_descriptors,
 				_surface_layouts: surface_layouts,
 				textures: HashMap::new(),
@@ -696,6 +840,34 @@ impl<'engine> Renderer<'engine> {
 			source: BuildingSource::FlatColor {
 				index_count,
 				push_data,
+			},
+		});
+		Ok(())
+	}
+
+	/// Begin one frame drawing the procedural canvas grid.
+	///
+	/// Requires `has_mesh_path()`. The draw is a vertexless fullscreen
+	/// triangle; `frame` is baked into the 100-byte fragment push block and
+	/// the scissor limits coverage to `frame`'s destination rect.
+	pub fn begin_frame_canvas_grid(&self, frame: &CanvasGridFrame) -> Result<()> {
+		self.require_graphics("canvas_grid")?;
+		frame.validate()?;
+		if frame.dst_x < 0
+			|| frame.dst_y < 0
+			|| frame.dst_x as u64 + u64::from(frame.dst_w) > u64::from(self.config.width)
+			|| frame.dst_y as u64 + u64::from(frame.dst_h) > u64::from(self.config.height)
+		{
+			return Err(Error::out_of_range(
+				"canvas-grid destination rect must lie inside the render target",
+			));
+		}
+		let (slot_idx, generation) = self.acquire_free_slot()?;
+		self.state.borrow_mut().building = Some(Building {
+			slot: slot_idx,
+			generation,
+			source: BuildingSource::CanvasGrid {
+				push_data: frame.pack_push(),
 			},
 		});
 		Ok(())
@@ -1064,6 +1236,7 @@ impl<'engine> Renderer<'engine> {
 						let state = self.state.borrow();
 						self.resolve_graphics_source(&state, building.slot, &source)
 					}?;
+				let vertexless = matches!(source, BuildingSource::CanvasGrid { .. });
 				let sampled_image = match &source {
 					BuildingSource::Unlit { texture, .. } => Some(texture.clone()),
 					_ => None,
@@ -1073,18 +1246,31 @@ impl<'engine> Renderer<'engine> {
 					let mut state = self.state.borrow_mut();
 					let slot = &mut state.slots[building.slot];
 					let gfx = slot.graphics.as_mut().expect("graphics slot populated");
-					let result = handle.record_and_submit_mesh_frame(
-						&mut gfx.target,
-						&gfx.vertex_buf,
-						&gfx.index_buf,
-						index_count,
-						self.config.clear_color.to_array(),
-						&push_bytes,
-						push_stages,
-						pipeline_vk,
-						pipeline_layout,
-						&descriptor_sets,
-					);
+					let result = if vertexless {
+						handle.record_and_submit_vertexless_frame(
+							&mut gfx.target,
+							index_count,
+							self.config.clear_color.to_array(),
+							&push_bytes,
+							push_stages,
+							pipeline_vk,
+							pipeline_layout,
+							&descriptor_sets,
+						)
+					} else {
+						handle.record_and_submit_mesh_frame(
+							&mut gfx.target,
+							&gfx.vertex_buf,
+							&gfx.index_buf,
+							index_count,
+							self.config.clear_color.to_array(),
+							&push_bytes,
+							push_stages,
+							pipeline_vk,
+							pipeline_layout,
+							&descriptor_sets,
+						)
+					};
 					match result {
 						Ok(event) => event,
 						Err(e) => {
@@ -1305,6 +1491,20 @@ impl<'engine> Renderer<'engine> {
 					p.raw(),
 					p.layout(),
 					vec![set],
+				))
+			}
+			BuildingSource::CanvasGrid { push_data } => {
+				let p = state
+					.canvas_grid_pipeline
+					.as_ref()
+					.ok_or_else(|| Error::failed_precondition("canvas-grid pipeline unavailable"))?;
+				Ok((
+					3,
+					push_data.to_vec(),
+					vk::ShaderStageFlagBits::FRAGMENT_BIT,
+					p.raw(),
+					p.layout(),
+					Vec::new(),
 				))
 			}
 			BuildingSource::Surface { .. } => {

@@ -68,3 +68,17 @@ public void store_u32(RWByteAddressBuffer buffer, uint element_index, uint value
 public float oaLoad(RWByteAddressBuffer buffer, uint element_index) {
 	return load_f32(buffer, element_index);
 }
+
+// Atomic add for f32 via a compare-exchange loop on the element's u32 bit
+// pattern; the accumulator is always fp32, matching the donor oaAtomicAdd.
+[ForceInline]
+public void atomic_add_f32(RWByteAddressBuffer buffer, uint element_index, float value) {
+	uint address = element_index * 4u;
+	uint old_value = 0u;
+	uint assumed;
+	do {
+		assumed = old_value;
+		uint next = asuint(asfloat(assumed) + value);
+		buffer.InterlockedCompareExchange(address, assumed, next, old_value);
+	} while (assumed != old_value);
+}

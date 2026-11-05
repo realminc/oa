@@ -30,6 +30,21 @@ struct Retirement {
 	completion: Arc<RetirementCompletion>,
 }
 
+/// A completion reserved before its command joins a deferred submission batch.
+/// Op events hold the matching ticket at record time; the scope either submits
+/// and retires under the shared completion or fails it without submission.
+pub(in crate::runtime) struct DeferredRetirement {
+	completion: Arc<RetirementCompletion>,
+}
+
+impl DeferredRetirement {
+	/// Mark the deferred submission abandoned. Waiters observe failure rather
+	/// than pending forever; attached resources are quarantined, not reused.
+	pub(in crate::runtime) fn fail(&self) {
+		self.completion.finish(RetirementState::Failed);
+	}
+}
+
 struct RetirementCompletion {
 	state: Mutex<RetirementStateData>,
 	changed: Condvar,
@@ -108,17 +123,50 @@ impl RetirementService {
 		Ok(())
 	}
 
+	/// Reserve a completion and its ticket before recording decides the exact
+	/// submission order. `retire_deferred` binds the recorded command later.
+	pub(in crate::runtime) fn reserve(&self) -> (DeferredRetirement, RetirementTicket) {
+		let completion = Arc::new(RetirementCompletion::new());
+		(
+			DeferredRetirement {
+				completion: completion.clone(),
+			},
+			RetirementTicket {
+				completion,
+				control: self.control.clone(),
+			},
+		)
+	}
+
 	pub(in crate::runtime) fn retire(
 		&self,
 		command: RecordedCommandBuffer,
 		epoch: u64,
 	) -> Result<RetirementTicket> {
-		let completion = Arc::new(RetirementCompletion::new());
-		let retirement = Retirement {
+		let (deferred, ticket) = self.reserve();
+		self.dispatch(Retirement {
 			command,
 			epoch,
-			completion: completion.clone(),
-		};
+			completion: deferred.completion,
+		})?;
+		Ok(ticket)
+	}
+
+	/// Retire a command whose completion was reserved at record time.
+	pub(in crate::runtime) fn retire_deferred(
+		&self,
+		deferred: DeferredRetirement,
+		command: RecordedCommandBuffer,
+		epoch: u64,
+	) -> Result<()> {
+		self.dispatch(Retirement {
+			command,
+			epoch,
+			completion: deferred.completion,
+		})
+	}
+
+	fn dispatch(&self, retirement: Retirement) -> Result<()> {
 		let Some(sender) = &self.sender else {
 			self.control.fail(retirement_unavailable());
 			retirement.command.fail_secret_erasures();
@@ -135,10 +183,7 @@ impl RetirementService {
 			mem::forget(retirement);
 			return Err(retirement_unavailable());
 		}
-		Ok(RetirementTicket {
-			completion,
-			control: self.control.clone(),
-		})
+		Ok(())
 	}
 
 	fn leak_device_graph(&self) {

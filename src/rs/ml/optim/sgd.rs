@@ -60,6 +60,7 @@ fn sgd(parameter: &Matrix, gradient: &Matrix, scalars: SgdScalars) -> Result<()>
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(element_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -137,6 +138,7 @@ fn sgd_momentum(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(element_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

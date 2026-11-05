@@ -84,6 +84,7 @@ pub(in crate::ml) fn linear(input: &Matrix, weight: &Matrix, bias: &Matrix) -> R
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: kernel.output_workgroups(batch, output_features),
+				indirect: None,
 			};
 			let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 				Error::internal(format!(
@@ -189,6 +190,7 @@ pub(in crate::ml) fn linear_backward(
 				buffers: &input_buffers,
 				push_constants: &dimensions,
 				workgroups: input_kernel.output_workgroups(batch_u32, input_features_u32),
+				indirect: None,
 			};
 			let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 				Error::internal(format!(
@@ -226,6 +228,7 @@ pub(in crate::ml) fn linear_backward(
 			buffers: &parameter_buffers,
 			push_constants: &dimensions,
 			workgroups: [output_features_u32, input_features_u32.div_ceil(32), 1],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

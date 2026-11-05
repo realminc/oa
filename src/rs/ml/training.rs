@@ -20,6 +20,10 @@ mod target;
 mod trading_rollout;
 pub use trading_rollout::TradingRolloutProgram;
 
+pub use super::types::{
+	DqnTrainerConfig, ItRolloutTrainingConfig, ItTrainingConfig, PpoTrainerConfig, SacTrainerConfig,
+	TrainingCommandResult, TrainingSessionConfig,
+};
 pub use callbacks::{
 	CbCheckpoint, CbCsvLogger, CbEarlyStop, CbLrScheduler, CbPhase, CbProgressBar, CbSummary,
 	CbValidation, Checkpoint, CsvLogger, EarlyStopMode, EarlyStopping, LearningRateScheduler,
@@ -27,17 +31,17 @@ pub use callbacks::{
 	ValidationResult,
 };
 
-pub use dqn::{DqnTrainer, DqnTrainerConfig, DqnTrainerMetrics};
-pub use sac::{SacTrainer, SacTrainerConfig, SacTrainerMetrics};
+pub use dqn::{DqnTrainer, DqnTrainerMetrics};
+pub use sac::{SacTrainer, SacTrainerMetrics};
 
 pub use iterator::{
-	GpuTimingStats, ItTraining, ItTrainingConfig, LossAggregation, LossMetric, TrainingCallback,
+	GpuTimingStats, ItTraining, LossAggregation, LossMetric, TrainingCallback,
 	TrainingCallbackContext, TrainingControl, TrainingLoop, TrainingLoopConfig, TrainingMetric,
 	TrainingSnapshot,
 };
-pub use ppo::{PpoTrainer, PpoTrainerConfig, PpoTrainerMetrics};
+pub use ppo::{PpoTrainer, PpoTrainerMetrics};
 pub use ppo_program::PpoUpdateProgram;
-pub use rollout::{ItRolloutTraining, ItRolloutTrainingConfig, RolloutTrainingPhase};
+pub use rollout::{ItRolloutTraining, RolloutTrainingPhase};
 
 pub use program::{
 	TrainingCompilationStage, TrainingCompilationStageRecord, TrainingCompilationState,
@@ -51,9 +55,9 @@ pub use schedule::{
 };
 pub use session::{
 	TrainingCommand, TrainingCommandDisposition, TrainingCommandError, TrainingCommandKind,
-	TrainingCommandResult, TrainingMetricSample, TrainingParameterClass, TrainingParameterDesc,
-	TrainingSession, TrainingSessionConfig, TrainingSessionHandlers, TrainingSessionSnapshot,
-	TrainingState, TrainingValue, TrainingValueKind,
+	TrainingMetricSample, TrainingParameterClass, TrainingParameterDesc, TrainingSession,
+	TrainingSessionHandlers, TrainingSessionSnapshot, TrainingState, TrainingValue,
+	TrainingValueKind,
 };
 
 pub(crate) use session::TrainingSessionAttachment;

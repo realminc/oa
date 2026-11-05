@@ -1,0 +1,1501 @@
+{
+	"schema_version": 1,
+	"domain": "ml",
+	"family": "ml_types",
+	"imports": [
+		"use crate::{DType, Matrix};",
+		"use std::path::PathBuf;",
+		"use super::training::{TrainingCommandDisposition, TrainingCommandError, TrainingState};"
+	],
+	"types": [
+		{
+			"class": "config",
+			"name": "CheckpointManagerConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "directory",
+					"type": "PathBuf",
+					"visibility": "pub",
+					"doc": "Root directory beneath which the model directory is created."
+				},
+				{
+					"name": "model_name",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Stable filename component and master checkpoint stem."
+				},
+				{
+					"name": "context",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Optional incremental-checkpoint directory/filename component."
+				},
+				{
+					"name": "max_keep",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Maximum retained incremental checkpoints; zero disables rotation."
+				},
+				{
+					"name": "save_best",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Whether an improved metric updates the master checkpoint."
+				},
+				{
+					"name": "metric_name",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Metric name written into progress metadata and filenames."
+				},
+				{
+					"name": "lower_is_better",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Whether a lower metric is considered better."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "RolloutCollectorConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"Default",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "horizon",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of vector-environment steps in each collection."
+				},
+				{
+					"name": "seed",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Base seed for initial reset and categorical samples."
+				},
+				{
+					"name": "gae",
+					"type": "GaeConfig",
+					"visibility": "pub",
+					"doc": "Generalized-advantage estimator policy."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "TradingConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "environments",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Independent device lanes (round-robin over supplied contiguous segments)."
+				},
+				{
+					"name": "window",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Positive closed-bar window length."
+				},
+				{
+					"name": "horizon",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Episode length in bars, 1..=1,000,000; fill counts remain exact in F32."
+				},
+				{
+					"name": "seed",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Full 64-bit deterministic reset seed."
+				},
+				{
+					"name": "capital",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Initial analytical capital per independent lane."
+				},
+				{
+					"name": "exposure",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Fraction of equity budgeted for entry margin and costs, in (0,1]. Instrument execution rules may additionally admit explicit leverage."
+				},
+				{
+					"name": "taker_fee",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Actual-notional taker fee fraction on every execution leg."
+				},
+				{
+					"name": "slippage_bps",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Adverse one-way slippage in basis points, excluding spread."
+				},
+				{
+					"name": "spread_bps",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Full bid/ask spread in basis points; half is charged per execution leg."
+				},
+				{
+					"name": "max_drawdown",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Peak-equity drawdown fraction that terminates and closes inventory."
+				},
+				{
+					"name": "perpetual",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Perpetuals use short/flat/long; Spot uses flat/long (no short category)."
+				},
+				{
+					"name": "liquidate_at_horizon",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Close and terminate at the horizon; otherwise truncate with final-state bootstrap."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "BatchNorm2dResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "",
+			"fields": [
+				{
+					"name": "output",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Normalized and affine-transformed NCHW values."
+				},
+				{
+					"name": "mean",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Population mean for each channel."
+				},
+				{
+					"name": "variance",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Population variance for each channel."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "MaxPool2dResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "",
+			"fields": [
+				{
+					"name": "output",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Maximum value selected from each pooling window."
+				},
+				{
+					"name": "indices",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Flat input index selected for each output element."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "VqAssignResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "Nearest-code indices and gathered code vectors.",
+			"fields": [
+				{
+					"name": "indices",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "I32 nearest-code index for every latent row."
+				},
+				{
+					"name": "quantized",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Gathered winning code for every latent row."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "Mamba3PreprocessConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "inner_size",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Width of the z and x projection slices."
+				},
+				{
+					"name": "state_size",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Width of each B/C state row."
+				},
+				{
+					"name": "num_heads",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of selective-state heads."
+				},
+				{
+					"name": "num_rope_angles",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of rotary angle pairs."
+				},
+				{
+					"name": "num_groups",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of shared B/C groups."
+				},
+				{
+					"name": "mimo_rank",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of B/C rows per group."
+				},
+				{
+					"name": "epsilon",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Epsilon used by B/C RMS normalization."
+				},
+				{
+					"name": "dt_min",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Inclusive lower bound for transformed dt."
+				},
+				{
+					"name": "dt_max",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Inclusive upper bound for transformed dt."
+				},
+				{
+					"name": "a_floor",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Positive floor for the magnitude of the negative A token."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "Mamba3PreprocessResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "x",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Value projection slice."
+				},
+				{
+					"name": "z",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Gate projection slice."
+				},
+				{
+					"name": "bh",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "RMS-normalized B rows."
+				},
+				{
+					"name": "ch",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "RMS-normalized C rows."
+				},
+				{
+					"name": "dt",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Clamped positive time steps."
+				},
+				{
+					"name": "adt",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Negative A-times-dt log decays."
+				},
+				{
+					"name": "trap",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Raw trapezoidal gates."
+				},
+				{
+					"name": "angle",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Raw rotary angular velocities."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "SsmConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "batch_size",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Batch size."
+				},
+				{
+					"name": "sequence_length",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Sequence length."
+				},
+				{
+					"name": "num_heads",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of value heads."
+				},
+				{
+					"name": "num_groups",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of shared Q/K groups, or zero for num_heads."
+				},
+				{
+					"name": "head_dim",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Value width per head."
+				},
+				{
+					"name": "state_size",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Selective recurrent state width."
+				},
+				{
+					"name": "num_rope_angles",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of rotary pairs in the state axis."
+				},
+				{
+					"name": "mimo_rank",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "MIMO rank; SISO callers use one."
+				},
+				{
+					"name": "has_z",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Apply the SiLU z gate."
+				},
+				{
+					"name": "has_d",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Apply the learned D skip."
+				},
+				{
+					"name": "has_output_norm",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Apply MIMO output normalization; SISO requires false."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "PolicyResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "One categorical action and its differentiable policy statistics.",
+			"fields": [
+				{
+					"name": "action",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "I32 action index for every environment."
+				},
+				{
+					"name": "log_probability",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Log probability of each selected action."
+				},
+				{
+					"name": "entropy",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Categorical entropy for every environment."
+				},
+				{
+					"name": "value",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Critic value passed through without a storage copy."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "ContinuousPolicyResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "One bounded continuous action and its differentiable policy statistics.",
+			"fields": [
+				{
+					"name": "action",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Action after tanh squashing and affine mapping to the requested range."
+				},
+				{
+					"name": "raw_action",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Unsquashed normal sample, retained for exact policy reevaluation."
+				},
+				{
+					"name": "log_probability",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Summed corrected log probability for every environment."
+				},
+				{
+					"name": "entropy",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Summed base-normal entropy for every environment."
+				},
+				{
+					"name": "value",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Critic value passed through without a storage copy."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "ValidationResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "loss",
+					"type": "f64",
+					"visibility": "pub",
+					"doc": "Sample-weighted mean validation loss, or NaN when no value is available."
+				},
+				{
+					"name": "batches",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Number of validation batches consumed."
+				},
+				{
+					"name": "samples",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Number of validation samples consumed."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "DqnTrainerConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "updates",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Number of optimizer updates to complete."
+				},
+				{
+					"name": "batch_size",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Replay transitions consumed by one update."
+				},
+				{
+					"name": "target_update_interval",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Completed-update interval between exact online-to-target copies."
+				},
+				{
+					"name": "observation_shape",
+					"type": "Vec<usize>",
+					"visibility": "pub",
+					"doc": "Per-transition observation shape expected from replay."
+				},
+				{
+					"name": "seed",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Base seed used by deterministic replay sampling."
+				},
+				{
+					"name": "loss",
+					"type": "DqnLossConfig",
+					"visibility": "pub",
+					"doc": "Bellman-target configuration."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "SacTrainerConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "updates",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Number of critic/actor update pairs to complete."
+				},
+				{
+					"name": "batch_size",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Replay transitions consumed by each pair."
+				},
+				{
+					"name": "action_dimensions",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of scalar continuous action dimensions."
+				},
+				{
+					"name": "target_update_interval",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Completed-pair interval between exact critic-to-target copies."
+				},
+				{
+					"name": "observation_shape",
+					"type": "Vec<usize>",
+					"visibility": "pub",
+					"doc": "Per-transition observation shape expected from replay."
+				},
+				{
+					"name": "action_minimum",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Inclusive lower action mapping bound."
+				},
+				{
+					"name": "action_maximum",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Inclusive upper action mapping bound."
+				},
+				{
+					"name": "seed",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Base deterministic replay and policy seed."
+				},
+				{
+					"name": "loss",
+					"type": "SacLossConfig",
+					"visibility": "pub",
+					"doc": "Critic discount and fixed entropy coefficient."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "TrainingCommandResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "sequence",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Processed command sequence."
+				},
+				{
+					"name": "revision",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Revision after processing."
+				},
+				{
+					"name": "disposition",
+					"type": "TrainingCommandDisposition",
+					"visibility": "pub",
+					"doc": "Whether the command was applied."
+				},
+				{
+					"name": "state",
+					"type": "TrainingState",
+					"visibility": "pub",
+					"doc": "Live state after processing."
+				},
+				{
+					"name": "error",
+					"type": "Option<TrainingCommandError>",
+					"visibility": "pub",
+					"doc": "Rejection evidence, or `None` for an applied command."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "TrainingSessionConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "command_capacity",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Maximum queued commands before non-blocking enqueue rejects work."
+				},
+				{
+					"name": "result_capacity",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Maximum retained command results."
+				},
+				{
+					"name": "snapshot_capacity",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Maximum retained lifecycle snapshots."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "ItTrainingConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "initial_step",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Completed optimizer steps restored before this lifecycle starts.  `total_steps` remains the absolute final budget, not an additional-step count. Restored steps select the next epoch/cursor/scheduler position but are excluded from this process's loss and timing aggregates."
+				},
+				{
+					"name": "total_steps",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Completed-step budget; zero keeps the loop open-ended."
+				},
+				{
+					"name": "steps_per_epoch",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Fixed steps per epoch; zero disables epoch boundaries."
+				},
+				{
+					"name": "epoch_steps",
+					"type": "Vec<u64>",
+					"visibility": "pub",
+					"doc": "Variable epoch lengths. When nonempty, these replace `steps_per_epoch` and their sum becomes `total_steps`."
+				},
+				{
+					"name": "batch_size",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Samples completed by one step. Zero is normalized to one."
+				},
+				{
+					"name": "sequence_length",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Optional sequence work per sample for throughput accounting."
+				},
+				{
+					"name": "sequence_unit",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Human-readable sequence unit used by progress and summary callbacks."
+				},
+				{
+					"name": "source_units_per_sample",
+					"type": "f64",
+					"visibility": "pub",
+					"doc": "Optional fixed source units consumed by one sample."
+				},
+				{
+					"name": "source_unit",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Human-readable source unit used by progress and summary callbacks."
+				},
+				{
+					"name": "timer_name",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Stable name for the device timer represented in reports."
+				},
+				{
+					"name": "enable_gpu_timing",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Collect exact device timestamps around submitted training work."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "PpoTrainerConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"Default",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "rollouts",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Number of complete rollout/update cycles."
+				},
+				{
+					"name": "horizon",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Time steps collected in each rollout."
+				},
+				{
+					"name": "environments",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Vector environments represented by each step."
+				},
+				{
+					"name": "update_epochs",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Full-batch optimizer passes over each finalized rollout."
+				},
+				{
+					"name": "update_minibatch_size",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Maximum sequences evaluated by one update tape; zero means full batch. Minibatches accumulate sample-weighted gradients with unchanged parameters and one optimizer step per epoch. Advantages normalize over the rollout. Each minibatch completes before the next to bound live device memory."
+				},
+				{
+					"name": "observation_shape",
+					"type": "Vec<usize>",
+					"visibility": "pub",
+					"doc": "Per-environment observation shape, excluding the environment axis."
+				},
+				{
+					"name": "seed",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Base deterministic categorical sampling seed."
+				},
+				{
+					"name": "enable_gpu_timing",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Whether optimizer updates collect Vulkan timestamp statistics. Time all update submissions, summing disjoint minibatch and optimizer intervals into one sample per epoch. Collection remains caller-owned."
+				},
+				{
+					"name": "gae",
+					"type": "GaeConfig",
+					"visibility": "pub",
+					"doc": "Generalized-advantage estimator policy."
+				},
+				{
+					"name": "loss",
+					"type": "PpoLossConfig",
+					"visibility": "pub",
+					"doc": "Clipped PPO objective coefficients."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "ItRolloutTrainingConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "rollouts",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Number of complete collection cycles."
+				},
+				{
+					"name": "horizon",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Time steps stored by each rollout."
+				},
+				{
+					"name": "environments",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Vector environments represented by each time step."
+				},
+				{
+					"name": "update_epochs",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Full-batch optimizer passes after each collection."
+				},
+				{
+					"name": "timer_name",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Device timer label for update steps."
+				},
+				{
+					"name": "enable_gpu_timing",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Whether each optimizer update records and resolves Vulkan timestamps."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "ReplayConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "capacity",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Maximum number of retained transitions."
+				},
+				{
+					"name": "observation_shape",
+					"type": "Vec<usize>",
+					"visibility": "pub",
+					"doc": "Per-transition observation shape, excluding the batch axis."
+				},
+				{
+					"name": "action_shape",
+					"type": "Vec<usize>",
+					"visibility": "pub",
+					"doc": "Per-transition action shape; empty denotes one scalar action."
+				},
+				{
+					"name": "action_dtype",
+					"type": "DType",
+					"visibility": "pub",
+					"doc": "Action storage representation; currently F32 or I32."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "McpTrainingConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "enable_commands",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Enable safe-point pause/resume/checkpoint/evaluate/parameter/recapture commands."
+				},
+				{
+					"name": "enable_pause_resume",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Enable `training_pause` and `training_resume`."
+				},
+				{
+					"name": "enable_checkpoint",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Enable `training_checkpoint`."
+				},
+				{
+					"name": "enable_evaluate",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Enable `training_evaluate`."
+				},
+				{
+					"name": "enable_set_parameter",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Enable `training_set_parameter`."
+				},
+				{
+					"name": "enable_recapture",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Enable `training_request_recapture`."
+				},
+				{
+					"name": "enable_stop",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Enable `training_stop` (separately gated because it changes the terminal path)."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "PolicyEvaluationConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "horizon",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of vector-environment steps to evaluate."
+				},
+				{
+					"name": "seed",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Reset seed and deterministic greedy operation seed."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "DqnLossConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "discount",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Next-state value discount in the inclusive range `[0, 1]`."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "DqnLossResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "Selected action values, detached targets, and scalar DQN loss.",
+			"fields": [
+				{
+					"name": "selected_q",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Q values selected by the batch's action indices, shaped `[batch]`."
+				},
+				{
+					"name": "target_q",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Detached Bellman targets, shaped `[batch]`."
+				},
+				{
+					"name": "loss",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Mean unit-beta Smooth L1 loss between selected and target Q values."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "PpoLossConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "clip_epsilon",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Symmetric policy-ratio clipping distance."
+				},
+				{
+					"name": "value_coefficient",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Multiplier for critic mean-squared error."
+				},
+				{
+					"name": "entropy_coefficient",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Multiplier subtracted for policy entropy."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "PpoLossResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "PPO loss components retained for metrics and reverse mode.",
+			"fields": [
+				{
+					"name": "policy_loss",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Mean negative clipped surrogate objective."
+				},
+				{
+					"name": "value_loss",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Mean-squared critic error."
+				},
+				{
+					"name": "entropy",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Mean policy entropy."
+				},
+				{
+					"name": "total_loss",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "`policy_loss + value_coefficient * value_loss - entropy_coefficient * entropy`."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "SacLossConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "discount",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Next-state value discount in the inclusive range `[0, 1]`."
+				},
+				{
+					"name": "entropy_coefficient",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Non-negative entropy temperature."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "SacCriticLossResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "Detached target and twin-critic SAC loss components.",
+			"fields": [
+				{
+					"name": "target_q",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Detached entropy-regularized Bellman target, shaped `[batch]`."
+				},
+				{
+					"name": "q1_loss",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Mean-squared loss for the first critic."
+				},
+				{
+					"name": "q2_loss",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Mean-squared loss for the second critic."
+				},
+				{
+					"name": "total_loss",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Sum of both critic losses."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "CategoricalActorCriticConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "observation_size",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of scalar features in each observation."
+				},
+				{
+					"name": "action_count",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of discrete actions; must be at least two."
+				},
+				{
+					"name": "hidden_size",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Width of both hidden layers in each independent tower."
+				},
+				{
+					"name": "seed",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Seed for the first of six independent Xavier-uniform projections."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "GaeConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "gamma",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Reward discount applied to value bootstrap and the reverse trace."
+				},
+				{
+					"name": "lambda",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Trace discount applied to the next advantage."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "GaeResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "Generalized advantages and their matching value targets.",
+			"fields": [
+				{
+					"name": "advantage",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Advantage estimates with the same `[time, environments]` shape as reward."
+				},
+				{
+					"name": "returns",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Returns computed as `advantage + value`."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "RolloutConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "time",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of time steps retained per collection cycle."
+				},
+				{
+					"name": "environments",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of vector environments represented by every step."
+				},
+				{
+					"name": "observation_shape",
+					"type": "Vec<usize>",
+					"visibility": "pub",
+					"doc": "Per-environment observation shape, excluding the environment axis."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

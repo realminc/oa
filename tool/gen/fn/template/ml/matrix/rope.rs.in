@@ -66,6 +66,7 @@ pub fn rope(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(pair_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -154,6 +155,7 @@ pub(in crate::ml) fn rope_backward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(pair_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

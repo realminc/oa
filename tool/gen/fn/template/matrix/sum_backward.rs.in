@@ -49,6 +49,7 @@
 				1,
 				1,
 			],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,

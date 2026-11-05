@@ -5,17 +5,7 @@ use crate::runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, Sem
 use crate::{DType, Error, Matrix, OpAttribute, OperationContract, Result, matrix};
 
 use super::common::shader_u32;
-
-/// Coefficients for the PPO objective.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PpoLossConfig {
-	/// Symmetric policy-ratio clipping distance.
-	pub clip_epsilon: f32,
-	/// Multiplier for critic mean-squared error.
-	pub value_coefficient: f32,
-	/// Multiplier subtracted for policy entropy.
-	pub entropy_coefficient: f32,
-}
+pub use crate::ml::types::{PpoLossConfig, PpoLossResult};
 
 impl Default for PpoLossConfig {
 	fn default() -> Self {
@@ -25,18 +15,6 @@ impl Default for PpoLossConfig {
 			entropy_coefficient: 0.01,
 		}
 	}
-}
-
-/// PPO loss components retained for metrics and reverse mode.
-pub struct PpoLossResult {
-	/// Mean negative clipped surrogate objective.
-	pub policy_loss: Matrix,
-	/// Mean-squared critic error.
-	pub value_loss: Matrix,
-	/// Mean policy entropy.
-	pub entropy: Matrix,
-	/// `policy_loss + value_coefficient * value_loss - entropy_coefficient * entropy`.
-	pub total_loss: Matrix,
 }
 
 /// Compute the mean negative clipped PPO surrogate objective.
@@ -65,12 +43,6 @@ pub fn ppo_clipped_policy(
 		new_log_probability.num_elements(),
 		DType::F32,
 	)?;
-	let sum = Matrix::allocate(
-		new_log_probability.engine_handle(),
-		Vec::new(),
-		1,
-		DType::F32,
-	)?;
 	let output = Matrix::allocate(
 		new_log_probability.engine_handle(),
 		Vec::new(),
@@ -84,19 +56,17 @@ pub fn ppo_clipped_policy(
 		BufferBinding::write(per_sample.storage()),
 	];
 	let policy_push = [PushConstant::U32(count), PushConstant::F32(clip_epsilon)];
-	let sum_buffers = [
-		BufferBinding::read(per_sample.storage()),
-		BufferBinding::write(sum.storage()),
-	];
-	let sum_push = [PushConstant::U32(count)];
 	let mean_buffers = [
-		BufferBinding::read(sum.storage()),
+		BufferBinding::read(per_sample.storage()),
 		BufferBinding::write(output.storage()),
 	];
-	let mean_push = [PushConstant::U32(1), PushConstant::F32(1.0 / count as f32)];
+	let mean_push = [
+		PushConstant::U32(count),
+		PushConstant::F32(1.0 / count as f32),
+	];
 	let kernel = KernelId::MlPpoClippedPolicyF32;
 	let attributes = [OpAttribute::Float {
-		name: "clip_epsilon".into(),
+		name: "clipEpsilon".into(),
 		value: f64::from(clip_epsilon),
 	}];
 	let dispatches = [
@@ -105,18 +75,14 @@ pub fn ppo_clipped_policy(
 			buffers: &policy_buffers,
 			push_constants: &policy_push,
 			workgroups: kernel.linear_workgroups(count),
+			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MatrixSumF32,
-			buffers: &sum_buffers,
-			push_constants: &sum_push,
-			workgroups: [1, 1, 1],
-		},
-		ComputeDispatch {
-			kernel: KernelId::MatrixScaleF32,
+			kernel: KernelId::MlSumScaleF32,
 			buffers: &mean_buffers,
 			push_constants: &mean_push,
 			workgroups: [1, 1, 1],
+			indirect: None,
 		},
 	];
 	new_log_probability.engine_handle().record_split_semantic(
@@ -184,6 +150,7 @@ pub fn ppo_clipped_policy_backward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -294,15 +261,15 @@ pub fn ppo(
 	};
 	let attributes = [
 		OpAttribute::Float {
-			name: "clip_epsilon".into(),
+			name: "clipEpsilon".into(),
 			value: f64::from(config.clip_epsilon),
 		},
 		OpAttribute::Float {
-			name: "value_coefficient".into(),
+			name: "valueCoefficient".into(),
 			value: f64::from(config.value_coefficient),
 		},
 		OpAttribute::Float {
-			name: "entropy_coefficient".into(),
+			name: "entropyCoefficient".into(),
 			value: f64::from(config.entropy_coefficient),
 		},
 	];

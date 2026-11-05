@@ -91,6 +91,7 @@
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: [1, 1, 1],
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -112,6 +113,7 @@
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: [1, 1, 1],
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,

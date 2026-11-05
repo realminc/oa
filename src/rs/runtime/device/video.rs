@@ -6,11 +6,13 @@ use crate::{Error, Event, Result, core::memory, video};
 use crate::runtime::{Device, DevicePhysical, Instance};
 
 mod av1;
+mod encode;
 mod h264;
 mod h265;
 mod profile;
 mod vp9;
 
+pub(in crate::runtime) use encode::{EncodeSession, create_encode_session};
 use h264::record_h264_picture;
 use h265::record_h265_picture;
 use profile::*;
@@ -380,23 +382,23 @@ pub(super) fn create_decode_session(
 				"decode profile permits neither coincident nor distinct DPB/output images",
 			));
 		};
-		let create_info = vk::VideoSessionCreateInfoKHR::default()
-			.queue_family_index(
+		let create_info = vk::VideoSessionCreateInfoKHR::new()
+			.set_queue_family_index(
 				physical
 					.video
 					.decode_queue_family
 					.ok_or_else(|| Error::missing_capability("no Vulkan Video decode queue is enabled"))?,
 			)
-			.video_profile(vk_profile)
-			.picture_format(output_format.format)
-			.max_coded_extent(vk::Extent2D {
+			.set_video_profile(vk_profile)
+			.set_picture_format(output_format.format)
+			.set_max_coded_extent(vk::Extent2D {
 				width: coded_extent.width,
 				height: coded_extent.height,
 			})
-			.reference_picture_format(dpb_format.format)
-			.max_dpb_slots(max_dpb_slots)
-			.max_active_reference_pictures(max_active_references)
-			.std_header_version(&details.std_header_version);
+			.set_reference_picture_format(dpb_format.format)
+			.set_max_dpb_slots(max_dpb_slots)
+			.set_max_active_reference_pictures(max_active_references)
+			.set_std_header_version(&details.std_header_version);
 		let mut handle = vk::VideoSessionKHR::default();
 		// SAFETY: the exact profile, supported formats, queried header version,
 		// decode queue family, and bounded extent/counts remain live for this call.
@@ -466,14 +468,14 @@ pub(super) fn create_decode_session(
 			pending_decode_acquire_slot: None,
 		};
 		if physical.video.decode_result_status_queries {
-			let mut query_profile = vk::VideoProfileInfoKHR::default()
-				.video_codec_operation(vk_profile.video_codec_operation)
-				.chroma_subsampling(vk_profile.chroma_subsampling)
-				.luma_bit_depth(vk_profile.luma_bit_depth)
-				.chroma_bit_depth(vk_profile.chroma_bit_depth);
-			let query_info = vk::QueryPoolCreateInfo::default()
-				.query_type(vk::QueryType::RESULT_STATUS_ONLY_KHR)
-				.query_count(1)
+			let mut query_profile = vk::VideoProfileInfoKHR::new()
+				.set_video_codec_operation(vk_profile.video_codec_operation)
+				.set_chroma_subsampling(vk_profile.chroma_subsampling)
+				.set_luma_bit_depth(vk_profile.luma_bit_depth)
+				.set_chroma_bit_depth(vk_profile.chroma_bit_depth);
+			let query_info = vk::QueryPoolCreateInfo::new()
+				.set_query_type(vk::QueryType::RESULT_STATUS_ONLY_KHR)
+				.set_query_count(1)
 				.push_next(&mut query_profile)
 				.map_err(Error::from)?;
 			// SAFETY: the selected decode queue family reports result-status support,
@@ -561,11 +563,11 @@ pub(super) fn create_decode_session(
 				));
 			}
 			bindings.push(
-				vk::BindVideoSessionMemoryInfoKHR::default()
-					.memory_bind_index(requirement.memory_bind_index)
-					.memory(info.device_memory)
-					.memory_offset(info.offset)
-					.memory_size(requirement.memory_requirements.size),
+				vk::BindVideoSessionMemoryInfoKHR::new()
+					.set_memory_bind_index(requirement.memory_bind_index)
+					.set_memory(info.device_memory)
+					.set_memory_offset(info.offset)
+					.set_memory_size(requirement.memory_requirements.size),
 			);
 			session.allocations.push(allocation);
 		}
@@ -675,27 +677,27 @@ fn create_decode_image(
 	usage: vk::ImageUsageFlags,
 ) -> Result<DecodeImage> {
 	let profiles = std::slice::from_ref(profile);
-	let mut profile_list = vk::VideoProfileListInfoKHR::default()
-		.profiles(profiles)
+	let mut profile_list = vk::VideoProfileListInfoKHR::new()
+		.set_profiles(profiles)
 		.map_err(Error::from)?;
-	let image_info = vk::ImageCreateInfo::default()
-		.flags(
+	let image_info = vk::ImageCreateInfo::new()
+		.set_flags(
 			properties.image_create_flags & !vk::ImageCreateFlagBits::VIDEO_PROFILE_INDEPENDENT_BIT_KHR,
 		)
-		.image_type(properties.image_type)
-		.format(properties.format)
-		.extent(vk::Extent3D {
+		.set_image_type(properties.image_type)
+		.set_format(properties.format)
+		.set_extent(vk::Extent3D {
 			width: extent.width,
 			height: extent.height,
 			depth: 1,
 		})
-		.mip_levels(1)
-		.array_layers(array_layers)
-		.samples(vk::SampleCountFlagBits::_1_BIT)
-		.tiling(properties.image_tiling)
-		.usage(usage)
-		.sharing_mode(vk::SharingMode::EXCLUSIVE)
-		.initial_layout(vk::ImageLayout::UNDEFINED)
+		.set_mip_levels(1)
+		.set_array_layers(array_layers)
+		.set_samples(vk::SampleCountFlagBits::_1_BIT)
+		.set_tiling(properties.image_tiling)
+		.set_usage(usage)
+		.set_sharing_mode(vk::SharingMode::EXCLUSIVE)
+		.set_initial_layout(vk::ImageLayout::UNDEFINED)
 		.push_next(&mut profile_list)
 		.map_err(Error::from)?;
 	let allocation_info = vk::mem::AllocationCreateInfo {
@@ -713,16 +715,16 @@ fn create_decode_image(
 			.map_err(Error::from)?
 	}
 	.map_err(|source| Error::backend_failure("Vulkan", "decode-image allocation", source))?;
-	let view_info = vk::ImageViewCreateInfo::default()
-		.image(handle)
-		.view_type(if array_layers == 1 {
+	let view_info = vk::ImageViewCreateInfo::new()
+		.set_image(handle)
+		.set_view_type(if array_layers == 1 {
 			vk::ImageViewType::_2D
 		} else {
 			vk::ImageViewType::_2D_ARRAY
 		})
-		.format(properties.format)
-		.components(properties.component_mapping)
-		.subresource_range(vk::ImageSubresourceRange {
+		.set_format(properties.format)
+		.set_components(properties.component_mapping)
+		.set_subresource_range(vk::ImageSubresourceRange {
 			aspect_mask: vk::ImageAspectFlagBits::COLOR_BIT,
 			base_mip_level: 0,
 			level_count: 1,
@@ -781,13 +783,13 @@ fn create_decode_bitstream(
 	let range = u64::try_from(range_len)
 		.map_err(|_| Error::invalid_argument("aligned video packet length exceeds DeviceSize"))?;
 	let profiles = std::slice::from_ref(profile);
-	let mut profile_list = vk::VideoProfileListInfoKHR::default()
-		.profiles(profiles)
+	let mut profile_list = vk::VideoProfileListInfoKHR::new()
+		.set_profiles(profiles)
 		.map_err(Error::from)?;
-	let buffer_info = vk::BufferCreateInfo::default()
-		.size(range)
-		.usage(vk::BufferUsageFlagBits::VIDEO_DECODE_SRC_BIT_KHR)
-		.sharing_mode(vk::SharingMode::EXCLUSIVE)
+	let buffer_info = vk::BufferCreateInfo::new()
+		.set_size(range)
+		.set_usage(vk::BufferUsageFlagBits::VIDEO_DECODE_SRC_BIT_KHR)
+		.set_sharing_mode(vk::SharingMode::EXCLUSIVE)
 		.push_next(&mut profile_list)
 		.map_err(Error::from)?;
 	let allocation_info = vk::mem::AllocationCreateInfo {
@@ -891,12 +893,12 @@ fn yuv420_8bit_copy_layout(
 	let region =
 		|offset, aspect_mask, plane_width: u64, plane_height: u64| -> Result<vk::BufferImageCopy> {
 			Ok(
-				vk::BufferImageCopy::default()
-					.buffer_offset(offset)
-					.buffer_row_length(0)
-					.buffer_image_height(0)
-					.image_subresource(layer(aspect_mask))
-					.image_extent(vk::Extent3D {
+				vk::BufferImageCopy::new()
+					.set_buffer_offset(offset)
+					.set_buffer_row_length(0)
+					.set_buffer_image_height(0)
+					.set_image_subresource(layer(aspect_mask))
+					.set_image_extent(vk::Extent3D {
 						width: u32::try_from(plane_width)
 							.map_err(|_| Error::out_of_range("video plane width exceeds u32"))?,
 						height: u32::try_from(plane_height)
@@ -1656,17 +1658,17 @@ impl DecodeSession {
 		)?;
 		let std_sp_ss = [std_sps];
 		let std_pp_ss = [std_pps];
-		let add = vk::VideoDecodeH264SessionParametersAddInfoKHR::default()
-			.std_sp_ss(&std_sp_ss)
+		let add = vk::VideoDecodeH264SessionParametersAddInfoKHR::new()
+			.set_std_sp_ss(&std_sp_ss)
 			.map_err(Error::from)?
-			.std_pp_ss(&std_pp_ss)
+			.set_std_pp_ss(&std_pp_ss)
 			.map_err(Error::from)?;
-		let mut codec = vk::VideoDecodeH264SessionParametersCreateInfoKHR::default()
-			.max_std_sps_count(32)
-			.max_std_pps_count(256)
-			.parameters_add_info(&add);
-		let create_info = vk::VideoSessionParametersCreateInfoKHR::default()
-			.video_session(self.handle)
+		let mut codec = vk::VideoDecodeH264SessionParametersCreateInfoKHR::new()
+			.set_max_std_sps_count(32)
+			.set_max_std_pps_count(256)
+			.set_parameters_add_info(&add);
+		let create_info = vk::VideoSessionParametersCreateInfoKHR::new()
+			.set_video_session(self.handle)
 			.push_next(&mut codec);
 		let mut parameters = vk::VideoSessionParametersKHR::default();
 		// SAFETY: the standard-video records and codec add chain remain live for
@@ -1784,20 +1786,20 @@ impl DecodeSession {
 		let std_vp_ss = [std_vps];
 		let std_sp_ss = [std_sps];
 		let std_pp_ss = [std_pps];
-		let add = vk::VideoDecodeH265SessionParametersAddInfoKHR::default()
-			.std_vp_ss(&std_vp_ss)
+		let add = vk::VideoDecodeH265SessionParametersAddInfoKHR::new()
+			.set_std_vp_ss(&std_vp_ss)
 			.map_err(Error::from)?
-			.std_sp_ss(&std_sp_ss)
+			.set_std_sp_ss(&std_sp_ss)
 			.map_err(Error::from)?
-			.std_pp_ss(&std_pp_ss)
+			.set_std_pp_ss(&std_pp_ss)
 			.map_err(Error::from)?;
-		let mut codec = vk::VideoDecodeH265SessionParametersCreateInfoKHR::default()
-			.max_std_vps_count(16)
-			.max_std_sps_count(16)
-			.max_std_pps_count(64)
-			.parameters_add_info(&add);
-		let create_info = vk::VideoSessionParametersCreateInfoKHR::default()
-			.video_session(self.handle)
+		let mut codec = vk::VideoDecodeH265SessionParametersCreateInfoKHR::new()
+			.set_max_std_vps_count(16)
+			.set_max_std_sps_count(16)
+			.set_max_std_pps_count(64)
+			.set_parameters_add_info(&add);
+		let create_info = vk::VideoSessionParametersCreateInfoKHR::new()
+			.set_video_session(self.handle)
 			.push_next(&mut codec);
 		let mut parameters = vk::VideoSessionParametersKHR::default();
 		// SAFETY: every referenced StdVideo record and backing array remains live
@@ -1873,10 +1875,10 @@ impl DecodeSession {
 				.as_ref()
 				.map_or(std::ptr::null(), |value| value as *const _),
 		)?;
-		let mut codec = vk::VideoDecodeAV1SessionParametersCreateInfoKHR::default()
-			.std_sequence_header(&std_sequence);
-		let create_info = vk::VideoSessionParametersCreateInfoKHR::default()
-			.video_session(self.handle)
+		let mut codec = vk::VideoDecodeAV1SessionParametersCreateInfoKHR::new()
+			.set_std_sequence_header(&std_sequence);
+		let create_info = vk::VideoSessionParametersCreateInfoKHR::new()
+			.set_video_session(self.handle)
 			.push_next(&mut codec);
 		let mut parameters = vk::VideoSessionParametersKHR::default();
 		// SAFETY: all standard-video records and optional timing/color backing
@@ -2176,38 +2178,38 @@ fn record_decode_readback_release(
 ) -> Result<()> {
 	let (decode_family, compute_family) = queue_families;
 	let same_family = decode_family == compute_family;
-	let release = vk::ImageMemoryBarrier2::default()
-		.src_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
-		.src_access_mask(
+	let release = vk::ImageMemoryBarrier2::new()
+		.set_src_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
+		.set_src_access_mask(
 			vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
 				| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 		)
-		.dst_stage_mask(if same_family {
+		.set_dst_stage_mask(if same_family {
 			vk::PipelineStageFlagBits2::TRANSFER_BIT
 		} else {
 			vk::PipelineStageFlagBits2::NONE
 		})
-		.dst_access_mask(if same_family {
+		.set_dst_access_mask(if same_family {
 			vk::AccessFlagBits2::TRANSFER_READ_BIT
 		} else {
 			vk::AccessFlagBits2::NONE
 		})
-		.old_layout(decoded_layout)
-		.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-		.src_queue_family_index(if same_family {
+		.set_old_layout(decoded_layout)
+		.set_new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+		.set_src_queue_family_index(if same_family {
 			vk::QUEUE_FAMILY_IGNORED
 		} else {
 			decode_family
 		})
-		.dst_queue_family_index(if same_family {
+		.set_dst_queue_family_index(if same_family {
 			vk::QUEUE_FAMILY_IGNORED
 		} else {
 			compute_family
 		})
-		.image(output.handle)
-		.subresource_range(decode_image_subresource(output_layer, 1));
+		.set_image(output.handle)
+		.set_subresource_range(decode_image_subresource(output_layer, 1));
 	let dependency =
-		vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
+		vk::DependencyInfo::new().set_image_memory_barriers(std::slice::from_ref(&release));
 	// SAFETY: the frame's producer event is complete before submission. This
 	// publishes its decode writes and transfers the exact retained layer to the
 	// compute family when the queue families differ.
@@ -2232,19 +2234,19 @@ fn record_decode_readback(
 ) -> Result<()> {
 	let (decode_family, compute_family) = queue_families;
 	if decode_family != compute_family {
-		let acquire = vk::ImageMemoryBarrier2::default()
-			.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
-			.src_access_mask(vk::AccessFlagBits2::NONE)
-			.dst_stage_mask(vk::PipelineStageFlagBits2::TRANSFER_BIT)
-			.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
-			.old_layout(decoded_layout)
-			.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-			.src_queue_family_index(decode_family)
-			.dst_queue_family_index(compute_family)
-			.image(output.handle)
-			.subresource_range(decode_image_subresource(output_layer, 1));
+		let acquire = vk::ImageMemoryBarrier2::new()
+			.set_src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+			.set_src_access_mask(vk::AccessFlagBits2::NONE)
+			.set_dst_stage_mask(vk::PipelineStageFlagBits2::TRANSFER_BIT)
+			.set_dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+			.set_old_layout(decoded_layout)
+			.set_new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+			.set_src_queue_family_index(decode_family)
+			.set_dst_queue_family_index(compute_family)
+			.set_image(output.handle)
+			.set_subresource_range(decode_image_subresource(output_layer, 1));
 		let dependency =
-			vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&acquire));
+			vk::DependencyInfo::new().set_image_memory_barriers(std::slice::from_ref(&acquire));
 		// SAFETY: this matches the release recorded on the decode queue. The engine
 		// timeline wait orders this acquire after that queue's signal operation.
 		unsafe {
@@ -2264,18 +2266,18 @@ fn record_decode_readback(
 			regions,
 		)?;
 	}
-	let host = vk::BufferMemoryBarrier2::default()
-		.src_stage_mask(vk::PipelineStageFlagBits2::TRANSFER_BIT)
-		.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-		.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
-		.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT)
-		.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-		.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-		.buffer(readback.raw())
-		.offset(0)
-		.size(readback.size());
+	let host = vk::BufferMemoryBarrier2::new()
+		.set_src_stage_mask(vk::PipelineStageFlagBits2::TRANSFER_BIT)
+		.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+		.set_dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+		.set_dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT)
+		.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+		.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+		.set_buffer(readback.raw())
+		.set_offset(0)
+		.set_size(readback.size());
 	let dependency =
-		vk::DependencyInfo::default().buffer_memory_barriers(std::slice::from_ref(&host));
+		vk::DependencyInfo::new().set_buffer_memory_barriers(std::slice::from_ref(&host));
 	// SAFETY: the barrier publishes every transfer-written byte to the host domain.
 	unsafe {
 		device
@@ -2308,36 +2310,36 @@ fn record_decode_readback_round_trip(
 	)?;
 	let (decode_family, compute_family) = queue_families;
 	let same_family = decode_family == compute_family;
-	let release = vk::ImageMemoryBarrier2::default()
-		.src_stage_mask(vk::PipelineStageFlagBits2::TRANSFER_BIT)
-		.src_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
-		.dst_stage_mask(if same_family {
+	let release = vk::ImageMemoryBarrier2::new()
+		.set_src_stage_mask(vk::PipelineStageFlagBits2::TRANSFER_BIT)
+		.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+		.set_dst_stage_mask(if same_family {
 			vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR
 		} else {
 			vk::PipelineStageFlagBits2::NONE
 		})
-		.dst_access_mask(if same_family {
+		.set_dst_access_mask(if same_family {
 			vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
 				| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR
 		} else {
 			vk::AccessFlagBits2::NONE
 		})
-		.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-		.new_layout(decoded_layout)
-		.src_queue_family_index(if same_family {
+		.set_old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+		.set_new_layout(decoded_layout)
+		.set_src_queue_family_index(if same_family {
 			vk::QUEUE_FAMILY_IGNORED
 		} else {
 			compute_family
 		})
-		.dst_queue_family_index(if same_family {
+		.set_dst_queue_family_index(if same_family {
 			vk::QUEUE_FAMILY_IGNORED
 		} else {
 			decode_family
 		})
-		.image(output.handle)
-		.subresource_range(decode_image_subresource(output_layer, 1));
+		.set_image(output.handle)
+		.set_subresource_range(decode_image_subresource(output_layer, 1));
 	let dependency =
-		vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
+		vk::DependencyInfo::new().set_image_memory_barriers(std::slice::from_ref(&release));
 	// SAFETY: the transfer read is complete in this command buffer. A different
 	// decode family performs the matching acquire after the engine timeline wait.
 	unsafe {
@@ -2360,22 +2362,22 @@ fn record_decode_readback_acquire(
 	if decode_family == compute_family {
 		return Ok(());
 	}
-	let acquire = vk::ImageMemoryBarrier2::default()
-		.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
-		.src_access_mask(vk::AccessFlagBits2::NONE)
-		.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
-		.dst_access_mask(
+	let acquire = vk::ImageMemoryBarrier2::new()
+		.set_src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+		.set_src_access_mask(vk::AccessFlagBits2::NONE)
+		.set_dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
+		.set_dst_access_mask(
 			vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
 				| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 		)
-		.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-		.new_layout(decoded_layout)
-		.src_queue_family_index(compute_family)
-		.dst_queue_family_index(decode_family)
-		.image(output.handle)
-		.subresource_range(decode_image_subresource(output_layer, 1));
+		.set_old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+		.set_new_layout(decoded_layout)
+		.set_src_queue_family_index(compute_family)
+		.set_dst_queue_family_index(decode_family)
+		.set_image(output.handle)
+		.set_subresource_range(decode_image_subresource(output_layer, 1));
 	let dependency =
-		vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&acquire));
+		vk::DependencyInfo::new().set_image_memory_barriers(std::slice::from_ref(&acquire));
 	// SAFETY: this matches the compute-family release recorded after the copy.
 	// The Engine timeline orders this acquire after that submission.
 	unsafe {
@@ -2401,17 +2403,17 @@ fn decode_image_barrier(
 	new_layout: vk::ImageLayout,
 	destination_access: vk::AccessFlags2,
 ) -> vk::ImageMemoryBarrier2<'static> {
-	vk::ImageMemoryBarrier2::default()
-		.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
-		.src_access_mask(vk::AccessFlagBits2::NONE)
-		.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
-		.dst_access_mask(destination_access)
-		.old_layout(vk::ImageLayout::UNDEFINED)
-		.new_layout(new_layout)
-		.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-		.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-		.image(image.handle)
-		.subresource_range(decode_image_subresource(0, image.array_layers))
+	vk::ImageMemoryBarrier2::new()
+		.set_src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+		.set_src_access_mask(vk::AccessFlagBits2::NONE)
+		.set_dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
+		.set_dst_access_mask(destination_access)
+		.set_old_layout(vk::ImageLayout::UNDEFINED)
+		.set_new_layout(new_layout)
+		.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+		.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+		.set_image(image.handle)
+		.set_subresource_range(decode_image_subresource(0, image.array_layers))
 }
 
 impl Drop for DecodeSession {

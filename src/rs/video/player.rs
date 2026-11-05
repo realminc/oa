@@ -5,21 +5,7 @@ use std::{collections::VecDeque, path::Path, time::Duration};
 use crate::{Engine, Error, Result};
 
 use super::{VideoContainerInfo, VideoContainerKind, VideoDecoder, VideoDemuxer, VideoFrame};
-
-/// Playback policy for one local video source.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct VideoPlayerConfig {
-	/// Restart at the beginning after the final display-order frame.
-	pub loop_playback: bool,
-	/// Override the container average frame rate when pacing [`VideoPlayer::tick`].
-	pub frame_rate_override: Option<f64>,
-	/// Begin in the playing state. Manual [`VideoPlayer::advance`] calls ignore this.
-	pub start_playing: bool,
-	/// Maximum display-order frames retained for exact backward/forward stepping.
-	pub presentation_cache_frames: usize,
-	/// Maximum retained planar bytes across the presentation cache.
-	pub presentation_cache_bytes: usize,
-}
+pub use crate::video::types::VideoPlayerConfig;
 
 impl Default for VideoPlayerConfig {
 	fn default() -> Self {

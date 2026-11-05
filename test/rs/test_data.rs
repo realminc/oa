@@ -102,6 +102,29 @@ test_vk!(ds_subset_wraps_parent_correctly, engine, {
 	Ok(())
 });
 
+test_vk!(ds_shuffled_subset_is_deterministic_permutation, engine, {
+	use oa::Dataset;
+	let parent = VecDataset {
+		data: (0..16).map(|i| vec![i as f32]).collect(),
+		engine: &engine,
+	};
+	let view = parent.shuffled_subset(7)?;
+	assert_eq!(view.len(), 16);
+	let mut seen: Vec<i64> = (0..16)
+		.map(|index| {
+			view
+				.get_item(index)
+				.and_then(|item| item.read_f32())
+				.map(|row| row[0] as i64)
+		})
+		.collect::<oa::Result<_>>()?;
+	seen.sort_unstable();
+	assert_eq!(seen, (0..16_i64).collect::<Vec<_>>());
+	let again = parent.shuffled_subset(7)?;
+	assert_eq!(view.indices(), again.indices());
+	Ok(())
+});
+
 // ---- DataLoader -------------------------------------------------------------
 
 test_vk!(data_loader_exhausts_epoch_and_resets, engine, {
@@ -130,6 +153,42 @@ test_vk!(data_loader_exhausts_epoch_and_resets, engine, {
 	assert!(batch.unwrap().is_valid());
 	Ok(())
 });
+
+test_vk!(
+	data_loader_reset_epoch_varies_order_deterministically,
+	engine,
+	{
+		let parent = VecDataset {
+			data: (0..16).map(|i| vec![i as f32]).collect(),
+			engine: &engine,
+		};
+		let config = oa::DataLoaderConfig {
+			batch_size: 4,
+			shuffle: true,
+			seed: 11,
+			drop_last: false,
+		};
+		let mut loader = oa::DataLoader::new(&parent, config)?;
+		let drain = |loader: &mut oa::DataLoader| -> oa::Result<Vec<i64>> {
+			let mut order = Vec::new();
+			while let Some(batch) = loader.next_batch()? {
+				order.extend(batch.x.read_f32()?.iter().map(|&value| value as i64));
+			}
+			Ok(order)
+		};
+		loader.reset_epoch(0)?;
+		let epoch0 = drain(&mut loader)?;
+		loader.reset_epoch(0)?;
+		assert_eq!(drain(&mut loader)?, epoch0);
+		loader.reset_epoch(1)?;
+		let epoch1 = drain(&mut loader)?;
+		assert_ne!(epoch1, epoch0);
+		let mut sorted = epoch1;
+		sorted.sort_unstable();
+		assert_eq!(sorted, (0..16_i64).collect::<Vec<_>>());
+		Ok(())
+	}
+);
 
 test_vk!(data_loader_drop_last_drops_incomplete_batch, engine, {
 	let parent = VecDataset {
@@ -354,13 +413,13 @@ test_vk!(
 			.is_err()
 		);
 		assert!(oa::data::collate(&[oa::Sample::new(x.clone()), oa::Sample::new(y)]).is_err());
+		// Integer dtypes are admitted; the rank ceiling is the remaining limit.
 		let integers = oa::Matrix::new_from_slice(&engine, [2], &[1_i32, 2])?;
 		assert_eq!(
-			oa::data::collate(&[oa::Sample::new(integers)])
-				.err()
-				.expect("unsupported dtype")
-				.kind(),
-			oa::ErrorKind::InvalidArgument
+			oa::data::collate(&[oa::Sample::new(integers)])?
+				.x
+				.read::<i32>()?,
+			vec![1, 2]
 		);
 		let batch = oa::data::collate(&[oa::Sample::new(x.clone()), oa::Sample::new(x)])?;
 		assert_eq!(batch.x.read_f32()?, [1.0, 2.0, 1.0, 2.0]);

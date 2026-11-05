@@ -36,6 +36,7 @@ pub(in crate::ml) fn training_accumulate(
 			buffers: &buffers,
 			push_constants: &push,
 			workgroups: KernelId::MlTrainingAccumulateF32.linear_workgroups(count),
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: crate::core::operation::ml::TRAINING_ACCUMULATE,
@@ -88,6 +89,7 @@ pub(in crate::ml) fn sample_categorical_cursor(logits: &Matrix, cursor: &Matrix)
 			buffers: &buffers,
 			push_constants: &push,
 			workgroups: KernelId::MlSampleCategoricalCursorF32.linear_workgroups(rows),
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: crate::core::operation::ml::SAMPLE_CATEGORICAL_CURSOR,

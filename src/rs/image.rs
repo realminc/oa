@@ -24,7 +24,7 @@ pub use codec::{
 	ImageCodec, can_decode, can_encode, decode_file, decode_memory, encode, save_file, save_rgba_file,
 };
 pub use color::{
-	NormalizationParams, convert_color, normalize, resize_normalize, segmentation_overlay,
+	NormalizationConfig, convert_color, normalize, resize_normalize, segmentation_overlay,
 };
 
 pub use filter::{

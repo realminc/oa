@@ -40,6 +40,20 @@ pub enum ErrorKind {
 	Internal,
 	/// A host filesystem or stream operation failed.
 	Io,
+	/// The operation was cancelled before producing a result.
+	Cancelled,
+	/// The caller or peer lacks permission for the requested action.
+	PermissionDenied,
+	/// The requested operation is not implemented by this endpoint.
+	Unimplemented,
+	/// The endpoint or transport is currently unavailable.
+	Unavailable,
+	/// Peer authentication failed.
+	Unauthenticated,
+	/// A serialized or exchanged shape contract does not match its consumer.
+	ShapeMismatch,
+	/// A serialized or exchanged dtype contract does not match its consumer.
+	DtypeMismatch,
 }
 
 /// Error returned by fallible OA operations.
@@ -244,6 +258,78 @@ impl Error {
 			kind: ErrorKind::Io,
 			message: format!("{operation} failed"),
 			source: Some(Box::new(source)),
+		})
+	}
+
+	pub(crate) fn aborted(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::Aborted,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn cancelled(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::Cancelled,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn permission_denied(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::PermissionDenied,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn unimplemented(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::Unimplemented,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn unavailable(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::Unavailable,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn unauthenticated(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::Unauthenticated,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn shape_mismatch(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::ShapeMismatch,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn dtype_mismatch(message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind: ErrorKind::DtypeMismatch,
+			message: message.into(),
+			source: None,
+		})
+	}
+
+	pub(crate) fn with_kind(kind: ErrorKind, message: impl Into<String>) -> Self {
+		Self::new(ErrorData {
+			kind,
+			message: message.into(),
+			source: None,
 		})
 	}
 }

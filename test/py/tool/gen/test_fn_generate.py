@@ -11,23 +11,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 GENERATOR_PATH = ROOT / "tool/gen/fn/generate.py"
-SPEC = importlib.util.spec_from_file_location("oars_fn_generate", GENERATOR_PATH)
-if SPEC is None or SPEC.loader is None:
-	raise RuntimeError("could not load operation generator")
-generate = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(generate)
+import sys
+sys.path.insert(0, str(ROOT / "tool/gen/fn"))
+import oafn.ml as oa_ml
+import oafn.schema as oa_schema
+import oafn.util as oa_util
+
 
 
 class MlSchemaTests(unittest.TestCase):
 	def setUp(self) -> None:
 		self.path = ROOT / "tool/gen/fn/schema/ml/ml_training.json"
-		self.schema, self.digest = generate.load_ml_schema(self.path)
+		self.schema, self.digest = oa_schema.load_schema("ml", self.path)
 
 	def validate_copy(self, schema: dict) -> None:
 		with tempfile.TemporaryDirectory() as directory:
 			path = Path(directory) / "ml_training.json"
 			path.write_text(json.dumps(schema))
-			generate.load_ml_schema(path)
+			oa_schema.load_schema("ml", path)
 
 	def test_checked_in_ml_schema_is_complete(self) -> None:
 		self.assertEqual(len(self.digest), 64)
@@ -235,6 +236,14 @@ class MlSchemaTests(unittest.TestCase):
 				"trading_step_cursor",
 				"sample_categorical_cursor",
 				"trading_cursor_advance",
+				"compute_scale_q4",
+				"quantize_q4",
+				"dequantize_q4",
+				"compute_scale_q8",
+				"quantize_q8",
+				"dequantize_q8",
+				"mat_mul_nt_q4",
+				"mat_mul_nt_q8",
 			],
 		)
 		covered = {
@@ -316,7 +325,7 @@ class MlSchemaTests(unittest.TestCase):
 	def test_ml_schema_rejects_duplicate_stable_identity(self) -> None:
 		schema = copy.deepcopy(self.schema)
 		schema["operations"][1]["stable_id"] = schema["operations"][0]["stable_id"]
-		with self.assertRaisesRegex(generate.SchemaError, "duplicate"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "duplicate"):
 			self.validate_copy(schema)
 
 	def test_avg_pool_2d_preserves_the_donor_contract(self) -> None:
@@ -542,7 +551,7 @@ class MlSchemaTests(unittest.TestCase):
 	def test_ml_schema_rejects_reuse_of_retired_stable_identity(self) -> None:
 		schema = copy.deepcopy(self.schema)
 		schema["operations"][0]["stable_id"] = 115
-		with self.assertRaisesRegex(generate.SchemaError, "duplicate"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "duplicate"):
 			self.validate_copy(schema)
 
 	def test_gru_scan_preserves_the_donor_dispatch_collapse(self) -> None:
@@ -728,26 +737,26 @@ class MlSchemaTests(unittest.TestCase):
 			if operation["name"] == "scaled_dot_product_attention"
 		)
 		operation["contract"]["optional_inputs"] = [4]
-		with self.assertRaisesRegex(generate.SchemaError, "optional_inputs"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "optional_inputs"):
 			self.validate_copy(schema)
 
 	def test_ml_schema_rejects_unknown_backward_relation(self) -> None:
 		schema = copy.deepcopy(self.schema)
 		schema["operations"][0]["differentiation"] = "missing_backward"
-		with self.assertRaisesRegex(generate.SchemaError, "differentiation"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "differentiation"):
 			self.validate_copy(schema)
 
 	def test_ml_lowering_alias_must_name_a_semantic_operation(self) -> None:
 		schema = copy.deepcopy(self.schema)
 		operation = next(operation for operation in schema["operations"] if operation["name"] == "muon_vector")
 		operation["semantic_operation"] = "missing_operation"
-		with self.assertRaisesRegex(generate.SchemaError, "semantic_operation"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "semantic_operation"):
 			self.validate_copy(schema)
 
 	def test_ml_semantic_operation_cannot_alias_another_contract(self) -> None:
 		schema = copy.deepcopy(self.schema)
 		schema["operations"][0]["semantic_operation"] = "adam"
-		with self.assertRaisesRegex(generate.SchemaError, "only valid for a lowering-only"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "only valid for a lowering-only"):
 			self.validate_copy(schema)
 
 	def test_loss_shader_rejects_a_generic_direction_basename(self) -> None:
@@ -758,7 +767,7 @@ class MlSchemaTests(unittest.TestCase):
 			if operation["name"] == "smooth_l1"
 		)
 		operation["source"] = "src/slang/ml/loss/smooth_l1/forward.slang"
-		with self.assertRaisesRegex(generate.SchemaError, "retain the loss name"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "retain the loss name"):
 			self.validate_copy(schema)
 
 	def test_optimizer_shader_rejects_a_flat_source_path(self) -> None:
@@ -767,7 +776,7 @@ class MlSchemaTests(unittest.TestCase):
 			operation for operation in schema["operations"] if operation["name"] == "adamw"
 		)
 		operation["source"] = "src/slang/ml/optim/adamw.slang"
-		with self.assertRaisesRegex(generate.SchemaError, "optimizer-family directory"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "optimizer-family directory"):
 			self.validate_copy(schema)
 
 	def test_gradient_clip_shader_rejects_a_flat_source_path(self) -> None:
@@ -778,7 +787,7 @@ class MlSchemaTests(unittest.TestCase):
 			if operation["name"] == "clip_grad_norm"
 		)
 		operation["source"] = "src/slang/ml/optim/clip_grad_norm_reduce.slang"
-		with self.assertRaisesRegex(generate.SchemaError, "optimizer-family directory"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "optimizer-family directory"):
 			self.validate_copy(schema)
 
 	def test_variadic_alias_contract_requires_matching_tails(self) -> None:
@@ -789,13 +798,13 @@ class MlSchemaTests(unittest.TestCase):
 			if operation["name"] == "clip_grad_norm"
 		)
 		operation["contract"]["variadic_output"]["minimum"] = 2
-		with self.assertRaisesRegex(generate.SchemaError, "identical input/output tails"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "identical input/output tails"):
 			self.validate_copy(schema)
 
 	def test_differentiable_forward_requires_autograd_policy(self) -> None:
 		schema = copy.deepcopy(self.schema)
 		del schema["operations"][0]["autograd"]
-		with self.assertRaisesRegex(generate.SchemaError, "must own attachment policy"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "must own attachment policy"):
 			self.validate_copy(schema)
 
 	def test_backward_operation_rejects_autograd_policy(self) -> None:
@@ -804,7 +813,7 @@ class MlSchemaTests(unittest.TestCase):
 			"mode": "manual",
 			"family": "matrix/linear",
 		}
-		with self.assertRaisesRegex(generate.SchemaError, "valid only"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "valid only"):
 			self.validate_copy(schema)
 
 	def test_autograd_family_must_match_semantic_owner(self) -> None:
@@ -813,7 +822,7 @@ class MlSchemaTests(unittest.TestCase):
 			operation for operation in schema["operations"] if operation["name"] == "linear"
 		)
 		linear["autograd"]["family"] = "loss/linear"
-		with self.assertRaisesRegex(generate.SchemaError, "match its semantic owner"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "match its semantic owner"):
 			self.validate_copy(schema)
 
 	def test_generated_autograd_policy_requires_saved_state(self) -> None:
@@ -822,7 +831,7 @@ class MlSchemaTests(unittest.TestCase):
 			operation for operation in schema["operations"] if operation["name"] == "gelu"
 		)
 		del gelu["autograd"]["saved_matrices"]
-		with self.assertRaisesRegex(generate.SchemaError, "fields are incomplete"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "fields are incomplete"):
 			self.validate_copy(schema)
 
 	def test_generated_autograd_policy_requires_original_inputs(self) -> None:
@@ -831,7 +840,7 @@ class MlSchemaTests(unittest.TestCase):
 			operation for operation in schema["operations"] if operation["name"] == "relu"
 		)
 		del relu["autograd"]["inputs"]
-		with self.assertRaisesRegex(generate.SchemaError, "fields are incomplete"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "fields are incomplete"):
 			self.validate_copy(schema)
 
 	def test_generated_autograd_policy_rejects_scalar_matrix_collision(self) -> None:
@@ -842,7 +851,7 @@ class MlSchemaTests(unittest.TestCase):
 			if operation["name"] == "leaky_relu"
 		)
 		leaky_relu["autograd"]["saved_scalars"] = [["input", "f32"]]
-		with self.assertRaisesRegex(generate.SchemaError, "collides with a saved matrix"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "collides with a saved matrix"):
 			self.validate_copy(schema)
 
 	def test_generated_autograd_policy_rejects_unsupported_scalar_type(self) -> None:
@@ -851,7 +860,7 @@ class MlSchemaTests(unittest.TestCase):
 			operation for operation in schema["operations"] if operation["name"] == "elu"
 		)
 		elu["autograd"]["saved_scalars"] = [["alpha", "f64"]]
-		with self.assertRaisesRegex(generate.SchemaError, "supported Rust scalar type"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "supported Rust scalar type"):
 			self.validate_copy(schema)
 
 	def test_generated_autograd_policy_accepts_usize_state(self) -> None:
@@ -861,7 +870,7 @@ class MlSchemaTests(unittest.TestCase):
 		self.validate_copy(schema)
 
 	def test_position_attachment_preserves_unsigned_offset_and_geometry(self) -> None:
-		output = generate.generate_ml_autograd_attachments(self.schema, self.digest, "matrix/rope")
+		output = oa_ml.generate_ml_autograd_attachments(self.schema, self.digest, "matrix/rope")
 		self.assertIn("position_offset: u32", output)
 		self.assertIn("num_heads: usize", output)
 		self.assertIn("head_dim: usize", output)
@@ -869,14 +878,14 @@ class MlSchemaTests(unittest.TestCase):
 		self.assertIn("GradNodeOperation::Rope", output)
 
 	def test_upsample_attachment_preserves_typed_mode(self) -> None:
-		output = generate.generate_ml_autograd_attachments(self.schema, self.digest, "matrix/upsample")
+		output = oa_ml.generate_ml_autograd_attachments(self.schema, self.digest, "matrix/upsample")
 		self.assertIn("use crate::ml::matrix::UpsampleMode;", output)
 		self.assertIn("mode: UpsampleMode", output)
 		self.assertIn("scale_factor: usize", output)
 		self.assertIn("GradNodeOperation::Upsample2d", output)
 
 	def test_pool_attachment_moves_saved_indices_and_retains_geometry(self) -> None:
-		output = generate.generate_ml_autograd_attachments(self.schema, self.digest, "matrix/pool")
+		output = oa_ml.generate_ml_autograd_attachments(self.schema, self.digest, "matrix/pool")
 		self.assertIn("indices: Matrix", output)
 		self.assertNotIn("indices: &Matrix", output)
 		self.assertNotIn("indices.clone()", output)
@@ -892,14 +901,14 @@ class MlSchemaTests(unittest.TestCase):
 				schema = copy.deepcopy(self.schema)
 				operation = next(op for op in schema["operations"] if op["name"] == "max_pool_2d")
 				operation["autograd"]["owned_matrices"] = owned
-				with self.assertRaisesRegex(generate.SchemaError, "unique saved-only"):
+				with self.assertRaisesRegex(oa_util.SchemaError, "unique saved-only"):
 					self.validate_copy(schema)
 
 	def test_generated_record_fields_match_the_forward_saved_state(self) -> None:
-		operations = generate.ml_autograd_operations(self.schema)
+		operations = oa_ml.ml_autograd_operations(self.schema)
 		self.assertEqual(len(operations), 23)
 		for family in sorted({op["autograd"]["family"] for op in operations}):
-			output = generate.generate_ml_autograd_records(self.schema, self.digest, family)
+			output = oa_ml.generate_ml_autograd_records(self.schema, self.digest, family)
 			for operation in operations:
 				policy = operation["autograd"]
 				if policy["family"] != family:
@@ -914,8 +923,8 @@ class MlSchemaTests(unittest.TestCase):
 			self.assertNotIn(".clone()", output)
 
 	def test_generated_routing_is_exhaustive_and_has_no_fallback(self) -> None:
-		output = generate.generate_ml_autograd_routing(self.schema, self.digest)
-		for operation in generate.ml_autograd_operations(self.schema):
+		output = oa_ml.generate_ml_autograd_routing(self.schema, self.digest)
+		for operation in oa_ml.ml_autograd_operations(self.schema):
 			node = operation["autograd"]["node"]
 			self.assertIn(f"{node}(GradNode{node})", output)
 			self.assertIn(f"Self::{node}(node) => node.output_id", output)
@@ -926,15 +935,15 @@ class MlSchemaTests(unittest.TestCase):
 		schema = copy.deepcopy(self.schema)
 		policy = next(op["autograd"] for op in schema["operations"] if op["name"] == "rope")
 		policy["saved_scalars"].append(["extra_geometry", "usize"])
-		with self.assertRaisesRegex(generate.SchemaError, "recipe saved fields must match"):
-			generate.generate_ml_autograd_records(schema, self.digest, "matrix/rope")
+		with self.assertRaisesRegex(oa_util.SchemaError, "recipe saved fields must match"):
+			oa_ml.generate_ml_autograd_records(schema, self.digest, "matrix/rope")
 
 	def test_recipe_coverage_rejects_missing_extra_and_duplicate_bodies(self) -> None:
 		for recipe, error in (("", "coverage"), ("// @operation unexpected\nOk(())", "coverage"),
 			("// @operation rope\nOk(())\n// @operation rope\nOk(())", "duplicate")):
-			with self.subTest(recipe=recipe), mock.patch.object(generate.Path, "read_text", return_value=recipe):
-				with self.assertRaisesRegex(generate.SchemaError, error):
-					generate.generate_ml_autograd_records(self.schema, self.digest, "matrix/rope")
+			with self.subTest(recipe=recipe), mock.patch.object(Path, "read_text", return_value=recipe):
+				with self.assertRaisesRegex(oa_util.SchemaError, error):
+					oa_ml.generate_ml_autograd_records(self.schema, self.digest, "matrix/rope")
 
 	def test_generated_nodes_reject_duplicate_identity_and_field_collisions(self) -> None:
 		for change, error in (("node", "must be unique"), ("reserved", "reserved"),
@@ -950,14 +959,14 @@ class MlSchemaTests(unittest.TestCase):
 					policy["output_param"] = "prediction"
 				else:
 					policy["saved_scalars"] = [["prediction", "f32"]]
-				with self.assertRaisesRegex(generate.SchemaError, error):
+				with self.assertRaisesRegex(oa_util.SchemaError, error):
 					self.validate_copy(schema)
 
 	def test_rope_and_upsample_emit_complete_provider_families(self) -> None:
 		for family, names in (("rope", ("rope", "rope_backward")),
 			("upsample", ("upsample_2d", "upsample_2d_backward"))):
 			with self.subTest(family=family):
-				text = generate.generate_ml_matrix_family(self.schema, self.digest, family)
+				text = oa_ml.generate_ml_matrix_family(self.schema, self.digest, family)
 				for name in names:
 					self.assertIn(f"fn {name}(", text)
 				self.assertIn("engine.record_semantic(", text)
@@ -969,8 +978,8 @@ class MlSchemaTests(unittest.TestCase):
 		schema = copy.deepcopy(self.schema)
 		operation = next(op for op in schema["operations"] if op["name"] == "rope_backward")
 		del operation["rust_family"]
-		with self.assertRaisesRegex(generate.SchemaError, "body coverage"):
-			generate.generate_ml_matrix_family(schema, self.digest, "rope")
+		with self.assertRaisesRegex(oa_util.SchemaError, "body coverage"):
+			oa_ml.generate_ml_matrix_family(schema, self.digest, "rope")
 
 	def test_normalization_and_gated_operations_have_named_attachment_families(self) -> None:
 		operations = {op["name"]: op for op in self.schema["operations"]}
@@ -983,7 +992,7 @@ class MlSchemaTests(unittest.TestCase):
 	def test_ml_schema_requires_an_operation_owner(self) -> None:
 		schema = copy.deepcopy(self.schema)
 		del schema["operations"][0]["semantic_domain"]
-		with self.assertRaisesRegex(generate.SchemaError, "semantic_domain"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "semantic_domain"):
 			self.validate_copy(schema)
 
 	def test_ml_schema_rejects_a_lowering_only_operation_owner(self) -> None:
@@ -994,7 +1003,7 @@ class MlSchemaTests(unittest.TestCase):
 			if operation["name"] == "adamw_many4_graph"
 		)
 		kernel["semantic_domain"] = "ml::optim"
-		with self.assertRaisesRegex(generate.SchemaError, "cannot own a semantic domain"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "cannot own a semantic domain"):
 			self.validate_copy(schema)
 
 	def test_ml_schema_rejects_push_blocks_above_vulkan_minimum(self) -> None:
@@ -1002,7 +1011,7 @@ class MlSchemaTests(unittest.TestCase):
 		schema["operations"][0]["push_fields"] = [
 			[f"field_{index}", "uint32"] for index in range(33)
 		]
-		with self.assertRaisesRegex(generate.SchemaError, "minimum Vulkan limit"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "minimum Vulkan limit"):
 			self.validate_copy(schema)
 
 	def test_lowering_only_kernel_cannot_claim_a_semantic_contract(self) -> None:
@@ -1013,7 +1022,7 @@ class MlSchemaTests(unittest.TestCase):
 			if operation["name"] == "adamw_many4_graph"
 		)
 		kernel["contract"] = copy.deepcopy(schema["operations"][0]["contract"])
-		with self.assertRaisesRegex(generate.SchemaError, "cannot own a semantic contract"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "cannot own a semantic contract"):
 			self.validate_copy(schema)
 
 	def test_ml_schema_requires_complete_port_provenance(self) -> None:
@@ -1022,7 +1031,7 @@ class MlSchemaTests(unittest.TestCase):
 			record for record in schema["port_provenance"] if "linear" in record["operations"]
 		)
 		linear["operations"].remove("linear")
-		with self.assertRaisesRegex(generate.SchemaError, "cover every operation"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "cover every operation"):
 			self.validate_copy(schema)
 
 	def test_trading_uses_checked_variadic_mutation_tail(self) -> None:
@@ -1033,13 +1042,13 @@ class MlSchemaTests(unittest.TestCase):
 		schema = copy.deepcopy(self.schema)
 		contract = schema["operations"][0]["contract"]
 		contract["input_kinds"] = ["matrix"] * 9
-		with self.assertRaisesRegex(generate.SchemaError, "fixed arity exceeds"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "fixed arity exceeds"):
 			self.validate_copy(schema)
 
 	def test_new_ml_work_cannot_claim_an_oa_donor(self) -> None:
 		schema = copy.deepcopy(self.schema)
 		schema["port_provenance"][0]["classification"] = "new"
-		with self.assertRaisesRegex(generate.SchemaError, "empty for new work"):
+		with self.assertRaisesRegex(oa_util.SchemaError, "empty for new work"):
 			self.validate_copy(schema)
 
 

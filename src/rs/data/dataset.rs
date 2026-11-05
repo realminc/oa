@@ -2,6 +2,8 @@
 //!
 //! Donor: `oa/data/dataset.h`, `oa/data/dsSubset.h`, `oa/data/fnDataset.h`
 
+pub use super::types::{DataLoaderConfig, SplitResult};
+pub use crate::data::types::Batch;
 use crate::{Error, Matrix, Result, matrix};
 
 /// Multi-tensor sample: input `x` and optional label `y`.
@@ -67,6 +69,22 @@ pub trait Dataset {
 	{
 		Subset::new(self, indices)
 	}
+
+	/// Return a zero-copy view over every item in deterministic [`shuffle`]
+	/// order. A nonzero seed reproduces the same permutation on each call.
+	///
+	/// # Errors
+	///
+	/// Returns the index-building, shuffle, and subset errors of the pieces
+	/// it composes.
+	fn shuffled_subset(&self, seed: u64) -> Result<Subset<'_>>
+	where
+		Self: Sized,
+	{
+		let mut indices = make_indices(checked_len(self)?)?;
+		shuffle(&mut indices, seed)?;
+		self.subset(indices)
+	}
 }
 
 /// Zero-copy indexed view returned by [`Dataset::subset`].
@@ -129,46 +147,10 @@ impl Dataset for Subset<'_> {
 	}
 }
 
-/// Batched output: `x` \[B, …\] and optional `y` \[B, …\].
-///
-/// Corresponds to `oa::DataLoader::Batch`.
-pub struct Batch {
-	/// Batched input matrix with a leading batch dimension.
-	pub x: Matrix,
-	/// Batched label matrix with a leading batch dimension, or `None`.
-	pub y: Option<Matrix>,
-}
-
 impl Batch {
 	/// Return `true` when the batch contains at least one sample.
 	pub fn is_valid(&self) -> bool {
 		self.x.num_elements() > 0
-	}
-}
-
-/// Configuration for [`DataLoader`].
-///
-/// Corresponds to `oa::DataLoaderConfig`.
-#[derive(Clone, Copy, Debug)]
-pub struct DataLoaderConfig {
-	/// Number of samples per batch.
-	pub batch_size: i32,
-	/// Whether to shuffle indices before each epoch.
-	pub shuffle: bool,
-	/// Seed for shuffling.  `0` derives a seed from the system clock, as in the donor.
-	pub seed: u64,
-	/// Drop the last incomplete batch when `true`.
-	pub drop_last: bool,
-}
-
-impl Default for DataLoaderConfig {
-	fn default() -> Self {
-		Self {
-			batch_size: 32,
-			shuffle: true,
-			seed: 0,
-			drop_last: false,
-		}
 	}
 }
 
@@ -245,6 +227,25 @@ impl<'ds> DataLoader<'ds> {
 		Ok(())
 	}
 
+	/// Reset for a new data pass, deriving the shuffle order from the
+	/// configured seed mixed with the epoch number so each epoch iterates a
+	/// different deterministic order — the equivalent of reshuffling a
+	/// dataset between epochs. `reset_epoch(0)` reproduces [`Self::reset`].
+	///
+	/// # Errors
+	///
+	/// Returns the index-building errors described by [`Self::new`]. A failed
+	/// reset leaves the existing order and cursor unchanged.
+	pub fn reset_epoch(&mut self, epoch: u64) -> Result<()> {
+		let mut indices = make_indices(checked_len(self.dataset)?)?;
+		if self.config.shuffle {
+			shuffle(&mut indices, self.config.seed.wrapping_add(epoch))?;
+		}
+		self.indices = indices;
+		self.current_batch = 0;
+		Ok(())
+	}
+
 	/// Number of batches in the current epoch.
 	pub fn num_batches(&self) -> i64 {
 		let n = self.indices.len() as i64;
@@ -256,18 +257,6 @@ impl<'ds> DataLoader<'ds> {
 	pub fn current_batch(&self) -> i64 {
 		self.current_batch
 	}
-}
-
-/// Result of a train / validation / test split.
-///
-/// Corresponds to `oa::FnDataset::SplitResult`.
-pub struct SplitResult {
-	/// Training indices.
-	pub train: Vec<i64>,
-	/// Validation indices.
-	pub val: Vec<i64>,
-	/// Test indices.
-	pub test: Vec<i64>,
 }
 
 /// Fisher-Yates shuffle using the donor's PCG32 stream and unbiased rejection.

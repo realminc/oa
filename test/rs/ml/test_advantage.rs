@@ -23,7 +23,7 @@ test_vk!(
 			plan.diagnostics().node_count()
 		);
 		let operation = &plan.semantic_graph().operations()[0];
-		assert_eq!(operation.name(), "oa::ml::advantage::normalize");
+		assert_eq!(operation.name(), "oa::FnAdvantage::normalize");
 		assert_eq!(operation.attributes().len(), 1);
 		engine.submit(&plan)?.wait()?;
 
@@ -139,7 +139,7 @@ test_vk!(
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
-			"oa::ml::advantage::gae"
+			"oa::FnAdvantage::gae"
 		);
 		engine.submit(&plan)?.wait()?;
 

@@ -2,6 +2,7 @@
 //!
 //! Port provenance: `oa/ml/callbacks.h` (`CbValidation`).
 
+pub use crate::ml::types::ValidationResult;
 use std::{
 	cell::Cell,
 	rc::Rc,
@@ -12,17 +13,6 @@ use crate::{Error, Result};
 
 use super::super::{TrainingCallback, TrainingCallbackContext, TrainingControl, TrainingSnapshot};
 use super::write_stdout;
-
-/// Aggregate returned by one application-owned validation pass.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ValidationResult {
-	/// Sample-weighted mean validation loss, or NaN when no value is available.
-	pub loss: f64,
-	/// Number of validation batches consumed.
-	pub batches: u64,
-	/// Number of validation samples consumed.
-	pub samples: u64,
-}
 
 impl Default for ValidationResult {
 	fn default() -> Self {

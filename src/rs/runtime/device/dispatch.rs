@@ -1,6 +1,6 @@
 //! Executable compute bindings produced by domain lowering.
 
-use crate::runtime::{Storage, shader::KernelId};
+use crate::runtime::{Storage, dna::kernel::KernelId};
 
 /// Declared access made by one executable buffer binding.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +50,18 @@ pub(crate) enum PushConstant {
 	F32(f32),
 }
 
+/// Device-resident `VkDispatchIndirectCommand` source for one compute dispatch.
+///
+/// `storage` must contain a four-byte-aligned `offset` followed by three
+/// initialized `u32` workgroup counts. A producer dispatch owns the argument
+/// contents and proves the one-dimensional group bound; the host cannot
+/// inspect GPU-authored dimensions at record time.
+#[derive(Clone, Copy)]
+pub(crate) struct IndirectDispatch<'a> {
+	pub(crate) storage: &'a Storage,
+	pub(crate) offset: u64,
+}
+
 /// Backend-neutral executable compute description.
 ///
 /// Domain lowering creates this value. The engine submits it generically; it
@@ -59,4 +71,7 @@ pub(crate) struct ComputeDispatch<'a> {
 	pub(crate) buffers: &'a [BufferBinding<'a>],
 	pub(crate) push_constants: &'a [PushConstant],
 	pub(crate) workgroups: [u32; 3],
+	/// Optional GPU-authored launch dimensions. When present the recorded
+	/// command is `vkCmdDispatchIndirect` and `workgroups` is unused.
+	pub(crate) indirect: Option<IndirectDispatch<'a>>,
 }

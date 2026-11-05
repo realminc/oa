@@ -101,12 +101,14 @@ pub fn clip_grad_norm(gradients: &[Matrix], max_norm: f32) -> Result<()> {
 			buffers: &reduce_buffers,
 			push_constants: &[],
 			workgroups: [gradient_count, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: scale,
 			buffers: &scale_buffers,
 			push_constants: &[],
 			workgroups: [gradient_count, 1, 1],
+			indirect: None,
 		},
 	];
 	let attributes = [OpAttribute::Float {

@@ -50,14 +50,15 @@ impl Buffer {
 		if let Some(recycled) = device.take_recycled_storage_buffer(size) {
 			return Ok(Self::from_recycled(device, recycled));
 		}
-		let buffer_info = vk::BufferCreateInfo::default()
-			.size(device_size)
-			.usage(
+		let buffer_info = vk::BufferCreateInfo::new()
+			.set_size(device_size)
+			.set_usage(
 				vk::BufferUsageFlagBits::STORAGE_BUFFER_BIT
 					| vk::BufferUsageFlagBits::TRANSFER_SRC_BIT
-					| vk::BufferUsageFlagBits::TRANSFER_DST_BIT,
+					| vk::BufferUsageFlagBits::TRANSFER_DST_BIT
+					| vk::BufferUsageFlagBits::INDIRECT_BUFFER_BIT,
 			)
-			.sharing_mode(vk::SharingMode::EXCLUSIVE);
+			.set_sharing_mode(vk::SharingMode::EXCLUSIVE);
 		let allocation_info = vk::mem::AllocationCreateInfo {
 			host_access: vk::mem::HostAccess::Random,
 			usage: vk::mem::MemoryUsage::PreferDevice,
@@ -314,6 +315,10 @@ impl Buffer {
 		self.inner.device.same_as(device)
 	}
 
+	pub(in crate::runtime) fn device(&self) -> &Arc<Device> {
+		&self.inner.device
+	}
+
 	pub(in crate::runtime) fn same_as(&self, other: &Self) -> bool {
 		Arc::ptr_eq(&self.inner, &other.inner)
 	}
@@ -373,14 +378,15 @@ impl Drop for BufferInner {
 }
 
 fn storage_buffer_info(size: vk::DeviceSize) -> vk::BufferCreateInfo<'static> {
-	vk::BufferCreateInfo::default()
-		.size(size)
-		.usage(
+	vk::BufferCreateInfo::new()
+		.set_size(size)
+		.set_usage(
 			vk::BufferUsageFlagBits::STORAGE_BUFFER_BIT
 				| vk::BufferUsageFlagBits::TRANSFER_SRC_BIT
-				| vk::BufferUsageFlagBits::TRANSFER_DST_BIT,
+				| vk::BufferUsageFlagBits::TRANSFER_DST_BIT
+				| vk::BufferUsageFlagBits::INDIRECT_BUFFER_BIT,
 		)
-		.sharing_mode(vk::SharingMode::EXCLUSIVE)
+		.set_sharing_mode(vk::SharingMode::EXCLUSIVE)
 }
 
 fn validate_range(size: usize, offset: usize, length: usize) -> Result<()> {
@@ -423,10 +429,10 @@ impl MeshBuffer {
 		}
 		let device_size = u64::try_from(size)
 			.map_err(|_| Error::invalid_argument("geometry buffer size exceeds u64"))?;
-		let buf_info = vk::BufferCreateInfo::default()
-			.size(device_size)
-			.usage(usage)
-			.sharing_mode(vk::SharingMode::EXCLUSIVE);
+		let buf_info = vk::BufferCreateInfo::new()
+			.set_size(device_size)
+			.set_usage(usage)
+			.set_sharing_mode(vk::SharingMode::EXCLUSIVE);
 		let alloc_info = vk::mem::AllocationCreateInfo {
 			host_access: vk::mem::HostAccess::SequentialWrite,
 			persistent_map: true,

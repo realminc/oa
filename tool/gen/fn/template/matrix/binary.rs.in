@@ -37,6 +37,7 @@
 					buffers: &buffers,
 					push_constants: &push_constants,
 					workgroups: kernel.linear_workgroups(element_count),
+					indirect: None,
 				},
 				SemanticDispatch {
 					contract,
@@ -82,6 +83,7 @@
 					buffers: &buffers,
 					push_constants: &push_constants,
 					workgroups: kernel.linear_workgroups(layout.element_count),
+					indirect: None,
 				},
 				SemanticDispatch {
 					contract,

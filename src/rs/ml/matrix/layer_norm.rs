@@ -64,6 +64,7 @@ pub(in crate::ml) fn layer_norm(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [rows, 1, 1],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -161,12 +162,10 @@ pub(in crate::ml) fn layer_norm_backward(
 		BufferBinding::write(weight_contribution.storage()),
 	];
 	let input_push_constants = [PushConstant::U32(rows), PushConstant::U32(columns)];
-	let weight_buffers = [
+	let parameter_buffers = [
 		BufferBinding::read(weight_contribution.storage()),
-		BufferBinding::write(weight_gradient.storage()),
-	];
-	let bias_buffers = [
 		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(weight_gradient.storage()),
 		BufferBinding::write(bias_gradient.storage()),
 	];
 	let sum_push_constants = [
@@ -174,25 +173,21 @@ pub(in crate::ml) fn layer_norm_backward(
 		PushConstant::U32(rows),
 		PushConstant::U32(columns),
 	];
-	let sum_workgroups = KernelId::MatrixSumAxisF32.linear_workgroups(columns);
+	let sum_workgroups = KernelId::MlSumAxisPairF32.linear_workgroups(columns);
 	let dispatches = [
 		ComputeDispatch {
 			kernel: KernelId::MlLayerNormBackwardF32,
 			buffers: &input_buffers,
 			push_constants: &input_push_constants,
 			workgroups: [rows, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MatrixSumAxisF32,
-			buffers: &weight_buffers,
+			kernel: KernelId::MlSumAxisPairF32,
+			buffers: &parameter_buffers,
 			push_constants: &sum_push_constants,
 			workgroups: sum_workgroups,
-		},
-		ComputeDispatch {
-			kernel: KernelId::MatrixSumAxisF32,
-			buffers: &bias_buffers,
-			push_constants: &sum_push_constants,
-			workgroups: sum_workgroups,
+			indirect: None,
 		},
 	];
 	let inputs = [normalized, inverse_stddev, weight, output_gradient];

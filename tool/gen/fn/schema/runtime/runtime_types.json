@@ -1,0 +1,336 @@
+{
+	"schema_version": 1,
+	"domain": "runtime",
+	"family": "runtime_types",
+	"imports": [
+		"use super::DeviceKind;"
+	],
+	"types": [
+		{
+			"class": "info",
+			"name": "DeviceHardwareInfo",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "index",
+					"type": "usize",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "name",
+					"type": "String",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "kind",
+					"type": "DeviceKind",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "vendor_id",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "device_id",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "local_memory_bytes",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "local_memory_budget_bytes",
+					"type": "Option<u64>",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "local_memory_usage_bytes",
+					"type": "Option<u64>",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "max_compute_shared_memory_bytes",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "max_compute_workgroup_invocations",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "subgroup_size",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "storage_buffer_descriptors",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "storage_image_descriptors",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "graphics",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "swapchain",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "info",
+			"name": "DeviceSoftwareInfo",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "api_version",
+					"type": "String",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "driver_name",
+					"type": "String",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "driver_info",
+					"type": "String",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "driver_version",
+					"type": "u32",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "capability_identity",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "shader_float16",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "shader_float64",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "shader_integer_dot_product",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "cooperative_matrix_tuple_count",
+					"type": "usize",
+					"visibility": "pub(crate)",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "info",
+			"name": "DeviceInfo",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "hardware",
+					"type": "DeviceHardwareInfo",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "software",
+					"type": "DeviceSoftwareInfo",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "capabilities",
+			"name": "PresentationCapabilities",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "min_image_count",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "max_image_count",
+					"type": "Option<u32>",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "current_extent",
+					"type": "Option<[u32; 2]>",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "min_extent",
+					"type": "[u32; 2]",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "max_extent",
+					"type": "[u32; 2]",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "format_count",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "present_mode_count",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "supports_color_attachment",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "supports_transfer_dst",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "record",
+			"name": "EngineRequirements",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"Default",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "graphics",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "presentation",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "video_decode",
+					"type": "Vec<crate::video::VideoDecodeProfile>",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "video_encode",
+					"type": "Vec<crate::video::VideoEncodeProfile>",
+					"visibility": "pub(crate)",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

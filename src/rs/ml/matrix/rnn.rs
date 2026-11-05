@@ -173,18 +173,21 @@ pub(in crate::ml) fn rnn_cell_backward(
 			buffers: &pointwise_buffers,
 			push_constants: &pointwise_push_constants,
 			workgroups: KernelId::MlRnnCellBackwardF32.linear_workgroups(element_count),
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlLinearBackwardF32,
 			buffers: &input_buffers,
 			push_constants: &linear_push_constants,
 			workgroups: KernelId::MlLinearBackwardF32.output_workgroups(batch, hidden_size),
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlLinearParameterBackwardF32,
 			buffers: &parameter_buffers,
 			push_constants: &linear_push_constants,
 			workgroups: [hidden_size, hidden_size.div_ceil(32), 1],
+			indirect: None,
 		},
 	];
 	let inputs = [
@@ -232,7 +235,7 @@ pub(in crate::ml) fn rnn_cell_backward(
 /// Returns an error unless all values are nonempty same-engine F32 matrices,
 /// shapes agree, hidden size is at most 1024, or runtime recording fails.
 pub fn rnn_scan(gates_i: &Matrix, weight_hh: &Matrix, bias_hh: Option<&Matrix>) -> Result<Matrix> {
-	let bias_value = optional_bias(weight_hh, bias_hh, "oa::ml::matrix::rnn_scan")?;
+	let bias_value = optional_bias(weight_hh, bias_hh, "oa::FnMatrix::rnnScan")?;
 	let has_bias = bias_hh.is_some();
 	let (output, hidden_previous) = rnn_scan_dispatch(gates_i, weight_hh, &bias_value, has_bias)?;
 	autograd::record_rnn_scan(
@@ -370,12 +373,14 @@ pub(in crate::ml) fn rnn_scan_backward(
 			buffers: &scan_buffers,
 			push_constants: &scan_push_constants,
 			workgroups: [batch, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlLinearParameterBackwardF32,
 			buffers: &parameter_buffers,
 			push_constants: &parameter_push_constants,
 			workgroups: [hidden_size, hidden_size.div_ceil(32), 1],
+			indirect: None,
 		},
 	];
 	let inputs = [
@@ -467,6 +472,7 @@ fn rnn_cell_dispatch(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [batch, 1, 1],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -543,10 +549,20 @@ fn rnn_scan_dispatch(
 		PushConstant::U32(batch),
 		PushConstant::U32(u32::from(has_bias)),
 	];
-	let attributes = [OpAttribute::Boolean {
-		name: "has_bias".into(),
-		value: has_bias,
-	}];
+	let attributes = [
+		OpAttribute::SignedInteger {
+			name: "hiddenSize".into(),
+			value: i64::from(hidden_size),
+		},
+		OpAttribute::SignedInteger {
+			name: "sequenceLength".into(),
+			value: i64::from(sequence_length),
+		},
+		OpAttribute::SignedInteger {
+			name: "batch".into(),
+			value: i64::from(batch),
+		},
+	];
 	{
 		let inputs: &[&Matrix] = &[gates_i, weight_hh, bias_hh];
 		let outputs: &[&Matrix] = &[&output, &hidden_previous];
@@ -556,6 +572,7 @@ fn rnn_scan_dispatch(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [batch, 1, 1],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

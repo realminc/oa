@@ -31,12 +31,12 @@ pub fn set_rng_seed(seed: u64) {
 pub fn philox_uniform(input: &Matrix, low: f32, high: f32, seed: u64) -> Result<Matrix> {
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(
-			"oa::matrix::philox_uniform requires an F32 input",
+			"oa::FnMatrix::philoxUniform requires an F32 input",
 		));
 	}
 	if !low.is_finite() || !high.is_finite() || low >= high {
 		return Err(Error::invalid_argument(
-			"oa::matrix::philox_uniform requires finite low < high",
+			"oa::FnMatrix::philoxUniform requires finite low < high",
 		));
 	}
 	let seed = resolve_seed(seed);
@@ -93,6 +93,7 @@ pub fn philox_uniform(input: &Matrix, low: f32, high: f32, seed: u64) -> Result<
 				buffers: &buffers,
 				push_constants: &payload,
 				workgroups: replay_kernel.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -113,6 +114,7 @@ pub fn philox_uniform(input: &Matrix, low: f32, high: f32, seed: u64) -> Result<
 				buffers: &buffers,
 				push_constants: &payload,
 				workgroups: eager_kernel.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -134,12 +136,12 @@ pub fn philox_uniform(input: &Matrix, low: f32, high: f32, seed: u64) -> Result<
 pub fn philox_normal(input: &Matrix, mean: f32, stddev: f32, seed: u64) -> Result<Matrix> {
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(
-			"oa::matrix::philox_normal requires an F32 input",
+			"oa::FnMatrix::philoxNormal requires an F32 input",
 		));
 	}
 	if !mean.is_finite() || !stddev.is_finite() || stddev < 0.0 {
 		return Err(Error::invalid_argument(
-			"oa::matrix::philox_normal requires a finite mean and nonnegative finite stddev",
+			"oa::FnMatrix::philoxNormal requires a finite mean and nonnegative finite stddev",
 		));
 	}
 	let seed = resolve_seed(seed);
@@ -196,6 +198,7 @@ pub fn philox_normal(input: &Matrix, mean: f32, stddev: f32, seed: u64) -> Resul
 				buffers: &buffers,
 				push_constants: &payload,
 				workgroups: replay_kernel.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -216,6 +219,7 @@ pub fn philox_normal(input: &Matrix, mean: f32, stddev: f32, seed: u64) -> Resul
 				buffers: &buffers,
 				push_constants: &payload,
 				workgroups: eager_kernel.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -290,11 +294,11 @@ pub fn sample_logits(
 			value: f64::from(temperature),
 		},
 		OpAttribute::SignedInteger {
-			name: "top_k".into(),
+			name: "topK".into(),
 			value: i64::from(top_k),
 		},
 		OpAttribute::Float {
-			name: "top_p".into(),
+			name: "topP".into(),
 			value: f64::from(normalized_top_p),
 		},
 		OpAttribute::UnsignedInteger {
@@ -325,6 +329,7 @@ pub fn sample_logits(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MatrixSampleLogitsGreedyF32.linear_workgroups(rows_u32),
+				indirect: None,
 			},
 			semantic,
 		)?;
@@ -375,18 +380,21 @@ pub fn sample_logits(
 					buffers: &random_buffers,
 					push_constants: &random_payload,
 					workgroups: KernelId::MatrixPhiloxUniformReplayF32.linear_workgroups(rows_u32),
+					indirect: None,
 				},
 				ComputeDispatch {
 					kernel: KernelId::MatrixPhiloxReplayAdvanceU32,
 					buffers: &advance_buffers,
 					push_constants: &[],
 					workgroups: [1, 1, 1],
+					indirect: None,
 				},
 				ComputeDispatch {
 					kernel: KernelId::MatrixSampleLogitsDenseF32,
 					buffers: &sample_buffers,
 					push_constants: &sample_payload,
 					workgroups: KernelId::MatrixSampleLogitsDenseF32.linear_workgroups(rows_u32),
+					indirect: None,
 				},
 			];
 			engine.record_split_semantic(&dispatches, semantic)
@@ -397,12 +405,14 @@ pub fn sample_logits(
 					buffers: &random_buffers_eager,
 					push_constants: &random_payload,
 					workgroups: KernelId::MatrixPhiloxUniformF32.linear_workgroups(rows_u32),
+					indirect: None,
 				},
 				ComputeDispatch {
 					kernel: KernelId::MatrixSampleLogitsDenseF32,
 					buffers: &sample_buffers,
 					push_constants: &sample_payload,
 					workgroups: KernelId::MatrixSampleLogitsDenseF32.linear_workgroups(rows_u32),
+					indirect: None,
 				},
 			];
 			engine.record_split_semantic(&dispatches, semantic)
@@ -468,24 +478,28 @@ pub fn sample_logits(
 					buffers: &top_k_buffers,
 					push_constants: &top_k_payload,
 					workgroups: [rows_u32, 1, 1],
+					indirect: None,
 				},
 				ComputeDispatch {
 					kernel: KernelId::MatrixPhiloxUniformReplayF32,
 					buffers: &random_buffers,
 					push_constants: &random_payload,
 					workgroups: KernelId::MatrixPhiloxUniformReplayF32.linear_workgroups(rows_u32),
+					indirect: None,
 				},
 				ComputeDispatch {
 					kernel: KernelId::MatrixPhiloxReplayAdvanceU32,
 					buffers: &advance_buffers,
 					push_constants: &[],
 					workgroups: [1, 1, 1],
+					indirect: None,
 				},
 				ComputeDispatch {
 					kernel: KernelId::MatrixSampleLogitsSortedF32,
 					buffers: &sample_buffers,
 					push_constants: &sample_payload,
 					workgroups: KernelId::MatrixSampleLogitsSortedF32.linear_workgroups(rows_u32),
+					indirect: None,
 				},
 			];
 			engine.record_split_semantic(&dispatches, semantic)
@@ -496,18 +510,21 @@ pub fn sample_logits(
 					buffers: &top_k_buffers,
 					push_constants: &top_k_payload,
 					workgroups: [rows_u32, 1, 1],
+					indirect: None,
 				},
 				ComputeDispatch {
 					kernel: KernelId::MatrixPhiloxUniformF32,
 					buffers: &random_buffers_eager,
 					push_constants: &random_payload,
 					workgroups: KernelId::MatrixPhiloxUniformF32.linear_workgroups(rows_u32),
+					indirect: None,
 				},
 				ComputeDispatch {
 					kernel: KernelId::MatrixSampleLogitsSortedF32,
 					buffers: &sample_buffers,
 					push_constants: &sample_payload,
 					workgroups: KernelId::MatrixSampleLogitsSortedF32.linear_workgroups(rows_u32),
+					indirect: None,
 				},
 			];
 			engine.record_split_semantic(&dispatches, semantic)
@@ -529,12 +546,12 @@ pub fn sample_logits(
 pub fn dropout(input: &Matrix, probability: f32, seed: u64) -> Result<Matrix> {
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(
-			"oa::matrix::dropout requires an F32 input",
+			"oa::FnMatrix::dropout requires an F32 input",
 		));
 	}
 	if !probability.is_finite() || !(0.0..1.0).contains(&probability) {
 		return Err(Error::invalid_argument(
-			"oa::matrix::dropout probability must be finite and in [0, 1)",
+			"oa::FnMatrix::dropout probability must be finite and in [0, 1)",
 		));
 	}
 	if probability == 0.0 {
@@ -588,6 +605,7 @@ pub fn dropout(input: &Matrix, probability: f32, seed: u64) -> Result<Matrix> {
 					buffers: &buffers,
 					push_constants: &payload,
 					workgroups: replay_kernel.linear_workgroups(element_count),
+					indirect: None,
 				},
 				SemanticDispatch {
 					contract,
@@ -608,6 +626,7 @@ pub fn dropout(input: &Matrix, probability: f32, seed: u64) -> Result<Matrix> {
 					buffers: &buffers,
 					push_constants: &payload,
 					workgroups: eager_kernel.linear_workgroups(element_count),
+					indirect: None,
 				},
 				SemanticDispatch {
 					contract,
@@ -672,6 +691,7 @@ pub(crate) fn dropout_backward(gradient: &Matrix, probability: f32, seed: u64) -
 				buffers: &buffers,
 				push_constants: &payload,
 				workgroups: replay_kernel.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -692,6 +712,7 @@ pub(crate) fn dropout_backward(gradient: &Matrix, probability: f32, seed: u64) -
 				buffers: &buffers,
 				push_constants: &payload,
 				workgroups: eager_kernel.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -714,6 +735,7 @@ fn advance_replay_state(state: &Matrix) -> Result<()> {
 			buffers: &buffers,
 			push_constants: &[],
 			workgroups: [1, 1, 1],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: crate::core::operation::matrix::PHILOX_REPLAY_ADVANCE,

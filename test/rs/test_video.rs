@@ -12,6 +12,8 @@ mod capability;
 mod decoder;
 #[path = "video/test_demux.rs"]
 mod demux;
+#[path = "video/test_encoder.rs"]
+mod encoder;
 #[path = "video/test_frame.rs"]
 mod frame;
 #[path = "video/test_h264.rs"]

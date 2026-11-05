@@ -3,20 +3,10 @@
 use crate::{Error, Event, Result, matrix};
 
 use super::{
-	ActorCritic, EnvironmentSpaceKind, RolloutBuffer, RolloutTransition, advantage::GaeConfig,
-	environment::Environment, policy,
+	ActorCritic, EnvironmentSpaceKind, RolloutBuffer, RolloutTransition, environment::Environment,
+	policy,
 };
-
-/// Fixed categorical collection horizon and sampling policy.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct RolloutCollectorConfig {
-	/// Number of vector-environment steps in each collection.
-	pub horizon: usize,
-	/// Base seed for initial reset and categorical samples.
-	pub seed: u64,
-	/// Generalized-advantage estimator policy.
-	pub gae: GaeConfig,
-}
+pub use crate::ml::types::RolloutCollectorConfig;
 
 /// Accepted rollout and transition counts.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

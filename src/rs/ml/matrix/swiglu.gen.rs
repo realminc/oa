@@ -58,6 +58,7 @@ pub fn swiglu(gate: &Matrix, up: &Matrix) -> Result<Matrix> {
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlSwigluF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -126,6 +127,7 @@ pub(in crate::ml) fn swiglu_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::MlSwigluBackwardF32.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,
@@ -195,6 +197,7 @@ pub fn silu_mul(input: &Matrix, intermediate_size: usize) -> Result<Matrix> {
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: KernelId::MlSiluMulF32.linear_workgroups(output_count_u32),
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,
@@ -282,6 +285,7 @@ pub(in crate::ml) fn silu_mul_backward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: KernelId::MlSiluMulBackwardF32.linear_workgroups(output_count_u32),
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,

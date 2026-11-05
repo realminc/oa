@@ -2,13 +2,15 @@ use std::sync::Arc;
 
 use std::collections::BTreeMap;
 
-use crate::{Audio, Error, Image, Matrix, OpValueKind, Result, matrix::MatrixSemantic};
+use crate::{
+	Audio, Error, Image, Matrix, OpValueKind, Result, matrix::MatrixSemantic, ml::QuantMatrix,
+};
 
 use super::{
 	AudioSemanticDispatch, AudioSemanticOutput, Buffer, BufferAccess, ComputeDispatch, Device,
-	ImageSemanticDispatch, ImageSemanticInput, OptionalSemanticDispatch, SemanticDispatch,
-	SemanticGraph, SemanticValueDesc, SemanticValueId, Storage, executable_graph::ExecutableGraph,
-	storage::ReadinessSnapshot,
+	ImageSemanticDispatch, ImageSemanticInput, OptionalSemanticDispatch, QuantSemanticDispatch,
+	QuantSemanticInput, QuantSemanticOutput, SemanticDispatch, SemanticGraph, SemanticValueDesc,
+	SemanticValueId, Storage, executable_graph::ExecutableGraph, fusion, storage::ReadinessSnapshot,
 };
 
 /// Private mutable eager-recording owner for one engine.
@@ -62,6 +64,7 @@ enum SemanticValueKey {
 	Matrix(u64),
 	Audio(u64),
 	Image(u64),
+	QuantMatrix(u64),
 }
 
 #[derive(Clone)]
@@ -126,6 +129,41 @@ impl ExecutionSession {
 		&mut self,
 		semantic: SemanticDispatch<'_>,
 	) -> Result<Option<super::SemanticOpId>> {
+		let contract = semantic.contract;
+		self.finish_lowering_with(contract, |candidate, values, storage| {
+			admit_semantic_dispatch(candidate, values, storage, &semantic)
+		})
+	}
+
+	pub(super) fn finish_optional_semantic_lowering(
+		&mut self,
+		semantic: OptionalSemanticDispatch<'_>,
+	) -> Result<Option<super::SemanticOpId>> {
+		let contract = semantic.contract;
+		self.finish_lowering_with(contract, |candidate, values, storage| {
+			admit_optional_semantic_dispatch(candidate, values, storage, &semantic)
+		})
+	}
+
+	pub(super) fn finish_quant_semantic_lowering(
+		&mut self,
+		semantic: QuantSemanticDispatch<'_>,
+	) -> Result<Option<super::SemanticOpId>> {
+		let contract = semantic.contract;
+		self.finish_lowering_with(contract, |candidate, values, storage| {
+			admit_quant_semantic_dispatch(candidate, values, storage, &semantic)
+		})
+	}
+
+	fn finish_lowering_with(
+		&mut self,
+		contract: crate::OperationContract,
+		admit: impl FnOnce(
+			&mut SemanticGraph,
+			&mut BTreeMap<SemanticValueKey, SemanticValueBinding>,
+			&mut BTreeMap<SemanticValueId, Storage>,
+		) -> Result<super::SemanticOpId>,
+	) -> Result<Option<super::SemanticOpId>> {
 		let lowering = self.semantic_lowering.as_mut().ok_or_else(|| {
 			Error::failed_precondition("semantic lowering commit has no matching begin")
 		})?;
@@ -144,24 +182,19 @@ impl ExecutionSession {
 		let mut candidate = self.semantic.clone();
 		let mut values = self.semantic_values.clone();
 		let mut storage = self.semantic_storage.clone();
-		let operation =
-			match admit_semantic_dispatch(&mut candidate, &mut values, &mut storage, &semantic) {
-				Ok(operation) => operation,
-				Err(error) => {
-					self.rollback_semantic_lowering(lowering);
-					return Err(error);
-				}
-			};
+		let operation = match admit(&mut candidate, &mut values, &mut storage) {
+			Ok(operation) => operation,
+			Err(error) => {
+				self.rollback_semantic_lowering(lowering);
+				return Err(error);
+			}
+		};
 		if let Err(error) = candidate.validate() {
 			self.rollback_semantic_lowering(lowering);
 			return Err(error);
 		}
 		for graph in &mut self.graphs[lowering.first_graph..] {
-			graph.attach_composite_semantic(
-				operation,
-				semantic.contract.name(),
-				semantic.contract.hash(),
-			)?;
+			graph.attach_composite_semantic(operation, contract.name(), contract.hash())?;
 		}
 		self.semantic = candidate;
 		self.semantic_values = values;
@@ -753,7 +786,11 @@ impl ExecutionSession {
 		}
 	}
 
-	pub(super) fn take(&mut self, observed_outputs: &[&Matrix]) -> Result<Option<PendingExecution>> {
+	pub(super) fn take(
+		&mut self,
+		device: &Arc<Device>,
+		observed_outputs: &[&Matrix],
+	) -> Result<Option<PendingExecution>> {
 		if self.semantic_lowering.is_some() {
 			return Err(Error::failed_precondition(
 				"cannot submit an incomplete semantic lowering",
@@ -768,7 +805,7 @@ impl ExecutionSession {
 			));
 		}
 
-		let stable_resources = self.snapshot_stable_resources()?;
+		let mut stable_resources = self.snapshot_stable_resources()?;
 		let graphs = std::mem::take(&mut self.graphs);
 		let outputs = std::mem::take(&mut self.outputs);
 		let semantic = self.semantic.take_recording()?;
@@ -778,19 +815,39 @@ impl ExecutionSession {
 			.into_iter()
 			.map(|(value, storage)| SemanticStorageSnapshot { value, storage })
 			.collect::<Vec<_>>();
-		let observed_outputs = observed_outputs
+		let observed_outputs: Vec<Storage> = observed_outputs
 			.iter()
 			.map(|matrix| matrix.storage().clone())
 			.collect();
 		match ExecutableGraph::join(graphs) {
-			Ok(graph) => Ok(Some(PendingExecution {
-				graph,
-				outputs,
-				semantic,
-				stable_resources,
-				semantic_bindings,
-				observed_outputs,
-			})),
+			Ok(mut graph) => {
+				let refs = self.pending_storage_refs(
+					&outputs,
+					&stable_resources,
+					&semantic_bindings,
+					&observed_outputs,
+				);
+				let joined = fusion::fuse_epilogue_pairs(device, graph.nodes().to_vec(), &refs);
+				let (nodes, tapes) = fusion::fuse_elementwise_nodes(device, joined, &refs);
+				if nodes.len() != graph.nodes().len()
+					&& let Ok(fused) = ExecutableGraph::from_nodes(nodes)
+				{
+					graph = fused;
+					stable_resources.extend(tapes.into_iter().map(|storage| StableResourceSnapshot {
+						storage,
+						replay_input: false,
+						transient: true,
+					}));
+				}
+				Ok(Some(PendingExecution {
+					graph,
+					outputs,
+					semantic,
+					stable_resources,
+					semantic_bindings,
+					observed_outputs,
+				}))
+			}
 			Err(error) => {
 				if let Some(readiness) = &mut self.capture_output_readiness {
 					let snapshots = std::mem::take(readiness);
@@ -805,7 +862,11 @@ impl ExecutionSession {
 		}
 	}
 
-	pub(super) fn snapshot(&self, observed_outputs: &[&Matrix]) -> Result<Option<PendingExecution>> {
+	pub(super) fn snapshot(
+		&self,
+		device: &Arc<Device>,
+		observed_outputs: &[&Matrix],
+	) -> Result<Option<PendingExecution>> {
 		if self.semantic_lowering.is_some() {
 			return Err(Error::failed_precondition(
 				"cannot capture an incomplete semantic lowering",
@@ -820,8 +881,8 @@ impl ExecutionSession {
 			));
 		}
 
-		let stable_resources = self.snapshot_stable_resources()?;
-		let graph = ExecutableGraph::join(self.graphs.clone())?;
+		let mut stable_resources = self.snapshot_stable_resources()?;
+		let mut graph = ExecutableGraph::join(self.graphs.clone())?;
 		let outputs = self.outputs.clone();
 		let semantic = self.semantic.clone();
 		let semantic_bindings = self
@@ -832,10 +893,28 @@ impl ExecutionSession {
 				storage: storage.clone(),
 			})
 			.collect::<Vec<_>>();
-		let observed_outputs = observed_outputs
+		let observed_outputs: Vec<Storage> = observed_outputs
 			.iter()
 			.map(|matrix| matrix.storage().clone())
 			.collect();
+		let refs = self.pending_storage_refs(
+			&outputs,
+			&stable_resources,
+			&semantic_bindings,
+			&observed_outputs,
+		);
+		let joined = fusion::fuse_epilogue_pairs(device, graph.nodes().to_vec(), &refs);
+		let (nodes, tapes) = fusion::fuse_elementwise_nodes(device, joined, &refs);
+		if nodes.len() != graph.nodes().len()
+			&& let Ok(fused) = ExecutableGraph::from_nodes(nodes)
+		{
+			graph = fused;
+			stable_resources.extend(tapes.into_iter().map(|storage| StableResourceSnapshot {
+				storage,
+				replay_input: false,
+				transient: true,
+			}));
+		}
 		Ok(Some(PendingExecution {
 			graph,
 			outputs,
@@ -844,6 +923,40 @@ impl ExecutionSession {
 			semantic_bindings,
 			observed_outputs,
 		}))
+	}
+
+	/// Every `Storage` reference the pending execution and live session state
+	/// hold. Fusion compares this multiset with `Storage::owner_count`: an
+	/// intermediate referenced only here cannot be observed by any caller.
+	fn pending_storage_refs<'a>(
+		&'a self,
+		outputs: &'a [Storage],
+		stable_resources: &'a [StableResourceSnapshot],
+		semantic_bindings: &'a [SemanticStorageSnapshot],
+		observed_outputs: &'a [Storage],
+	) -> Vec<&'a Storage> {
+		outputs
+			.iter()
+			.chain(stable_resources.iter().map(|snapshot| &snapshot.storage))
+			.chain(semantic_bindings.iter().map(|binding| &binding.storage))
+			.chain(observed_outputs.iter())
+			.chain(self.stable_resources.iter())
+			.chain(self.capture_created_storage.iter())
+			.chain(
+				self
+					.capture_output_readiness
+					.iter()
+					.flatten()
+					.map(|(storage, _)| storage),
+			)
+			.chain(
+				self
+					.semantic_values
+					.values()
+					.map(|binding| &binding.storage),
+			)
+			.chain(self.semantic_storage.values())
+			.collect()
 	}
 
 	pub(super) fn commit_captured_snapshot(&mut self) -> Result<()> {
@@ -1071,6 +1184,53 @@ fn admit_audio_semantic_dispatch(
 		.map(|output| match output {
 			AudioSemanticOutput::Audio(audio) => admit_audio(graph, values, storage, audio, false),
 			AudioSemanticOutput::Matrix(matrix) => admit_matrix(graph, values, storage, matrix, false),
+		})
+		.collect::<Result<Vec<_>>>()?;
+	graph.add_operation(
+		semantic.contract,
+		&inputs,
+		&outputs,
+		&[],
+		semantic.attributes,
+	)
+}
+
+fn admit_quant_semantic_dispatch(
+	graph: &mut SemanticGraph,
+	values: &mut BTreeMap<SemanticValueKey, SemanticValueBinding>,
+	storage: &mut BTreeMap<SemanticValueId, Storage>,
+	semantic: &QuantSemanticDispatch<'_>,
+) -> Result<super::SemanticOpId> {
+	if semantic
+		.outputs
+		.iter()
+		.enumerate()
+		.any(|(index, _)| semantic.contract.alias_input(index).is_some())
+	{
+		return Err(Error::failed_precondition(
+			"quantized semantic output aliasing is not admitted",
+		));
+	}
+	let inputs = semantic
+		.inputs
+		.iter()
+		.map(|input| match input {
+			QuantSemanticInput::Matrix(matrix) => {
+				admit_matrix(graph, values, storage, matrix, true).map(Some)
+			}
+			QuantSemanticInput::QuantMatrix(quantized) => {
+				admit_quant_matrix(graph, values, storage, quantized, true).map(Some)
+			}
+		})
+		.collect::<Result<Vec<_>>>()?;
+	let outputs = semantic
+		.outputs
+		.iter()
+		.map(|output| match output {
+			QuantSemanticOutput::Matrix(matrix) => admit_matrix(graph, values, storage, matrix, false),
+			QuantSemanticOutput::QuantMatrix(quantized) => {
+				admit_quant_matrix(graph, values, storage, quantized, false)
+			}
 		})
 		.collect::<Result<Vec<_>>>()?;
 	graph.add_operation(
@@ -1327,6 +1487,47 @@ fn admit_image(
 		},
 	);
 	storage_bindings.insert(value, image.storage().clone());
+	Ok(value)
+}
+
+// The semantic graph binds one primary storage resource per value. A quantized
+// weight owns two physical planes, so its payload is the stable primary
+// identity while the logical Float32 shape and dtype are recorded. The scale
+// plane stays owned by the executable nodes' buffer inventory and is never
+// exposed as a second semantic value.
+fn admit_quant_matrix(
+	graph: &mut SemanticGraph,
+	values: &mut BTreeMap<SemanticValueKey, SemanticValueBinding>,
+	storage_bindings: &mut BTreeMap<SemanticValueId, Storage>,
+	quantized: &QuantMatrix,
+	external: bool,
+) -> Result<SemanticValueId> {
+	let key = SemanticValueKey::QuantMatrix(quantized.value_id());
+	if let Some(binding) = values.get(&key) {
+		if !binding.storage.same_as(quantized.payload().storage()) {
+			return Err(Error::internal(
+				"one semantic QuantMatrix value was recorded with multiple storage identities",
+			));
+		}
+		return Ok(binding.value);
+	}
+	let value = graph.add_value(
+		SemanticValueDesc::new(
+			format!("quant_matrix.{}", quantized.value_id()),
+			OpValueKind::QuantMatrix,
+			quantized.shape().to_vec(),
+			crate::DType::F32,
+		)?
+		.external(external),
+	)?;
+	values.insert(
+		key,
+		SemanticValueBinding {
+			value,
+			storage: quantized.payload().storage().clone(),
+		},
+	);
+	storage_bindings.insert(value, quantized.payload().storage().clone());
 	Ok(value)
 }
 

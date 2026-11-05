@@ -7,7 +7,9 @@ use crate::{Error, Result};
 use super::{
 	Buffer, BufferAccess, ComputeDispatch, Device, PushConstant, SemanticGraph,
 	SemanticLoweringAnalysis, SemanticOpId,
-	shader::{KernelId, TrainingReplayRole},
+	device::features::ExecutionProfile,
+	dna::kernel::{KernelId, TrainingReplayRole},
+	fusion,
 };
 
 /// Owned snapshot of concrete work ready for Vulkan command recording.
@@ -24,6 +26,7 @@ pub(in crate::runtime) struct ComputeNode {
 	pub(in crate::runtime) buffers: Vec<BufferUse>,
 	pub(in crate::runtime) push_constants: Vec<PushConstant>,
 	pub(in crate::runtime) workgroups: [u32; 3],
+	pub(in crate::runtime) indirect: Option<IndirectUse>,
 	pub(in crate::runtime) semantic_ops: Vec<SemanticOpId>,
 	pub(in crate::runtime) op_contract_hash: u64,
 }
@@ -32,6 +35,14 @@ pub(in crate::runtime) struct ComputeNode {
 pub(in crate::runtime) struct BufferUse {
 	pub(in crate::runtime) buffer: Buffer,
 	pub(in crate::runtime) access: BufferAccess,
+}
+
+/// GPU-authored launch dimensions for one node: a retained buffer and the
+/// four-byte-aligned byte offset of its `VkDispatchIndirectCommand` triple.
+#[derive(Clone)]
+pub(in crate::runtime) struct IndirectUse {
+	pub(in crate::runtime) buffer: Buffer,
+	pub(in crate::runtime) offset: u64,
 }
 
 #[derive(Clone)]
@@ -51,6 +62,7 @@ pub(in crate::runtime) struct ResourceLifetime {
 pub(in crate::runtime) struct AccessState {
 	read: bool,
 	write: bool,
+	indirect: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,12 +111,49 @@ impl ExecutableGraph {
 					access: binding.access,
 				});
 			}
+			let indirect = dispatch
+				.indirect
+				.map(|arguments| {
+					if !arguments.storage.belongs_to(device) {
+						return Err(Error::invalid_argument(format!(
+							"{operation} indirect dispatch arguments must belong to the submitting engine"
+						)));
+					}
+					arguments
+						.storage
+						.validate_recording_access(BufferAccess::Read)?;
+					let buffer = arguments.storage.buffer().cloned().ok_or_else(|| {
+						Error::backend_failure(
+							"Vulkan",
+							"compute-dispatch indirect argument validation",
+							std::io::Error::other(format!(
+								"{operation} references indirect storage without a Vulkan buffer"
+							)),
+						)
+					})?;
+					if arguments.offset % 4 != 0
+						|| arguments
+							.offset
+							.checked_add(12)
+							.is_none_or(|end| end > arguments.storage.byte_len() as u64)
+					{
+						return Err(Error::invalid_argument(format!(
+							"{operation} indirect dispatch arguments require a four-byte-aligned VkDispatchIndirectCommand range inside the storage"
+						)));
+					}
+					Ok(IndirectUse {
+						buffer,
+						offset: arguments.offset,
+					})
+				})
+				.transpose()?;
 			nodes.push(ComputeNode {
 				operation,
 				kernel: dispatch.kernel,
 				buffers,
 				push_constants: dispatch.push_constants.to_vec(),
 				workgroups: dispatch.workgroups,
+				indirect,
 				semantic_ops: Vec::new(),
 				op_contract_hash: 0,
 			});
@@ -320,6 +369,21 @@ impl ExecutableGraph {
 			for dimension in node.workgroups {
 				hash.u32(dimension);
 			}
+			match &node.indirect {
+				None => hash.u8(0),
+				Some(indirect) => {
+					hash.u8(1);
+					let resource = *resources
+						.entry(indirect.buffer.descriptor_index())
+						.or_insert_with(|| {
+							let resource = next_resource;
+							next_resource = next_resource.wrapping_add(1);
+							resource
+						});
+					hash.u32(resource);
+					hash.u64(indirect.offset);
+				}
+			}
 		}
 		hash.finish()
 	}
@@ -327,32 +391,48 @@ impl ExecutableGraph {
 	pub(in crate::runtime) fn read_only_buffers(&self) -> Vec<Buffer> {
 		let mut resources = BTreeMap::<u32, (Buffer, AccessState)>::new();
 		for node in &self.nodes {
-			for buffer_use in &node.buffers {
+			for (index, buffer_use) in node.buffers.iter().enumerate() {
+				if fusion::is_tape_binding(node, index) {
+					continue;
+				}
 				let state = AccessState::from_access(buffer_use.access);
 				resources
 					.entry(buffer_use.buffer.descriptor_index())
 					.and_modify(|(_, access)| access.merge(state))
 					.or_insert_with(|| (buffer_use.buffer.clone(), state));
 			}
+			if let Some(indirect) = &node.indirect {
+				resources
+					.entry(indirect.buffer.descriptor_index())
+					.and_modify(|(_, access)| access.merge(AccessState::INDIRECT))
+					.or_insert_with(|| (indirect.buffer.clone(), AccessState::INDIRECT));
+			}
 		}
 		resources
 			.into_values()
-			.filter_map(|(buffer, access)| (!access.write && access.read).then_some(buffer))
+			.filter_map(|(buffer, access)| {
+				(!access.write && (access.read || access.indirect)).then_some(buffer)
+			})
 			.collect()
 	}
 
 	pub(in crate::runtime) fn resource_lifetimes(&self) -> Vec<ResourceLifetime> {
 		let mut resources = Vec::<ResourceLifetime>::new();
 		for (node_index, node) in self.nodes.iter().enumerate() {
-			for buffer_use in &node.buffers {
+			for buffer in node
+				.buffers
+				.iter()
+				.map(|buffer_use| &buffer_use.buffer)
+				.chain(node.indirect.iter().map(|indirect| &indirect.buffer))
+			{
 				if let Some(lifetime) = resources
 					.iter_mut()
-					.find(|lifetime| lifetime.buffer.same_as(&buffer_use.buffer))
+					.find(|lifetime| lifetime.buffer.same_as(buffer))
 				{
 					lifetime.last_access = node_index;
 				} else {
 					resources.push(ResourceLifetime {
-						buffer: buffer_use.buffer.clone(),
+						buffer: buffer.clone(),
 						first_access: node_index,
 						last_access: node_index,
 					});
@@ -366,6 +446,7 @@ impl ExecutableGraph {
 		&mut self,
 		current: &Buffer,
 		replacement: &Buffer,
+		profile: ExecutionProfile,
 	) -> Result<()> {
 		let mut found = false;
 		for node in &self.nodes {
@@ -377,7 +458,21 @@ impl ExecutableGraph {
 							"only read-only execution-plan Matrix inputs can be rebound",
 						));
 					}
+					if fusion::is_fused_chain_kernel(node.kernel) && profile == ExecutionProfile::Strict {
+						return Err(Error::invalid_argument(
+							"Strict execution plans cannot rebind fused elementwise operands",
+						));
+					}
 				} else if buffer_use.buffer.same_as(replacement) {
+					return Err(Error::invalid_argument(
+						"execution-plan input rebinding cannot introduce resource aliasing",
+					));
+				}
+			}
+			if let Some(indirect) = &node.indirect {
+				if indirect.buffer.same_as(current) {
+					found = true;
+				} else if indirect.buffer.same_as(replacement) {
 					return Err(Error::invalid_argument(
 						"execution-plan input rebinding cannot introduce resource aliasing",
 					));
@@ -395,6 +490,11 @@ impl ExecutableGraph {
 				if buffer_use.buffer.same_as(current) {
 					buffer_use.buffer = replacement.clone();
 				}
+			}
+			if let Some(indirect) = &mut node.indirect
+				&& indirect.buffer.same_as(current)
+			{
+				indirect.buffer = replacement.clone();
 			}
 		}
 		candidate.barriers = plan_barriers(&candidate.nodes)?;
@@ -415,6 +515,13 @@ impl ExecutableGraph {
 				{
 					buffer_use.buffer = replacement.clone();
 				}
+			}
+			if let Some(indirect) = &mut node.indirect
+				&& let Some((_, replacement)) = replacements
+					.iter()
+					.find(|(source, _)| source.same_as(&indirect.buffer))
+			{
+				indirect.buffer = replacement.clone();
 			}
 		}
 		candidate.barriers = plan_barriers(&candidate.nodes)?;
@@ -586,19 +693,28 @@ impl StableHash {
 }
 
 impl AccessState {
+	const INDIRECT: Self = Self {
+		read: false,
+		write: false,
+		indirect: true,
+	};
+
 	const fn from_access(access: BufferAccess) -> Self {
 		match access {
 			BufferAccess::Read => Self {
 				read: true,
 				write: false,
+				indirect: false,
 			},
 			BufferAccess::Write => Self {
 				read: false,
 				write: true,
+				indirect: false,
 			},
 			BufferAccess::ReadWrite => Self {
 				read: true,
 				write: true,
+				indirect: false,
 			},
 		}
 	}
@@ -606,6 +722,7 @@ impl AccessState {
 	fn merge(&mut self, other: Self) {
 		self.read |= other.read;
 		self.write |= other.write;
+		self.indirect |= other.indirect;
 	}
 
 	const fn conflicts_with(self, next: Self) -> bool {
@@ -620,6 +737,10 @@ impl AccessState {
 		self.write
 	}
 
+	pub(in crate::runtime) const fn uses_indirect_commands(self) -> bool {
+		self.indirect
+	}
+
 	pub(in crate::runtime) fn vk_access(self) -> vk::AccessFlags2 {
 		let mut flags = vk::AccessFlags2::empty();
 		if self.read {
@@ -627,6 +748,9 @@ impl AccessState {
 		}
 		if self.write {
 			flags = flags | vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT;
+		}
+		if self.indirect {
+			flags = flags | vk::AccessFlagBits2::INDIRECT_COMMAND_READ_BIT;
 		}
 		flags
 	}
@@ -637,13 +761,22 @@ fn plan_barriers(nodes: &[ComputeNode]) -> Result<Vec<Vec<BufferHazard>>> {
 	let accesses = nodes
 		.iter()
 		.map(|node| {
-			let bindings = node.buffers.iter().map(|buffer_use| {
+			let mut bindings =
+				Vec::with_capacity(node.buffers.len() + usize::from(node.indirect.is_some()));
+			for buffer_use in &node.buffers {
 				let identity = buffer_use.buffer.descriptor_index();
 				resources
 					.entry(identity)
 					.or_insert_with(|| buffer_use.buffer.clone());
-				(identity, buffer_use.access)
-			});
+				bindings.push((identity, AccessState::from_access(buffer_use.access)));
+			}
+			if let Some(indirect) = &node.indirect {
+				let identity = indirect.buffer.descriptor_index();
+				resources
+					.entry(identity)
+					.or_insert_with(|| indirect.buffer.clone());
+				bindings.push((identity, AccessState::INDIRECT));
+			}
 			aggregate_accesses(bindings)
 		})
 		.collect::<Vec<_>>();
@@ -673,11 +806,10 @@ fn plan_barriers(nodes: &[ComputeNode]) -> Result<Vec<Vec<BufferHazard>>> {
 }
 
 fn aggregate_accesses(
-	accesses: impl IntoIterator<Item = (u32, BufferAccess)>,
+	accesses: impl IntoIterator<Item = (u32, AccessState)>,
 ) -> BTreeMap<u32, AccessState> {
 	let mut aggregate = BTreeMap::new();
 	for (identity, access) in accesses {
-		let access = AccessState::from_access(access);
 		aggregate
 			.entry(identity)
 			.and_modify(|state: &mut AccessState| state.merge(access))

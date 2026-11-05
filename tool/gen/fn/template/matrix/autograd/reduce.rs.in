@@ -26,3 +26,21 @@ let Some(output_gradient) = gradients.take_output(*output_id) else {
 	let input_gradient = matrix::sum_backward(input, &output_gradient, *dim)?;
 	gradients.accumulate(input.value_id(), input_gradient)?;
 	Ok(true)
+
+// @operation mean
+// @fields input,output_id,dim
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+		return Ok(false);
+	};
+	let input_gradient = matrix::mean_backward(input, &output_gradient, *dim)?;
+	gradients.accumulate(input.value_id(), input_gradient)?;
+	Ok(true)
+
+// @operation max
+// @fields input,output,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+		return Ok(false);
+	};
+	let input_gradient = matrix::max_backward(input, output, &output_gradient)?;
+	gradients.accumulate(input.value_id(), input_gradient)?;
+	Ok(true)

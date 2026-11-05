@@ -65,41 +65,41 @@ impl FixtureSecret {
 		assert!(probe.belongs_to(&secret.device));
 		assert_eq!(probe.size(), secret.size);
 		let mut command = secret.device.record_compute_commands(|command| {
-			let ready = vk::BufferMemoryBarrier2::default()
-				.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-				.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
-				.dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-				.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
-				.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-				.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-				.buffer(secret.handle)
-				.size(secret.size);
-			let host = vk::MemoryBarrier2::default()
-				.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-				.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-				.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
-				.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT);
+			let ready = vk::BufferMemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+				.set_src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.set_dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+				.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.set_buffer(secret.handle)
+				.set_size(secret.size);
+			let host = vk::MemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+				.set_dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT);
 			// SAFETY: exclusively test_new fixture storage supplies TRANSFER_SRC;
 			// equal live ranges and barriers cover preceding device writes and host reads.
 			unsafe {
 				secret.device.sync_commands().pipeline_barrier(
 					secret.device.raw(),
 					command,
-					&vk::DependencyInfo::default()
-						.buffer_memory_barriers(std::slice::from_ref(&ready))
+					&vk::DependencyInfo::new()
+						.set_buffer_memory_barriers(std::slice::from_ref(&ready))
 						.map_err(Error::from)?,
 				)?;
 				secret.device.raw().cmd_copy_buffer(
 					command,
 					secret.handle,
 					probe.raw(),
-					&[vk::BufferCopy::default().size(secret.size)],
+					&[vk::BufferCopy::new().set_size(secret.size)],
 				)?;
 				secret.device.sync_commands().pipeline_barrier(
 					secret.device.raw(),
 					command,
-					&vk::DependencyInfo::default()
-						.memory_barriers(std::slice::from_ref(&host))
+					&vk::DependencyInfo::new()
+						.set_memory_barriers(std::slice::from_ref(&host))
 						.map_err(Error::from)?,
 				)?;
 			}
@@ -152,20 +152,20 @@ impl SecretBuffer {
 		command: vk::CommandBuffer,
 		probe: &crate::runtime::Buffer,
 	) -> Result<()> {
-		let barrier = vk::BufferMemoryBarrier2::default()
-			.src_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
-			.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-			.dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-			.dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
-			.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-			.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-			.buffer(self.handle)
-			.size(self.size);
-		let host = vk::MemoryBarrier2::default()
-			.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-			.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-			.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
-			.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT);
+		let barrier = vk::BufferMemoryBarrier2::new()
+			.set_src_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
+			.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+			.set_dst_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+			.set_dst_access_mask(vk::AccessFlagBits2::TRANSFER_READ_BIT)
+			.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+			.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+			.set_buffer(self.handle)
+			.set_size(self.size);
+		let host = vk::MemoryBarrier2::new()
+			.set_src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+			.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+			.set_dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+			.set_dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT);
 		// SAFETY: the secret is command-retained and the test keeps the probe
 		// alive through completion. Both buffers have the
 		// required transfer usage and exact equal ranges. No production secrets.
@@ -173,21 +173,21 @@ impl SecretBuffer {
 			self.device.sync_commands().pipeline_barrier(
 				self.device.raw(),
 				command,
-				&vk::DependencyInfo::default()
-					.buffer_memory_barriers(std::slice::from_ref(&barrier))
+				&vk::DependencyInfo::new()
+					.set_buffer_memory_barriers(std::slice::from_ref(&barrier))
 					.map_err(Error::from)?,
 			)?;
 			self.device.raw().cmd_copy_buffer(
 				command,
 				self.handle,
 				probe.raw(),
-				&[vk::BufferCopy::default().size(self.size)],
+				&[vk::BufferCopy::new().set_size(self.size)],
 			)?;
 			self.device.sync_commands().pipeline_barrier(
 				self.device.raw(),
 				command,
-				&vk::DependencyInfo::default()
-					.memory_barriers(std::slice::from_ref(&host))
+				&vk::DependencyInfo::new()
+					.set_memory_barriers(std::slice::from_ref(&host))
 					.map_err(Error::from)?,
 			)?;
 		}
@@ -210,18 +210,18 @@ impl SecretBuffer {
 					command,
 					input.raw(),
 					probe.raw(),
-					&[vk::BufferCopy::default().size(probe.size())],
+					&[vk::BufferCopy::new().set_size(probe.size())],
 				)?;
-				let host = vk::MemoryBarrier2::default()
-					.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-					.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-					.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
-					.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT);
+				let host = vk::MemoryBarrier2::new()
+					.set_src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+					.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+					.set_dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+					.set_dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT);
 				device.sync_commands().pipeline_barrier(
 					device.raw(),
 					command,
-					&vk::DependencyInfo::default()
-						.memory_barriers(std::slice::from_ref(&host))
+					&vk::DependencyInfo::new()
+						.set_memory_barriers(std::slice::from_ref(&host))
 						.map_err(Error::from)?,
 				)?;
 			}

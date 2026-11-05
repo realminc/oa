@@ -11,20 +11,7 @@ use super::{
 	Device,
 	device::swapchain::{PresentationSwapchain, SwapchainConfig},
 };
-
-/// Backend-neutral surface capabilities used to validate a future swapchain.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PresentationCapabilities {
-	pub min_image_count: u32,
-	pub max_image_count: Option<u32>,
-	pub current_extent: Option<[u32; 2]>,
-	pub min_extent: [u32; 2],
-	pub max_extent: [u32; 2],
-	pub format_count: usize,
-	pub present_mode_count: usize,
-	pub supports_color_attachment: bool,
-	pub supports_transfer_dst: bool,
-}
+pub use crate::runtime::types::PresentationCapabilities;
 
 pub struct PresentationSurface<'window> {
 	_device: Arc<Device>,
@@ -165,16 +152,18 @@ impl<'window> PresentationSurface<'window> {
 	) -> Result<Option<SwapchainConfig>> {
 		let (raw, formats, modes) = self.raw_capabilities()?;
 		let extent = if raw.current_extent.width != u32::MAX {
-			vk::Extent2D::default()
-				.width(raw.current_extent.width)
-				.height(raw.current_extent.height)
+			vk::Extent2D::new()
+				.set_width(raw.current_extent.width)
+				.set_height(raw.current_extent.height)
 		} else {
 			if drawable_extent.contains(&0) {
 				return Ok(None);
 			}
-			vk::Extent2D::default()
-				.width(drawable_extent[0].clamp(raw.min_image_extent.width, raw.max_image_extent.width))
-				.height(drawable_extent[1].clamp(raw.min_image_extent.height, raw.max_image_extent.height))
+			vk::Extent2D::new()
+				.set_width(drawable_extent[0].clamp(raw.min_image_extent.width, raw.max_image_extent.width))
+				.set_height(
+					drawable_extent[1].clamp(raw.min_image_extent.height, raw.max_image_extent.height),
+				)
 		};
 		// Donor: oa/runtime/engine/presenter.cpp::recreateSwapchain.
 		// Texture/UI pixels are already sRGB-encoded RGBA8. A blit into an
@@ -302,7 +291,7 @@ impl<'window> PresentationSurface<'window> {
 	)> {
 		let physical = self._device.physical();
 		let instance = self._device.instance().raw();
-		let mut raw = vk::SurfaceCapabilitiesKHR::default();
+		let mut raw = vk::SurfaceCapabilitiesKHR::new();
 		// SAFETY: the retained instance owns both device and surface.
 		match unsafe {
 			instance.get_physical_device_surface_capabilities_khr(physical.handle, self.handle, &mut raw)
@@ -376,7 +365,7 @@ fn surface_formats(
 			));
 		}
 	}
-	let mut formats = vec![vk::SurfaceFormatKHR::default(); count as usize];
+	let mut formats = vec![vk::SurfaceFormatKHR::new(); count as usize];
 	// SAFETY: `formats` provides `count` writable records.
 	match unsafe {
 		instance.get_physical_device_surface_formats_khr(

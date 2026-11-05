@@ -6,19 +6,11 @@ use super::{Av1Profile, VideoChromaSubsampling, VideoComponentBitDepth};
 
 mod frame;
 
+pub use crate::video::types::{Av1AccessUnitInfo, Av1ColorConfig, Av1TimingInfo};
 pub use frame::{
 	Av1FrameHeader, Av1FrameType, Av1InterpolationFilter, Av1ReferenceState, Av1RestorationType,
 	Av1TileGroup, Av1TransformMode, parse_av1_frame_header, parse_av1_tile_group,
 };
-
-/// AV1 sequence-level timing metadata.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Av1TimingInfo {
-	pub num_units_in_display_tick: u32,
-	pub time_scale: u32,
-	pub equal_picture_interval: bool,
-	pub num_ticks_per_picture_minus_1: Option<u32>,
-}
 
 /// Optional AV1 color-description triplet.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,18 +38,6 @@ impl Av1ChromaSamplePosition {
 			_ => Self::Reserved,
 		}
 	}
-}
-
-/// Parsed AV1 color configuration required by decoder backends.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Av1ColorConfig {
-	pub bit_depth: VideoComponentBitDepth,
-	pub monochrome: bool,
-	pub color_description: Option<Av1ColorDescription>,
-	pub full_range: bool,
-	pub chroma_subsampling: VideoChromaSubsampling,
-	pub chroma_sample_position: Av1ChromaSamplePosition,
-	pub separate_uv_delta_q: bool,
 }
 
 /// One AV1 operating point declared by a sequence header.
@@ -188,16 +168,6 @@ impl<'a> Av1Obu<'a> {
 	pub const fn payload(&self) -> &'a [u8] {
 		self.payload
 	}
-}
-
-/// Structural counts for one raw or IVF-wrapped AV1 access unit.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Av1AccessUnitInfo {
-	pub sequence_headers: u32,
-	pub frames: u32,
-	pub frame_headers: u32,
-	pub tile_groups: u32,
-	pub ivf_timestamp: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

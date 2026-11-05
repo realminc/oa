@@ -30,6 +30,7 @@
 			{{binding_name:0}}: &{{binding_name:0}},
 			{{push_name:0}}: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: {{contract}},
@@ -77,6 +78,7 @@
 			{{binding_name:0}}: &{{binding_name:0}},
 			{{push_name:0}}: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: {{contract}},
@@ -119,12 +121,14 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: {{kernel:1}},
 			buffers: &{{binding_name:1}},
 			push_constants: &{{push_name:1}},
 			workgroups: {{workgroups:1}},
+			indirect: None,
 		},
 	];
 	let inputs = [predicted, target];
@@ -154,12 +158,14 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: {{kernel:1}},
 			buffers: &{{binding_name:1}},
 			push_constants: &{{push_name:1}},
 			workgroups: {{workgroups:1}},
+			indirect: None,
 		},
 	];
 	let inputs = [predicted, target];
@@ -287,18 +293,21 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: {{kernel:1}},
 			buffers: &{{binding_name:1}},
 			push_constants: &{{push_name:1}},
 			workgroups: {{workgroups:1}},
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: {{kernel:2}},
 			buffers: &{{binding_name:2}},
 			push_constants: &{{push_name:2}},
 			workgroups: {{workgroups:2}},
+			indirect: None,
 		},
 	];
 	let inputs = [
@@ -365,18 +374,21 @@
 			buffers: &{{binding_name:0}},
 			push_constants: &{{push_name:0}},
 			workgroups: {{workgroups:0}},
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: {{kernel:1}},
 			buffers: &{{binding_name:1}},
 			push_constants: &{{push_name:1}},
 			workgroups: {{workgroups:1}},
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: {{kernel:2}},
 			buffers: &{{binding_name:2}},
 			push_constants: &{{push_name:2}},
 			workgroups: {{workgroups:2}},
+			indirect: None,
 		},
 	];
 	let inputs = [predicted, target];

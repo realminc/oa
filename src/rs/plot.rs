@@ -20,5 +20,8 @@
 pub mod axes;
 pub mod figure;
 
+#[path = "plot/type.gen.rs"]
+mod types;
+
 pub use axes::{Axes, BarStyle, HeatmapStyle, LineStyle, ScatterStyle};
 pub use figure::{Figure, FigureConfig, Theme};

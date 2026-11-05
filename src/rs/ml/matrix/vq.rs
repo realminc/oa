@@ -1,19 +1,12 @@
 //! Vector-quantization Matrix primitives.
 
+pub use crate::ml::types::VqAssignResult;
 use crate::{
 	DType, Error, Matrix, OpAttribute, Result,
 	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
 };
 
 use crate::ml::validation::{shader_u32, validate_f32_same_engine};
-
-/// Nearest-code indices and gathered code vectors.
-pub struct VqAssignResult {
-	/// I32 nearest-code index for every latent row.
-	pub indices: Matrix,
-	/// Gathered winning code for every latent row.
-	pub quantized: Matrix,
-}
 
 /// Functionally updated persistent EMA state.
 pub struct VqEmaState {
@@ -94,6 +87,7 @@ pub fn vq_assign(latent: &Matrix, codebook: &Matrix) -> Result<VqAssignResult> {
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: KernelId::MlVqAssignF32.linear_workgroups(rows_u32),
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,
@@ -174,6 +168,7 @@ pub fn vq_lookup(codebook: &Matrix, indices: &Matrix) -> Result<Matrix> {
 					"output element count",
 					operation,
 				)?),
+				indirect: None,
 			};
 			let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 				Error::internal(format!(
@@ -334,6 +329,7 @@ pub fn vq_ema_update(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: KernelId::MlVqEmaUpdateF32.linear_workgroups(num_codes_u32),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

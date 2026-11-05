@@ -1,5 +1,6 @@
 //! Incremental decode and real-time playback session.
 
+pub use crate::audio::types::AudioPlayerConfig;
 use std::{
 	fs::File,
 	path::{Path, PathBuf},
@@ -26,14 +27,6 @@ use symphonia::core::{
 };
 
 use crate::{Engine, Error, Result, runtime::EngineHandle};
-
-/// Configuration for one incremental playback session.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AudioPlayerConfig {
-	pub uri: PathBuf,
-	pub loop_playback: bool,
-	pub ring_milliseconds: u32,
-}
 
 impl AudioPlayerConfig {
 	pub fn new(uri: impl Into<PathBuf>) -> Self {

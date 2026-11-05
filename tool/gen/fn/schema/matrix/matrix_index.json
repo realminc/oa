@@ -36,6 +36,7 @@
 		{
 			"stable_id": 195,
 			"name": "top_k",
+			"donor_op": "oa::FnMatrix::topK",
 			"kernel_id": "MatrixTopKF32",
 			"source": "src/slang/matrix/index/top_k.slang",
 			"variant": "generic",
@@ -50,6 +51,7 @@
 				]
 			],
 			"contract": {
+				"control_flow": "conditional",
 				"input_kinds": [
 					"matrix"
 				],
@@ -140,12 +142,13 @@
 		{
 			"stable_id": 348,
 			"name": "top_k_mask",
+			"donor_op": "oa::FnMatrix::topKMask",
 			"kernel_id": "MatrixTopKMaskF32",
 			"source": "src/slang/matrix/index/top_k_mask.slang",
 			"variant": "generic",
 			"semantic_attributes": [
 				[
-					"num_experts",
+					"numExperts",
 					"signed_integer"
 				]
 			],
@@ -222,6 +225,7 @@
 		{
 			"stable_id": 359,
 			"name": "moe_expert_plan",
+			"donor_op": "oa::FnMatrix::moeExpertPlan",
 			"kernel_id": "MatrixMoeExpertPlanU32",
 			"source": "src/slang/matrix/index/moe_expert_plan.slang",
 			"variant": "generic",
@@ -233,7 +237,7 @@
 			],
 			"semantic_attributes": [
 				[
-					"num_experts",
+					"numExperts",
 					"signed_integer"
 				]
 			],
@@ -485,6 +489,7 @@
 		{
 			"stable_id": 376,
 			"name": "slice",
+			"donor_op": "oa::FnMatrix::slice",
 			"autograd": {
 				"mode": "generated",
 				"family": "index",
@@ -828,6 +833,7 @@
 		{
 			"stable_id": 344,
 			"name": "repeat_interleave",
+			"donor_op": "oa::FnMatrix::repeatInterleave",
 			"autograd": {
 				"mode": "generated",
 				"family": "index",
@@ -1111,6 +1117,7 @@
 		{
 			"stable_id": 441,
 			"name": "gather",
+			"donor_op": "oa::FnMatrix::gather",
 			"autograd": {
 				"mode": "generated",
 				"family": "index",
@@ -1143,7 +1150,7 @@
 					"matrix"
 				],
 				"shape_rule": "explicit",
-				"dtype_rule": "explicit",
+				"dtype_rule": "match_input",
 				"effects": [
 					"read_inputs",
 					"write_outputs"
@@ -1310,6 +1317,7 @@
 		{
 			"stable_id": 388,
 			"name": "gather_last_dim",
+			"donor_op": "oa::FnMatrix::gatherLastDim",
 			"autograd": {
 				"mode": "generated",
 				"family": "index",
@@ -1346,7 +1354,7 @@
 					"matrix"
 				],
 				"shape_rule": "explicit",
-				"dtype_rule": "f32_values_i32_indices",
+				"dtype_rule": "match_input",
 				"effects": [
 					"read_inputs",
 					"write_outputs"
@@ -1506,6 +1514,7 @@
 		{
 			"stable_id": 378,
 			"name": "concat",
+			"donor_op": "oa::FnMatrix::concat",
 			"autograd": {
 				"mode": "generated",
 				"family": "index",
@@ -1689,6 +1698,7 @@
 		{
 			"stable_id": 440,
 			"name": "transpose",
+			"donor_op": "oa::FnMatrix::transpose",
 			"autograd": {
 				"mode": "generated",
 				"family": "index",
@@ -1813,6 +1823,7 @@
 		{
 			"stable_id": 393,
 			"name": "equal",
+			"donor_op": "oa::FnMatrix::equal",
 			"kernel_id": "MatrixEqualF32",
 			"source": "src/slang/matrix/index/equal.slang",
 			"variant": "generic",
@@ -1830,7 +1841,7 @@
 					"matrix"
 				],
 				"shape_rule": "preserve_input",
-				"dtype_rule": "all_f32",
+				"dtype_rule": "explicit",
 				"effects": [
 					"read_inputs",
 					"write_outputs"
@@ -1887,10 +1898,958 @@
 				"visibility": "pub",
 				"receiver": "input"
 			}
+		},
+		{
+			"stable_id": 625,
+			"name": "causal_mask",
+			"donor_op": "oa::FnMatrix::causalMask",
+			"kernel_id": "MatrixCausalMaskF32",
+			"source": "src/slang/matrix/index/causal_mask.slang",
+			"variant": "generic",
+			"autograd": {
+				"mode": "generated",
+				"family": "index",
+				"node": "CausalMask",
+				"saved_fields": [
+					["input", "matrix"],
+					["output_id", "output_identity"]
+				]
+			},
+			"differentiation": "reverse",
+			"contract": {
+				"input_kinds": [
+					"matrix"
+				],
+				"output_kinds": [
+					"matrix"
+				],
+				"shape_rule": "preserve_input",
+				"dtype_rule": "match_input",
+				"effects": [
+					"read_inputs",
+					"write_outputs"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [
+					-1
+				],
+				"lowering": "compute_dispatch"
+			},
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 1,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"input_index",
+					"uint32"
+				],
+				[
+					"output_index",
+					"uint32"
+				],
+				[
+					"element_count",
+					"uint32"
+				],
+				[
+					"tq",
+					"uint32"
+				],
+				[
+					"tk",
+					"uint32"
+				]
+			],
+			"signature": {
+				"parameters": [
+					[
+						"input",
+						"&Matrix"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub",
+				"receiver": "input"
+			}
+		},
+		{
+			"stable_id": 626,
+			"name": "causal_mask_backward",
+			"donor_op": "oa::FnMatrix::causalMaskBwd",
+			"kernel_id": "MatrixCausalMaskBackwardF32",
+			"source": "src/slang/matrix/index/causal_mask_backward.slang",
+			"variant": "generic",
+			"contract": {
+				"input_kinds": [
+					"matrix"
+				],
+				"output_kinds": [
+					"matrix"
+				],
+				"shape_rule": "preserve_input",
+				"dtype_rule": "match_input",
+				"effects": [
+					"read_inputs",
+					"write_outputs"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [
+					-1
+				],
+				"lowering": "compute_dispatch"
+			},
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 1,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"output_gradient_index",
+					"uint32"
+				],
+				[
+					"input_gradient_index",
+					"uint32"
+				],
+				[
+					"element_count",
+					"uint32"
+				],
+				[
+					"tq",
+					"uint32"
+				],
+				[
+					"tk",
+					"uint32"
+				]
+			],
+			"signature": {
+				"parameters": [
+					[
+						"output_gradient",
+						"&Matrix"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub(crate)"
+			}
+		},
+		{
+			"stable_id": 627,
+			"name": "greater_equal",
+			"donor_op": "oa::FnMatrix::greaterEqual",
+			"kernel_id": "MatrixGreaterEqualF32",
+			"source": "src/slang/matrix/index/greater_equal.slang",
+			"variant": "generic",
+			"semantic_attributes": [
+				[
+					"value",
+					"float"
+				]
+			],
+			"contract": {
+				"input_kinds": [
+					"matrix"
+				],
+				"output_kinds": [
+					"matrix"
+				],
+				"shape_rule": "preserve_input",
+				"dtype_rule": "explicit",
+				"effects": [
+					"read_inputs",
+					"write_outputs"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [
+					-1
+				],
+				"lowering": "compute_dispatch"
+			},
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 1,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"input_index",
+					"uint32"
+				],
+				[
+					"output_index",
+					"uint32"
+				],
+				[
+					"element_count",
+					"uint32"
+				],
+				[
+					"value",
+					"float32"
+				]
+			],
+			"signature": {
+				"parameters": [
+					[
+						"input",
+						"&Matrix"
+					],
+					[
+						"value",
+						"f32"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub",
+				"receiver": "input"
+			}
+		},
+		{
+			"stable_id": 628,
+			"name": "split",
+			"donor_op": "oa::FnMatrix::split",
+			"composite": true,
+			"autograd": {
+				"mode": "alias",
+				"family": "index",
+				"target": "slice"
+			},
+			"differentiation": "reverse",
+			"semantic_attributes": [
+				[
+					"dim",
+					"signed_integer"
+				]
+			],
+			"contract": {
+				"input_kinds": [
+					"matrix"
+				],
+				"output_kinds": [],
+				"variadic_output": {
+					"kind": "matrix",
+					"minimum": 1
+				},
+				"shape_rule": "explicit",
+				"dtype_rule": "match_input",
+				"effects": [
+					"read_inputs",
+					"write_outputs"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [],
+				"lowering": "compute_dispatch"
+			},
+			"signature": {
+				"parameters": [
+					[
+						"input",
+						"&Matrix"
+					],
+					[
+						"sizes",
+						"&[i64]"
+					],
+					[
+						"dim",
+						"i32"
+					]
+				],
+				"returns": "Vec<Matrix>",
+				"visibility": "pub"
+			},
+			"python": {
+				"defaults": {
+					"dim": 0
+				}
+			}
+		},
+		{
+			"stable_id": 629,
+			"name": "compact_rows",
+			"donor_op": "oa::FnMatrix::compactRows",
+			"kernel_id": "MatrixCompactRowsF32",
+			"source": "src/slang/matrix/index/compact_rows.slang",
+			"variant": "generic",
+			"autograd": {
+				"mode": "generated",
+				"family": "index",
+				"node": "CompactRows",
+				"saved_fields": [
+					[
+						"input",
+						"matrix"
+					],
+					[
+						"output_id",
+						"output_identity"
+					],
+					[
+						"row_map",
+						"matrix"
+					],
+					[
+						"count",
+						"matrix"
+					],
+					[
+						"dispatch_args",
+						"matrix"
+					]
+				]
+			},
+			"differentiation": "reverse",
+			"contract": {
+				"input_kinds": [
+					"matrix",
+					"matrix"
+				],
+				"output_kinds": [
+					"matrix",
+					"matrix",
+					"matrix",
+					"matrix"
+				],
+				"shape_rule": "explicit",
+				"dtype_rule": "explicit",
+				"effects": [
+					"read_inputs",
+					"write_outputs"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [
+					-1,
+					-1,
+					-1,
+					-1
+				],
+				"lowering": "compute_dispatch"
+			},
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 2,
+						"domain": "rows",
+						"partition": "exclusive_per_workgroup",
+						"extent": "row_width",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					},
+					{
+						"binding": 3,
+						"domain": "payload_words",
+						"partition": "exclusive_per_workgroup",
+						"extent": "one_word",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					},
+					{
+						"binding": 4,
+						"domain": "scalar",
+						"partition": "exclusive_per_workgroup",
+						"extent": "one_scalar",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					},
+					{
+						"binding": 5,
+						"domain": "payload_words",
+						"partition": "exclusive_per_workgroup",
+						"extent": "one_word",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"input_index",
+					"uint32"
+				],
+				[
+					"mask_index",
+					"uint32"
+				],
+				[
+					"values_index",
+					"uint32"
+				],
+				[
+					"row_map_index",
+					"uint32"
+				],
+				[
+					"count_index",
+					"uint32"
+				],
+				[
+					"dispatch_args_index",
+					"uint32"
+				],
+				[
+					"t",
+					"uint32"
+				],
+				[
+					"d",
+					"uint32"
+				]
+			],
+			"signature": {
+				"parameters": [
+					[
+						"input",
+						"&Matrix"
+					],
+					[
+						"mask",
+						"&Matrix"
+					]
+				],
+				"returns": "CompactRowsResult",
+				"visibility": "pub"
+			}
+		},
+		{
+			"stable_id": 630,
+			"name": "compact_rows_backward",
+			"donor_op": "oa::FnMatrix::compactRowsBwd",
+			"kernel_id": "MatrixCompactRowsBackwardF32",
+			"source": "src/slang/matrix/index/compact_rows_backward.slang",
+			"variant": "generic",
+			"semantic_attributes": [
+				[
+					"inputShape",
+					"shape"
+				]
+			],
+			"contract": {
+				"control_flow": "conditional",
+				"input_kinds": [
+					"matrix",
+					"matrix",
+					"matrix",
+					"matrix"
+				],
+				"optional_inputs": [
+					3
+				],
+				"output_kinds": [
+					"matrix"
+				],
+				"shape_rule": "explicit",
+				"dtype_rule": "match_input",
+				"effects": [
+					"read_inputs",
+					"write_outputs"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [
+					-1
+				],
+				"lowering": "compute_dispatch"
+			},
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 3,
+						"domain": "rows",
+						"partition": "shared_atomic_contributors",
+						"extent": "row_width",
+						"collision": "atomic_u32",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"gradient_out_index",
+					"uint32"
+				],
+				[
+					"row_map_index",
+					"uint32"
+				],
+				[
+					"count_index",
+					"uint32"
+				],
+				[
+					"gradient_in_index",
+					"uint32"
+				],
+				[
+					"t",
+					"uint32"
+				],
+				[
+					"d",
+					"uint32"
+				]
+			],
+			"signature": {
+				"parameters": [
+					[
+						"output_gradient",
+						"&Matrix"
+					],
+					[
+						"row_map",
+						"&Matrix"
+					],
+					[
+						"count",
+						"&Matrix"
+					],
+					[
+						"dispatch_args",
+						"&Matrix"
+					],
+					[
+						"input_shape",
+						"&[usize]"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub(crate)"
+			}
+		},
+		{
+			"stable_id": 631,
+			"name": "scatter_rows",
+			"donor_op": "oa::FnMatrix::scatterRows",
+			"kernel_id": "MatrixScatterRowsF32",
+			"source": "src/slang/matrix/index/scatter_rows.slang",
+			"variant": "generic",
+			"autograd": {
+				"mode": "generated",
+				"family": "index",
+				"node": "ScatterRows",
+				"saved_fields": [
+					[
+						"input",
+						"matrix"
+					],
+					[
+						"source",
+						"matrix"
+					],
+					[
+						"output_id",
+						"output_identity"
+					],
+					[
+						"row_map",
+						"matrix"
+					],
+					[
+						"count",
+						"matrix"
+					],
+					[
+						"dispatch_args",
+						"optional_matrix"
+					]
+				]
+			},
+			"differentiation": "reverse",
+			"contract": {
+				"control_flow": "conditional",
+				"input_kinds": [
+					"matrix",
+					"matrix",
+					"matrix",
+					"matrix",
+					"matrix"
+				],
+				"optional_inputs": [
+					4
+				],
+				"output_kinds": [
+					"matrix"
+				],
+				"shape_rule": "explicit",
+				"dtype_rule": "match_input",
+				"effects": [
+					"read_inputs",
+					"write_outputs"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [
+					-1
+				],
+				"lowering": "compute_dispatch"
+			},
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 4,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"input_index",
+					"uint32"
+				],
+				[
+					"source_index",
+					"uint32"
+				],
+				[
+					"row_map_index",
+					"uint32"
+				],
+				[
+					"count_index",
+					"uint32"
+				],
+				[
+					"output_index",
+					"uint32"
+				],
+				[
+					"t",
+					"uint32"
+				],
+				[
+					"d",
+					"uint32"
+				]
+			],
+			"signature": {
+				"parameters": [
+					[
+						"input",
+						"&Matrix"
+					],
+					[
+						"source",
+						"&Matrix"
+					],
+					[
+						"row_map",
+						"&Matrix"
+					],
+					[
+						"count",
+						"&Matrix"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub"
+			}
+		},
+		{
+			"stable_id": 632,
+			"name": "scatter_rows_backward_source",
+			"donor_op": "oa::FnMatrix::scatterRowsBwdSource",
+			"kernel_id": "MatrixScatterRowsBackwardSourceF32",
+			"source": "src/slang/matrix/index/scatter_rows_backward_source.slang",
+			"variant": "generic",
+			"contract": {
+				"control_flow": "conditional",
+				"input_kinds": [
+					"matrix",
+					"matrix",
+					"matrix",
+					"matrix"
+				],
+				"optional_inputs": [
+					3
+				],
+				"output_kinds": [
+					"matrix"
+				],
+				"shape_rule": "match_input",
+				"dtype_rule": "match_input",
+				"effects": [
+					"read_inputs",
+					"write_outputs"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [
+					-1
+				],
+				"lowering": "compute_dispatch"
+			},
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 3,
+						"domain": "rows",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"gradient_out_index",
+					"uint32"
+				],
+				[
+					"row_map_index",
+					"uint32"
+				],
+				[
+					"count_index",
+					"uint32"
+				],
+				[
+					"gradient_source_index",
+					"uint32"
+				],
+				[
+					"t",
+					"uint32"
+				],
+				[
+					"d",
+					"uint32"
+				]
+			],
+			"signature": {
+				"parameters": [
+					[
+						"output_gradient",
+						"&Matrix"
+					],
+					[
+						"row_map",
+						"&Matrix"
+					],
+					[
+						"count",
+						"&Matrix"
+					],
+					[
+						"dispatch_args",
+						"Option<&Matrix>"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub(crate)"
+			}
+		},
+		{
+			"stable_id": 633,
+			"name": "scatter_rows_indirect",
+			"donor_op": "oa::FnMatrix::scatterRows",
+			"kernel_id": "MatrixScatterRowsIndirectF32",
+			"source": "src/slang/matrix/index/scatter_rows_indirect.slang",
+			"variant": "indirect",
+			"semantic_operation": "scatter_rows",
+			"signature": {
+				"parameters": [
+					[
+						"input",
+						"&Matrix"
+					],
+					[
+						"source",
+						"&Matrix"
+					],
+					[
+						"plan",
+						"&CompactRowsResult"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub"
+			},
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 4,
+						"domain": "rows",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"source_index",
+					"uint32"
+				],
+				[
+					"row_map_index",
+					"uint32"
+				],
+				[
+					"count_index",
+					"uint32"
+				],
+				[
+					"dispatch_args_index",
+					"uint32"
+				],
+				[
+					"output_index",
+					"uint32"
+				],
+				[
+					"t",
+					"uint32"
+				],
+				[
+					"d",
+					"uint32"
+				]
+			]
+		},
+		{
+			"stable_id": 634,
+			"name": "compact_rows_backward_indirect",
+			"donor_op": "oa::FnMatrix::compactRowsBwd",
+			"kernel_id": "MatrixCompactRowsBackwardIndirectF32",
+			"source": "src/slang/matrix/index/compact_rows_backward_indirect.slang",
+			"variant": "indirect",
+			"semantic_operation": "compact_rows_backward",
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 4,
+						"domain": "rows",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"gradient_out_index",
+					"uint32"
+				],
+				[
+					"row_map_index",
+					"uint32"
+				],
+				[
+					"count_index",
+					"uint32"
+				],
+				[
+					"dispatch_args_index",
+					"uint32"
+				],
+				[
+					"gradient_in_index",
+					"uint32"
+				],
+				[
+					"t",
+					"uint32"
+				],
+				[
+					"d",
+					"uint32"
+				]
+			]
+		},
+		{
+			"stable_id": 635,
+			"name": "scatter_rows_backward_source_indirect",
+			"donor_op": "oa::FnMatrix::scatterRowsBwdSource",
+			"kernel_id": "MatrixScatterRowsBackwardSourceIndirectF32",
+			"source": "src/slang/matrix/index/scatter_rows_backward_source_indirect.slang",
+			"variant": "indirect",
+			"semantic_operation": "scatter_rows_backward_source",
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 4,
+						"domain": "rows",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"gradient_out_index",
+					"uint32"
+				],
+				[
+					"row_map_index",
+					"uint32"
+				],
+				[
+					"count_index",
+					"uint32"
+				],
+				[
+					"dispatch_args_index",
+					"uint32"
+				],
+				[
+					"gradient_source_index",
+					"uint32"
+				],
+				[
+					"t",
+					"uint32"
+				],
+				[
+					"d",
+					"uint32"
+				]
+			]
 		}
 	],
 	"types": [
 		{
+			"class": "result",
 			"name": "TopKResult",
 			"kind": "struct",
 			"fields": [
@@ -1905,6 +2864,7 @@
 			]
 		},
 		{
+			"class": "record",
 			"name": "MoeExpertPlan",
 			"kind": "struct",
 			"fields": [
@@ -1930,6 +2890,29 @@
 				},
 				{
 					"name": "inverse",
+					"type": "Matrix"
+				}
+			]
+		},
+		{
+			"class": "result",
+			"name": "CompactRowsResult",
+			"kind": "struct",
+			"fields": [
+				{
+					"name": "values",
+					"type": "Matrix"
+				},
+				{
+					"name": "row_map",
+					"type": "Matrix"
+				},
+				{
+					"name": "count",
+					"type": "Matrix"
+				},
+				{
+					"name": "dispatch_args",
 					"type": "Matrix"
 				}
 			]

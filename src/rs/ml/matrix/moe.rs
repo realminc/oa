@@ -82,6 +82,7 @@ pub fn grouped_gemm_m(input: &Matrix, weight: &Matrix, offsets: &Matrix) -> Resu
 				geometry.output_features.div_ceil(32),
 				1,
 			],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -156,6 +157,7 @@ pub(in crate::ml) fn grouped_gemm_m_parameterized(
 				geometry.output_features.div_ceil(32),
 				1,
 			],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -246,6 +248,7 @@ pub fn grouped_linear_m(
 				geometry.output_features.div_ceil(32),
 				1,
 			],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -330,6 +333,7 @@ pub(in crate::ml) fn grouped_linear_m_parameterized(
 				geometry.output_features.div_ceil(32),
 				1,
 			],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -399,6 +403,7 @@ pub fn moe_route_weights(probabilities: &Matrix, expert_indices: &Matrix) -> Res
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: kernel.linear_workgroups(geometry.tokens),
+				indirect: None,
 			};
 			let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 				Error::internal(format!(
@@ -493,6 +498,7 @@ pub fn moe_gather(input: &Matrix, packed_token: &Matrix, inverse: &Matrix) -> Re
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(output_count_u32),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -563,6 +569,7 @@ pub fn moe_combine(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(geometry.output_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -645,6 +652,7 @@ pub(in crate::ml) fn moe_route_weights_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: kernel.linear_workgroups(geometry.probability_count),
+				indirect: None,
 			};
 			let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 				Error::internal(format!(
@@ -734,6 +742,7 @@ pub(in crate::ml) fn moe_gather_backward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(output_count_u32),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -813,6 +822,7 @@ pub(in crate::ml) fn moe_combine_backward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(dispatch_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -893,6 +903,7 @@ pub(in crate::ml) fn grouped_gemm_m_backward(
 				geometry.input_features.div_ceil(32),
 				1,
 			],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlGroupedGemmMParameterBackwardF32,
@@ -903,6 +914,7 @@ pub(in crate::ml) fn grouped_gemm_m_backward(
 				geometry.input_features.div_ceil(32),
 				geometry.experts,
 			],
+			indirect: None,
 		},
 	];
 	input.engine_handle().record_split_semantic(
@@ -983,6 +995,7 @@ pub(in crate::ml) fn grouped_linear_m_backward(
 				geometry.input_features.div_ceil(32),
 				1,
 			],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlGroupedLinearMParameterBackwardF32,
@@ -993,6 +1006,7 @@ pub(in crate::ml) fn grouped_linear_m_backward(
 				geometry.input_features.div_ceil(32),
 				geometry.experts,
 			],
+			indirect: None,
 		},
 	];
 	input.engine_handle().record_split_semantic(

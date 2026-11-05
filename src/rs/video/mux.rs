@@ -1,5 +1,6 @@
 //! Streaming ISO-BMFF/MP4 video muxing.
 
+pub use crate::video::types::{VideoMuxerAudioConfig, VideoMuxerConfig};
 use std::{
 	fs::File,
 	io::{Seek, SeekFrom, Write},
@@ -12,17 +13,6 @@ use super::{VideoCodec, VideoTimeBase};
 
 const STREAM_HEADER_BYTES: u64 = 32;
 
-/// Optional native PCM-S16 track configuration for [`VideoMuxer`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct VideoMuxerAudioConfig {
-	/// Audio sample rate in hertz.
-	pub sample_rate: u32,
-	/// Number of interleaved channels.
-	pub channel_count: u32,
-	/// Encoder-delay frames omitted from presentation through an edit list.
-	pub priming_frames: u32,
-}
-
 impl Default for VideoMuxerAudioConfig {
 	fn default() -> Self {
 		Self {
@@ -31,23 +21,6 @@ impl Default for VideoMuxerAudioConfig {
 			priming_frames: 0,
 		}
 	}
-}
-
-/// Configuration for one streaming MP4 muxer.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct VideoMuxerConfig {
-	/// Elementary video codec. Only H.264 and H.265 are admitted.
-	pub codec: VideoCodec,
-	/// Coded width in pixels.
-	pub width: u32,
-	/// Coded height in pixels.
-	pub height: u32,
-	/// Nominal frame rate used for the final sample duration.
-	pub frame_rate: u32,
-	/// MP4 video-track time base. Its numerator must currently be one.
-	pub time_base: VideoTimeBase,
-	/// Optional native PCM-S16 audio track.
-	pub audio: Option<VideoMuxerAudioConfig>,
 }
 
 impl VideoMuxerConfig {

@@ -2,8 +2,8 @@ use crate::{
 	Error, Result,
 	runtime::{
 		BufferAccess, PushConstant,
+		dna::kernel::PhysicalWriteContract,
 		executable_graph::{BufferHazard, ComputeNode, ExecutableGraph},
-		shader::PhysicalWriteContract,
 	},
 };
 
@@ -25,11 +25,16 @@ pub(super) enum CommandPoolKind {
 	Compute,
 	Graphics,
 	VideoDecode,
+	VideoEncode,
 }
 
 pub(in crate::runtime) struct RecordedCommandBuffer {
 	allocation: CommandBufferAllocation,
 	timing: Option<TimestampPair>,
+	/// A caller-owned timer pair stays retained through command retirement but
+	/// is not copied onto the submission event: the timer owns the reading, and
+	/// reusing the pair must not report newer samples through an older event.
+	event_timing_suppressed: bool,
 	brackets: Option<Box<[RecordedCommandBuffer; 2]>>,
 	secret_erasures: Vec<crate::runtime::device::secret_buffer::SecretBuffer>,
 	retained_secret_erasures: Vec<Arc<crate::runtime::device::secret_buffer::SecretBuffer>>,
@@ -77,9 +82,9 @@ struct CommandRetention {
 
 impl CommandPool {
 	pub(super) fn new(device: &vk::Device, queue_family: u32, kind: CommandPoolKind) -> Result<Self> {
-		let create_info = vk::CommandPoolCreateInfo::default()
-			.flags(vk::CommandPoolCreateFlagBits::TRANSIENT_BIT)
-			.queue_family_index(queue_family);
+		let create_info = vk::CommandPoolCreateInfo::new()
+			.set_flags(vk::CommandPoolCreateFlagBits::TRANSIENT_BIT)
+			.set_queue_family_index(queue_family);
 
 		// SAFETY: the queue family was queried from the physical device used to create
 		// this live logical device. No allocation callbacks are installed.
@@ -162,10 +167,10 @@ impl CommandPool {
 					(0..dispatch.node.kernel.bounded_buffer_count() as usize)
 						.map(|slot| {
 							let buffer = dispatch.node.buffers.get(slot).unwrap_or(first);
-							vk::DescriptorBufferInfo::default()
-								.buffer(buffer.buffer.raw())
-								.offset(0)
-								.range(buffer.buffer.size())
+							vk::DescriptorBufferInfo::new()
+								.set_buffer(buffer.buffer.raw())
+								.set_offset(0)
+								.set_range(buffer.buffer.size())
 						})
 						.collect::<Vec<_>>()
 				})
@@ -205,6 +210,10 @@ impl CommandPool {
 					.map(|usage| usage.buffer.clone()),
 			);
 			accesses.extend(dispatch.node.buffers.iter().map(|usage| usage.access));
+			if let Some(indirect) = &dispatch.node.indirect {
+				resources.push(indirect.buffer.clone());
+				accesses.push(BufferAccess::Read);
+			}
 		}
 		record_host_visibility(device, sync_commands, command_buffer, &accesses)?;
 		if let Some(timing) = &timing {
@@ -229,10 +238,10 @@ impl CommandPool {
 		device: &vk::Device,
 		usage: vk::CommandBufferUsageFlags,
 	) -> Result<vk::CommandBuffer> {
-		let allocate_info = vk::CommandBufferAllocateInfo::default()
-			.command_pool(self.handle)
-			.level(vk::CommandBufferLevel::PRIMARY)
-			.command_buffer_count(1);
+		let allocate_info = vk::CommandBufferAllocateInfo::new()
+			.set_command_pool(self.handle)
+			.set_level(vk::CommandBufferLevel::PRIMARY)
+			.set_command_buffer_count(1);
 		// SAFETY: this pool belongs to `device`; the request count is one and the pool
 		// remains live until the returned command buffer is explicitly retired.
 		let command_buffers = unsafe { device.allocate_command_buffers(&allocate_info) }
@@ -245,7 +254,7 @@ impl CommandPool {
 			));
 		};
 
-		let begin_info = vk::CommandBufferBeginInfo::default().flags(usage);
+		let begin_info = vk::CommandBufferBeginInfo::new().set_flags(usage);
 		// SAFETY: the primary command buffer is in its initial state and exclusively
 		// owned by this function.
 		if let Err(source) = unsafe { device.begin_command_buffer(command_buffer, &begin_info) } {
@@ -313,6 +322,7 @@ impl CommandPool {
 		Ok(RecordedCommandBuffer {
 			allocation,
 			timing,
+			event_timing_suppressed: false,
 			brackets: None,
 			secret_erasures: Vec::new(),
 			retained_secret_erasures: Vec::new(),
@@ -357,11 +367,12 @@ fn prepare_dispatch<'a>(
 				node.operation
 			))
 		})?;
-	if node
-		.workgroups
-		.into_iter()
-		.zip(pipeline.max_dispatch_group_count())
-		.any(|(requested, limit)| requested == 0 || requested > limit)
+	if node.indirect.is_none()
+		&& node
+			.workgroups
+			.into_iter()
+			.zip(pipeline.max_dispatch_group_count())
+			.any(|(requested, limit)| requested == 0 || requested > limit)
 	{
 		return Err(Error::invalid_argument(format!(
 			"{} workgroup count {:?} is zero or exceeds the selected device limit {:?}",
@@ -439,7 +450,7 @@ fn validate_physical_write_accesses(
 		declared[binding] = true;
 	}
 	for (binding, access) in accesses.iter().copied().enumerate() {
-		if access != BufferAccess::Read && !declared[binding] {
+		if access != BufferAccess::Read && !declared[binding] && contract.uniform_store.is_none() {
 			return Err(Error::internal(format!(
 				"{operation} writable binding {binding} has no physical-write contract"
 			)));
@@ -460,26 +471,34 @@ fn record_barriers(
 	let barriers = hazards
 		.iter()
 		.map(|hazard| {
-			vk::BufferMemoryBarrier2::default()
-				.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-				.src_access_mask(hazard.source.vk_access())
-				.dst_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-				.dst_access_mask(hazard.destination.vk_access())
-				.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-				.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-				.buffer(hazard.buffer.raw())
-				.offset(0)
-				.size(hazard.buffer.size())
+			let stage = |state: crate::runtime::executable_graph::AccessState| {
+				let mut stage = vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT;
+				if state.uses_indirect_commands() {
+					stage = stage | vk::PipelineStageFlagBits2::DRAW_INDIRECT_BIT;
+				}
+				stage
+			};
+			vk::BufferMemoryBarrier2::new()
+				.set_src_stage_mask(stage(hazard.source))
+				.set_src_access_mask(hazard.source.vk_access())
+				.set_dst_stage_mask(stage(hazard.destination))
+				.set_dst_access_mask(hazard.destination.vk_access())
+				.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.set_buffer(hazard.buffer.raw())
+				.set_offset(0)
+				.set_size(hazard.buffer.size())
 		})
 		.collect::<Vec<_>>();
-	let dependency = vk::DependencyInfo::default()
-		.buffer_memory_barriers(&barriers)
+	let dependency = vk::DependencyInfo::new()
+		.set_buffer_memory_barriers(&barriers)
 		.map_err(Error::from)?;
 
 	// SAFETY: every barrier names a live retained buffer. The producer and consumer
-	// are storage-buffer accesses in compute dispatches recorded on this same queue
-	// family, so COMPUTE_SHADER with SHADER_STORAGE_READ/WRITE exactly describes
-	// both scopes. The full logical buffer range is valid, no image layout exists,
+	// are storage-buffer or indirect-command accesses in compute dispatches
+	// recorded on this same queue family, so COMPUTE_SHADER/DRAW_INDIRECT with
+	// SHADER_STORAGE_READ/WRITE and INDIRECT_COMMAND_READ exactly describe both
+	// scopes. The full logical buffer range is valid, no image layout exists,
 	// and QUEUE_FAMILY_IGNORED declares no ownership transfer.
 	unsafe {
 		sync_commands.pipeline_barrier(device, command_buffer, &dependency)?;
@@ -502,13 +521,13 @@ fn record_host_visibility(
 	if !accesses.iter().any(|access| *access != BufferAccess::Read) {
 		return Ok(());
 	}
-	let barrier = vk::MemoryBarrier2::default()
-		.src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-		.src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
-		.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
-		.dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT);
-	let dependency = vk::DependencyInfo::default()
-		.memory_barriers(std::slice::from_ref(&barrier))
+	let barrier = vk::MemoryBarrier2::new()
+		.set_src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+		.set_src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+		.set_dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+		.set_dst_access_mask(vk::AccessFlagBits2::HOST_READ_BIT);
+	let dependency = vk::DependencyInfo::new()
+		.set_memory_barriers(std::slice::from_ref(&barrier))
 		.map_err(Error::from)?;
 	// SAFETY: the recording command retains this batch's live host-visible
 	// compute buffers. HOST_READ performs the required memory-domain
@@ -527,8 +546,9 @@ fn record_dispatch(
 ) -> Result<()> {
 	// SAFETY: the command buffer is recording; pipeline, layout, shared descriptor
 	// set, and every descriptor-backed buffer remain live through retained graph
-	// resources. Preflight proved exact push ABI, legal nonzero workgroups, and
-	// agreement between classified writable bindings and the selected artifact's
+	// resources. Preflight proved exact push ABI, legal nonzero workgroups or a
+	// validated GPU-authored indirect-argument range, and agreement between
+	// classified writable bindings and the selected artifact's
 	// physical-write contract.
 	unsafe {
 		debug_assert_eq!(
@@ -555,12 +575,17 @@ fn record_dispatch(
 			0,
 			&dispatch.push,
 		)?;
-		device.cmd_dispatch(
-			command_buffer,
-			dispatch.node.workgroups[0],
-			dispatch.node.workgroups[1],
-			dispatch.node.workgroups[2],
-		)?;
+		match &dispatch.node.indirect {
+			Some(indirect) => {
+				device.cmd_dispatch_indirect(command_buffer, indirect.buffer.raw(), indirect.offset)?
+			}
+			None => device.cmd_dispatch(
+				command_buffer,
+				dispatch.node.workgroups[0],
+				dispatch.node.workgroups[1],
+				dispatch.node.workgroups[2],
+			)?,
+		}
 	}
 	Ok(())
 }
@@ -695,6 +720,22 @@ impl RecordedCommandBuffer {
 		}
 	}
 
+	// Classification metadata for deferred secret-scope nodes; never byte data.
+	pub(crate) fn has_secret_use(&self) -> bool {
+		!self._secret_uses.is_empty()
+	}
+
+	pub(crate) fn has_secret_erasure(&self) -> bool {
+		!self.secret_erasures.is_empty() || !self.retained_secret_erasures.is_empty()
+	}
+
+	pub(crate) fn has_public_resources(&self) -> bool {
+		match &self.allocation {
+			CommandBufferAllocation::Owned { _resources, .. } => !_resources.is_empty(),
+			CommandBufferAllocation::Reusable(_) => false,
+		}
+	}
+
 	pub(super) fn pool_kind(&self) -> CommandPoolKind {
 		match &self.allocation {
 			CommandBufferAllocation::Owned { pool, .. } => *pool,
@@ -703,7 +744,16 @@ impl RecordedCommandBuffer {
 	}
 
 	pub(in crate::runtime) fn timing(&self) -> Option<TimestampPair> {
+		if self.event_timing_suppressed {
+			return None;
+		}
 		self.timing.clone()
+	}
+
+	/// Keep a caller-owned timestamp pair retained through command retirement
+	/// without exposing it on the submission event.
+	pub(in crate::runtime) fn suppress_event_timing(&mut self) {
+		self.event_timing_suppressed = true;
 	}
 
 	pub(super) fn reusable(&self) -> Option<ReusableCommandBuffer> {
@@ -733,6 +783,7 @@ impl ReusableCommandBuffer {
 		RecordedCommandBuffer {
 			allocation: CommandBufferAllocation::Reusable(self.clone()),
 			timing: None,
+			event_timing_suppressed: false,
 			brackets: None,
 			secret_erasures: Vec::new(),
 			retained_secret_erasures: Vec::new(),

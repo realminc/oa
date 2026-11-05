@@ -52,6 +52,7 @@ pub(in crate::ml) fn {{name}}(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: KernelId::{{kernel}}.linear_workgroups(element_count),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract,

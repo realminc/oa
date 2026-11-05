@@ -38,17 +38,17 @@ struct HeadGeometry {
 impl HeadGeometry {
 	fn attributes(&self) -> [OpAttribute; 3] {
 		[
-			OpAttribute::UnsignedInteger {
+			OpAttribute::SignedInteger {
 				name: "batch".into(),
-				value: u64::from(self.batch),
+				value: i64::from(self.batch),
 			},
-			OpAttribute::UnsignedInteger {
-				name: "sequence_length".into(),
-				value: u64::from(self.sequence_length),
+			OpAttribute::SignedInteger {
+				name: "sequenceLength".into(),
+				value: i64::from(self.sequence_length),
 			},
-			OpAttribute::UnsignedInteger {
-				name: "num_heads".into(),
-				value: u64::from(self.num_heads),
+			OpAttribute::SignedInteger {
+				name: "headCount".into(),
+				value: i64::from(self.num_heads),
 			},
 		]
 	}
@@ -343,7 +343,7 @@ pub(in crate::ml) fn softmax_scaled_masked_backward(
 	output_gradient: &Matrix,
 	scale: f32,
 ) -> Result<Matrix> {
-	const OPERATION: &str = "oa::ml::matrix::softmax_scaled_masked_backward";
+	const OPERATION: &str = "oa::matrix::softmaxScaledMasked_backward";
 	let (rows, columns) = softmax_geometry(forward_output, output_gradient, OPERATION)?;
 	let input_gradient = Matrix::allocate(
 		forward_output.engine_handle(),
@@ -374,6 +374,7 @@ pub(in crate::ml) fn softmax_scaled_masked_backward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [rows, 1, 1],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -408,7 +409,7 @@ pub(in crate::ml) fn flash_attention_causal_backward(
 	output_gradient: &Matrix,
 	scale: f32,
 ) -> Result<(Matrix, Matrix, Matrix)> {
-	const OPERATION: &str = "oa::ml::matrix::scaled_dot_product_attention_backward";
+	const OPERATION: &str = "oa::matrix::scaledDotProductAttention_backward";
 	let [batch_heads, sequence_length, head_dim] = query.shape() else {
 		return Err(Error::invalid_argument(format!(
 			"{OPERATION} requires Q/K/V [batch_heads, sequence, head_dim]"
@@ -487,12 +488,14 @@ pub(in crate::ml) fn flash_attention_causal_backward(
 			buffers: &query_buffers,
 			push_constants: &push_constants,
 			workgroups: [rows, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlFlashAttentionCausalBackwardKvF32,
 			buffers: &key_value_buffers,
 			push_constants: &push_constants,
 			workgroups: [rows, 1, 1],
+			indirect: None,
 		},
 	];
 	let semantic_inputs = [
@@ -533,7 +536,7 @@ pub(in crate::ml) fn split_heads_dispatch(
 	sequence_length: usize,
 	num_heads: usize,
 ) -> Result<(Matrix, bool)> {
-	const OPERATION: &str = "oa::ml::matrix::split_heads";
+	const OPERATION: &str = "oa::FnMatrix::splitHeads";
 	let [rows, model_width] = input.shape() else {
 		return Err(Error::invalid_argument(format!(
 			"{OPERATION} input must have shape [B*S, D]; found {:?}",
@@ -588,7 +591,7 @@ pub(in crate::ml) fn merge_heads_dispatch(
 	sequence_length: usize,
 	num_heads: usize,
 ) -> Result<(Matrix, bool)> {
-	const OPERATION: &str = "oa::ml::matrix::merge_heads";
+	const OPERATION: &str = "oa::FnMatrix::mergeHeads";
 	let [batch_heads, input_sequence, head_dim] = input.shape() else {
 		return Err(Error::invalid_argument(format!(
 			"{OPERATION} input must have shape [B*H, S, D/H]; found {:?}",
@@ -673,6 +676,7 @@ fn bmm_dispatch(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups,
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -705,7 +709,7 @@ fn scaled_dot_product_attention_dispatch(
 	scale: f32,
 	causal: bool,
 ) -> Result<(Matrix, Matrix)> {
-	const OPERATION: &str = "oa::ml::matrix::scaled_dot_product_attention";
+	const OPERATION: &str = "oa::FnMatrix::scaledDotProductAttention";
 	let [batch_heads, sequence_length, head_dim] = query.shape() else {
 		return Err(Error::invalid_argument(format!(
 			"{OPERATION} requires Q/K/V [batch_heads, sequence, head_dim]"
@@ -804,18 +808,21 @@ fn scaled_dot_product_attention_dispatch(
 			buffers: &score_buffers,
 			push_constants: &score_push_constants,
 			workgroups: score_workgroups,
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: probability_kernel,
 			buffers: &probability_buffers,
 			push_constants: &probability_push_constants,
 			workgroups: [rows, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: output_kernel,
 			buffers: &output_buffers,
 			push_constants: &output_push_constants,
 			workgroups: output_workgroups,
+			indirect: None,
 		},
 	];
 	let semantic_inputs = [Some(query), Some(key), Some(value), additive_mask];
@@ -848,7 +855,7 @@ fn flash_attention_causal_dispatch(
 	value: &Matrix,
 	scale: f32,
 ) -> Result<(Matrix, Matrix)> {
-	const OPERATION: &str = "oa::ml::matrix::scaled_dot_product_attention";
+	const OPERATION: &str = "oa::FnMatrix::scaledDotProductAttention";
 	let [batch_heads, sequence_length, head_dim] = query.shape() else {
 		return Err(Error::invalid_argument(format!(
 			"{OPERATION} Flash provider requires Q/K/V [batch_heads, sequence, head_dim]"
@@ -916,6 +923,7 @@ fn flash_attention_causal_dispatch(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [rows, 1, 1],
+			indirect: None,
 		},
 		OptionalSemanticDispatch {
 			contract: crate::core::operation::ml::SCALED_DOT_PRODUCT_ATTENTION,
@@ -928,7 +936,7 @@ fn flash_attention_causal_dispatch(
 }
 
 fn softmax_scaled_masked_dispatch(scores: &Matrix, mask: &Matrix, scale: f32) -> Result<Matrix> {
-	const OPERATION: &str = "oa::ml::matrix::softmax_scaled_masked";
+	const OPERATION: &str = "oa::FnMatrix::softmaxScaledMasked";
 	let (rows, columns) = softmax_geometry(scores, mask, OPERATION)?;
 	let output = Matrix::allocate(
 		scores.engine_handle(),
@@ -964,6 +972,7 @@ fn softmax_scaled_masked_dispatch(scores: &Matrix, mask: &Matrix, scale: f32) ->
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [rows, 1, 1],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -1009,6 +1018,7 @@ fn record_head_transform(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(geometry.element_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -1125,6 +1135,7 @@ pub fn causal_linear_attention(
 			buffers: &buffers,
 			push_constants: &push,
 			workgroups: [heads, 1, 1],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: crate::core::operation::ml::CAUSAL_LINEAR_ATTENTION,
@@ -1242,12 +1253,14 @@ pub(in crate::ml) fn causal_linear_attention_backward(
 			buffers: &q_buffers,
 			push_constants: &push,
 			workgroups: [heads, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlCausalLinearAttentionBackwardKvF32,
 			buffers: &kv_buffers,
 			push_constants: &push,
 			workgroups: [heads, 1, 1],
+			indirect: None,
 		},
 	];
 	let attributes = [OpAttribute::Float {

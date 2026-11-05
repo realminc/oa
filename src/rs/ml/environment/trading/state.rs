@@ -7,7 +7,7 @@ use super::*;
 #[derive(Clone, Debug)]
 pub struct TradingState {
 	pub(super) config: u64,
-	pub(super) source: crate::cryptography::Hash,
+	pub(super) source: crate::crypto::Hash,
 	pub(super) ledger: Vec<f32>,
 	pub(super) metadata: Vec<u32>,
 	pub(super) done: Vec<u8>,
@@ -37,7 +37,7 @@ impl TradingState {
 		for n in &self.observation {
 			out.extend(n.to_bits().to_le_bytes());
 		}
-		let digest = crate::cryptography::hash(&out);
+		let digest = crate::crypto::hash(&out);
 		out.extend(digest.as_bytes());
 		out
 	}
@@ -49,7 +49,7 @@ impl TradingState {
 			return Err(bad());
 		}
 		let payload = &bytes[..bytes.len() - 32];
-		if crate::cryptography::hash(payload).as_bytes() != &bytes[bytes.len() - 32..] {
+		if crate::crypto::hash(payload).as_bytes() != &bytes[bytes.len() - 32..] {
 			return Err(bad());
 		}
 		let word = |at| u64::from_le_bytes(bytes[at..at + 8].try_into().expect("checked header"));
@@ -100,7 +100,7 @@ impl TradingState {
 		}
 		Ok(Self {
 			config: word(8),
-			source: crate::cryptography::Hash::new_from_bytes(&bytes[16..48])?,
+			source: crate::crypto::Hash::new_from_bytes(&bytes[16..48])?,
 			ledger,
 			metadata,
 			done,
@@ -112,8 +112,8 @@ impl TradingState {
 pub(super) fn fingerprint(
 	tables: &TradingTables,
 	series: &[TradingSeries],
-) -> Result<crate::cryptography::Hash> {
-	let mut hash = crate::cryptography::Hasher::new();
+) -> Result<crate::crypto::Hash> {
+	let mut hash = crate::crypto::Hasher::new();
 	hash.update(b"oa.trading.source.v3")?;
 	for values in [&tables.market, &tables.features, &tables.rules] {
 		hash.update(&(values.len() as u64).to_le_bytes())?;

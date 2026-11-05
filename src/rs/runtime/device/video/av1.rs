@@ -331,7 +331,7 @@ impl PictureParameters {
 			height_in_superblocks_minus_1,
 			quantization: vk::StdVideoAV1Quantization {
 				flags: {
-					let mut flags = vk::StdVideoAV1QuantizationFlags::default();
+					let mut flags = vk::StdVideoAV1QuantizationFlags::new();
 					flags.set_using_qmatrix(u32::from(frame.using_q_matrix) as _);
 					flags.set_diff_uv_delta(u32::from(frame.different_uv_delta) as _);
 					flags.set_reserved(0 as _);
@@ -353,7 +353,7 @@ impl PictureParameters {
 			},
 			loop_filter: vk::StdVideoAV1LoopFilter {
 				flags: {
-					let mut flags = vk::StdVideoAV1LoopFilterFlags::default();
+					let mut flags = vk::StdVideoAV1LoopFilterFlags::new();
 					flags.set_loop_filter_delta_enabled(u32::from(frame.loop_filter_delta_enabled) as _);
 					flags.set_loop_filter_delta_update(u32::from(frame.loop_filter_delta_update) as _);
 					flags.set_reserved(0 as _);
@@ -386,7 +386,7 @@ impl PictureParameters {
 	}
 
 	pub fn tile_info(&self, frame: &video::Av1FrameHeader) -> vk::StdVideoAV1TileInfo<'_> {
-		let mut value = vk::StdVideoAV1TileInfo::default();
+		let mut value = vk::StdVideoAV1TileInfo::new();
 		value.flags.set_uniform_tile_spacing_flag(1);
 		value.flags.set_reserved(0);
 		value.tile_cols = frame.tile_columns;
@@ -438,7 +438,7 @@ impl PictureParameters {
 pub(super) fn reference_info(record: ReferenceRecord) -> vk::StdVideoDecodeAV1ReferenceInfo {
 	vk::StdVideoDecodeAV1ReferenceInfo {
 		flags: {
-			let mut flags = vk::StdVideoDecodeAV1ReferenceInfoFlags::default();
+			let mut flags = vk::StdVideoDecodeAV1ReferenceInfoFlags::new();
 			flags.set_disable_frame_end_update_cdf(u32::from(record.disable_frame_end_update_cdf) as _);
 			flags.set_segmentation_enabled(u32::from(record.segmentation_enabled) as _);
 			flags.set_reserved(0 as _);
@@ -511,34 +511,34 @@ pub(super) fn record_picture(
 	let parameters = PictureParameters::new(sequence, frame)?;
 	let tile_info = parameters.tile_info(frame);
 	let std_picture = parameters.picture_info(frame, &tile_info);
-	let mut av1_picture = vk::VideoDecodeAV1PictureInfoKHR::default()
-		.std_picture_info(&std_picture)
-		.reference_name_slot_indices(plan.reference_name_slot_indices)
-		.frame_header_offset(
+	let mut av1_picture = vk::VideoDecodeAV1PictureInfoKHR::new()
+		.set_std_picture_info(&std_picture)
+		.set_reference_name_slot_indices(plan.reference_name_slot_indices)
+		.set_frame_header_offset(
 			u32::try_from(frame_header_offset)
 				.map_err(|_| Error::out_of_range("AV1 frame-header offset exceeds Vulkan storage"))?,
 		)
-		.tile_offsets(&tiles.tile_offsets, &tiles.tile_sizes)
+		.set_tile_offsets(&tiles.tile_offsets, &tiles.tile_sizes)
 		.map_err(Error::from)?;
 
 	let setup_record = ReferenceRecord::from(frame);
 	let setup_std_reference = reference_info(setup_record);
 	let mut setup_av1_slot =
-		vk::VideoDecodeAV1DpbSlotInfoKHR::default().std_reference_info(&setup_std_reference);
+		vk::VideoDecodeAV1DpbSlotInfoKHR::new().set_std_reference_info(&setup_std_reference);
 	let (output, output_layer, dpb, dpb_layer) = session.picture_images(setup_slot_index)?;
 	let extent = vk::Extent2D {
 		width: session.coded_extent.width,
 		height: session.coded_extent.height,
 	};
-	let setup_resource = vk::VideoPictureResourceInfoKHR::default()
-		.coded_extent(extent)
-		.base_array_layer(dpb_layer)
-		.image_view_binding(dpb.view);
-	let setup_slot = vk::VideoReferenceSlotInfoKHR::default()
-		.slot_index(
+	let setup_resource = vk::VideoPictureResourceInfoKHR::new()
+		.set_coded_extent(extent)
+		.set_base_array_layer(dpb_layer)
+		.set_image_view_binding(dpb.view);
+	let setup_slot = vk::VideoReferenceSlotInfoKHR::new()
+		.set_slot_index(
 			i32::try_from(setup_slot_index).map_err(|_| Error::internal("AV1 setup slot exceeds i32"))?,
 		)
-		.picture_resource(&setup_resource)
+		.set_picture_resource(&setup_resource)
 		.push_next(&mut setup_av1_slot)
 		.map_err(Error::from)?;
 
@@ -567,14 +567,14 @@ pub(super) fn record_picture(
 		}
 		let (_, _, reference_image, reference_layer) = session.picture_images(slot)?;
 		std_references.push(reference_info(record));
-		av1_reference_slots.push(vk::VideoDecodeAV1DpbSlotInfoKHR::default());
+		av1_reference_slots.push(vk::VideoDecodeAV1DpbSlotInfoKHR::new());
 		reference_resources.push(
-			vk::VideoPictureResourceInfoKHR::default()
-				.coded_extent(extent)
-				.base_array_layer(reference_layer)
-				.image_view_binding(reference_image.view),
+			vk::VideoPictureResourceInfoKHR::new()
+				.set_coded_extent(extent)
+				.set_base_array_layer(reference_layer)
+				.set_image_view_binding(reference_image.view),
 		);
-		reference_slots.push(vk::VideoReferenceSlotInfoKHR::default().slot_index(
+		reference_slots.push(vk::VideoReferenceSlotInfoKHR::new().set_slot_index(
 			i32::try_from(slot).map_err(|_| Error::internal("AV1 reference slot exceeds i32"))?,
 		));
 	}
@@ -584,27 +584,27 @@ pub(super) fn record_picture(
 			(&av1_reference_slots[index] as *const vk::VideoDecodeAV1DpbSlotInfoKHR<'_>).cast();
 		reference_slots[index].p_picture_resource = &reference_resources[index];
 	}
-	let mut inactive_setup = vk::VideoReferenceSlotInfoKHR::default()
-		.slot_index(-1)
-		.picture_resource(&setup_resource);
+	let mut inactive_setup = vk::VideoReferenceSlotInfoKHR::new()
+		.set_slot_index(-1)
+		.set_picture_resource(&setup_resource);
 	inactive_setup.p_next = setup_slot.p_next;
 	reference_slots.push(inactive_setup);
-	let begin_info = vk::VideoBeginCodingInfoKHR::default()
-		.video_session(session.handle)
-		.video_session_parameters(session.parameters)
-		.reference_slots(&reference_slots)
+	let begin_info = vk::VideoBeginCodingInfoKHR::new()
+		.set_video_session(session.handle)
+		.set_video_session_parameters(session.parameters)
+		.set_reference_slots(&reference_slots)
 		.map_err(Error::from)?;
-	let output_resource = vk::VideoPictureResourceInfoKHR::default()
-		.coded_extent(extent)
-		.base_array_layer(output_layer)
-		.image_view_binding(output.view);
-	let decode_info = vk::VideoDecodeInfoKHR::default()
-		.src_buffer(bitstream.handle)
-		.src_buffer_offset(0)
-		.src_buffer_range(bitstream.range)
-		.dst_picture_resource(output_resource)
-		.setup_reference_slot(&setup_slot)
-		.reference_slots(&reference_slots[..reference_count])
+	let output_resource = vk::VideoPictureResourceInfoKHR::new()
+		.set_coded_extent(extent)
+		.set_base_array_layer(output_layer)
+		.set_image_view_binding(output.view);
+	let decode_info = vk::VideoDecodeInfoKHR::new()
+		.set_src_buffer(bitstream.handle)
+		.set_src_buffer_offset(0)
+		.set_src_buffer_range(bitstream.range)
+		.set_dst_picture_resource(output_resource)
+		.set_setup_reference_slot(&setup_slot)
+		.set_reference_slots(&reference_slots[..reference_count])
 		.map_err(Error::from)?
 		.push_next(&mut av1_picture)
 		.map_err(Error::from)?;
@@ -655,52 +655,52 @@ pub(super) fn record_picture(
 				vk::ImageLayout::VIDEO_DECODE_DPB_KHR
 			};
 			image_barriers.push(
-				vk::ImageMemoryBarrier2::default()
-					.src_stage_mask(vk::PipelineStageFlagBits2::NONE)
-					.src_access_mask(vk::AccessFlagBits2::NONE)
-					.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
-					.dst_access_mask(
+				vk::ImageMemoryBarrier2::new()
+					.set_src_stage_mask(vk::PipelineStageFlagBits2::NONE)
+					.set_src_access_mask(vk::AccessFlagBits2::NONE)
+					.set_dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
+					.set_dst_access_mask(
 						vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
 							| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 					)
-					.old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-					.new_layout(layout)
-					.src_queue_family_index(compute_family)
-					.dst_queue_family_index(decode_family)
-					.image(acquired_output.handle)
-					.subresource_range(decode_image_subresource(acquired_layer, 1)),
+					.set_old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+					.set_new_layout(layout)
+					.set_src_queue_family_index(compute_family)
+					.set_dst_queue_family_index(decode_family)
+					.set_image(acquired_output.handle)
+					.set_subresource_range(decode_image_subresource(acquired_layer, 1)),
 			);
 		}
 	}
-	let bitstream_barriers = [vk::BufferMemoryBarrier2::default()
-		.src_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
-		.src_access_mask(vk::AccessFlagBits2::HOST_WRITE_BIT)
-		.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
-		.dst_access_mask(vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR)
-		.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-		.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-		.buffer(bitstream.handle)
-		.offset(0)
-		.size(bitstream.range)];
+	let bitstream_barriers = [vk::BufferMemoryBarrier2::new()
+		.set_src_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+		.set_src_access_mask(vk::AccessFlagBits2::HOST_WRITE_BIT)
+		.set_dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
+		.set_dst_access_mask(vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR)
+		.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+		.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+		.set_buffer(bitstream.handle)
+		.set_offset(0)
+		.set_size(bitstream.range)];
 	let memory_barriers = (!initialize_images)
 		.then(|| {
-			vk::MemoryBarrier2::default()
-				.src_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
-				.src_access_mask(vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR)
-				.dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
-				.dst_access_mask(
+			vk::MemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
+				.set_src_access_mask(vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
+				.set_dst_access_mask(
 					vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
 						| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 				)
 		})
 		.into_iter()
 		.collect::<Vec<_>>();
-	let dependency = vk::DependencyInfo::default()
-		.memory_barriers(&memory_barriers)
+	let dependency = vk::DependencyInfo::new()
+		.set_memory_barriers(&memory_barriers)
 		.map_err(Error::from)?
-		.buffer_memory_barriers(&bitstream_barriers)
+		.set_buffer_memory_barriers(&bitstream_barriers)
 		.map_err(Error::from)?
-		.image_memory_barriers(&image_barriers)
+		.set_image_memory_barriers(&image_barriers)
 		.map_err(Error::from)?;
 	// safety: every pointer chained into the coding scope borrows stack or vector
 	// storage that remains live and immovable through the decode command call.
@@ -714,8 +714,8 @@ pub(super) fn record_picture(
 			.map_err(Error::from)?;
 	}
 	if plan.reset_dpb {
-		let control = vk::VideoCodingControlInfoKHR::default()
-			.flags(vk::VideoCodingControlFlagBitsKHR::RESET_BIT_KHR);
+		let control = vk::VideoCodingControlInfoKHR::new()
+			.set_flags(vk::VideoCodingControlFlagBitsKHR::RESET_BIT_KHR);
 		// safety: the session is inside a coding scope and this plan starts at an
 		// AV1 key-frame reset boundary.
 		unsafe {
@@ -737,7 +737,7 @@ pub(super) fn record_picture(
 			.cmd_decode_video_khr(command_buffer, &decode_info)
 			.map_err(Error::from)?;
 		device.cmd_end_query(command_buffer, session.result_status_pool, 0)?;
-		device.cmd_end_video_coding_khr(command_buffer, &vk::VideoEndCodingInfoKHR::default())?;
+		device.cmd_end_video_coding_khr(command_buffer, &vk::VideoEndCodingInfoKHR::new())?;
 	}
 	if release_for_readback {
 		let decode_family = session
@@ -753,38 +753,38 @@ pub(super) fn record_picture(
 		} else {
 			vk::ImageLayout::VIDEO_DECODE_DST_KHR
 		};
-		let release = vk::ImageMemoryBarrier2::default()
-			.src_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
-			.src_access_mask(
+		let release = vk::ImageMemoryBarrier2::new()
+			.set_src_stage_mask(vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR)
+			.set_src_access_mask(
 				vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
 					| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR,
 			)
-			.dst_stage_mask(if same_family {
+			.set_dst_stage_mask(if same_family {
 				vk::PipelineStageFlagBits2::TRANSFER_BIT
 			} else {
 				vk::PipelineStageFlagBits2::NONE
 			})
-			.dst_access_mask(if same_family {
+			.set_dst_access_mask(if same_family {
 				vk::AccessFlagBits2::TRANSFER_READ_BIT
 			} else {
 				vk::AccessFlagBits2::NONE
 			})
-			.old_layout(decoded_layout)
-			.new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-			.src_queue_family_index(if same_family {
+			.set_old_layout(decoded_layout)
+			.set_new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+			.set_src_queue_family_index(if same_family {
 				vk::QUEUE_FAMILY_IGNORED
 			} else {
 				decode_family
 			})
-			.dst_queue_family_index(if same_family {
+			.set_dst_queue_family_index(if same_family {
 				vk::QUEUE_FAMILY_IGNORED
 			} else {
 				compute_family
 			})
-			.image(output.handle)
-			.subresource_range(decode_image_subresource(output_layer, 1));
+			.set_image(output.handle)
+			.set_subresource_range(decode_image_subresource(output_layer, 1));
 		let release_dependency =
-			vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&release));
+			vk::DependencyInfo::new().set_image_memory_barriers(std::slice::from_ref(&release));
 		// safety: decode owns this exact output layer; the readback command records
 		// the matching acquire/copy transition before host observation.
 		unsafe {

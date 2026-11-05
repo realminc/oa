@@ -49,7 +49,7 @@ test_vk!(dqn_matches_donor_boundary_oracle_and_q_adjoint, engine, {
 		plan.diagnostics().node_count()
 	);
 	let operation = &plan.semantic_graph().operations()[0];
-	assert_eq!(operation.name(), "oa::ml::loss::dqn");
+	assert_eq!(operation.name(), "oa::FnLoss::dqn");
 	assert_eq!(operation.attributes().len(), 1);
 	engine.submit(&plan)?.wait()?;
 

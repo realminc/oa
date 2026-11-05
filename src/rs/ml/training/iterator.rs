@@ -13,38 +13,7 @@ use super::{
 	TrainingSessionAttachment, TrainingSessionHandlers, TrainingSessionSnapshot, TrainingState,
 	program::TrainingProgramCapture,
 };
-
-/// Configuration for one explicit training loop.
-#[derive(Clone, Debug)]
-pub struct ItTrainingConfig {
-	/// Completed optimizer steps restored before this lifecycle starts.
-	///
-	/// `total_steps` remains the absolute final budget, not an additional-step
-	/// count. Restored steps select the next epoch/cursor/scheduler position but
-	/// are excluded from this process's loss and timing aggregates.
-	pub initial_step: u64,
-	/// Completed-step budget; zero keeps the loop open-ended.
-	pub total_steps: u64,
-	/// Fixed steps per epoch; zero disables epoch boundaries.
-	pub steps_per_epoch: u64,
-	/// Variable epoch lengths. When nonempty, these replace `steps_per_epoch`
-	/// and their sum becomes `total_steps`.
-	pub epoch_steps: Vec<u64>,
-	/// Samples completed by one step. Zero is normalized to one.
-	pub batch_size: u64,
-	/// Optional sequence work per sample for throughput accounting.
-	pub sequence_length: u64,
-	/// Human-readable sequence unit used by progress and summary callbacks.
-	pub sequence_unit: String,
-	/// Optional fixed source units consumed by one sample.
-	pub source_units_per_sample: f64,
-	/// Human-readable source unit used by progress and summary callbacks.
-	pub source_unit: String,
-	/// Stable name for the device timer represented in reports.
-	pub timer_name: String,
-	/// Collect exact device timestamps around submitted training work.
-	pub enable_gpu_timing: bool,
-}
+pub use crate::ml::types::ItTrainingConfig;
 
 impl Default for ItTrainingConfig {
 	fn default() -> Self {

@@ -1,0 +1,284 @@
+use pyo3::prelude::*;
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use oa::crypto::pqc::device;
+
+fn kem_parameters(parameter: u32) -> PyResult<device::MlKemParameters> {
+	match parameter {
+{{kem_cases}}
+		_ => Err(pyo3::exceptions::PyValueError::new_err("ML-KEM parameter must be 512, 768, or 1024")),
+	}
+}
+
+fn dsa_parameters(parameter: u32) -> PyResult<oa::crypto::pqc::MlDsaParameters> {
+	match parameter {
+{{dsa_cases}}
+		_ => Err(pyo3::exceptions::PyValueError::new_err("ML-DSA parameter must be 44, 65, or 87")),
+	}
+}
+
+fn prehash(algorithm: &str) -> PyResult<device::MlDsaPrehash> {
+	match algorithm {
+{{hash_cases}}
+		_ => Err(pyo3::exceptions::PyValueError::new_err("unknown FIPS HashML-DSA identity")),
+	}
+}
+
+fn signing_mode(deterministic: bool) -> device::SigningMode {
+	if deterministic { device::SigningMode::Deterministic } else { device::SigningMode::Randomized }
+}
+
+fn consumed() -> PyErr { pyo3::exceptions::PyRuntimeError::new_err("device secret has already been consumed") }
+
+#[pyclass(name = "DeviceErasure", unsendable)]
+struct PythonDeviceErasure { inner: device::DeviceErasure }
+
+#[pymethods]
+impl PythonDeviceErasure {
+	fn try_is_complete(&self) -> PyResult<bool> { self.inner.try_is_complete().map_err(python_error) }
+	fn wait(&self) -> PyResult<()> { self.inner.wait().map_err(python_error) }
+}
+
+#[pyclass(name = "DeviceMlDsaKey", unsendable)]
+struct PythonDeviceMlDsaKey { inner: Option<device::DeviceMlDsaKey> }
+
+impl PythonDeviceMlDsaKey {
+	fn live(&self) -> PyResult<&device::DeviceMlDsaKey> { self.inner.as_ref().ok_or_else(consumed) }
+}
+
+#[pymethods]
+impl PythonDeviceMlDsaKey {
+	#[getter]
+	fn public_key(&self) -> PyResult<PythonMatrix> { Ok(PythonMatrix::wrap(self.live()?.public_key().clone())) }
+	fn try_cleanup_complete(&self) -> PyResult<bool> { self.live()?.cleanup().try_is_complete().map_err(python_error) }
+	fn wait_cleanup(&self) -> PyResult<()> { self.live()?.cleanup().wait().map_err(python_error) }
+	fn erase(&mut self) -> PyResult<PythonDeviceErasure> {
+		let inner = self.inner.take().ok_or_else(consumed)?.erase().map_err(python_error)?;
+		Ok(PythonDeviceErasure { inner })
+	}
+}
+
+#[pyclass(name = "DeviceMlKemKey", unsendable)]
+struct PythonDeviceMlKemKey { inner: Option<device::DeviceMlKemKey> }
+
+impl PythonDeviceMlKemKey {
+	fn live(&self) -> PyResult<&device::DeviceMlKemKey> { self.inner.as_ref().ok_or_else(consumed) }
+}
+
+#[pymethods]
+impl PythonDeviceMlKemKey {
+	#[getter]
+	fn public_key(&self) -> PyResult<PythonMatrix> { Ok(PythonMatrix::wrap(self.live()?.public_key().clone())) }
+	fn try_cleanup_complete(&self) -> PyResult<bool> { self.live()?.cleanup().try_is_complete().map_err(python_error) }
+	fn wait_cleanup(&self) -> PyResult<()> { self.live()?.cleanup().wait().map_err(python_error) }
+	fn erase(&mut self) -> PyResult<PythonDeviceErasure> {
+		let inner = self.inner.take().ok_or_else(consumed)?.erase().map_err(python_error)?;
+		Ok(PythonDeviceErasure { inner })
+	}
+}
+
+#[pyclass(name = "DeviceSharedSecret", unsendable)]
+struct PythonDeviceSharedSecret { inner: Option<device::DeviceSharedSecret> }
+
+impl PythonDeviceSharedSecret {
+	fn live(&self) -> PyResult<&device::DeviceSharedSecret> { self.inner.as_ref().ok_or_else(consumed) }
+}
+
+#[pymethods]
+impl PythonDeviceSharedSecret {
+	fn erase(&mut self) -> PyResult<PythonDeviceErasure> {
+		let inner = self.inner.take().ok_or_else(consumed)?.erase().map_err(python_error)?;
+		Ok(PythonDeviceErasure { inner })
+	}
+}
+
+#[pyclass(name = "DeviceSignature", unsendable)]
+struct PythonDeviceSignature { inner: device::DeviceSignature }
+
+#[pymethods]
+impl PythonDeviceSignature {
+	#[getter]
+	fn signature(&self) -> PythonMatrix { PythonMatrix::wrap(self.inner.signature.clone()) }
+	#[getter]
+	fn status(&self) -> PythonMatrix { PythonMatrix::wrap(self.inner.status.clone()) }
+	fn try_cleanup_complete(&self) -> PyResult<bool> { self.inner.cleanup.try_is_complete().map_err(python_error) }
+	fn wait_cleanup(&self) -> PyResult<()> { self.inner.cleanup.wait().map_err(python_error) }
+}
+
+#[pyclass(name = "DeviceEncapsulation", unsendable)]
+struct PythonDeviceEncapsulation {
+	shared_secret: Option<device::DeviceSharedSecret>,
+	ciphertext: oa::Matrix,
+	status: oa::Matrix,
+	cleanup: device::DeviceErasure,
+}
+
+#[pymethods]
+impl PythonDeviceEncapsulation {
+	#[getter]
+	fn ciphertext(&self) -> PythonMatrix { PythonMatrix::wrap(self.ciphertext.clone()) }
+	#[getter]
+	fn status(&self) -> PythonMatrix { PythonMatrix::wrap(self.status.clone()) }
+	fn take_shared_secret(&mut self) -> PyResult<PythonDeviceSharedSecret> {
+		let inner = self.shared_secret.take().ok_or_else(consumed)?;
+		Ok(PythonDeviceSharedSecret { inner: Some(inner) })
+	}
+	fn try_cleanup_complete(&self) -> PyResult<bool> { self.cleanup.try_is_complete().map_err(python_error) }
+	fn wait_cleanup(&self) -> PyResult<()> { self.cleanup.wait().map_err(python_error) }
+}
+
+#[pyclass(name = "DeviceDecapsulation", unsendable)]
+struct PythonDeviceDecapsulation {
+	shared_secret: Option<device::DeviceSharedSecret>,
+	cleanup: device::DeviceErasure,
+}
+
+#[pymethods]
+impl PythonDeviceDecapsulation {
+	fn take_shared_secret(&mut self) -> PyResult<PythonDeviceSharedSecret> {
+		let inner = self.shared_secret.take().ok_or_else(consumed)?;
+		Ok(PythonDeviceSharedSecret { inner: Some(inner) })
+	}
+	fn try_cleanup_complete(&self) -> PyResult<bool> { self.cleanup.try_is_complete().map_err(python_error) }
+	fn wait_cleanup(&self) -> PyResult<()> { self.cleanup.wait().map_err(python_error) }
+}
+
+#[pyfunction]
+fn crypto_device_begin_secret_scope(engine: &PythonEngine) -> PyResult<PythonDeviceSecretScope> {
+	let inner = device::begin_secret_scope(&engine.inner).map_err(python_error)?;
+	Ok(PythonDeviceSecretScope { inner: Some(inner) })
+}
+
+#[pyfunction]
+fn crypto_device_mldsa_keygen(engine: &PythonEngine, parameters: u32) -> PyResult<PythonDeviceMlDsaKey> {
+	let inner = device::mldsa_keygen(&engine.inner, dsa_parameters(parameters)?).map_err(python_error)?;
+	Ok(PythonDeviceMlDsaKey { inner: Some(inner) })
+}
+
+#[pyfunction]
+fn crypto_device_mlkem_keygen(engine: &PythonEngine, parameters: u32) -> PyResult<PythonDeviceMlKemKey> {
+	let inner = device::mlkem_keygen(&engine.inner, kem_parameters(parameters)?).map_err(python_error)?;
+	Ok(PythonDeviceMlKemKey { inner: Some(inner) })
+}
+
+#[pyfunction]
+fn crypto_device_mldsa_import_key(engine: &PythonEngine, parameters: u32, secret_key: &[u8], public_key: &PythonMatrix) -> PyResult<PythonDeviceMlDsaKey> {
+	let mut secret = secret_key.to_vec();
+	let result = device::mldsa_import_key(&engine.inner, dsa_parameters(parameters)?, &mut secret, &public_key.inner);
+	oa::core::memory::zero_secure(&mut secret);
+	let inner = result.map_err(python_error)?;
+	Ok(PythonDeviceMlDsaKey { inner: Some(inner) })
+}
+
+#[pyfunction]
+fn crypto_device_mlkem_import_key(engine: &PythonEngine, parameters: u32, decapsulation_key: &[u8]) -> PyResult<PythonDeviceMlKemKey> {
+	let mut secret = decapsulation_key.to_vec();
+	let result = device::mlkem_import_key(&engine.inner, kem_parameters(parameters)?, &mut secret);
+	oa::core::memory::zero_secure(&mut secret);
+	let inner = result.map_err(python_error)?;
+	Ok(PythonDeviceMlKemKey { inner: Some(inner) })
+}
+
+#[pyfunction]
+#[pyo3(signature = (key, message, context, deterministic=false))]
+fn crypto_device_mldsa_sign(key: &PythonDeviceMlDsaKey, message: &PythonMatrix, context: &PythonMatrix, deterministic: bool) -> PyResult<PythonDeviceSignature> {
+	let inner = device::mldsa_sign(key.live()?, &message.inner, &context.inner, signing_mode(deterministic)).map_err(python_error)?;
+	Ok(PythonDeviceSignature { inner })
+}
+
+#[pyfunction]
+#[pyo3(signature = (key, message, context, algorithm, deterministic=false))]
+fn crypto_device_mldsa_sign_hash_message(key: &PythonDeviceMlDsaKey, message: &PythonMatrix, context: &PythonMatrix, algorithm: &str, deterministic: bool) -> PyResult<PythonDeviceSignature> {
+	let inner = device::mldsa_sign_hash_message(key.live()?, &message.inner, &context.inner, prehash(algorithm)?, signing_mode(deterministic)).map_err(python_error)?;
+	Ok(PythonDeviceSignature { inner })
+}
+
+#[pyfunction]
+#[pyo3(signature = (key, digest, context, algorithm, deterministic=false))]
+fn crypto_device_mldsa_sign_prehashed(key: &PythonDeviceMlDsaKey, digest: &PythonMatrix, context: &PythonMatrix, algorithm: &str, deterministic: bool) -> PyResult<PythonDeviceSignature> {
+	let inner = device::mldsa_sign_prehashed(key.live()?, &digest.inner, &context.inner, prehash(algorithm)?, signing_mode(deterministic)).map_err(python_error)?;
+	Ok(PythonDeviceSignature { inner })
+}
+
+#[pyfunction]
+fn crypto_device_mlkem_encapsulate(public_key: &PythonMatrix, parameters: u32) -> PyResult<PythonDeviceEncapsulation> {
+	let device::DeviceEncapsulation { shared_secret, ciphertext, status, cleanup } = device::mlkem_encapsulate(&public_key.inner, kem_parameters(parameters)?).map_err(python_error)?;
+	Ok(PythonDeviceEncapsulation { shared_secret: Some(shared_secret), ciphertext, status, cleanup })
+}
+
+#[pyclass(name = "DeviceSecretScope", unsendable)]
+struct PythonDeviceSecretScope { inner: Option<device::PqcSecretScope> }
+
+#[pymethods]
+impl PythonDeviceSecretScope {
+	fn commit(&mut self) -> PyResult<()> {
+		self.inner.take().ok_or_else(consumed)?.commit().map_err(python_error)
+	}
+}
+
+#[pyclass(name = "DeviceDerivation", unsendable)]
+struct PythonDeviceDerivation { inner: device::DeviceDerivation }
+
+#[pymethods]
+impl PythonDeviceDerivation {
+	#[getter]
+	fn derived(&self) -> PythonMatrix { PythonMatrix::wrap(self.inner.derived.clone()) }
+	fn try_cleanup_complete(&self) -> PyResult<bool> { self.inner.cleanup.try_is_complete().map_err(python_error) }
+	fn wait_cleanup(&self) -> PyResult<()> { self.inner.cleanup.wait().map_err(python_error) }
+}
+
+#[pyfunction]
+fn crypto_device_mlkem_shared_derive(secret: &PythonDeviceSharedSecret, info: &PythonMatrix, length: usize) -> PyResult<PythonDeviceDerivation> {
+	let inner = device::mlkem_shared_derive(secret.live()?, &info.inner, length).map_err(python_error)?;
+	Ok(PythonDeviceDerivation { inner })
+}
+
+#[pyfunction]
+fn crypto_device_mlkem_decapsulate(key: &PythonDeviceMlKemKey, ciphertext: &PythonMatrix) -> PyResult<PythonDeviceDecapsulation> {
+	let device::DeviceDecapsulation { shared_secret, cleanup } = device::mlkem_decapsulate(key.live()?, &ciphertext.inner).map_err(python_error)?;
+	Ok(PythonDeviceDecapsulation { shared_secret: Some(shared_secret), cleanup })
+}
+
+#[pyfunction]
+#[expect(clippy::too_many_arguments, reason = "batch verifier preserves explicit byte ranges")]
+fn crypto_device_mldsa_verify_message(parameters: u32, messages: &PythonMatrix, offsets: &PythonMatrix, lengths: &PythonMatrix, signatures: &PythonMatrix, public_keys: &PythonMatrix, context_start: usize, context_end: usize) -> PyResult<PythonMatrix> {
+	oa::crypto::pqc::verify_batch_with_context(dsa_parameters(parameters)?, &messages.inner, &offsets.inner, &lengths.inner, &signatures.inner, &public_keys.inner, context_start..context_end).map(PythonMatrix::wrap).map_err(python_error)
+}
+
+#[pyfunction]
+#[expect(clippy::too_many_arguments, reason = "batch verifier preserves explicit byte ranges")]
+fn crypto_device_mldsa_verify_hash_message(parameters: u32, algorithm: &str, messages: &PythonMatrix, offsets: &PythonMatrix, lengths: &PythonMatrix, signatures: &PythonMatrix, public_keys: &PythonMatrix, context_start: usize, context_end: usize) -> PyResult<PythonMatrix> {
+	device::mldsa_verify_hash_message(dsa_parameters(parameters)?, prehash(algorithm)?, &messages.inner, &offsets.inner, &lengths.inner, &signatures.inner, &public_keys.inner, context_start..context_end).map(PythonMatrix::wrap).map_err(python_error)
+}
+
+#[pyfunction]
+#[expect(clippy::too_many_arguments, reason = "batch verifier preserves explicit byte ranges")]
+fn crypto_device_mldsa_verify_prehashed(parameters: u32, algorithm: &str, digests: &PythonMatrix, offsets: &PythonMatrix, lengths: &PythonMatrix, signatures: &PythonMatrix, public_keys: &PythonMatrix, context_start: usize, context_end: usize) -> PyResult<PythonMatrix> {
+	device::mldsa_verify_prehashed(dsa_parameters(parameters)?, prehash(algorithm)?, &digests.inner, &offsets.inner, &lengths.inner, &signatures.inner, &public_keys.inner, context_start..context_end).map(PythonMatrix::wrap).map_err(python_error)
+}
+
+pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+	module.add_class::<PythonDeviceErasure>()?;
+	module.add_class::<PythonDeviceMlDsaKey>()?;
+	module.add_class::<PythonDeviceMlKemKey>()?;
+	module.add_class::<PythonDeviceSharedSecret>()?;
+	module.add_class::<PythonDeviceSignature>()?;
+	module.add_class::<PythonDeviceEncapsulation>()?;
+	module.add_class::<PythonDeviceDecapsulation>()?;
+	module.add_class::<PythonDeviceDerivation>()?;
+	module.add_class::<PythonDeviceSecretScope>()?;
+	module.add_function(wrap_pyfunction!(crypto_device_begin_secret_scope, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mldsa_keygen, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mlkem_keygen, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mldsa_import_key, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mlkem_import_key, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mldsa_sign, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mldsa_sign_hash_message, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mldsa_sign_prehashed, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mlkem_encapsulate, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mlkem_decapsulate, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mlkem_shared_derive, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mldsa_verify_message, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mldsa_verify_hash_message, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_device_mldsa_verify_prehashed, module)?)?;
+	Ok(())
+}

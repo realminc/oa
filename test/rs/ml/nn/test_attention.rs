@@ -21,11 +21,11 @@ test_vk!(split_and_merge_heads_match_donor_permutation, engine, {
 	assert_eq!(plan.semantic_graph().operations().len(), 2);
 	assert_eq!(
 		plan.semantic_graph().operations()[0].name(),
-		"oa::ml::matrix::split_heads"
+		"oa::FnMatrix::splitHeads"
 	);
 	assert_eq!(
 		plan.semantic_graph().operations()[1].name(),
-		"oa::ml::matrix::merge_heads"
+		"oa::FnMatrix::mergeHeads"
 	);
 	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("heads"))
 		.expect("head-transform report must be valid JSON");
@@ -315,10 +315,7 @@ test_vk!(
 			})?;
 			assert_eq!(plan.semantic_graph().operations().len(), 1);
 			let operation = &plan.semantic_graph().operations()[0];
-			assert_eq!(
-				operation.name(),
-				"oa::ml::matrix::scaled_dot_product_attention"
-			);
+			assert_eq!(operation.name(), "oa::FnMatrix::scaledDotProductAttention");
 			assert_eq!(operation.inputs()[3].is_some(), additive_mask.is_some());
 			let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("sdpa"))
 				.expect("SDPA report must be valid JSON");
@@ -477,10 +474,7 @@ test_vk!(flash_sdpa_matches_the_standard_causal_route, engine, {
 		engine.capture(|| oa::ml::matrix::flash_attention_causal(&query, &key, &value, scale))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	let operation = &plan.semantic_graph().operations()[0];
-	assert_eq!(
-		operation.name(),
-		"oa::ml::matrix::scaled_dot_product_attention"
-	);
+	assert_eq!(operation.name(), "oa::FnMatrix::scaledDotProductAttention");
 	assert!(operation.inputs()[3].is_none());
 	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("flash_sdpa"))
 		.expect("Flash SDPA report must be valid JSON");

@@ -296,6 +296,7 @@ fn advance_cursor(engine: &Engine, cursor: &Matrix, horizon: u32, continuing: bo
 				PushConstant::U32(u32::from(continuing)),
 			],
 			workgroups: [1, 1, 1],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract: crate::core::operation::ml::TRADING_CURSOR_ADVANCE,

@@ -13,11 +13,11 @@ const RNG_SCHEMA: &str = "tool/gen/fn/schema/matrix/matrix_rng.json";
 const INDEX_SCHEMA: &str = "tool/gen/fn/schema/matrix/matrix_index.json";
 const ML_SCHEMA: &str = "tool/gen/fn/schema/ml/ml_training.json";
 const AUDIO_SCHEMA: &str = "tool/gen/fn/schema/audio/audio.json";
-const CRYPTOGRAPHY_MERKLE_SCHEMA: &str = "tool/gen/fn/schema/cryptography/cryptography_merkle.json";
-const CRYPTOGRAPHY_NTT_SCHEMA: &str = "tool/gen/fn/schema/cryptography/cryptography_ntt.json";
-const CRYPTOGRAPHY_HASH_SCHEMA: &str = "tool/gen/fn/schema/cryptography/cryptography_hash.json";
-const CRYPTOGRAPHY_BIGINT_SCHEMA: &str = "tool/gen/fn/schema/cryptography/cryptography_bigint.json";
-const CRYPTOGRAPHY_PQC_SCHEMA: &str = "tool/gen/fn/schema/cryptography/cryptography_pqc.json";
+const CRYPTOGRAPHY_MERKLE_SCHEMA: &str = "tool/gen/fn/schema/crypto/crypto_merkle.json";
+const CRYPTOGRAPHY_NTT_SCHEMA: &str = "tool/gen/fn/schema/crypto/crypto_ntt.json";
+const CRYPTOGRAPHY_HASH_SCHEMA: &str = "tool/gen/fn/schema/crypto/crypto_hash.json";
+const CRYPTOGRAPHY_BIGINT_SCHEMA: &str = "tool/gen/fn/schema/crypto/crypto_bigint.json";
+const CRYPTOGRAPHY_PQC_SCHEMA: &str = "tool/gen/fn/schema/crypto/crypto_pqc.json";
 const IMAGE_SCHEMA: &str = "tool/gen/fn/schema/image/image.json";
 const VISION_SCHEMA: &str = "tool/gen/fn/schema/vision/vision_detection.json";
 const GENERATOR: &str = "tool/gen/fn/generate.py";
@@ -29,16 +29,14 @@ const ACTIVATIONS: &str = "src/slang/core/math/activations.slang";
 const SSM_MATH: &str = "src/slang/core/math/ssm_math.slang";
 const PHILOX: &str = "src/slang/core/rng/philox.slang";
 const DROPOUT_RNG: &str = "src/slang/matrix/rng/dropout_rng.slang";
-const CRYPTOGRAPHY_KECCAK: &str = "src/slang/cryptography/hash/keccak.slang";
-const CRYPTOGRAPHY_PQC_MLDSA_FIELD: &str = "src/slang/cryptography/pqc/mldsa/mldsa_field.slang";
-const CRYPTOGRAPHY_PQC_MLDSA_NTT: &str = "src/slang/cryptography/pqc/mldsa/mldsa_ntt.slang";
-const CRYPTOGRAPHY_PQC_MLDSA_PACKING: &str = "src/slang/cryptography/pqc/mldsa/mldsa_packing.slang";
-const CRYPTOGRAPHY_PQC_MLDSA_SAMPLING: &str =
-	"src/slang/cryptography/pqc/mldsa/mldsa_sampling.slang";
-const CRYPTOGRAPHY_PQC_SHAKE: &str = "src/slang/cryptography/pqc/common/shake.slang";
-const CRYPTOGRAPHY_PQC_VERIFICATION: &str =
-	"src/slang/cryptography/pqc/mldsa/mldsa_verification.slang";
-const CRYPTOGRAPHY_PQC_SHA3: &str = "src/slang/cryptography/pqc/common/sha3.slang";
+const CRYPTOGRAPHY_KECCAK: &str = "src/slang/crypto/hash/keccak.slang";
+const CRYPTOGRAPHY_PQC_MLDSA_FIELD: &str = "src/slang/crypto/pqc/mldsa/mldsa_field.slang";
+const CRYPTOGRAPHY_PQC_MLDSA_NTT: &str = "src/slang/crypto/pqc/mldsa/mldsa_ntt.slang";
+const CRYPTOGRAPHY_PQC_MLDSA_PACKING: &str = "src/slang/crypto/pqc/mldsa/mldsa_packing.slang";
+const CRYPTOGRAPHY_PQC_MLDSA_SAMPLING: &str = "src/slang/crypto/pqc/mldsa/mldsa_sampling.slang";
+const CRYPTOGRAPHY_PQC_SHAKE: &str = "src/slang/crypto/pqc/common/shake.slang";
+const CRYPTOGRAPHY_PQC_VERIFICATION: &str = "src/slang/crypto/pqc/mldsa/mldsa_verification.slang";
+const CRYPTOGRAPHY_PQC_SHA3: &str = "src/slang/crypto/pqc/common/sha3.slang";
 const ENTRY_POINT: &str = "main";
 
 struct ShaderBuild<'a> {
@@ -74,10 +72,13 @@ const RENDER_FLAT_COLOR_FRAG: &str = "src/slang/render/flat_color.frag.slang";
 const RENDER_UNLIT_VERT: &str = "src/slang/render/unlit.vert.slang";
 const RENDER_UNLIT_FRAG: &str = "src/slang/render/unlit.frag.slang";
 const RENDER_SURFACE_VERT: &str = "src/slang/render/surface.vert.slang";
+const UI_CANVAS_GRID_VERT: &str = "src/slang/ui/canvas_grid.vert.slang";
+const UI_CANVAS_GRID_FRAG: &str = "src/slang/ui/canvas_grid.frag.slang";
 const RENDER_SURFACE_FRAG: &str = "src/slang/render/surface.frag.slang";
 
 const UI_CLEAR_COMPOSE: &str = "src/slang/ui/clear_compose.slang";
 const UI_BLIT_RGBA: &str = "src/slang/ui/blit_rgba.slang";
+const UI_BLIT_PLANAR: &str = "src/slang/ui/blit_planar.slang";
 const UI_DRAW_RECT: &str = "src/slang/ui/draw_rect.slang";
 const UI_DRAW_RECT_OUTLINE: &str = "src/slang/ui/draw_rect_outline.slang";
 const UI_DRAW_LINE: &str = "src/slang/ui/draw_line.slang";
@@ -88,7 +89,9 @@ const UI_DRAW_HEATMAP: &str = "src/slang/ui/draw_heatmap.slang";
 const UI_DRAW_TRIANGLE: &str = "src/slang/ui/draw_triangle.slang";
 const UI_DRAW_CANVAS_GRID: &str = "src/slang/ui/draw_canvas_grid.slang";
 const UI_DRAW_GLYPHS: &str = "src/slang/ui/draw_glyphs.slang";
+const UI_DRAW_RECT_OUTLINES: &str = "src/slang/ui/draw_rect_outlines.slang";
 const UI_COMPOSITOR_COMMON: &str = "src/slang/ui/compositor_common.slang";
+const VIDEO_CVT_RGBA_TO_NV12: &str = "src/slang/video/cvt_rgba_to_nv12.slang";
 
 fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	for source in [
@@ -109,7 +112,7 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		"tool/gen/fn/template/audio",
 		"tool/gen/fn/template/image",
 		"tool/gen/fn/template/vision",
-		"tool/gen/fn/template/cryptography",
+		"tool/gen/fn/template/crypto",
 		"tool/gen/fn/template/python",
 		STORAGE,
 		ATTRIBUTES,
@@ -138,14 +141,18 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		RENDER_UNLIT_FRAG,
 		RENDER_SURFACE_VERT,
 		RENDER_SURFACE_FRAG,
+		UI_CANVAS_GRID_VERT,
+		UI_CANVAS_GRID_FRAG,
 		UI_COMPOSITOR_COMMON,
 		UI_CLEAR_COMPOSE,
 		UI_BLIT_RGBA,
+		UI_BLIT_PLANAR,
 		UI_DRAW_RECT,
 		UI_DRAW_RECT_OUTLINE,
 		UI_DRAW_LINE,
 		UI_DRAW_PLOT_LINE,
 		UI_DRAW_GLYPHS,
+		UI_DRAW_RECT_OUTLINES,
 		UI_DRAW_CANVAS_GRID,
 		UI_DRAW_TRIANGLE,
 		UI_DRAW_WAVEFORM,
@@ -183,6 +190,12 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		vulkan_target,
 	};
 	for operation in operations {
+		// Lowering-only kernels own a handwritten Slang source and a fixed push
+		// layout; contract variants generate their sources instead.
+		if operation["lowering_only"].as_bool() == Some(true) {
+			build_schema_shader(operation, "matrix", default_dtype, workgroup_size, &build)?;
+			continue;
+		}
 		build_shader(
 			operation,
 			operation,
@@ -236,6 +249,18 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 			&build,
 		)?;
 	}
+	if let Some(candidates) = blas_schema["candidate_kernels"].as_array() {
+		for candidate in candidates {
+			build_shader(
+				candidate,
+				candidate,
+				blas_dtype,
+				blas_workgroup_size,
+				"src/slang/matrix/blas",
+				&build,
+			)?;
+		}
+	}
 
 	let reduce_schema: Value = serde_json::from_slice(&fs::read(REDUCE_SCHEMA)?)?;
 	let reduce_operations = array_at(&reduce_schema, "operations")?;
@@ -245,6 +270,10 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		return Err("matrix Reduce schema contains no operations".into());
 	}
 	for operation in reduce_operations {
+		// Composite records such as `mean` lower to existing kernels; there is no shader to build.
+		if operation["source"].as_str().is_none() {
+			continue;
+		}
 		build_schema_shader(
 			operation,
 			"matrix",
@@ -281,6 +310,10 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		return Err("matrix Index schema contains no operations".into());
 	}
 	for operation in index_operations {
+		// Composite records such as `split` lower to existing kernels; there is no shader to build.
+		if operation["source"].as_str().is_none() {
+			continue;
+		}
 		let operation_dtype = operation["dtype"].as_str().unwrap_or(index_dtype);
 		let operation_workgroup_size = operation
 			.get("workgroup_size")
@@ -384,10 +417,10 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	// Imported private formulas are build inputs too. Track each family and
 	// directory membership so additions/removals cannot leave stale artifacts.
 	for directory in [
-		"src/slang/cryptography/bigint",
-		"src/slang/cryptography/hash",
-		"src/slang/cryptography/pqc/mlkem",
-		"src/slang/cryptography/pqc/mldsa",
+		"src/slang/crypto/bigint",
+		"src/slang/crypto/hash",
+		"src/slang/crypto/pqc/mlkem",
+		"src/slang/crypto/pqc/mldsa",
 	] {
 		println!("cargo:rerun-if-changed={directory}");
 		for entry in fs::read_dir(directory)? {
@@ -483,19 +516,68 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	// Surface — opaque base variant (no texture defines).
 	build_graphics_shader("surface_vert", RENDER_SURFACE_VERT, "vertex", &build)?;
 	build_graphics_shader("surface_frag", RENDER_SURFACE_FRAG, "fragment", &build)?;
+	build_graphics_shader("ui_canvas_grid_vert", UI_CANVAS_GRID_VERT, "vertex", &build)?;
+	build_graphics_shader(
+		"ui_canvas_grid_frag",
+		UI_CANVAS_GRID_FRAG,
+		"fragment",
+		&build,
+	)?;
 	// UI compute shaders.
 	build_ui_shader("clear_compose", UI_CLEAR_COMPOSE, &build)?;
 	build_ui_shader("blit_rgba", UI_BLIT_RGBA, &build)?;
+	build_ui_shader("blit_planar", UI_BLIT_PLANAR, &build)?;
 	build_ui_shader("draw_rect", UI_DRAW_RECT, &build)?;
 	build_ui_shader("draw_rect_outline", UI_DRAW_RECT_OUTLINE, &build)?;
 	build_ui_shader("draw_line", UI_DRAW_LINE, &build)?;
 	build_ui_shader("draw_plot_line", UI_DRAW_PLOT_LINE, &build)?;
 	build_ui_shader("draw_glyphs", UI_DRAW_GLYPHS, &build)?;
+	build_ui_shader("draw_rect_outlines", UI_DRAW_RECT_OUTLINES, &build)?;
 	build_ui_shader("draw_canvas_grid", UI_DRAW_CANVAS_GRID, &build)?;
 	build_ui_shader("draw_waveform", UI_DRAW_WAVEFORM, &build)?;
 	build_ui_shader("draw_heatmap", UI_DRAW_HEATMAP, &build)?;
 	build_ui_shader("draw_triangle", UI_DRAW_TRIANGLE, &build)?;
 	build_ui_shader("mask_rounded_viewport", UI_MASK_ROUNDED_VIEWPORT, &build)?;
+	// Video conversion shaders (Strict bindless profile only).
+	build_video_shader("cvt_rgba_to_nv12", VIDEO_CVT_RGBA_TO_NV12, &build)?;
+	emit_shader_content_ids(&output_directory)?;
+	Ok(())
+}
+
+/// Emit `OUT_DIR/shader_content_ids.rs` with an FNV-1a content hash per
+/// produced `.spv`, keyed by the artifact stem in upper snake case.
+fn emit_shader_content_ids(output_directory: &Path) -> Result<(), Box<dyn std::error::Error>> {
+	let mut entries = Vec::new();
+	for entry in fs::read_dir(output_directory)? {
+		let path = entry?.path();
+		if path.extension().and_then(|ext| ext.to_str()) != Some("spv") {
+			continue;
+		}
+		let bytes = fs::read(&path)?;
+		let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+			(hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+		});
+		let stem: String = path
+			.file_stem()
+			.and_then(|stem| stem.to_str())
+			.ok_or("SPIR-V artifact name is not UTF-8")?
+			.chars()
+			.map(|ch| {
+				if ch.is_ascii_alphanumeric() {
+					ch.to_ascii_uppercase()
+				} else {
+					'_'
+				}
+			})
+			.collect();
+		entries.push((stem, hash));
+	}
+	entries.sort();
+	let mut source = String::from("// @generated by build.rs; DO NOT EDIT.\n");
+	for (name, hash) in entries {
+		source.push_str(&format!("pub(crate) const {name}: u64 = 0x{hash:016x};\n"));
+	}
+	fs::write(output_directory.join("shader_content_ids.rs"), source)?;
 	Ok(())
 }
 
@@ -679,6 +761,85 @@ fn build_ui_shader(
 	Ok(())
 }
 
+/// Strict-profile compute artifact for the video encoder's conversion kernels.
+/// The donor RGBA→NV12 path is bindless-only; encode admission itself requires
+/// the Strict descriptor profile, so no bounded artifact is generated.
+fn build_video_shader(
+	stem: &str,
+	source: &str,
+	build: &ShaderBuild<'_>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let artifact = format!("video_{stem}");
+	let spirv = build.output_directory.join(format!("{artifact}.spv"));
+	let reflection_path = build
+		.output_directory
+		.join(format!("{artifact}.reflection.json"));
+	let output = Command::new(build.slangc)
+		.arg(source)
+		.args([
+			"-entry",
+			"main",
+			"-stage",
+			"compute",
+			"-target",
+			"spirv",
+			"-profile",
+			"glsl_460",
+			"-capability",
+			build.spirv_capability,
+			"-fvk-use-entrypoint-name",
+			"-warnings-as-errors",
+			"all",
+			"-I",
+			"src/slang/video",
+		])
+		.arg("-reflection-json")
+		.arg(&reflection_path)
+		.arg("-o")
+		.arg(&spirv)
+		.output()?;
+	if !output.status.success() {
+		return Err(
+			format!(
+				"{artifact} Slang compilation failed: {}",
+				String::from_utf8_lossy(&output.stderr)
+			)
+			.into(),
+		);
+	}
+	let reflection: Value = serde_json::from_slice(&fs::read(&reflection_path)?)?;
+	let parameters = array_at(&reflection, "parameters")?;
+	require_equal(
+		&named(parameters, "pc")?["type"]["elementType"]["kind"],
+		&json!("struct"),
+		"video push-constant layout",
+	)?;
+	require_equal(
+		&named(parameters, "heap")?["binding"],
+		&json!({"kind":"descriptorTableSlot","index":0}),
+		"video storage-buffer binding",
+	)?;
+	require_equal(
+		&named(parameters, "storage_images")?["binding"],
+		&json!({"kind":"descriptorTableSlot","index":1}),
+		"video storage-image binding",
+	)?;
+	let output = Command::new(build.spirv_val)
+		.args(["--target-env", build.vulkan_target])
+		.arg(&spirv)
+		.output()?;
+	if !output.status.success() {
+		return Err(
+			format!(
+				"{artifact} SPIR-V validation failed: {}",
+				String::from_utf8_lossy(&output.stderr)
+			)
+			.into(),
+		);
+	}
+	Ok(())
+}
+
 fn build_graphics_shader(
 	stem: &str,
 	source: &str,
@@ -801,7 +962,7 @@ fn build_shader(
 			"-I",
 			"src/slang/matrix/rng",
 			"-I",
-			"src/slang/cryptography/hash",
+			"src/slang/crypto/hash",
 			"-reflection-json",
 		])
 		.arg(&reflection)
@@ -924,13 +1085,13 @@ fn build_bounded_shader(
 		"-I",
 		"src/slang/matrix/rng",
 		"-I",
-		"src/slang/cryptography/hash",
+		"src/slang/crypto/hash",
 		"-I",
-		"src/slang/cryptography/pqc/common",
+		"src/slang/crypto/pqc/common",
 		"-I",
-		"src/slang/cryptography/pqc/mldsa",
+		"src/slang/crypto/pqc/mldsa",
 		"-I",
-		"src/slang/cryptography/pqc/mlkem",
+		"src/slang/crypto/pqc/mlkem",
 	]);
 	// The bounded source lives in OUT_DIR; retain adjacent module resolution.
 	if let Some(parent) = Path::new(source_path).parent() {
@@ -1088,7 +1249,7 @@ fn validate_reflection(
 		.pointer("/type/elementType/fields")
 		.and_then(Value::as_array)
 		.ok_or("reflection does not describe push-constant fields")?;
-	let expected_fields = expected_push_fields(kind)?;
+	let expected_fields = expected_push_fields(kind, variant)?;
 	if fields.len() != expected_fields.len() {
 		return Err(
 			format!(
@@ -1188,13 +1349,13 @@ fn build_schema_shader(
 		"-I",
 		"src/slang/matrix/rng",
 		"-I",
-		"src/slang/cryptography/hash",
+		"src/slang/crypto/hash",
 		"-I",
-		"src/slang/cryptography/pqc/common",
+		"src/slang/crypto/pqc/common",
 		"-I",
-		"src/slang/cryptography/pqc/mldsa",
+		"src/slang/crypto/pqc/mldsa",
 		"-I",
-		"src/slang/cryptography/pqc/mlkem",
+		"src/slang/crypto/pqc/mlkem",
 	]);
 	if let Some(optimization) = operation["slang_optimization"].as_str() {
 		match optimization {
@@ -1296,13 +1457,13 @@ fn build_schema_pqc_shader(
 		"-I",
 		"src/slang/core/math",
 		"-I",
-		"src/slang/cryptography/hash",
+		"src/slang/crypto/hash",
 		"-I",
-		"src/slang/cryptography/pqc/common",
+		"src/slang/crypto/pqc/common",
 		"-I",
-		"src/slang/cryptography/pqc/mldsa",
+		"src/slang/crypto/pqc/mldsa",
 		"-I",
-		"src/slang/cryptography/pqc/mlkem",
+		"src/slang/crypto/pqc/mlkem",
 	]);
 	if let Some(capabilities) = operation["slang_capabilities"].as_array() {
 		for capability in capabilities {
@@ -1477,7 +1638,21 @@ fn validate_schema_reflection(
 	Ok(())
 }
 
-fn expected_push_fields(kind: &str) -> Result<Vec<(&'static str, &'static str, u32)>, String> {
+fn expected_push_fields(
+	kind: &str,
+	variant: &str,
+) -> Result<Vec<(&'static str, &'static str, u32)>, String> {
+	if let ("mat_mul_nt", "bias" | "bias_relu" | "bias_gelu" | "bias_silu") = (kind, variant) {
+		return Ok(vec![
+			("left_index", "uint32", 0),
+			("right_index", "uint32", 4),
+			("bias_index", "uint32", 8),
+			("output_index", "uint32", 12),
+			("m", "uint32", 16),
+			("n", "uint32", 20),
+			("k", "uint32", 24),
+		]);
+	}
 	match kind {
 		"binary" => Ok(vec![
 			("left_index", "uint32", 0),

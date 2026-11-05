@@ -8,9 +8,12 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[5]
-SPEC = importlib.util.spec_from_file_location("oa_vision_generate", ROOT / "tool/gen/fn/generate.py")
-GENERATOR = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(GENERATOR)
+
+import sys
+sys.path.insert(0, str(ROOT / "tool/gen/fn"))
+import oafn.util as oa_util
+import oafn.vision as oa_vision
+
 
 
 class VisionGenerationTests(unittest.TestCase):
@@ -21,10 +24,10 @@ class VisionGenerationTests(unittest.TestCase):
 		return next(op for op in self.schema["contracts"] if op["name"] == name)
 
 	def render(self):
-		return GENERATOR.generate_vision_api(self.schema, "0" * 64)
+		return oa_vision.generate_vision_api(self.schema, "0" * 64)
 
 	def test_complete_bodies_types_and_umbrella_have_one_owner(self):
-		GENERATOR.validate_vision_schema(self.schema)
+		oa_vision.validate_vision_schema(self.schema)
 		text = self.render()
 		self.assertEqual(re.findall(r"pub fn (\w+)\(", text), [op["name"] for op in self.schema["contracts"]])
 		self.assertEqual(text.count("record_semantic("), 2)
@@ -33,7 +36,7 @@ class VisionGenerationTests(unittest.TestCase):
 		self.assertNotIn("{{", text)
 		self.assertNotRegex(text, r"\b\w+_(?:impl|dispatch)\(")
 		self.assertIn('#[path = "vision/detection.gen.rs"]', (ROOT / "src/rs/vision.rs").read_text())
-		self.assertFalse((ROOT / "src/rs/vision/detection.rs").exists())
+		self.assertNotIn("@generated", (ROOT / "src/rs/vision/detection.rs").read_text())
 		for record in self.schema["types"]:
 			self.assertEqual(text.count(f"pub struct {record['name']} {{"), 1)
 		self.assertIn("pub max_detections: i32", text)
@@ -56,7 +59,7 @@ class VisionGenerationTests(unittest.TestCase):
 	def test_signature_docs_defaults_and_attributes_are_schema_owned(self):
 		op = self.operation("nms")
 		op["rust"]["doc"] = ["Schema summary."]
-		op["rust"]["attribute_sources"]["score_threshold"]["value"] = "f64::from(config.score_threshold * 0.5)"
+		op["rust"]["attribute_sources"]["scoreThreshold"]["value"] = "f64::from(config.score_threshold * 0.5)"
 		self.schema["types"][0]["defaults"]["max_detections"] = "200"
 		text = self.render()
 		self.assertIn("/// Schema summary.", text)
@@ -69,14 +72,14 @@ class VisionGenerationTests(unittest.TestCase):
 			for field in ("bindings", "push_constants"):
 				for declaration in op["rust"][field]:
 					declaration["values"] = dict(reversed(list(declaration["values"].items())))
-		GENERATOR.validate_vision_schema(self.schema)
+		oa_vision.validate_vision_schema(self.schema)
 		self.assertEqual(before, self.render())
 
 	def test_declaration_names_and_references_share_schema_identity(self):
 		op = self.operation("confusion_matrix")
 		op["rust"]["bindings"][0]["name"] = "zero_bindings"
 		op["rust"]["push_constants"][0]["name"] = "zero_push"
-		GENERATOR.validate_vision_schema(self.schema)
+		oa_vision.validate_vision_schema(self.schema)
 		text = self.render()
 		self.assertIn("let zero_bindings = [", text)
 		self.assertIn("buffers: &zero_bindings", text)
@@ -85,12 +88,12 @@ class VisionGenerationTests(unittest.TestCase):
 
 	def test_missing_result_owner_and_field_mismatch_are_rejected(self):
 		self.schema["types"].pop()
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "result fields"):
-			GENERATOR.validate_vision_schema(self.schema)
+		with self.assertRaisesRegex(oa_util.SchemaError, "result fields"):
+			oa_vision.validate_vision_schema(self.schema)
 		self.setUp()
 		self.schema["types"][1]["fields"].pop()
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "result fields"):
-			GENERATOR.validate_vision_schema(self.schema)
+		with self.assertRaisesRegex(oa_util.SchemaError, "result fields"):
+			oa_vision.validate_vision_schema(self.schema)
 
 	def test_bad_signatures_attributes_abi_and_stage_coverage_are_rejected(self):
 		mutations = [
@@ -105,22 +108,22 @@ class VisionGenerationTests(unittest.TestCase):
 		for mutation in mutations:
 			self.schema = copy.deepcopy(original)
 			mutation(self.operation("box_iou"))
-			with self.assertRaises(GENERATOR.SchemaError):
-				GENERATOR.validate_vision_schema(self.schema)
+			with self.assertRaises(oa_util.SchemaError):
+				oa_vision.validate_vision_schema(self.schema)
 		self.schema = copy.deepcopy(original)
 		self.operation("evaluate")["rust"]["dispatches"].pop()
-		with self.assertRaises(GENERATOR.SchemaError):
-			GENERATOR.validate_vision_schema(self.schema)
+		with self.assertRaises(oa_util.SchemaError):
+			oa_vision.validate_vision_schema(self.schema)
 
 	def test_template_coverage_and_unresolved_tokens_are_rejected(self):
-		with patch.object(GENERATOR, "vision_templates", return_value={}):
-			with self.assertRaisesRegex(GENERATOR.SchemaError, "coverage"):
-				GENERATOR.validate_vision_schema(self.schema)
-		templates = GENERATOR.vision_templates()
+		with patch.object(oa_vision, "vision_templates", return_value={}):
+			with self.assertRaisesRegex(oa_util.SchemaError, "coverage"):
+				oa_vision.validate_vision_schema(self.schema)
+		templates = oa_vision.vision_templates()
 		templates["box_iou"] += "\n{{unknown}}"
-		with patch.object(GENERATOR, "vision_templates", return_value=templates):
-			with self.assertRaisesRegex(GENERATOR.SchemaError, "bindings"):
-				GENERATOR.validate_vision_schema(self.schema)
+		with patch.object(oa_vision, "vision_templates", return_value=templates):
+			with self.assertRaisesRegex(oa_util.SchemaError, "bindings"):
+				oa_vision.validate_vision_schema(self.schema)
 
 
 if __name__ == "__main__":

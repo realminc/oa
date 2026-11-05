@@ -1,8 +1,8 @@
-use oa::{ErrorKind, Image, ImageFormat, ImageLayout, Matrix, image::NormalizationParams};
+use oa::{ErrorKind, Image, ImageFormat, ImageLayout, Matrix, image::NormalizationConfig};
 
 #[test]
 fn normalization_defaults_preserve_the_identity_transform() {
-	let parameters = NormalizationParams::default();
+	let parameters = NormalizationConfig::default();
 	assert_eq!(parameters.mean, [0.0; 3]);
 	assert_eq!(parameters.std, [1.0; 3]);
 }
@@ -233,7 +233,7 @@ test_vk!(normalize_matches_per_channel_oracle, engine, {
 	)?;
 	let normalized = oa::image::normalize(
 		&image,
-		NormalizationParams {
+		NormalizationConfig {
 			mean: [1.0, 2.0, -2.0],
 			std: [2.0, 4.0, 3.0],
 		},
@@ -273,7 +273,7 @@ test_vk!(
 			&rgb,
 			2,
 			2,
-			NormalizationParams {
+			NormalizationConfig {
 				mean: [1.0, 2.0, 4.0],
 				std: [1.0, 2.0, 4.0],
 			},

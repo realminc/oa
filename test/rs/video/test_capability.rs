@@ -16,7 +16,11 @@ test_vk!(
 					|| capabilities.supports_av1_decode()
 					|| capabilities.supports_vp9_decode())
 		);
-		assert!(!capabilities.encoder_sessions_available());
+		assert_eq!(
+			capabilities.encoder_sessions_available(),
+			capabilities.encode_queue_family().is_some()
+				&& (capabilities.supports_h264_encode() || capabilities.supports_h265_encode())
+		);
 
 		let any_decode = capabilities.supports_h264_decode()
 			|| capabilities.supports_h265_decode()

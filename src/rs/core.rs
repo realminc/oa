@@ -6,6 +6,7 @@ mod color;
 pub mod config;
 pub mod constant;
 mod dtype;
+mod duration;
 pub mod env_flag;
 mod error;
 pub mod filesystem;
@@ -18,6 +19,8 @@ pub mod path;
 pub mod perf_stat;
 pub mod time;
 pub mod transform;
+#[path = "core/type.gen.rs"]
+mod types;
 pub mod validation;
 pub mod vlm;
 
@@ -27,6 +30,7 @@ pub use color::Color;
 pub use config::{CheckpointConfig, LogConfig};
 pub use constant::{COMPACT_BANNER, REALM_BANNER, VIEWPORT_TITLE, brand_viewport};
 pub use dtype::{DType, Element};
+pub use duration::Duration;
 pub use env_flag::{EnvFlag, NumericMode, apply_numeric_mode};
 pub use error::{Error, ErrorKind, Result};
 pub use filesystem::Filesystem;

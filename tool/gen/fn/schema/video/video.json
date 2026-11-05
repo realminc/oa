@@ -1,0 +1,26 @@
+{
+ "schema_version": 1,
+ "family": "video",
+ "domain": "video",
+ "kernels": [
+  {
+   "stable_id": 567,
+   "name": "cvt_rgba_to_nv12",
+   "kernel_id": "VideoCvtRgbaToNv12",
+   "source": "src/slang/video/cvt_rgba_to_nv12.slang",
+   "workgroup_size": [16, 16, 1],
+   "push_fields": [
+    ["rgba_idx", "uint32"],
+    ["y_idx", "uint32"],
+    ["uv_idx", "uint32"],
+    ["width", "uint32"],
+    ["height", "uint32"],
+    ["coded_width", "uint32"],
+    ["coded_height", "uint32"],
+    ["color_space", "uint32"],
+    ["full_range", "uint32"],
+    ["_pad", "uint32"]
+   ]
+  }
+ ]
+}

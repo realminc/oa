@@ -7,24 +7,8 @@
 use crate::{Engine, Error, Matrix, Result};
 
 use super::{ItTraining, ItTrainingConfig, Optimizer, TrainingSnapshot};
+pub use crate::ml::types::ItRolloutTrainingConfig;
 use crate::ml::{RolloutBuffer, advantage::GaeConfig};
-
-/// Fixed rollout and update schedule.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ItRolloutTrainingConfig {
-	/// Number of complete collection cycles.
-	pub rollouts: u64,
-	/// Time steps stored by each rollout.
-	pub horizon: usize,
-	/// Vector environments represented by each time step.
-	pub environments: usize,
-	/// Full-batch optimizer passes after each collection.
-	pub update_epochs: u64,
-	/// Device timer label for update steps.
-	pub timer_name: String,
-	/// Whether each optimizer update records and resolves Vulkan timestamps.
-	pub enable_gpu_timing: bool,
-}
 
 impl Default for ItRolloutTrainingConfig {
 	fn default() -> Self {

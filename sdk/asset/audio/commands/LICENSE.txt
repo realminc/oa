@@ -1,0 +1,10 @@
+Speech Commands Dataset v0.02 subset — Google / Pete Warden et al.
+https://arxiv.org/abs/1804.03209
+
+Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0):
+https://creativecommons.org/licenses/by/4.0/
+
+This directory contains 32 of the 8,000 one-second 16 kHz mono WAV clips
+from the mini_speech_commands archive (4 clips per command label). See
+https://www.tensorflow.org/datasets/catalog/speech_commands for the full
+dataset, labeling, and citation requirements.

@@ -130,6 +130,84 @@ test_vk!(
 );
 
 test_vk!(
+	matrix_mean_and_max_adjoints_match_analytic_oracles,
+	engine,
+	{
+		let layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [3, 1], &[0.0; 3])?,
+			oa::Matrix::new_from_f32(&engine, [3], &[-1.0, 0.0, 2.0])?,
+		)?;
+		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let tape = oa::ml::GradientTape::new();
+		let value = layer.forward(&input)?;
+		let output = oa::matrix::mean(&value, -1)?.reshape([])?;
+		tape.backward(&output)?;
+		assert_adjoint(&layer.bias().expect("test bias"), &[1.0 / 3.0; 3])?;
+		Ok(())
+	}
+);
+
+test_vk!(
+	matrix_max_adjoint_routes_the_upstream_scalar_to_the_maximum,
+	engine,
+	{
+		let layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [3, 1], &[0.0; 3])?,
+			oa::Matrix::new_from_f32(&engine, [3], &[-1.0, 0.0, 2.0])?,
+		)?;
+		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let tape = oa::ml::GradientTape::new();
+		let value = layer.forward(&input)?;
+		let output = oa::matrix::max(&value, -1)?.reshape([])?;
+		tape.backward(&output)?;
+		assert_adjoint(&layer.bias().expect("test bias"), &[0.0, 0.0, 1.0])?;
+		Ok(())
+	}
+);
+
+test_vk!(
+	matrix_causal_mask_adjoint_zeroes_above_diagonal_gradients,
+	engine,
+	{
+		let layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [6, 1], &[0.0; 6])?,
+			oa::Matrix::new_from_f32(&engine, [6], &[1.0; 6])?,
+		)?;
+		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let tape = oa::ml::GradientTape::new();
+		let value = layer.forward(&input)?.reshape([2, 3])?;
+		let output = oa::matrix::causal_mask(&value)?;
+		tape.backward(&scalar_sum(&output)?)?;
+		assert_adjoint(
+			&layer.bias().expect("test bias"),
+			&[1.0, 0.0, 0.0, 1.0, 1.0, 0.0],
+		)?;
+		Ok(())
+	}
+);
+
+test_vk!(
+	matrix_split_adjoint_routes_gradients_to_the_consumed_segment,
+	engine,
+	{
+		let layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [6, 1], &[0.0; 6])?,
+			oa::Matrix::new_from_f32(&engine, [6], &[1.0; 6])?,
+		)?;
+		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let tape = oa::ml::GradientTape::new();
+		let value = layer.forward(&input)?.reshape([2, 3])?;
+		let parts = oa::matrix::split(&value, &[1, 2], 1)?;
+		tape.backward(&scalar_sum(&parts[1])?)?;
+		assert_adjoint(
+			&layer.bias().expect("test bias"),
+			&[0.0, 1.0, 1.0, 0.0, 1.0, 1.0],
+		)?;
+		Ok(())
+	}
+);
+
+test_vk!(
 	matrix_matmul_concat_transpose_and_view_adjoints_preserve_lineage,
 	engine,
 	{
@@ -149,6 +227,92 @@ test_vk!(
 		tape.backward(&scalar_sum(&flattened)?)?;
 		assert_adjoint(&layer.weight(), &[3.0, 3.0, 2.0, 2.0, 6.0, 6.0])?;
 		assert_adjoint(&layer.bias().expect("test bias"), &[6.0, 4.0, 12.0])?;
+		Ok(())
+	}
+);
+
+test_vk!(
+	matrix_compact_rows_adjoint_reconstructs_the_source_rows,
+	engine,
+	{
+		let layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [8, 1], &[0.0; 8])?,
+			oa::Matrix::new_from_f32(&engine, [8], &[1.0; 8])?,
+		)?;
+		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let mask = oa::Matrix::new_from_f32(&engine, [4], &[1.0, 0.0, 1.0, 1.0])?;
+		let tape = oa::ml::GradientTape::new();
+		let value = layer.forward(&input)?.reshape([4, 2])?;
+		let packed = oa::matrix::compact_rows(&value, &mask)?;
+		tape.backward(&scalar_sum(&packed.values)?)?;
+		assert_adjoint(
+			&layer.bias().expect("test bias"),
+			&[1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+		)?;
+		Ok(())
+	}
+);
+
+test_vk!(
+	matrix_scatter_rows_adjoint_gathers_source_and_flows_base,
+	engine,
+	{
+		let base_layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [8, 1], &[0.0; 8])?,
+			oa::Matrix::new_from_f32(&engine, [8], &[0.0; 8])?,
+		)?;
+		let source_layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [8, 1], &[0.0; 8])?,
+			oa::Matrix::new_from_f32(&engine, [8], &[0.0; 8])?,
+		)?;
+		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let mask = oa::Matrix::new_from_f32(&engine, [4], &[1.0, 0.0, 1.0, 0.0])?;
+		let keys = oa::matrix::compact_rows(
+			&oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0; 8])?,
+			&mask,
+		)?;
+		let tape = oa::ml::GradientTape::new();
+		let base = base_layer.forward(&input)?.reshape([4, 2])?;
+		let source = source_layer.forward(&input)?.reshape([4, 2])?;
+		let output = oa::matrix::scatter_rows(&base, &source, &keys.row_map, &keys.count)?;
+		tape.backward(&scalar_sum(&output)?)?;
+		assert_adjoint(&base_layer.bias().expect("test bias"), &[1.0; 8])?;
+		assert_adjoint(
+			&source_layer.bias().expect("test bias"),
+			&[1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+		)?;
+		Ok(())
+	}
+);
+
+test_vk!(
+	matrix_scatter_rows_indirect_adjoint_uses_the_gpu_authored_plan,
+	engine,
+	{
+		let base_layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [8, 1], &[0.0; 8])?,
+			oa::Matrix::new_from_f32(&engine, [8], &[0.0; 8])?,
+		)?;
+		let source_layer = oa::ml::nn::Linear::new_from_matrices(
+			oa::Matrix::new_from_f32(&engine, [8, 1], &[0.0; 8])?,
+			oa::Matrix::new_from_f32(&engine, [8], &[0.0; 8])?,
+		)?;
+		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let mask = oa::Matrix::new_from_f32(&engine, [4], &[1.0, 0.0, 1.0, 0.0])?;
+		let keys = oa::matrix::compact_rows(
+			&oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0; 8])?,
+			&mask,
+		)?;
+		let tape = oa::ml::GradientTape::new();
+		let base = base_layer.forward(&input)?.reshape([4, 2])?;
+		let source = source_layer.forward(&input)?.reshape([4, 2])?;
+		let output = oa::matrix::scatter_rows_indirect(&base, &source, &keys)?;
+		tape.backward(&scalar_sum(&output)?)?;
+		assert_adjoint(&base_layer.bias().expect("test bias"), &[1.0; 8])?;
+		assert_adjoint(
+			&source_layer.bias().expect("test bias"),
+			&[1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+		)?;
 		Ok(())
 	}
 );

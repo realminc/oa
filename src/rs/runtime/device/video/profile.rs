@@ -8,6 +8,11 @@ pub(super) struct DecodeCapabilityQuery {
 	pub(super) std_header_version: vk::ExtensionProperties,
 }
 
+pub(super) struct EncodeCapabilityQuery {
+	pub(super) capabilities: video::VideoEncodeCapabilities,
+	pub(super) std_header_version: vk::ExtensionProperties,
+}
+
 pub(in crate::runtime) fn query_decode_capabilities(
 	instance: &Instance,
 	physical: &DevicePhysical,
@@ -32,9 +37,9 @@ pub(super) fn query_decode_details(
 			luma_bit_depth,
 			chroma_bit_depth,
 		} => {
-			let mut codec_profile = vk::VideoDecodeH264ProfileInfoKHR::default()
-				.std_profile_idc(h264_profile(codec_profile))
-				.picture_layout(h264_picture_layout(picture_layout));
+			let mut codec_profile = vk::VideoDecodeH264ProfileInfoKHR::new()
+				.set_std_profile_idc(h264_profile(codec_profile))
+				.set_picture_layout(h264_picture_layout(picture_layout));
 			let vk_profile = common_profile(
 				vk::VideoCodecOperationFlagBitsKHR::DECODE_H264_BIT_KHR,
 				chroma_subsampling,
@@ -42,10 +47,10 @@ pub(super) fn query_decode_details(
 				chroma_bit_depth,
 			)
 			.push_next(&mut codec_profile);
-			let mut decode = vk::VideoDecodeCapabilitiesKHR::default();
-			let mut codec = vk::VideoDecodeH264CapabilitiesKHR::default();
+			let mut decode = vk::VideoDecodeCapabilitiesKHR::new();
+			let mut codec = vk::VideoDecodeH264CapabilitiesKHR::new();
 			let common = {
-				let mut capabilities = vk::VideoCapabilitiesKHR::default()
+				let mut capabilities = vk::VideoCapabilitiesKHR::new()
 					.push_next(&mut decode)
 					.map_err(Error::from)?
 					.push_next(&mut codec)
@@ -79,7 +84,7 @@ pub(super) fn query_decode_details(
 			chroma_bit_depth,
 		} => {
 			let mut codec_profile =
-				vk::VideoDecodeH265ProfileInfoKHR::default().std_profile_idc(h265_profile(codec_profile));
+				vk::VideoDecodeH265ProfileInfoKHR::new().set_std_profile_idc(h265_profile(codec_profile));
 			let vk_profile = common_profile(
 				vk::VideoCodecOperationFlagBitsKHR::DECODE_H265_BIT_KHR,
 				chroma_subsampling,
@@ -87,10 +92,10 @@ pub(super) fn query_decode_details(
 				chroma_bit_depth,
 			)
 			.push_next(&mut codec_profile);
-			let mut decode = vk::VideoDecodeCapabilitiesKHR::default();
-			let mut codec = vk::VideoDecodeH265CapabilitiesKHR::default();
+			let mut decode = vk::VideoDecodeCapabilitiesKHR::new();
+			let mut codec = vk::VideoDecodeH265CapabilitiesKHR::new();
 			let common = {
-				let mut capabilities = vk::VideoCapabilitiesKHR::default()
+				let mut capabilities = vk::VideoCapabilitiesKHR::new()
 					.push_next(&mut decode)
 					.map_err(Error::from)?
 					.push_next(&mut codec)
@@ -121,9 +126,9 @@ pub(super) fn query_decode_details(
 			luma_bit_depth,
 			chroma_bit_depth,
 		} => {
-			let mut codec_profile = vk::VideoDecodeAV1ProfileInfoKHR::default()
-				.std_profile(av1_profile(codec_profile))
-				.film_grain_support(u32::from(film_grain_support));
+			let mut codec_profile = vk::VideoDecodeAV1ProfileInfoKHR::new()
+				.set_std_profile(av1_profile(codec_profile))
+				.set_film_grain_support(u32::from(film_grain_support));
 			let vk_profile = common_profile(
 				vk::VideoCodecOperationFlagBitsKHR::DECODE_AV1_BIT_KHR,
 				chroma_subsampling,
@@ -131,10 +136,10 @@ pub(super) fn query_decode_details(
 				chroma_bit_depth,
 			)
 			.push_next(&mut codec_profile);
-			let mut decode = vk::VideoDecodeCapabilitiesKHR::default();
-			let mut codec = vk::VideoDecodeAV1CapabilitiesKHR::default();
+			let mut decode = vk::VideoDecodeCapabilitiesKHR::new();
+			let mut codec = vk::VideoDecodeAV1CapabilitiesKHR::new();
 			let common = {
-				let mut capabilities = vk::VideoCapabilitiesKHR::default()
+				let mut capabilities = vk::VideoCapabilitiesKHR::new()
 					.push_next(&mut decode)
 					.map_err(Error::from)?
 					.push_next(&mut codec)
@@ -165,7 +170,7 @@ pub(super) fn query_decode_details(
 			chroma_bit_depth,
 		} => {
 			let mut codec_profile =
-				vk::VideoDecodeVP9ProfileInfoKHR::default().std_profile(vp9_profile(codec_profile));
+				vk::VideoDecodeVP9ProfileInfoKHR::new().set_std_profile(vp9_profile(codec_profile));
 			let mut vk_profile = common_profile(
 				vp9_operation(),
 				chroma_subsampling,
@@ -173,7 +178,7 @@ pub(super) fn query_decode_details(
 				chroma_bit_depth,
 			);
 			vk_profile.p_next = std::ptr::from_mut(&mut codec_profile).cast();
-			let mut codec = vk::VideoDecodeVP9CapabilitiesKHR::default();
+			let mut codec = vk::VideoDecodeVP9CapabilitiesKHR::new();
 			let mut decode = {
 				vk::VideoDecodeCapabilitiesKHR {
 					p_next: std::ptr::from_mut(&mut codec).cast(),
@@ -241,6 +246,14 @@ pub(in crate::runtime) fn query_encode_capabilities(
 	physical: &DevicePhysical,
 	profile: video::VideoEncodeProfile,
 ) -> Result<video::VideoEncodeCapabilities> {
+	Ok(query_encode_details(instance, physical, profile)?.capabilities)
+}
+
+pub(super) fn query_encode_details(
+	instance: &Instance,
+	physical: &DevicePhysical,
+	profile: video::VideoEncodeProfile,
+) -> Result<EncodeCapabilityQuery> {
 	ensure_encode_extension_advertised(physical, profile)?;
 	let loader = instance.raw();
 	match profile {
@@ -251,7 +264,7 @@ pub(in crate::runtime) fn query_encode_capabilities(
 			chroma_bit_depth,
 		} => {
 			let mut codec_profile =
-				vk::VideoEncodeH264ProfileInfoKHR::default().std_profile_idc(h264_profile(codec_profile));
+				vk::VideoEncodeH264ProfileInfoKHR::new().set_std_profile_idc(h264_profile(codec_profile));
 			let vk_profile = common_profile(
 				vk::VideoCodecOperationFlagBitsKHR::ENCODE_H264_BIT_KHR,
 				chroma_subsampling,
@@ -259,10 +272,10 @@ pub(in crate::runtime) fn query_encode_capabilities(
 				chroma_bit_depth,
 			)
 			.push_next(&mut codec_profile);
-			let mut encode = vk::VideoEncodeCapabilitiesKHR::default();
-			let mut codec = vk::VideoEncodeH264CapabilitiesKHR::default();
+			let mut encode = vk::VideoEncodeCapabilitiesKHR::new();
+			let mut codec = vk::VideoEncodeH264CapabilitiesKHR::new();
 			let common = {
-				let mut capabilities = vk::VideoCapabilitiesKHR::default()
+				let mut capabilities = vk::VideoCapabilitiesKHR::new()
 					.push_next(&mut encode)
 					.map_err(Error::from)?
 					.push_next(&mut codec)
@@ -275,21 +288,24 @@ pub(in crate::runtime) fn query_encode_capabilities(
 				)?;
 				CommonCapabilities::from(&capabilities)
 			};
-			Ok(convert_encode_capabilities(
-				profile,
-				common,
-				&encode,
-				video::VideoEncodeCodecCapabilities::H264 {
-					max_level: codec.max_level_idc.0 as u32,
-					max_slice_count: codec.max_slice_count,
-					max_p_l0_references: codec.max_p_picture_l0_reference_count,
-					max_b_l0_references: codec.max_b_picture_l0_reference_count,
-					max_l1_references: codec.max_l1_reference_count,
-					max_temporal_layers: codec.max_temporal_layer_count,
-					min_qp: codec.min_qp,
-					max_qp: codec.max_qp,
-				},
-			))
+			Ok(EncodeCapabilityQuery {
+				capabilities: convert_encode_capabilities(
+					profile,
+					common,
+					&encode,
+					video::VideoEncodeCodecCapabilities::H264 {
+						max_level: codec.max_level_idc.0 as u32,
+						max_slice_count: codec.max_slice_count,
+						max_p_l0_references: codec.max_p_picture_l0_reference_count,
+						max_b_l0_references: codec.max_b_picture_l0_reference_count,
+						max_l1_references: codec.max_l1_reference_count,
+						max_temporal_layers: codec.max_temporal_layer_count,
+						min_qp: codec.min_qp,
+						max_qp: codec.max_qp,
+					},
+				),
+				std_header_version: common.std_header_version,
+			})
 		}
 		video::VideoEncodeProfile::H265 {
 			profile: codec_profile,
@@ -298,7 +314,7 @@ pub(in crate::runtime) fn query_encode_capabilities(
 			chroma_bit_depth,
 		} => {
 			let mut codec_profile =
-				vk::VideoEncodeH265ProfileInfoKHR::default().std_profile_idc(h265_profile(codec_profile));
+				vk::VideoEncodeH265ProfileInfoKHR::new().set_std_profile_idc(h265_profile(codec_profile));
 			let vk_profile = common_profile(
 				vk::VideoCodecOperationFlagBitsKHR::ENCODE_H265_BIT_KHR,
 				chroma_subsampling,
@@ -306,10 +322,10 @@ pub(in crate::runtime) fn query_encode_capabilities(
 				chroma_bit_depth,
 			)
 			.push_next(&mut codec_profile);
-			let mut encode = vk::VideoEncodeCapabilitiesKHR::default();
-			let mut codec = vk::VideoEncodeH265CapabilitiesKHR::default();
+			let mut encode = vk::VideoEncodeCapabilitiesKHR::new();
+			let mut codec = vk::VideoEncodeH265CapabilitiesKHR::new();
 			let common = {
-				let mut capabilities = vk::VideoCapabilitiesKHR::default()
+				let mut capabilities = vk::VideoCapabilitiesKHR::new()
 					.push_next(&mut encode)
 					.map_err(Error::from)?
 					.push_next(&mut codec)
@@ -322,43 +338,46 @@ pub(in crate::runtime) fn query_encode_capabilities(
 				)?;
 				CommonCapabilities::from(&capabilities)
 			};
-			Ok(convert_encode_capabilities(
-				profile,
-				common,
-				&encode,
-				video::VideoEncodeCodecCapabilities::H265 {
-					max_level: codec.max_level_idc.0 as u32,
-					max_slice_segment_count: codec.max_slice_segment_count,
-					max_tiles: extent(codec.max_tiles),
-					ctb_size_16: codec
-						.ctb_sizes
-						.contains(vk::VideoEncodeH265CtbSizeFlagBitsKHR::_16_BIT_KHR),
-					ctb_size_32: codec
-						.ctb_sizes
-						.contains(vk::VideoEncodeH265CtbSizeFlagBitsKHR::_32_BIT_KHR),
-					ctb_size_64: codec
-						.ctb_sizes
-						.contains(vk::VideoEncodeH265CtbSizeFlagBitsKHR::_64_BIT_KHR),
-					transform_size_4: codec
-						.transform_block_sizes
-						.contains(vk::VideoEncodeH265TransformBlockSizeFlagBitsKHR::_4_BIT_KHR),
-					transform_size_8: codec
-						.transform_block_sizes
-						.contains(vk::VideoEncodeH265TransformBlockSizeFlagBitsKHR::_8_BIT_KHR),
-					transform_size_16: codec
-						.transform_block_sizes
-						.contains(vk::VideoEncodeH265TransformBlockSizeFlagBitsKHR::_16_BIT_KHR),
-					transform_size_32: codec
-						.transform_block_sizes
-						.contains(vk::VideoEncodeH265TransformBlockSizeFlagBitsKHR::_32_BIT_KHR),
-					max_p_l0_references: codec.max_p_picture_l0_reference_count,
-					max_b_l0_references: codec.max_b_picture_l0_reference_count,
-					max_l1_references: codec.max_l1_reference_count,
-					max_sub_layers: codec.max_sub_layer_count,
-					min_qp: codec.min_qp,
-					max_qp: codec.max_qp,
-				},
-			))
+			Ok(EncodeCapabilityQuery {
+				capabilities: convert_encode_capabilities(
+					profile,
+					common,
+					&encode,
+					video::VideoEncodeCodecCapabilities::H265 {
+						max_level: codec.max_level_idc.0 as u32,
+						max_slice_segment_count: codec.max_slice_segment_count,
+						max_tiles: extent(codec.max_tiles),
+						ctb_size_16: codec
+							.ctb_sizes
+							.contains(vk::VideoEncodeH265CtbSizeFlagBitsKHR::_16_BIT_KHR),
+						ctb_size_32: codec
+							.ctb_sizes
+							.contains(vk::VideoEncodeH265CtbSizeFlagBitsKHR::_32_BIT_KHR),
+						ctb_size_64: codec
+							.ctb_sizes
+							.contains(vk::VideoEncodeH265CtbSizeFlagBitsKHR::_64_BIT_KHR),
+						transform_size_4: codec
+							.transform_block_sizes
+							.contains(vk::VideoEncodeH265TransformBlockSizeFlagBitsKHR::_4_BIT_KHR),
+						transform_size_8: codec
+							.transform_block_sizes
+							.contains(vk::VideoEncodeH265TransformBlockSizeFlagBitsKHR::_8_BIT_KHR),
+						transform_size_16: codec
+							.transform_block_sizes
+							.contains(vk::VideoEncodeH265TransformBlockSizeFlagBitsKHR::_16_BIT_KHR),
+						transform_size_32: codec
+							.transform_block_sizes
+							.contains(vk::VideoEncodeH265TransformBlockSizeFlagBitsKHR::_32_BIT_KHR),
+						max_p_l0_references: codec.max_p_picture_l0_reference_count,
+						max_b_l0_references: codec.max_b_picture_l0_reference_count,
+						max_l1_references: codec.max_l1_reference_count,
+						max_sub_layers: codec.max_sub_layer_count,
+						min_qp: codec.min_qp,
+						max_qp: codec.max_qp,
+					},
+				),
+				std_header_version: common.std_header_version,
+			})
 		}
 	}
 }
@@ -420,7 +439,7 @@ pub(super) fn std_h265_profile_tier_level(
 	};
 	Ok(vk::StdVideoH265ProfileTierLevel {
 		flags: {
-			let mut flags = vk::StdVideoH265ProfileTierLevelFlags::default();
+			let mut flags = vk::StdVideoH265ProfileTierLevelFlags::new();
 			flags.set_general_tier_flag(u32::from(profile.high_tier) as _);
 			flags.set_general_progressive_source_flag(u32::from(profile.progressive_source) as _);
 			flags.set_general_interlaced_source_flag(u32::from(profile.interlaced_source) as _);
@@ -518,7 +537,7 @@ pub(super) fn std_h265_hrd(hrd: &video::H265HrdParameters) -> Result<StdH265Hrd>
 	let value = {
 		vk::StdVideoH265HrdParameters {
 			flags: {
-				let mut flags = vk::StdVideoH265HrdFlags::default();
+				let mut flags = vk::StdVideoH265HrdFlags::new();
 				flags.set_nal_hrd_parameters_present_flag(u32::from(hrd.nal_parameters_present) as _);
 				flags.set_vcl_hrd_parameters_present_flag(u32::from(hrd.vcl_parameters_present) as _);
 				flags
@@ -597,7 +616,7 @@ pub(super) fn std_h265_vps<'a>(
 	Ok({
 		vk::StdVideoH265VideoParameterSet {
 			flags: {
-				let mut flags = vk::StdVideoH265VpsFlags::default();
+				let mut flags = vk::StdVideoH265VpsFlags::new();
 				flags.set_vps_temporal_id_nesting_flag(u32::from(vps.temporal_id_nesting) as _);
 				flags.set_vps_sub_layer_ordering_info_present_flag(u32::from(
 					vps.sub_layer_ordering_info_present,
@@ -639,7 +658,7 @@ pub(super) fn std_h265_sps<'a>(
 	Ok({
 		vk::StdVideoH265SequenceParameterSet {
 			flags: {
-				let mut flags = vk::StdVideoH265SpsFlags::default();
+				let mut flags = vk::StdVideoH265SpsFlags::new();
 				flags.set_sps_temporal_id_nesting_flag(u32::from(sps.temporal_id_nesting) as _);
 				flags.set_separate_colour_plane_flag(u32::from(sps.separate_colour_plane) as _);
 				flags.set_conformance_window_flag(u32::from(sps.conformance_window != [0; 4]) as _);
@@ -782,7 +801,7 @@ pub(super) fn std_h265_short_term_reference_set(
 	}
 	Ok(vk::StdVideoH265ShortTermRefPicSet {
 		flags: {
-			let mut flags = vk::StdVideoH265ShortTermRefPicSetFlags::default();
+			let mut flags = vk::StdVideoH265ShortTermRefPicSetFlags::new();
 			flags.set_inter_ref_pic_set_prediction_flag(u32::from(set.inter_ref_pic_set_prediction) as _);
 			flags.set_delta_rps_sign(u32::from(set.delta_rps_sign) as _);
 			flags
@@ -856,7 +875,7 @@ pub(super) fn std_h265_vui<'a>(
 	Ok({
 		vk::StdVideoH265SequenceParameterSetVui {
 			flags: {
-				let mut flags = vk::StdVideoH265SpsVuiFlags::default();
+				let mut flags = vk::StdVideoH265SpsVuiFlags::new();
 				flags.set_aspect_ratio_info_present_flag(u32::from(vui.aspect_ratio.is_some()) as _);
 				flags.set_overscan_info_present_flag(u32::from(vui.overscan_appropriate.is_some()) as _);
 				flags
@@ -959,7 +978,7 @@ pub(super) fn std_h265_pps(
 	Ok({
 		vk::StdVideoH265PictureParameterSet {
 			flags: {
-				let mut flags = vk::StdVideoH265PpsFlags::default();
+				let mut flags = vk::StdVideoH265PpsFlags::new();
 				flags
 					.set_dependent_slice_segments_enabled_flag((pps.dependent_slice_segments_enabled) as _);
 				flags.set_output_flag_present_flag((pps.output_flag_present) as _);
@@ -1059,7 +1078,7 @@ pub(super) fn std_h264_sps<'a>(
 	std_scaling: *const vk::StdVideoH264ScalingLists,
 	std_vui: *const vk::StdVideoH264SequenceParameterSetVui<'a>,
 ) -> Result<vk::StdVideoH264SequenceParameterSet<'a>> {
-	let mut flags = vk::StdVideoH264SpsFlags::default();
+	let mut flags = vk::StdVideoH264SpsFlags::new();
 	flags.set_constraint_set0_flag((sps.constraint_flags & 0x80 != 0) as _);
 	flags.set_constraint_set1_flag((sps.constraint_flags & 0x40 != 0) as _);
 	flags.set_constraint_set2_flag((sps.constraint_flags & 0x20 != 0) as _);
@@ -1180,7 +1199,7 @@ pub(super) fn std_h264_pps(
 	std_scaling: *const vk::StdVideoH264ScalingLists,
 ) -> Result<vk::StdVideoH264PictureParameterSet<'static>> {
 	let flags = {
-		let mut flags = vk::StdVideoH264PpsFlags::default();
+		let mut flags = vk::StdVideoH264PpsFlags::new();
 		flags.set_transform_8x8_mode_flag(u32::from(pps.transform_8x8_mode) as _);
 		flags.set_redundant_pic_cnt_present_flag(u32::from(pps.redundant_pic_count_present) as _);
 		flags.set_constrained_intra_pred_flag(u32::from(pps.constrained_intra_pred) as _);
@@ -1272,7 +1291,7 @@ pub(super) fn std_h264_vui<'a>(
 			max_dec_frame_buffering: 0,
 		});
 	let flags = {
-		let mut flags = vk::StdVideoH264SpsVuiFlags::default();
+		let mut flags = vk::StdVideoH264SpsVuiFlags::new();
 		flags.set_aspect_ratio_info_present_flag((vui.aspect_ratio.is_some()) as _);
 		flags.set_overscan_info_present_flag((vui.overscan_appropriate.is_some()) as _);
 		flags.set_overscan_appropriate_flag((vui.overscan_appropriate.unwrap_or(false)) as _);
@@ -1353,9 +1372,9 @@ pub(super) fn with_decode_profile<T>(
 			luma_bit_depth,
 			chroma_bit_depth,
 		} => {
-			let mut codec = vk::VideoDecodeH264ProfileInfoKHR::default()
-				.std_profile_idc(h264_profile(profile))
-				.picture_layout(h264_picture_layout(picture_layout));
+			let mut codec = vk::VideoDecodeH264ProfileInfoKHR::new()
+				.set_std_profile_idc(h264_profile(profile))
+				.set_picture_layout(h264_picture_layout(picture_layout));
 			let profile = common_profile(
 				vk::VideoCodecOperationFlagBitsKHR::DECODE_H264_BIT_KHR,
 				chroma_subsampling,
@@ -1372,7 +1391,7 @@ pub(super) fn with_decode_profile<T>(
 			chroma_bit_depth,
 		} => {
 			let mut codec =
-				vk::VideoDecodeH265ProfileInfoKHR::default().std_profile_idc(h265_profile(profile));
+				vk::VideoDecodeH265ProfileInfoKHR::new().set_std_profile_idc(h265_profile(profile));
 			let profile = common_profile(
 				vk::VideoCodecOperationFlagBitsKHR::DECODE_H265_BIT_KHR,
 				chroma_subsampling,
@@ -1389,9 +1408,9 @@ pub(super) fn with_decode_profile<T>(
 			luma_bit_depth,
 			chroma_bit_depth,
 		} => {
-			let mut codec = vk::VideoDecodeAV1ProfileInfoKHR::default()
-				.std_profile(av1_profile(profile))
-				.film_grain_support(u32::from(film_grain_support));
+			let mut codec = vk::VideoDecodeAV1ProfileInfoKHR::new()
+				.set_std_profile(av1_profile(profile))
+				.set_film_grain_support(u32::from(film_grain_support));
 			let profile = common_profile(
 				vk::VideoCodecOperationFlagBitsKHR::DECODE_AV1_BIT_KHR,
 				chroma_subsampling,
@@ -1407,7 +1426,7 @@ pub(super) fn with_decode_profile<T>(
 			luma_bit_depth,
 			chroma_bit_depth,
 		} => {
-			let mut codec = vk::VideoDecodeVP9ProfileInfoKHR::default().std_profile(vp9_profile(profile));
+			let mut codec = vk::VideoDecodeVP9ProfileInfoKHR::new().set_std_profile(vp9_profile(profile));
 			let mut profile = common_profile(
 				vp9_operation(),
 				chroma_subsampling,
@@ -1432,7 +1451,7 @@ pub(super) fn with_encode_profile<T>(
 			chroma_bit_depth,
 		} => {
 			let mut codec =
-				vk::VideoEncodeH264ProfileInfoKHR::default().std_profile_idc(h264_profile(profile));
+				vk::VideoEncodeH264ProfileInfoKHR::new().set_std_profile_idc(h264_profile(profile));
 			let profile = common_profile(
 				vk::VideoCodecOperationFlagBitsKHR::ENCODE_H264_BIT_KHR,
 				chroma_subsampling,
@@ -1449,7 +1468,7 @@ pub(super) fn with_encode_profile<T>(
 			chroma_bit_depth,
 		} => {
 			let mut codec =
-				vk::VideoEncodeH265ProfileInfoKHR::default().std_profile_idc(h265_profile(profile));
+				vk::VideoEncodeH265ProfileInfoKHR::new().set_std_profile_idc(h265_profile(profile));
 			let profile = common_profile(
 				vk::VideoCodecOperationFlagBitsKHR::ENCODE_H265_BIT_KHR,
 				chroma_subsampling,
@@ -1469,11 +1488,11 @@ pub(super) fn query_formats(
 	usage: vk::ImageUsageFlags,
 ) -> Result<Vec<vk::VideoFormatPropertiesKHR<'static>>> {
 	let profiles = std::slice::from_ref(profile);
-	let mut profile_list = vk::VideoProfileListInfoKHR::default()
-		.profiles(profiles)
+	let mut profile_list = vk::VideoProfileListInfoKHR::new()
+		.set_profiles(profiles)
 		.map_err(Error::from)?;
-	let format_info = vk::PhysicalDeviceVideoFormatInfoKHR::default()
-		.image_usage(usage)
+	let format_info = vk::PhysicalDeviceVideoFormatInfoKHR::new()
+		.set_image_usage(usage)
 		.push_next(&mut profile_list)
 		.map_err(Error::from)?;
 	let mut count = 0_u32;
@@ -1503,7 +1522,7 @@ pub(super) fn query_formats(
 		)));
 	}
 	let mut formats = (0..count)
-		.map(|_| vk::VideoFormatPropertiesKHR::default())
+		.map(|_| vk::VideoFormatPropertiesKHR::new())
 		.collect::<Vec<_>>();
 	if count == 0 {
 		return Ok(formats);
@@ -1617,11 +1636,11 @@ pub(super) fn common_profile<'a>(
 	luma_depth: video::VideoComponentBitDepth,
 	chroma_depth: video::VideoComponentBitDepth,
 ) -> vk::VideoProfileInfoKHR<'a> {
-	vk::VideoProfileInfoKHR::default()
-		.video_codec_operation(operation)
-		.chroma_subsampling(chroma_subsampling(chroma))
-		.luma_bit_depth(bit_depth(luma_depth))
-		.chroma_bit_depth(bit_depth(chroma_depth))
+	vk::VideoProfileInfoKHR::new()
+		.set_video_codec_operation(operation)
+		.set_chroma_subsampling(chroma_subsampling(chroma))
+		.set_luma_bit_depth(bit_depth(luma_depth))
+		.set_chroma_bit_depth(bit_depth(chroma_depth))
 }
 
 pub(super) fn query(
@@ -1871,7 +1890,7 @@ pub(super) fn std_av1_color(color: &video::Av1ColorConfig) -> vk::StdVideoAV1Col
 	};
 	vk::StdVideoAV1ColorConfig {
 		flags: {
-			let mut flags = vk::StdVideoAV1ColorConfigFlags::default();
+			let mut flags = vk::StdVideoAV1ColorConfigFlags::new();
 			flags.set_mono_chrome(u32::from(color.monochrome) as _);
 			flags.set_color_range(u32::from(color.full_range) as _);
 			flags.set_separate_uv_delta_q(u32::from(color.separate_uv_delta_q) as _);
@@ -1900,7 +1919,7 @@ pub(super) fn std_av1_color(color: &video::Av1ColorConfig) -> vk::StdVideoAV1Col
 pub(super) fn std_av1_timing(timing: &video::Av1TimingInfo) -> vk::StdVideoAV1TimingInfo {
 	vk::StdVideoAV1TimingInfo {
 		flags: {
-			let mut flags = vk::StdVideoAV1TimingInfoFlags::default();
+			let mut flags = vk::StdVideoAV1TimingInfoFlags::new();
 			flags.set_equal_picture_interval(u32::from(timing.equal_picture_interval) as _);
 			flags.set_reserved(0 as _);
 			flags
@@ -1949,7 +1968,7 @@ pub(super) fn std_av1_sequence<'a>(
 	Ok({
 		vk::StdVideoAV1SequenceHeader {
 			flags: {
-				let mut flags = vk::StdVideoAV1SequenceHeaderFlags::default();
+				let mut flags = vk::StdVideoAV1SequenceHeaderFlags::new();
 				flags.set_still_picture(u32::from(sequence.still_picture) as _);
 				flags
 					.set_reduced_still_picture_header(u32::from(sequence.reduced_still_picture_header) as _);

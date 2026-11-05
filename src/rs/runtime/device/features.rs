@@ -47,13 +47,13 @@ impl DeviceFeatures {
 		dynamic_rendering_extension: bool,
 		integer_dot_product_extension: bool,
 	) -> Result<Self> {
-		let mut features13 = vk::PhysicalDeviceVulkan13Features::default();
-		let mut features12 = vk::PhysicalDeviceVulkan12Features::default();
-		let mut synchronization2 = vk::PhysicalDeviceSynchronization2Features::default();
-		let mut dynamic_rendering = vk::PhysicalDeviceDynamicRenderingFeatures::default();
-		let mut integer_dot_product = vk::PhysicalDeviceShaderIntegerDotProductFeatures::default();
-		let mut cooperative_matrix = vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default();
-		let mut features2 = vk::PhysicalDeviceFeatures2::default()
+		let mut features13 = vk::PhysicalDeviceVulkan13Features::new();
+		let mut features12 = vk::PhysicalDeviceVulkan12Features::new();
+		let mut synchronization2 = vk::PhysicalDeviceSynchronization2Features::new();
+		let mut dynamic_rendering = vk::PhysicalDeviceDynamicRenderingFeatures::new();
+		let mut integer_dot_product = vk::PhysicalDeviceShaderIntegerDotProductFeatures::new();
+		let mut cooperative_matrix = vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::new();
+		let mut features2 = vk::PhysicalDeviceFeatures2::new()
 			.push_next(&mut features12)
 			.map_err(Error::from)?;
 		if api_version >= vk::API_VERSION_1_3 {

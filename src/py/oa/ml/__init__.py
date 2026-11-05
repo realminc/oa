@@ -1,6 +1,6 @@
 """Machine-learning operations matching Rust :mod:`oa::ml`."""
 
-from . import byte, flow, loss, matrix, metric, nlp, nn, rl
+from . import audio, byte, flow, loss, matrix, metric, nlp, nn, rl
 from .._native import (
 	CategoricalActorCritic,
 	CategoricalActorCriticConfig,

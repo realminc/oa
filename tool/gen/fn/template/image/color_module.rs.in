@@ -11,7 +11,7 @@ use crate::{
 {{items}}
 
 
-fn validate_normalization(input: &Image, parameters: NormalizationParams) -> Result<()> {
+fn validate_normalization(input: &Image, parameters: NormalizationConfig) -> Result<()> {
 	if input.dtype() != DType::F32
 		|| !matches!(input.layout(), ImageLayout::Nchw | ImageLayout::Chw)
 		|| input.channels() > 3
@@ -73,6 +73,16 @@ const fn format_token(format: crate::ImageFormat) -> &'static str {
 		crate::ImageFormat::Rgba => "rgba",
 		crate::ImageFormat::Bgr => "bgr",
 		crate::ImageFormat::Bgra => "bgra",
+	}
+}
+
+const fn layout_token(layout: crate::ImageLayout) -> &'static str {
+	match layout {
+		crate::ImageLayout::Nchw => "nchw",
+		crate::ImageLayout::Nhwc => "nhwc",
+		crate::ImageLayout::Chw => "chw",
+		crate::ImageLayout::Hwc => "hwc",
+		crate::ImageLayout::Hw => "hw",
 	}
 }
 

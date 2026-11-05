@@ -10,13 +10,16 @@ mod ppo;
 mod sac;
 mod smooth_l1;
 
+pub use super::types::{
+	DqnLossConfig, DqnLossResult, PpoLossConfig, PpoLossResult, SacCriticLossResult, SacLossConfig,
+};
 pub use bce::bce;
 pub use cross_entropy::{cross_entropy, cross_entropy_masked};
-pub use dqn::{DqnLossConfig, DqnLossResult, dqn};
+pub use dqn::dqn;
 pub use l1::l1;
 pub use mse::mse;
-pub use ppo::{PpoLossConfig, PpoLossResult, ppo, ppo_clipped_policy, ppo_clipped_policy_backward};
-pub use sac::{SacCriticLossResult, SacLossConfig, sac_actor, sac_critic};
+pub use ppo::{ppo, ppo_clipped_policy, ppo_clipped_policy_backward};
+pub use sac::{sac_actor, sac_critic};
 pub use smooth_l1::smooth_l1;
 
 pub(in crate::ml) use bce::bce_backward;

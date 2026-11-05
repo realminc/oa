@@ -5,7 +5,7 @@
 //!
 //! Donor reference: `oa::Ui::recordRender` in `ui.cpp`
 
-use super::types::PixelRect;
+pub use super::types::PixelRect;
 use crate::Color;
 
 // ── Command enum ──────────────────────────────────────────────────────────────
@@ -98,13 +98,48 @@ pub(crate) enum UiCmd {
 		line_width: f32,
 	},
 	/// Hinted grayscale glyph quads sourced from the embedded coverage atlas.
+	///
+	/// `dst` is the normalized source-image rectangle the anchors map into;
+	/// `None` maps anchors over the full compose image.
 	Glyphs {
 		glyph_idx: u32,
 		atlas_idx: u32,
 		count: u32,
+		dst: Option<PixelRect>,
 		clip: PixelRect,
 		atlas_w: u32,
 		atlas_h: u32,
+	},
+	/// Composite planar multi-dtype image planes into one image.
+	BlitPlanar {
+		/// Bindless buffer index of the R/gray plane.
+		r_idx: u32,
+		/// Bindless buffer index of the G plane (`u32::MAX` when unused).
+		g_idx: u32,
+		/// Bindless buffer index of the B plane (`u32::MAX` when unused).
+		b_idx: u32,
+		/// Bindless buffer index of the A/depth plane (`u32::MAX` when unused).
+		a_idx: u32,
+		src_w: u32,
+		src_h: u32,
+		dst_x: i32,
+		dst_y: i32,
+		/// Per-channel `ImageDtype` bits, two bits each starting at channel 0.
+		dtypes: u32,
+		channels: u32,
+		dst_w: u32,
+		dst_h: u32,
+		clip: PixelRect,
+	},
+	/// Batched normalized rectangle borders read from one GPU record buffer.
+	RectOutlines {
+		/// Bindless buffer index of the packed 32-byte record array.
+		rect_idx: u32,
+		count: u32,
+		dst: PixelRect,
+		clip: PixelRect,
+		thickness: u32,
+		rgba: u32,
 	},
 }
 
@@ -138,4 +173,34 @@ pub(super) const fn div_ceil(n: u32, d: u32) -> u32 {
 #[inline]
 pub(super) fn clip_words(clip: PixelRect) -> [i32; 4] {
 	[clip.x, clip.y, clip.w as i32, clip.h as i32]
+}
+
+/// Intersect a destination rect with its clip rect.
+///
+/// Returns `(visible_w, visible_h, base_x, base_y)` where the base is the
+/// visible origin expressed as an offset inside the destination rect — the
+/// shader adds it to each thread index so source mapping still sees the full
+/// scaled rectangle. `i64` intermediates keep `dst + extent` overflow-safe.
+pub(super) fn visible_blit_region(
+	dst_x: i32,
+	dst_y: i32,
+	dst_w: u32,
+	dst_h: u32,
+	clip: PixelRect,
+) -> (u32, u32, u32, u32) {
+	let clip_x1 = i64::from(clip.x) + i64::from(clip.w);
+	let clip_y1 = i64::from(clip.y) + i64::from(clip.h);
+	let vis_x0 = i64::from(dst_x).max(i64::from(clip.x));
+	let vis_y0 = i64::from(dst_y).max(i64::from(clip.y));
+	let vis_x1 = (i64::from(dst_x) + i64::from(dst_w)).min(clip_x1);
+	let vis_y1 = (i64::from(dst_y) + i64::from(dst_h)).min(clip_y1);
+	if vis_x1 <= vis_x0 || vis_y1 <= vis_y0 {
+		return (0, 0, 0, 0);
+	}
+	(
+		(vis_x1 - vis_x0) as u32,
+		(vis_y1 - vis_y0) as u32,
+		(vis_x0 - i64::from(dst_x)) as u32,
+		(vis_y0 - i64::from(dst_y)) as u32,
+	)
 }

@@ -131,10 +131,10 @@ impl SecretBuffer {
 				"secret storage extent exceeds the device descriptor range",
 			));
 		}
-		let info = vk::BufferCreateInfo::default()
-			.size(size)
-			.usage(usage)
-			.sharing_mode(vk::SharingMode::EXCLUSIVE);
+		let info = vk::BufferCreateInfo::new()
+			.set_size(size)
+			.set_usage(usage)
+			.set_sharing_mode(vk::SharingMode::EXCLUSIVE);
 		let allocation_info = vk::mem::AllocationCreateInfo {
 			dedicated_memory: true,
 			host_access: if host {
@@ -201,9 +201,9 @@ impl SecretBuffer {
 	}
 
 	fn staging(device: &Arc<Device>, bytes: &[u8]) -> Result<Self> {
-		if bytes.len() != 32 && bytes.len() != 64 {
+		if bytes.is_empty() {
 			return Err(Error::invalid_argument(
-				"secret entropy upload requires 32 or 64 bytes",
+				"secret upload requires non-empty bytes",
 			));
 		}
 		#[cfg(not(unix))]
@@ -268,6 +268,11 @@ impl SecretBuffer {
 		bytes: &[u8],
 		consumer: impl FnOnce(&Arc<Device>, vk::CommandBuffer, SecretBinding<'_>) -> Result<()>,
 	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
+		if bytes.len() != 32 && bytes.len() != 64 {
+			return Err(Error::invalid_argument(
+				"secret entropy upload requires 32 or 64 bytes",
+			));
+		}
 		if u64::try_from(bytes.len()).ok() != Some(self.size) {
 			return Err(Error::invalid_argument(
 				"entropy extent differs from device allocation",
@@ -282,20 +287,20 @@ impl SecretBuffer {
 					command,
 					staging.handle,
 					self.handle,
-					&[vk::BufferCopy::default().size(self.size)],
+					&[vk::BufferCopy::new().set_size(self.size)],
 				)?;
 			}
-			let barrier = vk::BufferMemoryBarrier2::default()
-				.src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
-				.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-				.dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
-				.dst_access_mask(
+			let barrier = vk::BufferMemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+				.set_dst_access_mask(
 					vk::AccessFlagBits2::MEMORY_READ_BIT | vk::AccessFlagBits2::MEMORY_WRITE_BIT,
 				)
-				.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-				.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-				.buffer(self.handle)
-				.size(self.size);
+				.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.set_buffer(self.handle)
+				.set_size(self.size);
 			// SAFETY: the copied bytes must be visible to the following consumer.
 			unsafe {
 				self
@@ -304,7 +309,7 @@ impl SecretBuffer {
 					.pipeline_barrier(
 						self.device.raw(),
 						command,
-						&(vk::DependencyInfo::default().buffer_memory_barriers(std::slice::from_ref(&barrier)))
+						&(vk::DependencyInfo::new().set_buffer_memory_barriers(std::slice::from_ref(&barrier)))
 							.map_err(Error::from)?,
 					)
 					.map_err(Error::from)?;
@@ -312,15 +317,15 @@ impl SecretBuffer {
 			consumer(&self.device, command, self.binding()?)?;
 			self.encode_erasure(command)?;
 			staging.encode_erasure(command)?;
-			let host = vk::BufferMemoryBarrier2::default()
-				.src_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
-				.src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-				.dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
-				.dst_access_mask(vk::AccessFlagBits2::HOST_WRITE_BIT)
-				.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-				.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-				.buffer(staging.handle)
-				.size(staging.size);
+			let host = vk::BufferMemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
+				.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+				.set_dst_access_mask(vk::AccessFlagBits2::HOST_WRITE_BIT)
+				.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.set_buffer(staging.handle)
+				.set_size(staging.size);
 			// SAFETY: after exact completion, retirement overwrites the mapped
 			// host cache and flushes it before unmapping or releasing storage.
 			unsafe {
@@ -330,7 +335,7 @@ impl SecretBuffer {
 					.pipeline_barrier(
 						self.device.raw(),
 						command,
-						&(vk::DependencyInfo::default().buffer_memory_barriers(std::slice::from_ref(&host)))
+						&(vk::DependencyInfo::new().set_buffer_memory_barriers(std::slice::from_ref(&host)))
 							.map_err(Error::from)?,
 					)
 					.map_err(Error::from)?;
@@ -340,6 +345,98 @@ impl SecretBuffer {
 		let (command, mut witness) = self.retain_erasure(command);
 		let (command, staging_witness) = staging.retain_erasure(command);
 		witness.states.extend(staging_witness.states);
+		Ok((command, witness))
+	}
+
+	/// Upload host secret bytes into retained device storage through locked
+	/// staging. Only the staging copy is erased; the destination stays LIVE and
+	/// is retained through the submission. `after` encodes optional follow-up
+	/// work ordered behind the upload barrier (for example a public-key copy).
+	pub(in crate::runtime) fn record_secret_import(
+		self: &Arc<Self>,
+		bytes: &[u8],
+		after: impl FnOnce(&Arc<Device>, vk::CommandBuffer) -> Result<()>,
+	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
+		if u64::try_from(bytes.len()).ok() != Some(self.size) {
+			return Err(Error::invalid_argument(
+				"secret import extent differs from device allocation",
+			));
+		}
+		if self.memory != SecretMemory::DeviceLocal {
+			return Err(Error::invalid_argument(
+				"secret import requires device-local storage",
+			));
+		}
+		if self.state.load(Ordering::Acquire) != LIVE {
+			return Err(Error::failed_precondition(
+				"secret import requires live storage",
+			));
+		}
+		let staging = Self::staging(&self.device, bytes)?;
+		let mut command = self.device.record_compute_commands(|command| {
+			// SAFETY: both dedicated ranges are equal, aligned, live, disjoint and
+			// carry transfer usage. Flushed host writes precede queue submission.
+			unsafe {
+				self.device.raw().cmd_copy_buffer(
+					command,
+					staging.handle,
+					self.handle,
+					&[vk::BufferCopy::new().set_size(self.size)],
+				)?;
+			}
+			let barrier = vk::BufferMemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::COPY_BIT)
+				.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+				.set_dst_access_mask(
+					vk::AccessFlagBits2::MEMORY_READ_BIT | vk::AccessFlagBits2::MEMORY_WRITE_BIT,
+				)
+				.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.set_buffer(self.handle)
+				.set_size(self.size);
+			// SAFETY: the imported bytes must be visible to every later consumer.
+			unsafe {
+				self
+					.device
+					.sync_commands()
+					.pipeline_barrier(
+						self.device.raw(),
+						command,
+						&(vk::DependencyInfo::new().set_buffer_memory_barriers(std::slice::from_ref(&barrier)))
+							.map_err(Error::from)?,
+					)
+					.map_err(Error::from)?;
+			}
+			after(&self.device, command)?;
+			staging.encode_erasure(command)?;
+			let host = vk::BufferMemoryBarrier2::new()
+				.set_src_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
+				.set_src_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+				.set_dst_stage_mask(vk::PipelineStageFlagBits2::HOST_BIT)
+				.set_dst_access_mask(vk::AccessFlagBits2::HOST_WRITE_BIT)
+				.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+				.set_buffer(staging.handle)
+				.set_size(staging.size);
+			// SAFETY: after exact completion, retirement overwrites the mapped
+			// host cache and flushes it before unmapping or releasing storage.
+			unsafe {
+				self
+					.device
+					.sync_commands()
+					.pipeline_barrier(
+						self.device.raw(),
+						command,
+						&(vk::DependencyInfo::new().set_buffer_memory_barriers(std::slice::from_ref(&host)))
+							.map_err(Error::from)?,
+					)
+					.map_err(Error::from)?;
+			}
+			Ok(())
+		})?;
+		command.retain_secret_use(Arc::clone(self));
+		let (command, witness) = staging.retain_erasure(command);
 		Ok((command, witness))
 	}
 
@@ -354,7 +451,7 @@ impl SecretBuffer {
 	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
 		let workspace = Self::new(
 			&self.device,
-			crate::runtime::shader::KernelId::mlkem_keygen_workspace_bytes(),
+			crate::runtime::dna::kernel::KernelId::mlkem_keygen_workspace_bytes(),
 		)?;
 		let mut retention = None;
 		let (mut command, mut witness) =
@@ -388,7 +485,7 @@ impl SecretBuffer {
 	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
 		let workspace = Self::new(
 			&self.device,
-			crate::runtime::shader::KernelId::mlkem_keygen_workspace_bytes(),
+			crate::runtime::dna::kernel::KernelId::mlkem_keygen_workspace_bytes(),
 		)?;
 		let mut retention = None;
 		let (mut command, mut witness) =
@@ -519,7 +616,7 @@ impl SecretBuffer {
 	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
 		let workspace = Self::new(
 			&self.device,
-			crate::runtime::shader::KernelId::mldsa_sign_workspace_bytes(),
+			crate::runtime::dna::kernel::KernelId::mldsa_sign_workspace_bytes(),
 		)?;
 		let mut retention = None;
 		let (command, mut witness) = self.record_entropy_consumer(bytes, |device, command, seed| {
@@ -547,7 +644,7 @@ impl SecretBuffer {
 	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
 		let workspace = Self::new(
 			&self.device,
-			crate::runtime::shader::KernelId::mlkem_encaps_workspace_bytes(),
+			crate::runtime::dna::kernel::KernelId::mlkem_encaps_workspace_bytes(),
 		)?;
 		let mut prepared_retention = None;
 		let (command, mut witness) = self.record_entropy_consumer(bytes, |device, command, seed| {
@@ -582,7 +679,7 @@ impl SecretBuffer {
 	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
 		let workspace = Self::new(
 			&self.device,
-			crate::runtime::shader::KernelId::mlkem_decaps_workspace_bytes(),
+			crate::runtime::dna::kernel::KernelId::mlkem_decaps_workspace_bytes(),
 		)?;
 		let operands = crate::runtime::device::pqc::SecretConsumerOperands::decaps(
 			&self.device,
@@ -601,6 +698,35 @@ impl SecretBuffer {
 		command.retain_secret_use(Arc::clone(self));
 		command.retain_secret_use(Arc::clone(shared));
 		Ok((command, witness))
+	}
+
+	/// Consumes the shared secret inside a keyed-hash declassification
+	/// boundary: public info is absorbed on device and only derived public
+	/// bytes leave private storage. No workspace exists to erase; the empty
+	/// witness confirms trivially.
+	pub(in crate::runtime) fn record_shared_derive(
+		self: &Arc<Self>,
+		info: &crate::runtime::Buffer,
+		output: &crate::runtime::Buffer,
+		info_len: u32,
+		output_len: u32,
+	) -> Result<(RecordedCommandBuffer, ErasureWitness)> {
+		let operands = crate::runtime::device::pqc::SecretConsumerOperands::shared_derive(
+			&self.device,
+			self.binding()?,
+			info,
+			output,
+			info_len,
+			output_len,
+		)?;
+		let prepared = self.device.prepare_secret_consumer(operands)?;
+		let mut command = self.device.record_compute_commands(|command| {
+			prepared.encode(command)?;
+			Ok(())
+		})?;
+		prepared.retain(&mut command)?;
+		command.retain_secret_use(Arc::clone(self));
+		Ok((command, ErasureWitness { states: Vec::new() }))
 	}
 
 	/// Consume the last value owner; older commands keep their own references.
@@ -647,16 +773,18 @@ impl SecretBuffer {
 	}
 
 	fn encode_erasure(&self, command: vk::CommandBuffer) -> Result<()> {
-		let barrier = vk::BufferMemoryBarrier2::default()
-			.src_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
-			.src_access_mask(vk::AccessFlagBits2::MEMORY_READ_BIT | vk::AccessFlagBits2::MEMORY_WRITE_BIT)
-			.dst_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
-			.dst_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
-			.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-			.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-			.buffer(self.handle)
-			.offset(0)
-			.size(self.size);
+		let barrier = vk::BufferMemoryBarrier2::new()
+			.set_src_stage_mask(vk::PipelineStageFlagBits2::ALL_COMMANDS_BIT)
+			.set_src_access_mask(
+				vk::AccessFlagBits2::MEMORY_READ_BIT | vk::AccessFlagBits2::MEMORY_WRITE_BIT,
+			)
+			.set_dst_stage_mask(vk::PipelineStageFlagBits2::CLEAR_BIT)
+			.set_dst_access_mask(vk::AccessFlagBits2::TRANSFER_WRITE_BIT)
+			.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+			.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+			.set_buffer(self.handle)
+			.set_offset(0)
+			.set_size(self.size);
 		// SAFETY: Engine submits this compute-only allocation after the final
 		// consumer on its ordered timeline. The barrier covers the entire range,
 		// including padding. No family transfer or protected memory is involved.
@@ -667,7 +795,7 @@ impl SecretBuffer {
 				.pipeline_barrier(
 					self.device.raw(),
 					command,
-					&(vk::DependencyInfo::default().buffer_memory_barriers(std::slice::from_ref(&barrier)))
+					&(vk::DependencyInfo::new().set_buffer_memory_barriers(std::slice::from_ref(&barrier)))
 						.map_err(Error::from)?,
 				)
 				.map_err(Error::from)?;

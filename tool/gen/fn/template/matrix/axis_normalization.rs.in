@@ -27,6 +27,7 @@
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [axis.group_count, 1, 1],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,

@@ -5,6 +5,7 @@ use std::{sync::Arc, time::Duration};
 use crate::{Error, Event, Image, Result, Texture, runtime::NativeDecodedFrame};
 
 use super::VideoPixelFormat;
+pub use crate::video::types::VideoColorInfo;
 
 /// Matrix coefficients associated with a frame's source color conversion.
 ///
@@ -32,13 +33,6 @@ pub enum VideoColorRange {
 	Limited,
 	/// Full-range components.
 	Full,
-}
-
-/// Source color metadata retained across frame transformations.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct VideoColorInfo {
-	matrix: VideoColorMatrix,
-	range: VideoColorRange,
 }
 
 impl VideoColorInfo {

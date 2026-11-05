@@ -188,7 +188,7 @@ test_vk!(smooth_l1_selects_the_donor_fused_mean_candidate, engine, {
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		plan.semantic_graph().operations()[0].name(),
-		"oa::ml::loss::smooth_l1"
+		"oa::FnLoss::smoothL1"
 	);
 	let report: serde_json::Value =
 		serde_json::from_str(&plan.debug_report_json("Smooth L1 fused mean"))
@@ -332,7 +332,7 @@ test_vk!(
 		let (plan, loss) =
 			engine.capture(|| oa::ml::loss::cross_entropy_masked(&logits, &targets, &mask, 1))?;
 		let operation = &plan.semantic_graph().operations()[0];
-		assert_eq!(operation.name(), "oa::ml::loss::masked_cross_entropy");
+		assert_eq!(operation.name(), "oa::FnLoss::maskedCrossEntropy");
 		assert_eq!(
 			operation.attributes(),
 			[oa::OpAttribute::SignedInteger {

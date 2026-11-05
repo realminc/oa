@@ -1,0 +1,968 @@
+{
+	"schema_version": 1,
+	"domain": "ui",
+	"family": "ui_types",
+	"imports": [
+		"use super::{FontId, PixelRect, UiDirection};",
+		"use crate::Color;"
+	],
+	"types": [
+		{
+			"class": "result",
+			"name": "UiTabBarResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"Default"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "bar",
+					"type": "PixelRect",
+					"visibility": "pub",
+					"doc": "Full tab-bar rectangle."
+				},
+				{
+					"name": "tabs",
+					"type": "PixelRect",
+					"visibility": "pub",
+					"doc": "Rectangle spanning visible tab buttons only."
+				},
+				{
+					"name": "first_visible",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Index of the first visible tab after this call."
+				},
+				{
+					"name": "one_past_last",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "One past the last visible tab."
+				},
+				{
+					"name": "activated_index",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Index of the tab that was clicked, or -1."
+				},
+				{
+					"name": "close_requested_index",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Index of the tab whose close button was clicked, or -1."
+				},
+				{
+					"name": "selection_changed",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Whether `state.selected` changed."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "UiTreeRowConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"Default"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "depth",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Nesting depth (0 = root)."
+				},
+				{
+					"name": "indent",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Pixels per indent level."
+				},
+				{
+					"name": "disclosure_width",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Width reserved for the disclosure arrow."
+				},
+				{
+					"name": "has_children",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "True if this item has children."
+				},
+				{
+					"name": "open",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "True if this item is currently expanded."
+				},
+				{
+					"name": "selected",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "True if this item is selected."
+				},
+				{
+					"name": "enabled",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "False to render greyed out."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "UiTreeRowResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"Default"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "row",
+					"type": "PixelRect",
+					"visibility": "pub",
+					"doc": "Full row rectangle."
+				},
+				{
+					"name": "disclosure",
+					"type": "PixelRect",
+					"visibility": "pub",
+					"doc": "Disclosure-arrow rectangle."
+				},
+				{
+					"name": "label",
+					"type": "PixelRect",
+					"visibility": "pub",
+					"doc": "Label rectangle."
+				},
+				{
+					"name": "activated",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "True if the row was activated (clicked)."
+				},
+				{
+					"name": "open_changed",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "True if the open/close state toggled."
+				},
+				{
+					"name": "open",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Current open state after this call."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "UiScrollConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "wheel_step",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Pixels scrolled per mouse-wheel notch."
+				},
+				{
+					"name": "scrollbar_width",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Width of the scrollbar track in pixels."
+				},
+				{
+					"name": "scrollbar_gap",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Gap between content and scrollbar track."
+				},
+				{
+					"name": "show_scrollbar",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Whether to show the scrollbar."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "UiSplitConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "direction",
+					"type": "UiDirection",
+					"visibility": "pub",
+					"doc": "Flow direction: Column = top/bottom split, Row = left/right split."
+				},
+				{
+					"name": "handle_size",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Width of the drag handle in pixels."
+				},
+				{
+					"name": "minimum_first",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Minimum size of the first pane in pixels."
+				},
+				{
+					"name": "minimum_second",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Minimum size of the second pane in pixels."
+				},
+				{
+					"name": "keyboard_step",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Pixels moved per arrow-key press."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "UiPropertyRowConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "label_fraction",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Fraction of the row width reserved for the label (0\u20131)."
+				},
+				{
+					"name": "gap",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Gap between label and value columns in pixels."
+				},
+				{
+					"name": "padding_x",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Horizontal padding inside each column."
+				},
+				{
+					"name": "alternate",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Draw an alternating background on even rows."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "UiPopupConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "width",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Popup width in pixels."
+				},
+				{
+					"name": "height",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Popup height in pixels (0 = hug content)."
+				},
+				{
+					"name": "gap",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Gap between anchor and popup in pixels."
+				},
+				{
+					"name": "padding",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Padding inside the popup panel."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "UiDropdownConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "max_visible_items",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Maximum number of visible items before scrolling."
+				},
+				{
+					"name": "popup_width",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Popup width override (0 = match widget width)."
+				},
+				{
+					"name": "popup_gap",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Gap between widget and popup."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "UiTooltipConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "delay_ms",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Milliseconds to wait before showing the tooltip."
+				},
+				{
+					"name": "max_width",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Maximum tooltip width in pixels."
+				},
+				{
+					"name": "gap",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Gap between cursor and tooltip box."
+				},
+				{
+					"name": "padding",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Padding inside the tooltip panel."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "UiHeatmapConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "rows",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Number of data rows."
+				},
+				{
+					"name": "cols",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Number of data columns."
+				},
+				{
+					"name": "v_min",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Minimum value mapped to the cold color."
+				},
+				{
+					"name": "v_max",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Maximum value mapped to the hot color."
+				},
+				{
+					"name": "colormap",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Colormap index (matches [`crate::plot::axes::HeatmapStyle`] colormap)."
+				},
+				{
+					"name": "auto_scale",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Auto-scale range from data when true."
+				},
+				{
+					"name": "show_grid",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Draw grid lines between cells."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "UiGridConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "origin",
+					"type": "[f32; 2]",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "minor_spacing",
+					"type": "[f32; 2]",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "major_every",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "super_major_every",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Number of minor intervals per super-major interval."
+				},
+				{
+					"name": "minor_thickness",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "major_thickness",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "super_major_thickness",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "axis_thickness",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "opacity",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "guide_fade_center",
+					"type": "[f32; 2]",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "guide_fade_inner_radius",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "guide_fade_outer_radius",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "background_top",
+					"type": "Color",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "background_bottom",
+					"type": "Color",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "minor_color",
+					"type": "Color",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "major_color",
+					"type": "Color",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "super_major_color",
+					"type": "Color",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "axis_color",
+					"type": "Color",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "fill_background",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "draw_grid",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "draw_axes",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "radial_guide_fade",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "dither_background",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "UiPlotConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "color",
+					"type": "Color",
+					"visibility": "pub",
+					"doc": "Series line color."
+				},
+				{
+					"name": "x_min",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "X-axis minimum (screen-space sample domain when not auto-scaled)."
+				},
+				{
+					"name": "x_max",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "X-axis maximum."
+				},
+				{
+					"name": "y_min",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Y-axis minimum, used when `auto_scale` is false."
+				},
+				{
+					"name": "y_max",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Y-axis maximum, used when `auto_scale` is false."
+				},
+				{
+					"name": "auto_scale",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Resolve Y bounds from finite samples."
+				},
+				{
+					"name": "show_grid",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Draw the chart grid behind the series."
+				},
+				{
+					"name": "fill",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Fill under the series line."
+				},
+				{
+					"name": "antialias_samples",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Compute-line rasterization samples; the implemented set is 1/4/8. Other values resolve to four samples rather than naming MSAA on a storage-image path."
+				},
+				{
+					"name": "line_width",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Rasterized line width in pixels."
+				},
+				{
+					"name": "draw_surface",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Paint the themed plot surface before drawing."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "CvBboxesConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "color",
+					"type": "Color",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "line_width",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "alpha",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "label_scale",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "show_labels",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "show_scores",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "DetectionOverlayConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "max_detections",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "max_glyphs",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "thickness_pixels",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "font_size",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "label_padding_x",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "label_padding_y",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "box_color",
+					"type": "Color",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "label_text_color",
+					"type": "Color",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "show_labels",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "info",
+			"name": "GlyphInfo",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"Default",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "codepoint",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "atlas_x",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "atlas_y",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "atlas_w",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "atlas_h",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "bearing_x",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "bearing_y",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "advance",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "ink_w",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "ink_h",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "raster_size",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "TextLayoutConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "font",
+					"type": "FontId",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "size",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "wrap_width",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "monospace",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

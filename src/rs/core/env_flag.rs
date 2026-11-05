@@ -35,6 +35,9 @@
 //! - `OA_DISABLE_NARROW_ROW_KERNELS` — skip narrow LayerNorm/softmax schedules
 //! - `OA_DISABLE_TILED_BMM` — skip the shared-memory BMM schedule
 //! - `OA_DISABLE_LINEAR_PARAM_ROWS32` — skip narrow Linear parameter-adjoint schedule
+//! - `OA_DISABLE_DNN_VISION_PREPROCESS` — retain convertColor→resizeNormalize source dispatches
+//! - `OA_DISABLE_DNN_QKV` — retain per-projection QKV source dispatches
+//! - `OA_DISABLE_DNN_GATE_UP` — retain gate/up+SwiGLU source dispatches
 //!
 //! ## Force overrides
 //! - `OA_FORCE_PRECISION=FP32|BF16|FP16`

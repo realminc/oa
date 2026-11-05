@@ -131,7 +131,7 @@ test_vk!(channel_norm_forward_and_relu_match_host_oracle, engine, {
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		plan.semantic_graph().operations()[0].name(),
-		"oa::ml::matrix::channel_norm"
+		"oa::FnMatrix::channelNorm"
 	);
 	engine.submit(&plan)?.wait()?;
 	assert_close(

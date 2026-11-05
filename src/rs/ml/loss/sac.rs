@@ -4,15 +4,7 @@ use crate::runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, Sem
 use crate::{DType, Error, Matrix, OpAttribute, OperationContract, Result, matrix};
 
 use super::mse::mse;
-
-/// Discount and entropy temperature used by SAC losses.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct SacLossConfig {
-	/// Next-state value discount in the inclusive range `[0, 1]`.
-	pub discount: f32,
-	/// Non-negative entropy temperature.
-	pub entropy_coefficient: f32,
-}
+pub use crate::ml::types::{SacCriticLossResult, SacLossConfig};
 
 impl Default for SacLossConfig {
 	fn default() -> Self {
@@ -21,18 +13,6 @@ impl Default for SacLossConfig {
 			entropy_coefficient: 0.2,
 		}
 	}
-}
-
-/// Detached target and twin-critic SAC loss components.
-pub struct SacCriticLossResult {
-	/// Detached entropy-regularized Bellman target, shaped `[batch]`.
-	pub target_q: Matrix,
-	/// Mean-squared loss for the first critic.
-	pub q1_loss: Matrix,
-	/// Mean-squared loss for the second critic.
-	pub q2_loss: Matrix,
-	/// Sum of both critic losses.
-	pub total_loss: Matrix,
 }
 
 /// Compose the donor twin-critic SAC objective.
@@ -119,7 +99,7 @@ pub fn sac_critic(
 			value: f64::from(config.discount),
 		},
 		OpAttribute::Float {
-			name: "entropy_coefficient".into(),
+			name: "entropyCoefficient".into(),
 			value: f64::from(config.entropy_coefficient),
 		},
 	];
@@ -196,7 +176,7 @@ pub fn sac_actor(
 		Vec::new(),
 	)?;
 	let attributes = [OpAttribute::Float {
-		name: "entropy_coefficient".into(),
+		name: "entropyCoefficient".into(),
 		value: f64::from(entropy_coefficient),
 	}];
 	lowering.commit(SemanticDispatch {
@@ -254,6 +234,7 @@ fn sac_target_impl(
 		buffers: &buffers,
 		push_constants: &push_constants,
 		workgroups: kernel.linear_workgroups(batch),
+		indirect: None,
 	})?;
 	Ok(output)
 }

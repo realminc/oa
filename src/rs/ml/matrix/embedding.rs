@@ -73,6 +73,7 @@ pub(in crate::ml) fn embedding(weight: &Matrix, indices: &Matrix) -> Result<Matr
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: kernel.linear_workgroups(output_count),
+				indirect: None,
 			};
 			let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 				Error::internal(format!(
@@ -159,6 +160,7 @@ pub(in crate::ml) fn embedding_backward(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: kernel.linear_workgroups(weight_count),
+				indirect: None,
 			};
 			let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 				Error::internal(format!(

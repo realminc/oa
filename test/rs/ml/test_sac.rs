@@ -67,7 +67,7 @@ test_vk!(
 			plan.diagnostics().node_count()
 		);
 		let operation = &plan.semantic_graph().operations()[0];
-		assert_eq!(operation.name(), "oa::ml::loss::sac_critic");
+		assert_eq!(operation.name(), "oa::FnLoss::sacCritic");
 		assert_eq!(operation.attributes().len(), 2);
 		engine.submit(&plan)?.wait()?;
 
@@ -123,7 +123,7 @@ test_vk!(
 		);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
-			"oa::ml::loss::sac_actor"
+			"oa::FnLoss::sacActor"
 		);
 		engine.submit(&plan)?.wait()?;
 		assert_close(&loss.read_f32()?, &[-1.65], 1.0e-6);

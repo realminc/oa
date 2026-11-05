@@ -59,14 +59,14 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 	}
 
 	let priorities = [1.0_f32];
-	let Ok(queue_info) = vk::DeviceQueueCreateInfo::default()
-		.queue_family_index(family)
-		.queue_priorities(&priorities)
+	let Ok(queue_info) = vk::DeviceQueueCreateInfo::new()
+		.set_queue_family_index(family)
+		.set_queue_priorities(&priorities)
 	else {
 		return;
 	};
 	let queues = [queue_info];
-	let Ok(create) = vk::DeviceCreateInfo::default().queue_create_infos(&queues) else {
+	let Ok(create) = vk::DeviceCreateInfo::new().set_queue_create_infos(&queues) else {
 		return;
 	};
 	let device = unsafe { instance.raw().create_device(physical, &create, None) }
@@ -81,10 +81,10 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 	.expect("memory properties");
 	let mut buffers = Vec::new();
 	for _ in 0..3 {
-		let info = vk::BufferCreateInfo::default()
-			.size(byte_count)
-			.usage(vk::BufferUsageFlagBits::STORAGE_BUFFER_BIT)
-			.sharing_mode(vk::SharingMode::EXCLUSIVE);
+		let info = vk::BufferCreateInfo::new()
+			.set_size(byte_count)
+			.set_usage(vk::BufferUsageFlagBits::STORAGE_BUFFER_BIT)
+			.set_sharing_mode(vk::SharingMode::EXCLUSIVE);
 		let buffer = unsafe { device.create_buffer(&info, None) }.expect("storage buffer");
 		let requirements =
 			unsafe { device.get_buffer_memory_requirements(buffer) }.expect("requirements");
@@ -96,9 +96,9 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 					&& (memory.memory_types[index as usize].property_flags & wanted) == wanted
 			})
 			.expect("host-coherent storage memory");
-		let allocate = vk::MemoryAllocateInfo::default()
-			.allocation_size(requirements.size)
-			.memory_type_index(memory_type);
+		let allocate = vk::MemoryAllocateInfo::new()
+			.set_allocation_size(requirements.size)
+			.set_memory_type_index(memory_type);
 		let allocation = unsafe { device.allocate_memory(&allocate, None) }.expect("buffer memory");
 		unsafe { device.bind_buffer_memory(buffer, allocation, 0) }.expect("bind storage memory");
 		buffers.push((buffer, allocation));
@@ -114,69 +114,73 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 			device.unmap_memory(buffers[index].1).expect("unmap input");
 		}
 	}
-	let binding = vk::DescriptorSetLayoutBinding::default()
-		.binding(0)
-		.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-		.descriptor_count(crate::runtime::shader::KernelId::MatrixAddF32.bounded_buffer_count())
-		.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT);
+	let binding = vk::DescriptorSetLayoutBinding::new()
+		.set_binding(0)
+		.set_descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+		.set_descriptor_count(
+			crate::runtime::dna::kernel::KernelId::MatrixAddF32.bounded_buffer_count(),
+		)
+		.set_stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT);
 	let bindings = [binding];
-	let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
-		.bindings(&bindings)
+	let layout_info = vk::DescriptorSetLayoutCreateInfo::new()
+		.set_bindings(&bindings)
 		.expect("layout bindings");
 	let descriptor_layout = unsafe { device.create_descriptor_set_layout(&layout_info, None) }
 		.expect("bounded descriptor layout");
-	let pool_size = vk::DescriptorPoolSize::default()
-		.r#type(vk::DescriptorType::STORAGE_BUFFER)
-		.descriptor_count(crate::runtime::shader::KernelId::MatrixAddF32.bounded_buffer_count());
+	let pool_size = vk::DescriptorPoolSize::new()
+		.set_type(vk::DescriptorType::STORAGE_BUFFER)
+		.set_descriptor_count(
+			crate::runtime::dna::kernel::KernelId::MatrixAddF32.bounded_buffer_count(),
+		);
 	let pool_sizes = [pool_size];
-	let pool_info = vk::DescriptorPoolCreateInfo::default()
-		.max_sets(1)
-		.pool_sizes(&pool_sizes)
+	let pool_info = vk::DescriptorPoolCreateInfo::new()
+		.set_max_sets(1)
+		.set_pool_sizes(&pool_sizes)
 		.expect("pool sizes");
 	let pool = unsafe { device.create_descriptor_pool(&pool_info, None) }.expect("descriptor pool");
 	let layouts = [descriptor_layout];
-	let allocate = vk::DescriptorSetAllocateInfo::default()
-		.descriptor_pool(pool)
-		.set_layouts(&layouts)
+	let allocate = vk::DescriptorSetAllocateInfo::new()
+		.set_descriptor_pool(pool)
+		.set_set_layouts(&layouts)
 		.expect("set layouts");
 	let mut sets = [vk::DescriptorSet::default()];
 	unsafe { device.allocate_descriptor_sets(&allocate, &mut sets) }.expect("bounded set");
 	let set = sets[0];
-	let infos: Vec<_> = (0..crate::runtime::shader::KernelId::MatrixAddF32.bounded_buffer_count()
-		as usize)
+	let infos: Vec<_> = (0
+		..crate::runtime::dna::kernel::KernelId::MatrixAddF32.bounded_buffer_count() as usize)
 		.map(|i| {
-			vk::DescriptorBufferInfo::default()
-				.buffer(buffers[i.min(2)].0)
-				.range(byte_count)
+			vk::DescriptorBufferInfo::new()
+				.set_buffer(buffers[i.min(2)].0)
+				.set_range(byte_count)
 		})
 		.collect();
-	let write = vk::WriteDescriptorSet::default()
-		.dst_set(set)
-		.dst_binding(0)
-		.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-		.buffer_info(&infos)
+	let write = vk::WriteDescriptorSet::new()
+		.set_dst_set(set)
+		.set_dst_binding(0)
+		.set_descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+		.set_buffer_info(&infos)
 		.expect("buffer infos");
 	unsafe { device.update_descriptor_sets(&[write], &[]) }.expect("descriptor write");
 
-	let push_range = vk::PushConstantRange::default()
-		.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT)
-		.size(16);
+	let push_range = vk::PushConstantRange::new()
+		.set_stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT)
+		.set_size(16);
 	let push_ranges = [push_range];
-	let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default()
-		.set_layouts(&layouts)
-		.and_then(|info| info.push_constant_ranges(&push_ranges))
+	let pipeline_layout_info = vk::PipelineLayoutCreateInfo::new()
+		.set_set_layouts(&layouts)
+		.and_then(|info| info.set_push_constant_ranges(&push_ranges))
 		.expect("pipeline layout info");
 	let pipeline_layout =
 		unsafe { device.create_pipeline_layout(&pipeline_layout_info, None) }.expect("pipeline layout");
-	let shader_info = vk::ShaderModuleCreateInfo::default().code(&words);
+	let shader_info = vk::ShaderModuleCreateInfo::new().set_code(&words);
 	let shader = unsafe { device.create_shader_module(&shader_info, None) }.expect("shader module");
-	let stage = vk::PipelineShaderStageCreateInfo::default()
-		.stage(vk::ShaderStageFlagBits::COMPUTE_BIT)
-		.module(shader)
-		.name(c"main");
-	let pipeline_info = vk::ComputePipelineCreateInfo::default()
-		.stage(stage)
-		.layout(pipeline_layout);
+	let stage = vk::PipelineShaderStageCreateInfo::new()
+		.set_stage(vk::ShaderStageFlagBits::COMPUTE_BIT)
+		.set_module(shader)
+		.set_name(c"main");
+	let pipeline_info = vk::ComputePipelineCreateInfo::new()
+		.set_stage(stage)
+		.set_layout(pipeline_layout);
 	let mut pipelines = [vk::Pipeline::NULL];
 	let result = unsafe {
 		device.create_compute_pipelines(
@@ -189,17 +193,17 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 	.expect("bounded compute pipeline");
 	assert_eq!(result, vk::Result::SUCCESS, "pipeline creation status");
 	let pipeline = pipelines[0];
-	let command_pool_info = vk::CommandPoolCreateInfo::default().queue_family_index(family);
+	let command_pool_info = vk::CommandPoolCreateInfo::new().set_queue_family_index(family);
 	let command_pool =
 		unsafe { device.create_command_pool(&command_pool_info, None) }.expect("command pool");
-	let command_allocate = vk::CommandBufferAllocateInfo::default()
-		.command_pool(command_pool)
-		.level(vk::CommandBufferLevel::PRIMARY)
-		.command_buffer_count(1);
+	let command_allocate = vk::CommandBufferAllocateInfo::new()
+		.set_command_pool(command_pool)
+		.set_level(vk::CommandBufferLevel::PRIMARY)
+		.set_command_buffer_count(1);
 	let command = unsafe { device.allocate_command_buffers(&command_allocate) }.expect("command")[0];
 	unsafe {
 		device
-			.begin_command_buffer(command, &vk::CommandBufferBeginInfo::default())
+			.begin_command_buffer(command, &vk::CommandBufferBeginInfo::new())
 			.expect("begin command");
 		device
 			.cmd_bind_pipeline(command, vk::PipelineBindPoint::COMPUTE, pipeline)
@@ -228,8 +232,8 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 		device.cmd_dispatch(command, 1, 1, 1).expect("dispatch");
 		device.end_command_buffer(command).expect("end command");
 		let commands = [command];
-		let submit = [vk::SubmitInfo::default()
-			.command_buffers(&commands)
+		let submit = [vk::SubmitInfo::new()
+			.set_command_buffers(&commands)
 			.expect("submit commands")];
 		let queue = device.get_device_queue(family, 0).expect("device queue");
 		device

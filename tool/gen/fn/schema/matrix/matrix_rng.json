@@ -29,6 +29,8 @@
 		{
 			"stable_id": 48,
 			"name": "philox_uniform",
+			"donor_op": "oa::FnMatrix::philoxUniform",
+
 			"kernel_id": "MatrixPhiloxUniformF32",
 			"training_replay_role": "frozen_rng",
 			"semantic_attributes": [
@@ -132,6 +134,8 @@
 		{
 			"stable_id": 49,
 			"name": "philox_normal",
+			"donor_op": "oa::FnMatrix::philoxNormal",
+
 			"kernel_id": "MatrixPhiloxNormalF32",
 			"training_replay_role": "frozen_rng",
 			"semantic_attributes": [
@@ -380,6 +384,8 @@
 		{
 			"stable_id": 53,
 			"name": "dropout",
+			"donor_op": "oa::FnMatrix::dropout",
+
 			"autograd": {
 				"mode": "generated",
 				"family": "rng",
@@ -424,6 +430,7 @@
 				1
 			],
 			"contract": {
+				"control_flow": "conditional",
 				"input_kinds": [
 					"matrix"
 				],
@@ -586,6 +593,8 @@
 		{
 			"stable_id": 390,
 			"name": "sample_logits",
+			"donor_op": "oa::FnMatrix::sampleLogits",
+
 			"kernel_id": "MatrixSampleLogitsGreedyF32",
 			"source": "src/slang/matrix/rng/sample_logits_greedy.slang",
 			"variant": "greedy",
@@ -595,11 +604,11 @@
 					"float"
 				],
 				[
-					"top_k",
+					"topK",
 					"signed_integer"
 				],
 				[
-					"top_p",
+					"topP",
 					"float"
 				],
 				[
@@ -608,6 +617,7 @@
 				]
 			],
 			"contract": {
+				"control_flow": "conditional",
 				"input_kinds": [
 					"matrix"
 				],

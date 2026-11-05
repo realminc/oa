@@ -1,15 +1,7 @@
+pub use super::types::{GaeConfig, GaeResult};
 use crate::runtime::ComputeDispatch;
 use crate::runtime::{BufferBinding, KernelId, PushConstant, SemanticDispatch};
 use crate::{DType, Error, Matrix, OpAttribute, Result, matrix};
-
-/// Discount parameters for generalized advantage estimation.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct GaeConfig {
-	/// Reward discount applied to value bootstrap and the reverse trace.
-	pub gamma: f32,
-	/// Trace discount applied to the next advantage.
-	pub lambda: f32,
-}
 
 impl Default for GaeConfig {
 	fn default() -> Self {
@@ -18,14 +10,6 @@ impl Default for GaeConfig {
 			lambda: 0.95,
 		}
 	}
-}
-
-/// Generalized advantages and their matching value targets.
-pub struct GaeResult {
-	/// Advantage estimates with the same `[time, environments]` shape as reward.
-	pub advantage: Matrix,
-	/// Returns computed as `advantage + value`.
-	pub returns: Matrix,
 }
 
 /// Standardize a nonempty FP32 advantage tensor over all elements.
@@ -143,7 +127,7 @@ pub fn gae_into(
 	returns: &mut Matrix,
 	config: GaeConfig,
 ) -> Result<()> {
-	const OPERATION: &str = "oa::ml::advantage::gae";
+	const OPERATION: &str = "oa::FnAdvantage::gae";
 	validate_inputs(reward, value, next_value, terminated, truncated, config)?;
 	for output in [&*advantage, &*returns] {
 		if !reward.engine_handle().same_as(output.engine_handle())
@@ -203,6 +187,7 @@ pub fn gae_into(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(environments),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -234,7 +219,7 @@ fn validate_inputs(
 	truncated: &Matrix,
 	config: GaeConfig,
 ) -> Result<()> {
-	const OPERATION: &str = "oa::ml::advantage::gae";
+	const OPERATION: &str = "oa::FnAdvantage::gae";
 	for input in [reward, value, next_value, terminated, truncated] {
 		if !reward.engine_handle().same_as(input.engine_handle()) {
 			return Err(Error::invalid_argument(format!(

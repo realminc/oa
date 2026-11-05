@@ -1,5 +1,6 @@
 //! Native `.oam` checkpoint path, metric, and rotation policy.
 
+pub use crate::ml::types::CheckpointManagerConfig;
 use std::{
 	fs,
 	path::{Path, PathBuf},
@@ -12,25 +13,6 @@ use super::{
 };
 use crate::ml::model_file::ModelFile;
 use crate::ml::{CheckpointOptimizer, Module};
-
-/// Filesystem and metric policy for [`CheckpointManager`].
-#[derive(Clone, Debug)]
-pub struct CheckpointManagerConfig {
-	/// Root directory beneath which the model directory is created.
-	pub directory: PathBuf,
-	/// Stable filename component and master checkpoint stem.
-	pub model_name: String,
-	/// Optional incremental-checkpoint directory/filename component.
-	pub context: String,
-	/// Maximum retained incremental checkpoints; zero disables rotation.
-	pub max_keep: usize,
-	/// Whether an improved metric updates the master checkpoint.
-	pub save_best: bool,
-	/// Metric name written into progress metadata and filenames.
-	pub metric_name: String,
-	/// Whether a lower metric is considered better.
-	pub lower_is_better: bool,
-}
 
 impl Default for CheckpointManagerConfig {
 	fn default() -> Self {

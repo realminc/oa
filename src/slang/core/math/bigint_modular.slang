@@ -126,8 +126,13 @@ bool bigint_inverse_mod(
 	bigint_zero(one);
 	one[0] = 1u;
 	bigint_reduce(one, modulus, words, t);
+	// Lame's theorem bounds Euclidean iterations near 1.44x the bit length;
+	// words*64 covers that with margin. If an input or downstream defect ever
+	// prevented progress, the bound returns false instead of hanging the GPU.
+	uint iterations = words * 64u;
 	[loop]
-	while (!bigint_is_zero(r, words)) {
+	while (!bigint_is_zero(r, words) && iterations != 0u) {
+		--iterations;
 		uint quotient[128], next_r[128], product[128], next_t[128];
 		bigint_divide(old_r, r, words, quotient, next_r);
 		bigint_multiply_mod(quotient, t, modulus, words, product);

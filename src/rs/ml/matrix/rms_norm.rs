@@ -88,7 +88,7 @@ pub(in crate::ml) fn rms_norm_forward(
 		PushConstant::F32(epsilon),
 	];
 	let attributes = [OpAttribute::Float {
-		name: "epsilon".into(),
+		name: "eps".into(),
 		value: f64::from(epsilon),
 	}];
 	{
@@ -100,6 +100,7 @@ pub(in crate::ml) fn rms_norm_forward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [rows, 1, 1],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -185,12 +186,14 @@ pub(in crate::ml) fn rms_norm_backward(
 			buffers: &backward_buffers,
 			push_constants: &backward_push_constants,
 			workgroups: [rows, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MatrixSumAxisF32,
 			buffers: &parameter_buffers,
 			push_constants: &parameter_push_constants,
 			workgroups: KernelId::MatrixSumAxisF32.linear_workgroups(columns),
+			indirect: None,
 		},
 	];
 	let inputs = [input, weight, output_gradient];
@@ -243,12 +246,12 @@ pub(in crate::ml) fn rms_norm_gated_forward(
 	];
 	let attributes = [
 		OpAttribute::Float {
-			name: "epsilon".into(),
+			name: "eps".into(),
 			value: f64::from(epsilon),
 		},
 		OpAttribute::Boolean {
-			name: "has_bias".into(),
-			value: bias.is_some(),
+			name: "normBeforeGate".into(),
+			value: true,
 		},
 	];
 	let semantic_inputs = [Some(input), Some(weight), bias, Some(gate)];
@@ -258,6 +261,7 @@ pub(in crate::ml) fn rms_norm_gated_forward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [rows, 1, 1],
+			indirect: None,
 		},
 		OptionalSemanticDispatch {
 			contract: crate::core::operation::ml::RMS_NORM_GATED,
@@ -371,12 +375,14 @@ pub fn rms_norm_gated_backward(
 		buffers: &backward_buffers,
 		push_constants: &backward_push_constants,
 		workgroups: [rows, 1, 1],
+		indirect: None,
 	};
 	let weight_dispatch = ComputeDispatch {
 		kernel: KernelId::MatrixSumAxisF32,
 		buffers: &weight_reduction_buffers,
 		push_constants: &reduction_push_constants,
 		workgroups: KernelId::MatrixSumAxisF32.linear_workgroups(affine_elements),
+		indirect: None,
 	};
 	let semantic_inputs = [
 		Some(input),
@@ -403,18 +409,21 @@ pub fn rms_norm_gated_backward(
 		},
 	];
 	if let Some(bias_gradient) = &bias_gradient {
-		let bias_reduction_buffers = [
+		let parameter_reduction_buffers = [
+			BufferBinding::read(weight_contribution.storage()),
 			BufferBinding::read(bias_contribution.storage()),
+			BufferBinding::write(weight_gradient.storage()),
 			BufferBinding::write(bias_gradient.storage()),
 		];
-		let bias_dispatch = ComputeDispatch {
-			kernel: KernelId::MatrixSumAxisF32,
-			buffers: &bias_reduction_buffers,
+		let parameter_dispatch = ComputeDispatch {
+			kernel: KernelId::MlSumAxisPairF32,
+			buffers: &parameter_reduction_buffers,
 			push_constants: &reduction_push_constants,
-			workgroups: KernelId::MatrixSumAxisF32.linear_workgroups(affine_elements),
+			workgroups: KernelId::MlSumAxisPairF32.linear_workgroups(affine_elements),
+			indirect: None,
 		};
 		input.engine_handle().record_split_optional_semantic(
-			&[backward_dispatch, weight_dispatch, bias_dispatch],
+			&[backward_dispatch, parameter_dispatch],
 			OptionalSemanticDispatch {
 				contract: crate::core::operation::ml::RMS_NORM_GATED_BACKWARD,
 				inputs: &semantic_inputs,

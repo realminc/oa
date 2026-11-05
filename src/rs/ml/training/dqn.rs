@@ -7,24 +7,8 @@
 use crate::{DType, Engine, Error, Result, matrix};
 
 use super::{ItTraining, ItTrainingConfig, Optimizer, TrainingCallback, TrainingMetric, target};
+pub use crate::ml::types::DqnTrainerConfig;
 use crate::ml::{GradientTape, Module, ReplayBuffer, loss};
-
-/// Fixed update budget, replay batch, target cadence, and Bellman policy.
-#[derive(Clone, Debug, PartialEq)]
-pub struct DqnTrainerConfig {
-	/// Number of optimizer updates to complete.
-	pub updates: u64,
-	/// Replay transitions consumed by one update.
-	pub batch_size: usize,
-	/// Completed-update interval between exact online-to-target copies.
-	pub target_update_interval: u64,
-	/// Per-transition observation shape expected from replay.
-	pub observation_shape: Vec<usize>,
-	/// Base seed used by deterministic replay sampling.
-	pub seed: u64,
-	/// Bellman-target configuration.
-	pub loss: loss::DqnLossConfig,
-}
 
 impl Default for DqnTrainerConfig {
 	fn default() -> Self {

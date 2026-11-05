@@ -90,8 +90,8 @@ jobs:
         run: |
           python3 -m unittest discover -s test/py/tool -v
           python3 -m unittest discover -s test/py -p test_inventory.py -v
-          python3 tool/gen/fn/generate.py --check
-          python3 tool/gen/checkDrift.py
+          python3 tool/oa gen fn --check
+          python3 tool/oa gen drift
           git diff --check
           git diff --exit-code
 
@@ -99,7 +99,7 @@ jobs:
         run: |
           cargo package -p oarust --locked --no-verify
           version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
-          python3 tool/build/audit_crate.py "target/package/oarust-${version}.crate" "$version"
+          python3 tool/oa audit crate "target/package/oarust-${version}.crate" "$version"
 
       - name: Verify tag is on main
         if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
@@ -134,7 +134,7 @@ jobs:
         run: |
           cargo package -p oarust --locked
           version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
-          python3 tool/build/audit_crate.py "target/package/oarust-${version}.crate" "$version"
+          python3 tool/oa audit crate "target/package/oarust-${version}.crate" "$version"
 
       - name: Format, lint, test, and document
         run: |
@@ -157,27 +157,27 @@ jobs:
           OA_TEST_DEVICE_INDEX=0 cargo test --lib --all-features --locked \
             runtime::engine::secret_tests::abandoned_secret_is_quarantined_instead_of_recycled \
             -- --exact --ignored --nocapture
-          OA_TEST_DEVICE_INDEX=0 cargo test --test cryptography --all-features --locked \
-            cryptography::batch_shake_matches_cpu_across_rate_boundaries -- --exact --ignored --nocapture
-          OA_TEST_DEVICE_INDEX=0 cargo test --test cryptography --all-features --locked \
-            cryptography::batch_hash_chain_replays_and_rebinds_without_host_intermediates -- --exact --ignored --nocapture
+          OA_TEST_DEVICE_INDEX=0 cargo test --test crypto --all-features --locked \
+            crypto::batch_shake_matches_cpu_across_rate_boundaries -- --exact --ignored --nocapture
+          OA_TEST_DEVICE_INDEX=0 cargo test --test crypto --all-features --locked \
+            crypto::batch_hash_chain_replays_and_rebinds_without_host_intermediates -- --exact --ignored --nocapture
           # Correctness on the explicit software device; no driver-JIT performance claim.
           OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
-            cargo test --test cryptography --all-features --locked \
+            cargo test --test crypto --all-features --locked \
             hash_batch:: -- --ignored --test-threads=1 --nocapture
           OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
-            cargo test --test cryptography --all-features --locked \
+            cargo test --test crypto --all-features --locked \
             merkle_proofs:: -- --ignored --test-threads=1 --nocapture
           OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
-            cargo test --test cryptography --all-features --locked \
+            cargo test --test crypto --all-features --locked \
             bigint:: -- --ignored --test-threads=1 --nocapture
           OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
-            cargo test --test cryptography --all-features --locked \
+            cargo test --test crypto --all-features --locked \
             bigint_modular:: -- --ignored --test-threads=1 --nocapture
           OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
-            cargo test --test cryptography --all-features --locked \
+            cargo test --test crypto --all-features --locked \
             bigint_breadth:: -- --ignored --test-threads=1 --nocapture
-          OA_TEST_DEVICE_INDEX=0 cargo test --test cryptography --all-features --locked \
+          OA_TEST_DEVICE_INDEX=0 cargo test --test crypto --all-features --locked \
             ml_dsa_ -- --ignored --test-threads=1 --nocapture
           OA_TEST_DEVICE_INDEX=0 cargo test --lib --all-features --locked \
             secret_ -- --include-ignored --test-threads=1 --nocapture
@@ -204,8 +204,8 @@ jobs:
         if: github.repository == 'realminc/oa'
         run: |
           cargo build -p oarust --release --examples --locked
-          python3 tool/build/stage.py --clean --profile release
-          python3 tool/build/stage.py --profile release
+          python3 tool/oa stage --clean --profile release
+          python3 tool/oa stage --profile release
           test -n "$(find bin/release/sdk -type f -perm -111 -print -quit)"
 
       - name: Package source, SDK programs, and build evidence
@@ -372,7 +372,7 @@ jobs:
           import oa
           import oa.audio
           import oa.core
-          import oa.cryptography
+          import oa.crypto
           import oa.image
           import oa.matrix
           import oa.ml
@@ -451,7 +451,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           cargo package -p oarust --locked --no-verify
           cmp "verified-crate/oarust-${version}.crate" "target/package/oarust-${version}.crate"
-          python3 tool/build/audit_crate.py "target/package/oarust-${version}.crate" "$version"
+          python3 tool/oa audit crate "target/package/oarust-${version}.crate" "$version"
           # A retry may find a version published before a later job failed.
           # Admit that version only if its registry checksum matches this archive.
           python3 - <<'PY'

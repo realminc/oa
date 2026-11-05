@@ -302,7 +302,17 @@ impl PythonDsOhlcv {
 	}
 }
 
+/// Permute an index list with the native deterministic PCG32 generator.
+/// A nonzero seed reproduces the Rust `oa::data::shuffle` permutation.
+#[pyfunction]
+fn shuffle(indices: Vec<i64>, seed: u64) -> PyResult<Vec<i64>> {
+	let mut indices = indices;
+	oa::data::shuffle(&mut indices, seed).map_err(python_error)?;
+	Ok(indices)
+}
+
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+	module.add_function(wrap_pyfunction!(shuffle, module)?)?;
 	module.add_class::<PythonDataFrame>()?;
 	module.add_class::<PythonDataFrameView>()?;
 	module.add_class::<PythonUnixTimeUnit>()?;

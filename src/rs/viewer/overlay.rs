@@ -1,7 +1,8 @@
 //! Canvas background and grid overlays. Donor: `oa::Viewer::renderVisualWorkspace`.
 
 use super::config::{ViewerCanvasBackground, ViewerConfig};
-use crate::ui::{TextLayoutConfig, Ui, navigation::Navigation, types::PixelRect};
+use crate::input::Navigation;
+use crate::ui::{TextLayoutConfig, Ui, types::PixelRect};
 use crate::{Color, Result};
 
 /// Preserve the donor's image-space guide geometry and background composition.
@@ -57,25 +58,51 @@ pub fn draw_canvas_background(
 	Ok(())
 }
 
-/// Draw optional status. Startup help belongs in the log, as in the donor.
+/// Draw optional status in a bottom-right overlay box.
+///
+/// `bottom_inset` reserves the transport block height so the box clears the
+/// timeline in temporal modes. Startup help belongs in the log, as in the
+/// donor.
 pub fn draw_hud(
 	ui: &mut Ui<'_>,
 	viewport: PixelRect,
 	navigation: &Navigation,
 	mode: &str,
+	bottom_inset: f32,
 	config: &ViewerConfig,
 ) -> Result<()> {
 	if !config.show_stats {
 		return Ok(());
 	}
+	let scale = ui.content_scale();
+	let text = format!("{mode}  {:.0}%", navigation.zoom() * 100.0);
+	let layout = TextLayoutConfig {
+		font: crate::ui::FontId::SansSemibold,
+		size: 24.0 * scale,
+		..Default::default()
+	};
+	let pad_x = 12.0 * scale;
+	let pad_y = 8.0 * scale;
+	let box_w = ui.measure_text(&text, layout)? + 2.0 * pad_x;
+	let box_h = layout.size + 2.0 * pad_y;
+	let margin = 16.0 * scale;
+	let box_x = (viewport.x + viewport.w as i32) as f32 - margin - box_w;
+	let box_y = (viewport.y + viewport.h as i32) as f32 - bottom_inset - margin - box_h;
+	ui.rect(
+		PixelRect::new(
+			box_x.round() as i32,
+			box_y.round() as i32,
+			box_w.ceil().max(1.0) as u32,
+			box_h.ceil().max(1.0) as u32,
+		),
+		Color::new_from_u32(0x00000080),
+		6.0 * scale,
+	)?;
 	ui.text_at(
-		&format!("{mode}  {:+.0}%", navigation.zoom() * 100.0),
-		[12.0, 60.0],
-		TextLayoutConfig {
-			size: 12.0,
-			..Default::default()
-		},
-		config.style.text,
+		&text,
+		[box_x + pad_x, box_y + pad_y + layout.size * 0.85],
+		layout,
+		Color::new_from_u32(0xFFFFFFFF),
 		viewport,
 	)?;
 	Ok(())

@@ -8,11 +8,11 @@ use std::ffi::CStr;
 
 use super::{features::DeviceFeatures, physical::DevicePhysical};
 use crate::runtime::Instance;
-use crate::{Error, Result, runtime::shader::ShaderRequirements};
+use crate::{Error, Result, runtime::dna::kernel::ShaderRequirements};
 
 /// Creation settings become enabled facts only after vkCreateDevice succeeds.
 /// Own strings/indices, never self-referential Vulkan pNext pointers.
-pub(super) struct DeviceConfiguration {
+pub(in crate::runtime) struct DeviceConfiguration {
 	features: DeviceFeatures,
 	extensions: Vec<&'static CStr>,
 	queue_families: Vec<u32>,
@@ -74,6 +74,12 @@ impl DeviceConfiguration {
 		if physical.info.local_memory_budget_bytes.is_some() {
 			extensions.push(vk::EXT_MEMORY_BUDGET_EXTENSION_NAME);
 		}
+		// Donor prefers the KHR spelling when both are advertised.
+		if physical.calibrated_timestamps_khr {
+			extensions.push(vk::KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME);
+		} else if physical.calibrated_timestamps_ext {
+			extensions.push(vk::EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME);
+		}
 		if physical.api_version < vk::API_VERSION_1_3 {
 			extensions.push(vk::KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
 			if physical.features.dynamic_rendering {
@@ -89,7 +95,7 @@ impl DeviceConfiguration {
 		}
 	}
 
-	pub(super) fn features(&self) -> DeviceFeatures {
+	pub(in crate::runtime) fn features(&self) -> DeviceFeatures {
 		self.features
 	}
 
@@ -111,9 +117,9 @@ impl DeviceConfiguration {
 			.queue_families
 			.iter()
 			.map(|family| {
-				vk::DeviceQueueCreateInfo::default()
-					.queue_family_index(*family)
-					.queue_priorities(&priorities)
+				vk::DeviceQueueCreateInfo::new()
+					.set_queue_family_index(*family)
+					.set_queue_priorities(&priorities)
 			})
 			.collect::<std::result::Result<Vec<_>, _>>()
 			.map_err(Error::from)?;
@@ -124,17 +130,17 @@ impl DeviceConfiguration {
 		let mut features13 = self.features13();
 		let mut cooperative_matrix = self.cooperative_matrix_features();
 		let mut integer_dot_product = self.integer_dot_product_features();
-		let mut synchronization2 = vk::PhysicalDeviceSynchronization2Features::default()
-			.synchronization2(u32::from(features.synchronization2));
-		let mut dynamic_rendering = vk::PhysicalDeviceDynamicRenderingFeatures::default()
-			.dynamic_rendering(u32::from(features.dynamic_rendering));
-		let mut create_info = vk::DeviceCreateInfo::default()
-			.enabled_features(&core_features)
+		let mut synchronization2 = vk::PhysicalDeviceSynchronization2Features::new()
+			.set_synchronization2(u32::from(features.synchronization2));
+		let mut dynamic_rendering = vk::PhysicalDeviceDynamicRenderingFeatures::new()
+			.set_dynamic_rendering(u32::from(features.dynamic_rendering));
+		let mut create_info = vk::DeviceCreateInfo::new()
+			.set_enabled_features(&core_features)
 			.push_next(&mut features12)
 			.map_err(Error::from)?
-			.queue_create_infos(&queue_create_infos)
+			.set_queue_create_infos(&queue_create_infos)
 			.map_err(|source| Error::backend_failure("Vulkan", "device create-info queues", source))?
-			.enabled_extension_names(&extension_names)
+			.set_enabled_extension_names(&extension_names)
 			.map_err(|source| {
 				Error::backend_failure("Vulkan", "device create-info extensions", source)
 			})?;
@@ -174,59 +180,61 @@ impl DeviceConfiguration {
 
 	fn core_features(&self) -> vk::PhysicalDeviceFeatures {
 		let features = self.features;
-		vk::PhysicalDeviceFeatures::default()
-			.shader_storage_buffer_array_dynamic_indexing(u32::from(
+		vk::PhysicalDeviceFeatures::new()
+			.set_shader_storage_buffer_array_dynamic_indexing(u32::from(
 				features.shader_storage_buffer_array_dynamic_indexing,
 			))
-			.shader_int64(u32::from(features.shader_int64))
-			.shader_float64(u32::from(features.shader_float64))
+			.set_shader_int64(u32::from(features.shader_int64))
+			.set_shader_float64(u32::from(features.shader_float64))
 	}
 
 	fn features12(&self) -> vk::PhysicalDeviceVulkan12Features<'static> {
 		let features = self.features;
-		vk::PhysicalDeviceVulkan12Features::default()
-			.shader_float16(u32::from(features.shader_float16))
-			.vulkan_memory_model(u32::from(features.vulkan_memory_model))
-			.vulkan_memory_model_device_scope(u32::from(features.vulkan_memory_model_device_scope))
-			.vulkan_memory_model_availability_visibility_chains(u32::from(
+		vk::PhysicalDeviceVulkan12Features::new()
+			.set_shader_float16(u32::from(features.shader_float16))
+			.set_vulkan_memory_model(u32::from(features.vulkan_memory_model))
+			.set_vulkan_memory_model_device_scope(u32::from(features.vulkan_memory_model_device_scope))
+			.set_vulkan_memory_model_availability_visibility_chains(u32::from(
 				features.vulkan_memory_model_availability_visibility_chains,
 			))
-			.timeline_semaphore(u32::from(features.timeline_semaphore))
-			.storage_buffer8_bit_access(u32::from(features.storage_buffer_8_bit_access))
-			.uniform_and_storage_buffer8_bit_access(u32::from(
+			.set_timeline_semaphore(u32::from(features.timeline_semaphore))
+			.set_storage_buffer8_bit_access(u32::from(features.storage_buffer_8_bit_access))
+			.set_uniform_and_storage_buffer8_bit_access(u32::from(
 				features.uniform_and_storage_buffer_8_bit_access,
 			))
-			.shader_int8(u32::from(features.shader_int8))
-			.runtime_descriptor_array(u32::from(features.runtime_descriptor_array))
-			.descriptor_binding_partially_bound(u32::from(features.descriptor_binding_partially_bound))
-			.descriptor_binding_storage_buffer_update_after_bind(u32::from(
+			.set_shader_int8(u32::from(features.shader_int8))
+			.set_runtime_descriptor_array(u32::from(features.runtime_descriptor_array))
+			.set_descriptor_binding_partially_bound(u32::from(
+				features.descriptor_binding_partially_bound,
+			))
+			.set_descriptor_binding_storage_buffer_update_after_bind(u32::from(
 				features.descriptor_binding_storage_buffer_update_after_bind,
 			))
-			.descriptor_binding_storage_image_update_after_bind(u32::from(
+			.set_descriptor_binding_storage_image_update_after_bind(u32::from(
 				features.descriptor_binding_storage_image_update_after_bind,
 			))
-			.descriptor_binding_update_unused_while_pending(u32::from(
+			.set_descriptor_binding_update_unused_while_pending(u32::from(
 				features.descriptor_binding_update_unused_while_pending,
 			))
 	}
 
 	fn features13(&self) -> vk::PhysicalDeviceVulkan13Features<'static> {
-		vk::PhysicalDeviceVulkan13Features::default()
-			.shader_integer_dot_product(u32::from(self.features.shader_integer_dot_product))
-			.synchronization2(u32::from(self.features.synchronization2))
-			.dynamic_rendering(u32::from(self.features.dynamic_rendering))
+		vk::PhysicalDeviceVulkan13Features::new()
+			.set_shader_integer_dot_product(u32::from(self.features.shader_integer_dot_product))
+			.set_synchronization2(u32::from(self.features.synchronization2))
+			.set_dynamic_rendering(u32::from(self.features.dynamic_rendering))
 	}
 
 	fn cooperative_matrix_features(&self) -> vk::PhysicalDeviceCooperativeMatrixFeaturesKHR<'static> {
-		vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::default()
-			.cooperative_matrix(u32::from(self.features.cooperative_matrix))
+		vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::new()
+			.set_cooperative_matrix(u32::from(self.features.cooperative_matrix))
 	}
 
 	fn integer_dot_product_features(
 		&self,
 	) -> vk::PhysicalDeviceShaderIntegerDotProductFeatures<'static> {
-		vk::PhysicalDeviceShaderIntegerDotProductFeatures::default()
-			.shader_integer_dot_product(u32::from(self.features.shader_integer_dot_product))
+		vk::PhysicalDeviceShaderIntegerDotProductFeatures::new()
+			.set_shader_integer_dot_product(u32::from(self.features.shader_integer_dot_product))
 	}
 
 	pub(super) fn missing_shader_requirements(

@@ -1,0 +1,125 @@
+/// Compute a natural-order {{name}} cyclic NTT, preserving field representation.
+///
+/// Records staged GPU work with two reusable private buffers. It performs no
+/// tensor host reads, waits or per-stage host initialization.
+///
+/// # Errors
+/// Rejects dtype, shape, ownership, address limits, allocation or recording failures.
+pub fn {{name}}(input: &Matrix, parameters: &NttParameters) -> Result<Matrix> {
+	let config = &parameters.config;
+	let scalar = input.shape().len() == 2;
+	if input.dtype() != DType::U32 || !input.engine_handle().same_as(parameters.forward.engine_handle())
+		|| (scalar && input.shape()[1] != config.length)
+		|| (!scalar && (input.shape().len() != 3 || input.shape()[1..] != [config.length, 2])) {
+		return Err(Error::invalid_argument("NTT requires matching-owner U32 [batch, length] scalar or [batch, length, 2] paired coefficients"));
+	}
+	let elements = input.num_elements();
+	let bytes = elements.checked_mul(4).ok_or_else(|| Error::invalid_argument("NTT input byte extent overflows usize"))?;
+	u32::try_from(bytes).map_err(|_| Error::invalid_argument("NTT input byte extent exceeds u32"))?;
+	let count = u32::try_from(elements / if scalar { 1 } else { 2 }).map_err(|_| Error::invalid_argument("NTT coefficient count exceeds u32"))?;
+	let engine = input.engine_handle();
+	let first = Matrix::allocate_output(engine, input.shape().to_vec(), elements, DType::U32)?;
+	if count == 0 { return Ok(first); }
+	let modulus = config.modulus;
+	let montgomery = u32::from(config.representation == NttRepresentation::Montgomery);
+	let shared_bytes = engine.compute_shared_memory_bytes() as usize;
+	if scalar {
+		// Scalar storage halves coefficient footprint but admits only fields whose
+		// modulus fits prime31 Montgomery arithmetic (R = 2^32, p < 2^31).
+		let Some(twiddles) = parameters.{{name}}_scalar.as_ref() else {
+			return Err(Error::invalid_argument("Scalar NTT storage requires a prepared modulus below 2^31"));
+		};
+		let cooperative = [(256, KernelId::CryptographyNttCooperativeScalar256U32), (1024, KernelId::CryptographyNttCooperativeScalar1024U32), (4096, KernelId::CryptographyNttCooperativeScalar4096U32), (8192, KernelId::CryptographyNttCooperativeScalar8192U32)]
+			.into_iter().find(|(capacity, _)| config.length <= *capacity && capacity * 4 <= shared_bytes);
+		let Some((_, kernel)) = cooperative else {
+			return Err(Error::invalid_argument("Scalar NTT length exceeds the shared-memory provider capacity; use paired-word storage"));
+		};
+		let modulus32 = modulus as u32;
+		let r2_scalar = ((1_u128 << 64) % u128::from(modulus)) as u32;
+		let normalization = {{scalar_normalization}};
+		let groups = engine.linear_dispatch_grid(input.shape()[0] as u32, 1)?;
+		let buffers = [BufferBinding::read(input.storage()), BufferBinding::read(twiddles.storage()), BufferBinding::write(first.storage())];
+		let push_constants = [PushConstant::U32(input.shape()[0] as u32), PushConstant::U32(groups[0]), PushConstant::U32(config.length as u32), PushConstant::U32(config.length.trailing_zeros()), PushConstant::U32(modulus32), PushConstant::U32(parameters.negative_inverse), PushConstant::U32(r2_scalar), PushConstant::U32(normalization), PushConstant::U32(montgomery)];
+		let attributes = [OpAttribute::UnsignedInteger { name: "modulus".into(), value: modulus }, OpAttribute::UnsignedInteger { name: "length".into(), value: config.length as u64 }, OpAttribute::UnsignedInteger { name: "inverse".into(), value: {{inverse_flag}} }, OpAttribute::UnsignedInteger { name: "montgomery".into(), value: u64::from(montgomery) }];
+		engine.record_semantic(
+			ComputeDispatch { kernel, buffers: &buffers, push_constants: &push_constants, workgroups: groups,
+		indirect: None,
+},
+			SemanticDispatch { contract: crate::core::operation::crypto::ntt::NTT_TRANSFORM, inputs: &[input, twiddles], outputs: &[&first], attributes: &attributes },
+		)?;
+		return Ok(first);
+	}
+	let twiddles = &parameters.{{name}};
+	let normalization = {{normalization}};
+	let cooperative = [(256, KernelId::CryptographyNttCooperative256U32), (1024, KernelId::CryptographyNttCooperative1024U32), (4096, KernelId::CryptographyNttCooperative4096U32), (8192, KernelId::CryptographyNttCooperative8192U32)]
+		.into_iter().find(|(capacity, _)| config.length <= *capacity && capacity * 8 <= shared_bytes);
+	if let Some((_, kernel)) = cooperative {
+		let groups = engine.linear_dispatch_grid(input.shape()[0] as u32, 1)?;
+		let buffers = [BufferBinding::read(input.storage()), BufferBinding::read(twiddles.storage()), BufferBinding::write(first.storage())];
+		let push_constants = [PushConstant::U32(input.shape()[0] as u32), PushConstant::U32(groups[0]), PushConstant::U32(config.length as u32), PushConstant::U32(config.length.trailing_zeros()), PushConstant::U32(modulus as u32), PushConstant::U32((modulus >> 32) as u32), PushConstant::U32(parameters.negative_inverse), PushConstant::U32(parameters.r2 as u32), PushConstant::U32((parameters.r2 >> 32) as u32), PushConstant::U32(normalization as u32), PushConstant::U32((normalization >> 32) as u32), PushConstant::U32(montgomery)];
+		let attributes = [OpAttribute::UnsignedInteger { name: "modulus".into(), value: modulus }, OpAttribute::UnsignedInteger { name: "length".into(), value: config.length as u64 }, OpAttribute::UnsignedInteger { name: "inverse".into(), value: {{inverse_flag}} }, OpAttribute::UnsignedInteger { name: "montgomery".into(), value: u64::from(montgomery) }];
+		engine.record_semantic(
+			ComputeDispatch { kernel, buffers: &buffers, push_constants: &push_constants, workgroups: groups,
+		indirect: None,
+},
+			SemanticDispatch { contract: crate::core::operation::crypto::ntt::NTT_TRANSFORM, inputs: &[input, twiddles], outputs: &[&first], attributes: &attributes },
+		)?;
+		return Ok(first);
+	}
+	let second = Matrix::allocate_output(engine, input.shape().to_vec(), elements, DType::U32)?;
+	let groups = engine.linear_dispatch_grid(count, 128)?;
+	let kernel = KernelId::CryptographyNttReorderU32;
+	let buffers = [BufferBinding::read(input.storage()), BufferBinding::write(first.storage())];
+	let push_constants = [PushConstant::U32(count), PushConstant::U32(groups[0] * 128), PushConstant::U32(config.length as u32), PushConstant::U32(config.length.trailing_zeros()), PushConstant::U32(modulus as u32), PushConstant::U32((modulus >> 32) as u32), PushConstant::U32(parameters.negative_inverse), PushConstant::U32(parameters.r2 as u32), PushConstant::U32((parameters.r2 >> 32) as u32), PushConstant::U32(montgomery)];
+	let attributes = [OpAttribute::UnsignedInteger { name: "modulus".into(), value: modulus }, OpAttribute::UnsignedInteger { name: "length".into(), value: config.length as u64 }, OpAttribute::UnsignedInteger { name: "montgomery".into(), value: u64::from(montgomery) }];
+	engine.record_semantic(
+		ComputeDispatch { kernel, buffers: &buffers, push_constants: &push_constants, workgroups: groups,
+		indirect: None,
+},
+		SemanticDispatch { contract: crate::core::operation::crypto::ntt::NTT_REORDER, inputs: &[input], outputs: &[&first], attributes: &attributes },
+	)?;
+	let mut current = first.clone();
+	// The fused tile provider performs every butterfly whose span fits one
+	// shared-memory tile in a single pass; larger spans keep the staged route.
+	let fused = [(8192, KernelId::CryptographyNttStageFused8192U32), (4096, KernelId::CryptographyNttStageFused4096U32), (1024, KernelId::CryptographyNttStageFused1024U32), (256, KernelId::CryptographyNttStageFused256U32)]
+		.into_iter().find(|(capacity, _)| *capacity < config.length && capacity * 8 <= shared_bytes);
+	let mut completed_stages = 0u32;
+	if let Some((capacity, kernel)) = fused {
+		let tiles = count / capacity as u32;
+		let groups = engine.linear_dispatch_grid(tiles, 1)?;
+		let output = second.reshape_semantic_output(input.shape().to_vec())?;
+		let buffers = [BufferBinding::read(current.storage()), BufferBinding::read(twiddles.storage()), BufferBinding::write(output.storage())];
+		let push_constants = [PushConstant::U32(tiles), PushConstant::U32(groups[0]), PushConstant::U32(config.length as u32), PushConstant::U32(modulus as u32), PushConstant::U32((modulus >> 32) as u32), PushConstant::U32(parameters.negative_inverse)];
+		let attributes = [OpAttribute::UnsignedInteger { name: "modulus".into(), value: modulus }, OpAttribute::UnsignedInteger { name: "length".into(), value: config.length as u64 }, OpAttribute::UnsignedInteger { name: "inverse".into(), value: {{inverse_flag}} }];
+		engine.record_semantic(
+			ComputeDispatch { kernel, buffers: &buffers, push_constants: &push_constants, workgroups: groups,
+		indirect: None,
+},
+			SemanticDispatch { contract: crate::core::operation::crypto::ntt::NTT_STAGE_FUSED, inputs: &[&current, twiddles], outputs: &[&output], attributes: &attributes },
+		)?;
+		current = output;
+		completed_stages = capacity.trailing_zeros();
+	}
+	let mut current_is_second = fused.is_some();
+	let groups = engine.linear_dispatch_grid(count / 2, 128)?;
+	for stage in (completed_stages + 1)..=config.length.trailing_zeros() {
+		let span = 1_u32 << stage;
+		// These two allocations are private to this operation. A fresh semantic
+		// output reuses retired stage storage; exact buffer hazards order writes.
+		let target = if current_is_second { &first } else { &second };
+		let output = target.reshape_semantic_output(input.shape().to_vec())?;
+		let kernel = KernelId::CryptographyNttStageU32;
+		let buffers = [BufferBinding::read(current.storage()), BufferBinding::read(twiddles.storage()), BufferBinding::write(output.storage())];
+		let push_constants = [PushConstant::U32(count / 2), PushConstant::U32(groups[0] * 128), PushConstant::U32(config.length as u32), PushConstant::U32(span), PushConstant::U32(modulus as u32), PushConstant::U32((modulus >> 32) as u32), PushConstant::U32(parameters.negative_inverse), PushConstant::U32(normalization as u32), PushConstant::U32((normalization >> 32) as u32), PushConstant::U32(montgomery)];
+		let attributes = [OpAttribute::UnsignedInteger { name: "modulus".into(), value: modulus }, OpAttribute::UnsignedInteger { name: "length".into(), value: config.length as u64 }, OpAttribute::UnsignedInteger { name: "span".into(), value: u64::from(span) }, OpAttribute::UnsignedInteger { name: "inverse".into(), value: {{inverse_flag}} }, OpAttribute::UnsignedInteger { name: "montgomery".into(), value: u64::from(montgomery) }];
+		engine.record_semantic(
+			ComputeDispatch { kernel, buffers: &buffers, push_constants: &push_constants, workgroups: groups,
+		indirect: None,
+},
+			SemanticDispatch { contract: crate::core::operation::crypto::ntt::NTT_STAGE, inputs: &[&current, twiddles], outputs: &[&output], attributes: &attributes },
+		)?;
+		current = output;
+		current_is_second = !current_is_second;
+	}
+	Ok(current)
+}

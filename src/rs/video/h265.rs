@@ -3,6 +3,7 @@
 use crate::{Error, Result};
 
 use super::bitstream::{BitReader, remove_emulation_prevention};
+pub use crate::video::types::H265TimingInfo;
 
 const MAX_SUB_LAYERS: usize = 7;
 const MAX_SHORT_TERM_REFERENCE_SETS: usize = 64;
@@ -93,14 +94,6 @@ pub struct H265HrdParameters {
 pub struct H265VpsHrdParameters {
 	pub layer_set_index: u32,
 	pub parameters: H265HrdParameters,
-}
-
-/// H.265 timing syntax shared by VPS and VUI records.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct H265TimingInfo {
-	pub num_units_in_tick: u32,
-	pub time_scale: u32,
-	pub num_ticks_poc_diff_one_minus_1: Option<u32>,
 }
 
 /// H.265 pulse-code-modulation syntax retained by an SPS.

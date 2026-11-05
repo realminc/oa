@@ -1,5 +1,6 @@
 //! Real-time device capture into a bounded lock-free FP32 ring.
 
+pub use crate::audio::types::AudioCaptureConfig;
 use std::{
 	sync::{
 		Arc, Mutex, OnceLock,
@@ -19,14 +20,6 @@ use super::player::{cpal_error, ring_capacity};
 use crate::{Engine, Error, Result, runtime::EngineHandle};
 
 static MONOTONIC_EPOCH: OnceLock<Instant> = OnceLock::new();
-
-/// Configuration for one default-device capture session.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct AudioCaptureConfig {
-	pub sample_rate: u32,
-	pub channel_count: u32,
-	pub ring_milliseconds: u32,
-}
 
 impl Default for AudioCaptureConfig {
 	fn default() -> Self {

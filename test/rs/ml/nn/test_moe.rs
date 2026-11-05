@@ -207,7 +207,7 @@ test_vk!(moe_route_weights_matches_the_donor_vector, engine, {
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		plan.semantic_graph().operations()[0].name(),
-		"oa::ml::matrix::moe_route_weights"
+		"oa::FnMatrix::moeRouteWeights"
 	);
 	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("moe_route"))
 		.expect("MoE route report must be valid JSON");
@@ -239,7 +239,7 @@ test_vk!(grouped_gemm_m_matches_variable_expert_row_oracle, engine, {
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		plan.semantic_graph().operations()[0].name(),
-		"oa::ml::matrix::grouped_gemm_m"
+		"oa::FnMatrix::groupedGemmM"
 	);
 	engine.submit(&plan)?.wait()?;
 	assert_close(&output.read_f32()?, &expected, 1.0e-6);
@@ -555,7 +555,7 @@ test_vk!(
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
-			"oa::ml::matrix::grouped_linear_m"
+			"oa::FnMatrix::groupedLinearM"
 		);
 		engine.submit(&plan)?.wait()?;
 		assert_close(&output.read_f32()?, &expected, 2.0e-5);

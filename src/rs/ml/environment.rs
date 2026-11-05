@@ -5,8 +5,9 @@ use crate::runtime::{BufferBinding, KernelId, PushConstant, SemanticDispatch};
 
 mod session;
 mod trading;
+pub use super::types::TradingConfig;
 pub use trading::{
-	TRADING_ACCOUNT_FEATURES, TRADING_LEDGER_WIDTH, TradingBook, TradingConfig, TradingEnvironment,
+	TRADING_ACCOUNT_FEATURES, TRADING_LEDGER_WIDTH, TradingBook, TradingEnvironment,
 	TradingExecution, TradingMarginTier, TradingSeries, TradingState,
 };
 
@@ -517,19 +518,19 @@ pub fn scale_action(
 	)?;
 	let attributes = [
 		OpAttribute::Float {
-			name: "source_minimum".into(),
+			name: "sourceMinimum".into(),
 			value: f64::from(source_minimum),
 		},
 		OpAttribute::Float {
-			name: "source_maximum".into(),
+			name: "sourceMaximum".into(),
 			value: f64::from(source_maximum),
 		},
 		OpAttribute::Float {
-			name: "target_minimum".into(),
+			name: "targetMinimum".into(),
 			value: f64::from(target_minimum),
 		},
 		OpAttribute::Float {
-			name: "target_maximum".into(),
+			name: "targetMaximum".into(),
 			value: f64::from(target_maximum),
 		},
 		OpAttribute::Boolean {
@@ -665,6 +666,7 @@ pub(crate) fn lunar_lander_reset(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(environments),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -801,6 +803,7 @@ pub(crate) fn lunar_lander_step(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(environments),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -866,6 +869,7 @@ pub(crate) fn cart_pole_reset(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(environments),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -999,6 +1003,7 @@ pub(crate) fn cart_pole_step(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(environments),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

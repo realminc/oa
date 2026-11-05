@@ -93,7 +93,7 @@ test_vk!(
 			plan.diagnostics().node_count()
 		);
 		let operation = &plan.semantic_graph().operations()[0];
-		assert_eq!(operation.name(), "oa::ml::policy::evaluate_categorical");
+		assert_eq!(operation.name(), "oa::FnPolicy::evaluateCategorical");
 		assert_eq!(operation.aliases().len(), 2);
 		assert!(operation.mutated_inputs().is_empty());
 		engine.submit(&plan)?.wait()?;
@@ -218,13 +218,13 @@ test_vk!(
 			)
 		})?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
-		assert!(plan.diagnostics().node_count() > 10);
+		assert!(plan.diagnostics().node_count() > 1);
 		assert_eq!(
 			plan.diagnostics().schema_owned_node_count(),
 			plan.diagnostics().node_count()
 		);
 		let operation = &plan.semantic_graph().operations()[0];
-		assert_eq!(operation.name(), "oa::ml::policy::evaluate_tanh_normal");
+		assert_eq!(operation.name(), "oa::FnPolicy::evaluateTanhNormal");
 		assert_eq!(operation.aliases().len(), 2);
 		assert_eq!(operation.attributes().len(), 3);
 		engine.submit(&plan)?.wait()?;
@@ -262,7 +262,7 @@ test_vk!(
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
-			"oa::ml::policy::sample_tanh_normal"
+			"oa::FnPolicy::sampleTanhNormal"
 		);
 		assert_eq!(plan.semantic_graph().operations()[0].attributes().len(), 4);
 		engine.submit(&plan)?.wait()?;

@@ -2,19 +2,11 @@
 
 use crate::{Error, Result, matrix};
 
+pub use super::types::PolicyEvaluationConfig;
 use super::{
 	ActorCritic, EnvironmentSpaceKind, RolloutBuffer, RolloutConfig, RolloutTransition,
 	environment::Environment, policy,
 };
-
-/// Fixed deterministic categorical evaluation horizon.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PolicyEvaluationConfig {
-	/// Number of vector-environment steps to evaluate.
-	pub horizon: usize,
-	/// Reset seed and deterministic greedy operation seed.
-	pub seed: u64,
-}
 
 impl Default for PolicyEvaluationConfig {
 	fn default() -> Self {

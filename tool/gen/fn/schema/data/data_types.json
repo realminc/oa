@@ -1,0 +1,147 @@
+{
+	"schema_version": 1,
+	"family": "data_types",
+	"domain": "data",
+	"imports": [
+		"use crate::Matrix;"
+	],
+	"types": [
+		{
+			"class": "config",
+			"name": "DataLoaderConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug"
+			],
+			"doc": "Configuration for [`DataLoader`].",
+			"fields": [
+				{
+					"name": "batch_size",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Number of samples per batch."
+				},
+				{
+					"name": "shuffle",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Whether to shuffle indices before each epoch."
+				},
+				{
+					"name": "seed",
+					"type": "u64",
+					"visibility": "pub",
+					"doc": "Seed for shuffling.  `0` derives a seed from the system clock, as in the donor."
+				},
+				{
+					"name": "drop_last",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Drop the last incomplete batch when `true`."
+				}
+			],
+			"variants": [],
+			"defaults": {
+				"batch_size": "32",
+				"shuffle": "true",
+				"seed": "0",
+				"drop_last": "false"
+			},
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "SplitResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "Result of a train / validation / test split.",
+			"fields": [
+				{
+					"name": "train",
+					"type": "Vec<i64>",
+					"visibility": "pub",
+					"doc": "Training indices."
+				},
+				{
+					"name": "val",
+					"type": "Vec<i64>",
+					"visibility": "pub",
+					"doc": "Validation indices."
+				},
+				{
+					"name": "test",
+					"type": "Vec<i64>",
+					"visibility": "pub",
+					"doc": "Test indices."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "OhlcvWindowConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug"
+			],
+			"doc": "Window shape; targets are the immediately following future close prices.",
+			"fields": [
+				{
+					"name": "lookback",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of history candles per input."
+				},
+				{
+					"name": "horizon",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Number of future closes per label."
+				},
+				{
+					"name": "stride",
+					"type": "usize",
+					"visibility": "pub",
+					"doc": "Advance between consecutive window starts."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "record",
+			"name": "Batch",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "Batched output: `x` [B, \u2026] and optional `y` [B, \u2026]. Corresponds to `oa::DataLoader::Batch`.",
+			"fields": [
+				{
+					"name": "x",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Batched input matrix with a leading batch dimension."
+				},
+				{
+					"name": "y",
+					"type": "Option<Matrix>",
+					"visibility": "pub",
+					"doc": "Batched label matrix with a leading batch dimension, or `None`."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

@@ -70,7 +70,7 @@ fn linear_match_dispatch(
 	noise: &Matrix,
 	time: &Matrix,
 ) -> Result<(Matrix, Matrix)> {
-	const OPERATION: &str = "oa::ml::flow::linear_match";
+	const OPERATION: &str = "oa::FnFlow::linearMatch";
 	validate_f32_same_engine(OPERATION, &[clean, noise, time])?;
 	if clean.shape() != noise.shape() || clean.num_elements() == 0 || clean.shape().len() > 8 {
 		return Err(Error::invalid_argument(
@@ -115,6 +115,7 @@ fn linear_match_dispatch(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: KernelId::MlFlowLinearMatchF32.linear_workgroups(element_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -140,7 +141,7 @@ fn linear_match_dispatch(
 }
 
 fn euler_step_dispatch(state: &Matrix, velocity: &Matrix, delta_time: f32) -> Result<Matrix> {
-	const OPERATION: &str = "oa::ml::flow::euler_step";
+	const OPERATION: &str = "oa::FnFlow::eulerStep";
 	validate_f32_same_engine(OPERATION, &[state, velocity])?;
 	if state.shape() != velocity.shape() || state.num_elements() == 0 || !delta_time.is_finite() {
 		return Err(Error::invalid_argument(
@@ -164,7 +165,7 @@ fn euler_step_dispatch(state: &Matrix, velocity: &Matrix, delta_time: f32) -> Re
 		PushConstant::F32(delta_time),
 	];
 	let attributes = [OpAttribute::Float {
-		name: "delta_time".to_owned(),
+		name: "deltaTime".to_owned(),
 		value: f64::from(delta_time),
 	}];
 	{
@@ -176,6 +177,7 @@ fn euler_step_dispatch(state: &Matrix, velocity: &Matrix, delta_time: f32) -> Re
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: KernelId::MlFlowEulerStepF32.linear_workgroups(element_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -205,7 +207,7 @@ fn masked_mse_dispatch(
 	target: &Matrix,
 	mask: &Matrix,
 ) -> Result<(Matrix, Matrix)> {
-	const OPERATION: &str = "oa::ml::flow::masked_mse";
+	const OPERATION: &str = "oa::FnFlow::maskedMse";
 	validate_f32_same_engine(OPERATION, &[prediction, target, mask])?;
 	if prediction.shape() != target.shape()
 		|| prediction.num_elements() == 0
@@ -244,6 +246,7 @@ fn masked_mse_dispatch(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [1, 1, 1],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -324,6 +327,7 @@ pub(in crate::ml) fn masked_mse_backward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: KernelId::MlFlowMaskedMseBackwardF32.linear_workgroups(element_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

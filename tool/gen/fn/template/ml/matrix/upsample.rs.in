@@ -42,6 +42,7 @@ pub fn upsample_2d(input: &Matrix, scale_factor: usize, mode: UpsampleMode) -> R
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: geometry.forward_workgroups(),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -109,6 +110,7 @@ pub(in crate::ml) fn upsample_2d_backward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: geometry.backward_workgroups(),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(

@@ -6,6 +6,7 @@
   "contracts": [
     {
       "name": "box_iou",
+      "donor_op": "oa::FnDetection::boxIou",
       "input_kinds": [
         "matrix",
         "matrix"
@@ -94,6 +95,7 @@
     },
     {
       "name": "nms",
+      "donor_op": "oa::FnDetection::nms",
       "input_kinds": [
         "matrix",
         "matrix",
@@ -107,63 +109,23 @@
       "dtype_rule": "explicit",
       "attributes": [
         [
-          "iou_threshold",
+          "iouThreshold",
           "float"
         ],
         [
-          "score_threshold",
+          "scoreThreshold",
           "float"
         ],
         [
-          "max_detections",
+          "maxDetections",
           "signed_integer"
         ],
         [
-          "class_agnostic",
+          "classAgnostic",
           "boolean"
         ]
       ],
-      "python": {
-        "parameters": [
-          [
-            "boxes",
-            "&Matrix"
-          ],
-          [
-            "scores",
-            "&Matrix"
-          ],
-          [
-            "classes",
-            "&Matrix"
-          ],
-          [
-            "iou_threshold",
-            "f32"
-          ],
-          [
-            "score_threshold",
-            "f32"
-          ],
-          [
-            "max_detections",
-            "i32"
-          ],
-          [
-            "class_agnostic",
-            "bool"
-          ]
-        ],
-        "arguments": {
-          "config": "oa::vision::NmsConfig { iou_threshold: $iou_threshold, score_threshold: $score_threshold, max_detections: $max_detections, class_agnostic: $class_agnostic }"
-        },
-        "defaults": {
-          "iou_threshold": 0.45,
-          "score_threshold": 0.0,
-          "max_detections": 100,
-          "class_agnostic": false
-        }
-      },
+      "python": {"parameters": [["boxes", "&Matrix"], ["scores", "&Matrix"], ["classes", "&Matrix"], ["iou_threshold", "f32"], ["score_threshold", "f32"], ["max_detections", "i32"], ["class_agnostic", "bool"]], "arguments": {"config": "oa::vision::NmsConfig { iou_threshold: $iou_threshold, score_threshold: $score_threshold, max_detections: $max_detections, class_agnostic: $class_agnostic }"}, "defaults": {"iou_threshold": 0.45, "score_threshold": 0.0, "max_detections": 100, "class_agnostic": false}},
       "rust": {
         "category": "detection",
         "parameters": [
@@ -200,19 +162,19 @@
         ],
         "annotations": [],
         "attribute_sources": {
-          "iou_threshold": {
+          "iouThreshold": {
             "encoding": "Float",
             "value": "f64::from(config.iou_threshold)"
           },
-          "score_threshold": {
+          "scoreThreshold": {
             "encoding": "Float",
             "value": "f64::from(config.score_threshold)"
           },
-          "max_detections": {
+          "maxDetections": {
             "encoding": "SignedInteger",
             "value": "i64::from(config.max_detections)"
           },
-          "class_agnostic": {
+          "classAgnostic": {
             "encoding": "Boolean",
             "value": "config.class_agnostic"
           }
@@ -284,6 +246,7 @@
     },
     {
       "name": "confusion_matrix",
+      "donor_op": "oa::FnDetection::confusionMatrix",
       "input_kinds": [
         "matrix",
         "matrix"
@@ -295,26 +258,13 @@
       "dtype_rule": "explicit",
       "attributes": [
         [
-          "class_count",
+          "classCount",
           "signed_integer"
         ]
       ],
       "rust": {
         "category": "detection",
-        "parameters": [
-          [
-            "predicted",
-            "&Matrix"
-          ],
-          [
-            "target",
-            "&Matrix"
-          ],
-          [
-            "class_count",
-            "i32"
-          ]
-        ],
+        "parameters": [["predicted", "&Matrix"], ["target", "&Matrix"], ["class_count", "i32"]],
         "returns": "Matrix",
         "doc": [
           "Accumulate an integer classification confusion matrix.",
@@ -329,7 +279,7 @@
         ],
         "annotations": [],
         "attribute_sources": {
-          "class_count": {
+          "classCount": {
             "encoding": "SignedInteger",
             "value": "i64::from(classes)"
           }
@@ -406,6 +356,7 @@
     },
     {
       "name": "binary_mask_counts",
+      "donor_op": "oa::FnDetection::binaryMaskCounts",
       "input_kinds": [
         "matrix",
         "matrix"
@@ -508,6 +459,7 @@
     },
     {
       "name": "evaluate",
+      "donor_op": "oa::FnDetection::evaluate",
       "input_kinds": [
         "matrix",
         "matrix",
@@ -528,58 +480,17 @@
       "dtype_rule": "explicit",
       "attributes": [
         [
-          "class_count",
+          "classCount",
           "signed_integer"
         ],
         [
-          "score_threshold",
+          "scoreThreshold",
           "float"
         ]
       ],
       "rust": {
         "category": "detection",
-        "parameters": [
-          [
-            "predicted_boxes",
-            "&Matrix"
-          ],
-          [
-            "predicted_scores",
-            "&Matrix"
-          ],
-          [
-            "predicted_classes",
-            "&Matrix"
-          ],
-          [
-            "predicted_image_ids",
-            "&Matrix"
-          ],
-          [
-            "target_boxes",
-            "&Matrix"
-          ],
-          [
-            "target_classes",
-            "&Matrix"
-          ],
-          [
-            "target_image_ids",
-            "&Matrix"
-          ],
-          [
-            "iou_thresholds",
-            "&Matrix"
-          ],
-          [
-            "class_count",
-            "i32"
-          ],
-          [
-            "score_threshold",
-            "f32"
-          ]
-        ],
+        "parameters": [["predicted_boxes", "&Matrix"], ["predicted_scores", "&Matrix"], ["predicted_classes", "&Matrix"], ["predicted_image_ids", "&Matrix"], ["target_boxes", "&Matrix"], ["target_classes", "&Matrix"], ["target_image_ids", "&Matrix"], ["iou_thresholds", "&Matrix"], ["class_count", "i32"], ["score_threshold", "f32"]],
         "returns": "DetectionMetricsResult",
         "doc": [
           "Evaluate object-detection precision, recall, F1, AP, and mAP.",
@@ -597,11 +508,11 @@
           "allow(clippy::too_many_arguments)"
         ],
         "attribute_sources": {
-          "class_count": {
+          "classCount": {
             "encoding": "SignedInteger",
             "value": "i64::from(class_count)"
           },
-          "score_threshold": {
+          "scoreThreshold": {
             "encoding": "Float",
             "value": "f64::from(score_threshold)"
           }
@@ -783,6 +694,7 @@
     },
     {
       "name": "evaluate_segmentation",
+      "donor_op": "oa::FnDetection::evaluateSegmentation",
       "input_kinds": [
         "matrix",
         "matrix"
@@ -797,26 +709,13 @@
       "dtype_rule": "explicit",
       "attributes": [
         [
-          "class_count",
+          "classCount",
           "signed_integer"
         ]
       ],
       "rust": {
         "category": "detection",
-        "parameters": [
-          [
-            "predicted",
-            "&Matrix"
-          ],
-          [
-            "target",
-            "&Matrix"
-          ],
-          [
-            "class_count",
-            "i32"
-          ]
-        ],
+        "parameters": [["predicted", "&Matrix"], ["target", "&Matrix"], ["class_count", "i32"]],
         "returns": "SegmentationMetricsResult",
         "doc": [
           "Evaluate multiclass semantic-segmentation labels.",
@@ -832,7 +731,7 @@
         ],
         "annotations": [],
         "attribute_sources": {
-          "class_count": {
+          "classCount": {
             "encoding": "SignedInteger",
             "value": "i64::from(class_count)"
           }
@@ -1629,6 +1528,7 @@
   "types": [
     {
       "category": "detection",
+      "class": "config",
       "name": "NmsConfig",
       "before": "nms",
       "kind": "struct",
@@ -1677,6 +1577,7 @@
     },
     {
       "category": "detection",
+      "class": "result",
       "name": "NmsResult",
       "before": "nms",
       "kind": "struct",
@@ -1703,6 +1604,7 @@
     },
     {
       "category": "detection",
+      "class": "result",
       "name": "DetectionMetricsResult",
       "before": "evaluate",
       "kind": "struct",
@@ -1741,6 +1643,7 @@
     },
     {
       "category": "detection",
+      "class": "result",
       "name": "SegmentationMetricsResult",
       "before": "evaluate_segmentation",
       "kind": "struct",

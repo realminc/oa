@@ -349,6 +349,16 @@ class MoeExpertPlan:
 	@property
 	def inverse(self) -> Matrix: ...
 
+class CompactRowsResult:
+	@property
+	def values(self) -> Matrix: ...
+	@property
+	def row_map(self) -> Matrix: ...
+	@property
+	def count(self) -> Matrix: ...
+	@property
+	def dispatch_args(self) -> Matrix: ...
+
 # ── Vision result types ────────────────────────────────────────────────────────
 
 class NmsResult:

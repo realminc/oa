@@ -32,23 +32,27 @@ mod image_mode;
 mod live_mode;
 mod overlay;
 mod timeline;
+mod training_source;
 mod video_mode;
 
-pub use config::{ViewerAudioView, ViewerCanvasBackground, ViewerConfig, ViewerMode};
-pub use live_source::{ViewerLiveCapabilities, ViewerLiveSource};
+pub use config::{ViewerAudioView, ViewerCanvasBackground, ViewerMode};
+pub use live_source::ViewerLiveSource;
+pub use training_source::{TrainingPreviewFrame, TrainingViewerSource};
+pub use types::{TrainingViewerConfig, ViewerConfig, ViewerLiveCapabilities};
 
 mod config;
 mod live_source;
+#[path = "viewer/type.gen.rs"]
+mod types;
 
 use std::time::Instant;
 
-use crate::runtime::{Presenter, SdlWindow};
-use crate::ui::{
-	Ui,
-	navigation::Navigation,
+use crate::input::{
+	InputEventKind, Key, Navigation,
 	sdl_events::{convert_sdl_event, window_pixel_scale},
-	types::{PixelRect, UiEventKind, UiKey},
 };
+use crate::runtime::{Presenter, SdlWindow};
+use crate::ui::{Ui, types::PixelRect};
 use crate::{Engine, Error, Result, Texture, render::Renderer};
 
 // ── Viewer ────────────────────────────────────────────────────────────────────
@@ -242,7 +246,7 @@ impl<'src> Viewer<'src> {
 		borrowed_texture: Option<&Texture>,
 	) -> Result<()> {
 		if self.config.show_help {
-			engine.log(crate::LogLevel::Info, crate::LogComponent::UI, "Viewer: wheel zoom, drag pan, +/- zoom, 0 fit, 9 actual size, 1–5 channels, B background, G grid, Space play/pause, arrows seek, W/S/M audio views, Q/Esc close")?;
+			engine.log(crate::LogLevel::Info, crate::LogComponent::UI, "Viewer: wheel zoom, drag pan, +/- zoom, 0 fit, 9 actual size, 1–5 channels, B background, G grid, Ctrl+O open file, F11 fullscreen, Space play/pause, arrows seek, W/S/M audio views, Q/Esc close")?;
 		}
 		// Resolve initial drawable extent.
 		let [w, h] = window.drawable_extent();
@@ -295,6 +299,7 @@ impl<'src> Viewer<'src> {
 
 			let mut running = true;
 			let mut timeline_state = timeline::TransportState::default();
+			let (mut open_files, open_rx) = OpenFileRequest::new();
 			let mut pointer_inside = true;
 			let mut controls_idle_ms = 0.0_f32;
 			let mut last_instant = Instant::now();
@@ -343,41 +348,51 @@ impl<'src> Viewer<'src> {
 					if let Some(ui_ev) = convert_sdl_event(&sdl_ev, sx, sy) {
 						controls_idle_ms = 0.0;
 						// Quit shortcut.
-						if ui_ev.kind == UiEventKind::KeyDown
+						if ui_ev.kind == InputEventKind::KeyDown
 							&& (ui_ev.key == self.config.key_quit || ui_ev.key == self.config.key_quit_q)
 						{
 							running = false;
 							continue;
 						}
 
+						// Window shortcuts.
+						if ui_ev.kind == InputEventKind::KeyDown && !ui_ev.key_repeat {
+							if ui_ev.key == Key::F11 {
+								window.toggle_fullscreen()?;
+								continue;
+							}
+							if ui_ev.key == Key::O && ui_ev.ctrl() && self.live_source.is_none() {
+								open_files.request(&window)?;
+								continue;
+							}
+						}
+
 						// Donor temporal step shortcuts permit keyboard repeat.
-						if ui_ev.kind == UiEventKind::KeyDown
+						if ui_ev.kind == InputEventKind::KeyDown
 							&& media.has_timeline()
-							&& matches!(
-								ui_ev.key,
-								UiKey::Left | UiKey::Right | UiKey::Up | UiKey::Down
-							) {
+							&& matches!(ui_ev.key, Key::Left | Key::Right | Key::Up | Key::Down)
+						{
 							let steps = match ui_ev.key {
-								UiKey::Left => -1,
-								UiKey::Right => 1,
-								UiKey::Up => 5,
+								Key::Left => -1,
+								Key::Right => 1,
+								Key::Up => 5,
 								_ => -5,
 							};
 							media.step_temporal(steps)?;
 							continue;
 						}
 
-						if ui_ev.kind == UiEventKind::KeyDown && !ui_ev.key_repeat {
+						if ui_ev.kind == InputEventKind::KeyDown && !ui_ev.key_repeat {
 							if matches!(media, MediaState::Audio { .. }) {
 								match ui_ev.key {
-									UiKey::W => self.config.audio_view = ViewerAudioView::Waveform,
-									UiKey::S => self.config.audio_view = ViewerAudioView::Spectrum,
-									UiKey::M => self.config.audio_view = ViewerAudioView::Mel,
+									Key::W => self.config.audio_view = ViewerAudioView::Waveform,
+									Key::S => self.config.audio_view = ViewerAudioView::Spectrum,
+									Key::M => self.config.audio_view = ViewerAudioView::Mel,
 									_ => {}
 								}
 							}
 
-							if ui_ev.key == UiKey::L && media.has_timeline() {
+							if ui_ev.key == Key::L && media.has_timeline() {
 								self.config.loop_media = !self.config.loop_media;
 								match &mut media {
 									MediaState::Audio { player, .. } => {
@@ -417,13 +432,12 @@ impl<'src> Viewer<'src> {
 						// Header/popups and temporal surfaces own their pointer gestures.
 						let pointer_event = matches!(
 							ui_ev.kind,
-							UiEventKind::MouseDown | UiEventKind::MouseMove | UiEventKind::MouseScroll
+							InputEventKind::MouseDown | InputEventKind::MouseMove | InputEventKind::MouseScroll
 						);
 						let chrome_pointer = pointer_event
 							&& (ui_ev.mouse_y < 43.0 * sy
 								|| media.has_timeline()
-								|| ui.is_popup_open("viewer-window-menu")
-								|| ui.is_popup_open("viewer-volume-menu"));
+								|| ui.is_popup_open("viewer-window-menu"));
 						let nav_consumed = !chrome_pointer && nav.handle_event(&ui_ev);
 
 						// Image view shortcuts.
@@ -433,6 +447,26 @@ impl<'src> Viewer<'src> {
 
 						// Route to UI widgets.
 						ui.route_event(&ui_ev);
+					}
+				}
+
+				// Apply the file-dialog result from the previous frame.
+				while let Ok(result) = open_rx.try_recv() {
+					open_files.active = false;
+					match result {
+						Ok(paths) => {
+							if let Some(path) = paths.into_iter().next() {
+								self.open_media_path(engine, &mut media, &mut nav, &mut timeline_state, &path)?;
+							}
+						}
+						Err(sdl3::dialog::DialogError::Canceled) => {}
+						Err(error) => {
+							engine.log(
+								crate::LogLevel::Warn,
+								crate::LogComponent::UI,
+								format!("Viewer: open file dialog failed: {error}"),
+							)?;
+						}
 					}
 				}
 
@@ -459,8 +493,7 @@ impl<'src> Viewer<'src> {
 					|| !self.config.auto_hide_controls
 					|| !media.is_playing()
 					|| (pointer_inside && controls_idle_ms < self.config.controls_hide_delay_ms as f32)
-					|| ui.is_popup_open("viewer-window-menu")
-					|| ui.is_popup_open("viewer-volume-menu");
+					|| ui.is_popup_open("viewer-window-menu");
 				render_frame(
 					&mut ui,
 					&mut media,
@@ -486,6 +519,7 @@ impl<'src> Viewer<'src> {
 						&mut self.config,
 						[compose_w, compose_h],
 						[sx, sy],
+						&mut open_files,
 					)?;
 				}
 				if window.client_frame
@@ -493,6 +527,19 @@ impl<'src> Viewer<'src> {
 					&& !window.window.is_maximized()
 					&& window.window.fullscreen_state() == sdl3::video::FullscreenType::Off
 				{
+					// Compositors draw no frame for undecorated surfaces; the
+					// client frame supplies its own GNOME-style edge outline
+					// in the scrubber track's dark grey.
+					ui.rect_outline_rounded_at(
+						PixelRect::new(0, 0, compose_w, compose_h),
+						crate::Color {
+							a: 1.0,
+							..self.config.style.surface
+						},
+						(1.0 * (sx + sy) * 0.5).round().max(1.0) as u32,
+						PixelRect::new(0, 0, compose_w, compose_h),
+						crate::runtime::window_decoration::CORNER_RADIUS * (sx + sy) * 0.5,
+					);
 					ui.mask_rounded_rect(
 						PixelRect::new(0, 0, compose_w, compose_h),
 						crate::runtime::window_decoration::CORNER_RADIUS * (sx + sy) * 0.5,
@@ -530,11 +577,101 @@ impl<'src> Viewer<'src> {
 		preserve_first(&mut run_result, ui.close());
 		run_result
 	}
+
+	/// Replace the open media with the file at `path`, keeping the window,
+	/// engine, and presenter alive. A failed open keeps the current media and
+	/// is logged rather than propagated.
+	fn open_media_path(
+		&mut self,
+		engine: &Engine,
+		media: &mut MediaState,
+		nav: &mut Navigation,
+		timeline_state: &mut timeline::TransportState,
+		path: &std::path::Path,
+	) -> Result<()> {
+		let config = ViewerConfig {
+			path: path.to_string_lossy().into_owned(),
+			..self.config.clone()
+		};
+		let new_media = match MediaState::open(engine, &config, None) {
+			Ok(media) => media,
+			Err(error) => {
+				engine.log(
+					crate::LogLevel::Warn,
+					crate::LogComponent::UI,
+					format!("Viewer: could not open {}: {error}", path.display()),
+				)?;
+				return Ok(());
+			}
+		};
+		let mut previous = std::mem::replace(media, new_media);
+		previous.close()?;
+		self.config = config;
+		let (cw, ch) = media.content_size().unwrap_or((0, 0));
+		nav.set_content_size(cw as f32, ch as f32)?;
+		nav.fit_to_window()?;
+		*timeline_state = timeline::TransportState::default();
+		Ok(())
+	}
 }
 
 fn preserve_first(result: &mut Result<()>, next: Result<()>) {
 	if result.is_ok() {
 		*result = next;
+	}
+}
+
+// ── Open-file dialog ──────────────────────────────────────────────────────────
+
+type OpenFileResult = std::result::Result<Vec<std::path::PathBuf>, sdl3::dialog::DialogError>;
+
+/// Pending OS file-dialog request. The SDL dialog completes asynchronously;
+/// the chosen path arrives on the channel and is applied on the next frame.
+pub(super) struct OpenFileRequest {
+	tx: std::sync::mpsc::Sender<OpenFileResult>,
+	active: bool,
+}
+
+impl OpenFileRequest {
+	fn new() -> (Self, std::sync::mpsc::Receiver<OpenFileResult>) {
+		let (tx, rx) = std::sync::mpsc::channel();
+		(Self { tx, active: false }, rx)
+	}
+
+	/// Show the OS open-file dialog unless one is already pending.
+	pub(super) fn request(&mut self, window: &SdlWindow) -> Result<()> {
+		if self.active {
+			return Ok(());
+		}
+		const FILTERS: &[sdl3::dialog::DialogFileFilter<'_>] = &[
+			sdl3::dialog::DialogFileFilter {
+				name: "Media",
+				pattern: "png;jpg;jpeg;bmp;tga;gif;webp;mp4;mkv;webm;avi;mov;mpg;mpeg;mp3;wav;flac;ogg;opus;m4a",
+			},
+			sdl3::dialog::DialogFileFilter {
+				name: "All files",
+				pattern: "*",
+			},
+		];
+		let tx = self.tx.clone();
+		sdl3::dialog::show_open_file_dialog(
+			FILTERS,
+			None::<&std::path::Path>,
+			false,
+			&window.window,
+			Box::new(move |result, _filter| {
+				let _ = tx.send(result);
+			}),
+		)
+		.map_err(|e| {
+			Error::backend_failure(
+				"SDL3",
+				"open file dialog",
+				std::io::Error::other(e.to_string()),
+			)
+		})?;
+		self.active = true;
+		Ok(())
 	}
 }
 
@@ -597,10 +734,15 @@ fn render_frame(
 	}
 
 	// Timeline (temporal modes).
+	let mut hud_inset = 0.0;
 	if chrome_visible && config.show_timeline && media.has_timeline() {
 		timeline::render(ui, media, config, full_rect, timeline_state)?;
+		// Transport block top = title row above the scrubber bar.
+		let bar = timeline::geometry(full_rect, ui.content_scale());
+		let title_top = bar.y - (34.0 * ui.content_scale()).round().max(1.0) as i32;
+		hud_inset = (full_rect.h as i32 - title_top).max(0) as f32;
 	}
-	overlay::draw_hud(ui, full_rect, nav, media.mode_name(), config)?;
+	overlay::draw_hud(ui, full_rect, nav, media.mode_name(), hud_inset, config)?;
 
 	Ok(())
 }
@@ -739,8 +881,12 @@ impl MediaState {
 		Ok(())
 	}
 
-	fn handle_event(&mut self, ev: &crate::ui::types::UiEvent, config: &ViewerConfig) -> Result<()> {
-		if ev.kind != UiEventKind::KeyDown || ev.key_repeat {
+	fn handle_event(
+		&mut self,
+		ev: &crate::input::types::InputEvent,
+		config: &ViewerConfig,
+	) -> Result<()> {
+		if ev.kind != InputEventKind::KeyDown || ev.key_repeat {
 			return Ok(());
 		}
 		match self {
@@ -749,20 +895,20 @@ impl MediaState {
 			}
 			Self::Video { player } => {
 				if let Some(p) = player.as_mut().as_mut() {
-					if ev.key == UiKey::Space {
+					if ev.key == Key::Space {
 						p.toggle_play()?;
 					}
-					if ev.key == UiKey::Left {
+					if ev.key == Key::Left {
 						p.step_frames(-1)?;
 					}
-					if ev.key == UiKey::Right {
+					if ev.key == Key::Right {
 						p.advance()?;
 					}
 				}
 			}
 			Self::Audio { player, .. } => {
 				if let Some(p) = player.as_mut().as_mut()
-					&& ev.key == UiKey::Space
+					&& ev.key == Key::Space
 				{
 					if p.is_playing() {
 						p.pause();

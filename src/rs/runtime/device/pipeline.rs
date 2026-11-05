@@ -1,4 +1,4 @@
-use crate::{Error, Result, runtime::shader::ShaderArtifact};
+use crate::{Error, Result, runtime::dna::kernel::ShaderArtifact};
 
 use super::physical::DeviceLimits;
 
@@ -13,6 +13,8 @@ pub(crate) const FLAT_COLOR_PUSH_SIZE: u32 = 96;
 pub(crate) const UNLIT_PUSH_SIZE: u32 = 96;
 // Push size for surface: 64 (MVP) + 64 (model matrix) = 128 bytes.
 pub(crate) const SURFACE_PUSH_SIZE: u32 = 128;
+/// Canvas-grid push size (100 bytes): grid parameters, fragment stage only.
+pub(crate) const CANVAS_GRID_PUSH_SIZE: u32 = 100;
 
 /// Embedded SPIR-V for the vertex-color lit vertex shader.
 static RENDER_VERT_SPV: &[u8] = include_bytes!(concat!(
@@ -43,6 +45,13 @@ static SURFACE_VERT_SPV: &[u8] =
 /// Embedded SPIR-V for the surface fragment shader.
 static SURFACE_FRAG_SPV: &[u8] =
 	include_bytes!(concat!(env!("OUT_DIR"), "/render_surface_frag.spv"));
+
+/// Embedded SPIR-V for the UI canvas-grid vertex shader.
+static CANVAS_GRID_VERT_SPV: &[u8] =
+	include_bytes!(concat!(env!("OUT_DIR"), "/render_ui_canvas_grid_vert.spv"));
+/// Embedded SPIR-V for the UI canvas-grid fragment shader.
+static CANVAS_GRID_FRAG_SPV: &[u8] =
+	include_bytes!(concat!(env!("OUT_DIR"), "/render_ui_canvas_grid_frag.spv"));
 
 /// R8G8B8A8_UNORM color attachment format used by all render targets.
 pub(in crate::runtime) const RENDER_COLOR_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
@@ -80,12 +89,12 @@ impl GraphicsPipeline {
 			));
 		}
 
-		let push_range = vk::PushConstantRange::default()
-			.stage_flags(vk::ShaderStageFlagBits::VERTEX_BIT)
-			.offset(0)
-			.size(GRAPHICS_PUSH_CONSTANT_SIZE);
-		let layout_info = vk::PipelineLayoutCreateInfo::default()
-			.push_constant_ranges(std::slice::from_ref(&push_range));
+		let push_range = vk::PushConstantRange::new()
+			.set_stage_flags(vk::ShaderStageFlagBits::VERTEX_BIT)
+			.set_offset(0)
+			.set_size(GRAPHICS_PUSH_CONSTANT_SIZE);
+		let layout_info = vk::PipelineLayoutCreateInfo::new()
+			.set_push_constant_ranges(std::slice::from_ref(&push_range));
 		let layout =
 			unsafe { device.create_pipeline_layout(&(layout_info).map_err(Error::from)?, None) }
 				.map_err(|s| Error::backend_failure("Vulkan", "graphics pipeline-layout creation", s))?;
@@ -107,96 +116,96 @@ impl GraphicsPipeline {
 		};
 
 		let stages = [
-			vk::PipelineShaderStageCreateInfo::default()
-				.stage(vk::ShaderStageFlagBits::VERTEX_BIT)
-				.module(vert_module)
-				.name(c"main"),
-			vk::PipelineShaderStageCreateInfo::default()
-				.stage(vk::ShaderStageFlagBits::FRAGMENT_BIT)
-				.module(frag_module)
-				.name(c"main"),
+			vk::PipelineShaderStageCreateInfo::new()
+				.set_stage(vk::ShaderStageFlagBits::VERTEX_BIT)
+				.set_module(vert_module)
+				.set_name(c"main"),
+			vk::PipelineShaderStageCreateInfo::new()
+				.set_stage(vk::ShaderStageFlagBits::FRAGMENT_BIT)
+				.set_module(frag_module)
+				.set_name(c"main"),
 		];
 
 		// MeshVertex layout: position (vec3, offset 0), normal (vec3, offset 12),
 		// uv (vec2, offset 24), color (vec4, offset 32) — stride 48 bytes.
 		// The graphics pipeline only binds position (loc 0), normal (loc 1), and
 		// color (loc 2); uv is present in the struct but not consumed by this shader.
-		let binding = vk::VertexInputBindingDescription::default()
-			.binding(0)
-			.stride(48)
-			.input_rate(vk::VertexInputRate::VERTEX);
+		let binding = vk::VertexInputBindingDescription::new()
+			.set_binding(0)
+			.set_stride(48)
+			.set_input_rate(vk::VertexInputRate::VERTEX);
 		let attributes = [
-			vk::VertexInputAttributeDescription::default()
-				.location(0)
-				.binding(0)
-				.format(vk::Format::R32G32B32_SFLOAT)
-				.offset(0), // position
-			vk::VertexInputAttributeDescription::default()
-				.location(1)
-				.binding(0)
-				.format(vk::Format::R32G32B32_SFLOAT)
-				.offset(12), // normal
-			vk::VertexInputAttributeDescription::default()
-				.location(2)
-				.binding(0)
-				.format(vk::Format::R32G32B32A32_SFLOAT)
-				.offset(32), // color
+			vk::VertexInputAttributeDescription::new()
+				.set_location(0)
+				.set_binding(0)
+				.set_format(vk::Format::R32G32B32_SFLOAT)
+				.set_offset(0), // position
+			vk::VertexInputAttributeDescription::new()
+				.set_location(1)
+				.set_binding(0)
+				.set_format(vk::Format::R32G32B32_SFLOAT)
+				.set_offset(12), // normal
+			vk::VertexInputAttributeDescription::new()
+				.set_location(2)
+				.set_binding(0)
+				.set_format(vk::Format::R32G32B32A32_SFLOAT)
+				.set_offset(32), // color
 		];
-		let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
-			.vertex_binding_descriptions(std::slice::from_ref(&binding))
+		let vertex_input = vk::PipelineVertexInputStateCreateInfo::new()
+			.set_vertex_binding_descriptions(std::slice::from_ref(&binding))
 			.map_err(Error::from)?
-			.vertex_attribute_descriptions(&attributes)
+			.set_vertex_attribute_descriptions(&attributes)
 			.map_err(Error::from)?;
-		let assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
-			.topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-		let viewport_state = vk::PipelineViewportStateCreateInfo::default()
-			.viewport_count(1)
-			.scissor_count(1);
-		let raster = vk::PipelineRasterizationStateCreateInfo::default()
-			.polygon_mode(vk::PolygonMode::FILL)
-			.cull_mode(vk::CullModeFlagBits::NONE)
-			.front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-			.line_width(1.0);
-		let multisample = vk::PipelineMultisampleStateCreateInfo::default()
-			.rasterization_samples(vk::SampleCountFlagBits::_1_BIT);
-		let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::default()
-			.depth_test_enable(u32::from(true))
-			.depth_write_enable(u32::from(true))
-			.depth_compare_op(vk::CompareOp::LESS)
-			.min_depth_bounds(0.0)
-			.max_depth_bounds(1.0);
-		let blend_attachment = vk::PipelineColorBlendAttachmentState::default().color_write_mask(
+		let assembly = vk::PipelineInputAssemblyStateCreateInfo::new()
+			.set_topology(vk::PrimitiveTopology::TRIANGLE_LIST);
+		let viewport_state = vk::PipelineViewportStateCreateInfo::new()
+			.set_viewport_count(1)
+			.set_scissor_count(1);
+		let raster = vk::PipelineRasterizationStateCreateInfo::new()
+			.set_polygon_mode(vk::PolygonMode::FILL)
+			.set_cull_mode(vk::CullModeFlagBits::NONE)
+			.set_front_face(vk::FrontFace::COUNTER_CLOCKWISE)
+			.set_line_width(1.0);
+		let multisample = vk::PipelineMultisampleStateCreateInfo::new()
+			.set_rasterization_samples(vk::SampleCountFlagBits::_1_BIT);
+		let depth_stencil = vk::PipelineDepthStencilStateCreateInfo::new()
+			.set_depth_test_enable(u32::from(true))
+			.set_depth_write_enable(u32::from(true))
+			.set_depth_compare_op(vk::CompareOp::LESS)
+			.set_min_depth_bounds(0.0)
+			.set_max_depth_bounds(1.0);
+		let blend_attachment = vk::PipelineColorBlendAttachmentState::new().set_color_write_mask(
 			vk::ColorComponentFlagBits::R_BIT
 				| vk::ColorComponentFlagBits::G_BIT
 				| vk::ColorComponentFlagBits::B_BIT
 				| vk::ColorComponentFlagBits::A_BIT,
 		);
-		let blend = vk::PipelineColorBlendStateCreateInfo::default()
-			.attachments(std::slice::from_ref(&blend_attachment))
+		let blend = vk::PipelineColorBlendStateCreateInfo::new()
+			.set_attachments(std::slice::from_ref(&blend_attachment))
 			.map_err(Error::from)?;
 		let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-		let dynamic = vk::PipelineDynamicStateCreateInfo::default()
-			.dynamic_states(&dynamic_states)
+		let dynamic = vk::PipelineDynamicStateCreateInfo::new()
+			.set_dynamic_states(&dynamic_states)
 			.map_err(Error::from)?;
 		let color_formats = [RENDER_COLOR_FORMAT];
-		let mut rendering = vk::PipelineRenderingCreateInfo::default()
-			.color_attachment_formats(&color_formats)
+		let mut rendering = vk::PipelineRenderingCreateInfo::new()
+			.set_color_attachment_formats(&color_formats)
 			.map_err(Error::from)?
-			.depth_attachment_format(RENDER_DEPTH_FORMAT);
-		let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
+			.set_depth_attachment_format(RENDER_DEPTH_FORMAT);
+		let pipeline_info = vk::GraphicsPipelineCreateInfo::new()
 			.push_next(&mut rendering)
 			.map_err(Error::from)?
-			.stages(&stages)
+			.set_stages(&stages)
 			.map_err(Error::from)?
-			.vertex_input_state(&vertex_input)
-			.input_assembly_state(&assembly)
-			.viewport_state(&viewport_state)
-			.rasterization_state(&raster)
-			.multisample_state(&multisample)
-			.depth_stencil_state(&depth_stencil)
-			.color_blend_state(&blend)
-			.dynamic_state(&dynamic)
-			.layout(layout);
+			.set_vertex_input_state(&vertex_input)
+			.set_input_assembly_state(&assembly)
+			.set_viewport_state(&viewport_state)
+			.set_rasterization_state(&raster)
+			.set_multisample_state(&multisample)
+			.set_depth_stencil_state(&depth_stencil)
+			.set_color_blend_state(&blend)
+			.set_dynamic_state(&dynamic)
+			.set_layout(layout);
 
 		let mut pipelines = [vk::Pipeline::default(); 1];
 		// SAFETY: the create-info chain and output buffer remain live and
@@ -278,12 +287,12 @@ impl FlatColorPipeline {
 				"flat-color pipeline requires 96 bytes of push constants",
 			));
 		}
-		let push_range = vk::PushConstantRange::default()
-			.stage_flags(vk::ShaderStageFlagBits::VERTEX_BIT | vk::ShaderStageFlagBits::FRAGMENT_BIT)
-			.offset(0)
-			.size(FLAT_COLOR_PUSH_SIZE);
-		let layout_info = vk::PipelineLayoutCreateInfo::default()
-			.push_constant_ranges(std::slice::from_ref(&push_range));
+		let push_range = vk::PushConstantRange::new()
+			.set_stage_flags(vk::ShaderStageFlagBits::VERTEX_BIT | vk::ShaderStageFlagBits::FRAGMENT_BIT)
+			.set_offset(0)
+			.set_size(FLAT_COLOR_PUSH_SIZE);
+		let layout_info = vk::PipelineLayoutCreateInfo::new()
+			.set_push_constant_ranges(std::slice::from_ref(&push_range));
 		let layout =
 			unsafe { device.create_pipeline_layout(&(layout_info).map_err(Error::from)?, None) }
 				.map_err(|s| Error::backend_failure("Vulkan", "flat-color pipeline-layout creation", s))?;
@@ -308,6 +317,7 @@ impl FlatColorPipeline {
 			layout,
 			vert_module,
 			frag_module,
+			PipelineVertexInput::MeshVertex,
 			PipelineDepth::Disabled,
 			PipelineBlend::PremultipliedAlpha,
 			cache,
@@ -335,6 +345,97 @@ impl FlatColorPipeline {
 }
 
 impl Drop for FlatColorPipeline {
+	fn drop(&mut self) {
+		destroy_pipeline(&self.device, self.handle);
+		destroy_pipeline_layout(&self.device, self.layout);
+	}
+}
+
+// ── CanvasGridPipeline ────────────────────────────────────────────────────────
+
+/// Graphics pipeline for the procedural canvas grid (raster compositor).
+///
+/// Vertexless fullscreen triangle (SV_VertexID); 100-byte fragment push block
+/// carries all grid parameters; premultiplied source-over blend composes the
+/// grid layer over the color attachment exactly like the compute path's
+/// `uiSourceOver` fold.
+pub(crate) struct CanvasGridPipeline {
+	handle: vk::Pipeline,
+	layout: vk::PipelineLayout,
+	device: std::sync::Arc<vk::Device>,
+}
+
+impl CanvasGridPipeline {
+	/// Create the canvas-grid pipeline for one logical device.
+	#[allow(private_interfaces)]
+	pub(in crate::runtime) fn new(
+		device: std::sync::Arc<vk::Device>,
+		limits: DeviceLimits,
+		cache: vk::PipelineCache,
+	) -> Result<Self> {
+		if limits.max_push_constants_size < CANVAS_GRID_PUSH_SIZE {
+			return Err(Error::missing_capability(
+				"canvas-grid pipeline requires 100 bytes of push constants",
+			));
+		}
+		let push_range = vk::PushConstantRange::new()
+			.set_stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT)
+			.set_offset(0)
+			.set_size(CANVAS_GRID_PUSH_SIZE);
+		let layout_info = vk::PipelineLayoutCreateInfo::new()
+			.set_push_constant_ranges(std::slice::from_ref(&push_range));
+		let layout =
+			unsafe { device.create_pipeline_layout(&(layout_info).map_err(Error::from)?, None) }
+				.map_err(|s| Error::backend_failure("Vulkan", "canvas-grid pipeline-layout creation", s))?;
+
+		let vert_words = decode_spirv_bytes(CANVAS_GRID_VERT_SPV)
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
+		let frag_words = decode_spirv_bytes(CANVAS_GRID_FRAG_SPV)
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
+		let vert_module = create_shader_module(&device, &vert_words)
+			.inspect_err(|_| destroy_pipeline_layout(&device, layout))?;
+		let frag_module = match create_shader_module(&device, &frag_words) {
+			Ok(m) => m,
+			Err(e) => {
+				unsafe { device.destroy_shader_module(vert_module, None) }?;
+				destroy_pipeline_layout(&device, layout);
+				return Err(e);
+			}
+		};
+
+		let handle = match create_graphics_pipeline_inner(
+			&device,
+			layout,
+			vert_module,
+			frag_module,
+			PipelineVertexInput::Vertexless,
+			PipelineDepth::Disabled,
+			PipelineBlend::PremultipliedAlpha,
+			cache,
+		) {
+			Ok(h) => h,
+			Err(e) => {
+				destroy_pipeline_layout(&device, layout);
+				return Err(e);
+			}
+		};
+		Ok(Self {
+			handle,
+			layout,
+			device,
+		})
+	}
+
+	pub(crate) const fn raw(&self) -> vk::Pipeline {
+		self.handle
+	}
+
+	pub(crate) const fn layout(&self) -> vk::PipelineLayout {
+		self.layout
+	}
+}
+
+impl Drop for CanvasGridPipeline {
 	fn drop(&mut self) {
 		destroy_pipeline(&self.device, self.handle);
 		destroy_pipeline_layout(&self.device, self.layout);
@@ -371,15 +472,15 @@ impl UnlitPipeline {
 				"unlit pipeline requires 96 bytes of push constants",
 			));
 		}
-		let push_range = vk::PushConstantRange::default()
-			.stage_flags(vk::ShaderStageFlagBits::VERTEX_BIT | vk::ShaderStageFlagBits::FRAGMENT_BIT)
-			.offset(0)
-			.size(UNLIT_PUSH_SIZE);
+		let push_range = vk::PushConstantRange::new()
+			.set_stage_flags(vk::ShaderStageFlagBits::VERTEX_BIT | vk::ShaderStageFlagBits::FRAGMENT_BIT)
+			.set_offset(0)
+			.set_size(UNLIT_PUSH_SIZE);
 		let set_layouts = [sampler_layout];
-		let layout_info = vk::PipelineLayoutCreateInfo::default()
-			.set_layouts(&set_layouts)
+		let layout_info = vk::PipelineLayoutCreateInfo::new()
+			.set_set_layouts(&set_layouts)
 			.map_err(Error::from)?
-			.push_constant_ranges(std::slice::from_ref(&push_range));
+			.set_push_constant_ranges(std::slice::from_ref(&push_range));
 		let layout =
 			unsafe { device.create_pipeline_layout(&(layout_info).map_err(Error::from)?, None) }
 				.map_err(|s| Error::backend_failure("Vulkan", "unlit pipeline-layout creation", s))?;
@@ -404,6 +505,7 @@ impl UnlitPipeline {
 			layout,
 			vert_module,
 			frag_module,
+			PipelineVertexInput::MeshVertex,
 			PipelineDepth::Disabled,
 			PipelineBlend::PremultipliedAlpha,
 			cache,
@@ -469,15 +571,15 @@ impl SurfacePipeline {
 				"surface pipeline requires 128 bytes of push constants",
 			));
 		}
-		let push_range = vk::PushConstantRange::default()
-			.stage_flags(vk::ShaderStageFlagBits::VERTEX_BIT)
-			.offset(0)
-			.size(SURFACE_PUSH_SIZE);
+		let push_range = vk::PushConstantRange::new()
+			.set_stage_flags(vk::ShaderStageFlagBits::VERTEX_BIT)
+			.set_offset(0)
+			.set_size(SURFACE_PUSH_SIZE);
 		let set_layouts = [scene_layout, material_layout];
-		let layout_info = vk::PipelineLayoutCreateInfo::default()
-			.set_layouts(&set_layouts)
+		let layout_info = vk::PipelineLayoutCreateInfo::new()
+			.set_set_layouts(&set_layouts)
 			.map_err(Error::from)?
-			.push_constant_ranges(std::slice::from_ref(&push_range));
+			.set_push_constant_ranges(std::slice::from_ref(&push_range));
 		let layout =
 			unsafe { device.create_pipeline_layout(&(layout_info).map_err(Error::from)?, None) }
 				.map_err(|s| Error::backend_failure("Vulkan", "surface pipeline-layout creation", s))?;
@@ -502,6 +604,7 @@ impl SurfacePipeline {
 			layout,
 			vert_module,
 			frag_module,
+			PipelineVertexInput::MeshVertex,
 			PipelineDepth::WriteAndTest,
 			PipelineBlend::Opaque,
 			cache,
@@ -573,6 +676,7 @@ impl SurfaceBlendPipeline {
 			layout,
 			vert_module,
 			frag_module,
+			PipelineVertexInput::MeshVertex,
 			PipelineDepth::TestOnly,
 			PipelineBlend::PremultipliedAlpha,
 			cache,
@@ -604,13 +708,13 @@ pub(crate) struct UnlitDescriptorLayouts {
 
 impl UnlitDescriptorLayouts {
 	pub(in crate::runtime) fn new(device: std::sync::Arc<vk::Device>) -> Result<Self> {
-		let sampler_binding = vk::DescriptorSetLayoutBinding::default()
-			.binding(0)
-			.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-			.descriptor_count(1)
-			.stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT);
+		let sampler_binding = vk::DescriptorSetLayoutBinding::new()
+			.set_binding(0)
+			.set_descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+			.set_descriptor_count(1)
+			.set_stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT);
 		let bindings = [sampler_binding];
-		let info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
+		let info = vk::DescriptorSetLayoutCreateInfo::new().set_bindings(&bindings);
 		let layout =
 			unsafe { device.create_descriptor_set_layout(&(info).map_err(Error::from)?, None) }
 				.map_err(|s| Error::backend_failure("Vulkan", "unlit descriptor-set-layout creation", s))?;
@@ -649,23 +753,23 @@ impl UnlitDescriptorArena {
 		layout: vk::DescriptorSetLayout,
 		set_count: u32,
 	) -> Result<Self> {
-		let sampler_info = vk::SamplerCreateInfo::default()
-			.mag_filter(vk::Filter::LINEAR)
-			.min_filter(vk::Filter::LINEAR)
-			.mipmap_mode(vk::SamplerMipmapMode::NEAREST)
-			.address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-			.address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-			.address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-			.min_lod(0.0)
-			.max_lod(0.0);
+		let sampler_info = vk::SamplerCreateInfo::new()
+			.set_mag_filter(vk::Filter::LINEAR)
+			.set_min_filter(vk::Filter::LINEAR)
+			.set_mipmap_mode(vk::SamplerMipmapMode::NEAREST)
+			.set_address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+			.set_address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+			.set_address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+			.set_min_lod(0.0)
+			.set_max_lod(0.0);
 		let sampler = unsafe { device.create_sampler(&sampler_info, None) }
 			.map_err(|source| Error::backend_failure("Vulkan", "unlit sampler creation", source))?;
-		let pool_size = vk::DescriptorPoolSize::default()
-			.r#type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-			.descriptor_count(set_count);
-		let pool_info = vk::DescriptorPoolCreateInfo::default()
-			.max_sets(set_count)
-			.pool_sizes(std::slice::from_ref(&pool_size));
+		let pool_size = vk::DescriptorPoolSize::new()
+			.set_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+			.set_descriptor_count(set_count);
+		let pool_info = vk::DescriptorPoolCreateInfo::new()
+			.set_max_sets(set_count)
+			.set_pool_sizes(std::slice::from_ref(&pool_size));
 		let pool =
 			match unsafe { device.create_descriptor_pool(&(pool_info).map_err(Error::from)?, None) } {
 				Ok(pool) => pool,
@@ -679,9 +783,9 @@ impl UnlitDescriptorArena {
 				}
 			};
 		let layouts = vec![layout; set_count as usize];
-		let allocate_info = vk::DescriptorSetAllocateInfo::default()
-			.descriptor_pool(pool)
-			.set_layouts(&layouts);
+		let allocate_info = vk::DescriptorSetAllocateInfo::new()
+			.set_descriptor_pool(pool)
+			.set_set_layouts(&layouts);
 		let allocate_info = allocate_info.map_err(Error::from)?;
 		let mut sets = vec![vk::DescriptorSet::default(); layouts.len()];
 		let sets = match unsafe { device.allocate_descriptor_sets(&allocate_info, &mut sets) } {
@@ -715,15 +819,15 @@ impl UnlitDescriptorArena {
 			.sets
 			.get(set_index)
 			.ok_or_else(|| Error::internal("unlit descriptor-set index is out of range"))?;
-		let image = vk::DescriptorImageInfo::default()
-			.sampler(self.sampler)
-			.image_view(view)
-			.image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-		let write = vk::WriteDescriptorSet::default()
-			.dst_set(set)
-			.dst_binding(0)
-			.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-			.image_info(std::slice::from_ref(&image));
+		let image = vk::DescriptorImageInfo::new()
+			.set_sampler(self.sampler)
+			.set_image_view(view)
+			.set_image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+		let write = vk::WriteDescriptorSet::new()
+			.set_dst_set(set)
+			.set_dst_binding(0)
+			.set_descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+			.set_image_info(std::slice::from_ref(&image));
 		unsafe {
 			self
 				.device
@@ -760,13 +864,13 @@ pub(crate) struct SurfaceDescriptorLayouts {
 impl SurfaceDescriptorLayouts {
 	pub(in crate::runtime) fn new(device: std::sync::Arc<vk::Device>) -> Result<Self> {
 		// Set 0: scene lights UBO.
-		let scene_binding = vk::DescriptorSetLayoutBinding::default()
-			.binding(0)
-			.descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-			.descriptor_count(1)
-			.stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT);
+		let scene_binding = vk::DescriptorSetLayoutBinding::new()
+			.set_binding(0)
+			.set_descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+			.set_descriptor_count(1)
+			.set_stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT);
 		let scene_bindings = [scene_binding];
-		let scene_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&scene_bindings);
+		let scene_info = vk::DescriptorSetLayoutCreateInfo::new().set_bindings(&scene_bindings);
 		let scene_layout =
 			unsafe { device.create_descriptor_set_layout(&(scene_info).map_err(Error::from)?, None) }
 				.map_err(|s| {
@@ -775,28 +879,28 @@ impl SurfaceDescriptorLayouts {
 
 		// Set 1: base-color / ORM / normal samplers + material params UBO.
 		let mat_bindings = [
-			vk::DescriptorSetLayoutBinding::default()
-				.binding(0)
-				.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-				.descriptor_count(1)
-				.stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT),
-			vk::DescriptorSetLayoutBinding::default()
-				.binding(1)
-				.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-				.descriptor_count(1)
-				.stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT),
-			vk::DescriptorSetLayoutBinding::default()
-				.binding(2)
-				.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-				.descriptor_count(1)
-				.stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT),
-			vk::DescriptorSetLayoutBinding::default()
-				.binding(3)
-				.descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-				.descriptor_count(1)
-				.stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT),
+			vk::DescriptorSetLayoutBinding::new()
+				.set_binding(0)
+				.set_descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.set_descriptor_count(1)
+				.set_stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT),
+			vk::DescriptorSetLayoutBinding::new()
+				.set_binding(1)
+				.set_descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.set_descriptor_count(1)
+				.set_stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT),
+			vk::DescriptorSetLayoutBinding::new()
+				.set_binding(2)
+				.set_descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.set_descriptor_count(1)
+				.set_stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT),
+			vk::DescriptorSetLayoutBinding::new()
+				.set_binding(3)
+				.set_descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+				.set_descriptor_count(1)
+				.set_stage_flags(vk::ShaderStageFlagBits::FRAGMENT_BIT),
 		];
-		let mat_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&mat_bindings);
+		let mat_info = vk::DescriptorSetLayoutCreateInfo::new().set_bindings(&mat_bindings);
 		let material_layout =
 			match unsafe { device.create_descriptor_set_layout(&(mat_info).map_err(Error::from)?, None) }
 			{
@@ -858,31 +962,31 @@ impl SurfaceDescriptorArena {
 		max_materials_per_slot: u32,
 	) -> Result<Self> {
 		let max_materials_per_slot = max_materials_per_slot.max(1);
-		let sampler_info = vk::SamplerCreateInfo::default()
-			.mag_filter(vk::Filter::LINEAR)
-			.min_filter(vk::Filter::LINEAR)
-			.mipmap_mode(vk::SamplerMipmapMode::NEAREST)
-			.address_mode_u(vk::SamplerAddressMode::REPEAT)
-			.address_mode_v(vk::SamplerAddressMode::REPEAT)
-			.address_mode_w(vk::SamplerAddressMode::REPEAT)
-			.min_lod(0.0)
-			.max_lod(0.0);
+		let sampler_info = vk::SamplerCreateInfo::new()
+			.set_mag_filter(vk::Filter::LINEAR)
+			.set_min_filter(vk::Filter::LINEAR)
+			.set_mipmap_mode(vk::SamplerMipmapMode::NEAREST)
+			.set_address_mode_u(vk::SamplerAddressMode::REPEAT)
+			.set_address_mode_v(vk::SamplerAddressMode::REPEAT)
+			.set_address_mode_w(vk::SamplerAddressMode::REPEAT)
+			.set_min_lod(0.0)
+			.set_max_lod(0.0);
 		let sampler = unsafe { device.create_sampler(&sampler_info, None) }
 			.map_err(|source| Error::backend_failure("Vulkan", "surface sampler creation", source))?;
 		let mat_set_total = set_count.saturating_mul(max_materials_per_slot);
 		let pool_sizes = [
-			vk::DescriptorPoolSize::default()
-				.r#type(vk::DescriptorType::UNIFORM_BUFFER)
+			vk::DescriptorPoolSize::new()
+				.set_type(vk::DescriptorType::UNIFORM_BUFFER)
 				// 1 scene UBO per slot + 1 material UBO per material set
-				.descriptor_count(set_count.saturating_add(mat_set_total)),
-			vk::DescriptorPoolSize::default()
-				.r#type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.set_descriptor_count(set_count.saturating_add(mat_set_total)),
+			vk::DescriptorPoolSize::new()
+				.set_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
 				// 3 texture bindings per material set
-				.descriptor_count(mat_set_total.saturating_mul(3)),
+				.set_descriptor_count(mat_set_total.saturating_mul(3)),
 		];
-		let pool_info = vk::DescriptorPoolCreateInfo::default()
-			.max_sets(set_count.saturating_add(mat_set_total))
-			.pool_sizes(&pool_sizes);
+		let pool_info = vk::DescriptorPoolCreateInfo::new()
+			.set_max_sets(set_count.saturating_add(mat_set_total))
+			.set_pool_sizes(&pool_sizes);
 		let pool =
 			match unsafe { device.create_descriptor_pool(&(pool_info).map_err(Error::from)?, None) } {
 				Ok(p) => p,
@@ -897,9 +1001,9 @@ impl SurfaceDescriptorArena {
 			};
 		let allocate_n = |layout: vk::DescriptorSetLayout, n: u32| -> Result<Vec<vk::DescriptorSet>> {
 			let layouts = vec![layout; n as usize];
-			let info = vk::DescriptorSetAllocateInfo::default()
-				.descriptor_pool(pool)
-				.set_layouts(&layouts)
+			let info = vk::DescriptorSetAllocateInfo::new()
+				.set_descriptor_pool(pool)
+				.set_set_layouts(&layouts)
 				.map_err(Error::from)?;
 			let mut sets = vec![vk::DescriptorSet::default(); layouts.len()];
 			unsafe { device.allocate_descriptor_sets(&info, &mut sets) }.map_err(Error::from)?;
@@ -954,14 +1058,14 @@ impl SurfaceDescriptorArena {
 			.scene_sets
 			.get(slot_index)
 			.ok_or_else(|| Error::internal("surface scene set index is out of range"))?;
-		let scene_info = vk::DescriptorBufferInfo::default()
-			.buffer(scene_buffer)
-			.range(scene_size);
-		let write = vk::WriteDescriptorSet::default()
-			.dst_set(scene_set)
-			.dst_binding(0)
-			.descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-			.buffer_info(std::slice::from_ref(&scene_info));
+		let scene_info = vk::DescriptorBufferInfo::new()
+			.set_buffer(scene_buffer)
+			.set_range(scene_size);
+		let write = vk::WriteDescriptorSet::new()
+			.set_dst_set(scene_set)
+			.set_dst_binding(0)
+			.set_descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+			.set_buffer_info(std::slice::from_ref(&scene_info));
 		unsafe {
 			self
 				.device
@@ -998,38 +1102,38 @@ impl SurfaceDescriptorArena {
 			.get(flat)
 			.ok_or_else(|| Error::internal("surface material set index is out of range"))?;
 		let sampler_image = |view: Option<vk::ImageView>| {
-			vk::DescriptorImageInfo::default()
-				.sampler(self.sampler)
-				.image_view(view.unwrap_or(white_view))
-				.image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+			vk::DescriptorImageInfo::new()
+				.set_sampler(self.sampler)
+				.set_image_view(view.unwrap_or(white_view))
+				.set_image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
 		};
 		let base_img = sampler_image(base_view);
 		let orm_img = sampler_image(orm_view);
 		let normal_img = sampler_image(normal_view);
-		let mat_buf_info = vk::DescriptorBufferInfo::default()
-			.buffer(material_buffer)
-			.range(material_size);
+		let mat_buf_info = vk::DescriptorBufferInfo::new()
+			.set_buffer(material_buffer)
+			.set_range(material_size);
 		let writes = [
-			vk::WriteDescriptorSet::default()
-				.dst_set(mat_set)
-				.dst_binding(0)
-				.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-				.image_info(std::slice::from_ref(&base_img)),
-			vk::WriteDescriptorSet::default()
-				.dst_set(mat_set)
-				.dst_binding(1)
-				.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-				.image_info(std::slice::from_ref(&orm_img)),
-			vk::WriteDescriptorSet::default()
-				.dst_set(mat_set)
-				.dst_binding(2)
-				.descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-				.image_info(std::slice::from_ref(&normal_img)),
-			vk::WriteDescriptorSet::default()
-				.dst_set(mat_set)
-				.dst_binding(3)
-				.descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-				.buffer_info(std::slice::from_ref(&mat_buf_info)),
+			vk::WriteDescriptorSet::new()
+				.set_dst_set(mat_set)
+				.set_dst_binding(0)
+				.set_descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.set_image_info(std::slice::from_ref(&base_img)),
+			vk::WriteDescriptorSet::new()
+				.set_dst_set(mat_set)
+				.set_dst_binding(1)
+				.set_descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.set_image_info(std::slice::from_ref(&orm_img)),
+			vk::WriteDescriptorSet::new()
+				.set_dst_set(mat_set)
+				.set_dst_binding(2)
+				.set_descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+				.set_image_info(std::slice::from_ref(&normal_img)),
+			vk::WriteDescriptorSet::new()
+				.set_dst_set(mat_set)
+				.set_dst_binding(3)
+				.set_descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+				.set_buffer_info(std::slice::from_ref(&mat_buf_info)),
 		]
 		.into_iter()
 		.collect::<std::result::Result<Vec<_>, _>>()
@@ -1068,140 +1172,154 @@ enum PipelineBlend {
 	PremultipliedAlpha,
 }
 
+/// Vertex-fetch configuration for a graphics pipeline.
+enum PipelineVertexInput {
+	/// MeshVertex layout: position(0,f3,off0), normal(1,f3,off12),
+	/// uv(2,f2,off24), color(3,f4,off32) — stride 48.
+	MeshVertex,
+	/// No vertex buffers — vertex shader derives geometry from SV_VertexID.
+	Vertexless,
+}
+
 /// Create a graphics pipeline and immediately destroy its shader modules.
 /// Vertex input layout matches MeshVertex (stride 48, locations 0–3).
+#[allow(clippy::too_many_arguments)]
 fn create_graphics_pipeline_inner(
 	device: &vk::Device,
 	layout: vk::PipelineLayout,
 	vert_module: vk::ShaderModule,
 	frag_module: vk::ShaderModule,
+	vertex: PipelineVertexInput,
 	depth: PipelineDepth,
 	blend: PipelineBlend,
 	cache: vk::PipelineCache,
 ) -> Result<vk::Pipeline> {
 	let stages = [
-		vk::PipelineShaderStageCreateInfo::default()
-			.stage(vk::ShaderStageFlagBits::VERTEX_BIT)
-			.module(vert_module)
-			.name(c"main"),
-		vk::PipelineShaderStageCreateInfo::default()
-			.stage(vk::ShaderStageFlagBits::FRAGMENT_BIT)
-			.module(frag_module)
-			.name(c"main"),
+		vk::PipelineShaderStageCreateInfo::new()
+			.set_stage(vk::ShaderStageFlagBits::VERTEX_BIT)
+			.set_module(vert_module)
+			.set_name(c"main"),
+		vk::PipelineShaderStageCreateInfo::new()
+			.set_stage(vk::ShaderStageFlagBits::FRAGMENT_BIT)
+			.set_module(frag_module)
+			.set_name(c"main"),
 	];
 
 	// MeshVertex layout: position(0,f3,off0), normal(1,f3,off12),
 	// uv(2,f2,off24), color(3,f4,off32) — stride 48.
-	let binding = vk::VertexInputBindingDescription::default()
-		.binding(0)
-		.stride(48)
-		.input_rate(vk::VertexInputRate::VERTEX);
+	let binding = vk::VertexInputBindingDescription::new()
+		.set_binding(0)
+		.set_stride(48)
+		.set_input_rate(vk::VertexInputRate::VERTEX);
 	let attributes = [
-		vk::VertexInputAttributeDescription::default()
-			.location(0)
-			.binding(0)
-			.format(vk::Format::R32G32B32_SFLOAT)
-			.offset(0),
-		vk::VertexInputAttributeDescription::default()
-			.location(1)
-			.binding(0)
-			.format(vk::Format::R32G32B32_SFLOAT)
-			.offset(12),
-		vk::VertexInputAttributeDescription::default()
-			.location(2)
-			.binding(0)
-			.format(vk::Format::R32G32_SFLOAT)
-			.offset(24),
-		vk::VertexInputAttributeDescription::default()
-			.location(3)
-			.binding(0)
-			.format(vk::Format::R32G32B32A32_SFLOAT)
-			.offset(32),
+		vk::VertexInputAttributeDescription::new()
+			.set_location(0)
+			.set_binding(0)
+			.set_format(vk::Format::R32G32B32_SFLOAT)
+			.set_offset(0),
+		vk::VertexInputAttributeDescription::new()
+			.set_location(1)
+			.set_binding(0)
+			.set_format(vk::Format::R32G32B32_SFLOAT)
+			.set_offset(12),
+		vk::VertexInputAttributeDescription::new()
+			.set_location(2)
+			.set_binding(0)
+			.set_format(vk::Format::R32G32_SFLOAT)
+			.set_offset(24),
+		vk::VertexInputAttributeDescription::new()
+			.set_location(3)
+			.set_binding(0)
+			.set_format(vk::Format::R32G32B32A32_SFLOAT)
+			.set_offset(32),
 	];
-	let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
-		.vertex_binding_descriptions(std::slice::from_ref(&binding))
-		.map_err(Error::from)?
-		.vertex_attribute_descriptions(&attributes)
-		.map_err(Error::from)?;
+	let vertex_input = match vertex {
+		PipelineVertexInput::MeshVertex => vk::PipelineVertexInputStateCreateInfo::new()
+			.set_vertex_binding_descriptions(std::slice::from_ref(&binding))
+			.map_err(Error::from)?
+			.set_vertex_attribute_descriptions(&attributes)
+			.map_err(Error::from)?,
+		PipelineVertexInput::Vertexless => vk::PipelineVertexInputStateCreateInfo::new(),
+	};
 
-	let assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
-		.topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-	let viewport_state = vk::PipelineViewportStateCreateInfo::default()
-		.viewport_count(1)
-		.scissor_count(1);
-	let raster = vk::PipelineRasterizationStateCreateInfo::default()
-		.polygon_mode(vk::PolygonMode::FILL)
-		.cull_mode(vk::CullModeFlagBits::NONE)
-		.front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-		.line_width(1.0);
-	let multisample = vk::PipelineMultisampleStateCreateInfo::default()
-		.rasterization_samples(vk::SampleCountFlagBits::_1_BIT);
+	let assembly = vk::PipelineInputAssemblyStateCreateInfo::new()
+		.set_topology(vk::PrimitiveTopology::TRIANGLE_LIST);
+	let viewport_state = vk::PipelineViewportStateCreateInfo::new()
+		.set_viewport_count(1)
+		.set_scissor_count(1);
+	let raster = vk::PipelineRasterizationStateCreateInfo::new()
+		.set_polygon_mode(vk::PolygonMode::FILL)
+		.set_cull_mode(vk::CullModeFlagBits::NONE)
+		.set_front_face(vk::FrontFace::COUNTER_CLOCKWISE)
+		.set_line_width(1.0);
+	let multisample = vk::PipelineMultisampleStateCreateInfo::new()
+		.set_rasterization_samples(vk::SampleCountFlagBits::_1_BIT);
 
 	let depth_stencil = match depth {
-		PipelineDepth::Disabled => vk::PipelineDepthStencilStateCreateInfo::default(),
-		PipelineDepth::WriteAndTest => vk::PipelineDepthStencilStateCreateInfo::default()
-			.depth_test_enable(u32::from(true))
-			.depth_write_enable(u32::from(true))
-			.depth_compare_op(vk::CompareOp::LESS)
-			.min_depth_bounds(0.0)
-			.max_depth_bounds(1.0),
-		PipelineDepth::TestOnly => vk::PipelineDepthStencilStateCreateInfo::default()
-			.depth_test_enable(u32::from(true))
-			.depth_write_enable(u32::from(false))
-			.depth_compare_op(vk::CompareOp::LESS)
-			.min_depth_bounds(0.0)
-			.max_depth_bounds(1.0),
+		PipelineDepth::Disabled => vk::PipelineDepthStencilStateCreateInfo::new(),
+		PipelineDepth::WriteAndTest => vk::PipelineDepthStencilStateCreateInfo::new()
+			.set_depth_test_enable(u32::from(true))
+			.set_depth_write_enable(u32::from(true))
+			.set_depth_compare_op(vk::CompareOp::LESS)
+			.set_min_depth_bounds(0.0)
+			.set_max_depth_bounds(1.0),
+		PipelineDepth::TestOnly => vk::PipelineDepthStencilStateCreateInfo::new()
+			.set_depth_test_enable(u32::from(true))
+			.set_depth_write_enable(u32::from(false))
+			.set_depth_compare_op(vk::CompareOp::LESS)
+			.set_min_depth_bounds(0.0)
+			.set_max_depth_bounds(1.0),
 	};
 
 	let blend_attachment = match blend {
-		PipelineBlend::Opaque => vk::PipelineColorBlendAttachmentState::default().color_write_mask(
+		PipelineBlend::Opaque => vk::PipelineColorBlendAttachmentState::new().set_color_write_mask(
 			vk::ColorComponentFlagBits::R_BIT
 				| vk::ColorComponentFlagBits::G_BIT
 				| vk::ColorComponentFlagBits::B_BIT
 				| vk::ColorComponentFlagBits::A_BIT,
 		),
-		PipelineBlend::PremultipliedAlpha => vk::PipelineColorBlendAttachmentState::default()
-			.blend_enable(u32::from(true))
-			.src_color_blend_factor(vk::BlendFactor::ONE)
-			.dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-			.color_blend_op(vk::BlendOp::ADD)
-			.src_alpha_blend_factor(vk::BlendFactor::ONE)
-			.dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-			.alpha_blend_op(vk::BlendOp::ADD)
-			.color_write_mask(
+		PipelineBlend::PremultipliedAlpha => vk::PipelineColorBlendAttachmentState::new()
+			.set_blend_enable(u32::from(true))
+			.set_src_color_blend_factor(vk::BlendFactor::ONE)
+			.set_dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+			.set_color_blend_op(vk::BlendOp::ADD)
+			.set_src_alpha_blend_factor(vk::BlendFactor::ONE)
+			.set_dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+			.set_alpha_blend_op(vk::BlendOp::ADD)
+			.set_color_write_mask(
 				vk::ColorComponentFlagBits::R_BIT
 					| vk::ColorComponentFlagBits::G_BIT
 					| vk::ColorComponentFlagBits::B_BIT
 					| vk::ColorComponentFlagBits::A_BIT,
 			),
 	};
-	let color_blend = vk::PipelineColorBlendStateCreateInfo::default()
-		.attachments(std::slice::from_ref(&blend_attachment))
+	let color_blend = vk::PipelineColorBlendStateCreateInfo::new()
+		.set_attachments(std::slice::from_ref(&blend_attachment))
 		.map_err(Error::from)?;
 
 	let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-	let dynamic = vk::PipelineDynamicStateCreateInfo::default()
-		.dynamic_states(&dynamic_states)
+	let dynamic = vk::PipelineDynamicStateCreateInfo::new()
+		.set_dynamic_states(&dynamic_states)
 		.map_err(Error::from)?;
 	let color_formats = [RENDER_COLOR_FORMAT];
-	let mut rendering = vk::PipelineRenderingCreateInfo::default()
-		.color_attachment_formats(&color_formats)
+	let mut rendering = vk::PipelineRenderingCreateInfo::new()
+		.set_color_attachment_formats(&color_formats)
 		.map_err(Error::from)?
-		.depth_attachment_format(RENDER_DEPTH_FORMAT);
-	let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
+		.set_depth_attachment_format(RENDER_DEPTH_FORMAT);
+	let pipeline_info = vk::GraphicsPipelineCreateInfo::new()
 		.push_next(&mut rendering)
 		.map_err(Error::from)?
-		.stages(&stages)
+		.set_stages(&stages)
 		.map_err(Error::from)?
-		.vertex_input_state(&vertex_input)
-		.input_assembly_state(&assembly)
-		.viewport_state(&viewport_state)
-		.rasterization_state(&raster)
-		.multisample_state(&multisample)
-		.depth_stencil_state(&depth_stencil)
-		.color_blend_state(&color_blend)
-		.dynamic_state(&dynamic)
-		.layout(layout);
+		.set_vertex_input_state(&vertex_input)
+		.set_input_assembly_state(&assembly)
+		.set_viewport_state(&viewport_state)
+		.set_rasterization_state(&raster)
+		.set_multisample_state(&multisample)
+		.set_depth_stencil_state(&depth_stencil)
+		.set_color_blend_state(&color_blend)
+		.set_dynamic_state(&dynamic)
+		.set_layout(layout);
 
 	let mut pipelines = [vk::Pipeline::default(); 1];
 	// SAFETY: the create-info chain and output buffer remain live and writable
@@ -1257,7 +1375,7 @@ fn decode_spirv_bytes(bytes: &[u8]) -> Result<Vec<u32>> {
 }
 
 fn create_shader_module(device: &vk::Device, words: &[u32]) -> Result<vk::ShaderModule> {
-	let info = vk::ShaderModuleCreateInfo::default().code(words);
+	let info = vk::ShaderModuleCreateInfo::new().set_code(words);
 	unsafe { device.create_shader_module(&info, None) }
 		.map_err(|s| Error::backend_failure("Vulkan", "graphics shader-module creation", s))
 }
@@ -1296,8 +1414,8 @@ impl PipelineCache {
 	/// Returns an error when `vkCreatePipelineCache` rejects the seed data or
 	/// fails on the device.
 	pub(super) fn new(device: std::sync::Arc<vk::Device>, initial_data: &[u8]) -> Result<Self> {
-		let info = vk::PipelineCacheCreateInfo::default()
-			.initial_data(initial_data)
+		let info = vk::PipelineCacheCreateInfo::new()
+			.set_initial_data(initial_data)
 			.map_err(Error::from)?;
 		// SAFETY: the seed slice outlives the call, and the retained device
 		// outlives the returned cache.
@@ -1404,7 +1522,7 @@ impl Drop for PipelineCache {
 
 // ── Compute pipeline ──────────────────────────────────────────────────────────
 
-pub(super) struct ComputePipeline {
+pub(in crate::runtime) struct ComputePipeline {
 	handle: vk::Pipeline,
 	layout: vk::PipelineLayout,
 	max_dispatch_group_count: [u32; 3],
@@ -1423,15 +1541,15 @@ impl ComputePipeline {
 		validate_artifact_limits(artifact.workgroup_size, push_constant_size, limits)?;
 
 		let descriptor_layouts = [descriptor_layout];
-		let push_range = vk::PushConstantRange::default()
-			.stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT)
-			.offset(0)
-			.size(push_constant_size);
+		let push_range = vk::PushConstantRange::new()
+			.set_stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT)
+			.set_offset(0)
+			.set_size(push_constant_size);
 		let push_ranges = [push_range];
-		let layout_info = vk::PipelineLayoutCreateInfo::default()
-			.set_layouts(&descriptor_layouts)
+		let layout_info = vk::PipelineLayoutCreateInfo::new()
+			.set_set_layouts(&descriptor_layouts)
 			.map_err(Error::from)?
-			.push_constant_ranges(&push_ranges);
+			.set_push_constant_ranges(&push_ranges);
 		// SAFETY: the shared descriptor layout is live and the reflected push range
 		// fits the queried device limit and Vulkan's four-byte alignment requirements.
 		let layout =
@@ -1447,7 +1565,7 @@ impl ComputePipeline {
 				return Err(error);
 			}
 		};
-		let module_info = vk::ShaderModuleCreateInfo::default().code(&words);
+		let module_info = vk::ShaderModuleCreateInfo::new().set_code(&words);
 		// SAFETY: build-time spirv-val and runtime word validation proved a complete
 		// SPIR-V word stream; the device remains live through pipeline creation.
 		let module = match unsafe { device.create_shader_module(&module_info, None) } {
@@ -1462,13 +1580,13 @@ impl ComputePipeline {
 			}
 		};
 
-		let stage = vk::PipelineShaderStageCreateInfo::default()
-			.stage(vk::ShaderStageFlagBits::COMPUTE_BIT)
-			.module(module)
-			.name(c"main");
-		let pipeline_info = vk::ComputePipelineCreateInfo::default()
-			.stage(stage)
-			.layout(layout);
+		let stage = vk::PipelineShaderStageCreateInfo::new()
+			.set_stage(vk::ShaderStageFlagBits::COMPUTE_BIT)
+			.set_module(module)
+			.set_name(c"main");
+		let pipeline_info = vk::ComputePipelineCreateInfo::new()
+			.set_stage(stage)
+			.set_layout(layout);
 		// SAFETY: the module contains the reflected compute entry point, and the
 		// pipeline layout exactly matches its validated descriptor and push ABI.
 		let mut pipelines = [vk::Pipeline::default(); 1];

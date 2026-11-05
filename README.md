@@ -153,7 +153,7 @@ Optional generator previews also belong under `target/gen/`; live schema-owned
 staging tool copies only runnable executables into `bin/<profile>/`:
 
 ```bash
-python3 tool/build/stage.py --profile release --target core_mat_mul_intro
+python3 tool/oa stage --profile release --target core_mat_mul_intro
 ./bin/release/sdk/tutorials/core/core_mat_mul_intro
 ```
 
@@ -162,8 +162,8 @@ and Release, each with an optional Python variant. The shared command-line
 workflow is also available directly:
 
 ```bash
-python3 tool/build/workflow.py --profile debug
-python3 tool/build/workflow.py --profile release --clean --python
+python3 tool/oa build --profile debug
+python3 tool/oa build --profile release --clean --python
 ```
 
 It stages Rust executables and test runners under `bin/debug/` or
@@ -236,7 +236,7 @@ reclassified as CPU-Vulkan validation.
 
 ```bash
 .venv/bin/python -m unittest discover -s test/py -v
-python3 tool/gen/fn/generate.py --check
+python3 tool/oa gen fn --check
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features

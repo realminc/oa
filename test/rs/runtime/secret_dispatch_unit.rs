@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime::shader::KernelId;
+use crate::runtime::dna::kernel::KernelId;
 
 #[test]
 fn secret_kernel_cannot_enter_ordinary_graph_recording() {
@@ -19,6 +19,7 @@ fn secret_kernel_cannot_enter_ordinary_graph_recording() {
 			buffers: Vec::new(),
 			push_constants: Vec::new(),
 			workgroups: [1, 1, 1],
+			indirect: None,
 			semantic_ops: Vec::new(),
 			op_contract_hash: 0,
 		};

@@ -1,0 +1,90 @@
+{
+	"schema_version": 1,
+	"domain": "input",
+	"family": "input_types",
+	"imports": [],
+	"types": [
+		{
+			"class": "config",
+			"name": "NavigationConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "zoom_min",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "zoom_max",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "mouse_wheel_sensitivity",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "wheel_pan_scale",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "ctrl_scroll_dolly_scale",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "rmb_zoom_drag_scale",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "keyboard_pan_step",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "touchpad_pan_scale",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "pinch_gesture_scale",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "keyboard_zoom_step",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "animation_duration_ms",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

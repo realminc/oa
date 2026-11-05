@@ -4,6 +4,7 @@ mod fragmented;
 mod matroska;
 mod mpeg_ts;
 
+pub use crate::video::types::VideoContainerInfo;
 use std::{
 	collections::BTreeSet,
 	fs::File,
@@ -82,21 +83,6 @@ impl VideoTimeBase {
 	pub const fn denominator(self) -> u32 {
 		self.denominator
 	}
-}
-
-/// Immutable metadata for the selected video track.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct VideoContainerInfo {
-	kind: VideoContainerKind,
-	codec: VideoCodec,
-	width: u32,
-	height: u32,
-	time_base: VideoTimeBase,
-	duration: u64,
-	sample_count: u32,
-	track_id: u32,
-	track_count: u32,
-	decode_profile: Option<VideoDecodeProfile>,
 }
 
 impl VideoContainerInfo {

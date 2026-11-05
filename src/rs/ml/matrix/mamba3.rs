@@ -1,5 +1,6 @@
 //! Mamba-3 selective state-space Matrix operations and adjoints.
 
+pub use crate::ml::types::{Mamba3PreprocessConfig, Mamba3PreprocessResult, SsmConfig};
 use crate::{
 	DType, Error, Matrix, OpAttribute, Result,
 	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
@@ -9,31 +10,6 @@ use crate::ml::{
 	autograd,
 	validation::{shader_u32, validate_f32_same_engine},
 };
-
-/// Geometry and numerical bounds for the fused Mamba-3 projection preprocess.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Mamba3PreprocessConfig {
-	/// Width of the z and x projection slices.
-	pub inner_size: usize,
-	/// Width of each B/C state row.
-	pub state_size: usize,
-	/// Number of selective-state heads.
-	pub num_heads: usize,
-	/// Number of rotary angle pairs.
-	pub num_rope_angles: usize,
-	/// Number of shared B/C groups.
-	pub num_groups: usize,
-	/// Number of B/C rows per group.
-	pub mimo_rank: usize,
-	/// Epsilon used by B/C RMS normalization.
-	pub epsilon: f32,
-	/// Inclusive lower bound for transformed dt.
-	pub dt_min: f32,
-	/// Inclusive upper bound for transformed dt.
-	pub dt_max: f32,
-	/// Positive floor for the magnitude of the negative A token.
-	pub a_floor: f32,
-}
 
 impl Mamba3PreprocessConfig {
 	pub(crate) fn identity(self, operation: &'static str) -> Result<u64> {
@@ -66,27 +42,6 @@ impl Mamba3PreprocessConfig {
 	}
 }
 
-/// Eight values produced by the fused Mamba-3 projection preprocess.
-#[derive(Clone)]
-pub struct Mamba3PreprocessResult {
-	/// Value projection slice.
-	pub x: Matrix,
-	/// Gate projection slice.
-	pub z: Matrix,
-	/// RMS-normalized B rows.
-	pub bh: Matrix,
-	/// RMS-normalized C rows.
-	pub ch: Matrix,
-	/// Clamped positive time steps.
-	pub dt: Matrix,
-	/// Negative A-times-dt log decays.
-	pub adt: Matrix,
-	/// Raw trapezoidal gates.
-	pub trap: Matrix,
-	/// Raw rotary angular velocities.
-	pub angle: Matrix,
-}
-
 impl Mamba3PreprocessResult {
 	pub(crate) fn matrices(&self) -> [&Matrix; 8] {
 		[
@@ -108,35 +63,6 @@ pub struct Mamba3PreprocessBackward {
 	pub projected: Matrix,
 	/// Gradient of the per-head dt bias.
 	pub dt_bias: Matrix,
-}
-
-/// Explicit tensor geometry and optional paths for a selective-state scan.
-///
-/// A zero num_groups means one Q/K group per head, matching OA C++.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SsmConfig {
-	/// Batch size.
-	pub batch_size: usize,
-	/// Sequence length.
-	pub sequence_length: usize,
-	/// Number of value heads.
-	pub num_heads: usize,
-	/// Number of shared Q/K groups, or zero for num_heads.
-	pub num_groups: usize,
-	/// Value width per head.
-	pub head_dim: usize,
-	/// Selective recurrent state width.
-	pub state_size: usize,
-	/// Number of rotary pairs in the state axis.
-	pub num_rope_angles: usize,
-	/// MIMO rank; SISO callers use one.
-	pub mimo_rank: usize,
-	/// Apply the SiLU z gate.
-	pub has_z: bool,
-	/// Apply the learned D skip.
-	pub has_d: bool,
-	/// Apply MIMO output normalization; SISO requires false.
-	pub has_output_norm: bool,
 }
 
 impl SsmConfig {
@@ -657,7 +583,7 @@ fn dispatch_mamba3_preprocess(
 	];
 	let push_constants = geometry.scalar_push_constants(config);
 	let attributes = [OpAttribute::UnsignedInteger {
-		name: "config_identity".into(),
+		name: "configIdentity".into(),
 		value: config.identity(operation)?,
 	}];
 	let inputs = [projected, dt_bias];
@@ -668,6 +594,7 @@ fn dispatch_mamba3_preprocess(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [geometry.rows_u32, 1, 1],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,
@@ -765,12 +692,14 @@ fn dispatch_mamba3_preprocess_backward(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [geometry.rows_u32, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3PreprocessBackwardReduceF32,
 			buffers: &reduce_buffers,
 			push_constants: &reduce_push_constants,
 			workgroups: [geometry.heads_u32.div_ceil(256), 1, 1],
+			indirect: None,
 		},
 	];
 	let attributes = [OpAttribute::UnsignedInteger {
@@ -848,7 +777,7 @@ fn dispatch_mamba3_siso(
 		PushConstant::U32(u32::from(config.has_d)),
 	];
 	let attributes = [OpAttribute::UnsignedInteger {
-		name: "config_identity".into(),
+		name: "configIdentity".into(),
 		value: config.identity(operation)?,
 	}];
 	let outputs = [&output];
@@ -858,6 +787,7 @@ fn dispatch_mamba3_siso(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [geometry.batch_heads, 1, 1],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,
@@ -1005,6 +935,7 @@ fn dispatch_mamba3_siso_step(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [geometry.batch_heads, 1, 1],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,
@@ -1085,7 +1016,7 @@ fn dispatch_mamba3_mimo(
 	];
 	let push_constants = geometry.push_constants(config);
 	let attributes = [OpAttribute::UnsignedInteger {
-		name: "config_identity".into(),
+		name: "configIdentity".into(),
 		value: config.identity(operation)?,
 	}];
 	let outputs = [&output];
@@ -1095,6 +1026,7 @@ fn dispatch_mamba3_mimo(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [geometry.batch_heads, 1, 1],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,
@@ -1274,6 +1206,7 @@ fn dispatch_mamba3_mimo_step(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: [geometry.batch_heads, 1, 1],
+			indirect: None,
 		},
 		SemanticDispatch {
 			contract,
@@ -1593,30 +1526,35 @@ fn dispatch_mamba3_mimo_backward(
 			buffers: &prepare_buffers,
 			push_constants: &prepare_constants,
 			workgroups: [bh, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3MimoBackwardPostF32,
 			buffers: &post_buffers,
 			push_constants: &post_constants,
 			workgroups: [bh, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3MimoBackwardCoreF32,
 			buffers: &core_buffers,
 			push_constants: &core_constants,
 			workgroups: [bh, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3MimoBackwardRotateF32,
 			buffers: &rotate_buffers,
 			push_constants: &rotate_constants,
 			workgroups: [bh, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3MimoBackwardReduceF32,
 			buffers: &reduce_buffers,
 			push_constants: &reduce_constants,
 			workgroups: [reduce_count.div_ceil(256), 1, 1],
+			indirect: None,
 		},
 	];
 	let semantic_inputs = [
@@ -1978,36 +1916,42 @@ fn dispatch_mamba3_siso_backward(
 			buffers: &prepare_buffers,
 			push_constants: &prepare_constants,
 			workgroups: [bh.div_ceil(64), 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoBackwardStateF32,
 			buffers: &state_buffers,
 			push_constants: &state_constants,
 			workgroups: [bh, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoBackwardReverseP16F32,
 			buffers: &reverse_buffers,
 			push_constants: &reverse_constants,
 			workgroups: [bh, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoBackwardFinalizeF32,
 			buffers: &finalize_buffers,
 			push_constants: &finalize_constants,
 			workgroups: [bh.div_ceil(64), 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoBackwardReduceF32,
 			buffers: &reduce_buffers,
 			push_constants: &reduce_constants,
 			workgroups: [reduce_count.div_ceil(256), 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoBackwardGroupReduceF32,
 			buffers: &group_buffers,
 			push_constants: &group_constants,
 			workgroups: [group_count.div_ceil(256), 1, 1],
+			indirect: None,
 		},
 	];
 	let semantic_inputs = [
@@ -2313,54 +2257,63 @@ fn mamba3_siso_backward_chunked(
 			buffers: &prepare_buffers,
 			push_constants: &prepare_constants,
 			workgroups: [geometry.batch_heads.div_ceil(64), 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoChunkSummaryF32,
 			buffers: &summary_buffers,
 			push_constants: &summary_constants,
 			workgroups: [chunk_workgroups, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoChunkPrefixF32,
 			buffers: &prefix_buffers,
 			push_constants: &prefix_constants,
 			workgroups: [geometry.batch_heads, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoChunkDpreF32,
 			buffers: &dpre_buffers,
 			push_constants: &dpre_constants,
 			workgroups: [chunk_workgroups, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoChunkBackwardSummaryF32,
 			buffers: &backward_summary_buffers,
 			push_constants: &backward_summary_constants,
 			workgroups: [chunk_workgroups, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoChunkBackwardPrefixF32,
 			buffers: &backward_prefix_buffers,
 			push_constants: &backward_prefix_constants,
 			workgroups: [geometry.batch_heads, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoChunkBackwardF32,
 			buffers: &backward_buffers,
 			push_constants: &backward_constants,
 			workgroups: [chunk_workgroups, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoChunkFinalizeF32,
 			buffers: &finalize_buffers,
 			push_constants: &finalize_constants,
 			workgroups: [geometry.batch_heads.div_ceil(64), 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoChunkReduceF32,
 			buffers: &reduce_buffers,
 			push_constants: &reduce_constants,
 			workgroups: [reduce_count.div_ceil(256), 1, 1],
+			indirect: None,
 		},
 	];
 	let semantic_inputs = [
@@ -2549,12 +2502,14 @@ fn mamba3_siso_backward_generic(
 			buffers: &generic_buffers,
 			push_constants: &generic_constants,
 			workgroups: [geometry.batch_heads, 1, 1],
+			indirect: None,
 		},
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoBackwardGenericReduceF32,
 			buffers: &reduce_buffers,
 			push_constants: &reduce_constants,
 			workgroups: [reduce_count.div_ceil(256), 1, 1],
+			indirect: None,
 		},
 	];
 	let semantic_inputs = [

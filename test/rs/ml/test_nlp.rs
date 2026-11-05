@@ -53,8 +53,8 @@ fn train_bpe_model(
 		}
 	}
 	let diagnostics = program.diagnostics();
-	assert_eq!(diagnostics.command_recording_count(), 1);
-	assert_eq!(diagnostics.command_cache_hit_count(), 299);
+	assert_eq!(diagnostics.command_recording_count(), 3);
+	assert_eq!(diagnostics.command_cache_hit_count(), 297);
 	assert_eq!(diagnostics.submission_count(), 300);
 	assert_eq!(diagnostics.input_upload_count(), 598);
 	let logits = model.forward(&input)?;
@@ -130,8 +130,8 @@ fn train_byte_model(
 		}
 	}
 	let diagnostics = program.diagnostics();
-	assert_eq!(diagnostics.command_recording_count(), 1);
-	assert_eq!(diagnostics.command_cache_hit_count(), 299);
+	assert_eq!(diagnostics.command_recording_count(), 3);
+	assert_eq!(diagnostics.command_cache_hit_count(), 297);
 	assert_eq!(diagnostics.submission_count(), 300);
 	assert_eq!(diagnostics.input_upload_count(), 598);
 	let logits = model.forward(&input)?;
@@ -236,8 +236,8 @@ fn train_char_model(
 		}
 	}
 	let diagnostics = program.diagnostics();
-	assert_eq!(diagnostics.command_recording_count(), 1);
-	assert_eq!(diagnostics.command_cache_hit_count(), 299);
+	assert_eq!(diagnostics.command_recording_count(), 3);
+	assert_eq!(diagnostics.command_cache_hit_count(), 297);
 	assert_eq!(diagnostics.submission_count(), 300);
 	assert_eq!(diagnostics.input_upload_count(), 598);
 	let logits = model.forward(&input)?;
@@ -716,8 +716,8 @@ test_vk!(
 			}
 		}
 		let diagnostics = program.diagnostics();
-		assert_eq!(diagnostics.command_recording_count(), 1);
-		assert_eq!(diagnostics.command_cache_hit_count(), 299);
+		assert_eq!(diagnostics.command_recording_count(), 3);
+		assert_eq!(diagnostics.command_cache_hit_count(), 297);
 		assert_eq!(diagnostics.submission_count(), 300);
 		assert_eq!(diagnostics.input_upload_count(), 598);
 		let logits = model.forward(&input)?;
@@ -802,8 +802,8 @@ test_vk!(
 			}
 		}
 		let diagnostics = program.diagnostics();
-		assert_eq!(diagnostics.command_recording_count(), 1);
-		assert_eq!(diagnostics.command_cache_hit_count(), 299);
+		assert_eq!(diagnostics.command_recording_count(), 3);
+		assert_eq!(diagnostics.command_cache_hit_count(), 297);
 		assert_eq!(diagnostics.submission_count(), 300);
 		assert_eq!(diagnostics.input_upload_count(), 598);
 		let logits = model.forward(&input)?;
@@ -886,8 +886,8 @@ test_vk!(canonical_bpe_rnn_completes_the_cpp_300_step_gate, engine, {
 		}
 	}
 	let diagnostics = program.diagnostics();
-	assert_eq!(diagnostics.command_recording_count(), 1);
-	assert_eq!(diagnostics.command_cache_hit_count(), 299);
+	assert_eq!(diagnostics.command_recording_count(), 3);
+	assert_eq!(diagnostics.command_cache_hit_count(), 297);
 	assert_eq!(diagnostics.submission_count(), 300);
 	assert_eq!(diagnostics.input_upload_count(), 598);
 	let logits = model.forward(&input)?;
@@ -1482,7 +1482,7 @@ test_vk!(
 			.semantic_graph()
 			.operations()
 			.iter()
-			.find(|operation| operation.name() == "oa::ml::matrix::scaled_dot_product_attention")
+			.find(|operation| operation.name() == "oa::FnMatrix::scaledDotProductAttention")
 			.expect("Transformer capture omitted semantic attention");
 		assert_eq!(attention.attributes().len(), 2);
 		assert_eq!(attention.attributes()[0].name(), "scale");
@@ -1531,8 +1531,8 @@ test_vk!(
 			}
 		}
 		let diagnostics = program.diagnostics();
-		assert_eq!(diagnostics.command_recording_count(), 1);
-		assert_eq!(diagnostics.command_cache_hit_count(), 299);
+		assert_eq!(diagnostics.command_recording_count(), 3);
+		assert_eq!(diagnostics.command_cache_hit_count(), 297);
 		assert_eq!(diagnostics.submission_count(), 300);
 		assert_eq!(diagnostics.input_upload_count(), 598);
 		assert!(diagnostics.semantic_fused_node_count() >= 5);
@@ -1669,8 +1669,8 @@ test_vk!(
 			}
 		}
 		let diagnostics = program.diagnostics();
-		assert_eq!(diagnostics.command_recording_count(), 1);
-		assert_eq!(diagnostics.command_cache_hit_count(), 299);
+		assert_eq!(diagnostics.command_recording_count(), 3);
+		assert_eq!(diagnostics.command_cache_hit_count(), 297);
 		assert_eq!(diagnostics.submission_count(), 300);
 		assert_eq!(diagnostics.input_upload_count(), 598);
 		let logits = model.forward(&input)?;

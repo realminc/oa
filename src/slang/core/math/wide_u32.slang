@@ -1,5 +1,5 @@
 // Exact 32x32 -> two-word product without shaderInt64.
-// Donor: cryptography/pqc/mldsa/mldsa_field.slang, mul32_wide/mulhi32.
+// Donor: crypto/pqc/mldsa/mldsa_field.slang, mul32_wide/mulhi32.
 // Adaptation: mechanical extraction; preserve the independently proved formula.
 
 uint2 mul32_wide(uint a, uint b) {

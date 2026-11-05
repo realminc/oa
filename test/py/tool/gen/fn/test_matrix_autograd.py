@@ -9,30 +9,34 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from .test_generate import GENERATOR, GENERATOR_ROOT
+from .test_generate import GENERATOR_ROOT
+
+sys.path.insert(0, str(GENERATOR_ROOT))
+import oafn.matrix as oa_matrix
+import oafn.schema as oa_schema
+import oafn.util as oa_util
+
 
 
 class MatrixAutogradSchemaTests(unittest.TestCase):
 	def setUp(self):
-		loaders = {
-			"elemwise": GENERATOR.load_schema, "blas": GENERATOR.load_blas_schema,
-			"reduce": GENERATOR.load_reduce_schema, "rng": GENERATOR.load_rng_schema,
-			"index": GENERATOR.load_index_schema, "view": GENERATOR.load_view_schema,
+		self.schemas = {
+			name: oa_schema.load_schema(name, GENERATOR_ROOT / f"schema/matrix/matrix_{name}.json")[0]
+			for name in ("elemwise", "blas", "reduce", "rng", "index", "view")
 		}
-		self.schemas = {name: loader(GENERATOR_ROOT / f"schema/matrix/matrix_{name}.json")[0] for name, loader in loaders.items()}
 
 	def validate_mutation(self, change, family="elemwise"):
 		schema = copy.deepcopy(self.schemas[family])
 		change(schema)
-		with self.assertRaises(GENERATOR.SchemaError):
-			GENERATOR.validate_matrix_autograd_schema(schema)
+		with self.assertRaises(oa_util.SchemaError):
+			oa_matrix.validate_matrix_autograd_schema(schema)
 
-	def test_existing_catalog_has_25_records_and_four_composition_aliases(self):
-		rows = GENERATOR.matrix_autograd_rows(list(self.schemas.values()))
-		self.assertEqual(len(rows), 25)
-		self.assertEqual(len({op["autograd"]["node"] for op in rows}), 25)
+	def test_existing_catalog_has_30_records_and_five_composition_aliases(self):
+		rows = oa_matrix.matrix_autograd_rows(list(self.schemas.values()))
+		self.assertEqual(len(rows), 30)
+		self.assertEqual(len({op["autograd"]["node"] for op in rows}), 30)
 		aliases = {op["name"]: op["autograd"]["target"] for op in self.schemas["elemwise"]["operations"] if op.get("autograd", {}).get("mode") == "alias"}
-		self.assertEqual(aliases, {"neg": "scale", "add_scalar": "scale", "sub_scalar": "scale", "div_scalar": "scale"})
+		self.assertEqual(aliases, {"neg": "scale", "add_scalar": "scale", "sub_scalar": "scale", "div_scalar": "scale", "bias_add": "add"})
 
 	def test_every_reverse_operation_requires_policy(self):
 		self.validate_mutation(lambda s: s["operations"][0].pop("autograd"))
@@ -65,14 +69,14 @@ class MatrixAutogradSchemaTests(unittest.TestCase):
 	def test_alias_policy_controls_the_forward_attachment(self):
 		schema = copy.deepcopy(self.schemas["elemwise"])
 		next(op for op in schema["operations"] if op["name"] == "neg")["autograd"]["target"] = "clamp_min"
-		GENERATOR.validate_matrix_autograd_schema(schema)
-		output = GENERATOR.generate_api(schema, "1" * 64)
+		oa_matrix.validate_matrix_autograd_schema(schema)
+		output = oa_matrix.generate_api(schema, "1" * 64)
 		neg = output.split("pub fn neg(", 1)[1].split("pub fn abs(", 1)[0]
 		self.assertIn("autograd::record_clamp_min(input, &output, -1.0)", neg)
 
 	def test_concat_borrows_matrix_list_and_moves_size_state(self):
-		rows = [op for op in GENERATOR.matrix_autograd_rows([self.schemas["index"]]) if op["name"] == "concat"]
-		output = GENERATOR.generate_matrix_attachments(rows, "1" * 64, "index")
+		rows = [op for op in oa_matrix.matrix_autograd_rows([self.schemas["index"]]) if op["name"] == "concat"]
+		output = oa_matrix.generate_matrix_attachments(rows, "1" * 64, "index")
 		self.assertIn("inputs: &[Matrix]", output)
 		self.assertIn("sizes: Vec<usize>", output)
 		self.assertIn("inputs: inputs.to_vec()", output)
@@ -80,29 +84,29 @@ class MatrixAutogradSchemaTests(unittest.TestCase):
 		self.assertNotIn("sizes.clone()", output)
 
 	def test_saved_forward_output_is_borrowed_and_retained_once(self):
-		rows = [op for op in GENERATOR.matrix_autograd_rows([self.schemas["reduce"]]) if op["name"] == "softmax"]
-		output = GENERATOR.generate_matrix_attachments(rows, "1" * 64, "reduce")
+		rows = [op for op in oa_matrix.matrix_autograd_rows([self.schemas["reduce"]]) if op["name"] == "softmax"]
+		output = oa_matrix.generate_matrix_attachments(rows, "1" * 64, "reduce")
 		self.assertEqual(output.count("output: &Matrix"), 1)
 		self.assertEqual(output.count("output.clone()"), 1)
 		self.assertIn("output_id: output.value_id()", output)
 
 	def test_recipe_requires_exact_saved_field_interface(self):
-		rows = copy.deepcopy(GENERATOR.matrix_autograd_rows([self.schemas["view"]]))
+		rows = copy.deepcopy(oa_matrix.matrix_autograd_rows([self.schemas["view"]]))
 		rows[0]["autograd"]["saved_fields"].append(["extra", "usize"])
-		with self.assertRaisesRegex(GENERATOR.SchemaError, "saved fields differ"):
-			GENERATOR.matrix_autograd_recipes("view", rows)
+		with self.assertRaisesRegex(oa_util.SchemaError, "saved fields differ"):
+			oa_matrix.matrix_autograd_recipes("view", rows)
 
 	def test_missing_duplicate_and_extra_recipes_fail(self):
-		rows = GENERATOR.matrix_autograd_rows([self.schemas["view"]])
+		rows = oa_matrix.matrix_autograd_rows([self.schemas["view"]])
 		original = (GENERATOR_ROOT / "template/matrix/autograd/view.rs.in").read_text()
 		for text in ["", original + original, original + "\n// @operation extra\n// @fields input,output_id\nOk(false)\n"]:
 			with self.subTest(text=text), mock.patch.object(Path, "read_text", return_value=text):
-				with self.assertRaises(GENERATOR.SchemaError):
-					GENERATOR.matrix_autograd_recipes("view", rows)
+				with self.assertRaises(oa_util.SchemaError):
+					oa_matrix.matrix_autograd_recipes("view", rows)
 
 	def test_routing_is_exhaustive_without_fallback(self):
-		rows = GENERATOR.matrix_autograd_rows(list(self.schemas.values()))
-		output = GENERATOR.generate_matrix_autograd_routing(rows, "1" * 64)
+		rows = oa_matrix.matrix_autograd_rows(list(self.schemas.values()))
+		output = oa_matrix.generate_matrix_autograd_routing(rows, "1" * 64)
 		for row in rows:
 			self.assertIn(f"Self::{row['autograd']['node']}", output)
 			self.assertIn(f"{row['autograd']['family']}::{row['name']}(", output)
@@ -112,13 +116,13 @@ class MatrixAutogradSchemaTests(unittest.TestCase):
 	def test_cross_schema_node_collision_is_rejected(self):
 		schemas = copy.deepcopy(list(self.schemas.values()))
 		schemas[1]["operations"][0]["autograd"]["node"] = "Add"
-		with self.assertRaises(GENERATOR.SchemaError):
-			GENERATOR.matrix_autograd_rows(schemas)
+		with self.assertRaises(oa_util.SchemaError):
+			oa_matrix.matrix_autograd_rows(schemas)
 
 	def test_numerical_backward_generation_is_complete_and_tape_independent(self):
 		for family in ("elemwise", "blas"):
-			rows = GENERATOR.matrix_autograd_rows([self.schemas[family]])
-			output = GENERATOR.generate_matrix_backward_providers(self.schemas[family], family)
+			rows = oa_matrix.matrix_autograd_rows([self.schemas[family]])
+			output = oa_matrix.generate_matrix_backward_providers(self.schemas[family], family)
 			self.assertEqual(output.count("pub(crate) fn "), len(rows))
 			for row in rows:
 				self.assertIn(f"fn {row['name']}_backward(", output)
@@ -129,24 +133,24 @@ class MatrixAutogradSchemaTests(unittest.TestCase):
 		original = (GENERATOR_ROOT / "template/matrix/backward/blas.rs.in").read_text()
 		for text in ("", original + original, original.replace("let [rows, inner]", "gradients.take_output(0);\nlet [rows, inner]")):
 			with self.subTest(text=text), mock.patch.object(Path, "read_text", return_value=text):
-				with self.assertRaises(GENERATOR.SchemaError):
-					GENERATOR.generate_matrix_backward_providers(self.schemas["blas"], "blas")
+				with self.assertRaises(oa_util.SchemaError):
+					oa_matrix.generate_matrix_backward_providers(self.schemas["blas"], "blas")
 
 	def test_reverse_adapters_reject_formulas_and_wrong_provider(self):
-		rows = GENERATOR.matrix_autograd_rows([self.schemas["view"]])
+		rows = oa_matrix.matrix_autograd_rows([self.schemas["view"]])
 		original = (GENERATOR_ROOT / "template/matrix/autograd/view.rs.in").read_text()
 		for text in (original.replace("matrix::reshape_backward", "matrix::reshape"), original + "\nlet extra = matrix::mul(input, input)?;", original + "\nlet extra = input.reshape([])?;"):
 			with self.subTest(text=text), mock.patch.object(Path, "read_text", return_value=text):
-				with self.assertRaises(GENERATOR.SchemaError):
-					GENERATOR.matrix_autograd_recipes("view", rows)
+				with self.assertRaises(oa_util.SchemaError):
+					oa_matrix.matrix_autograd_recipes("view", rows)
 
 	def test_reshape_does_not_invent_kernel_or_registry_identity(self):
 		for change in [{"stable_id": 900}, {"kernel_id": "Reshape"}, {"contract": {}}, {"metadata_only": False}]:
 			with self.subTest(change=change):
 				schema = copy.deepcopy(self.schemas["view"])
 				schema["operations"][0].update(change)
-				with self.assertRaises(GENERATOR.SchemaError):
-					GENERATOR.validate_view_schema(schema)
+				with self.assertRaises(oa_util.SchemaError):
+					oa_matrix.validate_view_schema(schema)
 
 	def test_cli_rejects_recipe_mismatch_before_publication(self):
 		schema = copy.deepcopy(self.schemas["view"])

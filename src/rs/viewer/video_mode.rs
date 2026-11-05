@@ -3,7 +3,8 @@
 //! Donor: `oa::Viewer::openVideo`, `oa::Viewer::renderVideo`.
 
 use super::config::ViewerConfig;
-use crate::ui::{Ui, navigation::Navigation, types::PixelRect};
+use crate::input::Navigation;
+use crate::ui::{Ui, types::PixelRect};
 use crate::video::VideoPlayerConfig;
 use crate::{Engine, Error, Result, VideoPlayer};
 
@@ -33,10 +34,10 @@ pub fn render(
 		Err(_) => return Ok(()),
 	};
 	let dst = PixelRect {
-		x: nav.pan_x() as i32,
-		y: nav.pan_y() as i32,
-		w: ((frame.width() as f32) * nav.zoom()).max(1.0) as u32,
-		h: ((frame.height() as f32) * nav.zoom()).max(1.0) as u32,
+		x: nav.pan_x().round() as i32,
+		y: nav.pan_y().round() as i32,
+		w: ((frame.width() as f32) * nav.zoom()).round().max(1.0) as u32,
+		h: ((frame.height() as f32) * nav.zoom()).round().max(1.0) as u32,
 	};
 	if dst.w == 0 || dst.h == 0 {
 		return Ok(());

@@ -10,6 +10,7 @@
     {
       "stable_id": 21,
       "name": "mat_mul_nt",
+      "donor_op": "oa::FnMatrix::matMulNt",
       "autograd": {
         "mode": "generated",
         "family": "blas",
@@ -48,7 +49,7 @@
         "mutated_inputs": [],
         "output_alias_inputs": [-1],
         "differentiation": "reverse",
-        "lowering": "compute_dispatch"
+        "lowering": "gemm"
       },
       "test": {
         "shapes": [
@@ -56,12 +57,83 @@
           [1, 7, 5],
           [9, 3, 5],
           [3, 11, 7],
+          [1, 65, 33],
+          [4, 70, 17],
+          [128, 96, 64],
           [5, 4, 0],
           [0, 4, 3],
           [4, 0, 3]
         ],
         "tolerance": 0.0001
       }
+    }
+  ],
+  "candidate_kernels": [
+    {
+      "name": "mat_mul_nt_naive",
+      "kind": "mat_mul_nt",
+      "variant": "naive",
+      "stable_id": 614,
+      "kernel_id": "MatrixMatMulNtNaiveF32",
+      "kernel_name": "mat_mul_nt_naive",
+      "source_stem": "mat_mul_nt_naive",
+      "dispatch_tile_size": [1, 1, 1],
+      "semantic_operation": "mat_mul_nt"
+    },
+    {
+      "name": "mat_mul_nt_gemv",
+      "kind": "mat_mul_nt",
+      "variant": "gemv",
+      "stable_id": 636,
+      "kernel_id": "MatrixMatMulNtGemvF32",
+      "kernel_name": "mat_mul_nt_gemv",
+      "source_stem": "mat_mul_nt_gemv",
+      "dispatch_tile_size": [1, 1, 1],
+      "semantic_operation": "mat_mul_nt"
+    },
+    {
+      "name": "mat_mul_nt_bias",
+      "kind": "mat_mul_nt",
+      "variant": "bias",
+      "stable_id": 617,
+      "kernel_id": "MatrixMatMulNtBiasF32",
+      "kernel_name": "mat_mul_nt_bias",
+      "source_stem": "mat_mul_nt_bias",
+      "dispatch_tile_size": [64, 64, 1],
+      "semantic_operation": "mat_mul_nt"
+    },
+    {
+      "name": "mat_mul_nt_bias_relu",
+      "kind": "mat_mul_nt",
+      "variant": "bias_relu",
+      "stable_id": 618,
+      "kernel_id": "MatrixMatMulNtBiasReluF32",
+      "kernel_name": "mat_mul_nt_bias_relu",
+      "source_stem": "mat_mul_nt_bias_relu",
+      "dispatch_tile_size": [64, 64, 1],
+      "semantic_operation": "mat_mul_nt"
+    },
+    {
+      "name": "mat_mul_nt_bias_gelu",
+      "kind": "mat_mul_nt",
+      "variant": "bias_gelu",
+      "stable_id": 619,
+      "kernel_id": "MatrixMatMulNtBiasGeluF32",
+      "kernel_name": "mat_mul_nt_bias_gelu",
+      "source_stem": "mat_mul_nt_bias_gelu",
+      "dispatch_tile_size": [64, 64, 1],
+      "semantic_operation": "mat_mul_nt"
+    },
+    {
+      "name": "mat_mul_nt_bias_silu",
+      "kind": "mat_mul_nt",
+      "variant": "bias_silu",
+      "stable_id": 620,
+      "kernel_id": "MatrixMatMulNtBiasSiluF32",
+      "kernel_name": "mat_mul_nt_bias_silu",
+      "source_stem": "mat_mul_nt_bias_silu",
+      "dispatch_tile_size": [64, 64, 1],
+      "semantic_operation": "mat_mul_nt"
     }
   ]
 }

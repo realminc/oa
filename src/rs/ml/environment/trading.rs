@@ -6,6 +6,7 @@
 use super::{
 	Environment, EnvironmentExecution, EnvironmentSpace, EnvironmentSpec, EnvironmentTransition,
 };
+pub use crate::ml::types::TradingConfig;
 use crate::runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch};
 use crate::{DType, Engine, Error, Matrix, OpAttribute, Result, matrix};
 
@@ -37,36 +38,6 @@ pub struct TradingSeries {
 	pub execution: TradingExecution,
 	/// Optional one book per row, event-aligned with market/funding/features.
 	pub books: Vec<TradingBook>,
-}
-
-/// Version-one research policy. Fee is a fraction, spread/slippage are basis points.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct TradingConfig {
-	/// Independent device lanes (round-robin over supplied contiguous segments).
-	pub environments: u32,
-	/// Positive closed-bar window length.
-	pub window: u32,
-	/// Episode length in bars, 1..=1,000,000; fill counts remain exact in F32.
-	pub horizon: u32,
-	/// Full 64-bit deterministic reset seed.
-	pub seed: u64,
-	/// Initial analytical capital per independent lane.
-	pub capital: f32,
-	/// Fraction of equity budgeted for entry margin and costs, in (0,1].
-	/// Instrument execution rules may additionally admit explicit leverage.
-	pub exposure: f32,
-	/// Actual-notional taker fee fraction on every execution leg.
-	pub taker_fee: f32,
-	/// Adverse one-way slippage in basis points, excluding spread.
-	pub slippage_bps: f32,
-	/// Full bid/ask spread in basis points; half is charged per execution leg.
-	pub spread_bps: f32,
-	/// Peak-equity drawdown fraction that terminates and closes inventory.
-	pub max_drawdown: f32,
-	/// Perpetuals use short/flat/long; Spot uses flat/long (no short category).
-	pub perpetual: bool,
-	/// Close and terminate at the horizon; otherwise truncate with final-state bootstrap.
-	pub liquidate_at_horizon: bool,
 }
 
 impl TradingConfig {
@@ -152,7 +123,7 @@ pub struct TradingEnvironment<'engine> {
 	rollback_observation: Option<Matrix>,
 	force_end: bool,
 	tables_valid: bool,
-	source: crate::cryptography::Hash,
+	source: crate::crypto::Hash,
 }
 
 impl<'engine> TradingEnvironment<'engine> {
@@ -539,6 +510,7 @@ impl<'engine> TradingEnvironment<'engine> {
 				buffers: &buffers,
 				push_constants: &pushes,
 				workgroups: KernelId::MlTradingResetF32.linear_workgroups(self.config.environments),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract: if cursor.is_some() {
@@ -668,6 +640,7 @@ impl<'engine> TradingEnvironment<'engine> {
 				buffers: &buffers,
 				push_constants: &pushes,
 				workgroups: KernelId::MlTradingStepF32.linear_workgroups(c.environments),
+				indirect: None,
 			},
 			SemanticDispatch {
 				contract: if cursor.is_some() {

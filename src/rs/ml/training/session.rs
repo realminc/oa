@@ -4,6 +4,7 @@
 //! The training iterator remains on its owning engine thread and applies queued
 //! commands only at explicit safe points.
 
+pub use crate::ml::types::{TrainingCommandResult, TrainingSessionConfig};
 use std::{
 	collections::VecDeque,
 	sync::{Arc, Condvar, Mutex, MutexGuard},
@@ -193,21 +194,6 @@ impl TrainingCommandError {
 	}
 }
 
-/// Durable result of one processed command.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TrainingCommandResult {
-	/// Processed command sequence.
-	pub sequence: u64,
-	/// Revision after processing.
-	pub revision: u64,
-	/// Whether the command was applied.
-	pub disposition: TrainingCommandDisposition,
-	/// Live state after processing.
-	pub state: TrainingState,
-	/// Rejection evidence, or `None` for an applied command.
-	pub error: Option<TrainingCommandError>,
-}
-
 /// One named scalar published with a completed-step snapshot.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrainingMetricSample {
@@ -240,17 +226,6 @@ pub struct TrainingSessionSnapshot {
 	pub wall_ms: f64,
 	/// Current named scalar metrics.
 	pub metrics: Vec<TrainingMetricSample>,
-}
-
-/// Bounded-history capacities for a [`TrainingSession`].
-#[derive(Clone, Copy, Debug)]
-pub struct TrainingSessionConfig {
-	/// Maximum queued commands before non-blocking enqueue rejects work.
-	pub command_capacity: usize,
-	/// Maximum retained command results.
-	pub result_capacity: usize,
-	/// Maximum retained lifecycle snapshots.
-	pub snapshot_capacity: usize,
 }
 
 impl Default for TrainingSessionConfig {

@@ -45,6 +45,7 @@ fn adamw_graph_advance(state: &Matrix) -> Result<()> {
 			buffers: &buffers,
 			push_constants: &[],
 			workgroups: [1, 1, 1],
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -119,6 +120,7 @@ fn adamw_graph(
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(element_count),
+			indirect: None,
 		};
 		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 			Error::internal(format!(
@@ -193,6 +195,7 @@ fn adamw_many4_graph(entries: &[AdamWBatchEntry<'_>; 4], state: &Matrix) -> Resu
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(maximum),
+			indirect: None,
 		},
 		&semantics,
 	)
@@ -245,6 +248,7 @@ fn adamw(
 				buffers: &buffers,
 				push_constants: &push_constants,
 				workgroups: kernel.linear_workgroups(element_count),
+				indirect: None,
 			};
 			let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
 				Error::internal(format!(
@@ -333,6 +337,7 @@ fn adamw_many4(entries: &[AdamWBatchEntry<'_>; 4], scalars: AdamWScalars) -> Res
 			buffers: &buffers,
 			push_constants: &push_constants,
 			workgroups: kernel.linear_workgroups(maximum),
+			indirect: None,
 		},
 		&semantics,
 	)
@@ -904,6 +909,29 @@ impl AdamW {
 			.ok_or_else(|| Error::resource_exhausted("training step counter exhausted"))?;
 		self.validate_program_replay(signature, signature.base_step, logical_step)?;
 		self.complete_program_replay(signature, logical_step)
+	}
+
+	/// Complete one ad-hoc captured optimizer step after its plan finished.
+	///
+	/// `step` inside `Engine::capture` only records the update; the logical step
+	/// completes when that captured submission finishes. `TrainingProgram`
+	/// replay accounts it through `complete_program_replay`; a caller that
+	/// captures `step` directly calls this once its submission event completes.
+	///
+	/// # Errors
+	///
+	/// Returns an error when the step or parameter mutation counter is
+	/// exhausted.
+	pub(crate) fn complete_captured_step(&mut self) -> Result<()> {
+		let step = self
+			.step
+			.checked_add(1)
+			.ok_or_else(|| Error::resource_exhausted("AdamW step counter exhausted"))?;
+		for state in &self.parameters {
+			state.parameter.mark_updated()?;
+		}
+		self.step = step;
+		Ok(())
 	}
 
 	pub(super) fn checkpoint(&self) -> Result<OptimizerCheckpoint> {

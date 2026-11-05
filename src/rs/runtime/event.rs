@@ -42,7 +42,7 @@ impl Event {
 		}
 	}
 
-	pub(super) const fn epoch(&self) -> u64 {
+	pub(crate) const fn epoch(&self) -> u64 {
 		self.epoch
 	}
 

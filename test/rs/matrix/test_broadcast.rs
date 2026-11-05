@@ -59,7 +59,7 @@ test_vk!(add_broadcast_capture_keeps_add_semantic_identity, engine, {
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		plan.semantic_graph().operations()[0].name(),
-		"oa::matrix::add"
+		"oa::FnMatrix::add"
 	);
 	engine.submit(&plan)?.wait()?;
 	assert_eq!(output.read_f32()?, vec![3.0; 6]);
