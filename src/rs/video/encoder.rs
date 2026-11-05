@@ -285,6 +285,8 @@ fn align_up(value: u32, granularity: u32) -> Result<u32> {
 /// `encode` waits for the submitted frame and returns its packet. `flush`
 /// waits for every outstanding encode job and drains the remainder — required
 /// before `close` when asynchronous submissions left frames in flight.
+///
+/// [`EncodedVideoPacket`]: crate::video::EncodedVideoPacket
 pub struct VideoEncoder {
 	state: Option<VideoEncoderBackend>,
 }

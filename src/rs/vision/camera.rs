@@ -70,6 +70,8 @@ impl CameraCapture {
 	///
 	/// Returns an error for a zero extent, when no camera device matches
 	/// `device_index`, or when SDL cannot open or describe the device.
+	///
+	/// [`ErrorKind::MissingCapability`]: crate::ErrorKind::MissingCapability
 	pub fn open(engine: &Engine, config: &CameraCaptureConfig) -> Result<Self> {
 		if config.width == 0 || config.height == 0 {
 			return Err(Error::invalid_argument(

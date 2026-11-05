@@ -244,6 +244,7 @@ class MlSchemaTests(unittest.TestCase):
 				"trading_step_cursor",
 				"sample_categorical_cursor",
 				"trading_cursor_advance",
+				"next_observation_append",
 				"compute_scale_q4",
 				"quantize_q4",
 				"dequantize_q4",

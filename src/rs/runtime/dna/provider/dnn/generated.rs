@@ -4,7 +4,7 @@
 // matrix_blas_sha256=8bdc51f6ec85be446c73a8e90fae9d0cf64578a96c0fe26e48e9fee9efad2834
 // matrix_reduce_sha256=10142c490dc82d1ce5300729fa2179aafd6a550499409a7790c8593a725f1e7a
 // matrix_rng_sha256=c8c52f43c61d61c78dbd20ea933742182063004fdc50074c8d2cca90d24952dd
-// ml_training_sha256=b5724cbf5dd45bebef3779868afe5e4331c7b9b13dfd5176a4ae219390995517
+// ml_training_sha256=a38c68c2e633a7de17acd190f81ed83007325482aadc540cbbec9ede6cabef26
 // image_sha256=55a42045521405b19545092ec64fa1d5eba52ebb243dede70fe646342c18c736
 // Candidate roles mirror OA DNN vocabulary while retaining OARS compatibility identities.
 

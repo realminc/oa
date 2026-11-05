@@ -10,6 +10,8 @@
 //! [`ErrorKind::MissingCapability`] and [`ScreenCapture::is_supported`]
 //! returns `false`; the capability-gated surface keeps the donor's public
 //! shape stable for the backend vertical that lands it.
+//!
+//! [`ErrorKind::MissingCapability`]: crate::ErrorKind::MissingCapability
 
 pub use crate::vision::types::ScreenCaptureConfig;
 use crate::{Engine, Error, Result};
@@ -57,6 +59,8 @@ impl Default for ScreenCaptureConfig {
 /// [`ErrorKind::MissingCapability`] and no session can exist; `poll`,
 /// `release`, and `close` land with the portal/PipeWire backend that produces
 /// them.
+///
+/// [`ErrorKind::MissingCapability`]: crate::ErrorKind::MissingCapability
 pub struct ScreenCapture(());
 
 impl ScreenCapture {
@@ -81,6 +85,9 @@ impl ScreenCapture {
 	/// Returns [`ErrorKind::InvalidArgument`] for a zero preferred extent,
 	/// frame rate, or ring depth, and [`ErrorKind::MissingCapability`] while
 	/// no platform backend is linked.
+	///
+	/// [`ErrorKind::InvalidArgument`]: crate::ErrorKind::InvalidArgument
+	/// [`ErrorKind::MissingCapability`]: crate::ErrorKind::MissingCapability
 	pub fn open(engine: &Engine, config: &ScreenCaptureConfig) -> Result<Self> {
 		if config.preferred_width == 0 || config.preferred_height == 0 {
 			return Err(Error::invalid_argument(

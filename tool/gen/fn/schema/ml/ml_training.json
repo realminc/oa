@@ -15,7 +15,8 @@
         "sample_categorical_cursor",
         "trading_reset_cursor",
         "trading_step_cursor",
-        "trading_cursor_advance"
+        "trading_cursor_advance",
+        "next_observation_append"
       ],
       "classification": "mechanical_adaptation",
       "donors": [
@@ -11173,6 +11174,94 @@
         ],
         [
           "continuing",
+          "uint32"
+        ]
+      ]
+    }
+,
+{
+      "stable_id": 647,
+      "name": "next_observation_append",
+      "semantic_domain": "ml::rollout",
+      "kernel_id": "MlRolloutNextObservationAppendF32",
+      "source": "src/slang/ml/rollout/next_observation_append.slang",
+      "variant": "cursor_row",
+      "differentiation": "none",
+      "semantic_attributes": [
+        [
+          "step",
+          "unsigned_integer"
+        ],
+        [
+          "observation_count",
+          "unsigned_integer"
+        ]
+      ],
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 0,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "contract": {
+        "input_kinds": [
+          "matrix",
+          "matrix",
+          "matrix"
+        ],
+        "output_kinds": [
+          "matrix"
+        ],
+        "shape_rule": "cursor_row_append_into_time_major_observations",
+        "dtype_rule": "all_f32",
+        "effects": [
+          "read_inputs",
+          "write_outputs"
+        ],
+        "mutated_inputs": [
+          0
+        ],
+        "output_alias_inputs": [
+          0
+        ],
+        "lowering": "compute_dispatch"
+      },
+      "test": {
+        "oracle": "independent_host_next_observation_append",
+        "shapes": [
+          [
+            6,
+            16
+          ]
+        ],
+        "tolerance": 0.0
+      },
+      "push_fields": [
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "next_observation_index",
+          "uint32"
+        ],
+        [
+          "cursor_index",
+          "uint32"
+        ],
+        [
+          "step",
+          "uint32"
+        ],
+        [
+          "observation_count",
           "uint32"
         ]
       ]

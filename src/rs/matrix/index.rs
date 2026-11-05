@@ -185,8 +185,8 @@ pub struct MoeExpertPlan {
 /// `row_map`, `count`, and `dispatch_args` are auxiliary device values; only
 /// `values` participates in differentiation. `dispatch_args` is consumed by
 /// the indirect-dispatch variants [`scatter_rows_indirect`],
-/// [`crate::matrix::compact_rows_backward`], and
-/// [`crate::matrix::scatter_rows_backward`].
+/// `crate::matrix::compact_rows_backward`, and
+/// `crate::matrix::scatter_rows_backward`.
 #[must_use]
 pub struct CompactRowsResult {
 	/// FP32 packed selected rows, shaped `[T, D]` with unselected slots zeroed.

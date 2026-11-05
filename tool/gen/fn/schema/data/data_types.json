@@ -16,7 +16,7 @@
 				"Copy",
 				"Debug"
 			],
-			"doc": "Configuration for [`DataLoader`].",
+			"doc": "Configuration for [`DataLoader`](crate::data::DataLoader).",
 			"fields": [
 				{
 					"name": "batch_size",

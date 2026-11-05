@@ -4,7 +4,7 @@ use super::PpoTrainerConfig;
 use crate::ml::environment::{Environment, TradingConfig, TradingEnvironment};
 use crate::ml::{ActorCritic, RolloutBuffer, RolloutTransition, policy};
 use crate::runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch};
-use crate::{Engine, Error, ExecutionPlan, Matrix, OpAttribute, Result, matrix};
+use crate::{DType, Engine, Error, ExecutionPlan, Matrix, OpAttribute, Result, matrix};
 use std::time::Duration;
 
 /// Fixed-geometry trading reset, policy/step/append and GAE replay programs.
@@ -197,11 +197,38 @@ impl State {
 		let cursor = Matrix::new_from_slice(engine, [7], &[0_u32, 1, 0, 1, 0, 0, 0])?;
 		let copy_cursor = Matrix::new_from_slice(engine, [2], &[0_u32, 1])?;
 		let observation = env.observation().clone();
+		let observation_elements = ppo
+			.observation_shape
+			.iter()
+			.try_fold(1_usize, |count, extent| count.checked_mul(*extent))
+			.ok_or_else(|| Error::resource_exhausted("rollout observation size overflows usize"))?;
+		let observation_count = ppo
+			.environments
+			.checked_mul(observation_elements)
+			.ok_or_else(|| Error::resource_exhausted("rollout observation count overflows usize"))?;
+		// Successor observations are retained pre-reset because done lanes lose
+		// the terminal/truncation state to the in-place environment reset before
+		// the next step's carried observation is produced.
+		let next_observation_rows = ppo
+			.horizon
+			.checked_mul(ppo.environments)
+			.ok_or_else(|| Error::resource_exhausted("rollout rows overflow usize"))?;
+		let next_observations = Matrix::allocate(
+			&engine.handle(),
+			vec![next_observation_rows, observation_elements],
+			next_observation_rows
+				.checked_mul(observation_elements)
+				.ok_or_else(|| {
+					Error::resource_exhausted("rollout next_observation storage overflows usize")
+				})?,
+			DType::F32,
+		)?;
 		let initialized = env
 			.replay_slots()
 			.into_iter()
 			.chain(rollout.replay_slots())
 			.chain(std::iter::once(&cursor))
+			.chain(std::iter::once(&next_observations))
 			.cloned()
 			.collect::<Vec<_>>();
 		let state = initialized.iter().collect::<Vec<_>>();
@@ -224,32 +251,55 @@ impl State {
 			let action = crate::ml::matrix::sample_categorical_cursor(&network.logits, &cursor)?;
 			let policy = policy::evaluate_categorical(&network.logits, &action, &network.value)?;
 			let step = env.step_replay_commands(&action, &cursor)?;
-			let next = model.evaluate(step.next_observation())?;
 			let reward = if shaping != 0. {
 				matrix::add_scalar(step.reward(), shaping)?
 			} else {
 				step.reward().clone()
 			};
+			// The appended next_value is a placeholder completed once by the GAE
+			// plan's single batched evaluation over the retained successor
+			// observations instead of a second evaluation per step.
 			rollout.append_replay(
 				&RolloutTransition::new(
 					step.observation().clone(),
 					action,
 					reward,
+					policy.value.clone(),
 					policy.value,
-					next.value,
 					policy.log_probability,
 					step.terminated().clone(),
 					step.truncated().clone(),
 				),
 				&cursor,
 			)?;
+			crate::ml::rollout::next_observation_append(
+				step.next_observation(),
+				&next_observations,
+				&cursor,
+				0,
+				observation_count,
+			)?;
 			env.reset_replay_commands(true, &cursor)?;
 			crate::ml::matrix::training_accumulate(&observation, env.observation(), &copy_cursor, 1.)?;
 			advance_cursor(engine, &cursor, ppo.horizon as u32, continuing)
 		})?;
 		env.replay_observation(observation.clone());
-		let (gae, ()) = engine
-			.capture_with_initialized_state(&state, || rollout.finalize_replay_commands(ppo.gae))?;
+		let (gae, ()) = engine.capture_with_initialized_state(&state, || {
+			// One batched evaluation over all retained successor observations
+			// replaces the removed second per-step evaluation: every slot gets
+			// V(next_obs_t) exactly, including pre-reset terminal and truncation
+			// states the carried observation no longer holds.
+			let network = model.evaluate(&next_observations)?;
+			crate::ml::matrix::training_accumulate(
+				rollout.batch().next_value(),
+				&network
+					.value
+					.reshape_view(vec![ppo.horizon, ppo.environments])?,
+				&copy_cursor,
+				1.,
+			)?;
+			rollout.finalize_replay_commands(ppo.gae)
+		})?;
 		let mut config = env.replay_config();
 		config.seed = 0;
 		Ok(Self {

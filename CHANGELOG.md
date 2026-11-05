@@ -23,6 +23,14 @@
 - Qualify Flash causal attention on Intel HSW GT2: roughly 4.8× slower
   forward at the tutorial shape, so `AttentionBackend::Auto` remains on
   the standard provider for this device class.
+- Evaluate PPO successor values once per rollout in compiled trading
+  collection: pre-reset `next_observation` rows are retained by the
+  `next_observation_append` kernel and evaluated in one batched GAE-plan
+  pass, replacing a second per-step model evaluation; measured -6.7%
+  mean collection GPU submission intervals over three rollouts on the
+  MoE trader recipe on Intel HSW GT2 with identical loss trajectories.
+- Repair rustdoc references that resolved in the private tree but failed
+  the public-crate `cargo doc -D warnings` gate.
 - Measured on the 16-model NLP tutorial suite: transformer graphs drop
   67 → 56 nodes and MoE graphs 82 → 73 with unchanged convergence.
 

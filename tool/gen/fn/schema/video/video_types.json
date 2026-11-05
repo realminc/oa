@@ -812,13 +812,13 @@
 					"name": "frame_rate_override",
 					"type": "Option<f64>",
 					"visibility": "pub",
-					"doc": "Override the container average frame rate when pacing [`VideoPlayer::tick`]."
+					"doc": "Override the container average frame rate when pacing [`VideoPlayer::tick`](crate::video::VideoPlayer::tick)."
 				},
 				{
 					"name": "start_playing",
 					"type": "bool",
 					"visibility": "pub",
-					"doc": "Begin in the playing state. Manual [`VideoPlayer::advance`] calls ignore this."
+					"doc": "Begin in the playing state. Manual [`VideoPlayer::advance`](crate::video::VideoPlayer::advance) calls ignore this."
 				},
 				{
 					"name": "presentation_cache_frames",

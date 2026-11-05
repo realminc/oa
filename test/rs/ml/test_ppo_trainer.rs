@@ -405,7 +405,9 @@ test_vk!(
 			assert_eq!(model.updates.get(), if compiled { 2 } else { 8 });
 			if compiled {
 				assert_eq!(program.replay_count(), 4);
-				assert_eq!(program.command_recording_count(), 4);
+				// normalize + optimizer record once; each minibatch plan records
+				// once per distinct cursor staging-ring binding (depth 3).
+				assert_eq!(program.command_recording_count(), 8);
 			}
 			let parameters = model
 				.all_parameters()?
@@ -568,7 +570,9 @@ test_vk!(
 				assert_eq!(collection.replay_count(), 6);
 				assert_eq!(collection.command_recording_count(), 3);
 				assert_eq!(update.replay_count(), 4);
-				assert_eq!(update.command_recording_count(), 4);
+				// normalize + optimizer record once; each minibatch plan records
+				// once per distinct cursor staging-ring binding (depth 3).
+				assert_eq!(update.command_recording_count(), 8);
 			}
 			outcomes.push((
 				rollouts,

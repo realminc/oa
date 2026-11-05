@@ -27,6 +27,13 @@ residual path. Flash causal attention qualified roughly 4.8× slower than
 the standard provider at the tutorial attention shape on this device, so
 `AttentionBackend::Auto` correctly remains on the standard provider.
 
+Compiled PPO trading collection retains each transition's pre-reset
+successor observation and evaluates all rows in one batched GAE-plan
+pass, replacing the second per-step model evaluation. Measured on the
+MoE trader recipe on Intel HSW GT2, mean collection GPU submission
+intervals fell 6.7% across three rollouts with identical loss
+trajectories; update timing is unchanged.
+
 v0.9.1 consolidated runtime kernel identity and BLAS routing under
 `runtime/dna` and added the measured `mat_mul_nt_gemv` decode candidate.
 v0.9.0 completed OA's migration to its own `vkrust` Vulkan bindings.

@@ -606,6 +606,93 @@ fn append_dispatch(
 	}
 }
 
+// Retained successor observations are program-owned scratch rather than
+// RolloutBatch fields: the compiled trading program is the only collector that
+// defers next_value to a single batched GAE-time evaluation.
+pub(in crate::ml) fn next_observation_append(
+	next_observation: &Matrix,
+	retained: &Matrix,
+	cursor: &Matrix,
+	step: usize,
+	observation_count: usize,
+) -> Result<()> {
+	const OPERATION: &str = "oa::ml::rollout::next_observation_append";
+	if next_observation.dtype() != DType::F32
+		|| retained.dtype() != DType::F32
+		|| cursor.dtype() != DType::U32
+		|| next_observation.num_elements() != observation_count
+		|| observation_count == 0
+		|| !retained.num_elements().is_multiple_of(observation_count)
+		|| !next_observation
+			.engine_handle()
+			.same_as(retained.engine_handle())
+		|| !next_observation
+			.engine_handle()
+			.same_as(cursor.engine_handle())
+	{
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} source/retained/cursor shape/dtype/Engine mismatch"
+		)));
+	}
+	if next_observation.storage().same_as(retained.storage()) {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} source must not alias retained rollout storage"
+		)));
+	}
+	let step = shader_u32(step, "step", OPERATION)?;
+	let observation_count = shader_u32(observation_count, "observation count", OPERATION)?;
+	let buffers = [
+		BufferBinding::read_write(retained.storage()),
+		BufferBinding::read(next_observation.storage()),
+		BufferBinding::read(cursor.storage()),
+	];
+	let push_constants = [
+		PushConstant::U32(step),
+		PushConstant::U32(observation_count),
+	];
+	let kernel = KernelId::MlRolloutNextObservationAppendF32;
+	{
+		let inputs: &[&Matrix] = &[retained, next_observation, cursor];
+		let outputs: &[&Matrix] = &[retained];
+		let attributes = [
+			OpAttribute::UnsignedInteger {
+				name: "step".into(),
+				value: u64::from(step),
+			},
+			OpAttribute::UnsignedInteger {
+				name: "observation_count".into(),
+				value: u64::from(observation_count),
+			},
+		];
+		let dispatch = ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: kernel.linear_workgroups(observation_count),
+			indirect: None,
+		};
+		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
+			Error::internal(format!(
+				"lowering-only kernel {} cannot own one semantic ML operation",
+				dispatch.kernel.report_name()
+			))
+		})?;
+		let engine = inputs
+			.first()
+			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
+			.engine_handle();
+		engine.record_semantic(
+			dispatch,
+			SemanticDispatch {
+				contract,
+				inputs,
+				outputs,
+				attributes: &attributes,
+			},
+		)
+	}
+}
+
 fn reset_dispatch(valid: &Matrix) -> Result<()> {
 	const OPERATION: &str = "oa::ml::rollout::reset";
 	if valid.dtype() != DType::U8 || valid.shape().len() != 2 {
