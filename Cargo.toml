@@ -11,7 +11,8 @@ readme = "README.md"
 include = [
   "/Cargo.toml", "/Cargo.lock", "/build.rs", "/rustfmt.toml", "/rust-toolchain.toml",
   "/README.md", "/LICENSE", "/NOTICE.md", "/CHANGELOG.md", "/RELEASE_NOTES.md",
-  "/.oa-public-snapshot", "/src/rs/**", "/src/slang/**", "/sdk/asset/font/**",
+  "/.oa-public-snapshot", "/src/rs/**", "!/src/rs/app/**", "/src/slang/**",
+  "/sdk/asset/font/**",
   "/sdk/rs/slang/ml/rl/**/*.slang",
   "/sdk/rs/mod.rs", "/sdk/rs/data.rs", "/sdk/rs/data/**/*.rs",
   "/sdk/rs/ml.rs", "/sdk/rs/ml/**/*.rs",
