@@ -203,7 +203,8 @@ jobs:
       - name: Build and stage SDK programs
         if: github.repository == 'realminc/oa'
         run: |
-          cargo build -p oarust --release --examples --locked
+          # The default stager copies both binaries and examples.
+          cargo build -p oarust --release --bins --examples --locked
           python3 tool/oa stage --clean --profile release
           python3 tool/oa stage --profile release
           test -n "$(find bin/release/sdk -type f -perm -111 -print -quit)"
