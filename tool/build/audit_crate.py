@@ -19,7 +19,7 @@ def audit(path: Path, version: str) -> None:
 		".oa-public-snapshot", "build.rs", "rustfmt.toml", "rust-toolchain.toml",
 		"README.md", "LICENSE", "NOTICE.md", "CHANGELOG.md", "RELEASE_NOTES.md",
 	}
-	prefixes = ("src/rs/", "src/slang/", "sdk/asset/font/", "test/rs/", "test/fixtures/", "tool/gen/")
+	prefixes = ("src/rs/", "src/slang/", "src/font/", "sdk/asset/font/", "test/rs/", "test/fixtures/", "tool/gen/")
 	if path.stat().st_size > 10 * 1024 * 1024:
 		raise ValueError("crate archive exceeds the standard 10 MiB limit")
 	files: dict[str, bytes] = {}
