@@ -54,3 +54,36 @@ fn compute_pipelines_are_created_once_on_first_use() -> crate::Result<()> {
 	}
 	Ok(())
 }
+
+impl super::EngineHandle {
+	/// Record one measured winner. Callers must prove the variant is legal
+	/// for the route key's complete problem and device contract first.
+	///
+	/// Only the device-gated tuning driver produces measurements; production
+	/// code paths read but never write.
+	pub(in crate::runtime) fn record_matmul_route(
+		&self,
+		key: crate::runtime::dna::provider::blas::MatmulRouteKey,
+		value: crate::runtime::dna::provider::blas::MatmulRouteValue,
+	) {
+		self.state.borrow_mut().matmul_route_cache.publish(
+			key,
+			value.winner_variant,
+			value.median_gpu_time_ms,
+			value.p95_gpu_time_ms,
+			value.sample_count,
+		);
+	}
+
+	/// Persist measured routes immediately — the donor's explicit
+	/// `GemmTuner::saveCache` after a tuning sweep. Engine teardown also
+	/// saves best-effort; an explicit save keeps a qualification result
+	/// durable even if the process does not reach a clean drop.
+	pub(in crate::runtime) fn save_matmul_route_cache(&self) -> crate::Result<()> {
+		self
+			.state
+			.borrow()
+			.matmul_route_cache
+			.save(&crate::runtime::dna::provider::blas::route_cache_path())
+	}
+}

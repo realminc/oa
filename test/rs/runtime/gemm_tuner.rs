@@ -13,10 +13,10 @@
 
 use super::{
 	GemmEpilogue, GemmKernel, MatmulPreference, MatmulProblem, MatmulRouteValue, MatmulVariant,
-	VARIANTS, calculate_workspace_bytes, lower_mat_mul_nt_plan, plan, record_measured_matmul_route,
-	resolve_precision, variant_legal,
+	VARIANTS, calculate_workspace_bytes, find_variant, lower_mat_mul_nt_plan, plan,
+	resolve_precision, route_key, variant_legal,
 };
-use crate::runtime::{ComputeDispatch, LogComponent, SemanticDispatch};
+use crate::runtime::{ComputeDispatch, EngineHandle, LogComponent, SemanticDispatch};
 use crate::{Engine, Error, Result};
 
 /// Sentinel returned by `benchmark_candidate` for any failed or invalid
@@ -844,4 +844,31 @@ fn small_m_pinned_candidate_matches_host_oracle() {
 		)
 		.unwrap();
 	}
+}
+
+/// Record one measured qualification result into the engine's route cache.
+///
+/// The winner must be registered and legal for the complete problem on this
+/// device — measured evidence never admits an illegal route.
+fn record_measured_matmul_route(
+	engine: &EngineHandle,
+	problem: &MatmulProblem,
+	value: MatmulRouteValue,
+) -> Result<()> {
+	let contract = engine.matmul_device_contract();
+	let variant = find_variant(value.winner_variant).ok_or_else(|| {
+		Error::invalid_argument(format!(
+			"measured matmul route records an unregistered variant {:#x}",
+			value.winner_variant
+		))
+	})?;
+	let precision = resolve_precision(problem);
+	if let Some(rejection) = variant_legal(&contract, variant, problem, precision) {
+		return Err(Error::invalid_argument(format!(
+			"measured matmul route {} is not legal on this device: {rejection}",
+			variant.name
+		)));
+	}
+	engine.record_matmul_route(route_key(&contract, problem), value);
+	Ok(())
 }

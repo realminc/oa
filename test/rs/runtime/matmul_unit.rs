@@ -3,10 +3,10 @@
 use super::{
 	CAP_COOP_MAT1_BF16_INPUT, CAP_NAIVE_F32, CAP_SMALLM_F32, CAP_TILED_F32, GemmEpilogue, GemmKernel,
 	GemmPrecision, INVALID_MATMUL_VARIANT_ID, KernelSelectionKind, MatmulDeviceContract,
-	MatmulPreference, MatmulProblem, MatmulRejection, MatmulRouteCache, MatmulRouteValue,
-	StoragePrecision, VARIANTS, caps_satisfy, classify_selection, device_contract_hash, find_variant,
-	matmul_variant_id_from_name, plan, problem_contract_hash, registry_build_id, route_key,
-	validate_plan, variant_legal,
+	MatmulPreference, MatmulProblem, MatmulRejection, MatmulRouteCache, MatmulRouteKey,
+	MatmulRouteValue, StoragePrecision, VARIANTS, caps_satisfy, classify_selection,
+	device_contract_hash, find_variant, matmul_variant_id_from_name, plan, problem_contract_hash,
+	registry_build_id, route_key, validate_plan, variant_legal,
 };
 use crate::runtime::{BufferAccess, KernelId, PushConstant};
 
@@ -821,5 +821,32 @@ fn tuner_run_sweeps_the_default_shapes() {
 	assert!(!results.is_empty());
 	for result in &results {
 		assert!(result.best_time_ms.is_finite() && result.best_time_ms > 0.0);
+	}
+}
+
+impl MatmulRouteCache {
+	/// Publish one measured winner under the cache's own monotonic step.
+	///
+	/// Only the tuning driver produces measurements; plan-time code paths
+	/// read but never write.
+	pub(in crate::runtime) fn publish(
+		&mut self,
+		key: MatmulRouteKey,
+		winner: u64,
+		median_gpu_time_ms: f32,
+		p95_gpu_time_ms: f32,
+		sample_count: u32,
+	) {
+		self.publication_step += 1;
+		self.records.insert(
+			key,
+			MatmulRouteValue {
+				winner_variant: winner,
+				median_gpu_time_ms,
+				p95_gpu_time_ms,
+				sample_count,
+				last_updated_step: self.publication_step,
+			},
+		);
 	}
 }

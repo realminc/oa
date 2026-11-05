@@ -356,32 +356,6 @@ impl MatmulRouteCache {
 			.map(|value| value.winner_variant)
 	}
 
-	/// Publish one measured winner under the cache's own monotonic step.
-	///
-	/// Only the tuning driver produces measurements; plan-time code paths
-	/// read but never write.
-	#[cfg(test)]
-	pub(in crate::runtime) fn publish(
-		&mut self,
-		key: MatmulRouteKey,
-		winner: u64,
-		median_gpu_time_ms: f32,
-		p95_gpu_time_ms: f32,
-		sample_count: u32,
-	) {
-		self.publication_step += 1;
-		self.records.insert(
-			key,
-			MatmulRouteValue {
-				winner_variant: winner,
-				median_gpu_time_ms,
-				p95_gpu_time_ms,
-				sample_count,
-				last_updated_step: self.publication_step,
-			},
-		);
-	}
-
 	/// Versioned field-wise encoding. Never dump Rust structs directly:
 	/// padding, bool size, and enum layout are not a persistent contract.
 	/// Records are sorted by their serialized key so the output bytes are
@@ -1859,34 +1833,6 @@ pub(in crate::runtime) fn plan_mat_mul_nt_problem(
 	let plan = plan(&contract, problem, preference, measured)?;
 	debug_assert!(validate_plan(&contract, &plan, problem));
 	Ok(plan)
-}
-
-/// Record one measured qualification result into the engine's route cache.
-///
-/// The winner must be registered and legal for the complete problem on this
-/// device — measured evidence never admits an illegal route.
-#[cfg(test)]
-pub(in crate::runtime) fn record_measured_matmul_route(
-	engine: &EngineHandle,
-	problem: &MatmulProblem,
-	value: MatmulRouteValue,
-) -> Result<()> {
-	let contract = engine.matmul_device_contract();
-	let variant = find_variant(value.winner_variant).ok_or_else(|| {
-		Error::invalid_argument(format!(
-			"measured matmul route records an unregistered variant {:#x}",
-			value.winner_variant
-		))
-	})?;
-	let precision = resolve_precision(problem);
-	if let Some(rejection) = variant_legal(&contract, variant, problem, precision) {
-		return Err(Error::invalid_argument(format!(
-			"measured matmul route {} is not legal on this device: {rejection}",
-			variant.name
-		)));
-	}
-	engine.record_matmul_route(route_key(&contract, problem), value);
-	Ok(())
 }
 
 #[cfg(test)]
