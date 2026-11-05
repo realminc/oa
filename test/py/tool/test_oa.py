@@ -19,7 +19,11 @@ class DispatcherTests(unittest.TestCase):
 	def test_every_route_targets_an_existing_script(self):
 		for routes in (DISPATCHER.PYTHON_ROUTES, DISPATCHER.SHELL_ROUTES):
 			for command, relative in routes.items():
-				self.assertTrue((ROOT / "tool" / relative).is_file(), command)
+				self.assertTrue(
+					(ROOT / "tool" / relative).is_file()
+					or command in DISPATCHER.PRIVATE_ROUTES,
+					command,
+				)
 
 	def test_every_test_scope_maps_to_a_directory(self):
 		for scope, relative in DISPATCHER.TEST_SCOPES.items():

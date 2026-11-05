@@ -35,6 +35,12 @@ SHELL_ROUTES: dict[tuple[str, ...], str] = {
 	("release", "snapshot"): "release/createPublicSnapshot.sh",
 }
 
+# Routes whose scripts live under private paths excluded from public snapshots.
+# They only match when the script exists; on a public tree the command is unknown.
+PRIVATE_ROUTES: set[tuple[str, ...]] = {
+	("release", "snapshot"),
+}
+
 TEST_SCOPES: dict[str, str] = {
 	"py": "test/py",
 	"tool": "test/py/tool",
@@ -61,7 +67,7 @@ profile
   profile bench|suite|memory|memory-rust|vlm|clocks [args]
 
 release
-  release snapshot [args]                    public snapshot
+  release snapshot [args]                    public snapshot (private tree)
 
 test
   test [py|tool|gen|fn|nn] [unittest args]   unittest discovery
@@ -71,8 +77,12 @@ test
 def route(argv: list[str]) -> tuple[tuple[str, ...], list[str]]:
 	for length in (2, 1):
 		candidate = tuple(argv[:length])
-		if candidate in PYTHON_ROUTES or candidate in SHELL_ROUTES:
-			return candidate, argv[length:]
+		relative = PYTHON_ROUTES.get(candidate) or SHELL_ROUTES.get(candidate)
+		if relative is None:
+			continue
+		if candidate in PRIVATE_ROUTES and not (ROOT / relative).is_file():
+			continue
+		return candidate, argv[length:]
 	return (), argv
 
 
