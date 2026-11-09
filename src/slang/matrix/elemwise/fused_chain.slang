@@ -17,6 +17,7 @@
 // round-trip per step on this class of device.
 
 import storage;
+import elementwise;
 import attributes;
 
 static const uint REGISTER_COUNT = 8;
@@ -130,58 +131,38 @@ void main(uint3 dispatch_thread_id : SV_DispatchThreadID, uint3 group_thread_id 
 			);
 			continue;
 		}
-		float a = read_source(arg_a, index, register_base);
-		// Named constants only bind in comparisons: a `case NAME:` label in a
-		// Slang switch is a pattern, not constant equality, so the opcode
-		// dispatch must stay an if/else chain.
-		if (opcode >= OP_ADD && opcode <= OP_MAX) {
-			float b = read_source(arg_b, index, register_base);
-			if (opcode == OP_ADD) {
-				register_file[register_base + dst] = a + b;
-			} else if (opcode == OP_SUB) {
-				register_file[register_base + dst] = a - b;
-			} else if (opcode == OP_MUL) {
-				register_file[register_base + dst] = a * b;
-			} else if (opcode == OP_DIV) {
-				register_file[register_base + dst] = a / b;
-			} else if (opcode == OP_POW) {
-				register_file[register_base + dst] = pow(a, b);
-			} else if (opcode == OP_MIN) {
-				register_file[register_base + dst] = min(a, b);
-			} else {
-				register_file[register_base + dst] = max(a, b);
+		if (opcode == 3u) {
+			uint remainder = index;
+			uint source_index = 0u;
+			for (int axis = int(arg_b) - 1; axis >= 0; --axis) {
+				uint dim = tape_words[base + 4u + axis];
+				uint stride = tape_words[base + 12u + axis];
+				source_index += (remainder % dim) * stride;
+				remainder /= dim;
 			}
+			register_file[register_base + dst] = load_f32(storage_buffers[arg_a - REGISTER_COUNT], source_index);
+			step += 4u;
 			continue;
 		}
-		if (opcode == OP_NEG) {
-			register_file[register_base + dst] = -a;
-		} else if (opcode == OP_RECIP) {
-			register_file[register_base + dst] = 1.0f / a;
-		} else if (opcode == OP_ABS) {
-			register_file[register_base + dst] = abs(a);
-		} else if (opcode == OP_EXP) {
-			register_file[register_base + dst] = exp(a);
-		} else if (opcode == OP_LOG) {
-			register_file[register_base + dst] = log(a);
-		} else if (opcode == OP_SQRT) {
-			register_file[register_base + dst] = sqrt(a);
-		} else if (opcode == OP_SIN) {
-			register_file[register_base + dst] = sin(a);
-		} else if (opcode == OP_COS) {
-			register_file[register_base + dst] = cos(a);
-		} else if (opcode == OP_TANH) {
-			register_file[register_base + dst] = tanh(a);
-		} else if (opcode == OP_SIGMOID) {
-			register_file[register_base + dst] = 1.0f / (1.0f + exp(-a));
-		} else if (opcode == OP_RELU) {
-			register_file[register_base + dst] = max(a, 0.0f);
-		} else if (opcode == OP_GELU) {
-			float inner = 0.7978845608028654f * (a + 0.044715f * a * a * a);
-			register_file[register_base + dst] = 0.5f * a * (1.0f + tanh(inner));
-		} else if (opcode == OP_SILU) {
-			register_file[register_base + dst] = a / (1.0f + exp(-a));
-		} else {
-			register_file[register_base + dst] = a;
+		if (opcode == 4u) {
+			uint rows = tape_words[base + 4u];
+			uint width = tape_words[base + 5u];
+			uint dtype = tape_words[base + 6u];
+			uint position = index / width;
+			uint row = dtype == 0u ? load_u8(storage_buffers[arg_b - REGISTER_COUNT], position)
+				: storage_buffers[arg_b - REGISTER_COUNT].Load(position * 4u);
+			register_file[register_base + dst] = row < rows ? load_f32(storage_buffers[arg_a - REGISTER_COUNT], row * width + index % width) : asfloat(0x7fc00000u);
+			step += 1u;
+			continue;
 		}
+		float a = read_source(arg_a, index, register_base);
+		float b = (opcode >= 10u && opcode <= 16u) || (opcode >= 40u && opcode <= 48u)
+			? read_source(arg_b, index, register_base) : 0.0f;
+		float extra = 0.0f;
+		if (opcode == 47u || opcode == 48u) {
+			extra = asfloat(tape_words[base + 4u]);
+			step += 1u;
+		}
+		register_file[register_base + dst] = eval_element(opcode, a, b, extra);
 	}
 }

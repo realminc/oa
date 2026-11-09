@@ -763,6 +763,10 @@ struct EngineState {
 	/// Measured matmul winners recorded by qualification, replayed only after
 	/// full revalidation against the live registry and problem/device contract.
 	matmul_route_cache: super::dna::provider::blas::MatmulRouteCache,
+	/// `true` when the `.vkcache` GEMM section existed but failed its inner
+	/// codec. A failed-load snapshot must never replace another writer's
+	/// qualified observations, so persistence preserves that section verbatim.
+	matmul_route_section_corrupt: bool,
 }
 
 /// Classification metadata for one deferred node. The scope records whether a
@@ -951,6 +955,16 @@ impl Engine {
 	/// Return queried device facts and the allocated descriptor capacities.
 	pub fn device_info(&self) -> crate::DeviceInfo {
 		self.handle.device_info()
+	}
+
+	/// Return engine-lifetime fusion decision and decline counters.
+	///
+	/// Counts reflect fusion passes that already ran: eager work is fused when
+	/// it is flushed and captured work when it is captured. This query does not
+	/// flush, submit or wait, and plan replay does not change the counters.
+	/// The record is a diagnostic; it never influences route selection.
+	pub fn fusion_stats(&self) -> super::FusionStats {
+		self.handle.fusion_stats()
 	}
 
 	/// Begin explicit engine configuration.
@@ -1172,24 +1186,47 @@ impl Engine {
 			);
 		}
 
-		// Best-effort measured-route replay: a missing cache is normal; a
-		// present but malformed one is evidence worth surfacing before it is
-		// discarded. Either way the empty cache fails closed to structural
-		// routing — never to a partially accepted record.
-		let route_cache_path = super::dna::provider::blas::route_cache_path();
-		let matmul_route_cache =
-			match super::dna::provider::blas::MatmulRouteCache::load(&route_cache_path) {
-				Ok(cache) => cache,
-				Err(error) => {
-					if route_cache_path.is_file() {
-						crate::log_warn!(
-							crate::LogComponent::RUNTIME,
-							"discarding persisted matmul route cache: {error}"
-						);
+		// Best-effort measured-route replay through the scoped `.vkcache`
+		// envelope: a missing section is normal; a present but malformed one is
+		// evidence worth surfacing while it is preserved for a later writer.
+		// Either way the empty cache fails closed to structural routing — never
+		// to a partially accepted record.
+		let vkcache_scope = super::device::vkcache::VkCacheScope::new(device.physical());
+		let vkcache_path = vkcache_scope.path();
+		let mut matmul_route_section_corrupt = false;
+		let mut matmul_route_cache = super::dna::provider::blas::MatmulRouteCache::new();
+		if vkcache_path.is_file() {
+			match super::device::vkcache::VkCacheFile::open(&vkcache_path, &vkcache_scope) {
+				Ok(file) => {
+					if let Some(section) = file.section(super::device::vkcache::SECTION_GEMM_MEASURED_ROUTES)
+					{
+						match super::dna::provider::blas::MatmulRouteCache::from_bytes(&section.bytes) {
+							Ok(cache) => matmul_route_cache = cache,
+							Err(error) => {
+								matmul_route_section_corrupt = true;
+								crate::log_warn!(
+									crate::LogComponent::RUNTIME,
+									"discarding malformed vkcache matmul route section: {error}"
+								);
+							}
+						}
 					}
-					super::dna::provider::blas::MatmulRouteCache::new()
 				}
-			};
+				Err(error) => {
+					crate::log_warn!(
+						crate::LogComponent::RUNTIME,
+						"discarding vkcache artifact for route replay: {error}"
+					);
+				}
+			}
+		}
+		// Legacy migration: scope-matching records from the unscoped file merge
+		// in; it stays on disk for other scopes and is never written again.
+		let route_cache_path = super::dna::provider::blas::route_cache_path();
+		if let Ok(legacy) = super::dna::provider::blas::MatmulRouteCache::load(&route_cache_path) {
+			let (vendor_id, device_id, driver_id, driver_version) = vkcache_scope.device_route_scope();
+			matmul_route_cache.merge_scope(&legacy, vendor_id, device_id, driver_id, driver_version);
+		}
 
 		Ok(Self {
 			_log_selection: log_selection,
@@ -1204,6 +1241,7 @@ impl Engine {
 					secret_scope: None,
 					compose_images: RefCell::new(Vec::new()),
 					matmul_route_cache,
+					matmul_route_section_corrupt,
 				})),
 			},
 			_not_send_sync: PhantomData,
@@ -1413,6 +1451,13 @@ impl Engine {
 	///
 	/// Returns the first console or file flush failure.
 	pub fn close(self) -> Result<()> {
+		if crate::EnvFlag::is_set("OA_JIT_TRACE") {
+			crate::log_info!(
+				LogComponent::COMPUTE,
+				"fusion census {}",
+				self.fusion_stats()
+			);
+		}
 		crate::log_info!(LogComponent::ENGINE, "closing Vulkan compute engine");
 		self.logger.close()
 	}
@@ -1424,13 +1469,66 @@ impl Engine {
 
 impl Drop for Engine {
 	fn drop(&mut self) {
-		// Best-effort persistence of measured routes, matching the donor's
-		// engine-teardown save. The cache is small, the write is local, and a
-		// missing var tree or write failure never fails engine destruction.
-		if let Ok(state) = self.handle.state.try_borrow() {
-			let _ = state
-				.matmul_route_cache
-				.save(&super::dna::provider::blas::route_cache_path());
+		// One Engine-owned persistence point: gather subsystem snapshots while
+		// the device is live, then merge them into the scoped `.vkcache`
+		// envelope under its atomic writer policy. The cache is disposable
+		// qualified state — a borrow, query or I/O failure never fails engine
+		// destruction and never replaces committed observations.
+		let snapshot = self.handle.state.try_borrow().ok().map(|state| {
+			let scope = super::device::vkcache::VkCacheScope::new(state.device.physical());
+			let driver = state.device.pipeline_cache_data();
+			let jit = state.device.jit_section_updates();
+			let (vendor_id, device_id, driver_id, driver_version) = scope.device_route_scope();
+			let gemm = if state.matmul_route_section_corrupt {
+				// The loaded section failed its inner codec; preserve whatever
+				// qualified records it may still hold for another writer.
+				None
+			} else {
+				Some(state.matmul_route_cache.serialize_scope(
+					vendor_id,
+					device_id,
+					driver_id,
+					driver_version,
+				))
+			};
+			(scope, driver, gemm, jit)
+		});
+		let Some((scope, driver, gemm, jit)) = snapshot else {
+			return;
+		};
+		let mut updates = Vec::with_capacity(2);
+		if let Some(blob) = driver {
+			updates.push(super::device::vkcache::SectionUpdate::replace(
+				super::device::vkcache::SECTION_DRIVER_PIPELINE_CACHE,
+				1,
+				blob,
+			));
+		}
+		match gemm {
+			Some(Some(payload)) => {
+				updates.push(super::device::vkcache::SectionUpdate::replace(
+					super::device::vkcache::SECTION_GEMM_MEASURED_ROUTES,
+					1,
+					payload,
+				));
+			}
+			Some(None) => {
+				updates.push(super::device::vkcache::SectionUpdate::remove(
+					super::device::vkcache::SECTION_GEMM_MEASURED_ROUTES,
+				));
+			}
+			None => {}
+		}
+		updates.extend(jit);
+		if updates.is_empty() {
+			return;
+		}
+		let path = scope.path();
+		if super::device::vkcache::update(&path, &scope, &updates).is_ok() {
+			// The scoped artifact committed; the legacy raw driver blob has
+			// been imported or superseded and is never written again.
+			let _ =
+				crate::Filesystem::remove_file(&super::device::pipeline::legacy_pipeline_cache_path());
 		}
 	}
 }
@@ -1438,6 +1536,20 @@ impl Drop for Engine {
 impl EngineHandle {
 	pub(crate) fn device_info(&self) -> crate::DeviceInfo {
 		self.state.borrow().device.device_info()
+	}
+
+	pub(in crate::runtime) fn fusion_stats(&self) -> super::FusionStats {
+		self.state.borrow().device.fusion_census().snapshot()
+	}
+
+	/// Add one captured plan's DNN partition outcomes to the fusion census.
+	pub(in crate::runtime) fn record_dnn_partitions(&self, applied: u32, fallback: u32) {
+		self
+			.state
+			.borrow()
+			.device
+			.fusion_census()
+			.dnn(applied, fallback);
 	}
 
 	/// The admission profile of the selected device — whether descriptor
@@ -1718,10 +1830,8 @@ impl EngineHandle {
 			)
 			.set_sharing_mode(vk::SharingMode::EXCLUSIVE)
 			.set_initial_layout(vk::ImageLayout::UNDEFINED);
-		let alloc_info = vk::mem::AllocationCreateInfo {
-			usage: vk::mem::MemoryUsage::PreferDevice,
-			..Default::default()
-		};
+		let alloc_info =
+			vk::mem::AllocationCreateInfo::new().set_usage(vk::mem::MemoryUsage::PreferDevice);
 		let (image, mut alloc) = unsafe {
 			device
 				.allocator()
@@ -3508,3 +3618,7 @@ mod secret_tests;
 #[cfg(test)]
 #[path = "../../../test/rs/runtime/device_owner_unit.rs"]
 mod device_owner_tests;
+
+#[cfg(test)]
+#[path = "../../../test/rs/runtime/jit_chain_unit.rs"]
+mod jit_chain_tests;

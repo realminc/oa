@@ -510,23 +510,23 @@ pub(super) fn create_decode_session(
 					),
 				));
 			}
-			let allocation_info = vk::mem::AllocationCreateInfo {
-				usage: vk::mem::MemoryUsage::Explicit,
-				preferred_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
-				memory_type_bits: requirement.memory_requirements.memory_type_bits,
-				..Default::default()
-			};
+			let allocation_info = vk::mem::AllocationCreateInfo::new()
+				.set_usage(vk::mem::MemoryUsage::Explicit)
+				.set_preferred_flags(vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT)
+				.set_memory_type_bits(requirement.memory_requirements.memory_type_bits);
 			// SAFETY: the requirements were returned for this live session, and VMA
 			// constrains selection to the driver's advertised memory-type mask.
 			let allocation = unsafe {
 				session.device.allocator().with_allocator(|a| {
-					a.allocate(&vk::mem::AllocRequest {
-						size: requirement.memory_requirements.size,
-						alignment: requirement.memory_requirements.alignment,
-						memory_type_bits: requirement.memory_requirements.memory_type_bits,
-						required_flags: allocation_info.required_flags,
-						preferred_flags: allocation_info.preferred_flags,
-					})
+					a.allocate(
+						&vk::mem::AllocRequest::new(
+							requirement.memory_requirements.size,
+							requirement.memory_requirements.alignment,
+							requirement.memory_requirements.memory_type_bits,
+						)
+						.set_required_flags(allocation_info.required_flags)
+						.set_preferred_flags(allocation_info.preferred_flags),
+					)
 				})
 			}
 			.map_err(|source| {
@@ -700,11 +700,9 @@ fn create_decode_image(
 		.set_initial_layout(vk::ImageLayout::UNDEFINED)
 		.push_next(&mut profile_list)
 		.map_err(Error::from)?;
-	let allocation_info = vk::mem::AllocationCreateInfo {
-		usage: vk::mem::MemoryUsage::PreferDevice,
-		required_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
-		..Default::default()
-	};
+	let allocation_info = vk::mem::AllocationCreateInfo::new()
+		.set_usage(vk::mem::MemoryUsage::PreferDevice)
+		.set_required_flags(vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT);
 	// SAFETY: the exact video profile and queried format properties remain live,
 	// the extent/layer count are nonzero and session-bounded, and VMA retains the
 	// device/allocator used to bind the returned image allocation.
@@ -792,14 +790,12 @@ fn create_decode_bitstream(
 		.set_sharing_mode(vk::SharingMode::EXCLUSIVE)
 		.push_next(&mut profile_list)
 		.map_err(Error::from)?;
-	let allocation_info = vk::mem::AllocationCreateInfo {
-		host_access: vk::mem::HostAccess::SequentialWrite,
-		dedicated_memory: true,
-		usage: vk::mem::MemoryUsage::PreferDevice,
-		required_flags: vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT,
-		preferred_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
-		..Default::default()
-	};
+	let allocation_info = vk::mem::AllocationCreateInfo::new()
+		.set_host_access(vk::mem::HostAccess::SequentialWrite)
+		.set_dedicated_memory(true)
+		.set_usage(vk::mem::MemoryUsage::PreferDevice)
+		.set_required_flags(vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT)
+		.set_preferred_flags(vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT);
 	// SAFETY: the exact decode profile remains live in the required buffer pNext
 	// chain, the aligned range is nonzero, and VMA binds compatible host-visible
 	// memory to the returned buffer.

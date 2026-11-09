@@ -26,6 +26,7 @@ const ATTRIBUTES: &str = "src/slang/core/attributes.slang";
 const LINEAR_FEATURES: &str = "src/slang/ml/nn/attention/linear_features.slang";
 const TRADING_COMMON: &str = "src/slang/ml/environment/trading/common.slang";
 const ACTIVATIONS: &str = "src/slang/core/math/activations.slang";
+const ELEMENTWISE: &str = "src/slang/core/math/elementwise.slang";
 const SSM_MATH: &str = "src/slang/core/math/ssm_math.slang";
 const PHILOX: &str = "src/slang/core/rng/philox.slang";
 const DROPOUT_RNG: &str = "src/slang/matrix/rng/dropout_rng.slang";
@@ -117,6 +118,7 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		STORAGE,
 		ATTRIBUTES,
 		ACTIVATIONS,
+		ELEMENTWISE,
 		LINEAR_FEATURES,
 		TRADING_COMMON,
 		SSM_MATH,

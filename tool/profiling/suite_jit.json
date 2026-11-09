@@ -1,0 +1,165 @@
+{
+  "schema": "oars.benchmark_suite.v1",
+  "workloads": [
+    {
+      "name": "ml.nlp.char_transformer.fused",
+      "command_id": "oars.ml.nlp.char_transformer.f32.forward_backward.fused.v2",
+      "command": ["{binary_root}/sdk/benchmarks/ml/nlp/ml_nlp_char_transformer_profile"],
+      "env": {
+        "OA_DISABLE_EPILOGUE_FUSION": null,
+        "OA_DISABLE_ELEMENTWISE_FUSION": null,
+        "OA_JIT_FUSION": null,
+        "OA_JIT_ROUTE": null
+      },
+      "contract": {"dtype": "f32", "route": "l1_structural_plus_l2_tape", "metric_column": "candidate", "boundary": "captured_plan_gpu_timestamp"},
+      "metric_regex": "forward \\+ backward GPU median: fused (?P<value>[0-9.]+) ms",
+      "metric_name": "forward_backward_gpu_median",
+      "metric_unit": "ms",
+      "warmup": 1,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["forward \\+ backward GPU median", "fusion census:"]
+    },
+    {
+      "name": "ml.nlp.char_transformer.unfused",
+      "command_id": "oars.ml.nlp.char_transformer.f32.forward_backward.unfused.v2",
+      "command": ["{binary_root}/sdk/benchmarks/ml/nlp/ml_nlp_char_transformer_profile"],
+      "env": {
+        "OA_DISABLE_EPILOGUE_FUSION": "1",
+        "OA_DISABLE_ELEMENTWISE_FUSION": "1",
+        "OA_JIT_FUSION": null,
+        "OA_JIT_ROUTE": null
+      },
+      "contract": {"dtype": "f32", "route": "canonical_per_op", "metric_column": "candidate", "boundary": "captured_plan_gpu_timestamp"},
+      "metric_regex": "forward \\+ backward GPU median: fused (?P<value>[0-9.]+) ms",
+      "metric_name": "forward_backward_gpu_median",
+      "metric_unit": "ms",
+      "warmup": 1,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["forward \\+ backward GPU median", "fusion census:"]
+    },
+    {
+      "name": "ml.nlp.char_transformer.jit",
+      "command_id": "oars.ml.nlp.char_transformer.f32.forward_backward.jit.v2",
+      "command": ["{binary_root}/sdk/benchmarks/ml/nlp/ml_nlp_char_transformer_profile"],
+      "env": {
+        "OA_DISABLE_EPILOGUE_FUSION": null,
+        "OA_DISABLE_ELEMENTWISE_FUSION": null,
+        "OA_JIT_FUSION": "1",
+        "OA_JIT_ROUTE": null
+      },
+      "contract": {"dtype": "f32", "route": "l1_structural_plus_l2_specialized", "metric_column": "candidate", "boundary": "captured_plan_gpu_timestamp", "requires": "OA_SLANG_LIBRARY or published .vkcache jit artifacts"},
+      "metric_regex": "forward \\+ backward GPU median: fused (?P<value>[0-9.]+) ms",
+      "metric_name": "forward_backward_gpu_median",
+      "metric_unit": "ms",
+      "warmup": 1,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["forward \\+ backward GPU median", "fusion census:"]
+    },
+    {
+      "name": "ml.rl.cartpole_ppo.baseline",
+      "command_id": "oars.ml.rl.cartpole_ppo.f32.update.baseline.v1",
+      "command": ["{binary_root}/sdk/benchmarks/ml/rl/ml_rl_ppo_bench"],
+      "env": {
+        "OA_JIT_FUSION": null,
+        "OA_JIT_ROUTE": null,
+        "OA_DISABLE_EPILOGUE_FUSION": null,
+        "OA_DISABLE_ELEMENTWISE_FUSION": null
+      },
+      "contract": {"dtype": "f32", "route": "baseline", "boundary": "process_wall_and_gpu_snapshot"},
+      "metric_regex": "OA_PPO_RESULT[^\\n]*wall_ms_per_step=(?P<value>[0-9.]+)",
+      "metric_name": "wall_ms_per_step",
+      "metric_unit": "ms",
+      "warmup": 0,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["OA_PPO_RESULT route=baseline"]
+    },
+    {
+      "name": "ml.rl.cartpole_ppo.jit",
+      "command_id": "oars.ml.rl.cartpole_ppo.f32.update.jit.v1",
+      "command": ["{binary_root}/sdk/benchmarks/ml/rl/ml_rl_ppo_bench"],
+      "env": {
+        "OA_JIT_FUSION": "1",
+        "OA_JIT_ROUTE": null,
+        "OA_DISABLE_EPILOGUE_FUSION": null,
+        "OA_DISABLE_ELEMENTWISE_FUSION": null
+      },
+      "contract": {"dtype": "f32", "route": "jit", "boundary": "process_wall_and_gpu_snapshot", "requires": "OA_SLANG_LIBRARY or published .vkcache jit artifacts"},
+      "metric_regex": "OA_PPO_RESULT[^\\n]*wall_ms_per_step=(?P<value>[0-9.]+)",
+      "metric_name": "wall_ms_per_step",
+      "metric_unit": "ms",
+      "warmup": 0,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["OA_PPO_RESULT route=jit"]
+    },
+    {
+      "name": "core.elemwise_chain.route_unfused",
+      "command_id": "oars.core.elemwise_chain.f32.e16384.c4.unfused.v1",
+      "command": ["{binary_root}/sdk/benchmarks/core/core_elemwise_chain_bench", "--name", "route-unfused", "--elements", "16384", "--chain", "4", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
+      "env": {
+        "OA_JIT_FUSION": "1",
+        "OA_JIT_ROUTE": "unfused",
+        "OA_DISABLE_EPILOGUE_FUSION": null,
+        "OA_DISABLE_ELEMENTWISE_FUSION": null
+      },
+      "contract": {"dtype": "f32", "elements": "16384", "chain": "4", "route": "unfused", "boundary": "gpu_timestamp"},
+      "metric_regex": "OARS_BENCH[^\\n]*gpu_median_ms=(?P<value>[0-9.]+)",
+      "metric_name": "gpu_median",
+      "metric_unit": "ms",
+      "warmup": 2,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["correctness=pass"]
+    },
+    {
+      "name": "core.elemwise_chain.route_tape",
+      "command_id": "oars.core.elemwise_chain.f32.e16384.c4.tape.v1",
+      "command": ["{binary_root}/sdk/benchmarks/core/core_elemwise_chain_bench", "--name", "route-tape", "--elements", "16384", "--chain", "4", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
+      "env": {
+        "OA_JIT_FUSION": "1",
+        "OA_JIT_ROUTE": "tape",
+        "OA_DISABLE_EPILOGUE_FUSION": null,
+        "OA_DISABLE_ELEMENTWISE_FUSION": null
+      },
+      "contract": {"dtype": "f32", "elements": "16384", "chain": "4", "route": "tape", "boundary": "gpu_timestamp"},
+      "metric_regex": "OARS_BENCH[^\\n]*gpu_median_ms=(?P<value>[0-9.]+)",
+      "metric_name": "gpu_median",
+      "metric_unit": "ms",
+      "warmup": 2,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["correctness=pass", "nodes=1"]
+    },
+    {
+      "name": "core.elemwise_chain.route_specialized",
+      "command_id": "oars.core.elemwise_chain.f32.e16384.c4.specialized.v1",
+      "command": ["{binary_root}/sdk/benchmarks/core/core_elemwise_chain_bench", "--name", "route-specialized", "--elements", "16384", "--chain", "4", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
+      "env": {
+        "OA_JIT_FUSION": "1",
+        "OA_JIT_ROUTE": "specialized",
+        "OA_DISABLE_EPILOGUE_FUSION": null,
+        "OA_DISABLE_ELEMENTWISE_FUSION": null
+      },
+      "contract": {"dtype": "f32", "elements": "16384", "chain": "4", "route": "specialized", "boundary": "gpu_timestamp", "requires": "OA_SLANG_LIBRARY or published .vkcache jit artifacts"},
+      "metric_regex": "OARS_BENCH[^\\n]*gpu_median_ms=(?P<value>[0-9.]+)",
+      "metric_name": "gpu_median",
+      "metric_unit": "ms",
+      "warmup": 2,
+      "runs": 7,
+      "cooldown": 2.0,
+      "max_spread_percent": 25.0,
+      "require_regex": ["correctness=pass", "nodes=1"]
+    }
+  ]
+}

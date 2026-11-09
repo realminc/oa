@@ -39,6 +39,10 @@ fn root_exports_are_identities_of_runtime_contracts() -> oa::Result<()> {
 		TypeId::of::<oa::runtime::ExecutionPlanDiagnostics>()
 	);
 	assert_eq!(
+		TypeId::of::<oa::FusionStats>(),
+		TypeId::of::<oa::runtime::FusionStats>()
+	);
+	assert_eq!(
 		TypeId::of::<oa::CapturedResourceDesc>(),
 		TypeId::of::<oa::runtime::CapturedResourceDesc>()
 	);

@@ -185,6 +185,7 @@ pub(super) fn lower_captured_plan(
 
 		if engine == DnnEngineType::GatedFfn {
 			let candidate = match build_gate_up(
+				engine_handle,
 				plan,
 				partition_index,
 				semantic,
@@ -218,6 +219,7 @@ pub(super) fn lower_captured_plan(
 
 		if engine == DnnEngineType::VisionPreprocess {
 			let candidate = match build_vision_preprocess(
+				engine_handle,
 				plan,
 				partition_index,
 				semantic,
@@ -259,7 +261,14 @@ pub(super) fn lower_captured_plan(
 			continue;
 		}
 
-		let candidate = match build_qkv_projection(plan, partition_index, bindings, resources, source) {
+		let candidate = match build_qkv_projection(
+			engine_handle,
+			plan,
+			partition_index,
+			bindings,
+			resources,
+			source,
+		) {
 			Ok(candidate) => candidate,
 			Err(reason) => {
 				mark_fallback(plan, partition_index, reason, false);
@@ -286,6 +295,7 @@ pub(super) fn lower_captured_plan(
 }
 
 fn build_qkv_projection(
+	engine_handle: &EngineHandle,
 	plan: &DnnPlan,
 	partition_index: usize,
 	bindings: &[SemanticStorageBinding],
@@ -401,6 +411,12 @@ fn build_qkv_projection(
 			},
 		})
 		.collect();
+	if engine_handle
+		.require_kernel(KernelId::MlQkvProjectionBiasF32)
+		.is_err()
+	{
+		return Err("QKV projection provider found no admitted device pipeline");
+	}
 	Ok(QkvProjectionCandidate {
 		first_node: range.first,
 		node_count: range.count,
@@ -417,11 +433,15 @@ fn build_qkv_projection(
 			indirect: None,
 			semantic_ops: partition.operations.clone(),
 			op_contract_hash: 0,
+			jit: None,
+			fusion_signature: None,
 		},
 	})
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_gate_up(
+	engine_handle: &EngineHandle,
 	plan: &DnnPlan,
 	partition_index: usize,
 	semantic: &SemanticGraph,
@@ -576,6 +596,12 @@ fn build_gate_up(
 			},
 		})
 		.collect();
+	if engine_handle
+		.require_kernel(KernelId::MlGateUpSwigluBiasF32)
+		.is_err()
+	{
+		return Err("gate/up provider found no admitted device pipeline");
+	}
 	Ok(GateUpCandidate {
 		first_node: range.first,
 		node_count: range.count,
@@ -592,6 +618,8 @@ fn build_gate_up(
 			indirect: None,
 			semantic_ops: partition.operations.clone(),
 			op_contract_hash: 0,
+			jit: None,
+			fusion_signature: None,
 		},
 	})
 }
@@ -643,7 +671,9 @@ fn unsigned_attribute(
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_vision_preprocess(
+	engine_handle: &EngineHandle,
 	plan: &DnnPlan,
 	partition_index: usize,
 	semantic: &SemanticGraph,
@@ -845,6 +875,12 @@ fn build_vision_preprocess(
 			},
 		})
 		.collect();
+	if engine_handle
+		.require_kernel(KernelId::ImageResizeNormalizeF32)
+		.is_err()
+	{
+		return Err("vision preprocess provider found no admitted device pipeline");
+	}
 	Ok(VisionPreprocessCandidate {
 		first_node: range.first,
 		node_count: range.count,
@@ -875,6 +911,8 @@ fn build_vision_preprocess(
 			indirect: None,
 			semantic_ops: partition.operations.clone(),
 			op_contract_hash: 0,
+			jit: None,
+			fusion_signature: None,
 		},
 	})
 }
@@ -1152,6 +1190,8 @@ fn build_linear_epilogue(
 			indirect: None,
 			semantic_ops: partition.operations.clone(),
 			op_contract_hash: 0,
+			jit: None,
+			fusion_signature: None,
 		},
 	})
 }

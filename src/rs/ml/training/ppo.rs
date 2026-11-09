@@ -4,7 +4,7 @@
 //! remains caller-owned; this trainer composes one retained rollout, the
 //! Actor-Critic behavior contract, reverse mode, and [`ItRolloutTraining`].
 
-use crate::{Engine, Error, Matrix, Result, matrix};
+use crate::{DType, Engine, Error, Matrix, Result, matrix};
 
 use super::{
 	ItRolloutTraining, ItRolloutTrainingConfig, Optimizer, RolloutTrainingPhase, TrainingCallback,
@@ -52,6 +52,18 @@ pub struct PpoTrainer<'engine, 'hooks> {
 	collecting: bool,
 	collection_abortable: bool,
 	compiled: Option<&'hooks mut super::PpoUpdateProgram>,
+	// Present only when the model declares row-independent evaluation; other
+	// models evaluate each successor batch in observe.
+	deferred_bootstrap: Option<DeferredBootstrap>,
+}
+
+/// Per-step successor observations retained for the batched next-value
+/// evaluation recorded at end_collection. The cursor's second word keeps
+/// training_accumulate in overwrite mode and its first word stays zero so
+/// next_observation_append rows come from the host step index alone.
+struct DeferredBootstrap {
+	observations: Matrix,
+	cursor: Matrix,
 }
 
 impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
@@ -132,6 +144,26 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 		{
 			training.update_loop_mut().disable_eager_resource_reuse();
 		}
+		let deferred_bootstrap = if model.evaluates_rows_independently() {
+			let rows = config
+				.horizon
+				.checked_mul(config.environments)
+				.ok_or_else(|| Error::resource_exhausted("PPO next_observation rows overflow usize"))?;
+			let count = rows
+				.checked_mul(observation_elements)
+				.ok_or_else(|| Error::resource_exhausted("PPO next_observation storage overflows usize"))?;
+			Some(DeferredBootstrap {
+				observations: Matrix::allocate(
+					&engine.handle(),
+					vec![rows, observation_elements],
+					count,
+					DType::F32,
+				)?,
+				cursor: Matrix::new_from_slice(engine, [2], &[0_u32, 1])?,
+			})
+		} else {
+			None
+		};
 		Ok(Self {
 			engine,
 			model,
@@ -145,6 +177,7 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 			collecting: false,
 			collection_abortable: false,
 			compiled,
+			deferred_bootstrap,
 		})
 	}
 
@@ -323,12 +356,18 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 
 	/// Append one environment step using statistics returned by [`Self::act`].
 	///
-	/// The next critic evaluation remains outside a gradient tape.
+	/// The next critic evaluation remains outside a gradient tape. When the
+	/// model reports [`ActorCritic::evaluates_rows_independently`], the
+	/// successor observation is instead retained for one batched critic
+	/// evaluation recorded by [`Self::end_collection`]; the appended
+	/// next-value slot carries `policy_result.value` as a placeholder that
+	/// the batched pass overwrites before GAE consumes it.
 	///
 	/// # Errors
 	///
-	/// Returns an error outside collection or for invalid observation, policy,
-	/// transition, model, or device-recording contracts.
+	/// Returns an error outside collection, at rollout capacity, or for
+	/// invalid observation, policy, transition, model, or device-recording
+	/// contracts.
 	#[allow(
 		clippy::too_many_arguments,
 		reason = "the PPO transition boundary keeps observation, reward, and both terminal meanings explicit"
@@ -347,17 +386,38 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 				"PPO observe requires active collection",
 			));
 		}
+		if self.rollout.len() == self.rollout.capacity() {
+			return Err(Error::resource_exhausted(
+				"PPO observe exceeds rollout capacity",
+			));
+		}
 		let next_flat = matrix::reshape(
 			next_observation,
 			[self.config.environments, self.observation_elements],
 		)?;
-		let next = self.model.evaluate(&next_flat)?;
+		let next_value = match &self.deferred_bootstrap {
+			Some(deferred) => {
+				crate::ml::rollout::next_observation_append(
+					&next_flat,
+					&deferred.observations,
+					&deferred.cursor,
+					self.rollout.len(),
+					self
+						.config
+						.environments
+						.checked_mul(self.observation_elements)
+						.ok_or_else(|| Error::resource_exhausted("PPO observation count overflows usize"))?,
+				)?;
+				policy_result.value.clone()
+			}
+			None => self.model.evaluate(&next_flat)?.value,
+		};
 		self.rollout.append(&RolloutTransition::new(
 			observation.clone(),
 			policy_result.action.clone(),
 			reward.clone(),
 			policy_result.value.clone(),
-			next.value,
+			next_value,
 			policy_result.log_probability.clone(),
 			terminated.clone(),
 			truncated.clone(),
@@ -365,6 +425,12 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 	}
 
 	/// Finalize a full collection with GAE and enter Update.
+	///
+	/// For row-independent models, one batched critic evaluation over every
+	/// retained successor observation replaces the per-step evaluation in
+	/// [`Self::observe`], which would record under the same unchanged model
+	/// parameters; done lanes keep their pre-reset successor state because
+	/// retention happens before the environment reset overwrites it.
 	///
 	/// # Errors
 	///
@@ -375,6 +441,22 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 			return Err(Error::failed_precondition(
 				"PPO end_collection requires active collection",
 			));
+		}
+		if self.rollout.len() != self.rollout.capacity() {
+			return Err(Error::failed_precondition(
+				"PPO end_collection requires a complete rollout",
+			));
+		}
+		if let Some(deferred) = &self.deferred_bootstrap {
+			let network = self.model.evaluate(&deferred.observations)?;
+			crate::ml::matrix::training_accumulate(
+				self.rollout.batch().next_value(),
+				&network
+					.value
+					.reshape_view(vec![self.config.horizon, self.config.environments])?,
+				&deferred.cursor,
+				1.0,
+			)?;
 		}
 		self
 			.training

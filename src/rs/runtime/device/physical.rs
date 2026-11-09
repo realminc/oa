@@ -555,6 +555,7 @@ impl DevicePhysical {
 					driver_id: driver_properties.driver_id,
 					driver_version: properties.driver_version,
 					conformance_version: driver_properties.conformance_version,
+					pipeline_cache_uuid: properties.pipeline_cache_uuid,
 					capability_identity,
 					local_memory_bytes: local_memory.capacity_bytes,
 					local_memory_budget_bytes: local_memory.budget_bytes,

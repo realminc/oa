@@ -34,7 +34,7 @@ void main(uint3 dispatch_thread_id : SV_DispatchThreadID) {
 	uint index_position = output_index / push.row_size;
 	uint column = output_index % push.row_size;
 	uint row = push.index_dtype == 0
-		? uint(storage_buffers[push.indices_index].Load<uint8_t>(index_position))
+		? load_u8(storage_buffers[push.indices_index], index_position)
 		: storage_buffers[push.indices_index].Load(index_position * 4u);
 	float value = row < push.num_rows
 		? load_f32(storage_buffers[push.table_index], row * push.row_size + column)

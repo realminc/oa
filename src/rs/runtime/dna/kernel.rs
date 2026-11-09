@@ -1,6 +1,12 @@
 //! Private target-independent kernel artifacts and metadata.
 
+mod elementwise;
+
 use crate::{Error, Result};
+
+// Runtime specialization machinery for the opt-in discovered-chain route;
+// ordinary execution has no compiler dependency.
+pub(in crate::runtime) mod jit;
 
 const SPIRV_MAGIC: u32 = 0x0723_0203;
 
@@ -311,7 +317,7 @@ enum SpirvType {
 	Struct(Vec<u32>),
 }
 
-fn reflect_push_constant_size(words: &[u32]) -> Result<u32> {
+pub(in crate::runtime) fn reflect_push_constant_size(words: &[u32]) -> Result<u32> {
 	const OP_TYPE_INT: u16 = 21;
 	const OP_TYPE_FLOAT: u16 = 22;
 	const OP_TYPE_VECTOR: u16 = 23;

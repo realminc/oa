@@ -4,6 +4,7 @@
 //! admission is proven. The `oaDna` planner document owns the contract and
 //! provider snapshot.
 
+pub(super) mod elementwise;
 pub(super) mod kernel;
 pub(super) mod provider;
 

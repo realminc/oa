@@ -345,6 +345,99 @@ test_vk!(
 );
 
 test_vk!(
+	ppo_bootstrap_batches_only_row_independent_critics,
+	engine,
+	{
+		use oa::ml::{ActorCritic, ActorCriticOutput, ModuleRegistry};
+		// Each row's value is the batch-wide sum of all observation features.
+		// Per-step bootstrap yields one total per step; coalescing the whole
+		// rollout into one batch would put the rollout-wide total everywhere.
+		struct BatchSum<'a> {
+			inner: CategoricalActorCritic,
+			engine: &'a oa::Engine,
+		}
+		impl Module for BatchSum<'_> {
+			fn registry(&self) -> &ModuleRegistry {
+				self.inner.registry()
+			}
+			fn forward(&self, x: &oa::Matrix) -> oa::Result<oa::Matrix> {
+				self.inner.forward(x)
+			}
+		}
+		impl ActorCritic for BatchSum<'_> {
+			fn evaluate(&self, x: &oa::Matrix) -> oa::Result<ActorCriticOutput> {
+				let &[batch, _] = x.shape() else {
+					return Err(oa::Error::callback("batch-sum critic requires rank two"));
+				};
+				let row_sums = oa::matrix::reshape(&oa::matrix::sum(x, 1)?, [1, batch])?;
+				let total =
+					oa::matrix::mat_mul_nt(&oa::matrix::ones(self.engine, [batch, batch])?, &row_sums)?;
+				Ok(ActorCriticOutput {
+					logits: self.inner.evaluate(x)?.logits,
+					value: oa::matrix::reshape(&total, [batch])?,
+				})
+			}
+		}
+		let collect = |trainer: &mut PpoTrainer<'_, '_>| -> oa::Result<Vec<oa::Matrix>> {
+			trainer.begin_collection()?;
+			let mut successors = Vec::new();
+			for step in 0..trainer.config().horizon {
+				let scale = (step + 1) as f32;
+				let observation = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.1, -0.2, 0.3, 0.4])?;
+				let next = oa::Matrix::new_from_f32(&engine, [2, 2], &[scale, 0.5, -0.25, scale])?;
+				let reward = oa::Matrix::new_from_f32(&engine, [2], &[1.0, 0.5])?;
+				let done = oa::Matrix::new_from_slice(&engine, [2], &[0_u8, 0])?;
+				let policy = trainer.act(&observation)?;
+				trainer.observe(&observation, &next, &reward, &done, &done, &policy)?;
+				successors.push(next);
+			}
+			trainer.end_collection()?;
+			Ok(successors)
+		};
+		let c = PpoTrainerConfig {
+			horizon: 2,
+			..config(321)
+		};
+
+		let dependent = BatchSum {
+			inner: model(&engine, 31)?,
+			engine: &engine,
+		};
+		assert!(!dependent.evaluates_rows_independently());
+		let mut optimizer = Adam::new(dependent.all_parameters()?, 1.0e-3)?;
+		let mut trainer = PpoTrainer::new(&engine, &dependent, &mut optimizer, c.clone())?;
+		collect(&mut trainer)?;
+		// Step totals: 1 + 0.5 - 0.25 + 1 = 2.25 and 2 + 0.5 - 0.25 + 2 = 4.25.
+		assert_eq!(
+			trainer.batch().next_value().read_f32()?,
+			[2.25, 2.25, 4.25, 4.25],
+			"a batch-dependent critic must bootstrap from its per-step evaluation"
+		);
+		drop(trainer);
+
+		let independent = model(&engine, 32)?;
+		assert!(ActorCritic::evaluates_rows_independently(&independent));
+		let mut optimizer = Adam::new(independent.all_parameters()?, 1.0e-3)?;
+		let mut trainer = PpoTrainer::new(&engine, &independent, &mut optimizer, c)?;
+		let successors = collect(&mut trainer)?;
+		let batched = trainer.batch().next_value().read_f32()?;
+		drop(trainer);
+		let per_step = successors
+			.iter()
+			.map(|next| independent.evaluate(next)?.value.read_f32())
+			.collect::<oa::Result<Vec<_>>>()?
+			.concat();
+		for (actual, expected) in batched.iter().zip(&per_step) {
+			assert!(
+				(actual - expected).abs() <= 1e-6 + 1e-6 * expected.abs(),
+				"coalesced bootstrap must match per-step evaluation: {actual} vs {expected}"
+			);
+		}
+		Ok(())
+	}
+);
+
+test_vk!(
 	ppo_compiled_updates_match_eager_with_tail_across_rollout_boundaries,
 	engine,
 	{
@@ -681,6 +774,13 @@ test_vk!(
 		let mut collection = TradingRolloutProgram::default();
 		let mut previous_cursor = 0;
 		for chunk in 0..3 {
+			if chunk == 1 {
+				// Change loss policy with inventory still open. The collection
+				// plan must retain its rollout buffers and the optimizer its moments.
+				updates.invalidate_updates();
+				assert!(!updates.is_compiled());
+				optimizer.set_learning_rate(0.00003)?;
+			}
 			let config = PpoTrainerConfig {
 				rollouts: 1,
 				horizon: 2,
@@ -690,6 +790,10 @@ test_vk!(
 				observation_shape: vec![2 + TRADING_ACCOUNT_FEATURES],
 				seed: (1_u64 << 32) - 2,
 				enable_gpu_timing: true,
+				loss: oa::ml::loss::PpoLossConfig {
+					entropy_coefficient: if chunk == 0 { 0.01 } else { 0.001 },
+					..Default::default()
+				},
 				..Default::default()
 			};
 			let gamma = config.gae.gamma;

@@ -1382,17 +1382,15 @@ fn create_shader_module(device: &vk::Device, words: &[u32]) -> Result<vk::Shader
 
 // ── Pipeline cache persistence ────────────────────────────────────────────────
 
-/// File name of the persisted Vulkan pipeline cache below `var/vk`.
-const PIPELINE_CACHE_FILE: &str = "pipeline.vcache";
+/// File name of the legacy raw driver blob below `var/vk`, retained only as a
+/// migration source for the scoped `.vkcache` envelope.
+const LEGACY_PIPELINE_CACHE_FILE: &str = "pipeline.vcache";
 
-/// Directory holding the persisted Vulkan pipeline cache.
-fn pipeline_cache_dir() -> crate::Path {
-	crate::Path::var().join("vk")
-}
-
-/// Path of the persisted Vulkan pipeline cache.
-pub(in crate::runtime) fn pipeline_cache_path() -> crate::Path {
-	pipeline_cache_dir().join(PIPELINE_CACHE_FILE)
+/// Path of the legacy raw pipeline cache — read once for import, never written.
+pub(in crate::runtime) fn legacy_pipeline_cache_path() -> crate::Path {
+	crate::Path::var()
+		.join("vk")
+		.join(LEGACY_PIPELINE_CACHE_FILE)
 }
 
 /// Owned `VkPipelineCache` optionally seeded with persisted driver data.
@@ -1428,14 +1426,42 @@ impl PipelineCache {
 		})
 	}
 
-	/// Open a pipeline cache seeded with `var/vk/pipeline.vcache` when present.
+	/// Open a pipeline cache seeded with persisted driver data.
 	///
-	/// An absent or empty file still produces a live cold cache so new
-	/// pipelines are captured and persisted at teardown. Returns `None` only
-	/// when the driver cannot create any cache; callers then run uncached.
-	pub(super) fn open(device: &std::sync::Arc<vk::Device>) -> Option<Self> {
-		let path = pipeline_cache_path();
-		let initial_data = crate::Filesystem::read_binary(&path).unwrap_or_default();
+	/// The authoritative source is the scope's `.vkcache` driver section. A
+	/// legacy `pipeline.vcache` is imported only when no envelope exists for
+	/// this scope, and only after its standard Vulkan header validates against
+	/// the selected device. An absent, mismatched or corrupt seed still
+	/// produces a live cold cache; `None` is returned only when the driver
+	/// cannot create any cache, in which case callers run uncached.
+	pub(super) fn open(
+		device: &std::sync::Arc<vk::Device>,
+		physical: &super::physical::DevicePhysical,
+	) -> Option<Self> {
+		let scope = super::vkcache::VkCacheScope::new(physical);
+		let path = scope.path();
+		let (initial_data, source) = if path.is_file() {
+			// A present envelope is authoritative: no legacy import, even when
+			// the driver section is absent or fails validation.
+			let data = super::vkcache::VkCacheFile::open(&path, &scope)
+				.ok()
+				.and_then(|file| {
+					file
+						.section(super::vkcache::SECTION_DRIVER_PIPELINE_CACHE)
+						.filter(|section| section.version == 1)
+						.map(|section| section.bytes.clone())
+				})
+				.filter(|bytes| super::vkcache::driver_blob_matches_scope(bytes, &scope))
+				.unwrap_or_default();
+			(data, path.display().to_string())
+		} else {
+			let legacy = legacy_pipeline_cache_path();
+			let data = crate::Filesystem::read_binary(&legacy)
+				.ok()
+				.filter(|bytes| super::vkcache::driver_blob_matches_scope(bytes, &scope))
+				.unwrap_or_default();
+			(data, legacy.display().to_string())
+		};
 		match Self::new(std::sync::Arc::clone(device), &initial_data) {
 			Ok(cache) => {
 				if !initial_data.is_empty() {
@@ -1443,7 +1469,7 @@ impl PipelineCache {
 						crate::LogComponent::COMPUTE,
 						"pipeline cache: loaded {} bytes from {}",
 						initial_data.len(),
-						path.display()
+						source
 					);
 				}
 				Some(cache)
@@ -1457,30 +1483,6 @@ impl PipelineCache {
 			}
 			Err(_) => None,
 		}
-	}
-
-	/// Persist the merged driver blob back to `var/vk/pipeline.vcache`.
-	///
-	/// Best-effort during teardown: query or I/O failure keeps the previously
-	/// persisted state rather than failing device destruction.
-	pub(super) fn save(&self) {
-		let data = match self.data() {
-			Ok(data) if !data.is_empty() => data,
-			_ => return,
-		};
-		let dir = pipeline_cache_dir();
-		let path = dir.join(PIPELINE_CACHE_FILE);
-		if crate::Filesystem::create_directories(&dir).is_err()
-			|| crate::Filesystem::write_binary(&path, &data).is_err()
-		{
-			return;
-		}
-		crate::log_info!(
-			crate::LogComponent::COMPUTE,
-			"pipeline cache: saved {} bytes to {}",
-			data.len(),
-			path.display()
-		);
 	}
 
 	/// Serialize the driver-owned cache blob.
@@ -1527,6 +1529,7 @@ pub(in crate::runtime) struct ComputePipeline {
 	layout: vk::PipelineLayout,
 	max_dispatch_group_count: [u32; 3],
 	push_constant_size: u32,
+	device: std::sync::Arc<vk::Device>,
 }
 
 impl ComputePipeline {
@@ -1537,8 +1540,28 @@ impl ComputePipeline {
 		limits: DeviceLimits,
 		cache: vk::PipelineCache,
 	) -> Result<Self> {
-		let push_constant_size = artifact.push_constant_size()?;
-		validate_artifact_limits(artifact.workgroup_size, push_constant_size, limits)?;
+		Self::from_words(
+			device,
+			descriptor_layout,
+			&artifact.spirv_words()?,
+			artifact.workgroup_size,
+			limits,
+			cache,
+		)
+	}
+
+	/// Consume validated SPIR-V synchronously; the module does not borrow its words.
+	/// Callers own target, descriptor, capability and validation admission.
+	pub(super) fn from_words(
+		device: std::sync::Arc<vk::Device>,
+		descriptor_layout: vk::DescriptorSetLayout,
+		words: &[u32],
+		workgroup_size: [u32; 3],
+		limits: DeviceLimits,
+		cache: vk::PipelineCache,
+	) -> Result<Self> {
+		let push_constant_size = crate::runtime::dna::kernel::reflect_push_constant_size(words)?;
+		validate_artifact_limits(workgroup_size, push_constant_size, limits)?;
 
 		let descriptor_layouts = [descriptor_layout];
 		let push_range = vk::PushConstantRange::new()
@@ -1558,15 +1581,8 @@ impl ComputePipeline {
 					Error::backend_failure("Vulkan", "compute pipeline-layout creation", source)
 				})?;
 
-		let words = match artifact.spirv_words() {
-			Ok(words) => words,
-			Err(error) => {
-				destroy_pipeline_layout(&device, layout);
-				return Err(error);
-			}
-		};
-		let module_info = vk::ShaderModuleCreateInfo::new().set_code(&words);
-		// SAFETY: build-time spirv-val and runtime word validation proved a complete
+		let module_info = vk::ShaderModuleCreateInfo::new().set_code(words);
+		// SAFETY: the caller's spirv-val and reflection admission proved a complete
 		// SPIR-V word stream; the device remains live through pipeline creation.
 		let module = match unsafe { device.create_shader_module(&module_info, None) } {
 			Ok(module) => module,
@@ -1619,12 +1635,15 @@ impl ComputePipeline {
 			layout,
 			max_dispatch_group_count: limits.max_compute_work_group_count,
 			push_constant_size,
+			device,
 		})
 	}
 
 	pub(super) fn destroy(&mut self, device: &vk::Device) {
 		destroy_pipeline(device, self.handle);
 		destroy_pipeline_layout(device, self.layout);
+		self.handle = vk::Pipeline::NULL;
+		self.layout = vk::PipelineLayout::NULL;
 	}
 
 	pub(super) const fn raw(&self) -> vk::Pipeline {
@@ -1641,6 +1660,19 @@ impl ComputePipeline {
 
 	pub(super) const fn push_constant_size(&self) -> u32 {
 		self.push_constant_size
+	}
+}
+
+impl Drop for ComputePipeline {
+	fn drop(&mut self) {
+		// Registry teardown explicitly destroys pipelines before descriptor layouts;
+		// owned specializations instead retire with the last recorded command.
+		if self.handle != vk::Pipeline::NULL {
+			destroy_pipeline(&self.device, self.handle);
+		}
+		if self.layout != vk::PipelineLayout::NULL {
+			destroy_pipeline_layout(&self.device, self.layout);
+		}
 	}
 }
 

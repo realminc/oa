@@ -778,7 +778,7 @@ dependencies = [
 
 [[package]]
 name = "oa-python"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "oarust",
  "pyo3",
@@ -786,7 +786,7 @@ dependencies = [
 
 [[package]]
 name = "oarust"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -795,6 +795,7 @@ dependencies = [
  "getrandom",
  "image",
  "libc",
+ "libloading",
  "memmap2",
  "ml-dsa",
  "rtrb",
@@ -1685,9 +1686,9 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "vkrust"
-version = "0.11.0+1.4.365"
+version = "0.12.0+1.4.365"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51093960e3467b7536856694be9f85074499df6e948b9ebccb05e5bea42ddba2"
+checksum = "87102d0a2d18ef03090ab4c79cba0685e9dc0315c9225f617d2abfadcbcf76f1"
 dependencies = [
  "libloading",
 ]

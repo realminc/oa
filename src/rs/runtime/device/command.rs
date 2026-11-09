@@ -3,15 +3,18 @@ use crate::{
 	runtime::{
 		BufferAccess, PushConstant,
 		dna::kernel::PhysicalWriteContract,
-		executable_graph::{BufferHazard, ComputeNode, ExecutableGraph},
+		executable_graph::{BufferHazard, BufferUse, ComputeNode, ExecutableGraph},
 	},
 };
 
 use std::sync::{Arc, OnceLock};
 
 use super::{
-	commands::SyncCommands, descriptor::BoundedSets, features::ExecutionProfile,
+	commands::SyncCommands,
+	descriptor::BoundedSets,
+	features::ExecutionProfile,
 	pipeline::ComputePipeline,
+	timestamp::{ObservedRoute, RouteTimings},
 };
 use crate::runtime::{Buffer, Device, TimestampPair};
 
@@ -48,6 +51,10 @@ enum CommandBufferAllocation {
 		_resources: Vec<Buffer>,
 		_accesses: Vec<BufferAccess>,
 		_bounded_sets: Option<BoundedSets>,
+		_pipelines: Vec<Arc<ComputePipeline>>,
+		// Route-observation query pools retire with their commands; the jit
+		// table holds a second Arc for lazy readback.
+		_route_timings: Option<Arc<RouteTimings>>,
 	},
 	Reusable(ReusableCommandBuffer),
 }
@@ -63,14 +70,34 @@ struct ReusableCommandBufferInner {
 	_resources: Vec<Buffer>,
 	_accesses: Vec<BufferAccess>,
 	_bounded_sets: Option<BoundedSets>,
+	// Owned specializations retire with their commands, before Device release.
+	_pipelines: Vec<Arc<ComputePipeline>>,
+	_route_timings: Option<Arc<RouteTimings>>,
 	device: Arc<Device>,
 }
 
 struct PreparedDispatch<'a> {
 	node: &'a ComputeNode,
-	pipeline: &'a ComputePipeline,
+	pipeline: PreparedPipeline<'a>,
 	push: Vec<u8>,
 	physical_write: Option<PhysicalWriteContract>,
+	/// Bindings the dispatch actually consumes: `node.jit.buffers` when an
+	/// admitted specialization dispatches, otherwise `node.buffers`.
+	buffers: &'a [BufferUse],
+}
+
+enum PreparedPipeline<'a> {
+	Registry(&'a ComputePipeline),
+	Jit(Arc<ComputePipeline>),
+}
+
+impl PreparedPipeline<'_> {
+	fn raw_pipeline(&self) -> &ComputePipeline {
+		match self {
+			Self::Registry(pipeline) => pipeline,
+			Self::Jit(pipeline) => pipeline,
+		}
+	}
 }
 
 #[derive(Default)]
@@ -78,6 +105,11 @@ struct CommandRetention {
 	resources: Vec<Buffer>,
 	accesses: Vec<BufferAccess>,
 	bounded_sets: Option<BoundedSets>,
+	/// Admitted specialization pipelines stay live until the recorded command
+	/// is retired; the registry's pipelines live with the device instead.
+	pipelines: Vec<Arc<ComputePipeline>>,
+	/// Per-dispatch route-observation timestamps recorded into this command.
+	route_timings: Option<Arc<RouteTimings>>,
 }
 
 impl CommandPool {
@@ -142,17 +174,21 @@ impl CommandPool {
 		let prepared = graph
 			.nodes()
 			.iter()
-			.map(|node| prepare_dispatch(pipelines, node, context.physical().profile))
+			.map(|node| prepare_dispatch(context, pipelines, node))
 			.collect::<Result<Vec<_>>>()?;
 		if prepared.is_empty() {
 			return Err(Error::invalid_argument("compute graph has no dispatches"));
 		}
 		let bounded_sets = if context.physical().profile == ExecutionProfile::Compatibility {
+			let binding_count = |dispatch: &PreparedDispatch| match &dispatch.pipeline {
+				PreparedPipeline::Jit(_) => dispatch.buffers.len() as u32,
+				PreparedPipeline::Registry(_) => dispatch.node.kernel.bounded_buffer_count(),
+			};
 			let layouts = prepared
 				.iter()
 				.map(|dispatch| {
 					context
-						.bounded_descriptor_layout(dispatch.node.kernel.bounded_buffer_count())
+						.bounded_descriptor_layout(binding_count(dispatch))
 						.ok_or_else(|| Error::missing_capability("bounded descriptor layout unavailable"))
 				})
 				.collect::<Result<Vec<_>>>()?;
@@ -160,13 +196,12 @@ impl CommandPool {
 				.iter()
 				.map(|dispatch| {
 					let first = dispatch
-						.node
 						.buffers
 						.first()
 						.expect("bounded dispatch has operands");
-					(0..dispatch.node.kernel.bounded_buffer_count() as usize)
+					(0..binding_count(dispatch) as usize)
 						.map(|slot| {
-							let buffer = dispatch.node.buffers.get(slot).unwrap_or(first);
+							let buffer = dispatch.buffers.get(slot).unwrap_or(first);
 							vk::DescriptorBufferInfo::new()
 								.set_buffer(buffer.buffer.raw())
 								.set_offset(0)
@@ -184,13 +219,40 @@ impl CommandPool {
 		} else {
 			vk::CommandBufferUsageFlagBits::ONE_TIME_SUBMIT_BIT
 		};
+		// Route observation: timestamp each fused dispatch. A reusable command
+		// resubmits the same queries, so instrumentation records one-shot
+		// buffers only — a lazy readback could otherwise land mid-resubmission.
+		// Pool creation is best-effort: measurement never rejects a recording.
+		let route_entries: Vec<(u64, ObservedRoute)> = prepared
+			.iter()
+			.filter_map(|dispatch| {
+				dispatch.node.fusion_signature.map(|signature| {
+					let route = match dispatch.pipeline {
+						PreparedPipeline::Jit(_) => ObservedRoute::Specialized,
+						PreparedPipeline::Registry(_) => ObservedRoute::Tape,
+					};
+					(signature, route)
+				})
+			})
+			.take(RouteTimings::MAX_SLOTS)
+			.collect();
+		let route_timings = (reusable_device.is_none() && !route_entries.is_empty())
+			.then(|| context.route_timings(route_entries))
+			.transpose()
+			.ok()
+			.flatten();
 		let command_buffer = self.begin(device, usage)?;
 		let mut resources = Vec::new();
 		let mut accesses = Vec::new();
 		if let Some(timing) = &timing {
 			timing.record_begin(command_buffer)?;
 		}
+		if let Some(timings) = &route_timings {
+			timings.record_reset(command_buffer)?;
+		}
 
+		let mut jit_pipelines = Vec::new();
+		let mut observed_slot = 0_usize;
 		for (node_index, dispatch) in prepared.iter().enumerate() {
 			record_barriers(
 				device,
@@ -201,7 +263,24 @@ impl CommandPool {
 			let set = bounded_sets
 				.as_ref()
 				.map_or(descriptor_set, |sets| sets.set(node_index));
+			let slot = dispatch
+				.node
+				.fusion_signature
+				.filter(|_| route_timings.is_some() && observed_slot < RouteTimings::MAX_SLOTS)
+				.map(|_| {
+					observed_slot += 1;
+					observed_slot - 1
+				});
+			if let (Some(timings), Some(slot)) = (&route_timings, slot) {
+				timings.record_before(command_buffer, slot)?;
+			}
 			record_dispatch(device, command_buffer, set, dispatch)?;
+			if let (Some(timings), Some(slot)) = (&route_timings, slot) {
+				timings.record_after(command_buffer, slot)?;
+			}
+			if let PreparedPipeline::Jit(pipeline) = &dispatch.pipeline {
+				jit_pipelines.push(pipeline.clone());
+			}
 			resources.extend(
 				dispatch
 					.node
@@ -219,6 +298,9 @@ impl CommandPool {
 		if let Some(timing) = &timing {
 			timing.record_end(command_buffer)?;
 		}
+		if let Some(timings) = &route_timings {
+			context.jit_observe_timings(timings.clone());
+		}
 
 		self.finish(
 			device,
@@ -227,6 +309,8 @@ impl CommandPool {
 				resources,
 				accesses,
 				bounded_sets,
+				pipelines: jit_pipelines,
+				route_timings,
 			},
 			timing,
 			reusable_device,
@@ -285,6 +369,8 @@ impl CommandPool {
 			resources,
 			accesses,
 			bounded_sets,
+			pipelines,
+			route_timings,
 		} = retention;
 		// SAFETY: the command buffer is recording a complete legal command sequence
 		// and is not concurrently accessed.
@@ -308,6 +394,8 @@ impl CommandPool {
 					_resources: resources,
 					_accesses: accesses,
 					_bounded_sets: bounded_sets,
+					_pipelines: pipelines,
+					_route_timings: route_timings,
 					device,
 				}),
 			}),
@@ -317,6 +405,8 @@ impl CommandPool {
 				_resources: resources,
 				_accesses: accesses,
 				_bounded_sets: bounded_sets,
+				_pipelines: pipelines,
+				_route_timings: route_timings,
 			},
 		};
 		Ok(RecordedCommandBuffer {
@@ -347,67 +437,92 @@ impl CommandPool {
 	}
 }
 
-fn prepare_dispatch<'a>(
-	pipelines: &'a [Option<OnceLock<ComputePipeline>>],
-	node: &'a ComputeNode,
-	profile: ExecutionProfile,
-) -> Result<PreparedDispatch<'a>> {
+fn reject_secret_node(node: &ComputeNode) -> Result<()> {
 	if node.kernel.requires_secret_storage() {
 		return Err(Error::failed_precondition(
 			"secret kernels cannot use ordinary compute graph storage",
 		));
 	}
-	let pipeline = pipelines
-		.get(node.kernel.index())
-		.and_then(Option::as_ref)
-		.and_then(OnceLock::get)
-		.ok_or_else(|| {
-			Error::missing_capability(format!(
-				"{} has no admitted compute pipeline on the selected Vulkan device",
-				node.operation
-			))
-		})?;
+	Ok(())
+}
+
+fn prepare_dispatch<'a>(
+	context: &'a Arc<Device>,
+	pipelines: &'a [Option<OnceLock<ComputePipeline>>],
+	node: &'a ComputeNode,
+) -> Result<PreparedDispatch<'a>> {
+	reject_secret_node(node)?;
+	let profile = context.physical().profile;
+	// An admitted specialization substitutes its own pipeline, program-order
+	// bindings and push words; a table miss or absent jit request keeps the
+	// canonical registry pipeline and tape-shaped bindings.
+	let jit = node.jit.as_ref().and_then(|jit| {
+		context
+			.jit_pipeline(&jit.key)
+			.map(|pipeline| (jit, pipeline))
+	});
+	let jit_admitted = jit.is_some();
+	let (pipeline, buffers, push_constants) = match jit {
+		Some((jit, pipeline)) => (
+			PreparedPipeline::Jit(pipeline),
+			jit.buffers.as_slice(),
+			jit.push_constants.as_slice(),
+		),
+		None => (
+			PreparedPipeline::Registry(
+				pipelines
+					.get(node.kernel.index())
+					.and_then(Option::as_ref)
+					.and_then(OnceLock::get)
+					.ok_or_else(|| {
+						Error::missing_capability(format!(
+							"{} has no admitted compute pipeline on the selected Vulkan device",
+							node.operation
+						))
+					})?,
+			),
+			node.buffers.as_slice(),
+			node.push_constants.as_slice(),
+		),
+	};
 	if node.indirect.is_none()
 		&& node
 			.workgroups
 			.into_iter()
-			.zip(pipeline.max_dispatch_group_count())
+			.zip(pipeline.raw_pipeline().max_dispatch_group_count())
 			.any(|(requested, limit)| requested == 0 || requested > limit)
 	{
 		return Err(Error::invalid_argument(format!(
 			"{} workgroup count {:?} is zero or exceeds the selected device limit {:?}",
 			node.operation,
 			node.workgroups,
-			pipeline.max_dispatch_group_count()
+			pipeline.raw_pipeline().max_dispatch_group_count()
 		)));
 	}
 	let descriptor_indices = if profile == ExecutionProfile::Compatibility {
-		if node.buffers.is_empty() || node.buffers.len() > node.kernel.bounded_buffer_count() as usize {
-			return Err(Error::missing_capability(format!(
-				"{} needs {} storage-buffer descriptors; Compatibility admits at most {} per dispatch",
-				node.operation,
-				node.buffers.len(),
-				node.kernel.bounded_buffer_count()
-			)));
-		}
-		(0..node.buffers.len() as u32).collect::<Vec<_>>()
+		(0..buffers.len() as u32).collect::<Vec<_>>()
 	} else {
-		node
-			.buffers
+		buffers
 			.iter()
 			.map(|usage| usage.buffer.descriptor_index())
 			.collect::<Vec<_>>()
 	};
-	let push = encode_push_constants(&node.push_constants, &descriptor_indices, node.operation)?;
-	if push.len() != pipeline.push_constant_size() as usize {
+	let push = encode_push_constants(push_constants, &descriptor_indices, node.operation)?;
+	if push.len() != pipeline.raw_pipeline().push_constant_size() as usize {
 		return Err(Error::invalid_argument(format!(
 			"{} push data contains {} bytes but its reflected kernel ABI requires {}",
 			node.operation,
 			push.len(),
-			pipeline.push_constant_size()
+			pipeline.raw_pipeline().push_constant_size()
 		)));
 	}
-	let physical_write = node.kernel.artifact().physical_write;
+	let physical_write = if jit_admitted {
+		// The specialization's binding accesses and ABI were validated at
+		// admission; the tape kernel's physical-write contract does not apply.
+		None
+	} else {
+		node.kernel.artifact().physical_write
+	};
 	if let Some(contract) = physical_write {
 		let accesses = node
 			.buffers
@@ -421,6 +536,7 @@ fn prepare_dispatch<'a>(
 		pipeline,
 		push,
 		physical_write,
+		buffers,
 	})
 }
 
@@ -551,26 +667,26 @@ fn record_dispatch(
 	// classified writable bindings and the selected artifact's
 	// physical-write contract.
 	unsafe {
-		debug_assert_eq!(
-			dispatch.physical_write,
-			dispatch.node.kernel.artifact().physical_write
+		debug_assert!(
+			dispatch.node.jit.is_some()
+				|| dispatch.physical_write == dispatch.node.kernel.artifact().physical_write
 		);
 		device.cmd_bind_pipeline(
 			command_buffer,
 			vk::PipelineBindPoint::COMPUTE,
-			dispatch.pipeline.raw(),
+			dispatch.pipeline.raw_pipeline().raw(),
 		)?;
 		device.cmd_bind_descriptor_sets(
 			command_buffer,
 			vk::PipelineBindPoint::COMPUTE,
-			dispatch.pipeline.layout(),
+			dispatch.pipeline.raw_pipeline().layout(),
 			0,
 			&[descriptor_set],
 			&[],
 		)?;
 		device.cmd_push_constants(
 			command_buffer,
-			dispatch.pipeline.layout(),
+			dispatch.pipeline.raw_pipeline().layout(),
 			vk::ShaderStageFlagBits::COMPUTE_BIT,
 			0,
 			&dispatch.push,
@@ -801,3 +917,7 @@ impl Drop for ReusableCommandBufferInner {
 #[cfg(test)]
 #[path = "../../../../test/rs/runtime/secret_dispatch_unit.rs"]
 mod secret_dispatch_unit;
+
+#[cfg(test)]
+#[path = "../../../../test/rs/runtime/jit_dispatch_unit.rs"]
+pub(in crate::runtime) mod jit_lab;

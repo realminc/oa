@@ -3,8 +3,7 @@
 //! Exercises the Stage-1 owned device/allocator lane through the external
 //! `vk` crate on real hardware: entry, instance, physical-device selection,
 //! logical device, retained synchronized allocator, allocation and ordered
-//! teardown. Ash remains the production binding until the cutover; this test
-//! only proves the consumer path the migration requires.
+//! teardown. The same native bindings and allocator serve the production backend.
 
 fn describe(error: impl std::fmt::Debug) -> String {
 	format!("{error:?}")
@@ -77,13 +76,7 @@ unsafe fn retained_lane() -> Result<(), String> {
 	// SAFETY: synchronized exclusive access; no GPU work is submitted.
 	let mut allocation = unsafe {
 		shared.with_allocator(|allocator| {
-			allocator.allocate(&vk::mem::AllocRequest {
-				size: 4096,
-				alignment: 1,
-				memory_type_bits: u32::MAX,
-				required_flags: vk::MemoryPropertyFlags::empty(),
-				preferred_flags: vk::MemoryPropertyFlags::empty(),
-			})
+			allocator.allocate(&vk::mem::AllocRequest::new(4096, 1, u32::MAX))
 		})
 	}
 	.map_err(describe)?

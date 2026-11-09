@@ -5,7 +5,7 @@ use std::sync::{
 
 use crate::{Error, Result, core::memory};
 
-use crate::runtime::Device;
+use crate::runtime::{Device, Event};
 
 #[derive(Clone)]
 pub(in crate::runtime) struct Buffer {
@@ -15,6 +15,13 @@ pub(in crate::runtime) struct Buffer {
 struct BufferInner {
 	handle: vk::Buffer,
 	allocation: Mutex<Option<vk::mem::Allocation>>,
+	/// Most recent submission that had this buffer bound as a plan input.
+	///
+	/// Captured input buffers are shared by every plan that recorded the same
+	/// Matrix, so the last-reader stamp must live on the buffer itself rather
+	/// than on one plan's per-binding slot. Host writes to the buffer may only
+	/// run after the stamped event completes.
+	bound_consumer: Mutex<Option<Event>>,
 	recyclable: AtomicBool,
 	size: usize,
 	device_size: vk::DeviceSize,
@@ -59,14 +66,13 @@ impl Buffer {
 					| vk::BufferUsageFlagBits::INDIRECT_BUFFER_BIT,
 			)
 			.set_sharing_mode(vk::SharingMode::EXCLUSIVE);
-		let allocation_info = vk::mem::AllocationCreateInfo {
-			host_access: vk::mem::HostAccess::Random,
-			usage: vk::mem::MemoryUsage::PreferDevice,
-			required_flags: vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT,
-			preferred_flags: vk::MemoryPropertyFlagBits::HOST_CACHED_BIT
-				| vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
-			..Default::default()
-		};
+		let allocation_info = vk::mem::AllocationCreateInfo::new()
+			.set_host_access(vk::mem::HostAccess::Random)
+			.set_usage(vk::mem::MemoryUsage::PreferDevice)
+			.set_required_flags(vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT)
+			.set_preferred_flags(
+				vk::MemoryPropertyFlagBits::HOST_CACHED_BIT | vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
+			);
 
 		// SAFETY: both create structures are fully initialized, contain no extension
 		// chains, and the allocator's instance/device owners remain live in `device`.
@@ -112,6 +118,7 @@ impl Buffer {
 			inner: Arc::new(BufferInner {
 				handle,
 				allocation: Mutex::new(Some(allocation)),
+				bound_consumer: Mutex::new(None),
 				recyclable: AtomicBool::new(true),
 				size,
 				device_size,
@@ -126,6 +133,7 @@ impl Buffer {
 			inner: Arc::new(BufferInner {
 				handle: recycled.handle,
 				allocation: Mutex::new(Some(recycled.allocation)),
+				bound_consumer: Mutex::new(None),
 				recyclable: AtomicBool::new(true),
 				size: recycled.size,
 				device_size: recycled.device_size,
@@ -147,14 +155,13 @@ impl Buffer {
 		let device_size = u64::try_from(size)
 			.map_err(|_| Error::invalid_argument("alias buffer size exceeds Vulkan DeviceSize"))?;
 		let buffer_info = storage_buffer_info(device_size);
-		let allocation_info = vk::mem::AllocationCreateInfo {
-			host_access: vk::mem::HostAccess::Random,
-			usage: vk::mem::MemoryUsage::PreferDevice,
-			required_flags: vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT,
-			preferred_flags: vk::MemoryPropertyFlagBits::HOST_CACHED_BIT
-				| vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
-			..Default::default()
-		};
+		let allocation_info = vk::mem::AllocationCreateInfo::new()
+			.set_host_access(vk::mem::HostAccess::Random)
+			.set_usage(vk::mem::MemoryUsage::PreferDevice)
+			.set_required_flags(vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT)
+			.set_preferred_flags(
+				vk::MemoryPropertyFlagBits::HOST_CACHED_BIT | vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
+			);
 		// SAFETY: both create structures are initialized and the retained Device
 		// keeps the VMA allocator and Vulkan device alive for the allocation.
 		let (handle, allocation) = unsafe {
@@ -182,6 +189,7 @@ impl Buffer {
 			inner: Arc::new(BufferInner {
 				handle,
 				allocation: Mutex::new(Some(allocation)),
+				bound_consumer: Mutex::new(None),
 				recyclable: AtomicBool::new(false),
 				size,
 				device_size,
@@ -189,6 +197,41 @@ impl Buffer {
 				device: device.clone(),
 			}),
 		})
+	}
+
+	/// Record the most recent submission that had this buffer bound.
+	///
+	/// Plans sharing one captured input each keep their own staging ring, so a
+	/// per-binding stamp cannot observe another plan's in-flight submission.
+	/// Stamping the buffer itself gives every uploader the same last reader.
+	pub(in crate::runtime) fn record_bound_consumer(&self, event: &Event) {
+		if let Ok(mut consumer) = self.inner.bound_consumer.lock() {
+			*consumer = Some(event.clone());
+		}
+	}
+
+	/// Wait for the last submission that had this buffer bound.
+	///
+	/// Required before any host write to a buffer that another plan may still
+	/// be reading; submissions that bound a different staging slot leave the
+	/// stamp untouched and do not needlessly extend the wait.
+	pub(in crate::runtime) fn wait_bound_consumer(&self) -> Result<()> {
+		let event = self
+			.inner
+			.bound_consumer
+			.lock()
+			.map_err(|_| {
+				Error::backend_failure(
+					"Vulkan",
+					"buffer consumer lock",
+					std::io::Error::other("buffer consumer lock was poisoned"),
+				)
+			})?
+			.clone();
+		if let Some(event) = event {
+			event.wait()?;
+		}
+		Ok(())
 	}
 
 	pub(in crate::runtime) fn disable_recycling(&self) {
@@ -433,13 +476,11 @@ impl MeshBuffer {
 			.set_size(device_size)
 			.set_usage(usage)
 			.set_sharing_mode(vk::SharingMode::EXCLUSIVE);
-		let alloc_info = vk::mem::AllocationCreateInfo {
-			host_access: vk::mem::HostAccess::SequentialWrite,
-			persistent_map: true,
-			usage: vk::mem::MemoryUsage::PreferDevice,
-			required_flags: vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT,
-			..Default::default()
-		};
+		let alloc_info = vk::mem::AllocationCreateInfo::new()
+			.set_host_access(vk::mem::HostAccess::SequentialWrite)
+			.set_persistent_map(true)
+			.set_usage(vk::mem::MemoryUsage::PreferDevice)
+			.set_required_flags(vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT);
 		let (handle, allocation) = unsafe {
 			device
 				.allocator()

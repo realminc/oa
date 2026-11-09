@@ -22,10 +22,10 @@ fn secret_kernel_cannot_enter_ordinary_graph_recording() {
 			indirect: None,
 			semantic_ops: Vec::new(),
 			op_contract_hash: 0,
+			jit: None,
+			fusion_signature: None,
 		};
-		for profile in [ExecutionProfile::Strict, ExecutionProfile::Compatibility] {
-			assert!(matches!(prepare_dispatch(&[], &node, profile), Err(error)
+		assert!(matches!(reject_secret_node(&node), Err(error)
 			if error.kind() == crate::ErrorKind::FailedPrecondition));
-		}
 	}
 }

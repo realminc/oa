@@ -34,6 +34,17 @@ pub trait ActorCritic: Module {
 	fn auxiliary_loss(&self, task: &Matrix) -> Result<Matrix> {
 		Ok(task.clone())
 	}
+
+	/// Whether [`Self::evaluate`] computes each observation row independently
+	/// of the other rows in its batch and leaves model state unchanged.
+	///
+	/// Trainers may then coalesce evaluations recorded under unchanged
+	/// parameters into one larger batch. The default `false` keeps one
+	/// evaluation per caller-supplied batch; return `true` only when batch
+	/// composition and evaluation count cannot change any row's logits or value.
+	fn evaluates_rows_independently(&self) -> bool {
+		false
+	}
 }
 
 /// Default two-tower categorical actor/critic MLP.
@@ -169,5 +180,10 @@ impl Module for CategoricalActorCritic {
 impl ActorCritic for CategoricalActorCritic {
 	fn evaluate(&self, observation: &Matrix) -> Result<ActorCriticOutput> {
 		CategoricalActorCritic::evaluate(self, observation)
+	}
+
+	// Both towers are stateless row-wise Linear/ReLU chains.
+	fn evaluates_rows_independently(&self) -> bool {
+		true
 	}
 }

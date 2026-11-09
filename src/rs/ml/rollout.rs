@@ -639,6 +639,11 @@ pub(in crate::ml) fn next_observation_append(
 			"{OPERATION} source must not alias retained rollout storage"
 		)));
 	}
+	if step >= retained.num_elements() / observation_count {
+		return Err(Error::resource_exhausted(format!(
+			"{OPERATION} step exceeds retained rollout rows"
+		)));
+	}
 	let step = shader_u32(step, "step", OPERATION)?;
 	let observation_count = shader_u32(observation_count, "observation count", OPERATION)?;
 	let buffers = [

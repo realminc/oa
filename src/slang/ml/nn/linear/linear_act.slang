@@ -5,6 +5,8 @@
 // observe exactly the buffers the unfused pair would have written.
 // act_kind: 0=relu 1=gelu 2=silu 3=tanh 4=sigmoid 5=mish 6=elu
 //           7=leaky_relu 8=softplus; alpha feeds elu/leaky_relu only.
+// The gated silu_mul route lives in linear_gated_act.slang — keeping the
+// up-projection state out of this kernel preserves donor register pressure.
 
 import activations;
 import storage;

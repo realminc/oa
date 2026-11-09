@@ -5,7 +5,10 @@ use std::{
 
 use crate::{
 	Error, Result,
-	runtime::{dna::kernel::KernelId, executable_graph::ExecutableGraph},
+	runtime::{
+		dna::{elementwise::Program, kernel::KernelId},
+		executable_graph::ExecutableGraph,
+	},
 };
 
 use super::{
@@ -21,7 +24,7 @@ use super::{
 	physical::DevicePhysical,
 	pipeline::{self, ComputePipeline},
 	timeline::Timeline,
-	timestamp::TimestampPair,
+	timestamp::{ObservedRoute, RouteTimings, TimestampPair},
 };
 use crate::runtime::{Buffer, Instance};
 
@@ -82,6 +85,11 @@ pub(in crate::runtime) struct DeviceLogical {
 	// None means unsupported; an empty OnceLock means admitted but not compiled.
 	pipelines: Vec<Option<OnceLock<ComputePipeline>>>,
 	pipeline_creation: Mutex<PipelineCreation>,
+	/// Opt-in `OA_JIT_FUSION` specialization state; empty until the first fused
+	/// node requests admission.
+	jit: Mutex<super::jit::JitFusion>,
+	/// Device-lifetime fusion decision counters; never affect routing.
+	fusion_census: crate::runtime::fusion::census::FusionCensus,
 	compute_queue: vk::Queue,
 	graphics_queue: Option<vk::Queue>,
 	video_decode_queue: Option<vk::Queue>,
@@ -441,6 +449,88 @@ impl Device {
 		&self.physical
 	}
 
+	/// Merged driver cache bytes for the Engine persistence coordinator, or
+	/// `None` when no cache exists or the query fails — the coordinator keeps
+	/// the previously committed section in that case.
+	pub(in crate::runtime) fn pipeline_cache_data(&self) -> Option<Vec<u8>> {
+		self.logical.pipeline_cache_data()
+	}
+
+	/// Device-lifetime fusion decision counters.
+	pub(in crate::runtime) fn fusion_census(&self) -> &crate::runtime::fusion::census::FusionCensus {
+		&self.logical.fusion_census
+	}
+
+	/// Whether the opt-in `OA_JIT_FUSION` specialization route is enabled.
+	pub(in crate::runtime) fn jit_fusion_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_JIT_FUSION")
+	}
+
+	/// Opt-in `OA_JIT_FUSION` admission: compile or restore the program's
+	/// specialization and ensure a dispatchable pipeline exists. The artifact
+	/// key is returned for the fused node on success; every failure mode —
+	/// gate off, compiler or `spirv-val` absent, artifact or pipeline
+	/// rejected — returns `None` so the canonical tape route executes.
+	/// `tape_eligible` is `false` above the tape element bound; there the
+	/// specialized route is the only fused route and no tape probe runs.
+	pub(in crate::runtime) fn jit_admit(
+		&self,
+		program: &Program,
+		tape_eligible: bool,
+	) -> Option<Vec<u8>> {
+		if !self.jit_fusion_enabled() {
+			self
+				.fusion_census()
+				.jit(crate::runtime::fusion::census::JitOutcome::Disabled);
+			return None;
+		}
+		self
+			.logical
+			.jit
+			.lock()
+			.ok()?
+			.admit(self, program, tape_eligible)
+	}
+
+	/// Record-time pipeline lookup for a key `jit_admit` prepared.
+	pub(in crate::runtime) fn jit_pipeline(
+		&self,
+		key: &[u8],
+	) -> Option<std::sync::Arc<pipeline::ComputePipeline>> {
+		self.logical.jit.lock().ok()?.pipeline(self, key)
+	}
+
+	/// `.vkcache` section updates covering every admitted JIT artifact.
+	pub(in crate::runtime) fn jit_section_updates(&self) -> Vec<super::vkcache::SectionUpdate> {
+		let census = self.fusion_census();
+		self
+			.logical
+			.jit
+			.lock()
+			.map(|mut fusion| fusion.section_updates(census))
+			.unwrap_or_default()
+	}
+
+	/// Create a per-dispatch route-timing pool for one recorded graph.
+	pub(in crate::runtime) fn route_timings(
+		self: &Arc<Self>,
+		entries: Vec<(u64, ObservedRoute)>,
+	) -> Result<Arc<RouteTimings>> {
+		RouteTimings::new(
+			self,
+			entries,
+			self.logical.timestamp_period_ns,
+			self.logical.compute_timestamp_valid_bits,
+		)
+	}
+
+	/// Queue a recorded route-timing pool for lazy observation readback.
+	pub(in crate::runtime) fn jit_observe_timings(&self, timings: Arc<RouteTimings>) {
+		if let Ok(mut fusion) = self.logical.jit.lock() {
+			fusion.observe(timings);
+		}
+	}
+
 	pub(in crate::runtime) fn instance(&self) -> &Instance {
 		&self.instance
 	}
@@ -701,16 +791,24 @@ impl Device {
 								return Err(first_error);
 							}
 							// A corrupt or incompatible persisted blob must not make
-							// the shader unloadable; drop the cache and the file,
-							// then retry creation uncached.
+							// the shader unloadable; drop the cache and its persisted
+							// driver section only, then retry creation uncached.
+							let scope = super::vkcache::VkCacheScope::new(&self.physical);
+							let scope_path = scope.path();
 							crate::log_warn!(
 								crate::LogComponent::COMPUTE,
 								"pipeline cache: creation failed for {}; dropping {}",
 								kernel.report_name(),
-								pipeline::pipeline_cache_path().display()
+								scope_path.display()
 							);
 							creation.cache = None;
-							let _ = crate::Filesystem::remove_file(&pipeline::pipeline_cache_path());
+							let _ = super::vkcache::update(
+								&scope_path,
+								&scope,
+								&[super::vkcache::SectionUpdate::remove(
+									super::vkcache::SECTION_DRIVER_PIPELINE_CACHE,
+								)],
+							);
 							ComputePipeline::new(
 								std::sync::Arc::clone(&self.logical.handle),
 								layout,
@@ -2447,7 +2545,7 @@ impl DeviceLogical {
 		// driver-rejected blob degrades to uncached creation. Loading it only
 		// after all fallible device children exist keeps the error paths above
 		// free of an extra retained device reference.
-		let pipeline_cache = pipeline::PipelineCache::open(&handle);
+		let pipeline_cache = pipeline::PipelineCache::open(&handle, physical);
 		let mut logical = Self {
 			handle: ManuallyDrop::new(handle),
 			sync_commands,
@@ -2465,6 +2563,8 @@ impl DeviceLogical {
 			pipeline_creation: Mutex::new(PipelineCreation {
 				cache: pipeline_cache,
 			}),
+			jit: Mutex::new(super::jit::JitFusion::new()),
+			fusion_census: crate::runtime::fusion::census::FusionCensus::new(),
 			compute_queue,
 			graphics_queue,
 			video_decode_queue,
@@ -2526,6 +2626,21 @@ impl DeviceLogical {
 
 		Ok(logical)
 	}
+
+	/// Serialize the shared pipeline cache for the persistence coordinator.
+	///
+	/// Best-effort: a missing cache, poisoned lock or rejected query yields
+	/// `None`, which the coordinator treats as "keep prior state".
+	pub(super) fn pipeline_cache_data(&self) -> Option<Vec<u8>> {
+		self
+			.pipeline_creation
+			.lock()
+			.ok()?
+			.cache
+			.as_ref()?
+			.data()
+			.ok()
+	}
 }
 
 impl Drop for DeviceLogical {
@@ -2544,20 +2659,28 @@ impl Drop for DeviceLogical {
 				let _ = self.handle.destroy_buffer(buffer.handle, None);
 			}
 		}
+		// Command retirement has released every external pipeline/query owner.
+		// Drop the jit table before descriptors and the native-device ownership
+		// check: its pipelines and unread query pools retain native-device Arcs.
+		let jit = self
+			.jit
+			.get_mut()
+			.unwrap_or_else(|poisoned| poisoned.into_inner());
+		drop(std::mem::replace(jit, super::jit::JitFusion::new()));
 		for slot in self.pipelines.iter_mut().flatten() {
-			if let Some(pipeline) = slot.get_mut() {
+			// Release each pipeline's logical-device Arc before into_inner below.
+			if let Some(mut pipeline) = slot.take() {
 				pipeline.destroy(&self.handle);
 			}
 		}
-		// Persist the merged driver blob while the device is still live; save is
-		// best-effort and the cache handle is destroyed before the device.
+		// The merged driver blob was already handed to the Engine persistence
+		// coordinator while the device was live; here the cache handle is just
+		// destroyed before the device.
 		let creation = match self.pipeline_creation.get_mut() {
 			Ok(creation) => creation,
 			Err(poisoned) => poisoned.into_inner(),
 		};
-		if let Some(cache) = creation.cache.take() {
-			cache.save();
-		}
+		creation.cache.take();
 		// SAFETY: no UI pipeline still holds a reference to this layout.
 		unsafe {
 			let _ = self
@@ -2616,3 +2739,7 @@ impl Drop for DeviceLogical {
 #[cfg(test)]
 #[path = "../../../../test/rs/runtime/device_logical_unit.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../test/rs/runtime/jit_device_unit.rs"]
+mod jit_lab;

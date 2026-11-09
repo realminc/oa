@@ -267,13 +267,15 @@ pub(in crate::runtime) fn create_encode_session(
 			// constrains selection to the driver's advertised memory-type mask.
 			let allocation = unsafe {
 				session.device.allocator().with_allocator(|a| {
-					a.allocate(&vk::mem::AllocRequest {
-						size: requirement.memory_requirements.size,
-						alignment: requirement.memory_requirements.alignment,
-						memory_type_bits: requirement.memory_requirements.memory_type_bits,
-						required_flags: vk::MemoryPropertyFlags::empty(),
-						preferred_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
-					})
+					a.allocate(
+						&vk::mem::AllocRequest::new(
+							requirement.memory_requirements.size,
+							requirement.memory_requirements.alignment,
+							requirement.memory_requirements.memory_type_bits,
+						)
+						.set_required_flags(vk::MemoryPropertyFlags::empty())
+						.set_preferred_flags(vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT),
+					)
 				})
 			}
 			.map_err(|source| {
@@ -1025,11 +1027,9 @@ fn create_encode_slot(
 			.set_queue_family_indices(&families)
 			.map_err(Error::from)?;
 	}
-	let allocation_info = vk::mem::AllocationCreateInfo {
-		usage: vk::mem::MemoryUsage::PreferDevice,
-		required_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
-		..Default::default()
-	};
+	let allocation_info = vk::mem::AllocationCreateInfo::new()
+		.set_usage(vk::mem::MemoryUsage::PreferDevice)
+		.set_required_flags(vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT);
 	// SAFETY: the exact profile/format chain stays live; the slot owns the
 	// returned image and allocation uniquely until Drop.
 	let (input_image, input_allocation) = unsafe {
@@ -1235,13 +1235,11 @@ fn create_encode_bitstream(
 		.set_sharing_mode(vk::SharingMode::EXCLUSIVE)
 		.push_next(&mut profile_list)
 		.map_err(Error::from)?;
-	let allocation_info = vk::mem::AllocationCreateInfo {
-		host_access: vk::mem::HostAccess::Random,
-		usage: vk::mem::MemoryUsage::PreferDevice,
-		required_flags: vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT,
-		preferred_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
-		..Default::default()
-	};
+	let allocation_info = vk::mem::AllocationCreateInfo::new()
+		.set_host_access(vk::mem::HostAccess::Random)
+		.set_usage(vk::mem::MemoryUsage::PreferDevice)
+		.set_required_flags(vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT)
+		.set_preferred_flags(vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT);
 	// SAFETY: the profile chain is live and VMA binds compatible host-visible
 	// memory to the returned buffer.
 	let (handle, allocation) = unsafe {

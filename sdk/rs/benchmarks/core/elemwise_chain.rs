@@ -40,6 +40,10 @@ fn main() -> anyhow::Result<()> {
 	engine.submit(&plan)?.wait()?;
 	let expected = cpu_reference(options.chain);
 	let actual = output.read_f32()?;
+	ensure!(
+		expected.is_finite() && actual.iter().all(|value| value.is_finite()),
+		"constant-input oracle requires finite output"
+	);
 	let max_error = actual
 		.iter()
 		.map(|value| (value - expected).abs())

@@ -100,12 +100,10 @@ impl RenderTarget {
 			.set_size(readback_bytes)
 			.set_usage(vk::BufferUsageFlagBits::TRANSFER_DST_BIT)
 			.set_sharing_mode(vk::SharingMode::EXCLUSIVE);
-		let alloc_info = vk::mem::AllocationCreateInfo {
-			usage: vk::mem::MemoryUsage::PreferHost,
-			host_access: vk::mem::HostAccess::Random,
-			required_flags: vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT,
-			..Default::default()
-		};
+		let alloc_info = vk::mem::AllocationCreateInfo::new()
+			.set_usage(vk::mem::MemoryUsage::PreferHost)
+			.set_host_access(vk::mem::HostAccess::Random)
+			.set_required_flags(vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT);
 		let (readback, readback_alloc) = match unsafe {
 			device
 				.allocator()
@@ -229,11 +227,9 @@ fn alloc_image(
 		.set_usage(usage)
 		.set_sharing_mode(vk::SharingMode::EXCLUSIVE)
 		.set_initial_layout(vk::ImageLayout::UNDEFINED);
-	let alloc_info = vk::mem::AllocationCreateInfo {
-		usage: vk::mem::MemoryUsage::PreferDevice,
-		required_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
-		..Default::default()
-	};
+	let alloc_info = vk::mem::AllocationCreateInfo::new()
+		.set_usage(vk::mem::MemoryUsage::PreferDevice)
+		.set_required_flags(vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT);
 	unsafe {
 		device
 			.allocator()
@@ -292,11 +288,9 @@ impl NativeRgbaImage {
 			)
 			.set_sharing_mode(vk::SharingMode::EXCLUSIVE)
 			.set_initial_layout(vk::ImageLayout::UNDEFINED);
-		let allocation_info = vk::mem::AllocationCreateInfo {
-			usage: vk::mem::MemoryUsage::PreferDevice,
-			required_flags: vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT,
-			..Default::default()
-		};
+		let allocation_info = vk::mem::AllocationCreateInfo::new()
+			.set_usage(vk::mem::MemoryUsage::PreferDevice)
+			.set_required_flags(vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT);
 		let (handle, allocation) = unsafe {
 			device
 				.allocator()

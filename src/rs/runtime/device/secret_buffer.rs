@@ -135,21 +135,19 @@ impl SecretBuffer {
 			.set_size(size)
 			.set_usage(usage)
 			.set_sharing_mode(vk::SharingMode::EXCLUSIVE);
-		let allocation_info = vk::mem::AllocationCreateInfo {
-			dedicated_memory: true,
-			host_access: if host {
+		let allocation_info = vk::mem::AllocationCreateInfo::new()
+			.set_dedicated_memory(true)
+			.set_host_access(if host {
 				vk::mem::HostAccess::SequentialWrite
 			} else {
 				vk::mem::HostAccess::None
-			},
-			usage: vk::mem::MemoryUsage::PreferDevice,
-			required_flags: if host {
+			})
+			.set_usage(vk::mem::MemoryUsage::PreferDevice)
+			.set_required_flags(if host {
 				vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT
 			} else {
 				vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT
-			},
-			..Default::default()
-		};
+			});
 		// SAFETY: this live engine device owns the allocator. Device-local secrets have
 		// no host access; the separate staging allocation requests host visibility.
 		// Dedicated memory avoids pools. Neither allocation requests export flags.

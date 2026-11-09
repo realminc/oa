@@ -33,7 +33,7 @@ void main(uint3 group_id : SV_GroupID, uint3 group_thread_id : SV_GroupThreadID)
 		float gradient = 0.0f;
 		for (uint position = 0; position < push.num_indices; ++position) {
 			uint index = push.index_dtype == 0
-				? uint(storage_buffers[push.indices_index].Load<uint8_t>(position))
+				? load_u8(storage_buffers[push.indices_index], position)
 				: storage_buffers[push.indices_index].Load(position * 4u);
 			if (index == row) {
 				gradient += load_f32(

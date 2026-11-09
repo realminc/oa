@@ -204,6 +204,24 @@ fn bench_one(
 ) -> anyhow::Result<PerfResult> {
 	let left = matrix::full(engine, [case.m, case.k], 0.25)?;
 	let right = matrix::full(engine, [case.n, case.k], 0.5)?;
+	// Constant-input oracle checks every timed geometry before warmup.
+	// A positive norm or maximum-error reduction alone must not hide NaNs.
+	let expected = case.k as f32 * 0.125;
+	let actual = matrix::mat_mul_nt(&left, &right)?.read_f32()?;
+	ensure!(
+		actual.len() == case.m * case.n
+			&& actual
+				.iter()
+				.all(|&value| value.is_finite()
+					&& (value - expected).abs() <= expected.abs().max(1.0) * 1.0e-5),
+		"{} independent constant-input oracle failed",
+		case.name
+	);
+	println!(
+		"ORACLE name={} correctness=pass elements={} expected={expected}",
+		case.name,
+		actual.len()
+	);
 	for _ in 0..warmup {
 		let output = matrix::mat_mul_nt(&left, &right)?;
 		black_box(output.read_f32()?);

@@ -78,10 +78,10 @@ pub use runtime::{
 	CapturedResourceDesc, ClockCalibration, DeviceHardwareInfo, DeviceInfo, DeviceKind,
 	DeviceSelection, DeviceSoftwareInfo, DeviceSummary, Engine, EngineBuilder, EngineRequirements,
 	Event, ExecutionBindingDesc, ExecutionBindingRole, ExecutionPlan, ExecutionPlanDiagnostics,
-	HostClockDomain, LogComponent, LogLevel, LogOptions, Presenter, SdlWindow, SemanticAccessMode,
-	SemanticAliasDesc, SemanticAutogradDesc, SemanticGraph, SemanticLoweringAnalysis, SemanticOpDesc,
-	SemanticOpId, SemanticStorageBinding, SemanticValueAccess, SemanticValueDesc, SemanticValueId,
-	Timer, TimerDomain,
+	FusionStats, HostClockDomain, LogComponent, LogLevel, LogOptions, Presenter, SdlWindow,
+	SemanticAccessMode, SemanticAliasDesc, SemanticAutogradDesc, SemanticGraph,
+	SemanticLoweringAnalysis, SemanticOpDesc, SemanticOpId, SemanticStorageBinding,
+	SemanticValueAccess, SemanticValueDesc, SemanticValueId, Timer, TimerDomain,
 };
 pub use ui::{
 	FontId, GlyphInfo, NodeCanvas, NodeCanvasGrid, NodeCanvasHit, NodeCanvasHitItem, NodeCanvasState,

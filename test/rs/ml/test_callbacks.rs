@@ -25,6 +25,28 @@ fn phase_contract_rejects_invalid_descriptions() {
 	assert!(oa::ml::TrainingPhase::new("warmup", 2, 1).is_err());
 }
 
+#[test]
+fn phase_lookup_resolves_restored_global_progress_without_entering_a_phase() -> oa::Result<()> {
+	let mut schedule = oa::ml::PhaseSchedule::new();
+	schedule.add_phase("warmup", 1, 1)?;
+	schedule.add_phase("training", 98, 98)?;
+	schedule.add_phase("finetune", 1, 1)?;
+	for (epoch, expected) in [
+		(1, (0, 1)),
+		(2, (1, 1)),
+		(50, (1, 49)),
+		(99, (1, 98)),
+		(100, (2, 1)),
+	] {
+		assert_eq!(schedule.phase_for_epoch(epoch)?, expected);
+	}
+	assert_eq!(schedule.current_phase(), None);
+	assert!(schedule.phase_for_epoch(0).is_err());
+	assert!(schedule.phase_for_epoch(101).is_err());
+	assert!(oa::ml::PhaseSchedule::new().phase_for_epoch(1).is_err());
+	Ok(())
+}
+
 test_vk!(
 	validation_feeds_early_stop_and_does_not_suppress_later_callbacks,
 	engine,

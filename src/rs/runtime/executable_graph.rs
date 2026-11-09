@@ -29,6 +29,27 @@ pub(in crate::runtime) struct ComputeNode {
 	pub(in crate::runtime) indirect: Option<IndirectUse>,
 	pub(in crate::runtime) semantic_ops: Vec<SemanticOpId>,
 	pub(in crate::runtime) op_contract_hash: u64,
+	/// An admitted runtime specialization of this node's fused elementwise
+	/// chain. When the device table still holds the pipeline, recording
+	/// dispatches it against `buffers` in program order (inputs then outputs)
+	/// with `push_constants` as the trailing push words; otherwise the node's
+	/// canonical tape dispatch executes unchanged.
+	pub(in crate::runtime) jit: Option<JitNode>,
+	/// Observation identity (`vkcache::jit::signature_key` of the canonical
+	/// program) set on fused nodes while `OA_JIT_FUSION` is active. Recording
+	/// timestamps the dispatch so the route store learns tape vs specialized
+	/// medians; `None` on canonical nodes costs nothing.
+	pub(in crate::runtime) fusion_signature: Option<u64>,
+}
+
+/// Record-time parameters for one admitted specialization. The pipeline is
+/// owned by the device's jit table and resolved by `key` at recording, so a
+/// missing or failed admission always falls back to the node's tape route.
+#[derive(Clone)]
+pub(in crate::runtime) struct JitNode {
+	pub(in crate::runtime) key: Vec<u8>,
+	pub(in crate::runtime) buffers: Vec<BufferUse>,
+	pub(in crate::runtime) push_constants: Vec<PushConstant>,
 }
 
 #[derive(Clone)]
@@ -156,6 +177,8 @@ impl ExecutableGraph {
 				indirect,
 				semantic_ops: Vec::new(),
 				op_contract_hash: 0,
+				jit: None,
+				fusion_signature: None,
 			});
 		}
 
@@ -320,6 +343,11 @@ impl ExecutableGraph {
 				hash.u32(operation.index());
 			}
 			hash.u16(node.kernel as u16);
+			hash.u8(u8::from(node.jit.is_some()));
+			if let Some(jit) = &node.jit {
+				hash.usize(jit.key.len());
+				hash.bytes(&jit.key);
+			}
 			let artifact = node.kernel.artifact();
 			hash.u64(artifact.content_id());
 			match artifact.physical_write {
@@ -491,6 +519,13 @@ impl ExecutableGraph {
 					buffer_use.buffer = replacement.clone();
 				}
 			}
+			if let Some(jit) = &mut node.jit {
+				for buffer_use in &mut jit.buffers {
+					if buffer_use.buffer.same_as(current) {
+						buffer_use.buffer = replacement.clone();
+					}
+				}
+			}
 			if let Some(indirect) = &mut node.indirect
 				&& indirect.buffer.same_as(current)
 			{
@@ -514,6 +549,16 @@ impl ExecutableGraph {
 					.find(|(source, _)| source.same_as(&buffer_use.buffer))
 				{
 					buffer_use.buffer = replacement.clone();
+				}
+			}
+			if let Some(jit) = &mut node.jit {
+				for buffer_use in &mut jit.buffers {
+					if let Some((_, replacement)) = replacements
+						.iter()
+						.find(|(source, _)| source.same_as(&buffer_use.buffer))
+					{
+						buffer_use.buffer = replacement.clone();
+					}
 				}
 			}
 			if let Some(indirect) = &mut node.indirect

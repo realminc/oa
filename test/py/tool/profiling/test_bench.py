@@ -49,6 +49,35 @@ class BenchTests(unittest.TestCase):
 			all(workload["contract"]["fallback"] == "none" for workload in workloads)
 		)
 
+	def test_jit_suite_parses_the_interleaved_profiler_output(self) -> None:
+		# The profiler prints the caller-selected candidate route first and its
+		# in-process structural-off reference second; every entry measures the
+		# candidate, whose route its env selects.
+		profiler = PROFILING.parents[1] / "sdk/rs/benchmarks/ml/nlp/char_transformer.rs"
+		source = profiler.read_text(encoding="utf-8")
+		template = "forward + backward GPU median: fused {:.3} ms · unfused {:.3} ms"
+		self.assertIn(f'"{template}"', source)
+		forward = "forward GPU median: fused {:.3} ms · unfused {:.3} ms"
+		self.assertIn(f'"{forward}"', source)
+		# Rust `{:.3}` is fixed precision; Python spells that `{:.3f}`.
+		output = "\n".join((
+			forward.replace("{:.3}", "{:.3f}").format(2.347, 3.654),
+			template.replace("{:.3}", "{:.3f}").format(11.805, 14.467),
+			"fusion census: structural=1",
+		))
+		workloads = [
+			workload
+			for workload in suite.load_suite(PROFILING / "suite_jit.json")
+			if workload["command"][0].endswith("/ml_nlp_char_transformer_profile")
+		]
+		self.assertEqual(len(workloads), 3)
+		for workload in workloads:
+			value, matches = bench.extract_metric(re.compile(workload["metric_regex"]), output)
+			self.assertEqual((value, matches), (11.805, 1), workload["name"])
+			self.assertEqual(workload["contract"]["metric_column"], "candidate")
+			for pattern in workload["require_regex"]:
+				self.assertRegex(output, pattern)
+
 	def test_command_expansion_is_explicit(self) -> None:
 		command = suite.expand_command(
 			["{binary_root}/bench", "--device", "{device_index}"],

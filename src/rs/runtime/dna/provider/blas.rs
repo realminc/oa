@@ -412,16 +412,82 @@ impl MatmulRouteCache {
 		Ok(cache)
 	}
 
-	/// Persist this cache, creating the `var/` tree when needed.
-	pub(in crate::runtime) fn save(&self, path: &crate::Path) -> Result<()> {
-		crate::Filesystem::write_binary(path, &self.serialize())
-	}
-
 	/// Load a persisted cache from disk. Missing files and corrupt content
 	/// both fail; callers decide whether an empty cache is the fallback.
 	pub(in crate::runtime) fn load(path: &crate::Path) -> Result<Self> {
 		let bytes = crate::Filesystem::read_binary(path)?;
 		Self::deserialize(&bytes)
+	}
+
+	/// Decode a `.vkcache` section payload through the same strict parser as
+	/// `load`; the envelope adds integrity and bounds but never replaces these
+	/// per-record checks.
+	pub(in crate::runtime) fn from_bytes(bytes: &[u8]) -> Result<Self> {
+		Self::deserialize(bytes)
+	}
+
+	/// Serialize only records whose key carries this device/driver identity —
+	/// one `.vkcache` artifact holds records for its own scope. Returns `None`
+	/// when no record matches, so callers remove rather than write an empty
+	/// section.
+	pub(in crate::runtime) fn serialize_scope(
+		&self,
+		vendor_id: u32,
+		device_id: u32,
+		driver_id: u32,
+		driver_version: u32,
+	) -> Option<Vec<u8>> {
+		let filtered: HashMap<MatmulRouteKey, MatmulRouteValue> = self
+			.records
+			.iter()
+			.filter(|(key, _)| {
+				key.vendor_id == vendor_id
+					&& key.device_id == device_id
+					&& key.driver_id == driver_id
+					&& key.driver_version == driver_version
+			})
+			.map(|(key, value)| (*key, *value))
+			.collect();
+		if filtered.is_empty() {
+			return None;
+		}
+		Some(
+			Self {
+				records: filtered,
+				publication_step: self.publication_step,
+			}
+			.serialize(),
+		)
+	}
+
+	/// Merge records from `other` whose keys carry this device/driver identity.
+	/// An existing record is replaced only by a strictly higher publication
+	/// step, so a stale legacy file can never roll back qualified tuning.
+	pub(in crate::runtime) fn merge_scope(
+		&mut self,
+		other: &MatmulRouteCache,
+		vendor_id: u32,
+		device_id: u32,
+		driver_id: u32,
+		driver_version: u32,
+	) {
+		for (key, value) in &other.records {
+			if key.vendor_id != vendor_id
+				|| key.device_id != device_id
+				|| key.driver_id != driver_id
+				|| key.driver_version != driver_version
+			{
+				continue;
+			}
+			let replace = self
+				.records
+				.get(key)
+				.is_none_or(|existing| existing.last_updated_step < value.last_updated_step);
+			if replace {
+				self.records.insert(*key, *value);
+				self.publication_step = self.publication_step.max(value.last_updated_step);
+			}
+		}
 	}
 }
 

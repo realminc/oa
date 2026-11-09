@@ -168,7 +168,16 @@ impl<'hook> PhaseSchedule<'hook> {
 		Ok(())
 	}
 
-	fn phase_for_epoch(&self, epoch: u64) -> Result<(usize, u64)> {
+	/// Resolve a one-based global epoch to its phase index and one-based local epoch.
+	///
+	/// This query does not enter a phase or invoke its hook. Workloads that retain
+	/// their own checkpoint boundaries can resolve restored progress without
+	/// restarting callback accounting.
+	///
+	/// # Errors
+	///
+	/// Returns an error for zero or an epoch outside the configured schedule.
+	pub fn phase_for_epoch(&self, epoch: u64) -> Result<(usize, u64)> {
 		if epoch == 0 {
 			return Err(Error::failed_precondition(
 				"training phase callback requires a one-based epoch",

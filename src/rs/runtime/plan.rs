@@ -710,6 +710,10 @@ impl ExecutionPlan {
 			!source_recording_retained,
 			&graph,
 		)?;
+		engine.record_dnn_partitions(
+			dnn.applied_partition_count(),
+			dnn.fallback_partition_count(),
+		);
 		let graph_id = graph.identity();
 		let semantic_lowering = graph.analyze_semantic_lowering(&semantic)?;
 		for (index, resource) in captured_resources.iter_mut().enumerate() {
@@ -863,6 +867,11 @@ impl ExecutionPlan {
 		if let Some(event) = slot.consumer.borrow().as_ref() {
 			event.wait()?;
 		}
+		// Both branches below write the captured buffer on the host: directly
+		// when the ring lands on it, or through the mirror update. Other plans
+		// sharing this Matrix may still have an in-flight submission bound to
+		// it, which this plan's per-slot consumers cannot observe.
+		binding.original.wait_bound_consumer()?;
 		if slot.buffer.same_as(&binding.original) {
 			captured.write_values(values)?;
 		} else {
@@ -882,18 +891,9 @@ impl ExecutionPlan {
 			}
 			// Mirror the newest upload into the captured Matrix's buffer so the
 			// stable value stays coherent for host reads while the ring
-			// pipelines device reads. Its last consumer is the oldest in-flight
-			// submission, so this wait is bounded by the ring depth.
-			let original = binding
-				.staging
-				.iter()
-				.find(|entry| entry.buffer.same_as(&binding.original))
-				.ok_or_else(|| {
-					Error::failed_precondition("execution-plan input staging lost its captured buffer")
-				})?;
-			if let Some(event) = original.consumer.borrow().as_ref() {
-				event.wait()?;
-			}
+			// pipelines device reads. The buffer-level wait above covered every
+			// plan's last bound submission, so this wait is bounded by the ring
+			// depth.
 			captured.write_values(values)?;
 		}
 		if !binding.current.same_as(&slot.buffer) {
@@ -1467,6 +1467,7 @@ impl ExecutionPlan {
 			{
 				slot.consumer.replace(Some(event.clone()));
 			}
+			binding.current.record_bound_consumer(event);
 		}
 		self.last_submission.replace(Some(event.clone()));
 		increment(&self.counters.submissions);

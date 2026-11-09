@@ -2,6 +2,11 @@ use oa::LogMetrics;
 use oa::ml::{ItTraining, ItTrainingConfig, LossMetric, Module, ProgressBar, TrainingSummary};
 use oa::sdk::ml::nlp;
 
+#[derive(Default)]
+struct Options {
+	steps: usize,
+}
+
 pub struct Tutorial<'text> {
 	pub title: &'text str,
 	pub description: &'text str,
@@ -29,6 +34,20 @@ pub fn run<M: Module>(
 		expected_accuracy,
 		expected_generation,
 	} = tutorial;
+	let mut cli = oa::Cli::new("tu_nlp_byte", title);
+	cli.add_option(
+		"--steps",
+		|options: &mut Options| &mut options.steps,
+		"training steps (default 300)",
+	);
+	if !cli.parse() {
+		return Ok(());
+	}
+	let steps = if cli.config().steps == 0 {
+		nlp::TRAINING_STEPS
+	} else {
+		cli.config().steps
+	};
 	let engine = oa::Engine::new()?;
 	let model = construct(&engine)?;
 	// Complete asynchronous parameter initialization before isolated capture.
@@ -54,7 +73,7 @@ pub fn run<M: Module>(
 		&engine,
 		&mut optimizer,
 		ItTrainingConfig {
-			total_steps: nlp::TRAINING_STEPS as u64,
+			total_steps: steps as u64,
 			batch_size: nlp::BATCH_SIZE as u64,
 			sequence_length: nlp::CONTEXT_LENGTH as u64,
 			sequence_unit: "byte token".into(),
@@ -78,7 +97,7 @@ pub fn run<M: Module>(
 	let mut initial_loss = 0.0_f32;
 	let mut last_input = Vec::new();
 	let mut last_target = Vec::new();
-	for _ in 0..nlp::TRAINING_STEPS {
+	for _ in 0..steps {
 		assert!(training.step(
 			|| {
 				let (input_values, target_values) = sampler.next_values()?;
@@ -183,8 +202,15 @@ pub fn run<M: Module>(
 
 	assert!(initial_loss > 5.0);
 	assert!(final_training_loss < initial_loss);
-	assert!((evaluation_loss - expected_loss).abs() < loss_tolerance);
-	assert!((accuracy - expected_accuracy).abs() < 0.001);
-	assert_eq!(generated, expected_generation);
+	assert!(evaluation_loss.is_finite());
+	// Exact canonical convergence applies to the complete 300-step recipe.
+	if steps == nlp::TRAINING_STEPS {
+		assert!((evaluation_loss - expected_loss).abs() < loss_tolerance);
+		assert!((accuracy - expected_accuracy).abs() < 0.001);
+		assert_eq!(generated, expected_generation);
+	}
+	if oa::EnvFlag::is_set("OA_JIT_TRACE") {
+		println!("fusion census: {}", engine.fusion_stats());
+	}
 	Ok(())
 }

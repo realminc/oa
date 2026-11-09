@@ -2,7 +2,7 @@
 //! Reuses OA capture, GradientTape and TrainingProgram; never owns execution.
 use super::{ItRolloutTraining, PpoTrainerConfig, PpoTrainerMetrics, TrainingProgram};
 use crate::ml::{ActorCritic, GradientTape, Parameter, RolloutBatch, advantage, loss, policy};
-use crate::{Engine, Error, ExecutionPlan, Matrix, Result, matrix};
+use crate::{Engine, Error, Event, ExecutionPlan, Matrix, Result, matrix};
 use std::time::Duration;
 
 /// Reusable fixed-geometry PPO backward and AdamW programs.
@@ -30,6 +30,15 @@ struct State {
 	epochs: u64,
 }
 impl PpoUpdateProgram {
+	/// Discard captured update graphs while retaining the reusable rollout storage.
+	///
+	/// Call between completed trainers when loss parameters change. The next update
+	/// captures its new configuration; collection plans retain their buffer identities.
+	/// Model parameters and optimizer state remain owned by their existing owners.
+	pub fn invalidate_updates(&mut self) {
+		self.state = None;
+	}
+
 	/// Number of complete epochs submitted through the compiled program.
 	pub fn replay_count(&self) -> u64 {
 		self.state.as_ref().map_or(0, |s| s.epochs)
@@ -111,7 +120,12 @@ impl PpoUpdateProgram {
 			}
 		}
 		// Whole-rollout advantages are normalized once, before any microbatch.
-		let mut elapsed = submit(engine, &s.normalize, config.enable_gpu_timing)?;
+		// Minibatch replays submit back-to-back and wait only for completion:
+		// queue order preserves the accumulator writes, and cursor uploads
+		// stage through the bounded input ring, so each in-flight submission
+		// always reads a distinct staged slot. No observations or gradients
+		// cross the host boundary.
+		let mut events = vec![submit(engine, &s.normalize, config.enable_gpu_timing)?];
 		let mini = if config.update_minibatch_size == 0 {
 			batch
 		} else {
@@ -124,8 +138,6 @@ impl PpoUpdateProgram {
 				.iter_mut()
 				.find(|(n, _)| *n == count)
 				.expect("compiled tail");
-			// Completion precedes overwriting the small stable cursor slot. No observations
-			// or gradients cross the host boundary.
 			plan.upload_matrix_input(
 				&s.cursor,
 				&[
@@ -133,9 +145,19 @@ impl PpoUpdateProgram {
 					u32::from(start == 0),
 				],
 			)?;
-			elapsed = elapsed
-				.checked_add(submit(engine, plan, config.enable_gpu_timing)?)
-				.ok_or_else(|| Error::resource_exhausted("PPO timing overflow"))?;
+			events.push(submit(engine, plan, config.enable_gpu_timing)?);
+		}
+		let mut elapsed = Duration::ZERO;
+		if config.enable_gpu_timing {
+			for event in &events {
+				elapsed = elapsed
+					.checked_add(event.device_duration()?)
+					.ok_or_else(|| Error::resource_exhausted("PPO timing overflow"))?;
+			}
+		} else if let Some(event) = events.last() {
+			// Every plan uses the same queue. Completion of the last exact
+			// event covers all preceding submissions; retain their owners here.
+			event.wait()?;
 		}
 		let mut metrics = [0.0; 4];
 		for (out, value) in metrics.iter_mut().zip(&s.metrics) {
@@ -281,11 +303,10 @@ impl State {
 		})
 	}
 }
-fn submit(engine: &Engine, plan: &ExecutionPlan, timed: bool) -> Result<Duration> {
+fn submit(engine: &Engine, plan: &ExecutionPlan, timed: bool) -> Result<Event> {
 	if timed {
-		engine.submit_timed(plan)?.device_duration()
+		engine.submit_timed(plan)
 	} else {
-		engine.submit(plan)?.wait()?;
-		Ok(Duration::ZERO)
+		engine.submit(plan)
 	}
 }

@@ -189,5 +189,8 @@ fn main() -> oa::Result<()> {
 		generated
 	);
 	oa::Filesystem::remove_file(&checkpoint).expect("remove completed RNN checkpoint");
+	if oa::EnvFlag::is_set("OA_JIT_TRACE") {
+		println!("fusion census: {}", engine.fusion_stats());
+	}
 	Ok(())
 }

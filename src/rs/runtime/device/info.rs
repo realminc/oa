@@ -176,6 +176,10 @@ pub(in crate::runtime) struct DevicePhysicalInfo {
 	pub(in crate::runtime) driver_id: vk::DriverId,
 	pub(in crate::runtime) driver_version: u32,
 	pub(in crate::runtime) conformance_version: vk::ConformanceVersion,
+	/// `VkPhysicalDeviceProperties::pipelineCacheUUID` — the driver cache
+	/// compatibility identity, retained so persisted driver blobs can be
+	/// validated without passing foreign bytes to the driver.
+	pub(in crate::runtime) pipeline_cache_uuid: [u8; 16],
 	pub(in crate::runtime) capability_identity: u64,
 	pub(in crate::runtime) local_memory_bytes: u64,
 	pub(in crate::runtime) local_memory_budget_bytes: Option<u64>,

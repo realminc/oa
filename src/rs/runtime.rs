@@ -58,7 +58,8 @@ pub use semantic_graph::{
 pub(crate) use storage::Storage;
 pub use timer::{Timer, TimerDomain};
 pub use types::{
-	DeviceHardwareInfo, DeviceInfo, DeviceSoftwareInfo, EngineRequirements, PresentationCapabilities,
+	DeviceHardwareInfo, DeviceInfo, DeviceSoftwareInfo, EngineRequirements, FusionStats,
+	PresentationCapabilities,
 };
 
 pub use window::SdlWindow;

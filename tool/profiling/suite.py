@@ -35,6 +35,12 @@ def load_suite(path: Path) -> list[dict[str, Any]]:
 		for required in ("command_id", "command", "metric_regex", "metric_name", "metric_unit"):
 			if not workload.get(required):
 				raise ValueError(f"workload {name} has no {required}")
+		env = workload.get("env", {})
+		if not isinstance(env, dict) or not all(
+			isinstance(key, str) and (value is None or isinstance(value, str))
+			for key, value in env.items()
+		):
+			raise ValueError(f"workload {name} env must map strings to strings or null")
 		names.add(name)
 	return workloads
 
@@ -127,13 +133,29 @@ def run(args: argparse.Namespace) -> int:
 			))
 		if "thermal_sensor_regex" in workload:
 			arguments.extend(("--thermal-sensor-regex", workload["thermal_sensor_regex"]))
+		env_overrides = workload.get("env", {})
+		for key, value in sorted(env_overrides.items()):
+			arguments.extend(("--contract", f"env.{key}={value if value is not None else 'unset'}"))
 		for key, value in sorted(workload.get("contract", {}).items()):
 			arguments.extend(("--contract", f"{key}={value}"))
 		for pattern in workload.get("require_regex", []):
 			arguments.extend(("--require-regex", pattern))
 		arguments.append("--")
 		arguments.extend(expand_command(workload["command"], binary_root, args.device_index))
-		path, status = bench.run(bench.parse_args(arguments))
+		previous = {key: os.environ.get(key) for key in env_overrides}
+		for key, value in env_overrides.items():
+			if value is None:
+				os.environ.pop(key, None)
+			else:
+				os.environ[key] = value
+		try:
+			path, status = bench.run(bench.parse_args(arguments))
+		finally:
+			for key, value in previous.items():
+				if value is None:
+					os.environ.pop(key, None)
+				else:
+					os.environ[key] = value
 		document = json.loads(path.read_text(encoding="utf-8"))
 		stats = document["metric"]["statistics"]
 		if stats:

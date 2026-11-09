@@ -32,7 +32,8 @@ fn buffer_retains_device_after_engine_drop() -> crate::Result<()> {
 	Ok(())
 }
 
-/// Engine startup admits metadata only; first use publishes one retained pipeline.
+/// Engine startup admits metadata only; the first submission publishes
+/// retained pipelines lazily, and repeated submissions create none.
 #[test]
 #[ignore = "requires an explicitly selected Vulkan device; first-use pipeline proof"]
 fn compute_pipelines_are_created_once_on_first_use() -> crate::Result<()> {
@@ -48,9 +49,19 @@ fn compute_pipelines_are_created_once_on_first_use() -> crate::Result<()> {
 	assert_eq!(device.initialized_pipeline_count(), 0);
 	let a = matrix::from_f32_on(&engine, [1, 3], &[1.0, 2.0, 4.0])?;
 	assert_eq!(device.initialized_pipeline_count(), 0);
-	for _ in 0..2 {
+	// Submit-time fusion probes its candidate kernels on the first
+	// submission, so the primed count covers the epilogue/fusion probes and
+	// the dispatched add — the contract is that repeats add nothing.
+	assert_eq!(matrix::add(&a, &a)?.read_f32()?, vec![2.0, 4.0, 8.0]);
+	let primed = device.initialized_pipeline_count();
+	assert!(primed > 0, "first submission must initialize pipelines");
+	for _ in 0..4 {
 		assert_eq!(matrix::add(&a, &a)?.read_f32()?, vec![2.0, 4.0, 8.0]);
-		assert_eq!(device.initialized_pipeline_count(), 1);
+		assert_eq!(
+			device.initialized_pipeline_count(),
+			primed,
+			"repeated submission must not create pipelines"
+		);
 	}
 	Ok(())
 }
@@ -80,10 +91,24 @@ impl super::EngineHandle {
 	/// saves best-effort; an explicit save keeps a qualification result
 	/// durable even if the process does not reach a clean drop.
 	pub(in crate::runtime) fn save_matmul_route_cache(&self) -> crate::Result<()> {
-		self
-			.state
-			.borrow()
-			.matmul_route_cache
-			.save(&crate::runtime::dna::provider::blas::route_cache_path())
+		use crate::runtime::device::vkcache;
+		let (scope, payload) = {
+			let state = self.state.borrow();
+			let scope = vkcache::VkCacheScope::new(state.device.physical());
+			let (vendor_id, device_id, driver_id, driver_version) = scope.device_route_scope();
+			(
+				scope.clone(),
+				state
+					.matmul_route_cache
+					.serialize_scope(vendor_id, device_id, driver_id, driver_version),
+			)
+		};
+		let update = match payload {
+			Some(bytes) => {
+				vkcache::SectionUpdate::replace(vkcache::SECTION_GEMM_MEASURED_ROUTES, 1, bytes)
+			}
+			None => vkcache::SectionUpdate::remove(vkcache::SECTION_GEMM_MEASURED_ROUTES),
+		};
+		vkcache::update(&scope.path(), &scope, &[update])
 	}
 }

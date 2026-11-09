@@ -6,6 +6,7 @@ pub(in crate::runtime) mod commands;
 pub(in crate::runtime) mod descriptor;
 pub(in crate::runtime) mod dispatch;
 pub(in crate::runtime) mod image;
+pub(super) mod jit;
 pub(in crate::runtime) mod pipeline;
 #[cfg_attr(
 	not(test),
@@ -29,6 +30,7 @@ pub(in crate::runtime) mod swapchain;
 pub(in crate::runtime) mod timeline;
 pub(in crate::runtime) mod timestamp;
 pub(in crate::runtime) mod video;
+pub(in crate::runtime) mod vkcache;
 
 mod configuration;
 pub(in crate::runtime) mod features;

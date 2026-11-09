@@ -1,6 +1,6 @@
 [package]
 name = "oarust"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2024"
 rust-version = "1.98"
 autotests = false
@@ -190,8 +190,20 @@ name = "tu_nlp_bpe_mamba3"
 path = "sdk/rs/tutorials/ml/nlp/tu_nlp_bpe_mamba3.rs"
 
 [[example]]
+name = "ml_audio_alm_tokenizer_profile"
+path = "sdk/rs/benchmarks/ml/audio/alm_tokenizer.rs"
+
+[[example]]
+name = "ml_vision_commands_cnn_profile"
+path = "sdk/rs/benchmarks/ml/vision/commands_cnn.rs"
+
+[[example]]
 name = "ml_nlp_char_transformer_profile"
 path = "sdk/rs/benchmarks/ml/nlp/char_transformer.rs"
+
+[[example]]
+name = "ml_rl_ppo_bench"
+path = "sdk/rs/benchmarks/ml/rl/ppo.rs"
 
 [[example]]
 name = "tu_audio_commands"
@@ -270,7 +282,7 @@ default = ["bundled-sdl"]
 bundled-sdl = ["sdl3/build-from-source-static"]
 
 [dependencies]
-vkrust = { version = "0.11", features = ["allocator"] }
+vkrust = { version = "0.12", features = ["allocator"] }
 sdl3 = { version = "0.20", features = ["use-pkg-config"] }
 
 bitflags = "2"
@@ -299,6 +311,7 @@ memmap2 = "0.9"
 ml-dsa = { version = "0.1.1", default-features = false, features = ["alloc", "getrandom", "zeroize"] }
 socket2 = "0.5.10"
 rustybuzz = "0.20.1"
+libloading = "0.8.9"
 
 [build-dependencies]
 serde_json = "1"

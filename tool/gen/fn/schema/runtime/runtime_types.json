@@ -331,6 +331,248 @@
 			"variants": [],
 			"defaults": null,
 			"default_variant": null
+		},
+		{
+			"class": "record",
+			"name": "FusionStats",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"Default",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "Engine-lifetime counters of fusion decisions, decline reasons and JIT admissions.",
+			"fields": [
+				{
+					"name": "examined_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "disabled_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "not_elementwise_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "policy_excluded_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "hazard_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "isolated_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "extent_boundary_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "cross_invocation_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "program_rejected_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "foreign_device_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "tape_bound_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "tape_capacity_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "resource_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "specialization_declined_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "tape_fused_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "specialized_fused_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "pass_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "structural_region_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "structural_node_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "tape_region_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "specialized_region_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_disabled_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_admitted_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_reused_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_policy_tape_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_cached_negative_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_bound_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_compiler_unavailable_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_compile_rejected_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_pipeline_rejected_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_queued_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_pending_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_compile_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_compile_ns",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "jit_pipeline_ns",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "dnn_applied_partition_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "dnn_fallback_partition_count",
+					"type": "u64",
+					"visibility": "pub(crate)",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
 		}
 	]
 }
