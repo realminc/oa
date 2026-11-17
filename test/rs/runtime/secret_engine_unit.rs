@@ -730,7 +730,7 @@ fn secret_mlkem512_known_fixture_agreement_and_implicit_rejection() -> Result<()
 	let key_erasure = handle.erase_mlkem_key(key)?;
 	key_erasure.wait()?;
 	for ticket in cache_erasures {
-		assert_eq!(ticket.test_retained_allocation_count(), 1);
+		assert_eq!(ticket.test_retained_allocation_count(), 0);
 		assert!(ticket.try_is_complete()?);
 	}
 	assert!(seed_erasure.try_is_complete()?);

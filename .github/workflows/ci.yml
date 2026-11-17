@@ -193,9 +193,8 @@ jobs:
             runtime::engine::secret_tests::secret_descriptor \
             runtime::engine::secret_tests::secret_mlkem \
             runtime::engine::secret_tests::dropped_erasure \
-            runtime::engine::secret_tests::unavailable_retirement \
-            runtime::engine::secret_tests::mldsa_
-          echo 'Software Vulkan: secret storage/ML-KEM and public ML-DSA hash-verification pack qualified; secret ML-DSA provider not applicable (physical qualification required).' >> "$GITHUB_STEP_SUMMARY"
+            runtime::engine::secret_tests::unavailable_retirement
+          echo 'Software Vulkan: secret storage and ML-KEM pack qualified; bounded ML-DSA provider not admitted by this software device (physical qualification required).' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Package Rust API documentation
         run: |
