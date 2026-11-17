@@ -113,7 +113,11 @@ test_vk!(
 );
 
 test_vk!(screen_capture_reports_capability_gate, engine, {
-	assert!(!ScreenCapture::is_supported());
+	// Supported builds require interactive consent; ordinary tests must never
+	// open a desktop picker. The ignored screen-session proof covers that route.
+	if ScreenCapture::is_supported() {
+		return Ok(());
+	}
 	match ScreenCapture::open(&engine, &ScreenCaptureConfig::default()) {
 		Err(error) => assert_eq!(error.kind(), oa::ErrorKind::MissingCapability),
 		Ok(_) => panic!("screen capture opened without a linked backend"),

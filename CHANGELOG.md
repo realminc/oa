@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.0
+
+- Add `oa record` and portal/PipeWire `oa capture`, sharing the image/video GPU canvas, navigation camera, recording controls, elapsed timing and safe save-copy flow.
+- Repair native video colors, hardware YCbCr routing, reverse scrubbing and AV1 backward-seek robustness; complete the schema-owned Python video encode/recorder surface.
+- Document every Rust/Python NLP tutorial with its local loss curve and recorded terminal output.
+- Fix SDL camera byte order, aligned-U8 staging and unnecessary texture-upload waits; preserve exact GPU producer completion.
+- Repair release workspace version translation, native build/runtime dependencies and SDK application packaging; select the admitted software-Vulkan cryptography pack explicitly.
+
 ## 0.11.3
 
 - Rename Strict to Core and select one Vulkan execution profile per build with `OA_BUILD_PROFILE=core|compatibility`; Core is the default and requires Vulkan 1.3 plus the admitted bindless features. Older hardware needs an explicit Compatibility build.

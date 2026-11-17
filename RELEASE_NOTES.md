@@ -1,204 +1,82 @@
-# OA v0.11.3 — Rust development preview
+# OA v0.12.0 — Experimental Rust and Python preview
 
 ## Summary
 
-v0.11.3 replaces automatic Strict/Compatibility negotiation with one execution
-profile per build. Strict is now named Core. `OA_BUILD_PROFILE=core|compatibility`
-selects shader compilation, embedding and the Rust binding backend together;
-an unset variable selects Core. Compatibility artifacts are mechanically adapted
-from the same shader sources without compiling Core artifacts first.
+This milestone completes the local camera/screen recording applications,
+repairs video presentation and reverse scrubbing, expands Python video-encode
+parity, and brings the NLP tutorials into a consistent documented workflow.
+The library remains Experimental; hardware-specific qualification is separate
+from source connection and software Vulkan correctness.
 
-The generated compute registry embeds 538 artifacts instead of two tables.
-The complete Core catalog contains 565 SPIR-V files (17,224,848 raw bytes), and
-Compatibility contains 564 (17,206,908), compared with the previous dual catalog's
-1,103 files (34,309,428 bytes). These are artifact measurements, not execution
-or build-time speedup claims.
+## Added and improved
 
-Raster validation also fixes draw-parameter feature enablement and read-only
-storage-buffer declarations, preserving shader arithmetic and binding layouts.
+- `oa record` captures a selected camera. `oa capture` uses the desktop's
+  monitor/window picker, with window-only and hidden-cursor options. Both share
+  the image/video GPU 2D canvas, pan/zoom camera, fit, actual-size and channel
+  controls, with a record/stop button, elapsed time and Ctrl+S save-copy flow.
+- Linux screen capture ports the donor portal/PipeWire mapped-memory route.
+  Frames own their copied pixels, static screens preserve recording time, and
+  a source-size change finishes the existing movie before recording another.
+- Native video presentation selects hardware YCbCr conversion when available.
+  Playback color handling, image/video navigation, AV1 reverse-scrub crashes,
+  and backward frame-cache behavior receive correctness and robustness fixes.
+- Python exposes the video encoder/recorder and exact profile, capability and
+  format queries through the shared schema-owned Rust implementation.
+- Rust and Python NLP tutorials include local loss curves, reproducible run
+  commands, recorded terminal output, evaluation and checkpoint evidence.
+- SDK release archives and distro packages include the `oa` application.
+  Public snapshot translation covers every workspace package and lockfile
+  identity, including the SDK used by the Python extension.
 
-## Compatibility and migration
+## Fixed
 
-Core requires Vulkan 1.3 and its existing bindless feature contract. Older
-hardware must explicitly build with `OA_BUILD_PROFILE=compatibility`; that build
-requires Vulkan 1.2 and the bounded-binding feature contract. Runtime environment
-changes cannot switch an already compiled library, and device selection never
-falls back to the other profile. This changes the default hardware admission
-behavior; the public semantic operation/value API remains unchanged.
-
-Use the same build setting for Rust dependencies and Python extension builds.
-Core-only video encode conversion reports a capability error in Compatibility.
-Optional numeric, graphics and codec capabilities retain their runtime gates.
-
-## Verification
-
-The implementation passed both all-target/all-feature Clippy configurations
-with warnings denied and all-features Rust suites: Core 554 tests and
-Compatibility 555 tests, each with zero failures and 816 ignored tests. Eighteen
-focused cases passed on Intel HD Graphics 4400 / Mesa 26.2.5 under separate core
-and synchronization validation with no validation VUIDs, errors or warnings.
-These cover replay, JIT, cache restore and independent raster pixel oracles.
-
-Fresh Python binding/tooling checks ran 735 tests with zero failures and 15
-skips; 76 unchanged cryptography shader-component tests passed in the earlier
-broad run. Generation, formatting, inventory and whitespace checks passed.
-Implementation verification used 0.11.2 package metadata; the 0.11.3 release
-metadata and documentation update is checked separately without another build.
-
-## Known limitations
-
-Core GPU execution needs qualification on eligible hardware. The local Vulkan
-1.2 device qualifies Compatibility execution and explicit Core rejection only.
-GPU-assisted and cross-vendor qualification remain separate. Ignored/skipped
-tests are not support claims. The repository remains Experimental.
-
-## Upgrade
-
-Update `oarust` and `oapython` to 0.11.3. On older hardware build with:
-
-```sh
-OA_BUILD_PROFILE=compatibility cargo build --release
-OA_BUILD_PROFILE=compatibility .venv/bin/maturin develop --release
-```
-
-Caches remain profile-scoped and are rebuilt when the enabled feature identity
-changes. No manual deletion of model checkpoints or runtime caches is needed.
-
-# OA v0.11.2 — Rust development preview
-
-## Summary
-
-v0.11.2 lands the UI/visualization checkpoint above v0.11.1. The UI
-compute compositor is replaced by a Vulkan raster pipeline:
-`record_render` records one dynamic-rendering pass per frame, elements
-draw in recorded order under fixed-function alpha blending, Vulkan
-scissor provides clipping, and RGBA media samples through per-command
-image samplers. The 14 UI compute shaders are retired.
-
-The retained `plot` model grows log/symlog scales, error-band fill,
-grouped and stacked bars, box summaries, explicit tick control, bounded
-streaming series, and qualified figure file sinks (PNG/JPEG/WebP) with
-byte-identical cross-process headless gallery output. `plot::FigureView`
-adds pointer-anchored wheel zoom, drag pan, shift-drag box zoom, reset,
-legend toggles, a crosshair tooltip, serializable `FigureViewState`, and
-view-transition animation.
-
-`Ui` gains a data table, filterable combo, color picker, multi-line text
-input, menus over the popup route, generic drag-drop payloads, keyboard
-and gamepad navigation, and IME candidate-rect routing. `UiStyle` token
-presets are generated from `ui_style.json` (`realm_dark` base;
-`realm_light` and `viewer_dark` derived). `ViewerMode::Workspace` adds a
-serializable dock host over `split_pane`/`tab_bar` with tab transfer,
-edge-drop split zones, and empty-leaf collapse, entered through the
-`oa workspace` subcommand. Python gains the full recorded `Axes`
-surface plus `FigureView` and `Workspace` bindings.
+- Request SDL's byte-order-aware RGBA32 camera format, preventing reversed
+  channels on little-endian machines.
+- Remove redundant aligned-U8 frame staging and unrelated engine-wide waits
+  before native texture upload while preserving exact producer completion.
+- Preserve the original recording on save cancellation or copy failure, and
+  stage destination replacement so saving onto a link cannot truncate it.
+- Align retained-secret ownership assertions and reject invalid ML-KEM cache
+  operands. Software CI selects its admitted ML-KEM pack before execution;
+  unadmitted ML-DSA operations are not silently converted into test successes.
 
 ## Compatibility and migration
 
-`UiTabBarResult` gains `dragged_index`/`drop_index`/`dropped` and
-`UiTabBarState` gains drag bookkeeping; struct literal initializers
-must name the new fields. `InputEvent` gains `gamepad_*` fields and
-`InputEventKind` gains the `Gamepad*` variants. `Ui`, `plot`, `Viewer`,
-and `Workspace` additions are otherwise additive. Rust (`oarust`),
-Python (`oapython`, import `oa`), and their lockfile version metadata
-agree on 0.11.2.
+Core remains the default build profile and requires its Vulkan 1.3 feature
+contract. Older hardware must explicitly build with `OA_BUILD_PROFILE=compatibility`.
+The public semantic Rust library namespace is `oa`; the registry packages remain
+`oarust` and `oapython`. Python screen/camera capture bindings are not added by
+these Rust application commands.
 
-## Performance
-
-No release performance claim is made. Recorded evidence is on a single
-Intel Haswell iGPU under the Mesa Compatibility profile; the raster
-path's per-frame cost has not been benchmarked against the retired
-compute compositor.
+Linux builds now need PipeWire/SPA development headers, pkg-config and libclang.
+Screen capture additionally requires libportal and a desktop ScreenCast portal
+at runtime. The desktop always owns the capture permission decision. Optional
+capture services are not initialized by headless Engine construction.
 
 ## Verification
 
-Local gates on the release commit: `cargo fmt --check`,
-`cargo clippy --all-targets -- -D warnings`, `python3 tool/oa gen fn
---check`, `cargo check --all-targets`, the `render` host suite plus the
-ignored Vulkan UI tests (`ui_workspace_*`, `ui_menu_*`, navigation, IME,
-drag-drop, table, combo, color picker), Python binding tests, and the
-headless gallery determinism evidence (byte-identical SHA-256 across
-fresh processes, including a cold shader-cache run). Bounded `oa
-workspace` and `oa view` runs open cleanly on a live Wayland session.
+Local Intel Iris Xe qualification includes native-resolution 2496×1664 screen
+recording, 61 submitted and independently decoded frames in a two-second run,
+MP4 finalization, camera capture, and GPU canvas transform/channel oracles.
+Aligned/padded byte uploads, texture ownership and GPU-produced texture uploads
+pass independent readback checks; the latter also passes synchronization
+validation. These are local correctness/cadence samples, not cross-driver
+performance claims. Rust/Python regression, formatting, generation and Clippy
+checks are recorded with the release candidate. Published package and CI
+verification are separate gates and are not implied by those local results.
 
 ## Known limitations
 
-The 3D-viewer foundation (raster roadmap stage 5) is not present.
-Planar video planes remain buffer reads; render-target-backed textures
-are unadmitted to `image_at`. Hands-on interactive qualification of the
-viewer and workspace is pending. Evidence is single-device Intel
-Haswell; no cross-vendor qualification is implied.
+DMA-BUF zero-copy capture, capture audio and the remaining manual desktop
+lifecycle checks remain open. Vulkan Video codec/profile support depends on
+the selected device and driver. Sustained HEVC encoding on the recorded Intel
+platform needs the qualified Mesa development-driver fix; older Mesa 26.2.7
+can lose the device. Software Vulkan does not qualify physical media, WSI,
+performance, or secret ML-DSA providers outside its admitted resource limits.
+Ignored or skipped tests are not capability claims.
 
 ## Upgrade
 
-Bump `oarust`/`oapython` to 0.11.2. `UiTabBarResult`/`UiTabBarState`
-literal initializers gain fields; all other APIs are additive. Cached
-`.vkcache` artifacts are disposable and rebuild as needed.
-
-# OA v0.11.1 — Rust development preview
-
-## Summary
-
-v0.11.1 lands two feature checkpoints above v0.11.0. The video pipeline
-begins the video-native vision roadmap (VNV-01/02/03/04/06): device-planar
-YUV storage, host-planar upload, tier-1 native geometry operations (resize,
-letterbox, plane stack, normalize), overlay/composite, range conversion, and
-threshold/luma analysis, all schema-owned, with exactly one fused
-`video::to_matrix` YUV→RGB/Matrix conversion boundary.
-
-`nn::Empyrealm` is re-composed from a Mamba-3 parameter alias into a
-Nemotron-style hybrid. `EmpyrealmConfig` schedules an interleaved stack of
-Mamba-3 and causal `MultiHeadAttention` mixers, each block wrapped in
-pre-norm residual wiring with a dense or routed-expert feed-forward tail and
-a final RMSNorm. Inference-only single-token decode advances caller-owned
-`EmpyrealmState` (one `Mamba3State` or `AttentionCache` per block) through
-`Empyrealm::step`/`step_embedded`; `MultiHeadAttention::new_cache`/`step`
-own the single-token key/value append path.
-
-## Compatibility and migration
-
-`Empyrealm::new_with_seed` now accepts `EmpyrealmConfig` instead of
-`Mamba3Config`; `new_state`/`step_embedded` use `EmpyrealmState` instead of
-`Mamba3State`; the former `mixer()` accessor is removed; `step`,
-`layer_count`, and `attention_indices` are added. `MultiHeadAttention`
-gains `new_cache` and `step`. Python `oa.ml.Empyrealm` mirrors these
-changes and adds `EmpyrealmConfig`/`EmpyrealmState`. Rust (`oarust`,
-namespace `oa`), Python (`oapython`, import `oa`), and their lockfile
-version metadata agree on 0.11.1.
-
-## Performance
-
-No release performance claim is made. Recorded evidence is Haswell
-exploratory rows on a single Intel iGPU under an unfixed-clock desktop
-protocol; the hybrid `byte_empyrealm` posts the strongest byte-row
-evaluation loss in the NLP suite (0.179619 versus Byte Transformer 0.190565
-and Byte Mamba-3 0.207903) at roughly 3.4× the former composition's device
-time on that workload. See `oaHaswellExploratoryBaseline.md`.
-
-## Verification
-
-Local gates on the release commit: `cargo fmt --check`,
-`cargo clippy --all-targets -- -D warnings`, fn/nn generator drift checks
-(252 + 26 outputs byte-stable) and 45 NN generator unit tests, `cargo test
---test ml` contract tests plus the ignored hardware suite (12 Empyrealm,
-attention-cache, MoE-tail, and ByteEmpyrealm tests including step-versus-scan
-and cache-ownership oracles), the fresh-process 300-step Byte Empyrealm gate
-(loss 0.179619, accuracy 92.9688%, exact generation, checkpoint restore),
-24 hardware `convert::` video tests, and 192 Python binding tests. The
-realminc/oa tag pipeline additionally builds and tests the exact tag and
-verifies version-source agreement and tag ancestry on main.
-
-## Known limitations
-
-Video-native decode, presentation, encode-native input, P010 storage, and
-compiler fusion remain gated; the video rows are Haswell-only evidence.
-Empyrealm decode is inference-only and rejects active gradient recording.
-Evidence is single-device Intel Haswell; no cross-vendor qualification is
-implied.
-
-## Upgrade
-
-Bump `oarust`/`oapython` to 0.11.1. `Empyrealm` construction and decode
-call sites must move to `EmpyrealmConfig`/`EmpyrealmState`; all other APIs
-are unchanged. Cached `.vkcache` artifacts are disposable and rebuild as
-needed.
+Use `cargo add oarust` or `python -m pip install --upgrade oapython` after the
+public release completes. Use the matching SDK archive/package for the `oa`
+applications, and verify its complete SHA-256 manifest before installation.

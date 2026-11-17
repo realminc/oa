@@ -365,9 +365,16 @@ impl Matrix {
 		// the checked length covers exactly the supplied slice.
 		let bytes = unsafe { std::slice::from_raw_parts(values.as_ptr().cast(), byte_len) };
 		let result = if self.dtype == DType::U8 {
-			let mut padded = vec![0_u8; byte_storage_len(byte_len, self.dtype)?];
-			padded[..byte_len].copy_from_slice(bytes);
-			self.storage.write(&padded)
+			let padded_len = byte_storage_len(byte_len, self.dtype)?;
+			if padded_len == byte_len {
+				// RGBA capture is already word-aligned. Preserve the padding
+				// contract without allocating/copying a second complete frame.
+				self.storage.write(bytes)
+			} else {
+				let mut padded = vec![0_u8; padded_len];
+				padded[..byte_len].copy_from_slice(bytes);
+				self.storage.write(&padded)
+			}
 		} else {
 			self.storage.write(bytes)
 		};

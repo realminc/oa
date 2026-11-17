@@ -327,7 +327,7 @@ fn secret_mlkem_keygen_nist_all_parameters() -> Result<()> {
 			let entropy = Entropy::test_from_bytes(&seed)?;
 			crate::core::memory::zero_secure(&mut seed);
 			let (public, erasure) = handle.prove_mlkem_keygen(k, entropy)?;
-			assert_eq!(erasure.test_retained_allocation_count(), 4);
+			assert_eq!(erasure.test_retained_allocation_count(), 3);
 			erasure.wait()?;
 			assert!(erasure.try_is_complete()?);
 			let mut bytes = vec![0; public.byte_len()];
@@ -405,7 +405,7 @@ fn secret_mlkem_retained_key_erases_without_waiting_for_generation() -> Result<(
 	let handle = engine.handle();
 	for k in [2, 3, 4] {
 		let (key, seed_erasure) = handle.generate_mlkem_key(k, Entropy::generate()?)?;
-		assert_eq!(seed_erasure.test_retained_allocation_count(), 3);
+		assert_eq!(seed_erasure.test_retained_allocation_count(), 2);
 		assert_eq!(key.k, k);
 		assert_eq!(key.private.binding()?.byte_len(), u64::from(768 * k + 96));
 		let public = key.public.clone();
@@ -465,8 +465,8 @@ fn secret_mlkem_kem_chains_without_host_waits_and_erases_all_owners() -> Result<
 		let (encapsulated, ciphertext, status, message_erasure) =
 			handle.encapsulate_mlkem(&key, Entropy::generate()?)?;
 		let (decapsulated, cache_erasure) = handle.decapsulate_mlkem(&key, &ciphertext)?;
-		assert_eq!(message_erasure.test_retained_allocation_count(), 3);
-		assert_eq!(cache_erasure.test_retained_allocation_count(), 1);
+		assert_eq!(message_erasure.test_retained_allocation_count(), 2);
+		assert_eq!(cache_erasure.test_retained_allocation_count(), 0);
 		// No waits between producers, consumers or consuming erasures.
 		let first = handle.erase_mlkem_shared_secret(encapsulated)?;
 		let second = handle.erase_mlkem_shared_secret(decapsulated)?;
@@ -575,7 +575,7 @@ fn secret_mlkem_external_encapsulation_matches_nist_ciphertext_all_parameters() 
 		drop(public);
 		let secret_erasure = handle.erase_mlkem_shared_secret(secret)?;
 		secret_erasure.wait()?;
-		assert_eq!(entropy_erasure.test_retained_allocation_count(), 3);
+		assert_eq!(entropy_erasure.test_retained_allocation_count(), 2);
 		assert!(entropy_erasure.try_is_complete()?);
 		assert!(secret_erasure.try_is_complete()?);
 		let mut valid = [0; 4];
@@ -593,7 +593,7 @@ fn secret_mlkem_external_encapsulation_matches_nist_ciphertext_all_parameters() 
 			handle.encapsulate_mlkem_public(k, &invalid, Entropy::generate()?)?;
 		let secret_erasure = handle.erase_mlkem_shared_secret(secret)?;
 		secret_erasure.wait()?;
-		assert_eq!(entropy_erasure.test_retained_allocation_count(), 3);
+		assert_eq!(entropy_erasure.test_retained_allocation_count(), 2);
 		assert!(entropy_erasure.try_is_complete()?);
 		status.read(0, &mut valid)?;
 		assert_eq!(u32::from_le_bytes(valid), 0);
@@ -667,7 +667,7 @@ fn secret_mlkem512_known_fixture_agreement_and_implicit_rejection() -> Result<()
 	let entropy = Entropy::test_from_bytes(&seed)?;
 	crate::core::memory::zero_secure(&mut seed);
 	let (key, seed_erasure) = handle.generate_mlkem_key(2, entropy)?;
-	assert_eq!(seed_erasure.test_retained_allocation_count(), 3);
+	assert_eq!(seed_erasure.test_retained_allocation_count(), 2);
 	eprintln!("ML-KEM-512 fixture keygen submitted");
 	let ciphertext = Buffer::host_visible_storage(&device, 768)?;
 	let status = Buffer::host_visible_storage(&device, 4)?;

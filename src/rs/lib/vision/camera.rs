@@ -26,6 +26,10 @@ use crate::video::{
 };
 use crate::{DType, Engine, Error, Matrix, Result};
 
+// RGBA32 names byte order; RGBA8888 names a packed integer and reverses the
+// channels on little-endian hosts. Match the donor's SDL_PIXELFORMAT_RGBA32.
+const CAMERA_PIXEL_FORMAT: SDL_PixelFormat = SDL_PixelFormat::RGBA32;
+
 impl Default for CameraCaptureConfig {
 	fn default() -> Self {
 		Self {
@@ -61,7 +65,7 @@ pub struct CameraCapture {
 impl CameraCapture {
 	/// Open the selected camera and negotiate the closest supported format.
 	///
-	/// The session requests RGBA8888 output so no pixel conversion happens
+	/// The session requests RGBA32 output so no pixel conversion happens
 	/// outside SDL. On platforms with a camera permission gate the camera opens
 	/// before approval; `poll` reports [`ErrorKind::MissingCapability`] when the
 	/// user denies access and `None` while approval is pending.
@@ -90,7 +94,7 @@ impl CameraCapture {
 			.map_err(|source| Error::backend_failure("SDL3", "camera subsystem", source))?;
 		let camera_id = camera_id_for_index(config.device_index)?;
 		let request = SDL_CameraSpec {
-			format: SDL_PixelFormat::RGBA8888,
+			format: CAMERA_PIXEL_FORMAT,
 			width: config.width as i32,
 			height: config.height as i32,
 			framerate_numerator: config.fps as i32,
@@ -203,11 +207,11 @@ impl CameraCapture {
 	}
 
 	unsafe fn upload_surface(&self, surface: &SDL_Surface, timestamp_ns: u64) -> Result<VideoFrame> {
-		if surface.format != SDL_PixelFormat::RGBA8888 {
+		if surface.format != CAMERA_PIXEL_FORMAT {
 			return Err(Error::backend_failure(
 				"SDL3",
 				"camera frame format",
-				std::io::Error::other(format!("expected RGBA8888, got {:?}", surface.format)),
+				std::io::Error::other(format!("expected RGBA32, got {:?}", surface.format)),
 			));
 		}
 		let width = usize::try_from(surface.w)
@@ -229,7 +233,10 @@ impl CameraCapture {
 		}
 		// SAFETY: SDL owns `surface` for this call and guarantees `pitch * h`
 		// readable bytes for a live camera frame.
-		let source = unsafe { std::slice::from_raw_parts(surface.pixels.cast::<u8>(), pitch * height) };
+		let source_len = pitch
+			.checked_mul(height)
+			.ok_or_else(|| Error::out_of_range("camera surface byte count overflows"))?;
+		let source = unsafe { std::slice::from_raw_parts(surface.pixels.cast::<u8>(), source_len) };
 		let rgba = if pitch == row_bytes {
 			source.to_vec()
 		} else {
@@ -261,6 +268,10 @@ impl CameraCapture {
 		)
 	}
 }
+
+#[cfg(test)]
+#[path = "../../../../test/rs/vision/camera_unit.rs"]
+mod tests;
 
 impl Drop for CameraCapture {
 	fn drop(&mut self) {

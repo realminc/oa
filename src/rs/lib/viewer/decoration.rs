@@ -103,7 +103,7 @@ pub(super) fn render(
 		if ui.menu_item(
 			"Open File (Ctrl+O)",
 			false,
-			!matches!(media, MediaState::Live | MediaState::Workspace),
+			!matches!(media, MediaState::Live { .. } | MediaState::Workspace),
 		) {
 			open_files.request(window)?;
 		}

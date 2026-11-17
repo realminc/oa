@@ -1,3 +1,13 @@
+test_vk!(u8_upload_preserves_aligned_and_padded_extents, engine, {
+	for count in 1..=17 {
+		let bytes: Vec<u8> = (0..count).map(|i| (i * 29 + 7) as u8).collect();
+		let value = oa::Matrix::new_from_slice(&engine, [count], &bytes)?;
+		assert_eq!(value.read::<u8>()?, bytes);
+		assert_eq!(oa::matrix::copy(&value)?.read::<u8>()?, bytes);
+	}
+	Ok(())
+});
+
 test_vk!(
 	copy_owns_independent_storage_and_preserves_reverse_mode,
 	engine,

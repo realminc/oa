@@ -148,6 +148,42 @@ cargo build --release
 cargo run --release --example core_mat_mul_intro
 ```
 
+The compact media applications share OA's GPU viewer:
+
+```bash
+cargo run --release --bin oa -- view image.png
+cargo run --release --bin oa -- record
+cargo run --release --bin oa -- record --camera 1
+cargo run --release --bin oa -- capture
+cargo run --release --bin oa -- capture --window --hide-cursor
+```
+
+`oa record` previews the selected camera. Click the red circle or press Space
+to record; click the stop square or press Space again to finish. The elapsed
+timer runs during recording. Ctrl+S stops and opens Save As, or reopens Save As
+for the last completed recording. Each recording streams to a unique directory
+under the desktop's Videos/OA directory (falling back to ~/Videos/OA). Cancelling
+Save As keeps that original; closing the viewer finalizes it there. Save As
+creates a separate copy and retains the original for recovery. This first camera
+route requires hardware H.264 encoding and records video without microphone
+audio.
+
+Camera and screen previews use the same GPU 2D canvas as image/video viewing:
+drag or wheel to pan, Ctrl+wheel or right-drag to zoom, +/- to zoom, 0 to fit,
+9 for actual size, and 1–5 for channel views. Navigation affects the preview;
+recordings retain the source resolution. Recording controls overlay the canvas.
+
+`oa capture` uses the same recording controls for a desktop-selected screen;
+`--window` limits the picker to windows and `--hide-cursor` excludes the pointer.
+The desktop portal asks for permission before any pixels are captured. Static
+screens keep recording elapsed time, and a source-size change finishes the
+current movie before a new one can start. The Linux backend uses the donor's
+mapped-memory PipeWire route; DMA-BUF zero-copy capture remains planned.
+Building on Linux requires the PipeWire/SPA development headers, `pkg-config`,
+and libclang for their Rust bindings. Screen capture additionally needs
+libportal and a desktop ScreenCast portal at runtime. Engine initialization
+does not request screen access.
+
 For older hardware, use `OA_BUILD_PROFILE=compatibility cargo build --release`.
 Each build compiles and embeds one shader catalog and one binding backend.
 Use the same environment variable when building the Python extension or an

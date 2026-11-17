@@ -1730,7 +1730,13 @@ impl EngineHandle {
 		width: u32,
 		height: u32,
 	) -> Result<Rc<NativeRgbaImage>> {
-		self.checkpoint(false)?.wait()?;
+		// A new host-written capture buffer has no GPU producer. Do not wait
+		// unrelated encode/preview work before uploading it. Device-produced
+		// buffers still flush and wait for their exact producing event.
+		if storage.needs_flush() {
+			self.flush()?;
+		}
+		storage.wait_ready()?;
 		let mut state = self.state.borrow_mut();
 		let image = Rc::new(NativeRgbaImage::new(&state.device, width, height)?);
 		let buffer = storage

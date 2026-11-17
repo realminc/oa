@@ -7,10 +7,15 @@ use std::error::Error;
 
 use oa::{Cli, Viewer};
 
+mod record;
+
 #[derive(Default)]
 struct Args {
 	path: String,
 	layout: String,
+	camera: u32,
+	window: bool,
+	hide_cursor: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -22,6 +27,33 @@ fn main() -> Result<(), Box<dyn Error>> {
 			|a: &mut Args| &mut a.path,
 			"media file to open",
 			true,
+		);
+	}
+	{
+		let record = cli.add_subcommand(
+			"record",
+			"preview and record a camera to hardware-encoded MP4",
+		);
+		record.add_option(
+			"--camera",
+			|a: &mut Args| &mut a.camera,
+			"camera device index (default 0)",
+		);
+	}
+	{
+		let capture = cli.add_subcommand(
+			"capture",
+			"preview and record a desktop-selected screen or window",
+		);
+		capture.add_flag(
+			"--window",
+			|a: &mut Args, value| a.window = value,
+			"select a window instead of a screen",
+		);
+		capture.add_flag(
+			"--hide-cursor",
+			|a: &mut Args, value| a.hide_cursor = value,
+			"exclude the pointer from the recording",
 		);
 	}
 	{
@@ -37,7 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	}
 	cli.require_subcommand(1, 1);
 	cli.set_epilog(
-		"`oa view` probes each file as image, then video, then audio; `oa workspace` docks two demo figures and optionally restores a saved layout.",
+		"`oa view` opens media; `oa record` previews a camera; `oa capture` shares a screen/window. Space records/stops and Ctrl+S saves. `oa workspace` opens two demo figures.",
 	);
 
 	let argv: Vec<String> = std::env::args().collect();
@@ -49,6 +81,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 	}
 	match cli.active_subcommand() {
 		"view" => Ok(Viewer::preview(&cli.config().path)?),
+		"record" => Ok(record::run(cli.config().camera)?),
+		"capture" => Ok(record::capture(
+			cli.config().window,
+			cli.config().hide_cursor,
+		)?),
 		"workspace" => run_workspace(&cli.config().layout),
 		name => Err(format!("unknown subcommand `{name}`").into()),
 	}

@@ -5,6 +5,33 @@ use std::{
 
 use oa::{ErrorKind, Texture};
 
+test_vk!(
+	host_texture_upload_preserves_unrelated_eager_batch,
+	engine,
+	{
+		let input = oa::Matrix::new_from_f32(&engine, [2], &[3.0, 7.0])?;
+		let pending = oa::matrix::add(&input, &input)?;
+		assert_eq!(
+			pending
+				.try_read::<f32>()
+				.expect_err("pending producer became ready")
+				.kind(),
+			ErrorKind::NotReady
+		);
+		let texture = oa::render::texture_from_rgba8(&engine, &[231, 47, 13, 255], 1, 1)?;
+		assert_eq!(
+			pending
+				.try_read::<f32>()
+				.expect_err("host texture upload submitted unrelated work")
+				.kind(),
+			ErrorKind::NotReady
+		);
+		assert_eq!(texture.read_rgba8()?, [231, 47, 13, 255]);
+		assert_eq!(pending.read_f32()?, [6.0, 14.0]);
+		Ok(())
+	}
+);
+
 #[test]
 fn root_texture_export_is_the_render_value_identity() {
 	assert_eq!(TypeId::of::<Texture>(), TypeId::of::<oa::render::Texture>());

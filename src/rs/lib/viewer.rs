@@ -36,6 +36,10 @@ mod training_source;
 mod video_mode;
 mod workspace;
 
+#[cfg(test)]
+#[path = "../../../test/rs/render/viewer_canvas_unit.rs"]
+mod canvas_tests;
+
 pub use config::{ViewerAudioView, ViewerCanvasBackground, ViewerMode};
 pub use live_source::ViewerLiveSource;
 pub use training_source::{TrainingPreviewFrame, TrainingViewerSource};
@@ -466,7 +470,14 @@ impl<'src> Viewer<'src> {
 									let scale = (sx + sy) * 0.5;
 									timeline::owns_pointer(PixelRect::new(0, 0, cw, ch), scale, ui_ev.mouse_y)
 								}) || ui.is_popup_open("viewer-window-menu"));
-						let nav_consumed = !chrome_pointer && nav.handle_event(&ui_ev);
+						let source_controls = pointer_event
+							&& self.live_source.as_deref().is_some_and(|source| {
+								let [cw, ch] = ui.compose_extent().unwrap_or([w, h]);
+								source
+									.canvas_controls_rect(cw, ch, (sx + sy) * 0.5)
+									.is_some_and(|rect| rect.contains(ui_ev.mouse_x, ui_ev.mouse_y))
+							});
+						let nav_consumed = !chrome_pointer && !source_controls && nav.handle_event(&ui_ev);
 
 						// Image view shortcuts.
 						if !nav_consumed {
@@ -510,6 +521,7 @@ impl<'src> Viewer<'src> {
 				media.update(delta_ms, engine)?;
 				if let Some(source) = self.live_source.as_deref_mut() {
 					source.update(delta_ms)?;
+					media.update_live_texture(source.canvas_texture(), &mut nav)?;
 				}
 
 				// Build frame.
@@ -533,7 +545,7 @@ impl<'src> Viewer<'src> {
 					chrome_visible,
 					&mut timeline_state,
 				)?;
-				if matches!(media, MediaState::Live | MediaState::Workspace)
+				if matches!(media, MediaState::Live { .. } | MediaState::Workspace)
 					&& let Some(source) = self.live_source.as_deref_mut()
 				{
 					source.render(&mut ui, compose_w, compose_h)?;
@@ -774,7 +786,19 @@ fn render_frame(
 			let a: Option<&audio_view::AudioAnalysis> = analysis.as_ref();
 			audio_mode::render(ui, p, a, full_rect, config)?;
 		}
-		MediaState::Live => {}
+		MediaState::Live {
+			texture,
+			channel_mode,
+		} => {
+			image_mode::render(
+				ui,
+				texture.as_ref().as_ref(),
+				nav,
+				channel_mode,
+				full_rect,
+				config,
+			)?;
+		}
 		MediaState::Workspace => {}
 		MediaState::Empty => {}
 	}
@@ -808,7 +832,10 @@ pub(crate) enum MediaState {
 		player: Box<Option<crate::AudioPlayer>>,
 		analysis: Option<audio_view::AudioAnalysis>,
 	},
-	Live,
+	Live {
+		texture: Box<Option<Texture>>,
+		channel_mode: image_mode::ChannelMode,
+	},
 	Workspace,
 	Empty,
 }
@@ -852,7 +879,10 @@ impl MediaState {
 					analysis,
 				})
 			}
-			ViewerMode::Live => Ok(Self::Live),
+			ViewerMode::Live => Ok(Self::Live {
+				texture: Box::new(None),
+				channel_mode: image_mode::ChannelMode::Rgb,
+			}),
 			ViewerMode::Workspace => Ok(Self::Workspace),
 			ViewerMode::Auto => {
 				// Try image → video → audio in donor order.
@@ -890,7 +920,7 @@ impl MediaState {
 	fn has_visual_content(&self) -> bool {
 		matches!(
 			self,
-			Self::Image { .. } | Self::Video { .. } | Self::Live | Self::Workspace
+			Self::Image { .. } | Self::Video { .. } | Self::Live { .. } | Self::Workspace
 		)
 	}
 
@@ -899,7 +929,7 @@ impl MediaState {
 			Self::Image { .. } => "Image",
 			Self::Video { .. } => "Video",
 			Self::Audio { .. } => "Audio",
-			Self::Live => "Live",
+			Self::Live { .. } => "Live",
 			Self::Workspace => "Workspace",
 			Self::Empty => "Empty",
 		}
@@ -911,7 +941,7 @@ impl MediaState {
 
 	fn content_size(&self) -> Option<(u32, u32)> {
 		match self {
-			Self::Image { texture, .. } => texture
+			Self::Image { texture, .. } | Self::Live { texture, .. } => texture
 				.as_ref()
 				.as_ref()
 				.map(|t| (t.width() as u32, t.height() as u32)),
@@ -933,6 +963,20 @@ impl MediaState {
 		Ok(())
 	}
 
+	fn update_live_texture(&mut self, source: Option<&Texture>, nav: &mut Navigation) -> Result<()> {
+		let previous = self.content_size();
+		if let Self::Live { texture, .. } = self {
+			**texture = source.cloned();
+			if let Some((width, height)) = self.content_size()
+				&& previous != Some((width, height))
+			{
+				nav.set_content_size(width as f32, height as f32)?;
+				nav.fit_to_window()?;
+			}
+		}
+		Ok(())
+	}
+
 	fn handle_event(
 		&mut self,
 		ev: &crate::input::types::InputEvent,
@@ -942,7 +986,7 @@ impl MediaState {
 			return Ok(());
 		}
 		match self {
-			Self::Image { channel_mode, .. } => {
+			Self::Image { channel_mode, .. } | Self::Live { channel_mode, .. } => {
 				image_mode::handle_event(ev, channel_mode, config);
 			}
 			Self::Video { player } => {
@@ -988,7 +1032,7 @@ impl MediaState {
 				}
 				Ok(())
 			}
-			Self::Image { .. } | Self::Live | Self::Workspace | Self::Empty => Ok(()),
+			Self::Image { .. } | Self::Live { .. } | Self::Workspace | Self::Empty => Ok(()),
 		}
 	}
 
