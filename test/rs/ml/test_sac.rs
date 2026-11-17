@@ -61,7 +61,7 @@ test_vk!(
 			)
 		})?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
-		assert_eq!(plan.diagnostics().node_count(), 8);
+		assert_eq!(plan.diagnostics().node_count(), 6);
 		assert_eq!(
 			plan.diagnostics().schema_owned_node_count(),
 			plan.diagnostics().node_count()

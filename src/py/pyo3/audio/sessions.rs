@@ -57,7 +57,7 @@ impl PythonAudioCaptureConfig {
 #[pyclass(name = "AudioCaptureChunk")]
 #[derive(Clone)]
 pub(crate) struct PythonAudioCaptureChunk {
-	inner: oa::audio::AudioCaptureChunk,
+	pub(crate) inner: oa::audio::AudioCaptureChunk,
 }
 
 #[pymethods]

@@ -1,7 +1,7 @@
 //! Validated variable-ABI laboratory recorder, sharing the Engine's pool, descriptors and cache.
 
 use super::*;
-use crate::runtime::dna::{elementwise::Program, kernel::jit::CompiledChain};
+use crate::runtime::dna::{compiler::CompiledChain, ir::elementwise::Program};
 
 /// Per-program dispatch extents kept outside the shared code artifact.
 /// A zero input extent means a linear full-count read, as in the manual
@@ -48,7 +48,7 @@ impl PreparedChain {
 	) -> Result<Self> {
 		let buffers = buffers.into();
 		let input_count = contract.input_bytes.len();
-		let bounded = device.physical().profile == ExecutionProfile::Compatibility;
+		let bounded = cfg!(oa_profile = "compatibility");
 		if artifact.bounded != bounded || artifact.key != contract.artifact_key {
 			return Err(Error::invalid_argument(
 				"specialization descriptor profile or artifact identity mismatch",
@@ -118,8 +118,9 @@ impl PreparedChain {
 				"specialization recorder Engine mismatch",
 			));
 		}
-		let bounded = device.physical().profile == ExecutionProfile::Compatibility;
-		let sets = if bounded {
+		let bounded = cfg!(oa_profile = "compatibility");
+		#[cfg(oa_profile = "compatibility")]
+		let sets = {
 			let layout = device
 				.bounded_descriptor_layout(self.buffers.len() as u32)
 				.expect("admitted layout");
@@ -133,12 +134,15 @@ impl PreparedChain {
 				})
 				.collect();
 			Some(BoundedSets::new(device, &[layout], &[infos])?)
-		} else {
-			None
 		};
+		#[cfg(oa_profile = "core")]
+		let sets = None;
+		#[cfg(oa_profile = "compatibility")]
 		let set = sets
 			.as_ref()
 			.map_or_else(|| device.descriptor_set(), |sets| sets.set(0));
+		#[cfg(oa_profile = "core")]
+		let set = device.descriptor_set();
 		let indices: Vec<u32> = if bounded {
 			(0..self.buffers.len() as u32).collect()
 		} else {

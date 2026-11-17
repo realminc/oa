@@ -65,8 +65,8 @@ import oa.matrix as oam
 OA is an experimental, executable rewrite—not a structure-only stub. Current
 checked vertical slices include:
 
-- Vulkan device selection with Strict 1.3 and bounded Compatibility 1.2
-  compute profiles, VMA-backed storage, profile-specific descriptors,
+- Vulkan device selection constrained to the compiled Core 1.3 or bounded
+  Compatibility 1.2 profile, VMA-backed storage, profile-specific descriptors,
   asynchronous retirement, timeline events, eager batching, semantic capture,
   immutable execution plans, replay, rebinding, hazard analysis, and Vulkan
   timestamp evidence;
@@ -136,8 +136,9 @@ The old `oarust` 0.0.1 package is a documentation-only name reservation.
 
 Requirements: Rust 1.98, Python 3, rustfmt, CMake, `slangc` 2026.14,
 `spirv-val`, native audio/window-system development libraries, and a compatible
-Vulkan driver. Strict execution requires Vulkan 1.3; bounded Compatibility
-compute supports admitted Vulkan 1.2 devices. Compatibility presentation is
+Vulkan driver. The default Core build requires Vulkan 1.3 and the required
+bindless features. An explicit Compatibility build supports admitted Vulkan 1.2
+devices with bounded bindings. Compatibility presentation is
 not yet qualified. Linux builds use Clang/LLD for native linking while `rustc`
 and LLVM compile Rust. SDL3 builds statically from the pinned Cargo source
 by default (`bundled-sdl`); `--no-default-features` uses system SDL3 instead.
@@ -146,6 +147,13 @@ by default (`bundled-sdl`); `--no-default-features` uses system SDL3 instead.
 cargo build --release
 cargo run --release --example core_mat_mul_intro
 ```
+
+For older hardware, use `OA_BUILD_PROFILE=compatibility cargo build --release`.
+Each build compiles and embeds one shader catalog and one binding backend.
+Use the same environment variable when building the Python extension or an
+application that depends on OA; changing it at runtime does not change an
+already compiled library's profile.
+
 
 Cargo keeps intermediate artifacts and build-script shader output in `target/`.
 Optional generator previews also belong under `target/gen/`; live schema-owned

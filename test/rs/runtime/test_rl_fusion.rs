@@ -1,6 +1,10 @@
 use oa::ml::{GradientTape, Module};
 use oa::{Matrix, Result, matrix};
 
+// The thread-local laboratory scope replaces the previous process-global
+// env toggle: parallel tests can no longer leak the opt-in into siblings.
+type SmallSdpaFlag = oa::runtime::SingleHeadSdpaFusionEnabled;
+
 fn values(count: usize, phase: usize) -> Vec<f32> {
 	(0..count)
 		.map(|i| (((i * 17 + phase) % 47) as f32 - 23.0) / 31.0)
@@ -323,6 +327,7 @@ test_vk!(
 	rl_fusion_small_causal_attention_supports_single_head_rows,
 	engine,
 	{
+		let _small_sdpa = SmallSdpaFlag::enter();
 		for (sequence, dim) in [(3, 5), (16, 32), (31, 17), (32, 8), (128, 16)] {
 			let batch = 2;
 			let heads = 1;

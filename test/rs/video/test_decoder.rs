@@ -1,6 +1,12 @@
 use std::any::TypeId;
 
-use oa::{Engine, VideoDecoder, VideoDemuxer, video::VideoPixelFormat};
+use oa::{
+	Engine, VideoDecoder, VideoDemuxer,
+	video::{
+		Av1ObuType, Av1ReferenceState, VideoPixelFormat, parse_av1_frame_header, parse_av1_obus,
+		parse_av1_sequence_header,
+	},
+};
 
 fn ffmpeg_yuv420(path: &std::path::Path) -> Vec<u8> {
 	let output = std::process::Command::new("ffmpeg")
@@ -8,6 +14,29 @@ fn ffmpeg_yuv420(path: &std::path::Path) -> Vec<u8> {
 		.arg(path)
 		.args([
 			"-map", "0:v:0", "-pix_fmt", "yuv420p", "-f", "rawvideo", "-",
+		])
+		.output()
+		.expect("FFmpeg must be available for this ignored oracle test");
+	assert!(
+		output.status.success(),
+		"FFmpeg oracle failed: {}",
+		String::from_utf8_lossy(&output.stderr)
+	);
+	output.stdout
+}
+
+fn ffmpeg_yuv420p10(path: &std::path::Path) -> Vec<u8> {
+	let output = std::process::Command::new("ffmpeg")
+		.args(["-v", "error", "-i"])
+		.arg(path)
+		.args([
+			"-map",
+			"0:v:0",
+			"-pix_fmt",
+			"yuv420p10le",
+			"-f",
+			"rawvideo",
+			"-",
 		])
 		.output()
 		.expect("FFmpeg must be available for this ignored oracle test");
@@ -30,6 +59,23 @@ fn yuv420_frame_size(width: u32, height: u32) -> usize {
 		.and_then(|luma| luma.checked_mul(3))
 		.and_then(|samples| samples.checked_div(2))
 		.expect("fixture geometry must fit usize")
+}
+
+fn assert_av1_pixels(actual: &[u8], expected: &[u8], frame_index: usize) {
+	assert_eq!(
+		actual.len(),
+		expected.len(),
+		"AV1 frame {frame_index} extent"
+	);
+	if let Some(index) = actual.iter().zip(expected).position(|(a, b)| a != b) {
+		let mismatches = actual.iter().zip(expected).filter(|(a, b)| a != b).count();
+		panic!(
+			"AV1 frame {frame_index}: {mismatches}/{} differing bytes; first at {index}: actual={} expected={}",
+			actual.len(),
+			actual[index],
+			expected[index]
+		);
+	}
 }
 
 #[test]
@@ -273,22 +319,268 @@ fn public_decoder_matches_complete_av1_ffmpeg_stream() -> oa::Result<()> {
 	let reference = ffmpeg_yuv420(&fixture);
 	let frame_size = yuv420_frame_size(info.width(), info.height());
 	assert_eq!(reference.len(), frame_size * decoded_frames.len());
-	for (frame, expected) in decoded_frames
+	for (index, (frame, expected)) in decoded_frames
 		.iter()
 		.zip(reference.chunks_exact(frame_size))
+		.enumerate()
 	{
 		assert_eq!(frame.width(), info.width() as usize);
 		assert_eq!(frame.height(), info.height() as usize);
-		assert_eq!(
+		assert_av1_pixels(
 			frame
 				.as_yuv420p()
 				.expect("public AV1 decode returns planar YUV420"),
 			expected,
-			"public Vulkan AV1 output differs from FFmpeg at {:?}",
-			frame.timing().presentation_timestamp()
+			index,
 		);
 	}
 	assert_eq!(decoded_frames.len(), info.sample_count() as usize);
+	Ok(())
+}
+
+#[test]
+#[ignore = "probe: does a first AV1 pass warm the AVP engine for the second?"]
+fn av1_second_pass_probe() -> oa::Result<()> {
+	let engine = Engine::new()?;
+	let fixture = std::env::var_os("OA_AV1_FIXTURE")
+		.map(std::path::PathBuf::from)
+		.unwrap_or_else(|| {
+			std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+				.with_file_name("oa")
+				.join("sdk/asset/video/clip/shibuya_720p_30fps_av1_main_8bit_420.mp4")
+		});
+	let reference = ffmpeg_yuv420(&fixture);
+	for pass in 0..2 {
+		let mut demuxer = VideoDemuxer::open(&fixture)?;
+		let info = demuxer.info();
+		if pass == 0 {
+			let first = demuxer.read_next_packet()?.expect("first packet");
+			let mut probe_sequence = None;
+			for obu in parse_av1_obus(first.data()).unwrap_or_default() {
+				eprintln!(
+					"obu {:?} offset={} size={}",
+					obu.type_(),
+					obu.header_offset(),
+					obu.payload().len()
+				);
+				if obu.type_() == Av1ObuType::SequenceHeader
+					&& let Ok(seq) = parse_av1_sequence_header(obu.payload())
+				{
+					eprintln!("seq: {seq:?}");
+					probe_sequence = Some(seq);
+				}
+				if (obu.type_() == Av1ObuType::Frame || obu.type_() == Av1ObuType::FrameHeader)
+					&& let Some(seq) = &probe_sequence
+					&& let Ok(header) =
+						parse_av1_frame_header(obu.payload(), seq, &Av1ReferenceState::default())
+				{
+					eprintln!("frame-header: {header:?}");
+				}
+			}
+		}
+		demuxer.seek(0)?;
+		let mut decoder = VideoDecoder::new(&engine, info)?;
+		let mut decoded_frames: Vec<Vec<u8>> = Vec::new();
+		if std::env::var_os("OA_AV1_NATIVE").is_some() {
+			while let Some(packet) = demuxer.read_next_packet()? {
+				if let Some(frame) = decoder.decode_native(&packet)? {
+					decoded_frames.push(decoder.read_native_yuv420p(&frame)?);
+				}
+			}
+			for frame in decoder.flush()? {
+				decoded_frames.push(decoder.read_native_yuv420p(&frame)?);
+			}
+		} else {
+			while let Some(packet) = demuxer.read_next_packet()? {
+				if let Some(frame) = decoder.decode(&packet)? {
+					decoded_frames.push(frame.as_yuv420p().expect("planar").to_vec());
+				}
+			}
+			for frame in decoder.flush()? {
+				decoded_frames.push(frame.as_yuv420p().expect("planar").to_vec());
+			}
+		}
+		let frame_size = yuv420_frame_size(info.width(), info.height());
+		let (frame_size, reference) = if decoded_frames
+			.first()
+			.is_some_and(|frame| frame.len() == frame_size * 2)
+		{
+			let reference10 = ffmpeg_yuv420p10(&fixture);
+			(frame_size * 2, reference10)
+		} else {
+			(frame_size, reference.clone())
+		};
+		eprintln!(
+			"pass {pass}: decoded {} frames, oracle {} frames, samples {}",
+			decoded_frames.len(),
+			reference.len() / frame_size,
+			info.sample_count()
+		);
+		for (index, (frame, expected)) in decoded_frames
+			.iter()
+			.zip(reference.chunks_exact(frame_size))
+			.enumerate()
+		{
+			let actual = frame.as_slice();
+			if pass == 0 && index == 0 {
+				let unique = actual
+					.iter()
+					.collect::<std::collections::BTreeSet<_>>()
+					.len();
+				eprintln!(
+					"frame0: {unique} unique byte values; actual[..16]={:?} expected[..16]={:?}",
+					&actual[..16.min(actual.len())],
+					&expected[..16.min(expected.len())]
+				);
+				if let Ok(path) = std::env::var("OA_AV1_DUMP") {
+					std::fs::write(path, actual).ok();
+				}
+			}
+			let differing = actual
+				.iter()
+				.zip(expected.iter())
+				.filter(|(a, b)| a != b)
+				.count();
+			if differing > 0 {
+				eprintln!(
+					"pass {pass} frame {index}: {differing}/{} differing",
+					expected.len()
+				);
+			}
+		}
+		decoder.close();
+	}
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires four Vulkan decode codecs and FFmpeg; OA_VIDEO_FIXTURE optionally selects one clip"]
+fn video_fixture_probe() -> oa::Result<()> {
+	let engine = Engine::new()?;
+	let fixtures = if let Some(path) = std::env::var_os("OA_VIDEO_FIXTURE") {
+		vec![std::path::PathBuf::from(path)]
+	} else {
+		let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("sdk/asset/video/clip");
+		let mut paths = std::fs::read_dir(directory)
+			.expect("video fixtures")
+			.map(|entry| entry.expect("fixture entry").path())
+			.filter(|path| path.extension().is_some_and(|ext| ext == "mp4"))
+			.collect::<Vec<_>>();
+		paths.sort();
+		assert_eq!(
+			paths.len(),
+			9,
+			"every qualified decode profile must be probed"
+		);
+		paths
+	};
+	for fixture in fixtures {
+		assert_video_fixture(&engine, &fixture)?;
+	}
+	Ok(())
+}
+
+fn assert_video_fixture(engine: &Engine, fixture: &std::path::Path) -> oa::Result<()> {
+	let reference = ffmpeg_yuv420(fixture);
+	for pass in 0..2 {
+		let mut demuxer = VideoDemuxer::open(fixture)?;
+		let info = demuxer.info();
+		demuxer.seek(0)?;
+		let mut decoder = VideoDecoder::new(engine, info)?;
+		let mut decoded_frames: Vec<Vec<u8>> = Vec::new();
+		let mut decode_error = None;
+		while let Some(packet) = demuxer.read_next_packet()? {
+			match decoder.decode(&packet) {
+				Ok(Some(frame)) => {
+					let bytes = frame
+						.as_yuv420p()
+						.map(|s| s.to_vec())
+						.or_else(|| {
+							frame
+								.as_yuv420p10()
+								.map(|s| s.iter().flat_map(|v| v.to_le_bytes()).collect())
+						})
+						.expect("planar");
+					decoded_frames.push(bytes);
+				}
+				Ok(None) => {}
+				Err(error) => {
+					decode_error = Some(error);
+					break;
+				}
+			}
+		}
+		if decode_error.is_none() {
+			match decoder.flush() {
+				Ok(frames) => {
+					for frame in frames {
+						let bytes = frame
+							.as_yuv420p()
+							.map(|s| s.to_vec())
+							.or_else(|| {
+								frame
+									.as_yuv420p10()
+									.map(|s| s.iter().flat_map(|v| v.to_le_bytes()).collect())
+							})
+							.expect("planar");
+						decoded_frames.push(bytes);
+					}
+				}
+				Err(error) => decode_error = Some(error),
+			}
+		}
+		if let Some(error) = decode_error {
+			decoder.close();
+			return Err(error);
+		}
+		let frame_size = yuv420_frame_size(info.width(), info.height());
+		let (frame_size, reference) = if decoded_frames
+			.first()
+			.is_some_and(|frame| frame.len() == frame_size * 2)
+		{
+			let reference10 = ffmpeg_yuv420p10(fixture);
+			(frame_size * 2, reference10)
+		} else {
+			(frame_size, reference.clone())
+		};
+		assert_eq!(reference.len() % frame_size, 0, "oracle frame alignment");
+		assert_eq!(
+			decoded_frames.len(),
+			reference.len() / frame_size,
+			"{} pass {pass}: decoded frame count",
+			fixture.display()
+		);
+		assert_eq!(
+			decoded_frames.len(),
+			info.sample_count() as usize,
+			"container sample count"
+		);
+		eprintln!(
+			"pass {pass}: decoded {} frames, oracle {} frames, samples {}",
+			decoded_frames.len(),
+			reference.len() / frame_size,
+			info.sample_count()
+		);
+		for (index, (frame, expected)) in decoded_frames
+			.iter()
+			.zip(reference.chunks_exact(frame_size))
+			.enumerate()
+		{
+			let differing = frame
+				.iter()
+				.zip(expected.iter())
+				.filter(|(a, b)| a != b)
+				.count();
+			assert_eq!(
+				differing,
+				0,
+				"{} pass {pass} frame {index}: {differing}/{} differing bytes",
+				fixture.display(),
+				expected.len()
+			);
+		}
+		decoder.close();
+	}
 	Ok(())
 }
 
@@ -324,11 +616,12 @@ fn native_av1_decoder_retains_and_reuses_reference_slots() -> oa::Result<()> {
 	let frame_size = yuv420_frame_size(info.width(), info.height());
 	assert_eq!(decoded_frames.len(), info.sample_count() as usize);
 	assert_eq!(reference.len(), frame_size * decoded_frames.len());
-	for (actual, expected) in decoded_frames
+	for (index, (actual, expected)) in decoded_frames
 		.iter()
 		.zip(reference.chunks_exact(frame_size))
+		.enumerate()
 	{
-		assert_eq!(actual, expected);
+		assert_av1_pixels(actual, expected, index);
 	}
 	let retained = retained.expect("AV1 stream must publish a native frame");
 	assert!(

@@ -1,7 +1,7 @@
 use std::{error::Error, path::PathBuf, time::Instant};
 
 use oa::Cli;
-use oa::sdk::{
+use sdk::{
 	data::HumanMl3dDataset,
 	ml::alm::{Alm, AlmGenerationOptions},
 };

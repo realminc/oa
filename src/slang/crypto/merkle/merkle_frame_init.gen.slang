@@ -32,7 +32,7 @@ struct PushConstants {
 [numthreads(128, 1, 1)]
 void main(uint3 tid : SV_DispatchThreadID) {
 	uint index = tid.x + tid.y * push.grid_width;
-	if (index >= push.count || push.algorithm >= 6u || push.leaf_count == 0u || push.leaf_count > (1u << MERKLE_MAX_DEPTH)) return;
+	if (index >= push.count || push.algorithm >= 10u || push.leaf_count == 0u || push.leaf_count > (1u << MERKLE_MAX_DEPTH)) return;
 	uint bytes = merkle_digest_bytes(push.algorithm);
 	uint indices_extent, output_extent;
 	storage_buffers[push.indices_index].GetDimensions(indices_extent);

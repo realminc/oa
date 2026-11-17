@@ -1,6 +1,6 @@
 [package]
 name = "oarust"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2024"
 rust-version = "1.98"
 autotests = false
@@ -11,11 +11,8 @@ readme = "README.md"
 include = [
   "/Cargo.toml", "/Cargo.lock", "/build.rs", "/rustfmt.toml", "/rust-toolchain.toml",
   "/README.md", "/LICENSE", "/NOTICE.md", "/CHANGELOG.md", "/RELEASE_NOTES.md",
-  "/.oa-public-snapshot", "/src/rs/**", "!/src/rs/app/**", "/src/slang/**",
-  "/src/font/**", "/sdk/asset/font/**",
-  "/sdk/rs/slang/ml/rl/**/*.slang",
-  "/sdk/rs/mod.rs", "/sdk/rs/data.rs", "/sdk/rs/data/**/*.rs",
-  "/sdk/rs/ml.rs", "/sdk/rs/ml/**/*.rs",
+  "/.oa-public-snapshot", "/src/rs/lib/**", "/src/slang/**",
+  "/src/font/**",
   "/test/rs/matrix/*.gen.rs", "/tool/gen/**", "/test/rs/**/*_unit.rs",
   "/test/fixtures/crypto/mldsa/keyGen-*.json", "/test/fixtures/crypto/mldsa/sigGen-*.json",
   "/test/fixtures/crypto/mlkem/keyGen-*.json",
@@ -25,17 +22,21 @@ include = [
 ]
 
 [workspace]
-members = ["sdk/py"]
+members = ["sdk", "src/py"]
 default-members = ["."]
 resolver = "3"
 
 [lib]
 name = "oa"
-path = "src/rs/lib.rs"
+path = "src/rs/lib/lib.rs"
 
 [[bin]]
 name = "oa"
 path = "src/rs/app/oa/main.rs"
+
+[[test]]
+name = "shader_build"
+path = "test/rs/test_shader_build.rs"
 
 [[test]]
 name = "core"
@@ -93,196 +94,12 @@ path = "test/rs/test_data.rs"
 name = "render"
 path = "test/rs/test_render.rs"
 
-[[test]]
-name = "sdk"
-path = "test/rs/test_sdk.rs"
-
-[[example]]
-name = "tu_core_mat_mul_intro"
-path = "sdk/rs/tutorials/core/tu_core_mat_mul_intro.rs"
-
-[[example]]
-name = "tu_core_device_canary"
-path = "sdk/rs/tutorials/core/tu_core_device_canary.rs"
-
-[[example]]
-name = "tu_core_engine_intro"
-path = "sdk/rs/tutorials/core/tu_core_engine_intro.rs"
-
-[[example]]
-name = "core_mat_mul_bench"
-path = "sdk/rs/benchmarks/core/mat_mul.rs"
-
-[[example]]
-name = "core_memory_bench"
-path = "sdk/rs/benchmarks/core/memory.rs"
-
-[[example]]
-name = "core_elemwise_chain_bench"
-path = "sdk/rs/benchmarks/core/elemwise_chain.rs"
-
-[[example]]
-name = "core_vlm_bench"
-path = "sdk/rs/benchmarks/core/vlm.rs"
-
-[[example]]
-name = "tu_nlp_char_rnn"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_char_rnn.rs"
-
-[[example]]
-name = "tu_nlp_char_gru"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_char_gru.rs"
-
-[[example]]
-name = "tu_nlp_char_transformer"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_char_transformer.rs"
-
-[[example]]
-name = "tu_nlp_char_moe_transformer"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_char_moe_transformer.rs"
-
-[[example]]
-name = "tu_nlp_char_mamba3"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_char_mamba3.rs"
-
-[[example]]
-name = "tu_nlp_byte_rnn"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_byte_rnn.rs"
-
-[[example]]
-name = "tu_nlp_byte_gru"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_byte_gru.rs"
-
-[[example]]
-name = "tu_nlp_byte_transformer"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_byte_transformer.rs"
-
-[[example]]
-name = "tu_nlp_byte_moe"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_byte_moe.rs"
-
-[[example]]
-name = "tu_nlp_byte_mamba3"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_byte_mamba3.rs"
-
-[[example]]
-name = "tu_nlp_byte_empyrealm"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_byte_empyrealm.rs"
-
-[[example]]
-name = "tu_nlp_bpe_rnn"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_bpe_rnn.rs"
-
-[[example]]
-name = "tu_nlp_bpe_gru"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_bpe_gru.rs"
-
-[[example]]
-name = "tu_nlp_bpe_transformer"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_bpe_transformer.rs"
-
-[[example]]
-name = "tu_nlp_bpe_moe"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_bpe_moe.rs"
-
-[[example]]
-name = "tu_nlp_bpe_mamba3"
-path = "sdk/rs/tutorials/ml/nlp/tu_nlp_bpe_mamba3.rs"
-
-[[example]]
-name = "ml_audio_alm_tokenizer_profile"
-path = "sdk/rs/benchmarks/ml/audio/alm_tokenizer.rs"
-
-[[example]]
-name = "ml_vision_commands_cnn_profile"
-path = "sdk/rs/benchmarks/ml/vision/commands_cnn.rs"
-
-[[example]]
-name = "ml_nlp_char_transformer_profile"
-path = "sdk/rs/benchmarks/ml/nlp/char_transformer.rs"
-
-[[example]]
-name = "ml_rl_ppo_bench"
-path = "sdk/rs/benchmarks/ml/rl/ppo.rs"
-
-[[example]]
-name = "tu_audio_commands"
-path = "sdk/rs/tutorials/ml/audio/tu_audio_commands.rs"
-
-[[example]]
-name = "tu_rl_cart_pole_ppo"
-path = "sdk/rs/tutorials/ml/rl/tu_rl_cart_pole_ppo.rs"
-
-[[example]]
-name = "tu_rl_cart_pole_rollout"
-path = "sdk/rs/tutorials/ml/rl/tu_rl_cart_pole_rollout.rs"
-
-[[example]]
-name = "tu_rl_lunar_lander_ppo"
-path = "sdk/rs/tutorials/ml/rl/tu_rl_lunar_lander_ppo.rs"
-
-[[example]]
-name = "ml_alm_train"
-path = "sdk/rs/apps/ml/alm/train.rs"
-
-[[example]]
-name = "ml_alm_generate"
-path = "sdk/rs/apps/ml/alm/generate.rs"
-
-[[example]]
-name = "ex_matrix"
-path = "sdk/rs/examples/core/ex_matrix.rs"
-
-[[example]]
-name = "ex_audio"
-path = "sdk/rs/examples/audio/ex_audio.rs"
-
-[[example]]
-name = "ex_crypto_shake256"
-path = "sdk/rs/examples/crypto/ex_crypto_shake256.rs"
-
-[[example]]
-name = "ex_image"
-path = "sdk/rs/examples/vision/ex_image.rs"
-
-[[example]]
-name = "ex_ml_regression"
-path = "sdk/rs/examples/ml/ex_ml_regression.rs"
-
-[[example]]
-name = "tu_plot_gallery"
-path = "sdk/rs/tutorials/plot/tu_plot_gallery.rs"
-
-[[example]]
-name = "tu_image_grid_classify"
-path = "sdk/rs/tutorials/plot/tu_image_grid_classify.rs"
-
-[[example]]
-name = "tu_viewer_image"
-path = "sdk/rs/tutorials/vision/tu_viewer_image.rs"
-
-[[example]]
-name = "tu_viewer_image_headless"
-path = "sdk/rs/tutorials/vision/tu_viewer_image_headless.rs"
-
-[[example]]
-name = "tu_viewer_audio"
-path = "sdk/rs/tutorials/vision/tu_viewer_audio.rs"
-
-[[example]]
-name = "tu_viewer_video"
-path = "sdk/rs/tutorials/vision/tu_viewer_video.rs"
-
-[[example]]
-name = "tu_renderer_ui"
-path = "sdk/rs/tutorials/ui/tu_renderer_ui.rs"
-
 [features]
 default = ["bundled-sdl"]
 bundled-sdl = ["sdl3/build-from-source-static"]
 
 [dependencies]
-vkrust = { version = "0.12", features = ["allocator"] }
+vkrust = { version = "0.13.2", features = ["allocator"] }
 sdl3 = { version = "0.20", features = ["use-pkg-config"] }
 
 bitflags = "2"

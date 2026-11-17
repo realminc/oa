@@ -1,6 +1,8 @@
+#![cfg(oa_profile = "compatibility")]
+
 use super::Instance;
 
-const SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/matrix_add_f32_bounded.spv"));
+const SHADER: &[u8] = include_bytes!(concat!(env!("OA_SHADER_DIR"), "/matrix_add_f32.spv"));
 
 /// A direct Vulkan 1.2 execution proof for the bounded descriptor ABI,
 /// independent of Engine admission and graph recording.
@@ -16,6 +18,11 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 		let properties = unsafe { instance.raw().get_physical_device_properties(physical) }.ok()?;
 		if properties.api_version < vk::API_VERSION_1_2 || properties.api_version >= vk::API_VERSION_1_3
 		{
+			return None;
+		}
+		// SAFETY: this physical device was enumerated from the live instance.
+		let features = unsafe { instance.raw().get_physical_device_features(physical) }.ok()?;
+		if features.shader_storage_buffer_array_dynamic_indexing != vk::TRUE {
 			return None;
 		}
 		let families = unsafe {
@@ -66,7 +73,12 @@ fn bounded_matrix_add_executes_on_vulkan_1_2() {
 		return;
 	};
 	let queues = [queue_info];
-	let Ok(create) = vk::DeviceCreateInfo::new().set_queue_create_infos(&queues) else {
+	let features =
+		vk::PhysicalDeviceFeatures::new().set_shader_storage_buffer_array_dynamic_indexing(vk::TRUE);
+	let Ok(create) = vk::DeviceCreateInfo::new()
+		.set_enabled_features(&features)
+		.set_queue_create_infos(&queues)
+	else {
 		return;
 	};
 	let device = unsafe { instance.raw().create_device(physical, &create, None) }

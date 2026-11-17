@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -19,6 +20,7 @@ def parse_args() -> argparse.Namespace:
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--profile", choices=("debug", "release"))
 	parser.add_argument("--target", action="append", default=[])
+	parser.add_argument("--package", action="append", default=[])
 	parser.add_argument(
 		"--tests",
 		action="store_true",
@@ -57,7 +59,7 @@ def destination_directory(source: Path, kind: str) -> Path:
 
 
 def test_destination(source: Path, executable_suffix: str) -> Path:
-	relative = source.relative_to(ROOT)
+	relative = Path(os.path.normpath(source)).relative_to(ROOT)
 	parts = relative.parts
 	if len(parts) != 3 or parts[:2] != ("test", "rs"):
 		raise ValueError(f"Rust test suite must live directly under test/rs: {relative}")
@@ -66,13 +68,17 @@ def test_destination(source: Path, executable_suffix: str) -> Path:
 	return Path("test", module, f"{stem}{executable_suffix}")
 
 
-def cargo_test_executables(profile: str, package_id: str) -> dict[str, Path]:
+def cargo_test_executables(
+	profile: str, package_name: str, package_id: str
+) -> dict[str, Path]:
 	command = [
 		"cargo",
 		"test",
 		"--no-run",
 		"--all-features",
 		"--message-format=json",
+		"--package",
+		package_name,
 	]
 	if profile == "release":
 		command.insert(2, "--release")
@@ -99,63 +105,79 @@ def cargo_test_executables(profile: str, package_id: str) -> dict[str, Path]:
 	return executables
 
 
-def stage(profile: str, selected_targets: set[str], include_tests: bool) -> None:
+def stage(
+	profile: str,
+	selected_targets: set[str],
+	include_tests: bool,
+	selected_packages: set[str] | None = None,
+) -> None:
 	metadata = cargo_metadata()
-	manifest_path = str(ROOT / "Cargo.toml")
-	package = next(
+	workspace_members = set(metadata["workspace_members"])
+	packages = [
 		package
 		for package in metadata["packages"]
-		if package["manifest_path"] == manifest_path
-	)
+		if package["id"] in workspace_members
+	]
 	target_directory = Path(metadata["target_directory"])
 	executable_suffix = ".exe" if sys.platform == "win32" else ""
 	staged: set[str] = set()
 
-	if not include_tests:
-		for target in package["targets"]:
-			kind = next((kind for kind in target["kind"] if kind in {"bin", "example"}), None)
-			name = target["name"]
-			if kind is None or selected_targets and name not in selected_targets:
-				continue
-
-			source_directory = target_directory / profile
-			if kind == "example":
-				source_directory /= "examples"
-			source = source_directory / f"{name}{executable_suffix}"
-			if not source.is_file():
-				raise FileNotFoundError(
-					f"Cargo executable is missing: {source}; build target {name!r} first"
+	for package in packages:
+		if selected_packages and package["name"] not in selected_packages:
+			continue
+		if not include_tests:
+			for target in package["targets"]:
+				kind = next(
+					(kind for kind in target["kind"] if kind in {"bin", "example"}), None
 				)
+				name = target["name"]
+				if kind is None or selected_targets and name not in selected_targets:
+					continue
 
-			destination = (
-				BIN_ROOT
-				/ profile
-				/ destination_directory(Path(target["src_path"]), kind)
-				/ source.name
-			)
-			destination.parent.mkdir(parents=True, exist_ok=True)
-			shutil.copy2(source, destination)
-			staged.add(name)
-			print(f"staged {destination.relative_to(ROOT)}")
+				source_directory = target_directory / profile
+				if kind == "example":
+					source_directory /= "examples"
+				source = source_directory / f"{name}{executable_suffix}"
+				if not source.is_file():
+					raise FileNotFoundError(
+						f"Cargo executable is missing: {source}; build target {name!r} first"
+					)
 
-	if include_tests:
-		test_executables = cargo_test_executables(profile, package["id"])
-		for target in package["targets"]:
-			name = target["name"]
-			if "test" not in target["kind"] or selected_targets and name not in selected_targets:
-				continue
-			source = test_executables.get(name)
-			if source is None or not source.is_file():
-				raise FileNotFoundError(f"Cargo test executable is missing for target {name!r}")
-			destination = (
-				BIN_ROOT
-				/ profile
-				/ test_destination(Path(target["src_path"]), executable_suffix)
+				destination = (
+					BIN_ROOT
+					/ profile
+					/ destination_directory(Path(target["src_path"]), kind)
+					/ source.name
+				)
+				destination.parent.mkdir(parents=True, exist_ok=True)
+				shutil.copy2(source, destination)
+				staged.add(name)
+				print(f"staged {destination.relative_to(ROOT)}")
+
+		if include_tests:
+			test_executables = cargo_test_executables(
+				profile, package["name"], package["id"]
 			)
-			destination.parent.mkdir(parents=True, exist_ok=True)
-			shutil.copy2(source, destination)
-			staged.add(name)
-			print(f"staged {destination.relative_to(ROOT)}")
+			for target in package["targets"]:
+				name = target["name"]
+				if "test" not in target["kind"] or (
+					selected_targets and name not in selected_targets
+				):
+					continue
+				source = test_executables.get(name)
+				if source is None or not source.is_file():
+					raise FileNotFoundError(
+						f"Cargo test executable is missing for target {name!r}"
+					)
+				destination = (
+					BIN_ROOT
+					/ profile
+					/ test_destination(Path(target["src_path"]), executable_suffix)
+				)
+				destination.parent.mkdir(parents=True, exist_ok=True)
+				shutil.copy2(source, destination)
+				staged.add(name)
+				print(f"staged {destination.relative_to(ROOT)}")
 
 	missing = selected_targets - staged
 	if missing:
@@ -169,7 +191,7 @@ def main() -> None:
 		return
 	if args.profile is None:
 		raise ValueError("--profile is required when staging executables")
-	stage(args.profile, set(args.target), args.tests)
+	stage(args.profile, set(args.target), args.tests, set(args.package))
 
 
 if __name__ == "__main__":

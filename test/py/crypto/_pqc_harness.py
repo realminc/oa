@@ -200,7 +200,8 @@ class SlangComponentTest(unittest.TestCase):
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.directory = Path(cls.temporary.name)
         configuration = tomllib.loads((ROOT / ".cargo/config.toml").read_text())
-        compiler = shutil.which(os.environ.get("SLANGC", configuration["env"]["SLANGC"]))
+        configured = configuration.get("env", {}).get("SLANGC")
+        compiler = shutil.which(os.environ.get("SLANGC") or configured or "slangc")
         validator = shutil.which("spirv-val")
         disassembler = shutil.which("spirv-dis")
         if compiler is None or validator is None or disassembler is None:

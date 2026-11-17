@@ -9,7 +9,7 @@
 #define OA_MATERIAL_COMMON_SLANG
 
 // ── MeshVertex layout ──────────────────────────────────────────────────────────
-// Matches src/rs/render/scene.rs MeshVertex and renderer.rs VERTEX_STRIDE=48.
+// Matches src/rs/lib/render/scene.rs MeshVertex and renderer.rs VERTEX_STRIDE=48.
 // location 0 : float3 position  (offset  0)
 // location 1 : float3 normal    (offset 12)
 // location 2 : float2 uv        (offset 24)

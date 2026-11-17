@@ -12,6 +12,8 @@ fn configuration(features: DeviceFeatures) -> DeviceConfiguration {
 #[test]
 fn all_reported_features_enter_the_creation_chain() {
 	let configuration = configuration(DeviceFeatures {
+		shader_draw_parameters: true,
+		sampler_ycbcr_conversion: true,
 		shader_int64: true,
 		shader_float64: true,
 		shader_float16: true,
@@ -43,8 +45,11 @@ fn all_reported_features_enter_the_creation_chain() {
 		vk::TRUE
 	);
 	let core = configuration.core_features();
+	let features11 = configuration.features11();
 	let features12 = configuration.features12();
 	let features13 = configuration.features13();
+	assert_eq!(features11.shader_draw_parameters, vk::TRUE);
+	assert_eq!(features11.sampler_ycbcr_conversion, vk::TRUE);
 	assert_eq!(core.shader_float64, vk::TRUE);
 	assert_eq!(features12.shader_float16, vk::TRUE);
 	assert_eq!(features13.shader_integer_dot_product, vk::TRUE);
@@ -61,6 +66,7 @@ fn all_reported_features_enter_the_creation_chain() {
 	assert_eq!(features13.dynamic_rendering, vk::TRUE);
 	// These returned values are owned, unchained structures. pNext is assembled
 	// only while their local borrows remain alive in create_device.
+	assert!(features11.p_next.is_null());
 	assert!(features12.p_next.is_null());
 	assert!(features13.p_next.is_null());
 }
@@ -93,6 +99,7 @@ fn arithmetic_extension_selection_tracks_core_promotion_and_reported_support() {
 	assert!(extensions.is_empty());
 	let unsupported = configuration(DeviceFeatures::default());
 	assert_eq!(unsupported.core_features().shader_float64, vk::FALSE);
+	assert_eq!(unsupported.features11().sampler_ycbcr_conversion, vk::FALSE);
 	assert_eq!(unsupported.features12().shader_float16, vk::FALSE);
 	assert_eq!(
 		unsupported.features13().shader_integer_dot_product,

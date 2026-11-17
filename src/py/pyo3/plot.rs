@@ -4,7 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use pyo3::prelude::*;
 
-use crate::{error::python_error, image::PythonImage, runtime::PythonEngine};
+use crate::{error::python_error, image::PythonImage, matrix::PythonMatrix, runtime::PythonEngine};
 
 type Rgba = (f32, f32, f32, f32);
 
@@ -14,6 +14,15 @@ fn color(value: Rgba) -> oa::Color {
 
 fn rgba(value: oa::Color) -> Rgba {
 	(value.r, value.g, value.b, value.a)
+}
+
+/// Resolve the optional `decimals`/`labels` pair into a `TickFormat`.
+fn tick_format(decimals: Option<usize>, labels: Option<Vec<String>>) -> oa::plot::TickFormat {
+	match (decimals, labels) {
+		(_, Some(labels)) => oa::plot::TickFormat::Labels(labels),
+		(Some(decimals), None) => oa::plot::TickFormat::Decimals(decimals),
+		(None, None) => oa::plot::TickFormat::Auto,
+	}
 }
 
 #[pyclass(name = "PlotTheme", eq, eq_int)]
@@ -41,6 +50,24 @@ impl From<oa::plot::Theme> for PythonPlotTheme {
 	}
 }
 
+#[pyclass(name = "PlotScale", eq, eq_int)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PythonPlotScale {
+	Linear = 0,
+	Log10 = 1,
+	Symlog = 2,
+}
+
+impl From<PythonPlotScale> for oa::plot::Scale {
+	fn from(value: PythonPlotScale) -> Self {
+		match value {
+			PythonPlotScale::Linear => Self::Linear,
+			PythonPlotScale::Log10 => Self::Log10,
+			PythonPlotScale::Symlog => Self::Symlog,
+		}
+	}
+}
+
 #[pyclass(name = "LineStyle")]
 #[derive(Clone)]
 pub(crate) struct PythonLineStyle {
@@ -50,14 +77,24 @@ pub(crate) struct PythonLineStyle {
 #[pymethods]
 impl PythonLineStyle {
 	#[new]
-	#[pyo3(signature = (color=(0.0, 0.0, 0.0, 0.0), label=String::new(), width=1.35, antialias_samples=4))]
-	fn new(color: Rgba, label: String, width: f32, antialias_samples: u32) -> Self {
+	#[pyo3(signature = (color=(0.0, 0.0, 0.0, 0.0), label=String::new(), width=1.35, antialias_samples=4, step=false, hidden=false))]
+	#[allow(clippy::too_many_arguments)]
+	fn new(
+		color: Rgba,
+		label: String,
+		width: f32,
+		antialias_samples: u32,
+		step: bool,
+		hidden: bool,
+	) -> Self {
 		Self {
 			inner: oa::plot::LineStyle {
 				color: self::color(color),
 				label,
 				width,
 				antialias_samples,
+				step,
+				hidden,
 			},
 		}
 	}
@@ -72,13 +109,14 @@ pub(crate) struct PythonScatterStyle {
 #[pymethods]
 impl PythonScatterStyle {
 	#[new]
-	#[pyo3(signature = (color=(0.0, 0.0, 0.0, 0.0), label=String::new(), radius=3.0))]
-	fn new(color: Rgba, label: String, radius: f32) -> Self {
+	#[pyo3(signature = (color=(0.0, 0.0, 0.0, 0.0), label=String::new(), radius=3.0, hidden=false))]
+	fn new(color: Rgba, label: String, radius: f32, hidden: bool) -> Self {
 		Self {
 			inner: oa::plot::ScatterStyle {
 				color: self::color(color),
 				label,
 				radius,
+				hidden,
 			},
 		}
 	}
@@ -93,13 +131,37 @@ pub(crate) struct PythonBarStyle {
 #[pymethods]
 impl PythonBarStyle {
 	#[new]
-	#[pyo3(signature = (color=(0.0, 0.0, 0.0, 0.0), label=String::new(), gap=0.18))]
-	fn new(color: Rgba, label: String, gap: f32) -> Self {
+	#[pyo3(signature = (color=(0.0, 0.0, 0.0, 0.0), label=String::new(), gap=0.18, hidden=false))]
+	fn new(color: Rgba, label: String, gap: f32, hidden: bool) -> Self {
 		Self {
 			inner: oa::plot::BarStyle {
 				color: self::color(color),
 				label,
 				gap,
+				hidden,
+			},
+		}
+	}
+}
+
+#[pyclass(name = "BoxStyle")]
+#[derive(Clone)]
+pub(crate) struct PythonBoxStyle {
+	inner: oa::plot::BoxStyle,
+}
+
+#[pymethods]
+impl PythonBoxStyle {
+	#[new]
+	#[pyo3(signature = (color=(0.0, 0.0, 0.0, 0.0), label=String::new(), width=0.5, whisk=1.5, hidden=false))]
+	fn new(color: Rgba, label: String, width: f32, whisk: f32, hidden: bool) -> Self {
+		Self {
+			inner: oa::plot::BoxStyle {
+				color: self::color(color),
+				label,
+				width,
+				whisk,
+				hidden,
 			},
 		}
 	}
@@ -114,8 +176,16 @@ pub(crate) struct PythonHeatmapStyle {
 #[pymethods]
 impl PythonHeatmapStyle {
 	#[new]
-	#[pyo3(signature = (v_min=0.0, v_max=1.0, colormap=1, auto_scale=true, show_grid=true))]
-	fn new(v_min: f32, v_max: f32, colormap: u32, auto_scale: bool, show_grid: bool) -> Self {
+	#[pyo3(signature = (v_min=0.0, v_max=1.0, colormap=1, auto_scale=true, show_grid=true, colorbar=false))]
+	#[allow(clippy::too_many_arguments)]
+	fn new(
+		v_min: f32,
+		v_max: f32,
+		colormap: u32,
+		auto_scale: bool,
+		show_grid: bool,
+		colorbar: bool,
+	) -> Self {
 		Self {
 			inner: oa::plot::HeatmapStyle {
 				v_min,
@@ -123,6 +193,7 @@ impl PythonHeatmapStyle {
 				colormap,
 				auto_scale,
 				show_grid,
+				colorbar,
 			},
 		}
 	}
@@ -223,7 +294,7 @@ impl PythonFigure {
 
 	fn ax(&self, row: i32, col: i32) -> PythonAxes {
 		PythonAxes {
-			figure: self.inner.clone(),
+			target: PythonAxesTarget::Figure(self.inner.clone()),
 			row,
 			col,
 		}
@@ -281,16 +352,30 @@ impl PythonFigure {
 	}
 }
 
+/// Owning target an `Axes` binding delegates to — a recorded figure or the
+/// figure held inside an attached `FigureView` (for post-attach updates).
+enum PythonAxesTarget {
+	Figure(Rc<RefCell<oa::plot::Figure>>),
+	View(Rc<RefCell<oa::plot::FigureView>>),
+}
+
 #[pyclass(name = "Axes", unsendable)]
 pub(crate) struct PythonAxes {
-	figure: Rc<RefCell<oa::plot::Figure>>,
+	target: PythonAxesTarget,
 	row: i32,
 	col: i32,
 }
 
 impl PythonAxes {
 	fn update(&self, apply: impl FnOnce(&mut oa::plot::Axes)) {
-		apply(self.figure.borrow_mut().ax(self.row, self.col));
+		match &self.target {
+			PythonAxesTarget::Figure(figure) => {
+				apply(figure.borrow_mut().ax(self.row, self.col));
+			}
+			PythonAxesTarget::View(view) => {
+				apply(view.borrow_mut().figure_mut().ax(self.row, self.col));
+			}
+		}
 	}
 }
 
@@ -350,6 +435,24 @@ impl PythonAxes {
 		self.update(|axes| axes.histogram(&values, bins, style));
 	}
 
+	#[pyo3(signature = (series, styles=None))]
+	fn bar_grouped(&self, series: Vec<Vec<f32>>, styles: Option<Vec<PyRef<'_, PythonBarStyle>>>) {
+		let styles = styles.map_or_else(Vec::new, |list| {
+			list.iter().map(|value| value.inner.clone()).collect()
+		});
+		let layers: Vec<&[f32]> = series.iter().map(Vec::as_slice).collect();
+		self.update(|axes| axes.bar_grouped(&layers, &styles));
+	}
+
+	#[pyo3(signature = (series, styles=None))]
+	fn bar_stacked(&self, series: Vec<Vec<f32>>, styles: Option<Vec<PyRef<'_, PythonBarStyle>>>) {
+		let styles = styles.map_or_else(Vec::new, |list| {
+			list.iter().map(|value| value.inner.clone()).collect()
+		});
+		let layers: Vec<&[f32]> = series.iter().map(Vec::as_slice).collect();
+		self.update(|axes| axes.bar_stacked(&layers, &styles));
+	}
+
 	#[pyo3(signature = (values, rows, cols, style=None))]
 	fn heatmap(
 		&self,
@@ -360,6 +463,109 @@ impl PythonAxes {
 	) {
 		let style = style.map_or_else(oa::plot::HeatmapStyle::default, |value| value.inner.clone());
 		self.update(|axes| axes.heatmap(&values, rows, cols, style));
+	}
+
+	#[pyo3(signature = (values, style=None))]
+	fn heatmap_matrix(&self, values: &PythonMatrix, style: Option<PyRef<'_, PythonHeatmapStyle>>) {
+		let style = style.map_or_else(oa::plot::HeatmapStyle::default, |value| value.inner.clone());
+		self.update(|axes| axes.heatmap_matrix(values.inner.clone(), style));
+	}
+
+	#[pyo3(signature = (values, style=None))]
+	fn plot_matrix(&self, values: &PythonMatrix, style: Option<PyRef<'_, PythonLineStyle>>) {
+		let style = style.map_or_else(oa::plot::LineStyle::default, |value| value.inner.clone());
+		self.update(|axes| axes.plot_matrix(&values.inner, style));
+	}
+
+	#[pyo3(signature = (values, style=None))]
+	fn plot_matrix_y(&self, values: &PythonMatrix, style: Option<PyRef<'_, PythonLineStyle>>) {
+		let style = style.map_or_else(oa::plot::LineStyle::default, |value| value.inner.clone());
+		self.update(|axes| axes.plot_matrix_y(&values.inner, style));
+	}
+
+	fn annotate(&self, text: &str, x: f32, y: f32) {
+		self.update(|axes| axes.annotate(text, x, y));
+	}
+
+	#[pyo3(signature = (capacity, style=None))]
+	fn stream(&self, capacity: usize, style: Option<PyRef<'_, PythonLineStyle>>) -> usize {
+		let style = style.map_or_else(oa::plot::LineStyle::default, |value| value.inner.clone());
+		let mut handle = 0;
+		self.update(|axes| handle = axes.stream(capacity, style));
+		handle
+	}
+
+	fn stream_push(&self, series: usize, values: Vec<f32>) {
+		self.update(|axes| axes.stream_push(series, &values));
+	}
+
+	#[pyo3(signature = (y_lo, y_hi, style=None))]
+	fn band(&self, y_lo: Vec<f32>, y_hi: Vec<f32>, style: Option<PyRef<'_, PythonLineStyle>>) {
+		let style = style.map_or_else(oa::plot::LineStyle::default, |value| value.inner.clone());
+		self.update(|axes| axes.band(&y_lo, &y_hi, style));
+	}
+
+	#[pyo3(signature = (datasets, style=None))]
+	fn boxplot(&self, datasets: Vec<Vec<f32>>, style: Option<PyRef<'_, PythonBoxStyle>>) {
+		let style = style.map_or_else(oa::plot::BoxStyle::default, |value| value.inner.clone());
+		let layers: Vec<&[f32]> = datasets.iter().map(Vec::as_slice).collect();
+		self.update(|axes| axes.boxplot(&layers, style));
+	}
+
+	#[pyo3(signature = (values, decimals=None, labels=None))]
+	fn xticks(&self, values: Vec<f32>, decimals: Option<usize>, labels: Option<Vec<String>>) {
+		self.update(|axes| {
+			axes.xticks(&values);
+			axes.xformat(tick_format(decimals, labels));
+		});
+	}
+
+	#[pyo3(signature = (values, decimals=None, labels=None))]
+	fn yticks(&self, values: Vec<f32>, decimals: Option<usize>, labels: Option<Vec<String>>) {
+		self.update(|axes| {
+			axes.yticks(&values);
+			axes.yformat(tick_format(decimals, labels));
+		});
+	}
+
+	fn categories(&self, labels: Vec<String>) {
+		let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+		self.update(|axes| axes.categories(&refs));
+	}
+
+	fn xscale(&self, scale: PythonPlotScale) {
+		self.update(|axes| axes.xscale(scale.into()));
+	}
+
+	fn yscale(&self, scale: PythonPlotScale) {
+		self.update(|axes| axes.yscale(scale.into()));
+	}
+
+	fn data_limits(&self) -> (f32, f32, f32, f32) {
+		let mut result = (0.0, 0.0, 0.0, 0.0);
+		self.update(|axes| {
+			let limits = axes.data_limits();
+			result = (limits[0], limits[1], limits[2], limits[3]);
+		});
+		result
+	}
+
+	fn explicit_limits(&self) -> Option<(f32, f32, f32, f32)> {
+		let mut result = None;
+		self.update(|axes| {
+			result = axes.explicit_limits().map(|l| (l[0], l[1], l[2], l[3]));
+		});
+		result
+	}
+
+	fn artist_count(&self) -> usize {
+		let mut count = 0;
+		self.update(|axes| count = axes.artist_count());
+		count
+	}
+
+	fn set_artist_hidden(&self, index: usize, hidden: bool) {
+		self.update(|axes| axes.set_artist_hidden(index, hidden));
 	}
 
 	fn limits(&self, x_min: f32, x_max: f32, y_min: f32, y_max: f32) {
@@ -382,15 +588,86 @@ impl PythonAxes {
 	}
 }
 
+/// Interactive `Figure` presentation through `Viewer` live mode.
+///
+/// `FigureView` takes ownership of the figure's recorded content at
+/// construction: the passed `Figure` is left as an empty figure with the
+/// same configuration. Record or stream further artists through
+/// `view.ax(row, col)` — they reach the attached figure directly.
+#[pyclass(name = "FigureView", unsendable)]
+pub(crate) struct PythonFigureView {
+	pub(crate) inner: Rc<RefCell<oa::plot::FigureView>>,
+}
+
+#[pymethods]
+impl PythonFigureView {
+	#[new]
+	fn new(figure: &PythonFigure) -> Self {
+		let config = figure.inner.borrow().config().clone();
+		let taken = std::mem::replace(
+			&mut *figure.inner.borrow_mut(),
+			oa::plot::Figure::new(config),
+		);
+		Self {
+			inner: Rc::new(RefCell::new(oa::plot::FigureView::new(taken))),
+		}
+	}
+
+	/// Access the (row, col) axes inside the attached figure.
+	fn ax(&self, row: i32, col: i32) -> PythonAxes {
+		PythonAxes {
+			target: PythonAxesTarget::View(self.inner.clone()),
+			row,
+			col,
+		}
+	}
+
+	/// Toggle the pointer crosshair and data-coordinate readout.
+	fn crosshair(&self, visible: bool) {
+		self.inner.borrow_mut().crosshair(visible);
+	}
+
+	/// Restore every axes to the limits recorded at attach time.
+	fn reset_view(&self) {
+		self.inner.borrow_mut().reset_view();
+	}
+
+	/// Present the view in a blocking `Viewer` live-mode window.
+	#[pyo3(signature = (engine, config=None))]
+	fn show(
+		&self,
+		engine: &PythonEngine,
+		config: Option<PyRef<'_, crate::viewer::PythonViewerConfig>>,
+	) -> PyResult<()> {
+		let cfg = config.map_or_else(
+			|| oa::ViewerConfig {
+				mode: oa::ViewerMode::Live,
+				..Default::default()
+			},
+			|c| oa::ViewerConfig {
+				mode: oa::ViewerMode::Live,
+				..c.inner.clone()
+			},
+		);
+		let mut view = self.inner.borrow_mut();
+		let mut viewer = oa::Viewer::new(cfg);
+		viewer.set_live_source(&mut *view);
+		viewer.run(&engine.inner).map_err(python_error)
+	}
+}
+
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	module.add_class::<PythonPlotTheme>()?;
+	module.add_class::<PythonPlotScale>()?;
 	module.add_class::<PythonLineStyle>()?;
 	module.add_class::<PythonScatterStyle>()?;
 	module.add_class::<PythonBarStyle>()?;
+	module.add_class::<PythonBoxStyle>()?;
 	module.add_class::<PythonHeatmapStyle>()?;
 	module.add_class::<PythonFigureConfig>()?;
 	module.add_class::<PythonCellRect>()?;
 	module.add_class::<PythonFigure>()?;
 	module.add_class::<PythonAxes>()?;
+	module.add_class::<PythonFigureView>()?;
 	Ok(())
 }

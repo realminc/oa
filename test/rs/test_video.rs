@@ -8,6 +8,8 @@ mod test_vk_fixture;
 mod av1;
 #[path = "video/test_capability.rs"]
 mod capability;
+#[path = "video/test_convert.rs"]
+mod convert;
 #[path = "video/test_decoder.rs"]
 mod decoder;
 #[path = "video/test_demux.rs"]

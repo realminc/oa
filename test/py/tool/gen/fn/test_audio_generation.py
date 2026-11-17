@@ -30,8 +30,8 @@ class AudioGenerationTests(unittest.TestCase):
 			self.assertNotIn("{{", text)
 			self.assertNotRegex(text, r"\b\w+_(?:impl|dispatch)\(")
 			self.assertIn("record_audio_split_semantic", text)
-			self.assertIn(f'#[path = "audio/{category}.gen.rs"]', (ROOT / "src/rs/audio.rs").read_text())
-			self.assertFalse((ROOT / f"src/rs/audio/{category}.rs").exists())
+			self.assertIn(f'#[path = "audio/{category}.gen.rs"]', (ROOT / "src/rs/lib/audio.rs").read_text())
+			self.assertFalse((ROOT / f"src/rs/lib/audio/{category}.rs").exists())
 
 	def test_signatures_and_attribute_values_are_schema_owned(self):
 		op = next(op for op in self.schema["contracts"] if op["name"] == "gain")

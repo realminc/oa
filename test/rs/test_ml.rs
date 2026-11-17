@@ -19,11 +19,6 @@ mod module;
 #[path = "ml/test_environment.rs"]
 mod environment;
 
-#[path = "ml/test_cart_pole.rs"]
-mod cart_pole;
-#[path = "ml/test_lunar_lander.rs"]
-mod lunar_lander;
-
 #[path = "ml/test_advantage.rs"]
 mod advantage;
 
@@ -59,9 +54,6 @@ mod bmm;
 
 #[path = "ml/test_actor_critic.rs"]
 mod actor_critic;
-
-#[path = "ml/test_nlp.rs"]
-mod nlp;
 
 #[path = "ml/test_tokenizer.rs"]
 mod tokenizer;

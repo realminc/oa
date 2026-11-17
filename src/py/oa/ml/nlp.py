@@ -1,4 +1,4 @@
-"""SDK NLP tutorial vocabulary (mirrors ``oa::sdk::ml::nlp``).
+"""SDK NLP tutorial vocabulary (mirrors ``oa_sdk::ml::nlp``).
 
 Canonical sampler/model presets, generation helpers, workload constants, and
 the donor-equivalence oracle values used by the NLP tutorial suite.

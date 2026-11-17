@@ -2,7 +2,7 @@
 //!
 //! The manual chain-8 recipe artifact remains test-only; the compiler,
 //! artifact index, persistence codecs and ABI validation live in
-//! `runtime::dna::kernel::jit`.
+//! `runtime::dna::compiler`.
 
 use crate::Result;
 
@@ -82,7 +82,7 @@ fn compiler_errors_release_request_and_allow_recovery() -> Result<()> {
 	let first = compiler.compile_chain(true)?;
 	let second = compiler.compile_chain(true)?;
 	assert_eq!(first.words, second.words, "deterministic specialization");
-	// Compile/validate both profiles; this does not qualify Strict GPU execution.
+	// Compile/validate both profiles; this does not qualify Core GPU execution.
 	compiler.compile_chain(false)?;
 	for source in [
 		chain_source(true).replace("storage_buffers[4]", "storage_buffers[5]"),
@@ -105,7 +105,7 @@ fn compiler_errors_release_request_and_allow_recovery() -> Result<()> {
 #[test]
 #[ignore = "explicit trusted Slang library and installed spirv-val"]
 fn shared_ir_compiles_both_descriptor_profiles() -> Result<()> {
-	use crate::runtime::dna::elementwise::{Instruction, Program, Source};
+	use crate::runtime::dna::ir::elementwise::{Instruction, Program, Source};
 	let library = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit compiler library");
 	let compiler = SlangCompiler::open(std::path::Path::new(&library))?;
 	let operations = vec![

@@ -4,7 +4,7 @@ use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
 
 #[path = "audio/audio.gen.rs"]
 mod generated;
-mod sessions;
+pub(crate) mod sessions;
 
 fn normalize_mode(token: &str) -> PyResult<oa::audio::NormalizeAudioMode> {
 	match token {

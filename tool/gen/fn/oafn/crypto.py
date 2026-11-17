@@ -37,19 +37,31 @@ def cryptography_templates(category: str) -> dict[str, str]:
 
 def cryptography_body(schema: dict[str, Any], api: dict[str, Any], category: str) -> str:
 	kernels = {k["kernel_id"]: k for k in schema["kernels"]}
+	kernels.update({k["kernel_id"]: k for k in schema.get("private_kernels", [])})
 	contracts = {op["name"]: op for op in schema["contracts"]}
 	tokens = dict(api["values"])
 	if category == "verify":
 		tokens["prehash_validation"] = 'if KernelId::mldsa_prehash_bytes(algorithm).is_none() { return Err(Error::invalid_argument("unknown ML-DSA prehash identifier")); }' if any(name == "algorithm" for name, _ in api["parameters"]) else ""
 	if category == "hash":
 		tokens["contract"] = f"crate::core::operation::{schema['domain']}::{api['contracts'][0].upper()}"
+	elif api["template"] in ("verify_split", "verify_split3"):
+		tokens["routes"] = "\n".join(
+			f"MlDsaParameters::MlDsa{contract.split('_')[2]} => (crate::core::operation::{schema['domain']}::{contract.upper()}, {contract.split('_')[2]}u32),"
+			for contract in api["contracts"]
+		)
+		offset = 1 if api["template"] == "verify_split3" else 0
+		if offset:
+			tokens["ph_kernel"] = f"KernelId::{api['stages'][0]['kernel']}"
+		tokens["mu_kernel"] = f"KernelId::{api['stages'][offset]['kernel']}"
+		tokens["verify_kernel"] = f"KernelId::{api['stages'][offset + 1]['kernel']}"
 	else:
 		tokens["routes"] = "\n".join(
 			f"MlDsaParameters::MlDsa{kernels[stage['kernel']]['parameter_set']} => (crate::core::operation::{schema['domain']}::{contract.upper()}, KernelId::{stage['kernel']}),"
 			for contract, stage in zip(api["contracts"], api["stages"])
 		)
 	# API expressions are keyed by ABI field, never by JSON map iteration order.
-	for index, stage in enumerate(api["stages"] if category == "hash" else api["stages"][:1]):
+	stage_wire = api["stages"] if category == "hash" or api["template"] in ("verify_split", "verify_split3") else api["stages"][:1]
+	for index, stage in enumerate(stage_wire):
 		buffers, pushes = wire_parts(kernels[stage["kernel"]])
 		tokens[f"bindings:{index}"] = render_wire_values(stage["bindings"], buffers, buffers=True)
 		tokens[f"push:{index}"] = render_wire_values({name: ["U32", value] for name, value in stage["push_constants"].items()}, pushes, buffers=False)
@@ -69,6 +81,8 @@ def validate_cryptography_api(schema: dict[str, Any], category: str) -> None:
 	apis = schema.get("rust_api")
 	require(isinstance(apis, list) and apis, "Cryptography rust_api must be nonempty")
 	kernels = {k["kernel_id"]: k for k in schema["kernels"]}
+	all_kernels = dict(kernels)
+	all_kernels.update({k["kernel_id"]: k for k in schema.get("private_kernels", [])})
 	contracts = {op["name"]: op for op in schema["contracts"]}
 	names, covered = set(), set()
 	for api in apis:
@@ -116,10 +130,11 @@ def validate_cryptography_api(schema: dict[str, Any], category: str) -> None:
 		require(isinstance(stages, list) and stages, "Cryptography API stages must be nonempty")
 		used = set()
 		for stage in stages:
-			require(isinstance(stage, dict) and set(stage) == {"kernel", "bindings", "push_constants"} and isinstance(stage["kernel"], str) and stage["kernel"] in kernels, "Cryptography API stage is invalid")
-			kernel = kernels[stage["kernel"]]
-			used.add(stage["kernel"])
-			require(set([kernel["semantic_operation"]] + kernel.get("auxiliary_operations", [])).intersection(owned), "Cryptography API kernel belongs to another operation")
+			require(isinstance(stage, dict) and set(stage) == {"kernel", "bindings", "push_constants"} and isinstance(stage["kernel"], str) and stage["kernel"] in all_kernels, "Cryptography API stage is invalid")
+			kernel = all_kernels[stage["kernel"]]
+			if stage["kernel"] in kernels:
+				used.add(stage["kernel"])
+				require(set([kernel["semantic_operation"]] + kernel.get("auxiliary_operations", [])).intersection(owned), "Cryptography API kernel belongs to another operation")
 			buffers, pushes = wire_parts(kernel)
 			require(isinstance(stage["bindings"], dict) and set(stage["bindings"]) == {n for n, _ in buffers}, "Cryptography API bindings differ from ABI")
 			for access in stage["bindings"].values():
@@ -129,9 +144,17 @@ def validate_cryptography_api(schema: dict[str, Any], category: str) -> None:
 		require(used == {k["kernel_id"] for k in schema["kernels"] if set([k["semantic_operation"]] + k.get("auxiliary_operations", [])).intersection(owned)}, "Cryptography API kernel coverage differs from schema")
 		if category == "verify":
 			require(api["visibility"] == ("pub(crate)" if "algorithm" in api["attributes"] else "pub"), "Cryptography verifier visibility differs from admission")
-			require(len(stages) == 3 and [kernels[s["kernel"]]["semantic_operation"] for s in stages] == owned, "Cryptography verifier route coverage differs")
-			require({kernels[s["kernel"]]["parameter_set"] for s in stages} == {44, 65, 87}, "Cryptography verifier parameter coverage differs")
-			require(all(kernels[s["kernel"]]["push_fields"] == kernels[stages[0]["kernel"]]["push_fields"] and s["bindings"] == stages[0]["bindings"] and s["push_constants"] == stages[0]["push_constants"] for s in stages), "Cryptography verifier route ABI differs")
+			if api["template"] == "verify_split":
+				require(len(stages) == 2 and all(s["kernel"] not in kernels for s in stages), "Cryptography verifier split stages must be the private mu and verifier kernels")
+				require([s["kernel"] for s in stages] == ["CryptographyMlDsaMuBatchU8", "CryptographyMlDsaVerifyMuU8"], "Cryptography verifier split stage order differs")
+			elif api["template"] == "verify_split3":
+				require(len(stages) == 3 and all(s["kernel"] not in kernels for s in stages), "Cryptography verifier split3 stages must be private prehash, mu and verifier kernels")
+				require([s["kernel"] for s in stages] == ["CryptographyMlDsaPhBatchU8", "CryptographyMlDsaMuBatchU8", "CryptographyMlDsaVerifyMuU8"], "Cryptography verifier split3 stage order differs")
+			else:
+				require(all(s["kernel"] in kernels for s in stages), "Cryptography verifier fused stages must use public kernels")
+				require(len(stages) == 3 and [kernels[s["kernel"]]["semantic_operation"] for s in stages] == owned, "Cryptography verifier route coverage differs")
+				require({kernels[s["kernel"]]["parameter_set"] for s in stages} == {44, 65, 87}, "Cryptography verifier parameter coverage differs")
+				require(all(kernels[s["kernel"]]["push_fields"] == kernels[stages[0]["kernel"]]["push_fields"] and s["bindings"] == stages[0]["bindings"] and s["push_constants"] == stages[0]["push_constants"] for s in stages), "Cryptography verifier route ABI differs")
 		require(isinstance(api["template"], str) and api["template"] in cryptography_templates(category), "Cryptography API template is unknown")
 		cryptography_body(schema, api, category)
 	require(covered == set(contracts), "Cryptography API contract coverage differs from schema")

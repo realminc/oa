@@ -10,7 +10,8 @@ public float eval_element(uint opcode, float a, float b, float extra) {
 	if (opcode == 11u) return a - b;
 	if (opcode == 12u) return a * b;
 	if (opcode == 13u) return a / b;
-	if (opcode == 14u) return pow(a, b);
+	if (opcode == 14u) return a < 0.0f && b == floor(b)
+		? (fmod(b, 2.0f) != 0.0f ? -pow(abs(a), b) : pow(abs(a), b)) : pow(a, b);
 	if (opcode == 15u) return min(a, b);
 	if (opcode == 16u) return max(a, b);
 	if (opcode == 20u) return -a;

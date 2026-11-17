@@ -7,9 +7,6 @@ fn secret_kernel_cannot_enter_ordinary_graph_recording() {
 		KernelId::CryptographyMlKemKeygenU8,
 		KernelId::CryptographyMlDsaKeygenU8,
 		KernelId::CryptographyMlDsaSignU8,
-		KernelId::CryptographyMlDsaSignMessageU8,
-		KernelId::CryptographyMlDsaSignPrehashedU8,
-		KernelId::CryptographyMlDsaSignHashMessageU8,
 		KernelId::CryptographyMlKemEncapsU8,
 		KernelId::CryptographyMlKemDecapsU8,
 	] {

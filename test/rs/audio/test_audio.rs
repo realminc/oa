@@ -460,6 +460,21 @@ test_vk!(
 		}
 		capture.stop()?;
 		assert!(!capture.is_started());
+		while capture.poll(4_096).is_some() {}
+		std::thread::sleep(std::time::Duration::from_millis(20));
+		assert!(
+			capture.poll(4_096).is_none(),
+			"stopped capture must not deliver frames"
+		);
+		capture.start()?;
+		assert!(capture.is_started());
+		std::thread::sleep(std::time::Duration::from_millis(20));
+		if let Some(chunk) = capture.poll(4_096) {
+			assert_eq!(
+				chunk.first_frame_index, 0,
+				"restart resets the capture epoch"
+			);
+		}
 		capture.close()?;
 		assert!(!capture.is_open());
 		Ok(())

@@ -19,7 +19,7 @@ def audit(path: Path, version: str) -> None:
 		".oa-public-snapshot", "build.rs", "rustfmt.toml", "rust-toolchain.toml",
 		"README.md", "LICENSE", "NOTICE.md", "CHANGELOG.md", "RELEASE_NOTES.md",
 	}
-	prefixes = ("src/rs/", "src/slang/", "src/font/", "sdk/asset/font/", "test/rs/", "test/fixtures/", "tool/gen/")
+	prefixes = ("src/rs/lib/", "src/slang/", "src/font/", "test/rs/", "test/fixtures/", "tool/gen/")
 	if path.stat().st_size > 10 * 1024 * 1024:
 		raise ValueError("crate archive exceeds the standard 10 MiB limit")
 	files: dict[str, bytes] = {}
@@ -60,7 +60,7 @@ def audit(path: Path, version: str) -> None:
 	marker = files[".oa-public-snapshot"].decode()
 	if f"public_version={version}\n" not in marker:
 		raise ValueError("crate was not built from the sanitized public release")
-	for required in ("src/rs/lib.rs", "build.rs", "tool/gen/fn/generate.py", "rustfmt.toml", "LICENSE", "NOTICE.md", "Cargo.lock", "README.md"):
+	for required in ("src/rs/lib/lib.rs", "build.rs", "tool/gen/fn/generate.py", "rustfmt.toml", "LICENSE", "NOTICE.md", "Cargo.lock", "README.md"):
 		if required not in files:
 			raise ValueError(f"missing crate build input: {required}")
 	# Check declared build inputs before invoking compilers. Donor provenance is

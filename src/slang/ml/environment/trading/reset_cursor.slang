@@ -64,6 +64,12 @@ void main(uint3 tid : SV_DispatchThreadID) {
 	a.unfilled_iocs=0.0f;
 	a.initial_margin=0.0f;
 	a.maintenance_margin=0.0f;
+	a.maker_pending=0.0f;
+	a.maker_price=0.0f;
+	a.maker_deadline=0.0f;
+	a.maker_requotes=0.0f;
+	a.maker_fills=0.0f;
+	a.maker_fallbacks=0.0f;
 
 	trading_store(storage_buffers[push.ledger_index],lane,a);
 	store_u32(storage_buffers[push.meta_index],lane*4u,row);
@@ -71,5 +77,5 @@ void main(uint3 tid : SV_DispatchThreadID) {
 	store_u32(storage_buffers[push.meta_index],lane*4u+2u,episode);
 	store_u32(storage_buffers[push.meta_index],lane*4u+3u,0u);
 	store_u8(storage_buffers[push.done_index],lane,0u);
-	trading_observe(storage_buffers[push.observation_index],storage_buffers[push.features_index],lane,row,push.window,push.feature_width,a,push.capital,0u,push.horizon);
+	trading_observe(storage_buffers[push.observation_index],storage_buffers[push.features_index],lane,row,push.window,push.feature_width,a,push.capital,0u,push.horizon,0.0f,0.0f);
 }

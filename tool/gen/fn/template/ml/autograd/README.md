@@ -8,7 +8,7 @@ coverage, rejects duplicate recipes, and checks each recipe's `Self` bindings
 against the row's fields.
 
 The generator emits complete family records and handlers under
-`src/rs/ml/autograd/node/`, plus exhaustive `GradNodeOperation` routing. Attachments
+`src/rs/lib/ml/autograd/node/`, plus exhaustive `GradNodeOperation` routing. Attachments
 construct those records directly. Records retain the same Matrix handles and
 are stored by value; no new boxes, device copies, submissions or waits are added.
 `BackwardStatus::Skipped` preserves the original reverse arm's `continue`.
@@ -17,7 +17,7 @@ Semantic completion, traversal and shared accumulation remain tape-owned.
 ## Donor and adaptation evidence
 
 These recipe bodies were mechanically extracted from OARS commit `ce8e825`'s
-`src/rs/ml/autograd/backward.rs`. Only the surrounding match pattern became a
+`src/rs/lib/ml/autograd/backward.rs`. Only the surrounding match pattern became a
 `Self` binding, the borrowed gradient-map argument changed, and loop skipping
 became an explicit status return. Provider calls, incoming-gradient scaling,
 detached targets, derivative intermediates and accumulation order are unchanged.

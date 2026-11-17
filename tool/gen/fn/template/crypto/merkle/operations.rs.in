@@ -96,7 +96,8 @@ pub fn subtree_roots(leaves: &Matrix, algorithm: MerkleAlgorithm, subtree_leaves
 		.into_iter()
 		.find(|(capacity, _)| {
 			!engine.uses_compatibility_profile()
-				&& subtree_leaves <= *capacity && capacity * 64 <= shared_bytes
+				&& (2..=*capacity).contains(&subtree_leaves)
+				&& capacity * 64 <= shared_bytes
 		});
 	if let Some((_, kernel)) = cooperative {
 		let count = rows / subtree_leaves;

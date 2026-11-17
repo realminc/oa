@@ -1,6 +1,6 @@
 use std::time::SystemTime;
 
-use oa::sdk::data::{HumanMl3dDataset, human_ml3d_evaluate_motion};
+use sdk::data::{HumanMl3dDataset, human_ml3d_evaluate_motion};
 
 #[test]
 fn geometry_metrics_match_the_donor_identity_and_perturbation_oracle() -> oa::Result<()> {

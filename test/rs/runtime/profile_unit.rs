@@ -1,7 +1,7 @@
 use super::{DeviceFeatures, ExecutionProfile};
 
 #[test]
-fn compatibility_does_not_require_bindless_but_strict_does() {
+fn compatibility_does_not_require_bindless_but_core_does() {
 	let features = DeviceFeatures {
 		shader_storage_buffer_array_dynamic_indexing: true,
 		timeline_semaphore: true,
@@ -14,7 +14,7 @@ fn compatibility_does_not_require_bindless_but_strict_does() {
 	);
 	assert!(
 		features
-			.missing_requirements(ExecutionProfile::Strict)
+			.missing_requirements(ExecutionProfile::Core)
 			.is_some_and(|missing| missing.contains("runtimeDescriptorArray"))
 	);
 }
@@ -40,14 +40,30 @@ fn both_profiles_require_uniform_buffer_array_indexing() {
 		descriptor_binding_update_unused_while_pending: true,
 		..DeviceFeatures::default()
 	};
-	for profile in [ExecutionProfile::Compatibility, ExecutionProfile::Strict] {
+	for profile in [ExecutionProfile::Compatibility, ExecutionProfile::Core] {
 		assert_eq!(
 			features.missing_requirements(profile).as_deref(),
 			Some("shaderStorageBufferArrayDynamicIndexing")
 		);
 	}
 	features.shader_storage_buffer_array_dynamic_indexing = true;
-	for profile in [ExecutionProfile::Compatibility, ExecutionProfile::Strict] {
+	for profile in [ExecutionProfile::Compatibility, ExecutionProfile::Core] {
 		assert_eq!(features.missing_requirements(profile), None);
 	}
+}
+
+#[test]
+fn compiled_profile_has_one_version_floor() {
+	#[cfg(oa_profile = "core")]
+	assert_eq!(ExecutionProfile::BUILD, ExecutionProfile::Core);
+	#[cfg(oa_profile = "compatibility")]
+	assert_eq!(ExecutionProfile::BUILD, ExecutionProfile::Compatibility);
+	assert_eq!(
+		ExecutionProfile::Core.minimum_api_version(),
+		vk::API_VERSION_1_3
+	);
+	assert_eq!(
+		ExecutionProfile::Compatibility.minimum_api_version(),
+		vk::API_VERSION_1_2
+	);
 }

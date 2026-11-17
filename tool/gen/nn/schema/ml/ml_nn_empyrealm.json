@@ -4,24 +4,39 @@
 	"imports": [
 		"use std::rc::Rc;",
 		"use crate::{DType, Engine, Error, Matrix, Result};",
-		"use super::{Embedding, Mamba3, Mamba3Config, Mamba3State};",
-		"use crate::ml::{Module, ModuleRegistry};"
+		"use super::{AttentionCache, Embedding, Ffn, Mamba3, Mamba3Config, Mamba3State, Moe, MultiHeadAttention, RmsNorm};",
+		"use crate::ml::{autograd, Module, ModuleRegistry};"
 	],
 	"helper": "",
 	"layers": [
 		{
 			"name": "Empyrealm",
-			"doc": "OA's embedding-plus-Mamba core with one canonical Rust execution path.",
+			"doc": "OA's embedding-plus-hybrid-Mamba core with one canonical Rust execution path.",
 			"template": "empyrealm",
 			"values": {
+				"config_type": "EmpyrealmConfig",
+				"state_type": "EmpyrealmState",
+				"layer_state_type": "EmpyrealmLayerState",
+				"mixer_type": "EmpyrealmMixer",
+				"ffn_type": "EmpyrealmFfn",
+				"block_type": "EmpyrealmBlock",
 				"embedding_constructor": "Embedding::new_with_seed",
-				"mixer_constructor": "Mamba3::new_with_seed",
+				"mamba_constructor": "Mamba3::new_with_seed",
+				"attention_constructor": "MultiHeadAttention::new_with_seed",
+				"norm_constructor": "RmsNorm::new",
+				"ffn_constructor": "Ffn::new_with_seed",
+				"moe_constructor": "Moe::new_with_seed",
 				"add_operation": "crate::matrix::add",
+				"recording_active_operation": "autograd::recording_active",
 				"embedding_name": "embed",
-				"mixer_name": "mixer"
+				"norm_name": "norm",
+				"mixer_name": "mixer",
+				"ffn_name": "ffn",
+				"block_prefix": "block_",
+				"tail_norm_name": "tail_norm"
 			},
 			"donor": "source/cpp/lib/oa/ml/nn/empyrealm/empyrealmCore.cpp",
-			"adaptation": "Complete existing Rust embedding plus residual Mamba3 composition; preserves seeded child construction, embed/mixer checkpoint tree, checked U8/U32 token and FP32 embedded shapes, explicit caller-owned recurrent state and canonical Mamba3 providers rather than duplicate donor shaders; renames public EmpyrealmCore to Empyrealm"
+			"adaptation": "Complete Rust hybrid composition diverging from the donor's renamed Mamba-3 copies: embedding plus an interleaved Mamba-3/causal-attention block stack (Nemotron-style), pre-normalized residual mixers, dense or routed-expert SwiGLU feed-forward tails and a final RMSNorm; preserves seeded child construction, the embed/block_*/tail-norm checkpoint tree, checked U8/U32 token and FP32 embedded shapes, and extends the caller-owned decode state across per-block Mamba3State and AttentionCache slots; renames public EmpyrealmCore to Empyrealm"
 		}
 	]
 }

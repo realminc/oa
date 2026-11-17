@@ -19,6 +19,6 @@ provider and accumulate its results. Elementwise/BLAS formulas are generated
 into the regular operation files from `../backward/`; index and view formulas
 are handwritten alongside their forward functions. Observer selection, Drop
 and the borrowed tape context remain handwritten. Shared broadcast reduction
-belongs to `src/rs/matrix/broadcast.rs`. There are no Rust body strings in JSON.
+belongs to `src/rs/lib/matrix/broadcast.rs`. There are no Rust body strings in JSON.
 Numerical forward/backward providers remain in their existing Matrix files.
 Source generation is not numerical or physical-device qualification.

@@ -1837,7 +1837,7 @@ test_vk!(generated_categorical_accuracy_capture_retains_semantic_and_physical_ev
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		plan.semantic_graph().operations()[0].name(),
-		"oa::matrix::{accuracy_count['name']}"
+		"{accuracy_count['donor_op']}"
 	);
 	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("accuracy"))
 		.expect("categorical-accuracy execution report must be valid JSON");
@@ -2030,11 +2030,11 @@ def matrix_autograd_outputs(root: Path, schemas: list[tuple[dict[str, Any], str]
 	for schema, value in schemas:
 		family = schema["family"].removeprefix("matrix_")
 		selected = [row for row in rows if row["autograd"]["family"] == family]
-		outputs[root / f"src/rs/matrix/autograd/matrix/{family}.gen.rs"] = format_rust(generate_matrix_attachments(selected, value, family), root)
-		outputs[root / f"src/rs/matrix/autograd/node/matrix/{family}.gen.rs"] = format_rust(generate_matrix_reverse(selected, value, family), root)
+		outputs[root / f"src/rs/lib/matrix/autograd/matrix/{family}.gen.rs"] = format_rust(generate_matrix_attachments(selected, value, family), root)
+		outputs[root / f"src/rs/lib/matrix/autograd/node/matrix/{family}.gen.rs"] = format_rust(generate_matrix_reverse(selected, value, family), root)
 		facade.extend([f'#[path = "matrix/{family}.gen.rs"]', f"mod {family};", f"pub(in crate::matrix) use {family}::{{" + ", ".join("record_" + row["name"] for row in selected) + "};"])
-	outputs[root / "src/rs/matrix/autograd/matrix.gen.rs"] = format_rust("\n".join(facade), root)
-	outputs[root / "src/rs/matrix/autograd/node.gen.rs"] = format_rust(generate_matrix_autograd_routing(rows, digest, sources), root)
+	outputs[root / "src/rs/lib/matrix/autograd/matrix.gen.rs"] = format_rust("\n".join(facade), root)
+	outputs[root / "src/rs/lib/matrix/autograd/node.gen.rs"] = format_rust(generate_matrix_autograd_routing(rows, digest, sources), root)
 	exports = combined_banner + "pub(in crate::matrix) use matrix::{" + ", ".join("record_" + row["name"] for row in rows) + "};\n"
-	outputs[root / "src/rs/matrix/autograd/exports.gen.rs"] = format_rust(exports, root)
+	outputs[root / "src/rs/lib/matrix/autograd/exports.gen.rs"] = format_rust(exports, root)
 	return outputs

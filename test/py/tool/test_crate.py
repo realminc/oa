@@ -20,7 +20,7 @@ class CrateTests(unittest.TestCase):
 		files = {
 			"Cargo.toml": b'[package]\nname="oarust"\nversion="0.8.6"\n[lib]\nname="oa"\n',
 			".oa-public-snapshot": b'public_version=0.8.6\n',
-			"src/rs/lib.rs": b'', "build.rs": b'', "rustfmt.toml": b'',
+			"src/rs/lib/lib.rs": b'', "build.rs": b'', "rustfmt.toml": b'',
 			"tool/gen/fn/generate.py": b'',
 			"LICENSE": b'BSL', "NOTICE.md": b'Attributions', "Cargo.lock": b'', "README.md": b'OA',
 		}
@@ -64,7 +64,7 @@ class CrateTests(unittest.TestCase):
 
 	def test_declared_sdk_support_is_admitted(self):
 		AUDITOR.audit(self.archive({
-			"src/rs/lib.rs": b'#[path = "../../sdk/rs/mod.rs"] pub mod sdk;',
+			"src/rs/lib/lib.rs": b'#[path = "../../../sdk/rs/mod.rs"] pub mod sdk;',
 			"sdk/rs/mod.rs": b'pub mod ml;',
 			"sdk/rs/ml.rs": b'pub mod rl;',
 			"sdk/rs/ml/rl.rs": b'',
@@ -73,7 +73,7 @@ class CrateTests(unittest.TestCase):
 	def test_missing_rust_path_is_rejected(self):
 		with self.assertRaisesRegex(ValueError, "missing crate Rust input: sdk/rs/mod.rs"):
 			AUDITOR.audit(self.archive({
-				"src/rs/lib.rs": b'#[path = "../../sdk/rs/mod.rs"] pub mod sdk;',
+				"src/rs/lib/lib.rs": b'#[path = "../../../sdk/rs/mod.rs"] pub mod sdk;',
 			}), "0.8.6")
 
 	def test_missing_literal_rust_include_is_rejected(self):
@@ -81,7 +81,7 @@ class CrateTests(unittest.TestCase):
 			with self.subTest(macro=macro):
 				with self.assertRaisesRegex(ValueError, "missing crate Rust input"):
 					AUDITOR.audit(self.archive({
-						"src/rs/lib.rs": f'{macro}!("missing.rs");'.encode(),
+						"src/rs/lib/lib.rs": f'{macro}!("missing.rs");'.encode(),
 					}), "0.8.6")
 
 	def test_traversal_is_rejected(self):

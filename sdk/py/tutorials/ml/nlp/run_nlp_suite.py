@@ -25,13 +25,13 @@ SUITE_MEMBERS = (
 	"tu_nlp_byte_rnn",
 	"tu_nlp_byte_gru",
 	"tu_nlp_byte_transformer",
-	"tu_nlp_byte_moe_transformer",
+	"tu_nlp_byte_moe",
 	"tu_nlp_byte_mamba3",
 	"tu_nlp_byte_empyrealm",
 	"tu_nlp_bpe_rnn",
 	"tu_nlp_bpe_gru",
 	"tu_nlp_bpe_transformer",
-	"tu_nlp_bpe_moe_transformer",
+	"tu_nlp_bpe_moe",
 	"tu_nlp_bpe_mamba3",
 	"tu_nlp_char_rnn",
 	"tu_nlp_char_gru",
@@ -79,7 +79,7 @@ def main() -> None:
 	root = Path(__file__).resolve().parent
 	passed = 0
 	for index, name in enumerate(selected, 1):
-		script = root / f"{name}.py"
+		script = root / name / f"{name}.py"
 		label = name.removeprefix("tu_nlp_")
 		print(f"\n[{index}/{len(selected)}] {label}", flush=True)
 		subprocess.run([sys.executable, str(script)], check=True, env=environment)

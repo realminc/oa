@@ -2,8 +2,6 @@
 
 #[path = "test_activation.rs"]
 mod activation;
-#[path = "test_alm.rs"]
-mod alm;
 #[path = "test_attention.rs"]
 mod attention;
 #[path = "test_batch_norm.rs"]
@@ -14,6 +12,8 @@ mod byte;
 mod channel_norm;
 #[path = "test_conv.rs"]
 mod conv;
+#[path = "test_empyrealm.rs"]
+mod empyrealm;
 #[path = "test_ffn.rs"]
 mod ffn;
 #[path = "test_flow.rs"]

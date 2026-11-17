@@ -17,7 +17,7 @@ use super::super::session::*;
 use super::*;
 
 use crate::TcpListener;
-use crate::sdk::ml::nlp::{GENERATION_LENGTH, GENERATION_PROMPT, TRAINING_STEPS};
+use crate::net::satellite::nlp_step::{GENERATION_LENGTH, GENERATION_PROMPT, TRAINING_STEPS};
 use crate::{Engine, ErrorKind, Result};
 
 fn satellite_mac(secret: &[u8], data: &[u8], custom: &str, out: &mut [u8; 32]) -> Result<()> {

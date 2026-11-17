@@ -311,7 +311,7 @@ test_vk!(conv_1d_gemm_forward_matches_independent_oracle, engine, {
 		plan.semantic_graph().operations()[0].name(),
 		"oa::ml::matrix::conv_1d"
 	);
-	assert_eq!(plan.semantic_lowering().maximum_nodes_per_op(), 4);
+	assert_eq!(plan.semantic_lowering().maximum_nodes_per_op(), 3);
 	engine.submit(&plan)?.wait()?;
 	assert_close(&output.read_f32()?, &expected, 3.0e-5);
 	Ok(())

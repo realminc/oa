@@ -60,6 +60,24 @@
 					"type": "bool",
 					"visibility": "pub",
 					"doc": "Whether `state.selected` changed."
+				},
+				{
+					"name": "dragged_index",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Index of the tab held in an active drag this frame, or -1."
+				},
+				{
+					"name": "drop_index",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Insertion index computed for a released drag, or -1."
+				},
+				{
+					"name": "dropped",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "True on the frame an active drag was released."
 				}
 			],
 			"variants": [],
@@ -372,6 +390,46 @@
 					"type": "f32",
 					"visibility": "pub",
 					"doc": "Gap between widget and popup."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "UiTableConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "row_height",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Body row height in pixels (0 = default item height)."
+				},
+				{
+					"name": "max_visible_rows",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Maximum body rows drawn inside the widget (0 = all)."
+				},
+				{
+					"name": "show_header",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Draw the column header band."
+				},
+				{
+					"name": "zebra",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Alternate row backgrounds."
 				}
 			],
 			"variants": [],

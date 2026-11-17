@@ -17,6 +17,7 @@ pub(crate) enum PythonViewerMode {
 	Video = 2,
 	Audio = 3,
 	Live = 4,
+	Workspace = 5,
 }
 
 impl From<PythonViewerMode> for oa::ViewerMode {
@@ -27,6 +28,7 @@ impl From<PythonViewerMode> for oa::ViewerMode {
 			PythonViewerMode::Video => oa::ViewerMode::Video,
 			PythonViewerMode::Audio => oa::ViewerMode::Audio,
 			PythonViewerMode::Live => oa::ViewerMode::Live,
+			PythonViewerMode::Workspace => oa::ViewerMode::Workspace,
 		}
 	}
 }
@@ -98,6 +100,7 @@ impl PythonViewerConfig {
 			oa::ViewerMode::Video => PythonViewerMode::Video,
 			oa::ViewerMode::Audio => PythonViewerMode::Audio,
 			oa::ViewerMode::Live => PythonViewerMode::Live,
+			oa::ViewerMode::Workspace => PythonViewerMode::Workspace,
 		}
 	}
 
@@ -296,6 +299,72 @@ impl PythonViewer {
 	}
 }
 
+// ── Workspace ─────────────────────────────────────────────────────────────────
+
+/// Editor-style dock host presented through `ViewerMode::Workspace`.
+///
+/// `Workspace` owns a serializable split/tab layout over registered items.
+/// `add_view` docks a `FigureView` in the root tab set; `set_layout` replaces
+/// the dock tree with a document produced by `to_json` (or hand-authored to
+/// the same schema). Registered items are preserved across `set_layout`.
+#[pyclass(name = "Workspace", unsendable)]
+pub(crate) struct PythonWorkspace {
+	inner: oa::Workspace,
+}
+
+#[pymethods]
+impl PythonWorkspace {
+	/// Empty workspace with a single tabbed root pane.
+	#[new]
+	fn new() -> Self {
+		Self {
+			inner: oa::Workspace::default(),
+		}
+	}
+
+	/// Dock `view` under `name` in the root tab set. Fails when the root is a
+	/// split — restore a tabbed root through `set_layout` first.
+	fn add_view(&mut self, name: &str, view: &crate::plot::PythonFigureView) -> PyResult<()> {
+		view.inner.borrow_mut().set_name(name);
+		self
+			.inner
+			.open_tab(Box::new(oa::SharedItem::new(view.inner.clone())))
+			.map_err(python_error)
+	}
+
+	/// Serialize the current dock tree to a versioned JSON document.
+	fn to_json(&self) -> PyResult<String> {
+		self.inner.to_json().map_err(python_error)
+	}
+
+	/// Replace the dock tree with a `to_json` document; items are preserved.
+	fn set_layout(&mut self, json: &str) -> PyResult<()> {
+		self.inner.set_layout(json).map_err(python_error)
+	}
+
+	/// Present the workspace in a blocking `Viewer` workspace-mode window.
+	#[pyo3(signature = (engine, config=None))]
+	fn show(
+		&mut self,
+		engine: &PythonEngine,
+		config: Option<PyRef<'_, PythonViewerConfig>>,
+	) -> PyResult<()> {
+		let cfg = config.map_or_else(
+			|| oa::ViewerConfig {
+				mode: oa::ViewerMode::Workspace,
+				..Default::default()
+			},
+			|c| oa::ViewerConfig {
+				mode: oa::ViewerMode::Workspace,
+				..c.inner.clone()
+			},
+		);
+		let mut viewer = oa::Viewer::new(cfg);
+		viewer.set_workspace(&mut self.inner);
+		viewer.run(&engine.inner).map_err(python_error)
+	}
+}
+
 // ── Registration ──────────────────────────────────────────────────────────────
 
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -304,5 +373,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	module.add_class::<PythonViewerCanvasBackground>()?;
 	module.add_class::<PythonViewerConfig>()?;
 	module.add_class::<PythonViewer>()?;
+	module.add_class::<PythonWorkspace>()?;
 	Ok(())
 }

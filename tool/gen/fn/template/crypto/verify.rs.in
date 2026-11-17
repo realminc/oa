@@ -1,6 +1,6 @@
-// @operation verify
+// @operation verify_split
 {{prehash_validation}}
-	let (contract, kernel) = match parameters {
+	let (contract, parameter_u32) = match parameters {
 {{routes}}
 	};
 	let operation = contract.name();
@@ -61,6 +61,8 @@
 
 	let batch_u32 = u32::try_from(batch_size)
 		.map_err(|_| Error::invalid_argument(format!("{operation} batch_size exceeds u32")))?;
+	// Row offsets and lengths must resolve against the logical input extent;
+	// allocation padding is not message data on the device.
 	let message_bytes = u32::try_from(messages.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} message byte size exceeds u32")))?;
 	for matrix in [msg_offsets, msg_lengths, signatures, public_keys] {
@@ -71,32 +73,216 @@
 		u32::try_from(bytes)
 			.map_err(|_| Error::invalid_argument(format!("{operation} buffer byte size exceeds u32")))?;
 	}
+	let mus_bytes = batch_size
+		.checked_mul(64)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} mu batch byte size overflows")))?;
 
-	// Allocate U32 result buffer: one entry per signature.
+	// Allocate the U32 result rows and the device-resident mu staging buffer:
+	// one packed 64-byte FIPS 204 message representative per signature.
 	let results = Matrix::allocate_output(engine, vec![batch_size], batch_size, DType::U32)?;
+	let mus = Matrix::allocate_output(engine, vec![mus_bytes], mus_bytes, DType::U8)?;
 	// Empty U32 vectors have no Vulkan backing. There is no invocation or value
 	// to produce; return the already-ready empty value without binding them.
 	if batch_size == 0 {
 		return Ok(results);
 	}
 
-	// Binding order matches the PushConstants indices in mldsa_verify.slang:
-	// [input_index, offsets_index, lengths_index, sigs_index, pks_index, results_index]
-	// The engine prepends one descriptor index per binding as push constants before
-	// the caller-supplied push_constants slice.
-	let buffers = [{{bindings:0}}];
-	let push_constants = [{{push:0}}];
+	// The M' head — domain tag, context length and the optional OID trailer —
+	// rides push constants so the mu kernel keeps one branch-free absorb path.
+	let (mu_head, mu_head_length) = KernelId::mldsa_mu_head({{head_algorithm}}, context_length)
+		.ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} ML-DSA prehash identity is unknown"))
+		})?;
+
+	// The public verify routes lower to two dispatches under one semantic
+	// contract: a batched public-input mu derivation followed by the external-mu
+	// verifier core. Descriptor indices precede the caller push payload.
+	let mu_buffers = [{{bindings:0}}];
+	let mu_push = [{{push:0}}];
+	let verify_buffers = [{{bindings:1}}];
+	let verify_push = [{{push:1}}];
+	let mu_kernel = {{mu_kernel}};
+	let verify_kernel = {{verify_kernel}};
+	let dispatches = [
+		ComputeDispatch {
+			kernel: mu_kernel,
+			buffers: &mu_buffers,
+			push_constants: &mu_push,
+			workgroups: [batch_u32, 1, 1],
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: verify_kernel,
+			buffers: &verify_buffers,
+			push_constants: &verify_push,
+			workgroups: [batch_u32, 1, 1],
+			indirect: None,
+		},
+	];
 	let inputs = [messages, msg_offsets, msg_lengths, signatures, public_keys];
 	let outputs = [&results];
 	let attributes = [{{attributes}}];
-	engine.record_semantic(
+	engine.record_split_semantic(
+		&dispatches,
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok(results)
+
+// @operation verify_split3
+{{prehash_validation}}
+	let (contract, parameter_u32) = match parameters {
+{{routes}}
+	};
+	let operation = contract.name();
+	let sig_bytes = parameters.signature_size();
+	let pk_bytes = parameters.public_key_size();
+
+	// Validate message buffer.
+	if messages.dtype() != DType::U8 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} messages must be a U8 matrix; found {}",
+			messages.dtype().token()
+		)));
+	}
+	if messages.shape().len() != 1 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} messages must be rank-1 [total_bytes]; found {:?}",
+			messages.shape()
+		)));
+	}
+
+	// A shared public context is a checked view into the existing message bytes.
+	let context_length = context
+		.end
+		.checked_sub(context.start)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} context range is reversed")))?;
+	if context.end > messages.num_elements() || context_length > 255 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} context must be within messages and at most 255 bytes"
+		)));
+	}
+	let context_offset = u32::try_from(context.start)
+		.map_err(|_| Error::invalid_argument(format!("{operation} context offset exceeds u32")))?;
+	let context_length = u32::try_from(context_length)
+		.map_err(|_| Error::invalid_argument(format!("{operation} context length exceeds u32")))?;
+
+	// Validate offset / length vectors — must be U32 rank-1 of equal length.
+	let batch_size = validate_u32_vector(msg_offsets, "msg_offsets", None, operation)?;
+	validate_u32_vector(msg_lengths, "msg_lengths", Some(batch_size), operation)?;
+
+	// Validate packed signature and public-key buffers.
+	validate_packed_u8(signatures, "signatures", batch_size, sig_bytes, operation)?;
+	validate_packed_u8(public_keys, "public_keys", batch_size, pk_bytes, operation)?;
+
+	// All matrices must share the same engine.
+	let engine = messages.engine_handle();
+	for (label, matrix) in [
+		("msg_offsets", msg_offsets),
+		("msg_lengths", msg_lengths),
+		("signatures", signatures),
+		("public_keys", public_keys),
+	] {
+		if !engine.same_as(matrix.engine_handle()) {
+			return Err(Error::invalid_argument(format!(
+				"{operation} {label} must share an engine with messages"
+			)));
+		}
+	}
+
+	let batch_u32 = u32::try_from(batch_size)
+		.map_err(|_| Error::invalid_argument(format!("{operation} batch_size exceeds u32")))?;
+	// Row offsets and lengths must resolve against the logical input extent;
+	// allocation padding is not message data on the device.
+	let message_bytes = u32::try_from(messages.num_elements())
+		.map_err(|_| Error::invalid_argument(format!("{operation} message byte size exceeds u32")))?;
+	for matrix in [msg_offsets, msg_lengths, signatures, public_keys] {
+		let bytes = matrix
+			.num_elements()
+			.checked_mul(matrix.dtype().size_bytes())
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} buffer byte size overflows")))?;
+		u32::try_from(bytes)
+			.map_err(|_| Error::invalid_argument(format!("{operation} buffer byte size exceeds u32")))?;
+	}
+	let mus_bytes = batch_size
+		.checked_mul(64)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} mu batch byte size overflows")))?;
+
+	// The prehash stage emits uniform digest rows for the mu stage.
+	let digest_bytes = KernelId::mldsa_prehash_bytes(algorithm)
+		.ok_or_else(|| Error::internal(format!("{operation} ML-DSA prehash layout is missing")))?;
+	let digest_u32 = u32::try_from(digest_bytes)
+		.map_err(|_| Error::internal(format!("{operation} ML-DSA digest extent exceeds u32")))?;
+	let digest_extent = usize::try_from(digest_bytes)
+		.map_err(|_| Error::internal(format!("{operation} ML-DSA digest extent is invalid")))?;
+	let digests_bytes = batch_size
+		.checked_mul(digest_extent)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} digest batch byte size overflows")))?;
+	let digests_u32 = u32::try_from(digests_bytes)
+		.map_err(|_| Error::invalid_argument(format!("{operation} digest batch byte size exceeds u32")))?;
+
+	// Allocate the U32 result rows, the packed digest staging rows and the
+	// device-resident mu staging buffer.
+	let results = Matrix::allocate_output(engine, vec![batch_size], batch_size, DType::U32)?;
+	let digests = Matrix::allocate_output(engine, vec![digests_bytes], digests_bytes, DType::U8)?;
+	let mus = Matrix::allocate_output(engine, vec![mus_bytes], mus_bytes, DType::U8)?;
+	// Empty U32 vectors have no Vulkan backing. There is no invocation or value
+	// to produce; return the already-ready empty value without binding them.
+	if batch_size == 0 {
+		return Ok(results);
+	}
+
+	// The M' head — domain tag, context length and the OID trailer — rides
+	// push constants so the mu kernel keeps one branch-free absorb path.
+	let (mu_head, mu_head_length) = KernelId::mldsa_mu_head({{head_algorithm}}, context_length)
+		.ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} ML-DSA prehash identity is unknown"))
+		})?;
+
+	// The HashML-DSA verify route lowers to three dispatches under one
+	// semantic contract: a batched prehash, the public-input mu derivation and
+	// the external-mu verifier core. Descriptor indices precede pushes.
+	let ph_buffers = [{{bindings:0}}];
+	let ph_push = [{{push:0}}];
+	let mu_buffers = [{{bindings:1}}];
+	let mu_push = [{{push:1}}];
+	let verify_buffers = [{{bindings:2}}];
+	let verify_push = [{{push:2}}];
+	let ph_kernel = {{ph_kernel}};
+	let mu_kernel = {{mu_kernel}};
+	let verify_kernel = {{verify_kernel}};
+	let dispatches = [
 		ComputeDispatch {
-			kernel,
-			buffers: &buffers,
-			push_constants: &push_constants,
-			workgroups: kernel.linear_workgroups(batch_u32),
+			kernel: ph_kernel,
+			buffers: &ph_buffers,
+			push_constants: &ph_push,
+			workgroups: [batch_u32, 1, 1],
 			indirect: None,
 		},
+		ComputeDispatch {
+			kernel: mu_kernel,
+			buffers: &mu_buffers,
+			push_constants: &mu_push,
+			workgroups: [batch_u32, 1, 1],
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: verify_kernel,
+			buffers: &verify_buffers,
+			push_constants: &verify_push,
+			workgroups: [batch_u32, 1, 1],
+			indirect: None,
+		},
+	];
+	let inputs = [messages, msg_offsets, msg_lengths, signatures, public_keys];
+	let outputs = [&results];
+	let attributes = [{{attributes}}];
+	engine.record_split_semantic(
+		&dispatches,
 		SemanticDispatch {
 			contract,
 			inputs: &inputs,

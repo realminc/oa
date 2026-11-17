@@ -45,6 +45,8 @@ class MlExportInventoryTest(unittest.TestCase):
 	ALL_NEW_NAMES = [
 		# Parameter-owning native modules
 		"Empyrealm",
+		"EmpyrealmConfig",
+		"EmpyrealmState",
 		# Flow matching
 		"FlowMatchBatch",
 		"flow_linear_match",
@@ -133,9 +135,51 @@ class MlExportInventoryTest(unittest.TestCase):
 	def test_empyrealm_native_export_has_one_public_identity(self) -> None:
 		self.assertIs(oa.ml.Empyrealm, oa.ml.nn.Empyrealm)
 		self.assertEqual(oa.ml.Empyrealm.__name__, "Empyrealm")
-		for method in ("forward", "forward_embedded", "new_state", "step_embedded", "all_parameters", "train", "eval"):
+		for method in (
+			"forward",
+			"forward_embedded",
+			"new_state",
+			"step",
+			"step_embedded",
+			"layer_count",
+			"attention_indices",
+			"all_parameters",
+			"train",
+			"eval",
+		):
 			with self.subTest(method=method):
 				self.assertTrue(callable(getattr(oa.ml.Empyrealm, method)))
+
+
+class EmpyrealmConfigTest(unittest.TestCase):
+	def test_round_trips_hybrid_fields(self) -> None:
+		cfg = oa.ml.EmpyrealmConfig(
+			model_width=64,
+			sequence_length=8,
+			layers=4,
+			attention_every=4,
+			attention_heads=4,
+			ffn_hidden=128,
+			moe_experts=0,
+			moe_experts_per_token=0,
+			epsilon=1e-5,
+		)
+		self.assertEqual(cfg.layers, 4)
+		self.assertEqual(cfg.attention_every, 4)
+		self.assertEqual(cfg.attention_heads, 4)
+		self.assertEqual(cfg.sequence_length, 8)
+		self.assertEqual(cfg.ffn_hidden, 128)
+		self.assertEqual(cfg.moe_experts, 0)
+		self.assertEqual(cfg.moe_experts_per_token, 0)
+		self.assertAlmostEqual(cfg.epsilon, 1e-5)
+		self.assertIsInstance(cfg.mamba, oa.ml.nn.Mamba3Config)
+		self.assertIn("attention_every=4", repr(cfg))
+
+	def test_requires_model_width_and_sequence_length(self) -> None:
+		with self.assertRaises(TypeError):
+			oa.ml.EmpyrealmConfig(sequence_length=8)
+		with self.assertRaises(TypeError):
+			oa.ml.EmpyrealmConfig(model_width=64)
 
 
 class GpuTimingStatsTest(unittest.TestCase):

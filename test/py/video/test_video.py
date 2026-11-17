@@ -390,5 +390,170 @@ class VideoSessionTypePresenceTest(unittest.TestCase):
 		self.assertIs(oa.VideoPacket, oa.video.VideoPacket)
 
 
+# ── Encode surface presence ─────────────────────────────────────────────────
+
+
+class VideoEncodeTypePresenceTest(unittest.TestCase):
+	TYPES = [
+		"VideoEncoder",
+		"VideoEncodeConfig",
+		"VideoEncodePlan",
+		"VideoEncodeProfile",
+		"VideoRateControl",
+		"VideoRecorder",
+		"VideoRecorderConfig",
+		"VideoExtent",
+		"VideoImageFormat",
+		"VideoPixelFormat",
+		"VideoDeviceCapabilities",
+		"VideoDecodeCapabilities",
+		"VideoDecodeFormats",
+		"VideoDecodeLevel",
+		"VideoDecodeProfile",
+		"VideoEncodeCapabilities",
+		"VideoEncodeCodecCapabilities",
+		"VideoEncodeFormats",
+		"H264Profile",
+		"H264PictureLayout",
+		"H265Profile",
+		"Av1Profile",
+		"Vp9Profile",
+		"VideoChromaSubsampling",
+		"VideoComponentBitDepth",
+	]
+
+	FUNCTIONS = [
+		"query_device_capabilities",
+		"query_decode_capabilities",
+		"query_decode_formats",
+		"query_encode_capabilities",
+		"query_encode_formats",
+	]
+
+	def test_types_are_accessible(self) -> None:
+		for name in self.TYPES:
+			with self.subTest(name=name):
+				self.assertIs(getattr(oa, name), getattr(oa.video, name))
+
+	def test_query_functions_exist(self) -> None:
+		for name in self.FUNCTIONS:
+			with self.subTest(name=name):
+				self.assertTrue(callable(getattr(oa.video, name)))
+
+
+# ── Encode enums ────────────────────────────────────────────────────────────
+
+
+class VideoEncodeEnumTest(unittest.TestCase):
+	def test_rate_control_members(self) -> None:
+		m = oa.VideoRateControl
+		self.assertNotEqual(m.ConstantQp, m.Cbr)
+		self.assertNotEqual(m.Cbr, m.Vbr)
+
+	def test_bit_depth_members(self) -> None:
+		m = oa.VideoComponentBitDepth
+		self.assertNotEqual(m.Eight, m.Ten)
+		self.assertNotEqual(m.Ten, m.Twelve)
+
+	def test_chroma_members(self) -> None:
+		m = oa.VideoChromaSubsampling
+		self.assertNotEqual(m.Yuv420, m.Yuv422)
+		self.assertNotEqual(m.Yuv422, m.Yuv444)
+
+	def test_codec_profile_members(self) -> None:
+		self.assertNotEqual(oa.H264Profile.High, oa.H264Profile.Baseline)
+		self.assertNotEqual(oa.H265Profile.Main, oa.H265Profile.Main10)
+		self.assertNotEqual(oa.Av1Profile.Main, oa.Av1Profile.Professional)
+		self.assertNotEqual(oa.Vp9Profile.Profile0, oa.Vp9Profile.Profile3)
+
+
+# ── Profile and config construction ─────────────────────────────────────────
+
+
+class VideoProfileConfigTest(unittest.TestCase):
+	def test_encode_profile_presets(self) -> None:
+		p8 = oa.VideoEncodeProfile.h264_high_420_8bit()
+		self.assertEqual(p8.codec(), oa.VideoCodec.H264)
+		p265 = oa.VideoEncodeProfile.h265_main_420_8bit()
+		self.assertEqual(p265.codec(), oa.VideoCodec.H265)
+
+	def test_encode_profile_explicit(self) -> None:
+		p = oa.VideoEncodeProfile.h265(
+			oa.H265Profile.Main10,
+			oa.VideoChromaSubsampling.Yuv420,
+			oa.VideoComponentBitDepth.Ten,
+			oa.VideoComponentBitDepth.Ten,
+		)
+		self.assertEqual(p.codec(), oa.VideoCodec.H265)
+
+	def test_decode_profile_presets(self) -> None:
+		self.assertEqual(
+			oa.VideoDecodeProfile.h264_420_8bit(oa.H264Profile.High).codec(),
+			oa.VideoCodec.H264,
+		)
+		self.assertEqual(
+			oa.VideoDecodeProfile.h265_420(
+				oa.H265Profile.Main10, oa.VideoComponentBitDepth.Ten
+			).codec(),
+			oa.VideoCodec.H265,
+		)
+		self.assertEqual(
+			oa.VideoDecodeProfile.av1_420(
+				oa.Av1Profile.Main, oa.VideoComponentBitDepth.Ten, False
+			).codec(),
+			oa.VideoCodec.Av1,
+		)
+		self.assertEqual(
+			oa.VideoDecodeProfile.vp9_420(
+				oa.Vp9Profile.Profile0, oa.VideoComponentBitDepth.Eight
+			).codec(),
+			oa.VideoCodec.Vp9,
+		)
+
+	def test_encode_config_defaults(self) -> None:
+		cfg = oa.VideoEncodeConfig(
+			oa.VideoEncodeProfile.h265_main_420_8bit(), 1280, 720
+		)
+		self.assertEqual(cfg.width, 1280)
+		self.assertEqual(cfg.height, 720)
+		self.assertEqual(cfg.frame_rate, 30)
+		self.assertEqual(cfg.gop_size, 30)
+
+	def test_extent_round_trip(self) -> None:
+		ext = oa.VideoExtent(1280, 720)
+		self.assertEqual((ext.width, ext.height), (1280, 720))
+
+
+# ── Encoder session (GPU) ───────────────────────────────────────────────────
+
+
+@require_gpu
+class VideoEncoderSessionTest(unittest.TestCase):
+	@classmethod
+	def setUpClass(cls) -> None:
+		cls.engine = oa.Engine()
+
+	def setUp(self) -> None:
+		caps = oa.video.query_device_capabilities(self.engine)
+		if not caps.supports_h265_encode or not caps.encoder_sessions_available:
+			self.skipTest("device does not admit H.265 encode sessions")
+
+	def test_capability_and_encoder_round_trip(self) -> None:
+		profile = oa.VideoEncodeProfile.h265_main_420_8bit()
+		caps = oa.video.query_encode_capabilities(self.engine, profile)
+		config = oa.VideoEncodeConfig(profile, 640, 360, gop_size=4)
+		config.validate_for_device(caps)
+		encoder = oa.video.VideoEncoder(self.engine, config)
+		try:
+			self.assertTrue(encoder.is_open)
+			frame = bytes(640 * 360 * 4)
+			packet = encoder.encode(frame, 0)
+			self.assertGreater(len(packet.bitstream()), 0)
+			self.assertIsInstance(encoder.flush(), list)
+		finally:
+			encoder.close()
+		self.assertFalse(encoder.is_open)
+
+
 if __name__ == "__main__":
 	unittest.main()

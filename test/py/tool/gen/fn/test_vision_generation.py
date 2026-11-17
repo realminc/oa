@@ -35,8 +35,8 @@ class VisionGenerationTests(unittest.TestCase):
 		self.assertIn("DO NOT EDIT", text)
 		self.assertNotIn("{{", text)
 		self.assertNotRegex(text, r"\b\w+_(?:impl|dispatch)\(")
-		self.assertIn('#[path = "vision/detection.gen.rs"]', (ROOT / "src/rs/vision.rs").read_text())
-		self.assertNotIn("@generated", (ROOT / "src/rs/vision/detection.rs").read_text())
+		self.assertIn('#[path = "vision/detection.gen.rs"]', (ROOT / "src/rs/lib/vision.rs").read_text())
+		self.assertNotIn("@generated", (ROOT / "src/rs/lib/vision/detection.rs").read_text())
 		for record in self.schema["types"]:
 			self.assertEqual(text.count(f"pub struct {record['name']} {{"), 1)
 		self.assertIn("pub max_detections: i32", text)

@@ -706,12 +706,21 @@ test_vk!(
 			interior[0] > 200 && interior[1] < 40 && interior[2] < 40,
 			"grid cell interior lost the red background: {interior:?}"
 		);
-		// (32,8) sits on the vertical minor line through the origin — the
-		// 1.5px-thick green minor tier dominates.
-		let line = px(32, 8);
+		// (16,8) sits on the vertical minor line one spacing left of the
+		// origin — no higher tier shares it, so the 1.5px-thick green minor
+		// tier dominates.
+		let line = px(16, 8);
 		assert!(
 			line[1] > 120 && line[0] < 120,
-			"minor grid line missing at (32,8): {line:?}"
+			"minor grid line missing at (16,8): {line:?}"
+		);
+		// (32,8) sits on the origin-crossing column, which is minor index 0
+		// and therefore also a major index: the thicker blue major tier
+		// blends over the minor line.
+		let major = px(32, 8);
+		assert!(
+			major[2] > 120 && major[1] < 120,
+			"major grid line missing at (32,8): {major:?}"
 		);
 		renderer.close()?;
 		Ok(())

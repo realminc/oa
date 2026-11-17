@@ -53,7 +53,7 @@ class BenchTests(unittest.TestCase):
 		# The profiler prints the caller-selected candidate route first and its
 		# in-process structural-off reference second; every entry measures the
 		# candidate, whose route its env selects.
-		profiler = PROFILING.parents[1] / "sdk/rs/benchmarks/ml/nlp/char_transformer.rs"
+		profiler = PROFILING.parents[1] / "sdk/rs/benchmarks/ml/nlp/profile_char_transformer.rs"
 		source = profiler.read_text(encoding="utf-8")
 		template = "forward + backward GPU median: fused {:.3} ms · unfused {:.3} ms"
 		self.assertIn(f'"{template}"', source)
@@ -68,7 +68,7 @@ class BenchTests(unittest.TestCase):
 		workloads = [
 			workload
 			for workload in suite.load_suite(PROFILING / "suite_jit.json")
-			if workload["command"][0].endswith("/ml_nlp_char_transformer_profile")
+			if workload["command"][0].endswith("/profile_ml_nlp_char_transformer")
 		]
 		self.assertEqual(len(workloads), 3)
 		for workload in workloads:

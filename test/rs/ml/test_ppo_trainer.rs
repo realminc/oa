@@ -547,6 +547,9 @@ test_vk!(
 			max_drawdown: 0.2,
 			perpetual: true,
 			liquidate_at_horizon: true,
+			maker_window_steps: 0,
+			maker_requotes: 0,
+			maker_fee: 0.0,
 		};
 		let make_series = |n: usize, shift: f32| TradingSeries {
 			timestamps: (0..n).map(|i| i as i64 * 1_000_000).collect(),
@@ -570,7 +573,7 @@ test_vk!(
 			let model = CategoricalActorCritic::new(
 				&engine,
 				CategoricalActorCriticConfig {
-					observation_size: 16,
+					observation_size: 20,
 					action_count: 3,
 					hidden_size: 8,
 					seed: 77,
@@ -594,7 +597,7 @@ test_vk!(
 					environments: 2,
 					update_epochs: 2,
 					update_minibatch_size: 4,
-					observation_shape: vec![16],
+					observation_shape: vec![20],
 					seed,
 					enable_gpu_timing: true,
 					..PpoTrainerConfig::default()
@@ -717,6 +720,9 @@ test_vk!(
 			max_drawdown: 0.9,
 			perpetual: true,
 			liquidate_at_horizon: true,
+			maker_window_steps: 0,
+			maker_requotes: 0,
+			maker_fee: 0.0,
 		};
 		let source = TradingSeries {
 			timestamps: (0..9).map(|i| i * 1_000_000).collect(),

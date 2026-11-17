@@ -1,4 +1,4 @@
-"""SDK audio command-recognition vocabulary (mirrors ``oa::sdk::ml::audio``).
+"""SDK audio command-recognition vocabulary (mirrors ``oa_sdk::ml::audio``).
 
 Speech-commands dataset loading, single-dispatch batched mel features, the
 canonical CNN classifier builder, and the recorded OARS oracle values for the

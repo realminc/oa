@@ -1,79 +1,5 @@
 use super::*;
-
-fn measured(specialized: u64, tape: u64) -> RouteObservation {
-	let mut observation = RouteObservation::new();
-	for _ in 0..MIN_ROUTE_SAMPLES {
-		observation.push(ObservedRoute::Specialized, specialized);
-		observation.push(ObservedRoute::Tape, tape);
-	}
-	observation
-}
-
-#[test]
-fn winner_refreshes_losing_route_without_persisting_probe_as_winner() {
-	let mut observation = measured(50, 100);
-	observation.records = REFRESH_PERIOD;
-	assert!(!JitFusion::select_route(&mut observation, true));
-	assert!(
-		observation.specialized,
-		"tape refresh must not replace the winner"
-	);
-	observation.records += 1;
-	assert!(JitFusion::select_route(&mut observation, true));
-
-	observation = measured(150, 100);
-	observation.records = REPROBE_PERIOD;
-	assert!(JitFusion::select_route(&mut observation, true));
-	assert!(
-		!observation.specialized,
-		"specialized probe must not replace the winner"
-	);
-	observation.records += 1;
-	assert!(!JitFusion::select_route(&mut observation, true));
-	assert!(JitFusion::select_route(&mut observation, false));
-}
-
-#[test]
-fn live_windows_require_four_samples_and_hysteresis_preserves_winner() {
-	let mut observation = measured(100, 100);
-	observation.records = 1;
-	assert!(
-		!observation.specialized,
-		"an unproven specialization is not the incumbent"
-	);
-	assert!(
-		!JitFusion::select_route(&mut observation, true),
-		"equal timings cannot promote specialization"
-	);
-	observation.specialized = false;
-	assert!(!JitFusion::select_route(&mut observation, true));
-	observation.specialized = true;
-	assert!(JitFusion::select_route(&mut observation, true));
-	observation.specialized_ns.truncate(MIN_ROUTE_SAMPLES - 1);
-	assert!(JitFusion::select_route(&mut observation, true));
-	observation.specialized_ns.push_back(100);
-	observation.tape_ns.truncate(MIN_ROUTE_SAMPLES - 1);
-	assert!(!JitFusion::select_route(&mut observation, true));
-}
-
-#[test]
-fn persisted_evidence_requires_each_route_and_large_timings_compare_without_overflow() {
-	let mut observation = measured(u64::MAX / 2, u64::MAX);
-	observation.records = 1;
-	assert!(JitFusion::select_route(&mut observation, true));
-	observation.tape_ns.truncate(1);
-	let record = observation.record(1);
-	assert_eq!(record.sample_count, 1);
-	let mut restored = RouteObservation::restore(&record);
-	assert!(
-		JitFusion::select_route(&mut restored, true),
-		"under-sampled record must restart probing"
-	);
-	observation.specialized_ns.clear();
-	observation.tape_ns.clear();
-	observation.restored_samples = u32::MAX;
-	assert_eq!(observation.record(1).sample_count, u32::MAX);
-}
+use crate::runtime::dna::tuning::ObservedRoute;
 
 #[test]
 #[ignore = "explicit Vulkan device; proves unread timing pools do not form a Device cycle"]
@@ -109,7 +35,7 @@ fn unread_timing_pool_does_not_retain_owning_device() -> crate::Result<()> {
 #[test]
 #[ignore = "explicit Vulkan device; bounds failed JIT admissions without invoking Slang"]
 fn negative_pipeline_admissions_stay_bounded() -> crate::Result<()> {
-	use crate::runtime::dna::elementwise::{Instruction, Source};
+	use crate::runtime::dna::ir::elementwise::{Instruction, Source};
 	let index = std::env::var("OA_TEST_DEVICE_INDEX")
 		.expect("explicit device")
 		.parse::<usize>()
@@ -148,7 +74,7 @@ fn negative_pipeline_admissions_stay_bounded() -> crate::Result<()> {
 #[test]
 #[ignore = "explicit trusted Slang library and spirv-val; cached artifact needs no compiler session"]
 fn cached_artifact_is_usable_with_unavailable_compiler() -> crate::Result<()> {
-	use crate::runtime::dna::elementwise::{Instruction, Source};
+	use crate::runtime::dna::ir::elementwise::{Instruction, Source};
 	let library = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit compiler library");
 	let compiler = SlangCompiler::open(std::path::Path::new(&library))?;
 	let program = Program {

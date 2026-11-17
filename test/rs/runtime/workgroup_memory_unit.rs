@@ -40,7 +40,38 @@ fn rejects_overflow_and_truncated_artifacts() {
 fn sizes_every_registered_profile_artifact() -> crate::Result<()> {
 	for kernel in KernelId::ALL {
 		kernel.artifact().workgroup_memory_size()?;
-		kernel.bounded_artifact().workgroup_memory_size()?;
+	}
+	Ok(())
+}
+
+#[test]
+fn selected_catalog_respects_its_spirv_and_descriptor_contract() -> crate::Result<()> {
+	for kernel in KernelId::ALL {
+		let words = kernel.artifact().spirv_words()?;
+		let mut runtime_descriptors = false;
+		let mut cursor = 5;
+		while cursor < words.len() {
+			let instruction = words[cursor];
+			let count = usize::try_from(instruction >> 16).unwrap();
+			assert!(
+				count > 0 && cursor + count <= words.len(),
+				"{}",
+				kernel.report_name()
+			);
+			if instruction & 0xffff == 17 && count >= 2 && words[cursor + 1] == 5302 {
+				runtime_descriptors = true;
+			}
+			cursor += count;
+		}
+		if cfg!(oa_profile = "compatibility") {
+			assert!(words[1] <= 0x0001_0500, "{}", kernel.report_name());
+			assert!(!runtime_descriptors, "{}", kernel.report_name());
+		} else {
+			assert!(words[1] <= 0x0001_0600, "{}", kernel.report_name());
+			if kernel == KernelId::MatrixAddF32 {
+				assert!(runtime_descriptors);
+			}
+		}
 	}
 	Ok(())
 }

@@ -43,12 +43,15 @@ from .ntt import ntt_outputs
 from .paths import FN_ROOT
 from .pqc import (
 	generate_mldsa_keygen_shader,
+	generate_mldsa_mu_batch_shader,
+	generate_mldsa_ph_batch_shader,
+	generate_mldsa_mu_shader,
 	generate_mldsa_prehash_digest_shader,
 	generate_mldsa_prehash_layout_shader,
 	generate_mldsa_prehash_shader,
 	generate_mldsa_sign_shader,
 	generate_mldsa_sign_workspace_layout_shader,
-	generate_mldsa_verify_shader,
+	generate_mldsa_verify_mu_shader,
 	generate_mlkem_kem_shader,
 	generate_mlkem_keygen_shader,
 	generate_mlkem_shared_derive_shader,
@@ -72,6 +75,7 @@ from .signature import (
 	generate_signature_parity,
 )
 from .types import generate_types_file
+from .uistyle import generate_ui_style
 from .util import banner, format_rust
 from .vision import generate_vision_api
 
@@ -99,16 +103,16 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 	ml_parity, ml_parity_hash = schemas["ml_parity"]
 	exports, exports_hash = schemas["exports"]
 	outputs = {
-		root / "src/rs/core/operation/operation.gen.rs": format_rust(
+		root / "src/rs/lib/core/operation/operation.gen.rs": format_rust(
 			generate_operation_registry(schemas),
 			root,
 		),
-		root / "src/rs/matrix/elemwise.gen.rs": format_rust(generate_api(elementwise, elementwise_hash), root),
-		root / "src/rs/matrix/blas.gen.rs": format_rust(generate_blas_api(blas, blas_hash), root),
-		root / "src/rs/matrix/reduce.gen.rs": format_rust(
+		root / "src/rs/lib/matrix/elemwise.gen.rs": format_rust(generate_api(elementwise, elementwise_hash), root),
+		root / "src/rs/lib/matrix/blas.gen.rs": format_rust(generate_blas_api(blas, blas_hash), root),
+		root / "src/rs/lib/matrix/reduce.gen.rs": format_rust(
 			generate_reduce_api(reduce, reduce_hash), root
 		),
-		root / "src/rs/matrix/matrix.gen.rs": format_rust(
+		root / "src/rs/lib/matrix/matrix.gen.rs": format_rust(
 			generate_domain_methods(
 				"matrix",
 				domain_signatures("matrix", [elementwise, blas, reduce, rng, index, view]),
@@ -117,10 +121,10 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 			),
 			root,
 		),
-		root / "src/rs/runtime/dna/kernel/kernel.gen.rs": format_rust(
+		root / "src/rs/lib/runtime/dna/kernel/kernel.gen.rs": format_rust(
 			generate_kernel_manifest(schemas), root
 		),
-		root / "src/rs/runtime/dna/provider/dnn/generated.rs": format_rust(
+		root / "src/rs/lib/runtime/dna/provider/dnn/generated.rs": format_rust(
 			generate_dnn_roles(schemas), root
 		),
 		root / "test/rs/matrix/test_elemwise.gen.rs": format_rust(generate_test(elementwise, elementwise_hash), root),
@@ -128,28 +132,32 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 		root / "test/rs/matrix/test_reduce.gen.rs": format_rust(
 			generate_reduce_test(reduce, reduce_hash), root
 		),
-		root / "src/rs/ml/matrix/activation.gen.rs": format_rust(
+		root / "src/rs/lib/ml/matrix/activation.gen.rs": format_rust(
 			generate_ml_activation_api(activation, activation_hash), root
 		),
 	}
 	for name, (types_schema, types_hash) in sorted(schemas.items()):
 		if name.endswith("_types"):
 			domain = types_schema["domain"]
-			outputs[root / f"src/rs/{domain}/type.gen.rs"] = format_rust(
+			outputs[root / f"src/rs/lib/{domain}/type.gen.rs"] = format_rust(
 				generate_types_file(types_schema, types_hash, SCHEMAS[name].path.name), root
 			)
+	ui_style, ui_style_hash = schemas["ui_style"]
+	outputs[root / "src/rs/lib/ui/style.gen.rs"] = format_rust(
+		generate_ui_style(ui_style, ui_style_hash, SCHEMAS["ui_style"].path.name), root
+	)
 	outputs.update(matrix_autograd_outputs(root, [(elementwise, elementwise_hash), (blas, blas_hash), (reduce, reduce_hash), (rng, rng_hash), (index, index_hash), (view, view_hash)]))
-	outputs[root / "src/rs/ml/matrix/swiglu.gen.rs"] = format_rust(
+	outputs[root / "src/rs/lib/ml/matrix/swiglu.gen.rs"] = format_rust(
 		generate_ml_activation_api(activation, activation_hash, "swiglu"), root
 	)
 	for family in sorted({op["rust_family"] for op in ml["operations"] if "rust_family" in op}):
-		outputs[root / f"src/rs/ml/matrix/{family}.gen.rs"] = format_rust(
+		outputs[root / f"src/rs/lib/ml/matrix/{family}.gen.rs"] = format_rust(
 			generate_ml_matrix_family(ml, ml_hash, family), root
 		)
-	outputs[root / "src/rs/crypto/hash/batch.gen.rs"] = format_rust(generate_cryptography_api(cryptography, cryptography_hash, "hash"), root)
+	outputs[root / "src/rs/lib/crypto/hash/batch.gen.rs"] = format_rust(generate_cryptography_api(cryptography, cryptography_hash, "hash"), root)
 	outputs.update(cryptography_hash_binding_outputs(root, cryptography, cryptography_hash))
 	outputs.update(bigint_outputs(root, bigint, bigint_hash))
-	outputs[root / "src/rs/crypto/bigint/parity.gen.rs"] = format_rust(
+	outputs[root / "src/rs/lib/crypto/bigint/parity.gen.rs"] = format_rust(
 		generate_signature_parity(
 			"crate::crypto::bigint",
 			domain_signatures("crypto::bigint", [bigint]),
@@ -159,7 +167,7 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 		root,
 	)
 	outputs.update(ntt_outputs(root, ntt, ntt_hash))
-	outputs[root / "src/rs/crypto/ntt/parity.gen.rs"] = format_rust(
+	outputs[root / "src/rs/lib/crypto/ntt/parity.gen.rs"] = format_rust(
 		generate_signature_parity(
 			"crate::crypto::ntt",
 			domain_signatures("crypto::ntt", [ntt]),
@@ -169,7 +177,7 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 		root,
 	)
 	outputs.update(merkle_outputs(root, merkle, merkle_hash, cryptography))
-	outputs[root / "src/rs/crypto/merkle/parity.gen.rs"] = format_rust(
+	outputs[root / "src/rs/lib/crypto/merkle/parity.gen.rs"] = format_rust(
 		generate_signature_parity(
 			"crate::crypto::merkle",
 			domain_signatures("crypto::merkle", [merkle]),
@@ -178,7 +186,7 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 		),
 		root,
 	)
-	outputs[root / "src/rs/ml/matrix/parity.gen.rs"] = format_rust(
+	outputs[root / "src/rs/lib/ml/matrix/parity.gen.rs"] = format_rust(
 		generate_signature_parity(
 			"crate::ml::matrix",
 			domain_signatures("ml::matrix", [activation]),
@@ -192,7 +200,7 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 	pqc_imports = {"MlDsaParameters": pqc_root}
 	device_names = {op["name"] for op in cryptography_pqc["device_api"]["operations"]} | {
 		"mldsa_verify_hash_message", "mldsa_verify_prehashed"}
-	outputs[root / "src/rs/crypto/pqc/device/parity.gen.rs"] = format_rust(
+	outputs[root / "src/rs/lib/crypto/pqc/device/parity.gen.rs"] = format_rust(
 		generate_signature_parity(
 			f"{pqc_root}::device",
 			[s for s in pqc_signatures if s["name"] in device_names],
@@ -202,7 +210,7 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 		),
 		root,
 	)
-	outputs[root / "src/rs/crypto/pqc/parity.gen.rs"] = format_rust(
+	outputs[root / "src/rs/lib/crypto/pqc/parity.gen.rs"] = format_rust(
 		generate_signature_parity(
 			f"{pqc_root}::verification",
 			[s for s in pqc_signatures if s["name"] not in device_names],
@@ -221,7 +229,7 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 		domain_paths = dict(SESSION_TYPE_PATHS)
 		if parity_domain == "ml":
 			domain_paths.update(ml_parity.get("type_paths") or {})
-		outputs[root / f"src/rs/{parity_domain}/parity.gen.rs"] = format_rust(
+		outputs[root / f"src/rs/lib/{parity_domain}/parity.gen.rs"] = format_rust(
 			generate_signature_parity(
 				f"crate::{parity_domain}",
 				domain_sigs,
@@ -240,16 +248,16 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 			outputs[root / kernel["source"]] = generate_merkle_proof_shader(kernel, cryptography_hash, cryptography["proof_layout"])
 	outputs[root / "src/slang/core/math/poseidon2.slang"] = generate_poseidon2_constants(cryptography, cryptography_hash)
 	outputs.update(pqc_device_outputs(root, cryptography_pqc, cryptography_pqc_hash))
-	outputs[root / "src/rs/crypto/pqc/verify.gen.rs"] = format_rust(generate_cryptography_api(cryptography_pqc, cryptography_pqc_hash, "verify"), root)
-	outputs[root / "src/rs/vision/detection.gen.rs"] = format_rust(generate_vision_api(vision, vision_hash), root)
+	outputs[root / "src/rs/lib/crypto/pqc/verify.gen.rs"] = format_rust(generate_cryptography_api(cryptography_pqc, cryptography_pqc_hash, "verify"), root)
+	outputs[root / "src/rs/lib/vision/detection.gen.rs"] = format_rust(generate_vision_api(vision, vision_hash), root)
 	for category in ("signal", "transform"):
-		outputs[root / f"src/rs/audio/{category}.gen.rs"] = format_rust(generate_audio_api(audio, audio_hash, category), root)
-	outputs[root / "src/rs/audio/audio.gen.rs"] = format_rust(
+		outputs[root / f"src/rs/lib/audio/{category}.gen.rs"] = format_rust(generate_audio_api(audio, audio_hash, category), root)
+	outputs[root / "src/rs/lib/audio/audio.gen.rs"] = format_rust(
 		generate_domain_methods("audio", domain_signatures("audio", [audio]), audio_hash, "audio.json"), root
 	)
 	for category in IMAGE_CATEGORIES:
-		outputs[root / f"src/rs/image/{category}.gen.rs"] = format_rust(generate_image_api(image, image_hash, category), root)
-	outputs[root / "src/rs/image/image.gen.rs"] = format_rust(
+		outputs[root / f"src/rs/lib/image/{category}.gen.rs"] = format_rust(generate_image_api(image, image_hash, category), root)
+	outputs[root / "src/rs/lib/image/image.gen.rs"] = format_rust(
 		generate_domain_methods("image", domain_signatures("image", [image]), image_hash, "image.json"), root
 	)
 	matrix_py_rust, matrix_py_stub, matrix_py_methods = generate_python_domain(
@@ -292,13 +300,15 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 	outputs[root / "src/slang/crypto/pqc/mldsa/mldsa_prehash_digest.slang"] = generate_mldsa_prehash_digest_shader(cryptography_pqc, cryptography_pqc_hash)
 	outputs[root / "src/slang/crypto/pqc/mldsa/mldsa_sign_workspace_layout.slang"] = generate_mldsa_sign_workspace_layout_shader(cryptography_pqc, cryptography_pqc_hash)
 	outputs[root / "src/slang/crypto/pqc/mldsa/mldsa_prehash.slang"] = generate_mldsa_prehash_shader(cryptography_pqc, cryptography_pqc_hash)
-	for kernel in cryptography_pqc["kernels"]:
-		outputs[root / kernel["source"]] = generate_mldsa_verify_shader(kernel, cryptography_pqc_hash)
 	for kernel in cryptography_pqc.get("private_kernels", []):
 		outputs[root / kernel["source"]] = (generate_mlkem_keygen_shader(kernel, cryptography_pqc_hash)
 			if kernel["name"] == "ml_kem_keygen" else generate_mldsa_keygen_shader(kernel, cryptography_pqc_hash)
 			if kernel["name"] == "ml_dsa_keygen" else generate_mldsa_sign_shader(kernel, cryptography_pqc_hash)
-			if kernel["name"] in ("ml_dsa_sign", "ml_dsa_sign_message", "ml_dsa_sign_prehashed", "ml_dsa_sign_hash_message") else generate_mlkem_shared_derive_shader(kernel, cryptography_pqc_hash)
+			if kernel["name"] == "ml_dsa_sign" else generate_mldsa_mu_shader(kernel, cryptography_pqc_hash)
+			if kernel["name"] == "ml_dsa_mu" else generate_mldsa_mu_batch_shader(kernel, cryptography_pqc_hash)
+			if kernel["name"] == "ml_dsa_mu_batch" else generate_mldsa_ph_batch_shader(kernel, cryptography_pqc_hash)
+			if kernel["name"] == "ml_dsa_ph_batch" else generate_mldsa_verify_mu_shader(kernel, cryptography_pqc_hash)
+			if kernel["name"] == "ml_dsa_verify_mu" else generate_mlkem_shared_derive_shader(kernel, cryptography_pqc_hash)
 			if kernel["name"] == "ml_kem_shared_derive" else generate_mlkem_kem_shader(kernel, cryptography_pqc_hash))
 	autograd_families = sorted(
 		{
@@ -308,13 +318,13 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 		}
 	)
 	for family in autograd_families:
-		outputs[root / f"src/rs/ml/autograd/{family}.gen.rs"] = format_rust(
+		outputs[root / f"src/rs/lib/ml/autograd/{family}.gen.rs"] = format_rust(
 			generate_ml_autograd_attachments(ml, ml_hash, family), root
 		)
-		outputs[root / f"src/rs/ml/autograd/node/{family}.gen.rs"] = format_rust(
+		outputs[root / f"src/rs/lib/ml/autograd/node/{family}.gen.rs"] = format_rust(
 			generate_ml_autograd_records(ml, ml_hash, family), root
 		)
-	outputs[root / "src/rs/ml/autograd/node/operation.gen.rs"] = format_rust(
+	outputs[root / "src/rs/lib/ml/autograd/node/operation.gen.rs"] = format_rust(
 		generate_ml_autograd_routing(ml, ml_hash), root
 	)
 	for operation in elementwise["operations"]:

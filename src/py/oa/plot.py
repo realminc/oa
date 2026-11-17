@@ -3,11 +3,14 @@
 from ._native import (
 	Axes,
 	BarStyle,
+	BoxStyle,
 	CellRect,
 	Figure,
 	FigureConfig,
+	FigureView,
 	HeatmapStyle,
 	LineStyle,
+	PlotScale,
 	PlotTheme,
 	ScatterStyle,
 )
@@ -15,11 +18,14 @@ from ._native import (
 __all__ = [
 	"Axes",
 	"BarStyle",
+	"BoxStyle",
 	"CellRect",
 	"Figure",
 	"FigureConfig",
+	"FigureView",
 	"HeatmapStyle",
 	"LineStyle",
+	"PlotScale",
 	"PlotTheme",
 	"ScatterStyle",
 ]

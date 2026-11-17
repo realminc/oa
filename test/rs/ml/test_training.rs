@@ -466,7 +466,7 @@ test_vk!(
 );
 
 test_vk!(
-	cross_entropy_capture_retains_one_semantic_operation_with_three_executable_nodes,
+	cross_entropy_capture_retains_one_semantic_operation_with_two_executable_nodes,
 	engine,
 	{
 		let logits = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, 2.0, 3.0, -1.0, 0.5, 0.25])?;
@@ -476,14 +476,14 @@ test_vk!(
 		let lowering = plan.semantic_lowering();
 
 		assert_eq!(diagnostics.semantic_operation_count(), 1);
-		assert_eq!(diagnostics.node_count(), 3);
-		assert_eq!(lowering.schema_owned_node_count(), 3);
+		assert_eq!(diagnostics.node_count(), 2);
+		assert_eq!(lowering.schema_owned_node_count(), 2);
 		assert_eq!(lowering.compatibility_node_count(), 0);
 		assert_eq!(lowering.direct_op_count(), 0);
 		assert_eq!(lowering.decomposed_op_count(), 1);
-		assert_eq!(lowering.maximum_nodes_per_op(), 3);
+		assert_eq!(lowering.maximum_nodes_per_op(), 2);
 		let operation = plan.semantic_graph().operations()[0].id();
-		assert_eq!(lowering.executable_node_count(operation), 3);
+		assert_eq!(lowering.executable_node_count(operation), 2);
 
 		engine.submit(&plan)?.wait()?;
 		let expected = cpu_cross_entropy(&[1.0, 2.0, 3.0, -1.0, 0.5, 0.25], &[2, 1], 3);
@@ -1044,12 +1044,12 @@ test_vk!(
 test_vk!(embedding_and_reshape_reject_invalid_contracts, engine, {
 	let weight = oa::Matrix::new_from_f32(&engine, [3, 2], &[0.0; 6])?;
 	let embedding = oa::ml::nn::Embedding::new_from_matrix(weight)?;
-	let signed = oa::Matrix::new_from_slice(&engine, [2], &[0_i32; 2])?;
+	let floats = oa::Matrix::new_from_f32(&engine, [2], &[0.0, 1.0])?;
 	assert_eq!(
 		embedding
-			.forward(&signed)
+			.forward(&floats)
 			.err()
-			.expect("signed embedding indices were accepted")
+			.expect("floating-point embedding indices were accepted")
 			.kind(),
 		oa::ErrorKind::InvalidArgument
 	);

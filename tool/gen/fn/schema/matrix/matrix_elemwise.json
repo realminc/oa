@@ -82,6 +82,7 @@
       "shape_rule": "broadcast",
       "doc": "Add two matrices elementwise using multidirectional broadcasting.",
       "kernel_id": "MatrixAddF32",
+      "fusion_effects": [],
       "dnn": {
         "role": "add",
         "providers": ["residual_norm"]
@@ -245,6 +246,7 @@
       "shape_rule": "broadcast",
       "doc": "Subtract two FP32 matrices elementwise using multidirectional broadcasting.",
       "kernel_id": "MatrixSubF32",
+      "fusion_effects": [],
       "expression": "left - right",
       "test": {
         "left": [-2.0, 0.5, 4.0],
@@ -309,6 +311,7 @@
       "shape_rule": "broadcast",
       "doc": "Multiply two FP32 matrices elementwise.",
       "kernel_id": "MatrixMulF32",
+      "fusion_effects": [],
       "dnn": {
         "role": "multiply",
         "providers": ["gated_ffn"]
@@ -325,6 +328,7 @@
           "stable_id": 375,
           "name": "mul_broadcast",
           "kernel_id": "MatrixMulBroadcastF32",
+          "fusion_effects": [],
           "source": "src/slang/matrix/elemwise/mul_broadcast.slang",
           "dtype": "f32",
           "variant": "broadcast",
@@ -440,6 +444,7 @@
       "differentiation": "reverse",
       "doc": "Multiply every FP32 matrix element by a scalar.",
       "kernel_id": "MatrixScaleF32",
+      "fusion_effects": [],
       "expression": "input * push.scalar",
       "physical_write": {
         "writes": [{
@@ -580,7 +585,7 @@
       "kind": "unary_scalar",
       "doc": "Raise every FP32 matrix element to a scalar exponent.",
       "kernel_id": "MatrixPowF32",
-      "expression": "pow(input, push.scalar)",
+      "expression": "input < 0.0f && push.scalar == floor(push.scalar) ? (fmod(push.scalar, 2.0f) != 0.0f ? -pow(abs(input), push.scalar) : pow(abs(input), push.scalar)) : pow(input, push.scalar)",
       "scalar_name": "exponent",
       "test": {
         "input": [0.25, 1.0, 4.0],

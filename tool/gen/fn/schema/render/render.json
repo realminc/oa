@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "family": "render",
+  "domain": "render",
+  "dtype": "f32",
+  "contracts": [],
+  "kernels": [
+    {
+      "stable_id": 689, "name": "unlit_vert", "kernel_id": "RenderUnlitVert",
+      "source": "src/slang/render/unlit.vert.slang",
+      "stage": "vertex",
+      "push_fields": [["model_view_projection", "float4x4"], ["tint", "float4"], ["uv_scale", "float2"], ["uv_offset", "float2"]]
+    },
+    {
+      "stable_id": 690, "name": "unlit_frag", "kernel_id": "RenderUnlitFrag",
+      "source": "src/slang/render/unlit.frag.slang",
+      "stage": "fragment",
+      "push_fields": []
+    },
+    {
+      "stable_id": 691, "name": "flat_color_vert", "kernel_id": "RenderFlatColorVert",
+      "source": "src/slang/render/flat_color.vert.slang",
+      "stage": "vertex",
+      "push_fields": [["model_view_projection", "float4x4"], ["material_color", "float4"], ["opacity", "float32"]]
+    },
+    {
+      "stable_id": 692, "name": "flat_color_frag", "kernel_id": "RenderFlatColorFrag",
+      "source": "src/slang/render/flat_color.frag.slang",
+      "stage": "fragment",
+      "push_fields": []
+    },
+    {
+      "stable_id": 693, "name": "surface_vert", "kernel_id": "RenderSurfaceVert",
+      "source": "src/slang/render/surface.vert.slang",
+      "stage": "vertex",
+      "push_fields": [["model_view_projection", "float4x4"], ["model_matrix", "float4x4"]]
+    },
+    {
+      "stable_id": 694, "name": "surface_frag", "kernel_id": "RenderSurfaceFrag",
+      "source": "src/slang/render/surface.frag.slang",
+      "stage": "fragment",
+      "push_fields": []
+    },
+    {
+      "stable_id": 695, "name": "vertex_color_lit_vert", "kernel_id": "RenderVertexColorLitVert",
+      "source": "src/slang/render/vertex_color_lit.vert.slang",
+      "stage": "vertex",
+      "push_fields": [["view_projection", "float4x4"],["light_direction_ambient", "float4"]]
+    },
+    {
+      "stable_id": 696, "name": "vertex_color_lit_frag", "kernel_id": "RenderVertexColorLitFrag",
+      "source": "src/slang/render/vertex_color_lit.frag.slang",
+      "stage": "fragment",
+      "push_fields": []
+    }
+  ]
+}

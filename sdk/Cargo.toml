@@ -1,0 +1,216 @@
+[package]
+name = "sdk"
+version = "0.12.0"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+description = "OA SDK workloads, tutorials, examples and benchmarks"
+
+[lib]
+name = "sdk"
+path = "rs/lib/lib.rs"
+
+[dependencies]
+oa = { package = "oarust", version = "0.12.0", path = ".." }
+serde_json = "1"
+unicode-normalization = "0.1"
+unicode-general-category = "1"
+
+[dev-dependencies]
+libc = "0.2"
+anyhow = "1"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[[test]]
+name = "sdk"
+path = "../test/rs/test_sdk.rs"
+
+[[example]]
+name = "tu_core_mat_mul_intro"
+path = "rs/tutorials/core/tu_core_mat_mul_intro/tu_core_mat_mul_intro.rs"
+
+[[example]]
+name = "tu_core_device_canary"
+path = "rs/tutorials/core/tu_core_device_canary/tu_core_device_canary.rs"
+
+[[example]]
+name = "tu_core_engine_intro"
+path = "rs/tutorials/core/tu_core_engine_intro/tu_core_engine_intro.rs"
+
+[[example]]
+name = "bench_core_mat_mul"
+path = "rs/benchmarks/core/bench_mat_mul.rs"
+
+[[example]]
+name = "bench_core_memory"
+path = "rs/benchmarks/core/bench_memory.rs"
+
+[[example]]
+name = "bench_core_elemwise_chain"
+path = "rs/benchmarks/core/bench_elemwise_chain.rs"
+
+[[example]]
+name = "bench_core_vlm"
+path = "rs/benchmarks/core/bench_vlm.rs"
+
+[[example]]
+name = "bench_video_decode"
+path = "rs/benchmarks/video/bench_decode.rs"
+
+[[example]]
+name = "bench_video_encode"
+path = "rs/benchmarks/video/bench_encode.rs"
+
+[[example]]
+name = "tu_nlp_char_rnn"
+path = "rs/tutorials/ml/nlp/tu_nlp_char_rnn/tu_nlp_char_rnn.rs"
+
+[[example]]
+name = "tu_nlp_char_gru"
+path = "rs/tutorials/ml/nlp/tu_nlp_char_gru/tu_nlp_char_gru.rs"
+
+[[example]]
+name = "tu_nlp_char_transformer"
+path = "rs/tutorials/ml/nlp/tu_nlp_char_transformer/tu_nlp_char_transformer.rs"
+
+[[example]]
+name = "tu_nlp_char_moe_transformer"
+path = "rs/tutorials/ml/nlp/tu_nlp_char_moe_transformer/tu_nlp_char_moe_transformer.rs"
+
+[[example]]
+name = "tu_nlp_char_mamba3"
+path = "rs/tutorials/ml/nlp/tu_nlp_char_mamba3/tu_nlp_char_mamba3.rs"
+
+[[example]]
+name = "tu_nlp_byte_rnn"
+path = "rs/tutorials/ml/nlp/tu_nlp_byte_rnn/tu_nlp_byte_rnn.rs"
+
+[[example]]
+name = "tu_nlp_byte_gru"
+path = "rs/tutorials/ml/nlp/tu_nlp_byte_gru/tu_nlp_byte_gru.rs"
+
+[[example]]
+name = "tu_nlp_byte_transformer"
+path = "rs/tutorials/ml/nlp/tu_nlp_byte_transformer/tu_nlp_byte_transformer.rs"
+
+[[example]]
+name = "tu_nlp_byte_moe"
+path = "rs/tutorials/ml/nlp/tu_nlp_byte_moe/tu_nlp_byte_moe.rs"
+
+[[example]]
+name = "tu_nlp_byte_mamba3"
+path = "rs/tutorials/ml/nlp/tu_nlp_byte_mamba3/tu_nlp_byte_mamba3.rs"
+
+[[example]]
+name = "tu_nlp_byte_empyrealm"
+path = "rs/tutorials/ml/nlp/tu_nlp_byte_empyrealm/tu_nlp_byte_empyrealm.rs"
+
+[[example]]
+name = "tu_nlp_bpe_rnn"
+path = "rs/tutorials/ml/nlp/tu_nlp_bpe_rnn/tu_nlp_bpe_rnn.rs"
+
+[[example]]
+name = "tu_nlp_bpe_gru"
+path = "rs/tutorials/ml/nlp/tu_nlp_bpe_gru/tu_nlp_bpe_gru.rs"
+
+[[example]]
+name = "tu_nlp_bpe_transformer"
+path = "rs/tutorials/ml/nlp/tu_nlp_bpe_transformer/tu_nlp_bpe_transformer.rs"
+
+[[example]]
+name = "tu_nlp_bpe_moe"
+path = "rs/tutorials/ml/nlp/tu_nlp_bpe_moe/tu_nlp_bpe_moe.rs"
+
+[[example]]
+name = "tu_nlp_bpe_mamba3"
+path = "rs/tutorials/ml/nlp/tu_nlp_bpe_mamba3/tu_nlp_bpe_mamba3.rs"
+
+[[example]]
+name = "profile_ml_audio_alm_tokenizer"
+path = "rs/benchmarks/ml/audio/profile_alm_tokenizer.rs"
+
+[[example]]
+name = "profile_ml_vision_commands_cnn"
+path = "rs/benchmarks/ml/vision/profile_commands_cnn.rs"
+
+[[example]]
+name = "profile_ml_nlp_char_transformer"
+path = "rs/benchmarks/ml/nlp/profile_char_transformer.rs"
+
+[[example]]
+name = "bench_ml_rl_ppo"
+path = "rs/benchmarks/ml/rl/bench_ppo.rs"
+
+[[example]]
+name = "tu_audio_commands"
+path = "rs/tutorials/ml/audio/tu_audio_commands/tu_audio_commands.rs"
+
+[[example]]
+name = "tu_rl_cart_pole_ppo"
+path = "rs/tutorials/ml/rl/tu_rl_cart_pole_ppo/tu_rl_cart_pole_ppo.rs"
+
+[[example]]
+name = "tu_rl_cart_pole_rollout"
+path = "rs/tutorials/ml/rl/tu_rl_cart_pole_rollout/tu_rl_cart_pole_rollout.rs"
+
+[[example]]
+name = "tu_rl_lunar_lander_ppo"
+path = "rs/tutorials/ml/rl/tu_rl_lunar_lander_ppo/tu_rl_lunar_lander_ppo.rs"
+
+[[example]]
+name = "ml_alm_train"
+path = "rs/apps/ml/alm/train.rs"
+
+[[example]]
+name = "ml_alm_generate"
+path = "rs/apps/ml/alm/generate.rs"
+
+[[example]]
+name = "ex_matrix"
+path = "rs/examples/core/ex_matrix.rs"
+
+[[example]]
+name = "ex_audio"
+path = "rs/examples/audio/ex_audio.rs"
+
+[[example]]
+name = "ex_crypto_shake256"
+path = "rs/examples/crypto/ex_crypto_shake256.rs"
+
+[[example]]
+name = "ex_image"
+path = "rs/examples/vision/ex_image.rs"
+
+[[example]]
+name = "ex_ml_regression"
+path = "rs/examples/ml/ex_ml_regression.rs"
+
+[[example]]
+name = "tu_plot_gallery"
+path = "rs/tutorials/plot/tu_plot_gallery/tu_plot_gallery.rs"
+
+[[example]]
+name = "tu_image_grid_classify"
+path = "rs/tutorials/plot/tu_image_grid_classify/tu_image_grid_classify.rs"
+
+[[example]]
+name = "tu_viewer_image"
+path = "rs/tutorials/vision/tu_viewer_image/tu_viewer_image.rs"
+
+[[example]]
+name = "tu_viewer_image_headless"
+path = "rs/tutorials/vision/tu_viewer_image_headless/tu_viewer_image_headless.rs"
+
+[[example]]
+name = "tu_viewer_audio"
+path = "rs/tutorials/vision/tu_viewer_audio/tu_viewer_audio.rs"
+
+[[example]]
+name = "tu_viewer_video"
+path = "rs/tutorials/vision/tu_viewer_video/tu_viewer_video.rs"
+
+[[example]]
+name = "tu_renderer_ui"
+path = "rs/tutorials/ui/tu_renderer_ui/tu_renderer_ui.rs"

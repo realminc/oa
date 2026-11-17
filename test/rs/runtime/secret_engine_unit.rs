@@ -356,62 +356,43 @@ fn secret_mlkem_keygen_rejects_alias_extent_and_foreign_storage() -> Result<()> 
 	let device = handle.state.borrow().device.clone();
 	let seed = SecretBuffer::new(&device, 64)?;
 	let private = SecretBuffer::new(&device, 1632)?;
-	let workspace = SecretBuffer::new(
-		&device,
-		crate::runtime::dna::kernel::KernelId::mlkem_keygen_workspace_bytes(),
-	)?;
-	let wrong_workspace = SecretBuffer::new(
-		&device,
-		crate::runtime::dna::kernel::KernelId::mlkem_keygen_workspace_bytes() - 4,
-	)?;
 	let public = Buffer::host_visible_storage(&device, 800)?;
 	let wrong = Buffer::host_visible_storage(&device, 804)?;
 	let before = handle.state.borrow().next_epoch;
 	assert!(
-		matches!(device.prepare_mlkem_keygen(seed.binding()?, seed.binding()?, &public, workspace.binding()?, 2),
+		matches!(device.prepare_mlkem_keygen(seed.binding()?, seed.binding()?, &public, 2),
 		Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 	);
 	assert!(
-		matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &wrong, workspace.binding()?, 2),
+		matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &wrong, 2),
 		Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 	);
 	assert!(
-		matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &public, workspace.binding()?, 4),
+		matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &public, 4),
 		Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 	);
 	let foreign = secret_test_engine()?;
 	let foreign_handle = foreign.handle();
 	let foreign_device = foreign_handle.state.borrow().device.clone();
 	let foreign_public = Buffer::host_visible_storage(&foreign_device, 800)?;
+	let foreign_private = SecretBuffer::new(&foreign_device, 1632)?;
 	assert!(
-		matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &foreign_public, workspace.binding()?, 2),
+		matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &foreign_public, 2),
 		Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 	);
-	let foreign_workspace = SecretBuffer::new(
-		&foreign_device,
-		crate::runtime::dna::kernel::KernelId::mlkem_keygen_workspace_bytes(),
-	)?;
-	for candidate in [&wrong_workspace, &foreign_workspace, &private] {
-		assert!(
-			matches!(device.prepare_mlkem_keygen(seed.binding()?, private.binding()?, &public, candidate.binding()?, 2),
-			Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
-		);
-	}
+	assert!(
+		matches!(device.prepare_mlkem_keygen(seed.binding()?, foreign_private.binding()?, &public, 2),
+		Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
+	);
 	assert_eq!(handle.state.borrow().next_epoch, before);
 	let final_consumer = engine.checkpoint()?;
 	handle.erase_secret_buffer(seed, &final_consumer)?.wait()?;
 	handle
 		.erase_secret_buffer(private, &final_consumer)?
 		.wait()?;
-	handle
-		.erase_secret_buffer(workspace, &final_consumer)?
-		.wait()?;
-	handle
-		.erase_secret_buffer(wrong_workspace, &final_consumer)?
-		.wait()?;
 	let foreign_completion = foreign.checkpoint()?;
 	foreign_handle
-		.erase_secret_buffer(foreign_workspace, &foreign_completion)?
+		.erase_secret_buffer(foreign_private, &foreign_completion)?
 		.wait()?;
 	Ok(())
 }
@@ -1127,44 +1108,35 @@ fn secret_mldsa_hash_message_rejects_invalid_inputs() -> Result<()> {
 	use crate::crypto::entropy::Entropy;
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
-	let device = handle.state.borrow().device.clone();
 	let (key, key_seed) = handle.generate_mldsa_key(44, Entropy::test_from_bytes(&[0x42; 32])?)?;
-	let message = Buffer::host_visible_storage(&device, 4)?;
-	let context = Buffer::host_visible_storage(&device, 4)?;
+	let message = Matrix::new_from_slice(&engine, [4], &[0_u8; 4])?;
+	let context = Matrix::new_from_slice(&engine, [4], &[0_u8; 4])?;
+	let oversized = Matrix::new_from_slice(&engine, [256], &[0_u8; 256])?;
 	let before = handle.state.borrow().next_epoch;
 	for algorithm in [0, 13, u32::MAX] {
-		assert!(
-			matches!(handle.sign_mldsa_hash_message(&key, &message, &context,
-			[0, 0], algorithm, Entropy::test_from_bytes(&[0; 32])?),
-			Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
-		);
-	}
-	for lengths in [[0, 256], [u32::MAX, 0], [5, 0], [0, 5]] {
-		assert!(
-			matches!(handle.sign_mldsa_hash_message(&key, &message, &context, lengths, 12,
-			Entropy::test_from_bytes(&[0; 32])?), Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
-		);
+		assert!(matches!(handle.pqc_mldsa_sign(&key, &message, &context,
+			Some(algorithm), Entropy::test_from_bytes(&[0; 32])?),
+			Err(error) if error.kind() == crate::ErrorKind::InvalidArgument));
 	}
 	assert!(
-		matches!(handle.sign_mldsa_hash_message(&key, &message, &message, [0, 0], 12,
+		matches!(handle.pqc_mldsa_sign(&key, &message, &oversized, Some(12),
 		Entropy::test_from_bytes(&[0; 32])?), Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 	);
 	assert!(
-		matches!(engine.capture(|| handle.sign_mldsa_hash_message(&key, &message, &context,
-		[0, 0], 12, Entropy::test_from_bytes(&[0; 32])?).map(|_| ())),
+		matches!(engine.capture(|| handle.pqc_mldsa_sign(&key, &message, &context,
+		Some(12), Entropy::test_from_bytes(&[0; 32])?).map(|_| ())),
 		Err(error) if error.kind() == crate::ErrorKind::FailedPrecondition)
 	);
 	let foreign = secret_test_engine()?;
-	let foreign_device = foreign.handle().state.borrow().device.clone();
-	let foreign_input = Buffer::host_visible_storage(&foreign_device, 4)?;
+	let foreign_input = Matrix::new_from_slice(&foreign, [4], &[0_u8; 4])?;
 	for (message, context) in [(&foreign_input, &context), (&message, &foreign_input)] {
 		assert!(
-			matches!(handle.sign_mldsa_hash_message(&key, message, context, [0, 0], 12,
+			matches!(handle.pqc_mldsa_sign(&key, message, context, Some(12),
 			Entropy::test_from_bytes(&[0; 32])?), Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 		);
 	}
 	assert!(
-		matches!(foreign.handle().sign_mldsa_hash_message(&key, &message, &context, [0, 0], 12,
+		matches!(foreign.handle().pqc_mldsa_sign(&key, &message, &context, Some(12),
 		Entropy::test_from_bytes(&[0; 32])?), Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 	);
 	assert_eq!(handle.state.borrow().next_epoch, before);
@@ -1254,7 +1226,6 @@ fn secret_mldsa_hash_message_all_parameters() -> Result<()> {
 	use ml_dsa::{MlDsa44, MlDsa65, MlDsa87, Signature, VerifyingKey};
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
-	let device = handle.state.borrow().device.clone();
 	let message = b"OA message-taking HashML-DSA signing integration";
 	let context = b"OA context";
 	let mut hash = [0u8; 64];
@@ -1267,38 +1238,28 @@ fn secret_mldsa_hash_message_all_parameters() -> Result<()> {
 		let (key, key_seed) =
 			handle.generate_mldsa_key(parameter, Entropy::test_from_bytes(&[0x42; 32])?)?;
 		let public = key.public.clone();
-		let input = Buffer::host_visible_storage(&device, (message.len() + 3) & !3)?;
-		let mut storage = vec![0xa5; input.size() as usize];
-		storage[..message.len()].copy_from_slice(message);
-		input.write(0, &storage)?;
-		let context_buffer = Buffer::host_visible_storage(&device, (context.len() + 3) & !3)?;
-		let mut context_storage = vec![0xa5; context_buffer.size() as usize];
-		context_storage[..context.len()].copy_from_slice(context);
-		context_buffer.write(0, &context_storage)?;
-		let (signature, status, entropy_erasure) = handle.sign_mldsa_hash_message(
+		let input = Matrix::new_from_slice(&engine, [message.len()], message)?;
+		let context_matrix = Matrix::new_from_slice(&engine, [context.len()], context)?;
+		let (signature, status, entropy_erasure) = handle.pqc_mldsa_sign(
 			&key,
 			&input,
-			&context_buffer,
-			[message.len() as u32, context.len() as u32],
-			12,
+			&context_matrix,
+			Some(12),
 			Entropy::test_from_bytes(&[0; 32])?,
 		)?;
 		drop(input);
-		drop(context_buffer);
+		drop(context_matrix);
 		handle.erase_mldsa_key(key)?.wait()?;
 		assert!(key_seed.try_is_complete()?);
 		assert_eq!(entropy_erasure.test_retained_allocation_count(), 3);
 		assert!(entropy_erasure.try_is_complete()?);
 		let mut pk = vec![0; public.size() as usize];
 		public.read(0, &mut pk)?;
-		let mut status_bytes = [0; 4];
-		status.read(0, &mut status_bytes)?;
-		assert_eq!(u32::from_le_bytes(status_bytes), 1);
-		let mut bytes = vec![0; signature.size() as usize];
-		signature.read(0, &mut bytes)?;
+		assert_eq!(status.read::<u32>()?, [1]);
+		let mut bytes = signature.read::<u8>()?;
 		let (_, _, _, wire_len) =
 			crate::runtime::dna::kernel::KernelId::mldsa_sign_layout(parameter).expect("layout");
-		assert!(bytes[wire_len as usize..].iter().all(|&n| n == 0));
+		assert_eq!(bytes.len(), wire_len as usize);
 		bytes.truncate(wire_len as usize);
 		macro_rules! verify {
 			($set:ty, $pk_len:expr, $sig_len:expr) => {{
@@ -1629,33 +1590,24 @@ fn secret_mlkem_consumer_cache_rejects_alias_extent_and_foreign_storage() -> Res
 	let seed = SecretBuffer::new(&device, 32)?;
 	let shared = SecretBuffer::new(&device, 32)?;
 	let private = SecretBuffer::new(&device, 1632)?;
-	let workspace = SecretBuffer::new(&device, 4096)?;
-	let short = SecretBuffer::new(&device, 4092)?;
-	let foreign_workspace = SecretBuffer::new(&foreign_device, 4096)?;
+	let foreign_secret = SecretBuffer::new(&foreign_device, 32)?;
 	let public = Buffer::host_visible_storage(&device, 800)?;
 	let ciphertext = Buffer::host_visible_storage(&device, 768)?;
 	let status = Buffer::host_visible_storage(&device, 4)?;
 	let before = handle.state.borrow().next_epoch;
 	crate::runtime::device::pqc::tests::assert_mlkem_cache_preflight(
 		&device,
-		[
-			&seed,
-			&shared,
-			&private,
-			&workspace,
-			&short,
-			&foreign_workspace,
-		],
+		[&seed, &shared, &private, &foreign_secret],
 		[&public, &ciphertext, &status],
 	)?;
 	assert_eq!(handle.state.borrow().next_epoch, before);
 	let completion = engine.checkpoint()?;
-	for owner in [seed, shared, private, workspace, short] {
+	for owner in [seed, shared, private] {
 		handle.erase_secret_buffer(owner, &completion)?.wait()?;
 	}
 	let completion = foreign.checkpoint()?;
 	other
-		.erase_secret_buffer(foreign_workspace, &completion)?
+		.erase_secret_buffer(foreign_secret, &completion)?
 		.wait()?;
 	Ok(())
 }

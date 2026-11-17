@@ -13,9 +13,9 @@ use super::super::SatelliteProtocol;
 use super::super::session::*;
 use super::*;
 
+use super::{CONTEXT_LENGTH, CORPUS, RNG_SEED, TRAINING_STEPS, satellite_byte_transformer};
 use crate::TcpListener;
 use crate::ml::{AdamW, GradientTape, Module, loss};
-use crate::sdk::ml::nlp::{ByteTransformer, CONTEXT_LENGTH, CORPUS, RNG_SEED, TRAINING_STEPS};
 use crate::{DType, Engine, Error, ErrorKind, Matrix, Result};
 
 const BATCH_SIZE: usize = 64;
@@ -119,7 +119,7 @@ fn hash_is_zero(hash: &[u8; 32]) -> bool {
 /// step-0 batch. Model construction is eager work; `Engine::checkpoint`
 /// submits it exactly once, matching the donor's ambient submit.
 fn build_frozen_inputs(engine: &Engine) -> Result<(Vec<f32>, Vec<u32>, Vec<u32>)> {
-	let model = ByteTransformer::new(engine)?;
+	let model = satellite_byte_transformer(engine)?;
 	let parameters: Vec<Matrix> = model
 		.all_parameters()?
 		.iter()
@@ -159,7 +159,7 @@ fn run_local_oracle(
 	let batch_count = inputs.len() / CONTEXT_LENGTH;
 	type OracleCapture = ([u8; 32], Matrix, Matrix, Vec<Matrix>, Vec<Matrix>);
 	let (plan, captured) = engine.capture(|| -> Result<OracleCapture> {
-		let model = ByteTransformer::new(engine)?;
+		let model = satellite_byte_transformer(engine)?;
 		let named = model.all_named_parameters()?;
 		let layout_hash = parameter_layout_hash(&named);
 		load_parameters(engine, &named, parameters)?;
@@ -249,7 +249,7 @@ fn run_local_gradient(
 	}
 	let batch_count = inputs.len() / CONTEXT_LENGTH;
 	let (plan, captured) = engine.capture(|| -> Result<([u8; 32], Matrix, Vec<Matrix>)> {
-		let model = ByteTransformer::new(engine)?;
+		let model = satellite_byte_transformer(engine)?;
 		let named = model.all_named_parameters()?;
 		let layout_hash = parameter_layout_hash(&named);
 		load_parameters(engine, &named, parameters)?;
@@ -297,7 +297,7 @@ fn apply_authoritative_gradient(
 	gradient_values: &[f32],
 ) -> Result<Vec<f32>> {
 	let (plan, updated) = engine.capture(|| -> Result<Vec<Matrix>> {
-		let model = ByteTransformer::new(engine)?;
+		let model = satellite_byte_transformer(engine)?;
 		let named = model.all_named_parameters()?;
 		load_parameters(engine, &named, parameters)?;
 		let parameters_ref = model.all_parameters()?;

@@ -28,6 +28,7 @@ PYTHON_ROUTES: dict[tuple[str, ...], str] = {
 	("profile", "memory"): "profiling/memory_compare.py",
 	("profile", "memory-rust"): "profiling/memory_rust.py",
 	("profile", "vlm"): "profiling/vlm_compare.py",
+	("profile", "graph-compare"): "profiling/graph_compare.py",
 }
 
 SHELL_ROUTES: dict[tuple[str, ...], str] = {
@@ -64,7 +65,7 @@ build
   audit crate <crate-file> <version>         crate audit
 
 profile
-  profile bench|suite|memory|memory-rust|vlm|clocks [args]
+  profile bench|suite|memory|memory-rust|vlm|graph-compare|clocks [args]
 
 release
   release snapshot [args]                    public snapshot (private tree)

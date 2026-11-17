@@ -1,0 +1,98 @@
+# tu_nlp_byte_empyrealm — Byte × Empyrealm hybrid
+
+The byte-tokenizer × Empyrealm hybrid cell of the
+[NLP tutorial matrix](../README.md) — same 576-character corpus, same
+300-step recipe and captured training lifecycle. This entry selects
+the tokenizer and model shown below. See
+[`tu_nlp_char_rnn`](../tu_nlp_char_rnn/tu_nlp_char_rnn.md) for the full
+walkthrough.
+
+## This cell
+
+| | |
+| --- | --- |
+| Tokenizer | the 256-token packed-U8 byte vocabulary (`ByteSampler`) — one token per source byte |
+| Model | `Empyrealm(Byte Embedding + Mamba-3/attention hybrid stack) → Linear(32→256)` |
+| Parameters | 73,848 |
+| Optimizer | AdamW(lr=0.003) — lower rate for the Mamba-3/Empyrealm family |
+
+The loop is a `prepare`/`record` pair per step — `GradientTape` → `cross_entropy` → `backward` → AdamW —
+driven by `oa.ml.ItTraining`, so the whole run is one captured GPU program replayed
+299 times (184 nodes for this model).
+
+## Measured — Surface Laptop 5 (ADL GT2)
+
+![Byte × Empyrealm hybrid training loss](asset/training-curve.png)
+
+Canonical 300-step training loss, recorded by this tutorial.
+
+| Loss init→final | Accuracy | Program nodes | Wall ms/step | Token/s |
+| --- | --- | --- | --- | --- |
+| 5.667→0.182 | 92.9% | 184 | 40.20 | 25.5K |
+
+Reference generation on the default recipe (asserted by the tutorial):
+
+```text
+prompt:    "to be"
+generated: "to be that is the question whether tis nobler in the mind to suffer the slings and ar"
+```
+
+## Run
+
+```bash
+python3 sdk/py/tutorials/ml/nlp/tu_nlp_byte_empyrealm/tu_nlp_byte_empyrealm.py
+```
+
+Regenerate the training-loss image from the repository root:
+
+```bash
+python3 sdk/py/tutorials/ml/nlp/tu_nlp_byte_empyrealm/tu_nlp_byte_empyrealm.py --plot sdk/py/tutorials/ml/nlp/tu_nlp_byte_empyrealm/asset/training-curve.png
+```
+
+On the default recipe the tutorial self-tests: loss regime, accuracy
+floor, exact reference generation, and `.oam` checkpoint round-trip.
+
+## Terminal output
+
+Recorded canonical 300-step run on Intel Iris Xe (ADL GT2), Mesa 26.2.7.
+Startup logs, intermediate progress updates and the plot-save path are
+omitted. Timings vary by run; these are not new benchmark baselines.
+
+```console
+╔══════════════════════════════════════════════════════════════════╗
+║  OA Tutorial — Empyrealm Core · autograd fidelity              ║
+╚══════════════════════════════════════════════════════════════════╝
+
+tokenizer: raw bytes · vocab=256
+Task: dense next-byte prediction at every position
+
+Model: Empyrealm(Byte Embedding + Mamba-3/attention hybrid stack) → Linear(32→256)
+params: 73848    Optimizer: AdamW(lr=0.003)
+
+
+  300/300 |██████████| 11.66s · 38.85 ms/step · 1.65K sample/s · 26.36K byte token/s · 26.36K byte/s · loss: 0.1824
+
+Summary:
+  loss: initial 5.667074 · final 0.182391 · mean 0.568823
+  Wall: 38.86 ms/step · 1.65K sample/s · 26.35K byte token/s · 26.35K byte/s
+  GPU (byte_empyrealm_training_step): mean 35.564 ms/step · p50 34.531 · p95 44.742 · min 25.538 · max 51.505 · 1.80K sample/s · 28.79K byte token/s · 28.79K byte/s · wall-GPU gap 8%
+  run: 11.66s · 300 steps · batch 64 · sequence 16 byte token/sample
+
+Evaluation:
+  Random-loss baseline ln(256) = 5.5452
+  byte-token accuracy: 92.9%
+  post-update evaluation loss: 0.179192
+
+Generation:
+  prompt: "to be"
+  generated: "to be that is the question whether tis nobler in the mind to suffer the slings and ar"
+program: 184 nodes · 1 recording · 299 cache hits · 0 uploads
+checkpoint: optimizer step, accuracy, and exact generation restored
+```
+
+## Source
+
+- [`tu_nlp_byte_empyrealm.py`](./tu_nlp_byte_empyrealm.py)
+- Shared training loop: [`../_nlp_common.py`](../_nlp_common.py)
+- [Suite README](../README.md)
+- Rust peer: [`sdk/rs/tutorials/ml/nlp/tu_nlp_byte_empyrealm`](../../../../../rs/tutorials/ml/nlp/tu_nlp_byte_empyrealm/tu_nlp_byte_empyrealm.md)

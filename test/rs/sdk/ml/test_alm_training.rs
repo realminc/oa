@@ -1,4 +1,4 @@
-use oa::sdk::ml::alm::training::{
+use sdk::ml::alm::training::{
 	PriorSpecialTokens, PriorWindow, TokenizerWindow, build_prior_windows, build_tokenizer_windows,
 	gather_prior_batch,
 };
@@ -109,7 +109,7 @@ test_vk!(
 	tiny_prior_training_uses_shared_iterator_and_autograd_lifecycle,
 	engine,
 	{
-		use oa::sdk::ml::alm::{
+		use sdk::ml::alm::{
 			AlmPrior, AlmPriorConfig,
 			training::{PriorTrainingConfig, train_prior},
 		};
@@ -156,7 +156,7 @@ test_vk!(
 	tiny_tokenizer_training_runs_reconstruction_velocity_and_ema_paths,
 	engine,
 	{
-		use oa::sdk::ml::alm::{
+		use sdk::ml::alm::{
 			AlmTokenizer, AlmTokenizerConfig,
 			training::{TokenizerTrainingConfig, train_tokenizer},
 		};
@@ -214,12 +214,10 @@ test_vk!(
 	{
 		use std::time::SystemTime;
 
-		use oa::{
-			ml::Module,
-			sdk::ml::alm::{
-				AlmTokenizer, AlmTokenizerConfig,
-				training::{StageCheckpointConfig, TokenizerTrainingConfig, train_tokenizer},
-			},
+		use oa::ml::Module;
+		use sdk::ml::alm::{
+			AlmTokenizer, AlmTokenizerConfig,
+			training::{StageCheckpointConfig, TokenizerTrainingConfig, train_tokenizer},
 		};
 		let directory = std::env::temp_dir().join(format!(
 			"oars-alm-resume-{}-{}",
@@ -365,12 +363,10 @@ test_vk!(
 	{
 		use std::time::SystemTime;
 
-		use oa::{
-			ml::Module,
-			sdk::ml::alm::{
-				AlmPrior, AlmPriorConfig,
-				training::{PriorTrainingConfig, StageCheckpointConfig, train_prior},
-			},
+		use oa::ml::Module;
+		use sdk::ml::alm::{
+			AlmPrior, AlmPriorConfig,
+			training::{PriorTrainingConfig, StageCheckpointConfig, train_prior},
 		};
 		let directory = std::env::temp_dir().join(format!(
 			"oars-alm-prior-resume-{}-{}",
@@ -474,7 +470,7 @@ test_vk!(
 	{
 		use std::{rc::Rc, time::SystemTime};
 
-		use oa::sdk::{
+		use sdk::{
 			data::HumanMl3dDataset,
 			ml::alm::{
 				Alm, AlmPrior, AlmPriorConfig, AlmTokenizer, AlmTokenizerConfig,
@@ -661,7 +657,7 @@ test_vk!(
 	{
 		use std::{rc::Rc, time::SystemTime};
 
-		use oa::sdk::{
+		use sdk::{
 			data::HumanMl3dDataset,
 			ml::alm::{
 				AlmPrior, AlmPriorConfig, AlmTokenizer, AlmTokenizerConfig, ClipText,

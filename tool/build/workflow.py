@@ -107,7 +107,9 @@ def install_python(profile: str, clean: bool) -> None:
 	)
 
 
-def build(profile: str, clean: bool, python: bool, python_only: bool) -> None:
+def build(
+	profile: str, clean: bool, python: bool, python_only: bool, sdk: bool
+) -> None:
 	if python_only:
 		install_python(profile, clean)
 		return
@@ -115,14 +117,30 @@ def build(profile: str, clean: bool, python: bool, python_only: bool) -> None:
 	if clean:
 		run("cargo", "clean", "--profile", "dev" if profile == "debug" else "release")
 		run(sys.executable, "tool/build/stage.py", "--clean", "--profile", profile)
-	command = ["cargo", "build", "--all-targets", "--all-features"]
+	scope = ["--workspace"] if sdk else ["--package", "oarust"]
+	command = ["cargo", "build", *scope, "--all-targets", "--all-features"]
 	if profile == "release":
 		command.insert(2, "--release")
 	run(*command)
+	package_scope = [] if sdk else ["--package", "oarust"]
 	if not clean:
-		run(sys.executable, "tool/build/stage.py", "--clean", "--profile", profile)
-	run(sys.executable, "tool/build/stage.py", "--profile", profile)
-	run(sys.executable, "tool/build/stage.py", "--profile", profile, "--tests")
+		run(
+			sys.executable,
+			"tool/build/stage.py",
+			"--clean",
+			"--profile",
+			profile,
+			*package_scope,
+		)
+	run(sys.executable, "tool/build/stage.py", "--profile", profile, *package_scope)
+	run(
+		sys.executable,
+		"tool/build/stage.py",
+		"--profile",
+		profile,
+		"--tests",
+		*package_scope,
+	)
 	if python:
 		install_python(profile, clean)
 
@@ -144,6 +162,7 @@ def main() -> None:
 	parser.add_argument("--clean-all", action="store_true", help="remove both build profiles and the Python venv")
 	parser.add_argument("--python", action="store_true", help="create a venv and install OA Python")
 	parser.add_argument("--python-only", action="store_true", help="install only OA Python")
+	parser.add_argument("--no-sdk", action="store_true", help="build and stage only the oarust package")
 	args = parser.parse_args()
 	if args.python and args.python_only:
 		parser.error("--python and --python-only are mutually exclusive")
@@ -154,7 +173,7 @@ def main() -> None:
 		return
 	if args.profile is None:
 		parser.error("--profile is required for a build")
-	build(args.profile, args.clean, args.python, args.python_only)
+	build(args.profile, args.clean, args.python, args.python_only, not args.no_sdk)
 
 
 if __name__ == "__main__":

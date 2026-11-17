@@ -6,6 +6,7 @@ from ._native import (
 	ViewerCanvasBackground,
 	ViewerConfig,
 	ViewerMode,
+	Workspace,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
 	"ViewerCanvasBackground",
 	"ViewerConfig",
 	"ViewerMode",
+	"Workspace",
 ]

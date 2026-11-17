@@ -340,5 +340,5 @@ def cryptography_hash_binding_outputs(root: Path, schema: dict[str, Any], schema
 		root / 'src/py/pyo3/crypto/hash.gen.rs': format_rust(rust, root),
 		root / 'src/py/oa/_gen/crypto_hash.py': facade,
 		root / 'src/py/oa/_gen/crypto_hash_native.pyi': stub,
-		root / 'src/rs/crypto/hash/exports.gen.rs': format_rust(banner(schema_hash, "//", "crypto_hash.json") + reexports, root),
+		root / 'src/rs/lib/crypto/hash/exports.gen.rs': format_rust(banner(schema_hash, "//", "crypto_hash.json") + reexports, root),
 	}

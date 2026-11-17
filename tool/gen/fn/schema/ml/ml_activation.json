@@ -177,6 +177,7 @@
 			"rust_family": "activation",
 			"kind": "unary",
 			"kernel_id": "MlReluF32",
+			"fusion_effects": [],
 			"doc": "Apply the rectified linear unit elementwise.",
 			"autograd": {
 				"node": "Relu",

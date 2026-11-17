@@ -220,9 +220,9 @@ test_vk_slow!(
 			let case = &group["tests"].as_array().unwrap()[0];
 			let pk = unhex(case["pk"].as_str().unwrap());
 			let mut sk = unhex(case["sk"].as_str().unwrap());
-			let parameter = match group["parameterSet"].as_str().unwrap() {
-				"ML-DSA-44" => MlDsaParameters::MlDsa44,
-				"ML-DSA-65" => MlDsaParameters::MlDsa65,
+			let parameter = match pk.len() {
+				1312 => MlDsaParameters::MlDsa44,
+				1952 => MlDsaParameters::MlDsa65,
 				_ => MlDsaParameters::MlDsa87,
 			};
 			let public = Matrix::new_from_slice(&engine, [pk.len()], &pk)?;

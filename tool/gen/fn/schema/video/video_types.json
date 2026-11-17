@@ -830,7 +830,7 @@
 					"name": "presentation_cache_bytes",
 					"type": "usize",
 					"visibility": "pub",
-					"doc": "Maximum retained planar bytes across the presentation cache."
+					"doc": "Maximum retained pixel-storage bytes across presentation history. GPU textures charge both packed RGBA and sampled image payloads; native decoder slots are never cached."
 				}
 			],
 			"variants": [],

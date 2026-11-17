@@ -28,11 +28,11 @@ class CryptographyGenerationTests(unittest.TestCase):
 			self.assertIn("DO NOT EDIT", text)
 			self.assertNotIn("{{", text)
 			self.assertNotIn("lowering::", text)
-			self.assertFalse((ROOT / f"src/rs/crypto/{family}/lowering.rs").exists())
+			self.assertFalse((ROOT / f"src/rs/lib/crypto/{family}/lowering.rs").exists())
 			for api in self.schemas[family]["rust_api"]:
 				self.assertEqual(text.count(f"fn {api['name']}("), 1)
-		self.assertEqual(self.render("pqc").count("engine.record_semantic("), 3)
-		self.assertIn('mod host;', (ROOT / "src/rs/crypto/pqc.rs").read_text())
+		self.assertEqual(self.render("pqc").count("engine.record_split_semantic("), 3)
+		self.assertIn('mod host;', (ROOT / "src/rs/lib/crypto/pqc.rs").read_text())
 
 	def test_map_order_does_not_change_abi(self):
 		for family, category in (("hash", "hash"), ("pqc", "verify")):
@@ -57,7 +57,7 @@ class CryptographyGenerationTests(unittest.TestCase):
 		for api in self.schemas["pqc"]["rust_api"]:
 			for contract in api["contracts"]:
 				self.assertEqual(text.count(f"::{contract.upper()},"), 1)
-		self.assertEqual(text.count("mldsa_prehash_bytes(algorithm)"), 2)
+		self.assertEqual(text.count("mldsa_prehash_bytes(algorithm)"), 3)
 		self.assertEqual(text.count("if batch_size == 0"), 3)
 		self.assertNotIn("algorithm.unwrap_or", text)
 		self.assertNotIn("attributes[..", text)
@@ -94,7 +94,7 @@ class CryptographyGenerationTests(unittest.TestCase):
 			lambda api: api["stages"].pop(),
 			lambda api: api["parameters"].pop(),
 			lambda api: api["contracts"].pop(),
-			lambda api: api["stages"][1]["push_constants"].update(batch_size="0"),
+			lambda api: api["stages"][1]["push_constants"].update(batch_size=""),
 			lambda api: api["contracts"].__setitem__(1, api["contracts"][0]),
 		):
 			with self.subTest(mutation=mutation):

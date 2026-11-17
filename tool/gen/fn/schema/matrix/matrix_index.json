@@ -36,6 +36,7 @@
 		{
 			"stable_id": 195,
 			"name": "top_k",
+			"fusion_effects": [],
 			"donor_op": "oa::FnMatrix::topK",
 			"kernel_id": "MatrixTopKF32",
 			"source": "src/slang/matrix/index/top_k.slang",
@@ -142,6 +143,7 @@
 		{
 			"stable_id": 348,
 			"name": "top_k_mask",
+			"fusion_effects": [],
 			"donor_op": "oa::FnMatrix::topKMask",
 			"kernel_id": "MatrixTopKMaskF32",
 			"source": "src/slang/matrix/index/top_k_mask.slang",
@@ -1539,6 +1541,7 @@
 				]
 			},
 			"kernel_id": "MatrixConcatF32",
+      "fusion_effects": [],
 			"source": "src/slang/matrix/index/concat.slang",
 			"variant": "generic",
 			"dtype": "u32",
@@ -1723,6 +1726,7 @@
 				]
 			},
 			"kernel_id": "MatrixTransposeF32",
+			"fusion_effects": [],
 			"source": "src/slang/matrix/index/transpose.slang",
 			"variant": "generic",
 			"workgroup_size": [

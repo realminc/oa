@@ -161,7 +161,7 @@ impl PythonVideoFrameTiming {
 
 /// Compressed video codec carried by a stream.
 #[pyclass(name = "VideoCodec", eq, eq_int)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PythonVideoCodec {
 	H264 = 0,
 	H265 = 1,
@@ -1008,6 +1008,1368 @@ impl PythonVideoFrame {
 	}
 }
 
+// ── Profile and capability enums ────────────────────────────────────────────
+
+macro_rules! video_enum {
+	($name:literal, $outer:ident, $inner:ident, { $($variant:ident),+ $(,)? }) => {
+		#[pyclass(name = $name, eq, eq_int)]
+		#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+		pub(crate) enum $outer {
+			$($variant,)+
+		}
+
+		impl From<oa::video::$inner> for $outer {
+			fn from(v: oa::video::$inner) -> Self {
+				match v {
+					$(oa::video::$inner::$variant => Self::$variant,)+
+				}
+			}
+		}
+
+		impl From<$outer> for oa::video::$inner {
+			fn from(v: $outer) -> Self {
+				match v {
+					$($outer::$variant => Self::$variant,)+
+				}
+			}
+		}
+	};
+}
+
+video_enum!("VideoChromaSubsampling", PythonVideoChromaSubsampling, VideoChromaSubsampling, {
+	Monochrome, Yuv420, Yuv422, Yuv444,
+});
+video_enum!("VideoComponentBitDepth", PythonVideoComponentBitDepth, VideoComponentBitDepth, {
+	Eight, Ten, Twelve,
+});
+video_enum!("H264Profile", PythonH264Profile, H264Profile, {
+	Baseline, Main, High, High10, High444Predictive,
+});
+video_enum!("H264PictureLayout", PythonH264PictureLayout, H264PictureLayout, {
+	Progressive, InterlacedInterleavedLines, InterlacedSeparatePlanes,
+});
+video_enum!("H265Profile", PythonH265Profile, H265Profile, {
+	Main, Main10, MainStillPicture, FormatRangeExtensions, ScreenContentCodingExtensions,
+});
+video_enum!("Av1Profile", PythonAv1Profile, Av1Profile, {
+	Main, High, Professional,
+});
+video_enum!("Vp9Profile", PythonVp9Profile, Vp9Profile, {
+	Profile0, Profile1, Profile2, Profile3,
+});
+video_enum!("VideoRateControl", PythonVideoRateControl, VideoRateControl, {
+	ConstantQp, Cbr, Vbr,
+});
+video_enum!("VideoPixelFormat", PythonVideoPixelFormat, VideoPixelFormat, {
+	Yuv420Planar8, Nv12, Yuv420Planar10, P010, P012,
+});
+
+// ── VideoExtent ─────────────────────────────────────────────────────────────
+
+/// Two-dimensional extent reported or requested without Vulkan types.
+#[pyclass(name = "VideoExtent")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoExtent {
+	inner: oa::video::VideoExtent,
+}
+
+impl PythonVideoExtent {
+	fn wrap(inner: oa::video::VideoExtent) -> Self {
+		Self { inner }
+	}
+}
+
+#[pymethods]
+impl PythonVideoExtent {
+	#[new]
+	pub fn new(width: u32, height: u32) -> Self {
+		Self::wrap(oa::video::VideoExtent { width, height })
+	}
+
+	#[getter]
+	pub fn width(&self) -> u32 {
+		self.inner.width
+	}
+
+	#[getter]
+	pub fn height(&self) -> u32 {
+		self.inner.height
+	}
+
+	pub fn __repr__(&self) -> String {
+		format!("VideoExtent({}x{})", self.inner.width, self.inner.height)
+	}
+}
+
+// ── VideoDecodeProfile ──────────────────────────────────────────────────────
+
+/// One complete decode profile presented to the selected device.
+#[pyclass(name = "VideoDecodeProfile")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoDecodeProfile {
+	inner: oa::video::VideoDecodeProfile,
+}
+
+#[pymethods]
+impl PythonVideoDecodeProfile {
+	/// Construct the common progressive H.264 4:2:0 8-bit profile.
+	#[staticmethod]
+	pub fn h264_420_8bit(profile: PythonH264Profile) -> Self {
+		Self {
+			inner: oa::video::VideoDecodeProfile::h264_420_8bit(profile.into()),
+		}
+	}
+
+	/// Construct the common H.265 4:2:0 profile at one component precision.
+	#[staticmethod]
+	pub fn h265_420(profile: PythonH265Profile, bit_depth: PythonVideoComponentBitDepth) -> Self {
+		Self {
+			inner: oa::video::VideoDecodeProfile::h265_420(profile.into(), bit_depth.into()),
+		}
+	}
+
+	/// Construct the common AV1 4:2:0 profile at one component precision.
+	#[staticmethod]
+	pub fn av1_420(
+		profile: PythonAv1Profile,
+		bit_depth: PythonVideoComponentBitDepth,
+		film_grain_support: bool,
+	) -> Self {
+		Self {
+			inner: oa::video::VideoDecodeProfile::av1_420(
+				profile.into(),
+				bit_depth.into(),
+				film_grain_support,
+			),
+		}
+	}
+
+	/// Construct the common VP9 4:2:0 profile at one component precision.
+	#[staticmethod]
+	pub fn vp9_420(profile: PythonVp9Profile, bit_depth: PythonVideoComponentBitDepth) -> Self {
+		Self {
+			inner: oa::video::VideoDecodeProfile::vp9_420(profile.into(), bit_depth.into()),
+		}
+	}
+
+	/// Construct an exact H.264 profile with explicit layout and precision.
+	#[staticmethod]
+	pub fn h264(
+		profile: PythonH264Profile,
+		picture_layout: PythonH264PictureLayout,
+		chroma_subsampling: PythonVideoChromaSubsampling,
+		luma_bit_depth: PythonVideoComponentBitDepth,
+		chroma_bit_depth: PythonVideoComponentBitDepth,
+	) -> Self {
+		Self {
+			inner: oa::video::VideoDecodeProfile::H264 {
+				profile: profile.into(),
+				picture_layout: picture_layout.into(),
+				chroma_subsampling: chroma_subsampling.into(),
+				luma_bit_depth: luma_bit_depth.into(),
+				chroma_bit_depth: chroma_bit_depth.into(),
+			},
+		}
+	}
+
+	/// Construct an exact H.265 profile with explicit precision.
+	#[staticmethod]
+	pub fn h265(
+		profile: PythonH265Profile,
+		chroma_subsampling: PythonVideoChromaSubsampling,
+		luma_bit_depth: PythonVideoComponentBitDepth,
+		chroma_bit_depth: PythonVideoComponentBitDepth,
+	) -> Self {
+		Self {
+			inner: oa::video::VideoDecodeProfile::H265 {
+				profile: profile.into(),
+				chroma_subsampling: chroma_subsampling.into(),
+				luma_bit_depth: luma_bit_depth.into(),
+				chroma_bit_depth: chroma_bit_depth.into(),
+			},
+		}
+	}
+
+	/// Construct an exact AV1 profile with explicit precision.
+	#[staticmethod]
+	pub fn av1(
+		profile: PythonAv1Profile,
+		film_grain_support: bool,
+		chroma_subsampling: PythonVideoChromaSubsampling,
+		luma_bit_depth: PythonVideoComponentBitDepth,
+		chroma_bit_depth: PythonVideoComponentBitDepth,
+	) -> Self {
+		Self {
+			inner: oa::video::VideoDecodeProfile::Av1 {
+				profile: profile.into(),
+				film_grain_support,
+				chroma_subsampling: chroma_subsampling.into(),
+				luma_bit_depth: luma_bit_depth.into(),
+				chroma_bit_depth: chroma_bit_depth.into(),
+			},
+		}
+	}
+
+	/// Construct an exact VP9 profile with explicit precision.
+	#[staticmethod]
+	pub fn vp9(
+		profile: PythonVp9Profile,
+		chroma_subsampling: PythonVideoChromaSubsampling,
+		luma_bit_depth: PythonVideoComponentBitDepth,
+		chroma_bit_depth: PythonVideoComponentBitDepth,
+	) -> Self {
+		Self {
+			inner: oa::video::VideoDecodeProfile::Vp9 {
+				profile: profile.into(),
+				chroma_subsampling: chroma_subsampling.into(),
+				luma_bit_depth: luma_bit_depth.into(),
+				chroma_bit_depth: chroma_bit_depth.into(),
+			},
+		}
+	}
+
+	/// Elementary codec selected by this profile.
+	pub fn codec(&self) -> PythonVideoCodec {
+		match self.inner {
+			oa::video::VideoDecodeProfile::H264 { .. } => PythonVideoCodec::H264,
+			oa::video::VideoDecodeProfile::H265 { .. } => PythonVideoCodec::H265,
+			oa::video::VideoDecodeProfile::Av1 { .. } => PythonVideoCodec::Av1,
+			oa::video::VideoDecodeProfile::Vp9 { .. } => PythonVideoCodec::Vp9,
+		}
+	}
+
+	pub fn __repr__(&self) -> String {
+		format!("VideoDecodeProfile(codec={:?})", self.codec())
+	}
+}
+
+// ── VideoEncodeProfile ──────────────────────────────────────────────────────
+
+/// One exact encode profile presented to the selected device.
+#[pyclass(name = "VideoEncodeProfile")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoEncodeProfile {
+	inner: oa::video::VideoEncodeProfile,
+}
+
+#[pymethods]
+impl PythonVideoEncodeProfile {
+	/// Construct the donor H.264 High 4:2:0 8-bit encode profile.
+	#[staticmethod]
+	pub fn h264_high_420_8bit() -> Self {
+		Self {
+			inner: oa::video::VideoEncodeProfile::h264_high_420_8bit(),
+		}
+	}
+
+	/// Construct the donor H.265 Main 4:2:0 8-bit encode profile.
+	#[staticmethod]
+	pub fn h265_main_420_8bit() -> Self {
+		Self {
+			inner: oa::video::VideoEncodeProfile::h265_main_420_8bit(),
+		}
+	}
+
+	/// Construct an exact H.264 profile with explicit precision.
+	#[staticmethod]
+	pub fn h264(
+		profile: PythonH264Profile,
+		chroma_subsampling: PythonVideoChromaSubsampling,
+		luma_bit_depth: PythonVideoComponentBitDepth,
+		chroma_bit_depth: PythonVideoComponentBitDepth,
+	) -> Self {
+		Self {
+			inner: oa::video::VideoEncodeProfile::H264 {
+				profile: profile.into(),
+				chroma_subsampling: chroma_subsampling.into(),
+				luma_bit_depth: luma_bit_depth.into(),
+				chroma_bit_depth: chroma_bit_depth.into(),
+			},
+		}
+	}
+
+	/// Construct an exact H.265 profile with explicit precision.
+	#[staticmethod]
+	pub fn h265(
+		profile: PythonH265Profile,
+		chroma_subsampling: PythonVideoChromaSubsampling,
+		luma_bit_depth: PythonVideoComponentBitDepth,
+		chroma_bit_depth: PythonVideoComponentBitDepth,
+	) -> Self {
+		Self {
+			inner: oa::video::VideoEncodeProfile::H265 {
+				profile: profile.into(),
+				chroma_subsampling: chroma_subsampling.into(),
+				luma_bit_depth: luma_bit_depth.into(),
+				chroma_bit_depth: chroma_bit_depth.into(),
+			},
+		}
+	}
+
+	/// Elementary codec selected by this profile.
+	pub fn codec(&self) -> PythonVideoCodec {
+		match self.inner {
+			oa::video::VideoEncodeProfile::H264 { .. } => PythonVideoCodec::H264,
+			oa::video::VideoEncodeProfile::H265 { .. } => PythonVideoCodec::H265,
+		}
+	}
+
+	pub fn __repr__(&self) -> String {
+		format!("VideoEncodeProfile(codec={:?})", self.codec())
+	}
+}
+
+// ── Capability and format reports ───────────────────────────────────────────
+
+/// One image representation usable for video output or reconstruction.
+#[pyclass(name = "VideoImageFormat")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoImageFormat {
+	inner: oa::video::VideoImageFormat,
+}
+
+impl PythonVideoImageFormat {
+	fn wrap(inner: oa::video::VideoImageFormat) -> Self {
+		Self { inner }
+	}
+}
+
+#[pymethods]
+impl PythonVideoImageFormat {
+	#[getter]
+	pub fn pixel_format(&self) -> PythonVideoPixelFormat {
+		self.inner.pixel_format().into()
+	}
+
+	#[getter]
+	pub fn optimal_tiling(&self) -> bool {
+		self.inner.optimal_tiling()
+	}
+
+	#[getter]
+	pub fn sampled(&self) -> bool {
+		self.inner.sampled()
+	}
+
+	#[getter]
+	pub fn storage(&self) -> bool {
+		self.inner.storage()
+	}
+
+	#[getter]
+	pub fn transfer_source(&self) -> bool {
+		self.inner.transfer_source()
+	}
+
+	#[getter]
+	pub fn transfer_destination(&self) -> bool {
+		self.inner.transfer_destination()
+	}
+
+	pub fn __repr__(&self) -> String {
+		format!("VideoImageFormat(pixel_format={:?})", self.pixel_format())
+	}
+}
+
+/// Codec-specific maximum level reported for a decode profile.
+#[pyclass(name = "VideoDecodeLevel")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoDecodeLevel {
+	inner: oa::video::VideoDecodeLevel,
+}
+
+#[pymethods]
+impl PythonVideoDecodeLevel {
+	#[getter]
+	pub fn codec(&self) -> PythonVideoCodec {
+		match self.inner {
+			oa::video::VideoDecodeLevel::H264(_) => PythonVideoCodec::H264,
+			oa::video::VideoDecodeLevel::H265(_) => PythonVideoCodec::H265,
+			oa::video::VideoDecodeLevel::Av1(_) => PythonVideoCodec::Av1,
+			oa::video::VideoDecodeLevel::Vp9(_) => PythonVideoCodec::Vp9,
+		}
+	}
+
+	/// Numeric bitstream level_idc or codec-equivalent level value.
+	#[getter]
+	pub fn level(&self) -> u32 {
+		match self.inner {
+			oa::video::VideoDecodeLevel::H264(v)
+			| oa::video::VideoDecodeLevel::H265(v)
+			| oa::video::VideoDecodeLevel::Av1(v)
+			| oa::video::VideoDecodeLevel::Vp9(v) => v,
+		}
+	}
+
+	pub fn __repr__(&self) -> String {
+		format!(
+			"VideoDecodeLevel(codec={:?}, level={})",
+			self.codec(),
+			self.level()
+		)
+	}
+}
+
+/// Device-level video queue and codec admission summary.
+#[pyclass(name = "VideoDeviceCapabilities")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoDeviceCapabilities {
+	inner: oa::video::VideoDeviceCapabilities,
+}
+
+#[pymethods]
+impl PythonVideoDeviceCapabilities {
+	#[getter]
+	pub fn decode_queue_family(&self) -> Option<u32> {
+		self.inner.decode_queue_family()
+	}
+
+	#[getter]
+	pub fn encode_queue_family(&self) -> Option<u32> {
+		self.inner.encode_queue_family()
+	}
+
+	#[getter]
+	pub fn supports_decode_result_status_queries(&self) -> bool {
+		self.inner.supports_decode_result_status_queries()
+	}
+
+	#[getter]
+	pub fn supports_encode_result_status_queries(&self) -> bool {
+		self.inner.supports_encode_result_status_queries()
+	}
+
+	#[getter]
+	pub fn supports_h264_decode(&self) -> bool {
+		self.inner.supports_h264_decode()
+	}
+
+	#[getter]
+	pub fn supports_h265_decode(&self) -> bool {
+		self.inner.supports_h265_decode()
+	}
+
+	#[getter]
+	pub fn supports_av1_decode(&self) -> bool {
+		self.inner.supports_av1_decode()
+	}
+
+	#[getter]
+	pub fn supports_vp9_decode(&self) -> bool {
+		self.inner.supports_vp9_decode()
+	}
+
+	#[getter]
+	pub fn supports_h264_encode(&self) -> bool {
+		self.inner.supports_h264_encode()
+	}
+
+	#[getter]
+	pub fn supports_h265_encode(&self) -> bool {
+		self.inner.supports_h265_encode()
+	}
+
+	#[getter]
+	pub fn supports_av1_encode(&self) -> bool {
+		self.inner.supports_av1_encode()
+	}
+
+	#[getter]
+	pub fn video_queues_enabled(&self) -> bool {
+		self.inner.video_queues_enabled()
+	}
+
+	#[getter]
+	pub fn decoder_sessions_available(&self) -> bool {
+		self.inner.decoder_sessions_available()
+	}
+
+	#[getter]
+	pub fn encoder_sessions_available(&self) -> bool {
+		self.inner.encoder_sessions_available()
+	}
+}
+
+/// Exact limits returned for one decode profile query.
+#[pyclass(name = "VideoDecodeCapabilities")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoDecodeCapabilities {
+	inner: oa::video::VideoDecodeCapabilities,
+}
+
+#[pymethods]
+impl PythonVideoDecodeCapabilities {
+	#[getter]
+	pub fn profile(&self) -> PythonVideoDecodeProfile {
+		PythonVideoDecodeProfile {
+			inner: self.inner.profile(),
+		}
+	}
+
+	#[getter]
+	pub fn min_coded_extent(&self) -> PythonVideoExtent {
+		PythonVideoExtent::wrap(self.inner.min_coded_extent())
+	}
+
+	#[getter]
+	pub fn max_coded_extent(&self) -> PythonVideoExtent {
+		PythonVideoExtent::wrap(self.inner.max_coded_extent())
+	}
+
+	#[getter]
+	pub fn picture_access_granularity(&self) -> PythonVideoExtent {
+		PythonVideoExtent::wrap(self.inner.picture_access_granularity())
+	}
+
+	#[getter]
+	pub fn min_bitstream_offset_alignment(&self) -> u64 {
+		self.inner.min_bitstream_offset_alignment()
+	}
+
+	#[getter]
+	pub fn min_bitstream_size_alignment(&self) -> u64 {
+		self.inner.min_bitstream_size_alignment()
+	}
+
+	#[getter]
+	pub fn max_dpb_slots(&self) -> u32 {
+		self.inner.max_dpb_slots()
+	}
+
+	#[getter]
+	pub fn max_active_reference_pictures(&self) -> u32 {
+		self.inner.max_active_reference_pictures()
+	}
+
+	#[getter]
+	pub fn level(&self) -> PythonVideoDecodeLevel {
+		PythonVideoDecodeLevel {
+			inner: self.inner.level(),
+		}
+	}
+
+	#[getter]
+	pub fn field_offset_granularity(&self) -> Option<(i32, i32)> {
+		self.inner.field_offset_granularity()
+	}
+
+	#[getter]
+	pub fn dpb_and_output_coincide(&self) -> bool {
+		self.inner.dpb_and_output_coincide()
+	}
+
+	#[getter]
+	pub fn dpb_and_output_distinct(&self) -> bool {
+		self.inner.dpb_and_output_distinct()
+	}
+
+	#[getter]
+	pub fn protected_content(&self) -> bool {
+		self.inner.protected_content()
+	}
+
+	#[getter]
+	pub fn separate_reference_images(&self) -> bool {
+		self.inner.separate_reference_images()
+	}
+}
+
+/// Codec-specific limits returned with an exact encode capability query.
+#[pyclass(name = "VideoEncodeCodecCapabilities")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoEncodeCodecCapabilities {
+	inner: oa::video::VideoEncodeCodecCapabilities,
+}
+
+#[pymethods]
+impl PythonVideoEncodeCodecCapabilities {
+	#[getter]
+	pub fn codec(&self) -> PythonVideoCodec {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H264 { .. } => PythonVideoCodec::H264,
+			oa::video::VideoEncodeCodecCapabilities::H265 { .. } => PythonVideoCodec::H265,
+		}
+	}
+
+	#[getter]
+	pub fn max_level(&self) -> u32 {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H264 { max_level, .. }
+			| oa::video::VideoEncodeCodecCapabilities::H265 { max_level, .. } => max_level,
+		}
+	}
+
+	#[getter]
+	pub fn max_slice_count(&self) -> Option<u32> {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H264 {
+				max_slice_count, ..
+			} => Some(max_slice_count),
+			oa::video::VideoEncodeCodecCapabilities::H265 { .. } => None,
+		}
+	}
+
+	#[getter]
+	pub fn max_slice_segment_count(&self) -> Option<u32> {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H265 {
+				max_slice_segment_count,
+				..
+			} => Some(max_slice_segment_count),
+			oa::video::VideoEncodeCodecCapabilities::H264 { .. } => None,
+		}
+	}
+
+	#[getter]
+	pub fn max_tiles(&self) -> Option<PythonVideoExtent> {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H265 { max_tiles, .. } => {
+				Some(PythonVideoExtent::wrap(max_tiles))
+			}
+			oa::video::VideoEncodeCodecCapabilities::H264 { .. } => None,
+		}
+	}
+
+	#[getter]
+	pub fn ctb_size_16(&self) -> Option<bool> {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H265 { ctb_size_16, .. } => Some(ctb_size_16),
+			oa::video::VideoEncodeCodecCapabilities::H264 { .. } => None,
+		}
+	}
+
+	#[getter]
+	pub fn ctb_size_32(&self) -> Option<bool> {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H265 { ctb_size_32, .. } => Some(ctb_size_32),
+			oa::video::VideoEncodeCodecCapabilities::H264 { .. } => None,
+		}
+	}
+
+	#[getter]
+	pub fn ctb_size_64(&self) -> Option<bool> {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H265 { ctb_size_64, .. } => Some(ctb_size_64),
+			oa::video::VideoEncodeCodecCapabilities::H264 { .. } => None,
+		}
+	}
+
+	#[getter]
+	pub fn transform_size_4(&self) -> Option<bool> {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H265 {
+				transform_size_4, ..
+			} => Some(transform_size_4),
+			oa::video::VideoEncodeCodecCapabilities::H264 { .. } => None,
+		}
+	}
+
+	#[getter]
+	pub fn transform_size_8(&self) -> Option<bool> {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H265 {
+				transform_size_8, ..
+			} => Some(transform_size_8),
+			oa::video::VideoEncodeCodecCapabilities::H264 { .. } => None,
+		}
+	}
+
+	#[getter]
+	pub fn transform_size_16(&self) -> Option<bool> {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H265 {
+				transform_size_16, ..
+			} => Some(transform_size_16),
+			oa::video::VideoEncodeCodecCapabilities::H264 { .. } => None,
+		}
+	}
+
+	#[getter]
+	pub fn transform_size_32(&self) -> Option<bool> {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H265 {
+				transform_size_32, ..
+			} => Some(transform_size_32),
+			oa::video::VideoEncodeCodecCapabilities::H264 { .. } => None,
+		}
+	}
+
+	#[getter]
+	pub fn max_p_l0_references(&self) -> u32 {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H264 {
+				max_p_l0_references,
+				..
+			}
+			| oa::video::VideoEncodeCodecCapabilities::H265 {
+				max_p_l0_references,
+				..
+			} => max_p_l0_references,
+		}
+	}
+
+	#[getter]
+	pub fn max_b_l0_references(&self) -> u32 {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H264 {
+				max_b_l0_references,
+				..
+			}
+			| oa::video::VideoEncodeCodecCapabilities::H265 {
+				max_b_l0_references,
+				..
+			} => max_b_l0_references,
+		}
+	}
+
+	#[getter]
+	pub fn max_l1_references(&self) -> u32 {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H264 {
+				max_l1_references, ..
+			}
+			| oa::video::VideoEncodeCodecCapabilities::H265 {
+				max_l1_references, ..
+			} => max_l1_references,
+		}
+	}
+
+	#[getter]
+	pub fn max_temporal_layers(&self) -> Option<u32> {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H264 {
+				max_temporal_layers,
+				..
+			} => Some(max_temporal_layers),
+			oa::video::VideoEncodeCodecCapabilities::H265 { .. } => None,
+		}
+	}
+
+	#[getter]
+	pub fn max_sub_layers(&self) -> Option<u32> {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H265 { max_sub_layers, .. } => Some(max_sub_layers),
+			oa::video::VideoEncodeCodecCapabilities::H264 { .. } => None,
+		}
+	}
+
+	#[getter]
+	pub fn min_qp(&self) -> i32 {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H264 { min_qp, .. }
+			| oa::video::VideoEncodeCodecCapabilities::H265 { min_qp, .. } => min_qp,
+		}
+	}
+
+	#[getter]
+	pub fn max_qp(&self) -> i32 {
+		match self.inner {
+			oa::video::VideoEncodeCodecCapabilities::H264 { max_qp, .. }
+			| oa::video::VideoEncodeCodecCapabilities::H265 { max_qp, .. } => max_qp,
+		}
+	}
+}
+
+/// Exact limits returned for one encode profile query.
+#[pyclass(name = "VideoEncodeCapabilities")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoEncodeCapabilities {
+	inner: oa::video::VideoEncodeCapabilities,
+}
+
+#[pymethods]
+impl PythonVideoEncodeCapabilities {
+	#[getter]
+	pub fn profile(&self) -> PythonVideoEncodeProfile {
+		PythonVideoEncodeProfile {
+			inner: self.inner.profile(),
+		}
+	}
+
+	#[getter]
+	pub fn min_coded_extent(&self) -> PythonVideoExtent {
+		PythonVideoExtent::wrap(self.inner.min_coded_extent())
+	}
+
+	#[getter]
+	pub fn max_coded_extent(&self) -> PythonVideoExtent {
+		PythonVideoExtent::wrap(self.inner.max_coded_extent())
+	}
+
+	#[getter]
+	pub fn picture_access_granularity(&self) -> PythonVideoExtent {
+		PythonVideoExtent::wrap(self.inner.picture_access_granularity())
+	}
+
+	#[getter]
+	pub fn input_picture_granularity(&self) -> PythonVideoExtent {
+		PythonVideoExtent::wrap(self.inner.input_picture_granularity())
+	}
+
+	#[getter]
+	pub fn min_bitstream_offset_alignment(&self) -> u64 {
+		self.inner.min_bitstream_offset_alignment()
+	}
+
+	#[getter]
+	pub fn min_bitstream_size_alignment(&self) -> u64 {
+		self.inner.min_bitstream_size_alignment()
+	}
+
+	#[getter]
+	pub fn max_dpb_slots(&self) -> u32 {
+		self.inner.max_dpb_slots()
+	}
+
+	#[getter]
+	pub fn max_active_reference_pictures(&self) -> u32 {
+		self.inner.max_active_reference_pictures()
+	}
+
+	#[getter]
+	pub fn max_rate_control_layers(&self) -> u32 {
+		self.inner.max_rate_control_layers()
+	}
+
+	#[getter]
+	pub fn max_bitrate(&self) -> u64 {
+		self.inner.max_bitrate()
+	}
+
+	#[getter]
+	pub fn max_quality_levels(&self) -> u32 {
+		self.inner.max_quality_levels()
+	}
+
+	#[getter]
+	pub fn supports_constant_qp(&self) -> bool {
+		self.inner.supports_constant_qp()
+	}
+
+	#[getter]
+	pub fn supports_cbr(&self) -> bool {
+		self.inner.supports_cbr()
+	}
+
+	#[getter]
+	pub fn supports_vbr(&self) -> bool {
+		self.inner.supports_vbr()
+	}
+
+	#[getter]
+	pub fn supports_feedback_offset(&self) -> bool {
+		self.inner.supports_feedback_offset()
+	}
+
+	#[getter]
+	pub fn supports_feedback_bytes_written(&self) -> bool {
+		self.inner.supports_feedback_bytes_written()
+	}
+
+	#[getter]
+	pub fn supports_feedback_overrides(&self) -> bool {
+		self.inner.supports_feedback_overrides()
+	}
+
+	#[getter]
+	pub fn protected_content(&self) -> bool {
+		self.inner.protected_content()
+	}
+
+	#[getter]
+	pub fn separate_reference_images(&self) -> bool {
+		self.inner.separate_reference_images()
+	}
+
+	#[getter]
+	pub fn codec(&self) -> PythonVideoEncodeCodecCapabilities {
+		PythonVideoEncodeCodecCapabilities {
+			inner: self.inner.codec(),
+		}
+	}
+}
+
+/// Decode-output and decoded-picture-buffer formats for one exact profile.
+#[pyclass(name = "VideoDecodeFormats")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoDecodeFormats {
+	inner: oa::video::VideoDecodeFormats,
+}
+
+#[pymethods]
+impl PythonVideoDecodeFormats {
+	#[getter]
+	pub fn profile(&self) -> PythonVideoDecodeProfile {
+		PythonVideoDecodeProfile {
+			inner: self.inner.profile(),
+		}
+	}
+
+	#[getter]
+	pub fn output(&self) -> Vec<PythonVideoImageFormat> {
+		self
+			.inner
+			.output()
+			.iter()
+			.copied()
+			.map(PythonVideoImageFormat::wrap)
+			.collect()
+	}
+
+	#[getter]
+	pub fn dpb(&self) -> Vec<PythonVideoImageFormat> {
+		self
+			.inner
+			.dpb()
+			.iter()
+			.copied()
+			.map(PythonVideoImageFormat::wrap)
+			.collect()
+	}
+
+	#[getter]
+	pub fn unrecognized_output_formats(&self) -> usize {
+		self.inner.unrecognized_output_formats()
+	}
+
+	#[getter]
+	pub fn unrecognized_dpb_formats(&self) -> usize {
+		self.inner.unrecognized_dpb_formats()
+	}
+}
+
+/// Encode-input and reconstructed-picture formats for one exact profile.
+#[pyclass(name = "VideoEncodeFormats")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoEncodeFormats {
+	inner: oa::video::VideoEncodeFormats,
+}
+
+#[pymethods]
+impl PythonVideoEncodeFormats {
+	#[getter]
+	pub fn profile(&self) -> PythonVideoEncodeProfile {
+		PythonVideoEncodeProfile {
+			inner: self.inner.profile(),
+		}
+	}
+
+	#[getter]
+	pub fn input(&self) -> Vec<PythonVideoImageFormat> {
+		self
+			.inner
+			.input()
+			.iter()
+			.copied()
+			.map(PythonVideoImageFormat::wrap)
+			.collect()
+	}
+
+	#[getter]
+	pub fn dpb(&self) -> Vec<PythonVideoImageFormat> {
+		self
+			.inner
+			.dpb()
+			.iter()
+			.copied()
+			.map(PythonVideoImageFormat::wrap)
+			.collect()
+	}
+
+	#[getter]
+	pub fn unrecognized_input_formats(&self) -> usize {
+		self.inner.unrecognized_input_formats()
+	}
+
+	#[getter]
+	pub fn unrecognized_dpb_formats(&self) -> usize {
+		self.inner.unrecognized_dpb_formats()
+	}
+}
+
+// ── VideoEncodeConfig / VideoEncodePlan ─────────────────────────────────────
+
+/// Validated, hardware-independent settings for encode session creation.
+#[pyclass(name = "VideoEncodeConfig")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoEncodeConfig {
+	inner: oa::video::VideoEncodeConfig,
+}
+
+#[pymethods]
+impl PythonVideoEncodeConfig {
+	/// Construct the donor's default encode settings for a visible extent.
+	///
+	/// Defaults: 30 fps, GOP 30, constant QP 26, bitrate 4 Mbit/s, quality
+	/// level 0, async depth 3, no B-frames, default DPB ring.
+	#[allow(clippy::too_many_arguments)]
+	#[new]
+	#[pyo3(signature = (
+		profile, width, height,
+		frame_rate = 30, gop_size = 30,
+		rate_control = PythonVideoRateControl::ConstantQp,
+		bitrate = 4_000_000, max_bitrate = 0, constant_qp = 26,
+		quality_level = 0, async_depth = 3, max_b_frames = 0, max_dpb_slots = 0,
+	))]
+	pub fn new(
+		profile: &PythonVideoEncodeProfile,
+		width: u32,
+		height: u32,
+		frame_rate: u32,
+		gop_size: u32,
+		rate_control: PythonVideoRateControl,
+		bitrate: u32,
+		max_bitrate: u32,
+		constant_qp: u32,
+		quality_level: u32,
+		async_depth: u32,
+		max_b_frames: u32,
+		max_dpb_slots: u32,
+	) -> Self {
+		Self {
+			inner: oa::video::VideoEncodeConfig {
+				profile: profile.inner,
+				width,
+				height,
+				frame_rate,
+				gop_size,
+				rate_control: rate_control.into(),
+				bitrate,
+				max_bitrate,
+				constant_qp,
+				quality_level,
+				async_depth,
+				max_b_frames,
+				max_dpb_slots,
+			},
+		}
+	}
+
+	#[getter]
+	pub fn width(&self) -> u32 {
+		self.inner.width
+	}
+
+	#[getter]
+	pub fn height(&self) -> u32 {
+		self.inner.height
+	}
+
+	#[getter]
+	pub fn frame_rate(&self) -> u32 {
+		self.inner.frame_rate
+	}
+
+	#[getter]
+	pub fn gop_size(&self) -> u32 {
+		self.inner.gop_size
+	}
+
+	/// Validate this request against one exact queried capability row.
+	pub fn validate_for_device(
+		&self,
+		caps: &PythonVideoEncodeCapabilities,
+	) -> PyResult<PythonVideoEncodePlan> {
+		self
+			.inner
+			.validate_for_device(caps.inner)
+			.map(|inner| PythonVideoEncodePlan { inner })
+			.map_err(python_error)
+	}
+
+	pub fn __repr__(&self) -> String {
+		format!(
+			"VideoEncodeConfig({}x{}@{})",
+			self.inner.width, self.inner.height, self.inner.frame_rate,
+		)
+	}
+}
+
+/// Exact preflight result for an admitted encode session.
+#[pyclass(name = "VideoEncodePlan")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoEncodePlan {
+	inner: oa::video::VideoEncodePlan,
+}
+
+#[pymethods]
+impl PythonVideoEncodePlan {
+	#[getter]
+	pub fn coded_extent(&self) -> PythonVideoExtent {
+		PythonVideoExtent::wrap(self.inner.coded_extent())
+	}
+
+	#[getter]
+	pub fn peak_bitrate(&self) -> u32 {
+		self.inner.peak_bitrate()
+	}
+
+	/// Numeric H.264 level IDC selected for the coded extent, if applicable.
+	#[getter]
+	pub fn h264_level(&self) -> Option<u32> {
+		self.inner.h264_level()
+	}
+}
+
+// ── VideoEncoder ────────────────────────────────────────────────────────────
+
+/// Stateful hardware encoder session for H.264 High or H.265 Main/Main10.
+#[pyclass(name = "VideoEncoder", unsendable)]
+pub(crate) struct PythonVideoEncoder {
+	inner: oa::video::VideoEncoder,
+}
+
+#[pymethods]
+impl PythonVideoEncoder {
+	/// Create a session admitted by exact capability preflight.
+	#[new]
+	pub fn new(engine: &PythonEngine, config: &PythonVideoEncodeConfig) -> PyResult<Self> {
+		oa::video::VideoEncoder::new(&engine.inner, config.inner)
+			.map(|inner| Self { inner })
+			.map_err(python_error)
+	}
+
+	/// Encode one packed RGBA8 frame and return its access unit.
+	pub fn encode(
+		&mut self,
+		rgba: &[u8],
+		presentation_timestamp_micros: u64,
+	) -> PyResult<PythonEncodedVideoPacket> {
+		self
+			.inner
+			.encode(rgba, presentation_timestamp_micros)
+			.map(PythonEncodedVideoPacket::wrap)
+			.map_err(python_error)
+	}
+
+	/// Encode one packed RGBA64 frame (little-endian u16 samples) and return
+	/// its access unit. Requires a wide-component profile such as H.265 Main10.
+	pub fn encode_rgba16(
+		&mut self,
+		rgba: Vec<u16>,
+		presentation_timestamp_micros: u64,
+	) -> PyResult<PythonEncodedVideoPacket> {
+		self
+			.inner
+			.encode_rgba16(&rgba, presentation_timestamp_micros)
+			.map(PythonEncodedVideoPacket::wrap)
+			.map_err(python_error)
+	}
+
+	/// Wait for every outstanding encode job and drain all remaining packets.
+	pub fn flush(&mut self) -> PyResult<Vec<PythonEncodedVideoPacket>> {
+		self
+			.inner
+			.flush()
+			.map(|packets| {
+				packets
+					.into_iter()
+					.map(PythonEncodedVideoPacket::wrap)
+					.collect()
+			})
+			.map_err(python_error)
+	}
+
+	/// Close the encoder and release its session resources.
+	pub fn close(&mut self) {
+		self.inner.close();
+	}
+
+	/// Return whether the encoder still accepts frames.
+	#[getter]
+	pub fn is_open(&self) -> bool {
+		self.inner.is_open()
+	}
+
+	/// Coded (aligned) extent, while the session is open.
+	#[getter]
+	pub fn coded_extent(&self) -> Option<PythonVideoExtent> {
+		self.inner.coded_extent().map(PythonVideoExtent::wrap)
+	}
+
+	/// Visible input extent, while the session is open.
+	#[getter]
+	pub fn visible_extent(&self) -> Option<PythonVideoExtent> {
+		self.inner.visible_extent().map(PythonVideoExtent::wrap)
+	}
+
+	pub fn __repr__(&self) -> String {
+		format!("VideoEncoder(open={})", self.inner.is_open())
+	}
+}
+
+// ── VideoRecorder ───────────────────────────────────────────────────────────
+
+/// Settings for one container-bound hardware recorder session.
+#[pyclass(name = "VideoRecorderConfig")]
+#[derive(Clone)]
+pub(crate) struct PythonVideoRecorderConfig {
+	inner: oa::video::VideoRecorderConfig,
+}
+
+#[pymethods]
+impl PythonVideoRecorderConfig {
+	/// Construct recorder settings for one output path and encode profile.
+	///
+	/// `color_space=None` selects BT.709; `audio` accepts an
+	/// `AudioEncodeProfile` for an interleaved PCM-S16 track.
+	#[new]
+	#[pyo3(signature = (output_path, encode, color_space = None, full_range = false, audio = None))]
+	pub fn new(
+		output_path: &str,
+		encode: &PythonVideoEncodeConfig,
+		color_space: Option<PythonVideoColorMatrix>,
+		full_range: bool,
+		audio: Option<&crate::audio::sessions::PythonAudioEncodeProfile>,
+	) -> Self {
+		Self {
+			inner: oa::video::VideoRecorderConfig {
+				output_path: output_path.to_owned(),
+				encode: encode.inner,
+				color_space: color_space
+					.map(Into::into)
+					.unwrap_or(oa::video::VideoColorMatrix::Unspecified),
+				full_range,
+				audio: audio.map(|profile| profile.inner),
+			},
+		}
+	}
+}
+
+/// Stateful hardware video recorder writing one MP4 container.
+#[pyclass(name = "VideoRecorder", unsendable)]
+pub(crate) struct PythonVideoRecorder {
+	inner: oa::video::VideoRecorder,
+}
+
+#[pymethods]
+impl PythonVideoRecorder {
+	/// Open the output container and create the admitted encode session.
+	#[new]
+	pub fn new(engine: &PythonEngine, config: &PythonVideoRecorderConfig) -> PyResult<Self> {
+		oa::video::VideoRecorder::new(&engine.inner, config.inner.clone())
+			.map(|inner| Self { inner })
+			.map_err(python_error)
+	}
+
+	/// Convert and encode one packed RGBA8 frame at `pts_micros`.
+	pub fn write_rgba(&mut self, rgba: &[u8], pts_micros: u64) -> PyResult<()> {
+		self
+			.inner
+			.write_rgba(rgba, pts_micros)
+			.map_err(python_error)
+	}
+
+	/// Encode one chunk of interleaved FP32 audio samples.
+	pub fn write_audio(
+		&mut self,
+		interleaved: Vec<f32>,
+		sample_rate: u32,
+		channel_count: u32,
+		pts_micros: u64,
+	) -> PyResult<()> {
+		self
+			.inner
+			.write_audio(&interleaved, sample_rate, channel_count, pts_micros)
+			.map_err(python_error)
+	}
+
+	/// Append one capture chunk through `write_audio`.
+	pub fn write_audio_chunk(
+		&mut self,
+		chunk: &crate::audio::sessions::PythonAudioCaptureChunk,
+	) -> PyResult<()> {
+		self
+			.inner
+			.write_audio_chunk(&chunk.inner)
+			.map_err(python_error)
+	}
+
+	/// Drain the encoder, flush pending audio, and finalize the container.
+	pub fn finalize(&mut self) -> PyResult<()> {
+		self.inner.finalize().map_err(python_error)
+	}
+
+	/// Close the recorder without finalizing remaining state.
+	pub fn close(&mut self) {
+		self.inner.close();
+	}
+
+	/// Return whether the recorder still accepts frames.
+	#[getter]
+	pub fn is_open(&self) -> bool {
+		self.inner.is_open()
+	}
+
+	/// Number of video frames written so far.
+	#[getter]
+	pub fn frame_count(&self) -> u64 {
+		self.inner.frame_count()
+	}
+
+	pub fn __repr__(&self) -> String {
+		format!(
+			"VideoRecorder(open={}, frames={})",
+			self.inner.is_open(),
+			self.inner.frame_count(),
+		)
+	}
+}
+
+// ── Capability queries ──────────────────────────────────────────────────────
+
+/// Query the selected device's video queue and codec admission summary.
+#[pyfunction]
+pub fn query_device_capabilities(engine: &PythonEngine) -> PyResult<PythonVideoDeviceCapabilities> {
+	oa::video::query_device_capabilities(&engine.inner)
+		.map(|inner| PythonVideoDeviceCapabilities { inner })
+		.map_err(python_error)
+}
+
+/// Query the selected device's exact limits for one decoder profile.
+#[pyfunction]
+pub fn query_decode_capabilities(
+	engine: &PythonEngine,
+	profile: &PythonVideoDecodeProfile,
+) -> PyResult<PythonVideoDecodeCapabilities> {
+	oa::video::query_decode_capabilities(&engine.inner, profile.inner)
+		.map(|inner| PythonVideoDecodeCapabilities { inner })
+		.map_err(python_error)
+}
+
+/// Enumerate decoded-output and DPB image formats for one exact profile.
+#[pyfunction]
+pub fn query_decode_formats(
+	engine: &PythonEngine,
+	profile: &PythonVideoDecodeProfile,
+) -> PyResult<PythonVideoDecodeFormats> {
+	oa::video::query_decode_formats(&engine.inner, profile.inner)
+		.map(|inner| PythonVideoDecodeFormats { inner })
+		.map_err(python_error)
+}
+
+/// Query exact H.264 or H.265 encoder limits without creating a session.
+#[pyfunction]
+pub fn query_encode_capabilities(
+	engine: &PythonEngine,
+	profile: &PythonVideoEncodeProfile,
+) -> PyResult<PythonVideoEncodeCapabilities> {
+	oa::video::query_encode_capabilities(&engine.inner, profile.inner)
+		.map(|inner| PythonVideoEncodeCapabilities { inner })
+		.map_err(python_error)
+}
+
+/// Enumerate encode-input and DPB formats for one exact profile.
+#[pyfunction]
+pub fn query_encode_formats(
+	engine: &PythonEngine,
+	profile: &PythonVideoEncodeProfile,
+) -> PyResult<PythonVideoEncodeFormats> {
+	oa::video::query_encode_formats(&engine.inner, profile.inner)
+		.map(|inner| PythonVideoEncodeFormats { inner })
+		.map_err(python_error)
+}
+
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	module.add_class::<PythonVideoColorMatrix>()?;
 	module.add_class::<PythonVideoColorRange>()?;
@@ -1027,5 +2389,35 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	module.add_class::<PythonEncodedVideoPacket>()?;
 	module.add_class::<PythonVideoMuxer>()?;
 	module.add_class::<PythonVideoFrame>()?;
+	module.add_class::<PythonVideoChromaSubsampling>()?;
+	module.add_class::<PythonVideoComponentBitDepth>()?;
+	module.add_class::<PythonH264Profile>()?;
+	module.add_class::<PythonH264PictureLayout>()?;
+	module.add_class::<PythonH265Profile>()?;
+	module.add_class::<PythonAv1Profile>()?;
+	module.add_class::<PythonVp9Profile>()?;
+	module.add_class::<PythonVideoRateControl>()?;
+	module.add_class::<PythonVideoPixelFormat>()?;
+	module.add_class::<PythonVideoExtent>()?;
+	module.add_class::<PythonVideoDecodeProfile>()?;
+	module.add_class::<PythonVideoEncodeProfile>()?;
+	module.add_class::<PythonVideoImageFormat>()?;
+	module.add_class::<PythonVideoDecodeLevel>()?;
+	module.add_class::<PythonVideoDeviceCapabilities>()?;
+	module.add_class::<PythonVideoDecodeCapabilities>()?;
+	module.add_class::<PythonVideoEncodeCodecCapabilities>()?;
+	module.add_class::<PythonVideoEncodeCapabilities>()?;
+	module.add_class::<PythonVideoDecodeFormats>()?;
+	module.add_class::<PythonVideoEncodeFormats>()?;
+	module.add_class::<PythonVideoEncodeConfig>()?;
+	module.add_class::<PythonVideoEncodePlan>()?;
+	module.add_class::<PythonVideoEncoder>()?;
+	module.add_class::<PythonVideoRecorderConfig>()?;
+	module.add_class::<PythonVideoRecorder>()?;
+	module.add_function(wrap_pyfunction!(query_device_capabilities, module)?)?;
+	module.add_function(wrap_pyfunction!(query_decode_capabilities, module)?)?;
+	module.add_function(wrap_pyfunction!(query_decode_formats, module)?)?;
+	module.add_function(wrap_pyfunction!(query_encode_capabilities, module)?)?;
+	module.add_function(wrap_pyfunction!(query_encode_formats, module)?)?;
 	Ok(())
 }

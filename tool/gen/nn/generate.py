@@ -19,11 +19,26 @@ TOKEN = re.compile(r"\{\{([a-z_]+)\}\}")
 # Template contracts validate schema metadata before interpolation or publication.
 CONTRACTS = {
 	"empyrealm": {
+		"config_type": "support_type",
+		"state_type": "support_type",
+		"layer_state_type": "support_type",
+		"mixer_type": "support_type",
+		"ffn_type": "support_type",
+		"block_type": "support_type",
 		"embedding_constructor": "operation",
-		"mixer_constructor": "operation",
+		"mamba_constructor": "operation",
+		"attention_constructor": "operation",
+		"norm_constructor": "operation",
+		"ffn_constructor": "operation",
+		"moe_constructor": "operation",
 		"add_operation": "operation",
+		"recording_active_operation": "operation",
 		"embedding_name": "registration_name",
+		"norm_name": "registration_name",
 		"mixer_name": "registration_name",
+		"ffn_name": "registration_name",
+		"block_prefix": "registration_name",
+		"tail_norm_name": "registration_name",
 	},
 	"flow": {
 		"config_type": "support_type",
@@ -227,6 +242,10 @@ CONTRACTS = {
 		"div_operation": "operation",
 		"slice_operation": "operation",
 		"concat_operation": "operation",
+		"cache_type": "support_type",
+		"recording_active_operation": "operation",
+		"scale_operation": "operation",
+		"step_softmax_operation": "operation",
 		"query_name": "registration_name",
 		"key_name": "registration_name",
 		"value_name": "registration_name",
@@ -362,8 +381,13 @@ OPERATIONS = {
 PROVIDER_ROLES = {
 	"empyrealm": {
 		"embedding_constructor": "Embedding::new_with_seed",
-		"mixer_constructor": "Mamba3::new_with_seed",
+		"mamba_constructor": "Mamba3::new_with_seed",
+		"attention_constructor": "MultiHeadAttention::new_with_seed",
+		"norm_constructor": "RmsNorm::new",
+		"ffn_constructor": "Ffn::new_with_seed",
+		"moe_constructor": "Moe::new_with_seed",
 		"add_operation": "crate::matrix::add",
+		"recording_active_operation": "autograd::recording_active",
 	},
 	"flow": {
 		"reshape_operation": "matrix::reshape",
@@ -491,6 +515,9 @@ PROVIDER_ROLES = {
 		"div_operation": "core_matrix::div",
 		"slice_operation": "core_matrix::slice",
 		"concat_operation": "core_matrix::concat",
+		"recording_active_operation": "autograd::recording_active",
+		"scale_operation": "core_matrix::scale",
+		"step_softmax_operation": "core_matrix::softmax",
 	},
 	"batch_norm": {
 		"operation": "matrix::batch_norm_2d_forward",
@@ -632,7 +659,7 @@ def expected_outputs(root: Path, destination: Path) -> dict[Path, str]:
 		schema = json.loads(path.read_text())
 		validate(schema)
 		family = schema["family"]
-		target = destination / f"src/rs/ml/nn/{family}.gen.rs"
+		target = destination / f"src/rs/lib/ml/nn/{family}.gen.rs"
 		require(target not in outputs, "duplicate NN output family")
 		digest = hashlib.sha256(json.dumps(schema, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 		parts = [BANNER, f"// Source: {path.relative_to(root).as_posix()}", f"// generator_version={VERSION}; schema_sha256={digest}", "", "\n\n".join(schema["imports"]), ""]
@@ -656,7 +683,7 @@ def expected_outputs(root: Path, destination: Path) -> dict[Path, str]:
 
 def owned_outputs(root: Path) -> set[Path]:
 	owned = set()
-	for parent, directories, files in os.walk(root / "src/rs/ml/nn", followlinks=False):
+	for parent, directories, files in os.walk(root / "src/rs/lib/ml/nn", followlinks=False):
 		directories[:] = [name for name in sorted(directories) if not (Path(parent) / name).is_symlink()]
 		for name in sorted(files):
 			path = Path(parent) / name
@@ -671,7 +698,7 @@ def owned_outputs(root: Path) -> set[Path]:
 def validate_paths(outputs: dict[Path, str], root: Path) -> None:
 	for path in outputs:
 		relative = path.absolute().relative_to(root.absolute())
-		require(".." not in relative.parts and relative.parts[:4] == ("src", "rs", "ml", "nn"), "output outside NN source tree")
+		require(".." not in relative.parts and relative.parts[:5] == ("src", "rs", "lib", "ml", "nn"), "output outside NN source tree")
 		cursor = root
 		for part in relative.parts:
 			cursor /= part

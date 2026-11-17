@@ -215,30 +215,76 @@ def merkle_outputs(root: Path, schema: dict[str, Any], schema_hash: str, hash_sc
 	template = (FN_ROOT / 'template/crypto/merkle/operations.rs.in').read_text()
 	values = dict(algorithms=algorithms, header_bytes=str(schema['proof_layout']['header_bytes']))
 	require(set(re.findall(r'\{\{([^{}]+)\}\}', template)) == set(values), 'General Merkle operation template differs')
-	outputs = {root / 'src/rs/crypto/merkle/operations.gen.rs': format_rust(mark + re.sub(r'\{\{([^{}]+)\}\}', lambda m: values[m[1]], template), root)}
-	poseidon = mark + '// Pinned Plonky3 permutation; OA Merkle domain is distinct from field XOF.\nimport prime31;\nimport poseidon2;\n\nvoid merkle_poseidon2_pair(uint message[32], uint algorithm, out uint result[16]) {\n'
+	outputs = {root / 'src/rs/lib/crypto/merkle/operations.gen.rs': format_rust(mark + re.sub(r'\{\{([^{}]+)\}\}', lambda m: values[m[1]], template), root)}
+	# One shared permutation code path serves every field profile: primes,
+	# Montgomery factors, round counts and table offsets ride in a scalar
+	# params table so ANV compiles the schedule once instead of four times.
+	params, initial, final, partial, diagonal = [], [], [], [], []
 	for algorithm in schema['algorithms'][6:]:
-		index = algorithm['identifier']
 		p = next(p for p in hash_schema['poseidon2_profiles'] if 'poseidon2_' + p['name'] == algorithm['name'])
-		prime, rate, name = p['prime'], p['width'] - p['capacity'], p['name']
-		factor = (-pow(prime, -1, 1 << 32)) % (1 << 32); r2 = (1 << 64) % prime; one = (1 << 32) % prime
-		poseidon += f'''\tif (algorithm == {index}u) {{
-		uint state[24]; for (uint i = 0u; i < 24u; ++i) state[i] = 0u;
-		const uint prime = {prime}u, factor = {factor}u;
-		state[{rate}u] = prime31_multiply(0x4f414d32u, {r2}u, prime, factor);
-		state[{rate+1}u] = prime31_multiply(16u, {r2}u, prime, factor);
-		uint cursor = 0u;
-		for (uint i = 0u; i < 16u; ++i) {{
-			state[cursor] = prime31_add(state[cursor], prime31_multiply(message[i] % prime, {r2}u, prime, factor), prime);
-			if (++cursor == {rate}u) {{ poseidon2_{name}_permutation(state); cursor = 0u; }}
-		}}
-		state[cursor] = prime31_add(state[cursor], {one}u, prime);
-		poseidon2_{name}_permutation(state);
-		for (uint i = 0u; i < 16u; ++i) result[i] = 0u;
-		for (uint i = 0u; i < 8u; ++i) result[i] = prime31_multiply(state[i], 1u, prime, factor);
-		return;
-	}}\n'''
-	poseidon += '\tfor (uint i = 0u; i < 16u; ++i) result[i] = 0u;\n}\n'
+		prime, width = p['prime'], p['width']
+		params += [prime, (-pow(prime, -1, 1 << 32)) % (1 << 32), width, p['sbox_degree'],
+			p['half_full_rounds'], len(p['internal_constants']), width - p['capacity'],
+			(1 << 64) % prime, (1 << 32) % prime, len(initial), len(partial), len(diagonal)]
+		# Field constants enter Montgomery form like the poseidon2 module tables.
+		monty = lambda values: [(v << 32) % prime for v in values]
+		initial += monty(sum(p['initial_constants'], []))
+		final += monty(sum(p['final_constants'], []))
+		partial += monty(p['internal_constants'])
+		diagonal += monty(p['diagonal']) + [0] * (24 - width)
+	def table(name: str, values: list[int]) -> str:
+		lines = '\n'.join('\t' + ', '.join(f'{v}u' for v in values[i:i + 8]) + ',' for i in range(0, len(values), 8))
+		return f'static const uint {name}[{len(values)}] = {{\n{lines}\n}};\n'
+	poseidon = mark + '// Pinned Plonky3 permutation; OA Merkle domain is distinct from field XOF.\n'
+	poseidon += '// One schedule, profile-selected scalar data; kernels compile a single path.\nimport prime31;\nimport poseidon2_field;\n\n'
+	poseidon += table('MERKLE_POSEIDON2_PARAMS', params) + table('MERKLE_POSEIDON2_INITIAL', initial)
+	poseidon += table('MERKLE_POSEIDON2_FINAL', final) + table('MERKLE_POSEIDON2_PARTIAL', partial)
+	poseidon += table('MERKLE_POSEIDON2_DIAGONAL', diagonal)
+	poseidon += '''void merkle_poseidon2_permutation(inout uint state[24], uint base) {
+	uint prime = MERKLE_POSEIDON2_PARAMS[base], factor = MERKLE_POSEIDON2_PARAMS[base + 1u];
+	uint width = MERKLE_POSEIDON2_PARAMS[base + 2u], degree = MERKLE_POSEIDON2_PARAMS[base + 3u];
+	uint half_rounds = MERKLE_POSEIDON2_PARAMS[base + 4u], partial_rounds = MERKLE_POSEIDON2_PARAMS[base + 5u];
+	uint constants = MERKLE_POSEIDON2_PARAMS[base + 9u], partial_base = MERKLE_POSEIDON2_PARAMS[base + 10u];
+	poseidon2_external(state, width, prime);
+	for (uint round = 0u; round < half_rounds; ++round) {
+		for (uint i = 0u; i < width; ++i)
+			state[i] = poseidon2_sbox(prime31_add(state[i], MERKLE_POSEIDON2_INITIAL[constants + round * width + i], prime), degree, prime, factor);
+		poseidon2_external(state, width, prime);
+	}
+	uint diagonal[24];
+	for (uint i = 0u; i < 24u; ++i) diagonal[i] = MERKLE_POSEIDON2_DIAGONAL[MERKLE_POSEIDON2_PARAMS[base + 11u] + i];
+	for (uint round = 0u; round < partial_rounds; ++round) {
+		state[0] = poseidon2_sbox(prime31_add(state[0], MERKLE_POSEIDON2_PARTIAL[partial_base + round], prime), degree, prime, factor);
+		poseidon2_internal(state, diagonal, width, prime, factor);
+	}
+	for (uint round = 0u; round < half_rounds; ++round) {
+		for (uint i = 0u; i < width; ++i)
+			state[i] = poseidon2_sbox(prime31_add(state[i], MERKLE_POSEIDON2_FINAL[constants + round * width + i], prime), degree, prime, factor);
+		poseidon2_external(state, width, prime);
+	}
+}
+
+void merkle_poseidon2_pair(uint message[32], uint algorithm, out uint result[16]) {
+	for (uint i = 0u; i < 16u; ++i) result[i] = 0u;
+	if (algorithm < 6u || algorithm >= 10u) return;
+	uint base = (algorithm - 6u) * 12u;
+	uint prime = MERKLE_POSEIDON2_PARAMS[base], factor = MERKLE_POSEIDON2_PARAMS[base + 1u];
+	uint rate = MERKLE_POSEIDON2_PARAMS[base + 6u];
+	uint r2 = MERKLE_POSEIDON2_PARAMS[base + 7u], one = MERKLE_POSEIDON2_PARAMS[base + 8u];
+	uint state[24];
+	for (uint i = 0u; i < 24u; ++i) state[i] = 0u;
+	state[rate] = prime31_multiply(0x4f414d32u, r2, prime, factor);
+	state[rate + 1u] = prime31_multiply(16u, r2, prime, factor);
+	uint cursor = 0u;
+	for (uint i = 0u; i < 16u; ++i) {
+		state[cursor] = prime31_add(state[cursor], prime31_multiply(message[i] % prime, r2, prime, factor), prime);
+		if (++cursor == rate) { merkle_poseidon2_permutation(state, base); cursor = 0u; }
+	}
+	state[cursor] = prime31_add(state[cursor], one, prime);
+	merkle_poseidon2_permutation(state, base);
+	for (uint i = 0u; i < 8u; ++i) result[i] = prime31_multiply(state[i], 1u, prime, factor);
+}
+'''
 	outputs[root / 'src/slang/core/math/merkle_poseidon2.slang'] = poseidon
 	for kernel in schema['kernels']:
 		name = kernel['name']
@@ -248,7 +294,12 @@ def merkle_outputs(root: Path, schema: dict[str, Any], schema_hash: str, hash_sc
 		poseidon2 = name.endswith('_poseidon2')
 		base = name[:-10] if poseidon2 else name
 		imports = 'import merkle_general;\nimport merkle_general_hash;' if poseidon2 else 'import merkle_general_hash;'
-		guard = 'push.algorithm < 6u || push.algorithm >= 10u' if poseidon2 else 'push.algorithm >= 6u'
+		# Frame init/append are byte copies shared by every algorithm; only the
+		# hashing twins split on the Poseidon2 field family.
+		if base in ('merkle_frame_init', 'merkle_frame_append'):
+			guard = 'push.algorithm >= 10u'
+		else:
+			guard = 'push.algorithm < 6u || push.algorithm >= 10u' if poseidon2 else 'push.algorithm >= 6u'
 		body_text = MERKLE_SHADER_BODIES[base].replace('merkle_general_pair(', 'merkle_general_pair(' if poseidon2 else 'merkle_hash_pair(')
 		fields = '\n'.join(f'\tuint {n};' for n, _ in kernel['push_fields'])
 		body = mark + f'''// Selected-hash public Merkle graph operation, no host digest copies.

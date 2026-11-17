@@ -4,7 +4,7 @@
   "domain": "ml",
   "dtype": "f32",
   "workgroup_size": [256, 1, 1],
-  "retired_stable_ids": [39, 115, 652],
+  "retired_stable_ids": [39, 115, 404, 405, 406, 407, 652],
   "port_provenance": [
     {
       "family": "grouped_linear_m_act",
@@ -221,31 +221,6 @@
       "reason": "Preserves the donor deterministic squared-L2 assignment and lower-index tie rule, I32 token ABI, row lookup, EMA formulas, optional unit-RMS code normalization, and exact dead-code revival hash. The EMA lowering writes fresh SSA state which the module installs into its persistent buffer handles instead of mutating registered storage in place."
     },
     {
-      "family": "lunar_lander",
-      "operations": ["lunar_lander_reset", "lunar_lander_step"],
-      "classification": "mechanical_adaptation",
-      "donors": [
-        "sdk/cpp/include/ml/rl/lunarlander3d/lunarLander3dVector.h",
-        "sdk/cpp/lib/ml/rl/lunarlander3d/lunarLander3dVector.cpp",
-        "sdk/cpp/lib/ml/rl/shader/environment/rlLunarLander3dReset.slang",
-        "sdk/cpp/lib/ml/rl/shader/environment/rlLunarLander3dStep.slang"
-      ],
-      "reason": "Preserves the donor flat-terrain FP32 vector state layout, deterministic versioned reset, fixed-order dynamics and contacts, frozen observation, reward and terminal behavior, completed-lane semantics, and explicit Environment transaction while adapting byte writes to portable storage helpers."
-    },
-    {
-      "family": "cart_pole",
-      "operations": ["cart_pole_reset", "cart_pole_step"],
-      "classification": "mechanical_adaptation",
-      "donors": [
-        "sdk/cpp/include/ml/rl/cartPole.h",
-        "sdk/cpp/lib/ml/rl/cartPole.cpp",
-        "sdk/cpp/lib/ml/rl/shader/environment/rlCartPoleReset.slang",
-        "sdk/cpp/lib/ml/rl/shader/environment/rlCartPoleStep.slang",
-        "tools/gen/fn/schema/ml/mlFnEnvironmentSession.toml"
-      ],
-      "reason": "Preserves the donor deterministic vectorized reset, Gymnasium-compatible Euler dynamics, separate termination and truncation, invalid-action behavior, per-lane episode counters, and transactional semantic identity while adapting packed byte writes to the portable storage helper and keeping the concrete environment in the Rust SDK surface."
-    },
-    {
       "family": "environment_transforms",
       "operations": ["normalize_observation", "scale_action", "clip_reward"],
       "classification": "mechanical_adaptation",
@@ -306,7 +281,7 @@
     },
     {
       "family": "linear",
-      "operations": ["linear", "linear_residual", "linear_residual_norm", "linear_act", "linear_gated_act", "linear_triple", "linear_backward", "linear_backward_prologue", "linear_backward_norm", "linear_backward_norm_add", "linear_backward_bmm_chain", "linear_parameter_backward"],
+      "operations": ["linear", "linear_residual", "linear_residual_act", "linear_residual_norm", "linear_act", "linear_gated_act", "linear_triple", "linear_backward", "linear_backward_prologue", "linear_backward_norm", "linear_backward_norm_add", "linear_backward_bmm_chain", "linear_parameter_backward"],
       "classification": "mechanical_adaptation",
       "donors": [
         "source/cpp/lib/oa/core/shader/compute/blas/gemm/gemmTiled.slang",
@@ -1310,6 +1285,7 @@
       "donor_op": "oa::FnMatrix::linear",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlLinearF32",
+      "fusion_effects": [],
       "dnn": {
         "role": "matmul",
         "providers": ["blaslt_epilogue", "qkv_projection_group", "gated_ffn"],
@@ -1351,6 +1327,7 @@
       "stable_id": 638,
       "name": "linear_residual",
       "kernel_id": "MlLinearResidualF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/linear/linear_residual.slang",
       "variant": "generic",
@@ -1391,9 +1368,65 @@
       ]
     },
     {
+      "stable_id": 671,
+      "name": "linear_residual_act",
+      "kernel_id": "MlLinearResidualActF32",
+      "fusion_effects": [],
+      "lowering_only": true,
+      "source": "src/slang/ml/nn/linear/linear_residual_act.slang",
+      "variant": "generic",
+      "dispatch_tile_size": [64, 64, 1],
+      "differentiation": "none",
+      "test": {"oracle": "differential_linear_residual_act", "shapes": [[2, 2, 3]], "tolerance": 0.00001},
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 4,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 5,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          },
+          {
+            "binding": 6,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["weight_index", "uint32"],
+        ["bias_index", "uint32"],
+        ["residual_index", "uint32"],
+        ["linear_output_index", "uint32"],
+        ["sum_index", "uint32"],
+        ["act_output_index", "uint32"],
+        ["batch", "uint32"],
+        ["input_features", "uint32"],
+        ["output_features", "uint32"],
+        ["act_kind", "uint32"],
+        ["alpha", "float32"]
+      ]
+    },
+    {
       "stable_id": 658,
       "name": "linear_residual_norm",
       "kernel_id": "MlLinearResidualNormF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/linear/linear_residual_norm.slang",
       "variant": "generic",
@@ -1466,6 +1499,7 @@
       "stable_id": 640,
       "name": "linear_act",
       "kernel_id": "MlLinearActF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/linear/linear_act.slang",
       "variant": "generic",
@@ -1510,6 +1544,7 @@
       "stable_id": 669,
       "name": "linear_gated_act",
       "kernel_id": "MlLinearGatedActF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/linear/linear_gated_act.slang",
       "variant": "generic",
@@ -1554,6 +1589,7 @@
       "stable_id": 644,
       "name": "linear_triple",
       "kernel_id": "MlLinearTripleF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/linear/linear_triple.slang",
       "variant": "generic",
@@ -1610,6 +1646,7 @@
       "name": "linear_backward",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlLinearBackwardF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/linear/linear_backward.slang",
       "variant": "generic",
       "workgroup_size": [64, 1, 1],
@@ -1677,6 +1714,7 @@
       "stable_id": 653,
       "name": "linear_backward_prologue",
       "kernel_id": "MlLinearBackwardPrologueF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/linear/linear_backward_prologue.slang",
       "variant": "generic",
@@ -1721,6 +1759,7 @@
     {
       "stable_id": 654,
       "name": "linear_backward_norm",
+      "fusion_effects": [],
       "kernel_id": "MlLinearBackwardNormF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/linear/linear_backward_norm.slang",
@@ -1775,6 +1814,7 @@
     {
       "stable_id": 655,
       "name": "linear_backward_bmm_chain",
+      "fusion_effects": [],
       "kernel_id": "MlLinearBackwardBmmChainF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/linear/linear_backward_bmm.slang",
@@ -1821,6 +1861,7 @@
     {
       "stable_id": 656,
       "name": "linear_backward_norm_add",
+      "fusion_effects": [],
       "kernel_id": "MlLinearBackwardNormAddF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/linear/linear_backward_norm_add.slang",
@@ -2732,6 +2773,7 @@
       "name": "embedding",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlEmbeddingF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/embedding/embedding.slang",
       "variant": "generic",
       "differentiation": "embedding_backward",
@@ -2763,6 +2805,7 @@
     {
       "stable_id": 28,
       "name": "embedding_backward",
+      "fusion_effects": [],
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlEmbeddingBackwardF32",
       "source": "src/slang/ml/nn/embedding/embedding_backward.slang",
@@ -2795,6 +2838,7 @@
     {
       "stable_id": 443,
       "name": "channel_norm",
+      "fusion_effects": [],
       "donor_op": "oa::FnMatrix::channelNorm",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlChannelNormF32",
@@ -2857,6 +2901,7 @@
     {
       "stable_id": 445,
       "name": "channel_norm_relu",
+      "fusion_effects": [],
       "donor_op": "oa::FnMatrix::channelNormRelu",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlChannelNormReluF32",
@@ -2964,6 +3009,7 @@
       "stable_id": 645,
       "name": "embedding_pair",
       "kernel_id": "MlEmbeddingPairF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/embedding/embedding_pair.slang",
       "variant": "generic",
@@ -2991,6 +3037,7 @@
       "stable_id": 659,
       "name": "embedding_pair_norm",
       "kernel_id": "MlEmbeddingPairNormF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/embedding/embedding_pair_norm.slang",
       "variant": "generic",
@@ -3023,6 +3070,7 @@
     {
       "stable_id": 661,
       "name": "embedding_backward_sum",
+      "fusion_effects": [],
       "kernel_id": "MlEmbeddingBackwardSumF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/embedding/embedding_backward_sum.slang",
@@ -3124,6 +3172,7 @@
       "name": "layer_norm",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlLayerNormF32",
+      "fusion_effects": [],
       "semantic_attributes": [["epsilon", "float"]],
       "source": "src/slang/ml/nn/layer_norm/layer_norm.slang",
       "variant": "generic",
@@ -3189,6 +3238,7 @@
       "stable_id": 642,
       "name": "residual_layer_norm",
       "kernel_id": "MlResidualLayerNormF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/layer_norm/residual_layer_norm.slang",
       "variant": "generic",
@@ -3248,6 +3298,7 @@
     {
       "stable_id": 32,
       "name": "layer_norm_backward",
+      "fusion_effects": [],
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlLayerNormBackwardF32",
       "source": "src/slang/ml/nn/layer_norm/layer_norm_backward.slang",
@@ -3303,6 +3354,7 @@
     {
       "stable_id": 660,
       "name": "layer_norm_backward_sum",
+      "fusion_effects": [],
       "kernel_id": "MlLayerNormBackwardSumF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/layer_norm/layer_norm_backward_sum.slang",
@@ -3356,6 +3408,7 @@
     {
       "stable_id": 643,
       "name": "sum_axis_pair",
+      "fusion_effects": [],
       "kernel_id": "MlSumAxisPairF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/sum_axis_pair.slang",
@@ -3397,6 +3450,7 @@
       "stable_id": 646,
       "name": "sum_axis_scale",
       "kernel_id": "MlSumAxisScaleF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/sum_axis_scale.slang",
       "variant": "generic",
@@ -3545,6 +3599,7 @@
       "donor_op": "oa::FnMatrix::gelu",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGeluF32",
+      "fusion_effects": [],
       "dnn": {
         "role": "gelu",
         "providers": ["blaslt_epilogue"]
@@ -3579,6 +3634,7 @@
       "name": "gelu_backward",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGeluBackwardF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/activation/gelu_backward.slang",
       "variant": "generic",
       "differentiation": "backward",
@@ -3601,7 +3657,8 @@
     {
       "stable_id": 92, "name": "silu",
       "donor_op": "oa::FnMatrix::silu", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlSiluF32", "source": "src/slang/ml/nn/activation/silu.slang",
+      "kernel_id": "MlSiluF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/silu.slang",
       "variant": "generic", "differentiation": "silu_backward",
       "dnn": {"role": "silu", "providers": ["blaslt_epilogue", "gated_ffn"]},
       "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Silu", "inputs": ["input"], "saved_matrices": ["input"]},
@@ -3611,7 +3668,8 @@
     },
     {
       "stable_id": 93, "name": "silu_backward", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlSiluBackwardF32", "source": "src/slang/ml/nn/activation/silu_backward.slang",
+      "kernel_id": "MlSiluBackwardF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/silu_backward.slang",
       "variant": "generic", "differentiation": "backward",
       "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
       "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
@@ -3620,7 +3678,8 @@
     {
       "stable_id": 94, "name": "relu",
       "donor_op": "oa::FnMatrix::relu", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlReluF32", "source": "src/slang/ml/nn/activation/relu.slang",
+      "kernel_id": "MlReluF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/relu.slang",
       "variant": "generic", "differentiation": "relu_backward",
       "dnn": {"role": "relu", "providers": ["blaslt_epilogue"]},
       "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Relu", "inputs": ["input"], "saved_matrices": ["output"]},
@@ -3630,7 +3689,8 @@
     },
     {
       "stable_id": 95, "name": "relu_backward", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlReluBackwardF32", "source": "src/slang/ml/nn/activation/relu_backward.slang",
+      "kernel_id": "MlReluBackwardF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/relu_backward.slang",
       "variant": "generic", "differentiation": "backward",
       "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
       "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.000001},
@@ -3639,7 +3699,8 @@
     {
       "stable_id": 96, "name": "tanh",
       "donor_op": "oa::FnMatrix::tanh", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlTanhF32", "source": "src/slang/ml/nn/activation/tanh.slang",
+      "kernel_id": "MlTanhF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/tanh.slang",
       "variant": "generic", "differentiation": "tanh_backward",
       "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Tanh", "inputs": ["input"], "saved_matrices": ["output"]},
       "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
@@ -3648,7 +3709,8 @@
     },
     {
       "stable_id": 97, "name": "tanh_backward", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlTanhBackwardF32", "source": "src/slang/ml/nn/activation/tanh_backward.slang",
+      "kernel_id": "MlTanhBackwardF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/tanh_backward.slang",
       "variant": "generic", "differentiation": "backward",
       "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
       "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
@@ -3657,7 +3719,8 @@
     {
       "stable_id": 98, "name": "sigmoid",
       "donor_op": "oa::FnMatrix::sigmoid", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlSigmoidF32", "source": "src/slang/ml/nn/activation/sigmoid.slang",
+      "kernel_id": "MlSigmoidF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/sigmoid.slang",
       "variant": "generic", "differentiation": "sigmoid_backward",
       "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Sigmoid", "inputs": ["input"], "saved_matrices": ["output"]},
       "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
@@ -3666,7 +3729,8 @@
     },
     {
       "stable_id": 99, "name": "sigmoid_backward", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlSigmoidBackwardF32", "source": "src/slang/ml/nn/activation/sigmoid_backward.slang",
+      "kernel_id": "MlSigmoidBackwardF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/sigmoid_backward.slang",
       "variant": "generic", "differentiation": "backward",
       "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
       "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
@@ -3675,7 +3739,8 @@
     {
       "stable_id": 100, "name": "leaky_relu",
       "donor_op": "oa::FnMatrix::leakyRelu", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlLeakyReluF32", "source": "src/slang/ml/nn/activation/leaky_relu.slang",
+      "kernel_id": "MlLeakyReluF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/leaky_relu.slang",
       "variant": "generic", "differentiation": "leaky_relu_backward",
       "semantic_attributes": [["alpha", "float"]],
       "autograd": {"mode": "generated", "family": "matrix/activation", "node": "LeakyRelu", "inputs": ["input"], "saved_matrices": ["input"], "saved_scalars": [["alpha", "f32"]]},
@@ -3685,7 +3750,8 @@
     },
     {
       "stable_id": 101, "name": "leaky_relu_backward", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlLeakyReluBackwardF32", "source": "src/slang/ml/nn/activation/leaky_relu_backward.slang",
+      "kernel_id": "MlLeakyReluBackwardF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/leaky_relu_backward.slang",
       "variant": "generic", "differentiation": "backward", "semantic_attributes": [["alpha", "float"]],
       "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
       "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
@@ -3694,7 +3760,8 @@
     {
       "stable_id": 102, "name": "elu",
       "donor_op": "oa::FnMatrix::elu", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlEluF32", "source": "src/slang/ml/nn/activation/elu.slang",
+      "kernel_id": "MlEluF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/elu.slang",
       "variant": "generic", "differentiation": "elu_backward", "semantic_attributes": [["alpha", "float"]],
       "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Elu", "inputs": ["input"], "saved_matrices": ["output"], "saved_scalars": [["alpha", "f32"]]},
       "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
@@ -3703,7 +3770,8 @@
     },
     {
       "stable_id": 103, "name": "elu_backward", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlEluBackwardF32", "source": "src/slang/ml/nn/activation/elu_backward.slang",
+      "kernel_id": "MlEluBackwardF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/elu_backward.slang",
       "variant": "generic", "differentiation": "backward", "semantic_attributes": [["alpha", "float"]],
       "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
       "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
@@ -3712,7 +3780,8 @@
     {
       "stable_id": 104, "name": "mish",
       "donor_op": "oa::FnMatrix::mish", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlMishF32", "source": "src/slang/ml/nn/activation/mish.slang",
+      "kernel_id": "MlMishF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/mish.slang",
       "variant": "generic", "differentiation": "mish_backward",
       "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Mish", "inputs": ["input"], "saved_matrices": ["input"]},
       "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
@@ -3721,7 +3790,8 @@
     },
     {
       "stable_id": 105, "name": "mish_backward", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlMishBackwardF32", "source": "src/slang/ml/nn/activation/mish_backward.slang",
+      "kernel_id": "MlMishBackwardF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/mish_backward.slang",
       "variant": "generic", "differentiation": "backward",
       "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
       "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0003},
@@ -3730,7 +3800,8 @@
     {
       "stable_id": 106, "name": "softplus",
       "donor_op": "oa::FnMatrix::softplus", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlSoftplusF32", "source": "src/slang/ml/nn/activation/softplus.slang",
+      "kernel_id": "MlSoftplusF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/softplus.slang",
       "variant": "generic", "differentiation": "softplus_backward",
       "autograd": {"mode": "generated", "family": "matrix/activation", "node": "Softplus", "inputs": ["input"], "saved_matrices": ["output"]},
       "contract": {"input_kinds": ["matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
@@ -3739,7 +3810,8 @@
     },
     {
       "stable_id": 107, "name": "softplus_backward", "semantic_domain": "ml::matrix",
-      "kernel_id": "MlSoftplusBackwardF32", "source": "src/slang/ml/nn/activation/softplus_backward.slang",
+      "kernel_id": "MlSoftplusBackwardF32",
+      "fusion_effects": [], "source": "src/slang/ml/nn/activation/softplus_backward.slang",
       "variant": "generic", "differentiation": "backward",
       "contract": {"input_kinds": ["matrix", "matrix"], "output_kinds": ["matrix"], "shape_rule": "preserve_input", "dtype_rule": "all_f32", "effects": ["read_inputs", "write_output"], "mutated_inputs": [], "output_alias_inputs": [-1], "lowering": "compute_dispatch"},
       "test": {"oracle": "finite_difference", "shapes": [[7]], "tolerance": 0.0002},
@@ -4141,6 +4213,7 @@
       "name": "max_pool_2d_backward",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMaxPool2dBackwardF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/pooling/max_pool_2d_backward.slang",
       "variant": "generic",
       "workgroup_size": [16, 16, 1],
@@ -4186,6 +4259,7 @@
       "stable_id": 668,
       "name": "max_pool_2d_relu_backward",
       "kernel_id": "MlMaxPool2dReluBackwardF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/pooling/max_pool_2d_relu_backward.slang",
       "variant": "generic",
@@ -4713,6 +4787,7 @@
       "name": "conv_2d",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlConv2dF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/conv/conv_2d.slang",
       "variant": "generic",
       "workgroup_size": [256, 1, 1],
@@ -4765,6 +4840,7 @@
       "stable_id": 667,
       "name": "conv_2d_relu",
       "kernel_id": "MlConv2dReluF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/conv/conv_2d_relu.slang",
       "variant": "generic",
@@ -4949,6 +5025,7 @@
     {
       "stable_id": 291,
       "name": "conv_1d_bias_add",
+      "fusion_effects": [],
       "kernel_id": "MlConv1dBiasAddF32",
       "lowering_only": true,
       "semantic_operation": "conv_1d",
@@ -4981,6 +5058,7 @@
     {
       "stable_id": 292,
       "name": "conv_1d_transpose",
+      "fusion_effects": [],
       "kernel_id": "MlConv1dTransposeF32",
       "lowering_only": true,
       "semantic_operation": "conv_1d",
@@ -5013,6 +5091,7 @@
     {
       "stable_id": 662,
       "name": "conv_1d_bias_transpose",
+      "fusion_effects": [],
       "kernel_id": "MlConv1dBiasTransposeF32",
       "lowering_only": true,
       "semantic_operation": "conv_1d",
@@ -5045,6 +5124,7 @@
     {
       "stable_id": 663,
       "name": "conv_1d_bias_transpose_relu",
+      "fusion_effects": [],
       "kernel_id": "MlConv1dBiasTransposeReluF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/conv/conv_1d_bias_transpose_relu.slang",
@@ -5076,6 +5156,7 @@
     {
       "stable_id": 670,
       "name": "conv_1d_bias_transpose_residual_relu",
+      "fusion_effects": [],
       "kernel_id": "MlConv1dBiasTransposeResidualReluF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/conv/conv_1d_bias_transpose_residual_relu.slang",
@@ -5118,6 +5199,7 @@
     {
       "stable_id": 664,
       "name": "conv_1d_bias_transpose_norm",
+      "fusion_effects": [],
       "kernel_id": "MlConv1dBiasTransposeNormF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/conv/conv_1d_bias_transpose_norm.slang",
@@ -5160,6 +5242,7 @@
     {
       "stable_id": 665,
       "name": "conv_1d_bias_transpose_norm_relu",
+      "fusion_effects": [],
       "kernel_id": "MlConv1dBiasTransposeNormReluF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/conv/conv_1d_bias_transpose_norm_relu.slang",
@@ -5202,6 +5285,7 @@
     {
       "stable_id": 666,
       "name": "conv_1d_bias_copy",
+      "fusion_effects": [],
       "kernel_id": "MlConv1dBiasCopyF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/conv/conv_1d_bias_copy.slang",
@@ -5956,6 +6040,7 @@
       "donor_op": "oa::FnMatrix::bmm",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlBmmF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/attention/bmm.slang",
       "variant": "generic",
       "workgroup_size": [256, 1, 1],
@@ -5998,6 +6083,7 @@
       "stable_id": 318,
       "name": "bmm_tiled_16",
       "kernel_id": "MlBmmTiled16F32",
+      "fusion_effects": [],
       "lowering_only": true,
       "semantic_operation": "bmm",
       "source": "src/slang/ml/nn/attention/bmm_tiled_16.slang",
@@ -6033,6 +6119,7 @@
       "donor_op": "oa::FnMatrix::bmmNt",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlBmmNtF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/attention/bmm_nt.slang",
       "variant": "generic",
       "workgroup_size": [256, 1, 1],
@@ -6075,6 +6162,7 @@
       "stable_id": 320,
       "name": "bmm_nt_tiled_16",
       "kernel_id": "MlBmmNtTiled16F32",
+      "fusion_effects": [],
       "lowering_only": true,
       "semantic_operation": "bmm_nt",
       "source": "src/slang/ml/nn/attention/bmm_nt_tiled_16.slang",
@@ -6151,6 +6239,7 @@
     {
       "stable_id": 322,
       "name": "bmm_tn_tiled_16",
+      "fusion_effects": [],
       "kernel_id": "MlBmmTnTiled16F32",
       "lowering_only": true,
       "semantic_operation": "bmm_tn",
@@ -6187,6 +6276,7 @@
       "donor_op": "oa::FnMatrix::splitHeads",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSplitHeadsF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/attention/split_heads.slang",
       "variant": "generic",
       "workgroup_size": [256, 1, 1],
@@ -6236,6 +6326,7 @@
       "donor_op": "oa::FnMatrix::mergeHeads",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMergeHeadsF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/attention/merge_heads.slang",
       "variant": "generic",
       "workgroup_size": [256, 1, 1],
@@ -6407,6 +6498,7 @@
       "donor_op": "oa::FnMatrix::scaledDotProductAttention",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSdpaSoftmaxF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/attention/sdpa_softmax.slang",
       "variant": "standard",
       "workgroup_size": [256, 1, 1],
@@ -6453,6 +6545,7 @@
       "stable_id": 329,
       "name": "sdpa_softmax_n32",
       "kernel_id": "MlSdpaSoftmaxN32F32",
+      "fusion_effects": [],
       "lowering_only": true,
       "semantic_operation": "scaled_dot_product_attention",
       "source": "src/slang/ml/nn/attention/sdpa_softmax_n32.slang",
@@ -6834,6 +6927,7 @@
       "donor_op": "oa::FnMatrix::groupedLinearM",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGroupedLinearMF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/moe/grouped_linear_m.slang",
       "variant": "generic",
       "workgroup_size": [64, 1, 1],
@@ -6866,6 +6960,7 @@
       "name": "grouped_linear_m_backward",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGroupedLinearMDataBackwardF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/moe/grouped_linear_m_data_backward.slang",
       "variant": "generic",
       "workgroup_size": [64, 1, 1],
@@ -6922,6 +7017,7 @@
       "name": "silu_mul",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSiluMulF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/swiglu/silu_mul.slang",
       "variant": "concatenated_last_axis",
       "differentiation": "silu_mul_backward",
@@ -6952,6 +7048,7 @@
       "name": "silu_mul_backward",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSiluMulBackwardF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/swiglu/silu_mul_backward.slang",
       "variant": "concatenated_last_axis",
       "differentiation": "backward",
@@ -7015,6 +7112,7 @@
       "name": "grouped_gemm_m_backward",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGroupedGemmMDataBackwardF32",
+      "fusion_effects": [],
       "source": "src/slang/ml/nn/moe/grouped_gemm_m_data_backward.slang",
       "variant": "generic",
       "workgroup_size": [64, 1, 1],
@@ -7469,193 +7567,6 @@
         ["terminated_index", "uint32"], ["truncated_index", "uint32"],
         ["output_index", "uint32"], ["batch", "uint32"],
         ["discount", "float32"], ["entropy_coefficient", "float32"]
-      ]
-    },
-    {
-      "stable_id": 404,
-      "name": "cart_pole_reset",
-      "semantic_domain": "ml::environment",
-      "kernel_id": "MlCartPoleResetF32",
-      "source": "sdk/rs/slang/ml/rl/cart_pole/reset.slang",
-      "variant": "vectorized",
-      "differentiation": "none",
-      "semantic_attributes": [
-        ["seed", "unsigned_integer"], ["only_completed", "boolean"]
-      ],
-      "physical_write": {
-        "writes": [
-          {"binding": 0, "domain": "output_elements", "partition": "shared_atomic_contributors", "extent": "one_element", "collision": "atomic_u32", "tail": "bounds_checked"},
-          {"binding": 1, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "up_to_four_elements", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 3, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
-        ],
-        "workspace": "none"
-      },
-      "contract": {
-        "input_kinds": ["matrix", "matrix", "matrix", "matrix"],
-        "output_kinds": ["matrix", "matrix", "matrix", "matrix"],
-        "shape_rule": "cart_pole_vectorized_reset",
-        "dtype_rule": "explicit",
-        "effects": ["read_inputs", "write_outputs"],
-        "mutated_inputs": [0, 1, 2, 3],
-        "output_alias_inputs": [0, 1, 2, 3],
-        "lowering": "compute_dispatch"
-      },
-      "test": {"oracle": "independent_host_cart_pole_reset_hash", "shapes": [[3, 4]], "tolerance": 0.0},
-      "push_fields": [
-        ["done_index", "uint32"], ["state_index", "uint32"],
-        ["episode_steps_index", "uint32"], ["episode_index_index", "uint32"],
-        ["environments", "uint32"], ["seed_low", "uint32"],
-        ["seed_high", "uint32"], ["only_done", "uint32"]
-      ]
-    },
-    {
-      "stable_id": 405,
-      "name": "cart_pole_step",
-      "semantic_domain": "ml::environment",
-      "kernel_id": "MlCartPoleStepF32",
-      "source": "sdk/rs/slang/ml/rl/cart_pole/step.slang",
-      "variant": "gymnasium_euler",
-      "differentiation": "none",
-      "semantic_attributes": [
-        ["dynamics_version", "unsigned_integer"],
-        ["dynamics_identity", "unsigned_integer"],
-        ["max_episode_steps", "unsigned_integer"],
-        ["gravity", "float"], ["force_magnitude", "float"],
-        ["time_step", "float"], ["position_threshold", "float"],
-        ["angle_threshold_radians", "float"]
-      ],
-      "physical_write": {
-        "writes": [
-          {"binding": 1, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "up_to_four_elements", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "up_to_four_elements", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 3, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 4, "domain": "output_elements", "partition": "shared_atomic_contributors", "extent": "one_element", "collision": "atomic_u32", "tail": "bounds_checked"},
-          {"binding": 5, "domain": "output_elements", "partition": "shared_atomic_contributors", "extent": "one_element", "collision": "atomic_u32", "tail": "bounds_checked"},
-          {"binding": 6, "domain": "output_elements", "partition": "shared_atomic_contributors", "extent": "one_element", "collision": "atomic_u32", "tail": "bounds_checked"},
-          {"binding": 7, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
-        ],
-        "workspace": "none"
-      },
-      "contract": {
-        "input_kinds": ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix"],
-        "output_kinds": ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix"],
-        "shape_rule": "cart_pole_vectorized_transition",
-        "dtype_rule": "explicit",
-        "effects": ["read_inputs", "write_outputs"],
-        "mutated_inputs": [1, 2, 3, 4, 5, 6, 7],
-        "output_alias_inputs": [2, 1, 3, 4, 5, 6, 7],
-        "lowering": "compute_dispatch"
-      },
-      "test": {"oracle": "independent_host_cart_pole_euler", "shapes": [[3, 4]], "tolerance": 0.000001},
-      "push_fields": [
-        ["action_index", "uint32"], ["state_index", "uint32"],
-        ["transition_observation_index", "uint32"], ["reward_index", "uint32"],
-        ["terminated_index", "uint32"], ["truncated_index", "uint32"],
-        ["done_index", "uint32"], ["episode_steps_index", "uint32"],
-        ["environments", "uint32"], ["max_episode_steps", "uint32"],
-        ["gravity", "float32"], ["cart_mass", "float32"],
-        ["pole_mass", "float32"], ["half_pole_length", "float32"],
-        ["force_magnitude", "float32"], ["time_step", "float32"],
-        ["position_threshold", "float32"], ["angle_threshold_radians", "float32"]
-      ]
-    },
-    {
-      "stable_id": 406,
-      "name": "lunar_lander_reset",
-      "semantic_domain": "ml::environment",
-      "kernel_id": "MlLunarLanderResetF32",
-      "source": "sdk/rs/slang/ml/rl/lunar_lander/reset.slang",
-      "variant": "vectorized_flat",
-      "differentiation": "none",
-      "semantic_attributes": [
-        ["environment_version", "unsigned_integer"],
-        ["state_layout_version", "unsigned_integer"],
-        ["seed", "unsigned_integer"],
-        ["only_completed", "boolean"]
-      ],
-      "physical_write": {
-        "writes": [
-          {"binding": 3, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 4, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 5, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 6, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
-        ],
-        "workspace": "none"
-      },
-      "contract": {
-        "input_kinds": ["matrix", "matrix", "matrix", "matrix", "matrix", "matrix", "matrix"],
-        "output_kinds": ["matrix", "matrix", "matrix", "matrix"],
-        "shape_rule": "lunar_lander_vectorized_reset",
-        "dtype_rule": "explicit",
-        "effects": ["read_inputs", "write_outputs"],
-        "mutated_inputs": [3, 4, 5, 6],
-        "output_alias_inputs": [3, 4, 5, 6],
-        "lowering": "compute_dispatch"
-      },
-      "test": {"oracle": "independent_scalar_lunar_lander_reset", "shapes": [[3, 33]], "tolerance": 0.000001},
-      "push_fields": [
-        ["config_f32_idx", "uint32"], ["config_u32_idx", "uint32"],
-        ["terrain_f32_idx", "uint32"], ["state_f32_idx", "uint32"],
-        ["state_u32_idx", "uint32"], ["observation_idx", "uint32"],
-        ["end_reason_idx", "uint32"], ["environments", "uint32"],
-        ["seed_low", "uint32"], ["seed_high", "uint32"],
-        ["only_completed", "uint32"]
-      ]
-    },
-    {
-      "stable_id": 407,
-      "name": "lunar_lander_step",
-      "semantic_domain": "ml::environment",
-      "kernel_id": "MlLunarLanderStepF32",
-      "source": "sdk/rs/slang/ml/rl/lunar_lander/step.slang",
-      "variant": "vectorized_flat",
-      "differentiation": "none",
-      "semantic_attributes": [
-        ["environment_version", "unsigned_integer"],
-        ["physics_version", "unsigned_integer"],
-        ["observation_version", "unsigned_integer"],
-        ["reward_version", "unsigned_integer"],
-        ["state_layout_version", "unsigned_integer"],
-        ["config_identity", "unsigned_integer"],
-        ["max_episode_steps", "unsigned_integer"],
-        ["failure_penalty", "float"]
-      ],
-      "physical_write": {
-        "writes": [
-          {"binding": 5, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 6, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 7, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 8, "domain": "rows", "partition": "exclusive_per_invocation", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 9, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
-          {"binding": 10, "domain": "output_elements", "partition": "shared_atomic_contributors", "extent": "one_element", "collision": "atomic_u32", "tail": "bounds_checked"},
-          {"binding": 11, "domain": "output_elements", "partition": "shared_atomic_contributors", "extent": "one_element", "collision": "atomic_u32", "tail": "bounds_checked"},
-          {"binding": 12, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
-        ],
-        "workspace": "none"
-      },
-      "contract": {
-        "input_kinds": ["matrix", "matrix", "matrix", "matrix", "matrix"],
-        "output_kinds": [],
-        "variadic_input": {"kind": "matrix", "minimum": 8},
-        "variadic_output": {"kind": "matrix", "minimum": 8},
-        "aligned_variadic_aliases": true,
-        "shape_rule": "lunar_lander_vectorized_transition",
-        "dtype_rule": "explicit",
-        "effects": ["read_inputs", "write_outputs"],
-        "mutated_inputs": [],
-        "output_alias_inputs": [],
-        "lowering": "compute_dispatch"
-      },
-      "test": {"oracle": "independent_scalar_lunar_lander_step", "shapes": [[3, 33]], "tolerance": 0.0001},
-      "push_fields": [
-        ["action_idx", "uint32"], ["external_stop_idx", "uint32"],
-        ["config_f32_idx", "uint32"], ["config_u32_idx", "uint32"],
-        ["terrain_f32_idx", "uint32"], ["state_f32_idx", "uint32"],
-        ["state_u32_idx", "uint32"], ["transition_observation_idx", "uint32"],
-        ["observation_idx", "uint32"], ["reward_idx", "uint32"],
-        ["terminated_idx", "uint32"], ["truncated_idx", "uint32"],
-        ["end_reason_idx", "uint32"], ["environments", "uint32"]
       ]
     },
     {
@@ -10457,6 +10368,18 @@
         [
           "book_slippage",
           "float32"
+        ],
+        [
+          "maker_fee",
+          "float32"
+        ],
+        [
+          "maker_window",
+          "uint32"
+        ],
+        [
+          "maker_requotes",
+          "uint32"
         ]
       ]
     },
@@ -11813,6 +11736,18 @@
         [
           "book_slippage",
           "float32"
+        ],
+        [
+          "maker_fee",
+          "float32"
+        ],
+        [
+          "maker_window",
+          "uint32"
+        ],
+        [
+          "maker_requotes",
+          "uint32"
         ]
       ]
     },
@@ -12697,6 +12632,7 @@
     {
       "stable_id": 648,
       "name": "moe_router_select",
+      "fusion_effects": [],
       "kernel_id": "MlMoeRouterSelectF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/moe/moe_router_select.slang",
@@ -12798,6 +12734,7 @@
       "stable_id": 649,
       "name": "linear_concat",
       "kernel_id": "MlLinearConcatF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/linear/linear_concat.slang",
       "variant": "generic",
@@ -12903,6 +12840,7 @@
       "stable_id": 650,
       "name": "small_causal_sdpa",
       "kernel_id": "MlSmallCausalSdpaF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/attention/small_causal_sdpa.slang",
       "variant": "generic",
@@ -13056,6 +12994,7 @@
       "stable_id": 651,
       "name": "grouped_linear_m_act",
       "kernel_id": "MlGroupedLinearMActF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/moe/grouped_linear_m_act.slang",
       "variant": "generic",
@@ -13153,6 +13092,7 @@
       "stable_id": 657,
       "name": "grouped_backward_prologue",
       "kernel_id": "MlGroupedBackwardPrologueF32",
+      "fusion_effects": [],
       "lowering_only": true,
       "source": "src/slang/ml/nn/moe/grouped_backward_prologue.slang",
       "variant": "generic",

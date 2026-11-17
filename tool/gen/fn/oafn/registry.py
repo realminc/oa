@@ -6,6 +6,7 @@ import hashlib
 import json
 from typing import Any
 
+from .effects import kernel_fusion_effects, rust_fusion_effects
 from .model import count_buffer_indices, operation_lowering_variants, operation_variants, rust_physical_write, validate_physical_write, validate_retired_stable_ids, validate_unique
 from .paths import FN_ROOT
 from .pqc import MLDSA_WIRE_LAYOUTS
@@ -25,6 +26,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 	cryptography_pqc = schemas["pqc"][0]
 	image = schemas["image"][0]
 	vision = schemas["vision"][0]
+	video = schemas["video"][0]
 	bigint = schemas["bigint"][0]
 	merkle = schemas["merkle"][0]
 	ntt = schemas["ntt"][0]
@@ -42,6 +44,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 					"dispatch_tile_size": elementwise["workgroup_size"],
 					"training_replay_role": "safe",
 					"physical_write": operation.get("physical_write"),
+					"fusion_effects": kernel_fusion_effects(operation),
 					"semantic_contract": None,
 				}
 			)
@@ -58,6 +61,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 					"dispatch_tile_size": elementwise["workgroup_size"],
 					"training_replay_role": "safe",
 					"physical_write": operation.get("physical_write"),
+					"fusion_effects": kernel_fusion_effects(operation if variant["kernel_id"] == operation["kernel_id"] else variant, inherited=operation),
 					"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(operation['name'])}",
 				}
 			)
@@ -73,6 +77,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 					"dispatch_tile_size": lowering.get("dispatch_tile_size", lowering.get("workgroup_size", elementwise["workgroup_size"])),
 					"training_replay_role": "safe",
 					"physical_write": lowering["physical_write"],
+					"fusion_effects": kernel_fusion_effects(lowering, inherited=operation),
 					"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(operation['name'])}",
 				}
 			)
@@ -88,6 +93,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": blas["output_tile_size"],
 				"training_replay_role": "safe",
 				"physical_write": operation.get("physical_write"),
+				"fusion_effects": kernel_fusion_effects(operation),
 				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(operation['name'])}",
 			}
 		)
@@ -103,6 +109,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": candidate["dispatch_tile_size"],
 				"training_replay_role": "safe",
 				"physical_write": candidate.get("physical_write"),
+				"fusion_effects": kernel_fusion_effects(candidate),
 				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(candidate['semantic_operation'])}",
 			}
 		)
@@ -121,6 +128,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": [1, 1, 1],
 				"training_replay_role": "safe",
 				"physical_write": operation.get("physical_write"),
+				"fusion_effects": kernel_fusion_effects(operation),
 				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(semantic)}",
 			}
 		)
@@ -140,6 +148,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				),
 				"training_replay_role": operation.get("training_replay_role", "safe"),
 				"physical_write": operation.get("physical_write"),
+				"fusion_effects": kernel_fusion_effects(operation),
 				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(semantic)}",
 			}
 		)
@@ -160,6 +169,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				),
 				"training_replay_role": "safe",
 				"physical_write": operation.get("physical_write"),
+				"fusion_effects": kernel_fusion_effects(operation),
 				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(semantic)}",
 			}
 		)
@@ -180,6 +190,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				),
 				"training_replay_role": operation.get("training_replay_role", "safe"),
 				"physical_write": operation.get("physical_write"),
+				"fusion_effects": kernel_fusion_effects(operation),
 				"semantic_contract": (
 					None
 					if operation.get("lowering_only", False) and "semantic_operation" not in operation
@@ -200,6 +211,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
 				"training_replay_role": "safe",
 				"physical_write": kernel.get("physical_write"),
+				"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": (
 					None
 					if semantic is None
@@ -221,6 +233,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
 				"training_replay_role": "safe",
 				"physical_write": kernel.get("physical_write"),
+				"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": f"crate::core::operation::crypto::hash::{rust_const_name(semantic)}",
 			}
 		)
@@ -238,6 +251,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
 				"training_replay_role": "safe",
 				"physical_write": kernel.get("physical_write"),
+				"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": f"crate::core::operation::crypto::pqc::{rust_const_name(semantic)}",
 			}
 		)
@@ -248,7 +262,13 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 			"kernel_id": kernel["kernel_id"], "stable_id": kernel["stable_id"],
 			"workgroup_size": kernel["workgroup_size"], "dispatch_tile_size": kernel["workgroup_size"],
 			"training_replay_role": "safe", "physical_write": kernel["physical_write"],
-			"semantic_contract": None, "requires_secret_storage": True,
+			"fusion_effects": kernel_fusion_effects(kernel),
+			"semantic_contract": None,
+			"semantic_contracts": [
+				f"crate::core::operation::crypto::pqc::{rust_const_name(semantic)}"
+				for semantic in kernel.get("semantic_operations", [])
+			],
+			"requires_secret_storage": bool(kernel["secret_bindings"]),
 		})
 	for kernel in image["kernels"]:
 		semantic = kernel["semantic_operation"]
@@ -263,6 +283,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
 				"training_replay_role": "safe",
 				"physical_write": kernel["physical_write"],
+				"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": f"crate::core::operation::image::{rust_const_name(semantic)}",
 			}
 		)
@@ -279,7 +300,31 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
 				"training_replay_role": "safe",
 				"physical_write": kernel["physical_write"],
+				"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": f"crate::core::operation::vision::{rust_const_name(semantic)}",
+			}
+		)
+	for kernel in video["kernels"]:
+		if not kernel.get("registered", True):
+			continue
+		semantic = kernel.get("semantic_operation")
+		entries.append(
+			{
+				"domain": "video",
+				"name": kernel["name"],
+				"dtype": kernel.get("dtype", "u8"),
+				"kernel_id": kernel["kernel_id"],
+				"stable_id": kernel["stable_id"],
+				"workgroup_size": kernel["workgroup_size"],
+				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
+				"training_replay_role": kernel.get("training_replay_role", "safe"),
+				"physical_write": kernel.get("physical_write"),
+				"fusion_effects": kernel_fusion_effects(kernel),
+				"semantic_contract": (
+					None
+					if semantic is None
+					else f"crate::core::operation::video::{rust_const_name(semantic)}"
+				),
 			}
 		)
 	if bigint is not None:
@@ -290,16 +335,17 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"stable_id": kernel["stable_id"], "workgroup_size": kernel["workgroup_size"],
 				"dispatch_tile_size": kernel["workgroup_size"], "training_replay_role": "safe",
 				"physical_write": kernel["physical_write"],
+				"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": f"crate::core::operation::crypto::bigint::{rust_const_name(kernel['semantic_operation'])}",
 			})
 	for kernel in merkle['kernels']:
 		entries.append({'domain': 'cryptography', 'report_domain': 'cryptography.merkle', 'name': kernel['name'], 'dtype': 'u32',
 			'kernel_id': kernel['kernel_id'], 'stable_id': kernel['stable_id'], 'workgroup_size': kernel['workgroup_size'], 'dispatch_tile_size': kernel['workgroup_size'],
-			'training_replay_role': 'safe', 'physical_write': kernel['physical_write'], 'semantic_contract': f"crate::core::operation::crypto::merkle::{rust_const_name(kernel['semantic_operation'])}"})
+			'training_replay_role': 'safe', 'physical_write': kernel['physical_write'], 'fusion_effects': kernel_fusion_effects(kernel), 'semantic_contract': f"crate::core::operation::crypto::merkle::{rust_const_name(kernel['semantic_operation'])}"})
 	for kernel in ntt['kernels']:
 		entries.append({'domain': 'cryptography', 'report_domain': 'cryptography.ntt', 'name': kernel['name'], 'dtype': 'u32',
 			'kernel_id': kernel['kernel_id'], 'stable_id': kernel['stable_id'], 'workgroup_size': kernel['workgroup_size'], 'dispatch_tile_size': kernel['workgroup_size'],
-			'training_replay_role': 'safe', 'physical_write': kernel['physical_write'], 'semantic_contract': f"crate::core::operation::crypto::ntt::{rust_const_name(kernel['semantic_operation'])}"})
+			'training_replay_role': 'safe', 'physical_write': kernel['physical_write'], 'fusion_effects': kernel_fusion_effects(kernel), 'semantic_contract': f"crate::core::operation::crypto::ntt::{rust_const_name(kernel['semantic_operation'])}"})
 	buffer_counts: dict[str, int] = {}
 	for kernel in ntt['kernels'] + merkle['kernels']:
 		buffer_counts[kernel['kernel_id']] = count_buffer_indices(kernel)
@@ -323,6 +369,9 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 		for operation in schema.get("operations", schema.get("kernels", [])) + schema.get("private_kernels", []):
 			if "kernel_id" in operation:
 				buffer_counts[operation["kernel_id"]] = count_buffer_indices(operation)
+	for kernel in video["kernels"]:
+		if kernel.get("registered", True):
+			buffer_counts[kernel["kernel_id"]] = count_buffer_indices(kernel)
 	if bigint is not None:
 		for kernel in bigint["kernels"]:
 			buffer_counts[kernel["kernel_id"]] = count_buffer_indices(kernel)
@@ -354,6 +403,7 @@ def generate_kernel_manifest(schemas: Schemas) -> str:
 	cryptography_pqc, cryptography_pqc_hash = schemas["pqc"]
 	image, image_hash = schemas["image"]
 	vision, vision_hash = schemas["vision"]
+	video, video_hash = schemas["video"]
 	bigint, bigint_hash = schemas["bigint"]
 	entries = registry_entries(schemas)
 	lines = [
@@ -370,13 +420,14 @@ def generate_kernel_manifest(schemas: Schemas) -> str:
 			vision_hash,
 		).rstrip(),
 		"",
-		"use super::{CollisionPolicy, LogicalWriteDomain, PhysicalWrite, PhysicalWriteContract, ShaderArtifact, TailPolicy, UniformStoreProof, WorkspacePartition, WriteExtent, WritePartition, content_ids};",
+		"use super::{CollisionPolicy, LogicalWriteDomain, KernelEffects, PhysicalWrite, PhysicalWriteContract, ShaderArtifact, TailPolicy, UniformStoreProof, WorkspacePartition, WriteExtent, WritePartition, content_ids};",
 		"",
 		f"pub(crate) const MAX_BOUNDED_STORAGE_BUFFERS: u32 = {max(entry['bounded_buffer_count'] for entry in entries)};",
 		"",
 	]
 	if bigint_hash is not None:
 		lines.insert(1, f"// cryptography_bigint_sha256={bigint_hash}")
+	lines.insert(1, f"// video_sha256={video_hash}")
 	for entry in entries:
 		domain = entry["domain"]
 		name = entry["name"]
@@ -387,7 +438,7 @@ def generate_kernel_manifest(schemas: Schemas) -> str:
 		lines.extend(
 			[
 				f"static {static_name(domain, name, dtype)}: ShaderArtifact = ShaderArtifact {{",
-				f'\tbytes: include_bytes!(concat!(env!("OUT_DIR"), "/{domain}_{name}_{dtype}.spv")),',
+				f'\tbytes: include_bytes!(concat!(env!("OA_SHADER_DIR"), "/{domain}_{name}_{dtype}.spv")),',
 				f"\tcontent_id: content_ids::{static_name(domain, name, dtype)},",
 				f"\tworkgroup_size: [{workgroup[0]}, {workgroup[1]}, {workgroup[2]}],",
 				f"\tdispatch_tile_size: [{dispatch_tile[0]}, {dispatch_tile[1]}, {dispatch_tile[2]}],",
@@ -396,18 +447,7 @@ def generate_kernel_manifest(schemas: Schemas) -> str:
 				"",
 			]
 		)
-		lines.extend(
-			[
-				f"static BOUNDED_{static_name(domain, name, dtype)}: ShaderArtifact = ShaderArtifact {{",
-				f'\tbytes: include_bytes!(concat!(env!("OUT_DIR"), "/{domain}_{name}_{dtype}_bounded.spv")),',
-				f"\tcontent_id: content_ids::{static_name(domain, name, dtype)}_BOUNDED,",
-				f"\tworkgroup_size: [{workgroup[0]}, {workgroup[1]}, {workgroup[2]}],",
-				f"\tdispatch_tile_size: [{dispatch_tile[0]}, {dispatch_tile[1]}, {dispatch_tile[2]}],",
-				f"\tphysical_write: {physical_write},",
-				"};",
-				"",
-			]
-		)
+
 	lines.extend(
 		[
 			"#[derive(Clone, Copy, Debug, PartialEq, Eq)]",
@@ -439,14 +479,31 @@ def generate_kernel_manifest(schemas: Schemas) -> str:
 			for row in kernel["parameter_layouts"]:
 				lines.append(f"\t\t\t{row['parameter_set']} => Some(({row['seed_bytes']}, {row['private_bytes']}, {row['mu_bytes']}, {row['signature_bytes']})),")
 	lines.extend(["\t\t\t_ => None,", "\t\t}", "\t}"])
-	for name in ("encaps", "decaps"):
-		size = next(kernel["workspace_bytes"] for kernel in cryptography_pqc["private_kernels"] if kernel["name"] == f"ml_kem_{name}")
-		lines.extend([f"\tpub(crate) const fn mlkem_{name}_workspace_bytes() -> usize {{", f"\t\t{size}", "\t}"])
 	workspace = next(kernel["workspace_bytes"] for kernel in cryptography_pqc["private_kernels"] if kernel["name"] == "ml_dsa_sign")
-	lines.extend(["\tpub(crate) const fn mldsa_sign_workspace_bytes() -> usize {", f"\t\t{workspace}", "\t}", "\tpub(crate) const fn mlkem_keygen_workspace_bytes() -> usize {", f"\t\t{next(kernel['workspace_bytes'] for kernel in cryptography_pqc['private_kernels'] if kernel['name'] == 'ml_kem_keygen')}", "\t}", "\tpub(crate) const fn mldsa_prehash_bytes(algorithm: u32) -> Option<u64> {", "\t\tmatch algorithm {"])
+	lines.extend(["\tpub(crate) const fn mldsa_sign_workspace_bytes() -> usize {", f"\t\t{workspace}", "\t}", "\tpub(crate) const fn mldsa_prehash_bytes(algorithm: u32) -> Option<u64> {", "\t\tmatch algorithm {"])
 	for row in cryptography_pqc["prehashes"]:
 		lines.append(f"\t\t\t{row['oid_suffix']} => Some({row['digest_bytes']}),")
-	lines.extend(["\t\t\t_ => None,", "\t\t}", "\t}", "}", "", "impl KernelId {", f"\tpub(crate) const ALL: [Self; {len(entries)}] = ["])
+	lines.extend(["\t\t\t_ => None,", "\t\t}", "\t}", "",
+		"\t/// FIPS 204 M' head words for the public mu kernel: the 0x00 or 0x01",
+		"\t/// domain tag, the context length byte and, for HashML-DSA, the",
+		"\t/// eleven-byte OID trailer, packed little-endian. Returns the four",
+		"\t/// push words and the live byte count (2 or 13).",
+		"\tpub(crate) const fn mldsa_mu_head(algorithm: u32, context_length: u32) -> Option<([u32; 4], u32)> {",
+		"\t\tif context_length > 255 {",
+		"\t\t\treturn None;",
+		"\t\t}",
+		"\t\tif algorithm == 0 {",
+		"\t\t\treturn Some(([context_length << 8, 0, 0, 0], 2));",
+		"\t\t}",
+		"\t\tif Self::mldsa_prehash_bytes(algorithm).is_none() {",
+		"\t\t\treturn None;",
+		"\t\t}",
+		"\t\tSome((",
+		"\t\t\t[0x0906_0001 | context_length << 8, 0x0148_8660, 0x0204_0365, algorithm],",
+		"\t\t\t13,",
+		"\t\t))",
+		"\t}",
+		"}", "", "impl KernelId {", f"\tpub(crate) const ALL: [Self; {len(entries)}] = ["])
 	for entry in entries:
 		lines.append(f"\t\tSelf::{entry['kernel_id']},")
 	lines.extend(["\t];", "", "\tpub(crate) const fn artifact(self) -> &'static ShaderArtifact {", "\t\tmatch self {"])
@@ -454,11 +511,7 @@ def generate_kernel_manifest(schemas: Schemas) -> str:
 		lines.append(
 			f"\t\t\tSelf::{entry['kernel_id']} => &{static_name(entry['domain'], entry['name'], entry['dtype'])},"
 		)
-	lines.extend(["\t\t}", "\t}", "", "\tpub(crate) const fn bounded_artifact(self) -> &'static ShaderArtifact {", "\t\tmatch self {"])
-	for entry in entries:
-		lines.append(
-			f"\t\t\tSelf::{entry['kernel_id']} => &BOUNDED_{static_name(entry['domain'], entry['name'], entry['dtype'])},"
-		)
+
 	secret_candidates = [f"Self::{entry['kernel_id']}" for entry in entries if entry.get("requires_secret_storage", False)]
 	secret_match = " | ".join(secret_candidates)
 	lines.extend(["\t\t}", "\t}", "", "\tpub(crate) const fn requires_secret_storage(self) -> bool {", f"\t\tmatches!(self, {secret_match})" if secret_match else "\t\tfalse", "\t}", "", "\tpub(crate) const fn bounded_buffer_count(self) -> u32 {", "\t\tmatch self {"])
@@ -491,6 +544,24 @@ def generate_kernel_manifest(schemas: Schemas) -> str:
 		lines.append(f"\t\t\tSelf::{entry['kernel_id']} => {value},")
 	lines.extend(
 		[
+			"\t\t}",
+			"\t}",
+			"",
+			"\t/// Additional semantic contracts this kernel serves as a stage of a",
+			"\t/// split lowering, when no single physical kernel owns the contract.",
+			"\tpub(crate) fn semantic_contracts(self) -> &'static [crate::OperationContract] {",
+			"\t\tmatch self {",
+		]
+	)
+	for entry in entries:
+		served = entry.get("semantic_contracts") or []
+		if served:
+			lines.append(f"\t\t\tSelf::{entry['kernel_id']} => &[")
+			lines.extend(f"\t\t\t\t{contract}," for contract in served)
+			lines.append("\t\t\t],")
+	lines.extend(
+		[
+			"\t\t\t_ => &[],",
 			"\t\t}",
 			"\t}",
 			"",
@@ -527,6 +598,9 @@ def generate_kernel_manifest(schemas: Schemas) -> str:
 	for entry in entries:
 		role = replay_roles[entry["training_replay_role"]]
 		lines.append(f"\t\t\tSelf::{entry['kernel_id']} => TrainingReplayRole::{role},")
+	lines.extend(["\t\t}", "\t}", "", "\tpub(crate) const fn fusion_effects(self) -> KernelEffects {", "\t\tmatch self {"])
+	for entry in entries:
+		lines.append(f"\t\t\tSelf::{entry['kernel_id']} => {rust_fusion_effects(entry['fusion_effects'])},")
 	lines.extend(
 		[
 			"\t\t}",
@@ -831,6 +905,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 	cryptography_pqc, cryptography_pqc_hash = schemas["pqc"]
 	image, image_hash = schemas["image"]
 	vision, vision_hash = schemas["vision"]
+	video, video_hash = schemas["video"]
 	bigint, bigint_hash = schemas["bigint"]
 	merkle, merkle_hash = schemas["merkle"]
 	ntt, ntt_hash = schemas["ntt"]
@@ -1034,7 +1109,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 		"\t\tuse super::*;",
 		"",
 	])
-	for parameter in dict.fromkeys(kernel["parameter_set"] for kernel in cryptography_pqc["kernels"]):
+	for parameter in MLDSA_WIRE_LAYOUTS:
 		pk_bytes, sig_bytes = MLDSA_WIRE_LAYOUTS[parameter]
 		lines.append(f"\t\tpub(crate) const ML_DSA_{parameter}_PUBLIC_KEY_SIZE: usize = {pk_bytes};")
 		lines.append(f"\t\tpub(crate) const ML_DSA_{parameter}_SIGNATURE_SIZE: usize = {sig_bytes};")
@@ -1100,6 +1175,27 @@ def generate_operation_registry(schemas: Schemas) -> str:
 			contract["optional_inputs"] = operation["optional_inputs"]
 		attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
 		for line in semantic_contract_lines("vision", operation["name"], contract, attributes, operation.get("donor_op")):
+			lines.append(f"\t{line}" if line else "")
+		lines.append("")
+	lines.extend(["}", ""])
+	lines.extend(["/// Generated semantic contracts for Video operations.", "pub mod video {", "\tuse super::*;", ""])
+	for operation in video["contracts"]:
+		contract = {
+			"input_kinds": operation["input_kinds"],
+			"output_kinds": operation["output_kinds"],
+			"shape_rule": operation["shape_rule"],
+			"dtype_rule": operation["dtype_rule"],
+			"effects": operation.get("effects", ["read_inputs", "write_outputs"]),
+			"mutated_inputs": operation.get("mutated_inputs", []),
+			"output_alias_inputs": operation.get("output_alias_inputs", [-1] * len(operation["output_kinds"])),
+			"differentiation": operation.get("differentiation", "none"),
+			"lowering": operation.get("lowering", "compute_dispatch"),
+		}
+		for key in ("control_flow", "optional_inputs", "variadic_input", "variadic_output", "aligned_variadic_aliases"):
+			if key in operation:
+				contract[key] = operation[key]
+		attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
+		for line in semantic_contract_lines("video", operation["name"], contract, attributes, operation.get("donor_op")):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
 	lines.extend(["}", ""])

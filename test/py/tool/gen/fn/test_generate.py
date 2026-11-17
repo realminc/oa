@@ -41,12 +41,22 @@ import oafn.publish as oa_publish
 import oafn.registry as oa_registry
 import oafn.schema as oa_schema
 import oafn.signature as oa_signature
+import oafn.uistyle as oa_uistyle
 import oafn.util as oa_util
 import oafn.vision as oa_vision
 
 
 
 class GeneratorTests(unittest.TestCase):
+	def test_registry_embeds_one_artifact_per_candidate(self):
+		schemas = oa_schema.load_schemas(REPOSITORY_ROOT)
+		entries = oa_registry.registry_entries(schemas)
+		manifest = oa_registry.generate_kernel_manifest(schemas)
+		self.assertEqual(manifest.count("include_bytes!("), len(entries))
+		self.assertNotIn("_bounded.spv", manifest)
+		self.assertNotIn("bounded_artifact", manifest)
+		self.assertIn('env!("OA_SHADER_DIR")', manifest)
+
 	def setUp(self):
 		self.schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 		self.blas_schema = json.loads(BLAS_SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -67,6 +77,7 @@ class GeneratorTests(unittest.TestCase):
 		self.image_schema = json.loads(IMAGE_SCHEMA_PATH.read_text(encoding="utf-8"))
 		self.vision_schema = json.loads(VISION_SCHEMA_PATH.read_text(encoding="utf-8"))
 		self.ui_schema = json.loads(UI_SCHEMA_PATH.read_text(encoding="utf-8"))
+		self.render_schema = json.loads((GENERATOR_ROOT / "schema/render/render.json").read_text(encoding="utf-8"))
 		self.video_schema = json.loads((GENERATOR_ROOT / "schema/video/video.json").read_text(encoding="utf-8"))
 
 	def test_ml_activation_templates_emit_complete_operations(self):
@@ -132,64 +143,67 @@ class GeneratorTests(unittest.TestCase):
 					oa_matrix.validate_schema(schema)
 
 	def test_pqc_parameter_identity_rejects_mismatched_or_duplicate_sets(self):
-		for field, value in (("parameter_set", 66), ("parameter_set", True),
-				("name", "ml_dsa_44_verify"), ("semantic_operation", "ml_dsa_44_verify_batch")):
+		index = next(i for i, row in enumerate(self.cryptography_pqc_schema["private_kernels"])
+			if row["name"] == "ml_dsa_mu_batch")
+		for field, value in (("parameter_layouts", []), ("parameter_layouts", "x"),
+				("name", "ml_dsa_44_verify"), ("kernel_id", "WrongKernel"), ("stable_id", 70000),
+				("semantic_operations", ["ml_dsa_44_verify_batch"])):
 			with self.subTest(field=field, value=value):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
-				schema["kernels"][0][field] = value
+				schema["private_kernels"][index][field] = value
+				with self.assertRaises(ValueError):
+					oa_pqc.validate_cryptography_pqc_schema(schema)
+		for row, value in ((0, 66), (0, True), (1, 44), (2, 65)):
+			with self.subTest(row=row, value=value):
+				schema = copy.deepcopy(self.cryptography_pqc_schema)
+				schema["private_kernels"][index]["parameter_layouts"][row]["parameter_set"] = value
 				with self.assertRaises(ValueError):
 					oa_pqc.validate_cryptography_pqc_schema(schema)
 		schema = copy.deepcopy(self.cryptography_pqc_schema)
-		del schema["kernels"][0]["parameter_set"]
-		with self.assertRaises(ValueError):
-			oa_pqc.validate_cryptography_pqc_schema(schema)
-		schema = copy.deepcopy(self.cryptography_pqc_schema)
-		schema["kernels"][1]["parameter_set"] = 65
+		del schema["private_kernels"][index]["parameter_layouts"][1]["public_bytes"]
 		with self.assertRaises(ValueError):
 			oa_pqc.validate_cryptography_pqc_schema(schema)
 
 	def test_prehashed_verification_abi_and_framing_are_distinct(self):
-		for index, kernel in enumerate(self.cryptography_pqc_schema["kernels"]):
-			if not kernel["name"].endswith("_verify_prehashed"):
-				continue
-			shader = oa_pqc.generate_mldsa_verify_shader(kernel, "0" * 64)
-			self.assertIn("mldsa_verify_prehashed(", shader)
-			self.assertIn("push.context_length, push.algorithm)", shader)
-			self.assertIn("storage_buffers[push.results_index].Store(output_base, 0u)", shader)
-			for field, value in (("push_fields", kernel["push_fields"][:-1]),
-				("semantic_operation", f"ml_dsa_{kernel['parameter_set']}_verify_batch"),
-				("name", f"ml_dsa_{kernel['parameter_set']}_verify")):
-				with self.subTest(parameter=kernel["parameter_set"], field=field):
-					schema = copy.deepcopy(self.cryptography_pqc_schema)
-					schema["kernels"][index][field] = value
-					with self.assertRaises(ValueError):
-						oa_pqc.validate_cryptography_pqc_schema(schema)
+		kernels = self.cryptography_pqc_schema["private_kernels"]
+		index = next(i for i, row in enumerate(kernels) if row["name"] == "ml_dsa_verify_mu")
+		kernel = kernels[index]
+		self.assertEqual(len(kernel["semantic_operations"]), 9)
+		shader = oa_pqc.generate_mldsa_verify_mu_shader(kernel, "0" * 64)
+		self.assertIn("mldsa_verify_mu_par(parameter", shader)
+		self.assertIn("storage_buffers[push.results_index].Store(idx * 4u, valid ? 1u : 0u)", shader)
+		for field, value in (("push_fields", kernel["push_fields"][:-1]),
+			("semantic_operations", ["ml_dsa_44_verify_batch"]),
+			("semantic_operations", []), ("name", "ml_dsa_44_verify"),
+			("source", "wrong.slang"), ("kernel_id", "WrongKernel")):
+			with self.subTest(field=field):
+				schema = copy.deepcopy(self.cryptography_pqc_schema)
+				schema["private_kernels"][index][field] = value
+				with self.assertRaises(ValueError):
+					oa_pqc.validate_cryptography_pqc_schema(schema)
 
 	def test_hash_message_verification_abi_and_framing_are_distinct(self):
-		seen = set()
-		for index, kernel in enumerate(self.cryptography_pqc_schema["kernels"]):
-			if not kernel["name"].endswith("_verify_hash_message"):
-				continue
-			seen.add(kernel["parameter_set"])
-			shader = oa_pqc.generate_mldsa_verify_shader(kernel, "0" * 64)
-			self.assertIn("mldsa_verify_hash_message(", shader)
-			self.assertNotIn("mldsa_verify_prehashed(", shader)
-			self.assertIn("push.context_length, push.algorithm)", shader)
-			self.assertIn("length > push.message_bytes - offset", shader)
-			self.assertIn("storage_buffers[push.results_index].Store(output_base, 0u)", shader)
-			for field, value in (("push_fields", kernel["push_fields"][:-1]),
-				("semantic_operation", f"ml_dsa_{kernel['parameter_set']}_verify_prehashed_batch"),
-				("name", f"ml_dsa_{kernel['parameter_set']}_verify_prehashed"),
-				("source", "wrong.slang"), ("kernel_id", "WrongKernel")):
-				with self.subTest(parameter=kernel["parameter_set"], field=field):
-					schema = copy.deepcopy(self.cryptography_pqc_schema)
-					schema["kernels"][index][field] = value
-					with self.assertRaises(ValueError):
-						oa_pqc.validate_cryptography_pqc_schema(schema)
-		self.assertEqual(seen, {44, 65, 87})
+		kernels = self.cryptography_pqc_schema["private_kernels"]
+		index = next(i for i, row in enumerate(kernels) if row["name"] == "ml_dsa_ph_batch")
+		kernel = kernels[index]
+		shader = oa_pqc.generate_mldsa_ph_batch_shader(kernel, "0" * 64)
+		self.assertIn("mldsa_ph_batch_par(push.algorithm", shader)
+		self.assertIn("length > push.input_bytes - offset", shader)
+		self.assertNotIn("mldsa_verify_prehashed(", shader)
+		for field, value in (("push_fields", kernel["push_fields"][:-1]),
+			("parameter_layouts", []), ("name", "ml_dsa_44_verify"),
+			("source", "wrong.slang"), ("kernel_id", "WrongKernel")):
+			with self.subTest(field=field):
+				schema = copy.deepcopy(self.cryptography_pqc_schema)
+				schema["private_kernels"][index][field] = value
+				with self.assertRaises(ValueError):
+					oa_pqc.validate_cryptography_pqc_schema(schema)
+		verify = next(row for row in kernels if row["name"] == "ml_dsa_verify_mu")
+		for parameter in (44, 65, 87):
+			self.assertIn(f"ml_dsa_{parameter}_verify_hash_message_batch", verify["semantic_operations"])
 
 	def test_private_mlkem_abi_rejects_drift(self):
-		for field, value in (("workgroup_size", [2, 1, 1]), ("stable_id", 205),
+		for field, value in (("workgroup_size", [2, 1, 1]), ("stable_id", 70000),
 			("push_fields", [["seed_index", "uint32"]]), ("kernel_id", "WrongKernel"),
 			("source", "secret.slang"), ("secret_bindings", [])):
 			with self.subTest(field=field):
@@ -198,35 +212,35 @@ class GeneratorTests(unittest.TestCase):
 				with self.assertRaises(ValueError):
 					oa_pqc.validate_cryptography_pqc_schema(schema)
 
-	def test_private_mlkem_keygen_workspace_contract(self):
+	def test_private_mlkem_parallel_contract(self):
 		kernel = self.cryptography_pqc_schema["private_kernels"][0]
-		for field, value in (("workspace_bytes", 0), ("workspace_bytes", 4092),
-			("workspace_bytes", 4100), ("workspace_bytes", 4096.0), ("workspace_bytes", True),
-			("secret_bindings", [0, 1]), ("physical_write", {
-				"writes": kernel["physical_write"]["writes"], "workspace": "none"})):
+		for field, value in (("workspace_bytes", 4096), ("secret_bindings", [0, 1, 3]),
+			("workgroup_size", [1, 1, 1]), ("push_fields", kernel["push_fields"] + [["workspace_index", "uint32"]]),
+			("physical_write", {
+				"writes": kernel["physical_write"]["writes"], "workspace": "exclusive_per_workgroup"})):
 			with self.subTest(field=field, value=value):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["private_kernels"][0][field] = value
 				with self.assertRaises(ValueError):
 					oa_pqc.validate_cryptography_pqc_schema(schema)
 		shader = oa_pqc.generate_mlkem_keygen_shader(kernel, "0" * 64)
-		self.assertIn("workspace_size != 4096u", shader)
-		self.assertIn("mlkem_keygen_buffer(d, z, push.k", shader)
-		self.assertNotIn("mlkem_keygen_internal(d, z", shader)
+		self.assertIn("[numthreads(128, 1, 1)]", shader)
+		self.assertIn("mlkem_keygen_par(push.k, lane", shader)
+		self.assertNotIn("workspace_index", shader)
 
-	def test_private_mlkem_consumer_workspace_contract(self):
+	def test_private_mlkem_consumer_parallel_contract(self):
 		for index, suffix in ((1, "encaps"), (2, "decaps")):
 			kernel = self.cryptography_pqc_schema["private_kernels"][index]
-			for extent in (0, 4092, 4100, 4096.0, True):
-				with self.subTest(suffix=suffix, extent=extent):
+			for field, value in (("workspace_bytes", 4096), ("workgroup_size", [1, 1, 1])):
+				with self.subTest(suffix=suffix, field=field):
 					schema = copy.deepcopy(self.cryptography_pqc_schema)
-					schema["private_kernels"][index]["workspace_bytes"] = extent
+					schema["private_kernels"][index][field] = value
 					with self.assertRaises(ValueError):
 						oa_pqc.validate_cryptography_pqc_schema(schema)
 			shader = oa_pqc.generate_mlkem_kem_shader(kernel, "0" * 64)
-			self.assertIn("workspace_size != 4096u", shader)
-			self.assertIn(f"mlkem_{suffix}_buffer", shader)
-			self.assertNotIn(f"mlkem_{suffix}_internal", shader)
+			self.assertIn("[numthreads(128, 1, 1)]", shader)
+			self.assertIn(f"mlkem_{suffix}_par(push.k, lane", shader)
+			self.assertNotIn("workspace_index", shader)
 
 	def test_private_mlkem_kem_classification_and_abi(self):
 		oa_pqc.validate_cryptography_pqc_schema(self.cryptography_pqc_schema)
@@ -284,7 +298,7 @@ class GeneratorTests(unittest.TestCase):
 					oa_pqc.validate_cryptography_pqc_schema(schema)
 		shader = oa_pqc.generate_mldsa_sign_shader(kernel, "0" * 64)
 		self.assertIn("workspace_size != MLDSA_SIGN_CACHE_BYTES", shader)
-		self.assertIn("mldsa_sign_mu_buffer(parameter", shader)
+		self.assertIn("mldsa_sign_mu_par(parameter", shader)
 		self.assertNotIn("mldsa_sign_mu(parameter", shader)
 		self.assertIn("storage_buffers[push.workspace_index]", shader)
 		self.assertEqual(kernel["secret_bindings"], [0, 1, 5])
@@ -303,41 +317,55 @@ class GeneratorTests(unittest.TestCase):
 						oa_pqc.validate_cryptography_pqc_schema(schema)
 
 	def test_private_mldsa_message_framing_abi(self):
+		# Every signing route derives the public FIPS 204 mu representative
+		# through the shared ml_dsa_mu kernel; the M' head rides push words.
 		index = next(i for i, row in enumerate(self.cryptography_pqc_schema["private_kernels"])
-			if row["name"] == "ml_dsa_sign_message")
+			if row["name"] == "ml_dsa_mu")
+		kernel = self.cryptography_pqc_schema["private_kernels"][index]
 		for field, value in (("secret_bindings", [0]), ("parameter_layouts", []),
 			("push_fields", [["parameter_set", "uint32"]]), ("workgroup_size", [2, 1, 1]),
-			("source", "mldsa_sign_dispatch.slang"), ("kernel_id", "CryptographyMlDsaSignU8")):
+			("source", "mldsa_mu.slang"), ("kernel_id", "CryptographyMlDsaSignU8"),
+			("semantic_operations", [])):
 			with self.subTest(field=field):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["private_kernels"][index][field] = value
 				with self.assertRaises(ValueError):
 					oa_pqc.validate_cryptography_pqc_schema(schema)
-		shader = oa_pqc.generate_mldsa_sign_shader(self.cryptography_pqc_schema["private_kernels"][index], "0" * 64)
+		shader = oa_pqc.generate_mldsa_mu_shader(kernel, "0" * 64)
 		self.assertIn("push.context_length > 255u", shader)
-		self.assertIn("push.message_length > 0xfffffffcu", shader)
-		self.assertIn("true, storage_buffers[push.workspace_index]", shader)
+		self.assertIn("mldsa_mu_par(parameter", shader)
+		self.assertIn("push.head_length != 2u && push.head_length != 13u", shader)
 		self.assertNotIn("mldsa_sign_mu(parameter", shader)
 
 	def test_private_prehashed_signing_abi_is_fixed(self):
+		# Prehashed signing carries the OID trailer in the mu head push words;
+		# the kernel ABI is fixed so the engine can pack it.
 		index = next(i for i, row in enumerate(self.cryptography_pqc_schema["private_kernels"])
-			if row["name"] == "ml_dsa_sign_prehashed")
+			if row["name"] == "ml_dsa_mu")
+		kernel = self.cryptography_pqc_schema["private_kernels"][index]
+		names = [name for name, _ in kernel["push_fields"]]
+		self.assertEqual(names, ["public_index", "payload_index", "context_index", "mu_index",
+			"parameter_set", "payload_length", "context_length", "head_length",
+			"head_w0", "head_w1", "head_w2", "head_w3"])
 		for field, value in (("secret_bindings", [0]), ("parameter_layouts", []),
-			("push_fields", [["algorithm", "uint32"]]), ("source", "mldsa_sign_dispatch.slang")):
+			("push_fields", names[:-1] and [[name, "uint32"] for name in names[:-1]]),
+			("source", "mldsa_sign_dispatch.slang")):
 			with self.subTest(field=field):
 				schema = copy.deepcopy(self.cryptography_pqc_schema)
 				schema["private_kernels"][index][field] = value
 				with self.assertRaises(ValueError):
 					oa_pqc.validate_cryptography_pqc_schema(schema)
-		shader = oa_pqc.generate_mldsa_sign_shader(self.cryptography_pqc_schema["private_kernels"][index], "0" * 64)
-		self.assertIn("mldsa_sign_prehashed_buffer(parameter", shader)
-		self.assertIn("message_size != mldsa_prehash_bytes(push.algorithm)", shader)
-		self.assertNotIn("mldsa_sign_message(parameter", shader)
-		self.assertIn("import mldsa_prehash_layout;", shader)
+		shader = oa_pqc.generate_mldsa_mu_shader(kernel, "0" * 64)
+		self.assertIn("mldsa_mu_par(parameter", shader)
+		self.assertNotIn("mldsa_prehash_digest", shader)
+		self.assertNotIn("push.algorithm", shader)
 
 	def test_private_hash_message_signing_abi_is_fixed(self):
+		# Hash-message signing prehashes on the engine hash path; the mu kernel
+		# only absorbs the finished digest with the OID-framed head.
 		index = next(i for i, row in enumerate(self.cryptography_pqc_schema["private_kernels"])
-			if row["name"] == "ml_dsa_sign_hash_message")
+			if row["name"] == "ml_dsa_mu")
+		kernel = self.cryptography_pqc_schema["private_kernels"][index]
 		for field, value in (("secret_bindings", [0, 1]), ("parameter_layouts", []),
 			("push_fields", [["algorithm", "uint32"]]),
 			("source", "src/slang/crypto/pqc/mldsa/mldsa_sign_prehashed_dispatch.slang"),
@@ -347,13 +375,11 @@ class GeneratorTests(unittest.TestCase):
 				schema["private_kernels"][index][field] = value
 				with self.assertRaises(ValueError):
 					oa_pqc.validate_cryptography_pqc_schema(schema)
-		shader = oa_pqc.generate_mldsa_sign_shader(self.cryptography_pqc_schema["private_kernels"][index], "0" * 64)
-		self.assertIn("mldsa_sign_hash_message_buffer(parameter", shader)
-		self.assertIn("push.message_length > 0xfffffffcu", shader)
-		self.assertIn("mldsa_prehash_bytes(push.algorithm) == 0u", shader)
-		self.assertIn("workspace_size != MLDSA_SIGN_CACHE_BYTES", shader)
+		shader = oa_pqc.generate_mldsa_mu_shader(kernel, "0" * 64)
+		self.assertIn("mldsa_mu_par(parameter", shader)
+		self.assertIn("push.head_length != 2u && push.head_length != 13u", shader)
 		self.assertNotIn("push.digest_index", shader)
-		self.assertIn("import mldsa_prehash;", shader)
+		self.assertNotIn("push.algorithm", shader)
 
 	def test_prehash_schema_rejects_identifier_and_extent_drift(self):
 		for field, value in (("oid_suffix", 17), ("oid_suffix", True), ("oid_suffix", 1.0),
@@ -424,7 +450,8 @@ class GeneratorTests(unittest.TestCase):
 			})
 			# The final constant is the fixed remainder: operation/shader/DNN
 			# registries, domain API, type and binding surfaces, crypto Rust/slang
-			# inventories, Python fragments and generated tests.
+			# inventories, Python fragments, generated tests and the ui_style
+			# token preset module.
 			self.assertEqual(
 				len(outputs),
 				variant_count
@@ -437,12 +464,13 @@ class GeneratorTests(unittest.TestCase):
 				+ len(self.cryptography_pqc_schema["kernels"]) + len(self.cryptography_pqc_schema["private_kernels"]) + 4
 				+ sum("digest" in k or "poseidon2" in k or k["name"].startswith("merkle_proof_") for k in self.cryptography_hash_schema["kernels"])
 				+ len(self.bigint_schema["kernels"])
-				+ 87,
+				+ 88,
 			)
+			self.assertIn(root / "src/rs/lib/ui/style.gen.rs", outputs)
 			self.assertIn(root / "src/slang/crypto/pqc/mldsa/mldsa_prehash_digest.slang", outputs)
-			api = outputs[root / "src/rs/matrix/elemwise.gen.rs"]
-			blas_api = outputs[root / "src/rs/matrix/blas.gen.rs"]
-			reduce_api = outputs[root / "src/rs/matrix/reduce.gen.rs"]
+			api = outputs[root / "src/rs/lib/matrix/elemwise.gen.rs"]
+			blas_api = outputs[root / "src/rs/lib/matrix/blas.gen.rs"]
+			reduce_api = outputs[root / "src/rs/lib/matrix/reduce.gen.rs"]
 			# Generated APIs own recording/allocation, not forwarding-only wrappers.
 			for family in (api, blas_api, reduce_api):
 				self.assertIn("Matrix::allocate(", family)
@@ -453,24 +481,24 @@ class GeneratorTests(unittest.TestCase):
 			self.assertIn("autograd::record_mat_mul_nt", blas_api)
 			self.assertIn("autograd::record_softmax", reduce_api)
 
-			registry = outputs[root / "src/rs/runtime/dna/kernel/kernel.gen.rs"]
+			registry = outputs[root / "src/rs/lib/runtime/dna/kernel/kernel.gen.rs"]
 			self.assertIn("Self::CryptographyMlKemKeygenU8 => None", registry)
-			self.assertIn("mlkem_keygen_buffer", outputs[root / "src/slang/crypto/pqc/mlkem/mlkem_keygen.slang"])
+			self.assertIn("mlkem_keygen_par", outputs[root / "src/slang/crypto/pqc/mlkem/mlkem_keygen.slang"])
 			for suffix in ("encaps", "decaps"):
 				self.assertIn(f"Self::CryptographyMlKem{suffix.title()}U8 => None", registry)
 				shader = outputs[root / f"src/slang/crypto/pqc/mlkem/mlkem_{suffix}.slang"]
-				self.assertIn(f"mlkem_{suffix}_buffer", shader)
+				self.assertIn(f"mlkem_{suffix}_par", shader)
 			for parameter in (44, 65, 87):
-				self.assertEqual(outputs[root / "src/rs/core/operation/operation.gen.rs"].count(f"const ML_DSA_{parameter}_PUBLIC_KEY_SIZE:"), 1)
+				self.assertEqual(outputs[root / "src/rs/lib/core/operation/operation.gen.rs"].count(f"const ML_DSA_{parameter}_PUBLIC_KEY_SIZE:"), 1)
 			self.assertIn("Self::CryptographyMlDsaKeygenU8 => None", registry)
 			self.assertIn("44 => Some((32, 1312, 2560))", registry)
-			self.assertIn("mldsa_keygen_internal", outputs[root / "src/slang/crypto/pqc/mldsa/mldsa_keygen_dispatch.slang"])
-			operations = outputs[root / "src/rs/core/operation/operation.gen.rs"]
-			dnn_roles = outputs[root / "src/rs/runtime/dna/provider/dnn/generated.rs"]
+			self.assertIn("mldsa_keygen_par", outputs[root / "src/slang/crypto/pqc/mldsa/mldsa_keygen_dispatch.slang"])
+			operations = outputs[root / "src/rs/lib/core/operation/operation.gen.rs"]
+			dnn_roles = outputs[root / "src/rs/lib/runtime/dna/provider/dnn/generated.rs"]
 			activation_autograd = outputs[
-				root / "src/rs/ml/autograd/matrix/activation.gen.rs"
+				root / "src/rs/lib/ml/autograd/matrix/activation.gen.rs"
 			]
-			loss_autograd = outputs[root / "src/rs/ml/autograd/loss.gen.rs"]
+			loss_autograd = outputs[root / "src/rs/lib/ml/autograd/loss.gen.rs"]
 			self.assertIn(root / "test/rs/matrix/test_elemwise.gen.rs", outputs)
 			self.assertIn(root / "test/rs/matrix/test_blas.gen.rs", outputs)
 			self.assertIn(root / "test/rs/matrix/test_reduce.gen.rs", outputs)
@@ -634,7 +662,7 @@ class GeneratorTests(unittest.TestCase):
 			self.assertIn("pub(in crate::ml) fn record_leaky_relu", activation_autograd)
 			self.assertIn("alpha: f32, result: &Matrix", activation_autograd)
 			self.assertIn("GradNodeOperation::LeakyRelu", activation_autograd)
-			swiglu_autograd = outputs[root / "src/rs/ml/autograd/matrix/swiglu.gen.rs"]
+			swiglu_autograd = outputs[root / "src/rs/lib/ml/autograd/matrix/swiglu.gen.rs"]
 			self.assertIn("pub(in crate::ml) fn record_swiglu", swiglu_autograd)
 			self.assertIn("GradNodeOperation::Swiglu", swiglu_autograd)
 			self.assertNotIn("record_swiglu", activation_autograd)
@@ -763,15 +791,26 @@ class GeneratorTests(unittest.TestCase):
 			self.assertIn("push.count > input_extent / push.message_len", adapter)
 
 	def test_ui_shader_push_and_workgroup_inventory_matches_source(self) -> None:
-		# Compositor kernels have their own image/buffer adapter. Keep this
-		# schema inventory exact rather than accepting stale ABI descriptions.
+		# UI raster stages and compute kernels have their own image/buffer
+		# adapter. Keep this schema inventory exact rather than accepting stale
+		# ABI descriptions.
 		types = {"uint": "uint32", "int": "int32", "float": "float32"}
-		for row in self.ui_schema["kernels"] + self.video_schema["kernels"]:
+		for row in (
+			self.ui_schema["kernels"] + self.render_schema["kernels"] + self.video_schema["kernels"]
+		):
 			with self.subTest(kernel=row["name"]):
 				source = (REPOSITORY_ROOT / row["source"]).read_text()
-				push = source.split("struct PushConstants {", 1)[1].split("};", 1)[0]
-				fields = [[name, types[kind]] for kind, name in re.findall(r"\b(uint|int|float)\s+(\w+)\s*;", push)]
+				declaration = re.search(r"\[\[vk::push_constant\]\]\s*(\w+)\s+\w+", source)
+				push_name = declaration.group(1) if declaration else "PushConstants"
+				push = source.split(f"struct {push_name} {{", 1)
+				fields = [[name, types.get(kind, kind)] for kind, name in re.findall(
+					r"\b(?:row_major\s+|column_major\s+)?((?:u?int|float)(?:\d(?:x\d)?)?)\s+(\w+)\s*;",
+					push[1].split("};", 1)[0],
+				)] if len(push) > 1 else []
 				self.assertEqual(row["push_fields"], fields)
+				if stage := row.get("stage"):
+					self.assertIn(f'[shader("{stage}")]', source)
+					continue
 				workgroup = re.search(r"\[numthreads\((\d+),\s*(\d+),\s*(\d+)\)\]", source)
 				self.assertIsNotNone(workgroup)
 				self.assertEqual(row["workgroup_size"], [int(value) for value in workgroup.groups()])
@@ -790,6 +829,7 @@ class GeneratorTests(unittest.TestCase):
 			self.image_schema,
 			self.vision_schema,
 			self.ui_schema,
+			self.render_schema,
 			self.video_schema,
 			self.bigint_schema,
 			json.loads((GENERATOR_ROOT / "schema/crypto/crypto_merkle.json").read_text()),
@@ -823,7 +863,8 @@ class GeneratorTests(unittest.TestCase):
 			path.relative_to(REPOSITORY_ROOT).as_posix()
 			for root in (SLANG_ROOT, SDK_SLANG_ROOT)
 			for path in root.rglob("*.slang")
-			if "void main(" in path.read_text(encoding="utf-8")
+			if (text := path.read_text(encoding="utf-8"))
+			and ("void main(" in text or '[shader("' in text)
 		}
 
 		self.assertEqual(actual, expected)
@@ -1119,6 +1160,57 @@ class GeneratorTests(unittest.TestCase):
 		invalid["operations"][0]["additional_dtype_variants"][0]["test"]["expected"][0] = 1.5
 		with self.assertRaisesRegex(oa_util.SchemaError, "i32 values"):
 			oa_matrix.validate_schema(invalid)
+
+	# ── UI style token presets ──────────────────────────────────────────────
+
+	def test_ui_style_schema_emits_all_presets_with_resolved_tokens(self):
+		style = json.loads(
+			(GENERATOR_ROOT / "schema/ui/ui_style.json").read_text(encoding="utf-8")
+		)
+		oa_uistyle.validate_ui_style_schema(style)
+		source = oa_uistyle.generate_ui_style(style, "0" * 64, "ui_style.json")
+		self.assertIn("pub(crate) const REALM_DATA_PALETTE: [Color; 6]", source)
+		for preset in style["presets"]:
+			self.assertIn(f"fn ui_style_{preset['name']}() -> UiStyle", source)
+		# Derived presets emit fully resolved fields, not partial overrides.
+		viewer = source.split("fn ui_style_viewer_dark()")[1]
+		for token in style["color_tokens"] + style["metric_tokens"]:
+			self.assertIn(f"{token}:", viewer)
+		self.assertIn("data_palette: REALM_DATA_PALETTE", viewer)
+		# Hex colors keep the u8-exact constructor; float colors keep literals.
+		self.assertIn("Color::new_from_u32(0x181818FF)", viewer)
+		self.assertIn("corner_radius: 15.0", viewer)
+
+	def test_ui_style_base_preset_must_resolve_every_token(self):
+		style = json.loads(
+			(GENERATOR_ROOT / "schema/ui/ui_style.json").read_text(encoding="utf-8")
+		)
+		invalid = copy.deepcopy(style)
+		del invalid["presets"][0]["values"]["background"]
+		with self.assertRaisesRegex(oa_util.SchemaError, "every token"):
+			oa_uistyle.validate_ui_style_schema(invalid)
+
+	def test_ui_style_derived_preset_must_extend_an_earlier_preset(self):
+		style = json.loads(
+			(GENERATOR_ROOT / "schema/ui/ui_style.json").read_text(encoding="utf-8")
+		)
+		invalid = copy.deepcopy(style)
+		invalid["presets"][1]["extends"] = "viewer_dark"
+		with self.assertRaisesRegex(oa_util.SchemaError, "earlier preset"):
+			oa_uistyle.validate_ui_style_schema(invalid)
+
+	def test_ui_style_rejects_unknown_tokens_and_bad_colors(self):
+		style = json.loads(
+			(GENERATOR_ROOT / "schema/ui/ui_style.json").read_text(encoding="utf-8")
+		)
+		invalid = copy.deepcopy(style)
+		invalid["presets"][2]["values"]["mystery"] = "0x000000FF"
+		with self.assertRaisesRegex(oa_util.SchemaError, "unknown tokens"):
+			oa_uistyle.validate_ui_style_schema(invalid)
+		invalid = copy.deepcopy(style)
+		invalid["presets"][2]["values"]["background"] = "0xGG0000FF"
+		with self.assertRaisesRegex(oa_util.SchemaError, "0xRRGGBBAA"):
+			oa_uistyle.validate_ui_style_schema(invalid)
 
 
 if __name__ == "__main__":

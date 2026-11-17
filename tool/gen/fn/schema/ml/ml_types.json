@@ -187,6 +187,24 @@
 					"type": "bool",
 					"visibility": "pub",
 					"doc": "Close and terminate at the horizon; otherwise truncate with final-state bootstrap."
+				},
+				{
+					"name": "maker_window_steps",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Observed book rows a flat-to-position entry rests at its passive touch before taker fallback; zero disables maker execution. Requires per-row books."
+				},
+				{
+					"name": "maker_requotes",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": "Maximum passive requotes per entry leg toward the moved touch, bounded by the IOC slippage guard; exhausted budget falls back to taker."
+				},
+				{
+					"name": "maker_fee",
+					"type": "f32",
+					"visibility": "pub",
+					"doc": "Actual-notional fee fraction on passive fills. Consumers resolve a missing venue maker rate to taker_fee themselves; this field is only the charged rate."
 				}
 			],
 			"variants": [],

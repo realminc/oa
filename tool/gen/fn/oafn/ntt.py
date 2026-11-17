@@ -395,7 +395,7 @@ def ntt_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> dict[Pa
 		require(set(re.findall(r'\{\{([^{}]+)\}\}', direction)) == set(values), 'NTT direction template differs')
 		transforms.append(re.sub(r'\{\{([^{}]+)\}\}', lambda m: values[m[1]], direction))
 	body = (directory / 'transform.rs.in').read_text().replace('{{transforms}}', '\n'.join(transforms))
-	outputs = {root / 'src/rs/crypto/ntt/transform.gen.rs': format_rust(mark + body, root)}
+	outputs = {root / 'src/rs/lib/crypto/ntt/transform.gen.rs': format_rust(mark + body, root)}
 	for kernel in schema['kernels']:
 		if kernel.get('fused_stages') is True:
 			outputs[root / kernel['source']] = generate_ntt_stage_fused(kernel, mark)

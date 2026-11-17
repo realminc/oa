@@ -400,6 +400,46 @@
 			}
 		},
 		{
+			"name": "MultiHeadAttention_new_cache",
+			"signature": {
+				"parameters": [
+					[
+						"self",
+						"&MultiHeadAttention"
+					],
+					[
+						"batch_size",
+						"usize"
+					]
+				],
+				"returns": "AttentionCache",
+				"visibility": "pub",
+				"target": "crate::ml::nn::MultiHeadAttention::new_cache"
+			}
+		},
+		{
+			"name": "MultiHeadAttention_step",
+			"signature": {
+				"parameters": [
+					[
+						"self",
+						"&MultiHeadAttention"
+					],
+					[
+						"input",
+						"&Matrix"
+					],
+					[
+						"cache",
+						"&mut AttentionCache"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub",
+				"target": "crate::ml::nn::MultiHeadAttention::step"
+			}
+		},
+		{
 			"name": "MultiHeadAttention_set_backend",
 			"signature": {
 				"parameters": [
@@ -1695,7 +1735,7 @@
 					],
 					[
 						"config",
-						"Mamba3Config"
+						"EmpyrealmConfig"
 					],
 					[
 						"seed",
@@ -1756,7 +1796,7 @@
 						"usize"
 					]
 				],
-				"returns": "Mamba3State",
+				"returns": "EmpyrealmState",
 				"visibility": "pub",
 				"target": "crate::ml::nn::Empyrealm::new_state"
 			}
@@ -1775,7 +1815,7 @@
 					],
 					[
 						"state",
-						"&mut Mamba3State"
+						"&mut EmpyrealmState"
 					]
 				],
 				"returns": "Matrix",
@@ -1784,7 +1824,29 @@
 			}
 		},
 		{
-			"name": "Empyrealm_mixer",
+			"name": "Empyrealm_step",
+			"signature": {
+				"parameters": [
+					[
+						"self",
+						"&Empyrealm"
+					],
+					[
+						"tokens",
+						"&Matrix"
+					],
+					[
+						"state",
+						"&mut EmpyrealmState"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub",
+				"target": "crate::ml::nn::Empyrealm::step"
+			}
+		},
+		{
+			"name": "Empyrealm_layer_count",
 			"signature": {
 				"parameters": [
 					[
@@ -1792,9 +1854,24 @@
 						"&Empyrealm"
 					]
 				],
-				"returns": "&Mamba3",
+				"returns": "usize",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Empyrealm::mixer",
+				"target": "crate::ml::nn::Empyrealm::layer_count",
+				"raw_return": true
+			}
+		},
+		{
+			"name": "Empyrealm_attention_indices",
+			"signature": {
+				"parameters": [
+					[
+						"self",
+						"&Empyrealm"
+					]
+				],
+				"returns": "Vec<usize>",
+				"visibility": "pub",
+				"target": "crate::ml::nn::Empyrealm::attention_indices",
 				"raw_return": true
 			}
 		},
@@ -5126,6 +5203,7 @@
 	"type_paths": {
 		"AdaptiveAvgPool2d": "crate::ml::nn",
 		"AttentionBackend": "crate::ml::nn",
+		"AttentionCache": "crate::ml::nn",
 		"AttentionMode": "crate::ml::nn",
 		"AvgPool2d": "crate::ml::nn",
 		"BatchNorm2d": "crate::ml::nn",
@@ -5139,6 +5217,8 @@
 		"Dropout": "crate::ml::nn",
 		"Embedding": "crate::ml::nn",
 		"Empyrealm": "crate::ml::nn",
+		"EmpyrealmConfig": "crate::ml::nn",
+		"EmpyrealmState": "crate::ml::nn",
 		"Ffn": "crate::ml::nn",
 		"Flatten": "crate::ml::nn",
 		"FlowDenoiser": "crate::ml::nn",

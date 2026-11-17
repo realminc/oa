@@ -14,6 +14,9 @@ fn config() -> TradingConfig {
 		max_drawdown: 0.5,
 		perpetual: true,
 		liquidate_at_horizon: true,
+		maker_window_steps: 0,
+		maker_requotes: 0,
+		maker_fee: 0.0,
 	}
 }
 fn data() -> TradingSeries {
@@ -85,8 +88,8 @@ test_vk!(
 		let state = e.ledger().read_f32()?;
 		let expected_fee = 50.0 * 0.0005 / 1.0005;
 		assert!((state[4] - expected_fee).abs() < 1e-6);
-		assert!((state[24] - expected_fee * 0.9996 / 1.0004).abs() < 1e-6);
-		assert_eq!(state[44], 0.0);
+		assert!((state[30] - expected_fee * 0.9996 / 1.0004).abs() < 1e-6);
+		assert_eq!(state[56], 0.0);
 		e.step(&action)?;
 		e.step(&action)?;
 		e.reset_completed()?;
@@ -124,8 +127,8 @@ test_vk!(
 		e.check_status()?;
 		let state = e.ledger().read_f32()?;
 		assert!(state[0] < 100.0 && state[1] > 0.0);
-		assert!(state[20] < 100.0 && state[21] < 0.0);
-		assert_eq!(state[40], 100.0);
+		assert!(state[26] < 100.0 && state[27] < 0.0);
+		assert_eq!(state[52], 100.0);
 		assert_eq!(first.observation().read_f32()?, initial);
 		let saved_next = first.next_observation().read_f32()?;
 		let second = e.step(&action)?;
@@ -145,7 +148,7 @@ test_vk!(
 			e.ledger().read_f32()?,
 			[
 				100.0, 0.0, 100.0, 100.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-				0.0, 0.0, 0.0
+				0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 			]
 			.repeat(3)
 		);
@@ -227,7 +230,7 @@ test_vk!(
 		let meta = e.metadata().read::<u32>()?;
 		assert_eq!([meta[1], meta[5], meta[9]], [0, 1, 1]);
 		assert_eq!([meta[2], meta[6], meta[10]], [1, 0, 0]);
-		assert!(e.ledger().read_f32()?[21] < 0.0);
+		assert!(e.ledger().read_f32()?[27] < 0.0);
 		let final_step = e.step_terminal(&action)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
@@ -235,7 +238,7 @@ test_vk!(
 		assert_eq!(final_step.terminated().read::<u8>()?, [1, 1, 1]);
 		assert_eq!(final_step.truncated().read::<u8>()?, [0, 0, 0]);
 		let ledger = e.ledger().read_f32()?;
-		assert_eq!([ledger[1], ledger[21], ledger[41]], [0.0, 0.0, 0.0]);
+		assert_eq!([ledger[1], ledger[27], ledger[53]], [0.0, 0.0, 0.0]);
 		e.close()?;
 		Ok(())
 	}
@@ -263,7 +266,7 @@ test_vk!(
 		e.reset(c.seed)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
-		assert_eq!(e.observation().shape(), [3, 14]);
+		assert_eq!(e.observation().shape(), [3, 18]);
 		let action = Matrix::new_from_slice(&engine, [3], &[2_i32, 0, 1])?;
 		let first = e.step(&action)?;
 		let event = e.submit()?;
@@ -271,7 +274,7 @@ test_vk!(
 		e.check_status()?;
 		let ledger = e.ledger().read_f32()?;
 		assert_eq!(ledger[1], 9.0);
-		assert_eq!(ledger[21], -9.0);
+		assert_eq!(ledger[27], -9.0);
 		assert!((ledger[4] - 1.26).abs() < 1e-5);
 		assert_eq!(ledger[9], 100.0);
 		assert_eq!(ledger[10], 0.0);
@@ -347,11 +350,11 @@ test_vk!(
 			let ledger = e.ledger().read_f32()?;
 			for lane in 0..3 {
 				assert!(
-					(obs[lane * 14 + 9] - expected_peak[lane]).abs() < 1e-6,
+					(obs[lane * 18 + 9] - expected_peak[lane]).abs() < 1e-6,
 					"peak step {index} lane {lane}"
 				);
-				assert!((obs[lane * 14 + 7] - expected_pnl[lane]).abs() < 1e-6);
-				assert!((ledger[lane * 20 + 11] / c.capital - expected_peak[lane]).abs() < 1e-6);
+				assert!((obs[lane * 18 + 7] - expected_pnl[lane]).abs() < 1e-6);
+				assert!((ledger[lane * 26 + 11] / c.capital - expected_peak[lane]).abs() < 1e-6);
 				assert!(
 					(reward[lane] - expected_reward[lane]).abs() < 1e-6,
 					"reward changed by observation state"
@@ -366,20 +369,20 @@ test_vk!(
 		let obs = step.next_observation().read_f32()?;
 		assert_eq!(obs[9], 0.0); // New short is losing: old long peak is gone.
 		assert_eq!(obs[8], 0.0); // New entry age.
-		assert!((obs[23] - obs[21]).abs() < 1e-6); // New long peak is its own PnL.
+		assert!((obs[27] - obs[25]).abs() < 1e-6); // New long peak is its own PnL.
 		let step = e.step(&reverse)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
 		e.check_status()?;
 		assert_eq!(step.terminated().read::<u8>()?, [1; 3]);
 		let final_obs = step.next_observation().read_f32()?;
-		assert_eq!([final_obs[9], final_obs[23], final_obs[37]], [0.0; 3]);
+		assert_eq!([final_obs[9], final_obs[27], final_obs[45]], [0.0; 3]);
 		e.reset_completed()?;
 		let event = e.submit()?;
 		e.wait(&event)?;
 		e.check_status()?;
 		let ledger = e.ledger().read_f32()?;
-		assert_eq!([ledger[11], ledger[31], ledger[51]], [0.0; 3]);
+		assert_eq!([ledger[11], ledger[37], ledger[63]], [0.0; 3]);
 		e.close()?;
 		Ok(())
 	}
@@ -421,6 +424,9 @@ fn event_config(horizon: u32) -> TradingConfig {
 		max_drawdown: 0.99,
 		perpetual: true,
 		liquidate_at_horizon: true,
+		maker_window_steps: 0,
+		maker_requotes: 0,
+		maker_fee: 0.0,
 	}
 }
 fn event_series(horizon: u32) -> TradingSeries {

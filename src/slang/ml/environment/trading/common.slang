@@ -32,11 +32,17 @@ public struct TradingLedger {
 	public float unfilled_iocs;
 	public float initial_margin;
 	public float maintenance_margin;
+	public float maker_pending;
+	public float maker_price;
+	public float maker_deadline;
+	public float maker_requotes;
+	public float maker_fills;
+	public float maker_fallbacks;
 
 };
 
 public TradingLedger trading_load(RWByteAddressBuffer buffer, uint lane) {
-	uint b = lane * 20u;
+	uint b = lane * 26u;
 	TradingLedger a;
 	a.equity = load_f32(buffer,b); a.quantity = load_f32(buffer,b+1u);
 	a.mark = load_f32(buffer,b+2u); a.peak = load_f32(buffer,b+3u);
@@ -51,11 +57,17 @@ public TradingLedger trading_load(RWByteAddressBuffer buffer, uint lane) {
 	a.unfilled_iocs = load_f32(buffer,b+17u);
 	a.initial_margin = load_f32(buffer,b+18u);
 	a.maintenance_margin = load_f32(buffer,b+19u);
+	a.maker_pending = load_f32(buffer,b+20u);
+	a.maker_price = load_f32(buffer,b+21u);
+	a.maker_deadline = load_f32(buffer,b+22u);
+	a.maker_requotes = load_f32(buffer,b+23u);
+	a.maker_fills = load_f32(buffer,b+24u);
+	a.maker_fallbacks = load_f32(buffer,b+25u);
 	return a;
 }
 
 public void trading_store(RWByteAddressBuffer buffer, uint lane, TradingLedger a) {
-	uint b = lane * 20u;
+	uint b = lane * 26u;
 	store_f32(buffer,b,a.equity); store_f32(buffer,b+1u,a.quantity);
 	store_f32(buffer,b+2u,a.mark); store_f32(buffer,b+3u,a.peak);
 	store_f32(buffer,b+4u,a.fees); store_f32(buffer,b+5u,a.funding);
@@ -70,6 +82,12 @@ public void trading_store(RWByteAddressBuffer buffer, uint lane, TradingLedger a
 	store_f32(buffer,b+17u,a.unfilled_iocs);
 	store_f32(buffer,b+18u,a.initial_margin);
 	store_f32(buffer,b+19u,a.maintenance_margin);
+	store_f32(buffer,b+20u,a.maker_pending);
+	store_f32(buffer,b+21u,a.maker_price);
+	store_f32(buffer,b+22u,a.maker_deadline);
+	store_f32(buffer,b+23u,a.maker_requotes);
+	store_f32(buffer,b+24u,a.maker_fills);
+	store_f32(buffer,b+25u,a.maker_fallbacks);
 
 }
 
@@ -135,6 +153,12 @@ public bool trading_finite(TradingLedger a) {
 		&& isfinite(a.unfilled_iocs)
 		&& isfinite(a.initial_margin)
 		&& isfinite(a.maintenance_margin)
+		&& isfinite(a.maker_pending)
+		&& isfinite(a.maker_price)
+		&& isfinite(a.maker_deadline)
+		&& isfinite(a.maker_requotes)
+		&& isfinite(a.maker_fills)
+		&& isfinite(a.maker_fallbacks)
 		;
 }
 
@@ -148,10 +172,12 @@ public void trading_observe(
 	TradingLedger a,
 	float capital,
 	uint steps,
-	uint horizon
+	uint horizon,
+	float maker_window,
+	float maker_requote_budget
 ) {
 	uint candle_elements = window * width;
-	uint base = lane * (candle_elements + 12u);
+	uint base = lane * (candle_elements + 16u);
 	uint start = (row + 1u - window) * width;
 	for (uint i=0u; i<candle_elements; ++i) store_f32(output,base+i,load_f32(features,start+i));
 	// Signed exposure, equity ratio, peak ratio, drawdown, remaining horizon,
@@ -170,6 +196,13 @@ public void trading_observe(
 	store_f32(output,base+candle_elements+9u,a.pending_delay / float(horizon));
 	store_f32(output,base+candle_elements+10u,a.initial_margin / capital);
 	store_f32(output,base+candle_elements+11u,a.maintenance_margin / capital);
+	// Pending-leg identity, resting-price distance, deadline and chase budget.
+	// Flat observations when no maker leg is working.
+	bool maker_leg=a.maker_pending!=0.0f;
+	store_f32(output,base+candle_elements+12u,maker_leg ? 1.0f : (a.pending_target!=0.0f ? 0.5f : 0.0f));
+	store_f32(output,base+candle_elements+13u,maker_leg ? (a.maker_price-a.mark)/a.mark : 0.0f);
+	store_f32(output,base+candle_elements+14u,maker_leg ? a.maker_deadline/max(1.0f,maker_window) : 0.0f);
+	store_f32(output,base+candle_elements+15u,maker_leg ? a.maker_requotes/max(1.0f,maker_requote_budget) : 0.0f);
 }
 
 // Rich execution is a consumer-requested numerical policy extension; no donor
@@ -217,6 +250,7 @@ public float trading_entry_size(float equity, float mark, float fill, int side, 
 }
 public void trading_cancel_pending(inout TradingLedger a) {
 	a.pending_target=0.0f; a.pending_delay=0.0f; a.pending_limit=0.0f; a.pending_size=0.0f;
+	a.maker_pending=0.0f; a.maker_price=0.0f; a.maker_deadline=0.0f; a.maker_requotes=0.0f;
 }
 // One IOC leg may span levels, but is one filled leg, never one fee per level.
 // Visible quantities are shared by close/open legs within this event.
@@ -281,9 +315,50 @@ public void trading_execute(inout TradingLedger a, int target, float desired, fl
 	}
 }
 
+// One observed row against a resting entry leg, matching Trade's strict-through
+// oracle: fills only when the executable touch trades strictly through the
+// resting price on a later row, never at equality and never partially. The
+// deadline counts every observed row including latency-delayed ones; the
+// deadline row still checks fills before converting to the IOC leg. Requotes
+// only chase a left-behind passive touch and never cross the IOC guard.
+public void trading_maker_step(inout TradingLedger a, RWByteAddressBuffer market,
+	uint next, uint width, RWByteAddressBuffer rules, uint lane, float exposure,
+	float fee, float maker_fee, float book_slip, float maker_requotes,
+	inout float used_buy, inout float used_sell) {
+	int side=int(a.pending_target)-2;
+	float through=trading_touch(market,next,width,side);
+	bool filled=side>0 ? through<a.maker_price : through>a.maker_price;
+	if (filled && a.pending_size>0.0f) {
+		float quantity=float(side)*a.pending_size;
+		a.entry_price=trading_fill(a,quantity,a.maker_price,maker_fee,0.0f,trading_rule(rules,lane,1u));
+		a.quantity=quantity; a.age=0.0f; a.position_peak=0.0f;
+		a.maker_fills+=1.0f;
+		trading_cancel_pending(a);
+		return;
+	}
+	if (a.maker_deadline<=1.0f) {
+		a.maker_fallbacks+=1.0f;
+		a.maker_pending=0.0f;
+		float previous_fills=a.fills;
+		trading_execute(a,side,a.pending_size,a.pending_limit,market,next,width,rules,lane,exposure,fee,book_slip,used_buy,used_sell);
+		int actual=a.quantity>0.0f ? 1 : (a.quantity<0.0f ? -1 : 0);
+		if (a.fills==previous_fills || actual!=side || abs(a.quantity)<a.pending_size) a.unfilled_iocs+=1.0f;
+		trading_cancel_pending(a);
+		return;
+	}
+	a.maker_deadline-=1.0f;
+	float passive=trading_touch(market,next,width,-side);
+	bool left_behind=side>0 ? passive>a.maker_price : passive<a.maker_price;
+	bool bounded=side>0 ? passive<=a.pending_limit : passive>=a.pending_limit;
+	if (left_behind && bounded && a.maker_requotes<maker_requotes) {
+		a.maker_price=passive; a.maker_requotes+=1.0f;
+	}
+}
+
 public bool trading_advance(inout TradingLedger a, int target, RWByteAddressBuffer market,
 	uint row, uint next, uint width, RWByteAddressBuffer rules, uint lane, float exposure,
-	float fee, float slip, float book_slip, float max_drawdown, bool boundary, bool liquidate_boundary,
+	float fee, float slip, float book_slip, float max_drawdown, float maker_fee,
+	float maker_window, float maker_requotes, bool boundary, bool liquidate_boundary,
 	out bool terminal) {
 	bool legacy=width==3u && trading_rule(rules,lane,2u)==1.0f
 		&& trading_rule(rules,lane,3u)==0.0f && trading_rule(rules,lane,6u)==0.0f && trading_rule(rules,lane,4u)==1.0f;
@@ -295,6 +370,14 @@ public bool trading_advance(inout TradingLedger a, int target, RWByteAddressBuff
 			a.pending_target=float(target+2); a.pending_delay=trading_rule(rules,lane,3u);
 			a.pending_limit=touch*(1.0f+float(side)*trading_rule(rules,lane,4u));
 			a.pending_size=target==0 ? 0.0f : trading_entry_size(a.equity,a.mark,touch,side,exposure,fee,rules,lane);
+			// Flat-to-position entries under the declared scenario rest at the
+			// passive touch; the IOC limit doubles as the requote chase bound.
+			if (maker_window>0.0f && width!=3u && current==0 && a.pending_size>0.0f) {
+				a.maker_pending=1.0f;
+				a.maker_price=trading_touch(market,row,width,-side);
+				a.maker_deadline=maker_window;
+				a.maker_requotes=0.0f;
+			}
 		}
 	}
 	if (a.quantity!=0.0f) a.age+=1.0f;
@@ -314,7 +397,12 @@ public bool trading_advance(inout TradingLedger a, int target, RWByteAddressBuff
 	if (legacy) {
 		trading_rebalance(a,terminal ? 0 : target,open,exposure,fee,slip,trading_rule(rules,lane,0u),trading_rule(rules,lane,1u));
 	} else if (!terminal && a.pending_target!=0.0f) {
-		if (a.pending_delay>0.0f) a.pending_delay-=1.0f;
+		if (a.pending_delay>0.0f) {
+			a.pending_delay-=1.0f;
+			if (a.maker_pending!=0.0f) a.maker_deadline-=1.0f;
+		}
+		else if (a.maker_pending!=0.0f)
+			trading_maker_step(a,market,next,width,rules,lane,exposure,fee,maker_fee,book_slip,maker_requotes,used_buy,used_sell);
 		else {
 			float previous_fills=a.fills;
 			int requested=int(a.pending_target)-2;

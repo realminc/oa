@@ -1,6 +1,9 @@
+#![cfg(oa_profile = "compatibility")]
+
 /// Public Engine proof for the bounded-binding profile. On machines without a
 /// Vulkan 1.2 compute device, device admission is covered by synthetic tests.
 #[test]
+#[ignore = "requires a device admitted by the Compatibility build"]
 fn bounded_engine_records_eager_and_reusable_graphs() -> crate::Result<()> {
 	let engine = match crate::Engine::new() {
 		Ok(engine) => engine,

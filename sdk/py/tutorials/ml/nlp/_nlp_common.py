@@ -44,7 +44,12 @@ def _generation_units() -> int:
 
 
 def _default_recipe(steps: int, batch: int, lr: float, default_lr: float) -> bool:
-	return steps == nlp.TRAINING_STEPS and batch == nlp.BATCH_SIZE and lr == default_lr
+	return (
+		steps == nlp.TRAINING_STEPS
+		and batch == nlp.BATCH_SIZE
+		and lr == default_lr
+		and _generation_units() == nlp.GENERATION_LENGTH
+	)
 
 
 def _num_parameters(model) -> int:
@@ -69,6 +74,7 @@ def _train(
 	input_dtype: str,
 	metrics: oa.LogMetrics | None = None,
 	source_units=None,
+	losses_out: list | None = None,
 ) -> tuple[float, list, list]:
 	"""Drive the ItTraining step loop; return (initial_loss, last_input, last_target)."""
 	new_input = oa.Matrix.new_from_u8 if input_dtype == "u8" else oa.Matrix.new_from_u32
@@ -99,8 +105,11 @@ def _train(
 		snap = training.snapshot()
 		if snap.step_count == 1:
 			initial_loss = snap.last_loss or 0.0
-		if metrics is not None and snap.last_loss is not None:
-			metrics.log_scalar("loss", snap.step_count, snap.last_loss)
+		if snap.last_loss is not None:
+			if losses_out is not None:
+				losses_out.append(snap.last_loss)
+			if metrics is not None:
+				metrics.log_scalar("loss", snap.step_count, snap.last_loss)
 	return initial_loss, last_input, last_target
 
 
@@ -137,7 +146,16 @@ class Tutorial:
 
 
 def run_byte(tutorial: Tutorial, construct) -> None:
-	steps = _steps()
+	parser = argparse.ArgumentParser(prog=None, description=tutorial.title)
+	parser.add_argument("--steps", type=int, default=0, help="training steps")
+	parser.add_argument(
+		"--plot",
+		type=str,
+		default="",
+		help="render the loss curve to an image file",
+	)
+	args = parser.parse_args()
+	steps = args.steps if args.steps > 0 else _steps()
 	batch = _batch()
 	engine = oa.Engine()
 	model = construct(engine)
@@ -177,8 +195,10 @@ def run_byte(tutorial: Tutorial, construct) -> None:
 	training.add_callback(summary_callback)
 
 	metrics = _open_metrics(f"log/nlp/{tutorial.timer_name}")
+	loss_curve: list = []
 	initial_loss, last_input, last_target = _train(
-		training, model, sampler, engine, batch, steps, "u8", metrics
+		training, model, sampler, engine, batch, steps, "u8", metrics,
+		losses_out=loss_curve,
 	)
 	program_diagnostics = training.program_diagnostics()
 	result = training.finish()
@@ -233,6 +253,16 @@ def run_byte(tutorial: Tutorial, construct) -> None:
 	oa.Filesystem.remove_file(checkpoint)
 	print("checkpoint: optimizer step, accuracy, and exact generation restored")
 
+	if args.plot:
+		_write_loss_curve(
+			engine,
+			loss_curve,
+			args.plot,
+			tutorial.title.removeprefix("OA Tutorial — "),
+			oa.ml.byte.VOCAB_SIZE,
+		)
+		print(f"plot: {args.plot}")
+
 	if _default_recipe(steps, batch, tutorial.learning_rate, tutorial.learning_rate):
 		assert initial_loss > 5.0
 		assert final_training_loss < initial_loss
@@ -248,7 +278,16 @@ def run_byte(tutorial: Tutorial, construct) -> None:
 
 
 def run_bpe(tutorial: Tutorial, construct) -> None:
-	steps = _steps()
+	parser = argparse.ArgumentParser(prog=None, description=tutorial.title)
+	parser.add_argument("--steps", type=int, default=0, help="training steps")
+	parser.add_argument(
+		"--plot",
+		type=str,
+		default="",
+		help="render the loss curve to an image file",
+	)
+	args = parser.parse_args()
+	steps = args.steps if args.steps > 0 else _steps()
 	batch = _batch()
 	engine = oa.Engine()
 	tokenizer = oa.ml.BpeTokenizer(nlp.BPE_VOCAB_SIZE)
@@ -301,6 +340,7 @@ def run_bpe(tutorial: Tutorial, construct) -> None:
 	training.add_callback(progress)
 	training.add_callback(summary_callback)
 
+	loss_curve: list = []
 	initial_loss, last_input, last_target = _train(
 		training,
 		model,
@@ -310,6 +350,7 @@ def run_bpe(tutorial: Tutorial, construct) -> None:
 		steps,
 		"u32",
 		source_units=lambda: sampler.next_batch_bytes(),
+		losses_out=loss_curve,
 	)
 	program_diagnostics = training.program_diagnostics()
 	result = training.finish()
@@ -358,7 +399,7 @@ def run_bpe(tutorial: Tutorial, construct) -> None:
 			expected.decode("utf-8") if isinstance(expected, bytes) else expected
 		)
 
-	base = oa.Path.temp().join(tutorial.checkpoint_stem)
+	base = oa.Path.temp().join(f"{tutorial.checkpoint_stem}-{os.getpid()}")
 	checkpoint = base.with_extension("oam")
 	vocabulary = base.with_extension("bpe")
 	params = model.all_parameters()
@@ -387,6 +428,16 @@ def run_bpe(tutorial: Tutorial, construct) -> None:
 	)
 	oa.Filesystem.remove_file(checkpoint)
 	oa.Filesystem.remove_file(vocabulary)
+
+	if args.plot:
+		_write_loss_curve(
+			engine,
+			loss_curve,
+			args.plot,
+			tutorial.title.removeprefix("OA Tutorial — "),
+			tokenizer.vocab_size(),
+		)
+		print(f"plot: {args.plot}")
 
 
 # ── Char workload (mirrors the standalone tu_nlp_char_* tutorials) ────────────
@@ -422,6 +473,12 @@ def run_char(tutorial: CharTutorial, construct) -> None:
 	parser.add_argument("--steps", type=int, default=0, help="training steps")
 	parser.add_argument("--batch", type=int, default=0, help="batch size")
 	parser.add_argument("--lr", type=float, default=0.0, help="learning rate")
+	parser.add_argument(
+		"--plot",
+		type=str,
+		default="",
+		help="render the loss curve to an image file",
+	)
 	args = parser.parse_args()
 	steps = args.steps if args.steps > 0 else _steps()
 	batch = args.batch if args.batch > 0 else _batch()
@@ -467,8 +524,17 @@ def run_char(tutorial: CharTutorial, construct) -> None:
 	training.add_callback(summary_callback)
 
 	metrics = _open_metrics(tutorial.log_dir_leaf)
+	loss_curve: list = []
 	initial_loss, last_input, last_target = _train(
-		training, model, sampler, engine, batch, steps, "u32", metrics
+		training,
+		model,
+		sampler,
+		engine,
+		batch,
+		steps,
+		"u32",
+		metrics,
+		losses_out=loss_curve,
 	)
 	program_diagnostics = training.program_diagnostics()
 	result = training.finish()
@@ -511,6 +577,16 @@ def run_char(tutorial: CharTutorial, construct) -> None:
 			f"{program_diagnostics.input_upload_count} uploads"
 		)
 
+	if args.plot:
+		_write_loss_curve(
+			engine,
+			loss_curve,
+			args.plot,
+			tutorial.cli_title.removeprefix("OA Tutorial — "),
+			nlp.CHAR_VOCAB_SIZE,
+		)
+		print(f"plot: {args.plot}")
+
 	if _default_recipe(steps, batch, lr, tutorial.default_lr):
 		assert initial_loss > 3.0
 		if tutorial.loss_tolerance is not None:
@@ -538,3 +614,35 @@ def run_char(tutorial: CharTutorial, construct) -> None:
 		== generated
 	)
 	oa.Filesystem.remove_file(checkpoint)
+
+
+def _write_loss_curve(
+	engine: oa.Engine, loss_curve: list, path: str, title: str, vocab_size: int
+) -> None:
+	"""Render the recorded loss curve through oa.plot headless GPU composition."""
+	fig = oa.plot.Figure(
+		oa.plot.FigureConfig(
+			title=f"{title} — dense next-token LM",
+			rows=1,
+			cols=1,
+			width=960,
+			height=540,
+			theme=oa.plot.PlotTheme.Dark,
+		)
+	)
+	ax = fig.ax(0, 0)
+	ax.title("training loss")
+	ax.x_label("optimizer step")
+	ax.y_label("cross entropy")
+	ax.grid(True)
+	ax.legend(True)
+	steps_x = [float(i) for i in range(1, len(loss_curve) + 1)]
+	baseline = math.log(vocab_size)
+	ax.limits(0.0, len(loss_curve) + 1.0, 0.0, max(baseline, *loss_curve) + 0.3)
+	ax.plot_xy(steps_x, loss_curve, oa.plot.LineStyle(label="train", width=1.6))
+	ax.plot_xy(
+		[steps_x[0], steps_x[-1]],
+		[baseline, baseline],
+		oa.plot.LineStyle(label=f"ln({vocab_size}) baseline"),
+	)
+	fig.save_to(engine, path)

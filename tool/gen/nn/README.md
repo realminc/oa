@@ -142,7 +142,7 @@ does not imply a fresh GPU, throughput or broader dtype qualification.
 ## Flat Flow generation ownership
 
 `tool/gen/nn/schema/ml/ml_nn_flow.json` and one complete `flow.rs.in` template
-own `src/rs/ml/nn/flow.gen.rs`: `FlowTimeEmbedding`, `FlowTransformer`,
+own `src/rs/lib/ml/nn/flow.gen.rs`: `FlowTimeEmbedding`, `FlowTransformer`,
 `FlowTransformerConfig`, `FlowDenoiser` and `FlowDenoiserConfig`. The private
 `flow` module is included directly by `ml/nn.rs`, which retains its explicit
 public re-exports. No nested source modules or secondary implementations remain.

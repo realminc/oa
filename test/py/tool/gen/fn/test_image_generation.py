@@ -25,7 +25,7 @@ class ImageGenerationTests(unittest.TestCase):
 
 	def test_complete_categories_are_directly_declared_with_one_owner(self):
 		counts = {"pixel": 20, "filter": 20, "geometric": 9, "color": 4}
-		facade = (ROOT / "src/rs/image.rs").read_text()
+		facade = (ROOT / "src/rs/lib/image.rs").read_text()
 		for category, count in counts.items():
 			text = oa_image.generate_image_api(self.schema, "0" * 64, category)
 			names = [op["name"] for op in self.schema["contracts"] if op["rust"]["category"] == category]
@@ -36,7 +36,7 @@ class ImageGenerationTests(unittest.TestCase):
 			self.assertNotIn("{{", text)
 			self.assertNotRegex(text, r"\b\w+_(?:impl|dispatch)\(")
 			self.assertIn(f'#[path = "image/{category}.gen.rs"]', facade)
-			self.assertFalse((ROOT / f"src/rs/image/{category}.rs").exists())
+			self.assertFalse((ROOT / f"src/rs/lib/image/{category}.rs").exists())
 
 	def test_schema_owns_docs_signature_and_semantic_attribute_expressions(self):
 		op = self.operation("threshold_binary")

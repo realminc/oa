@@ -778,3 +778,100 @@ test_vk!(
 		Ok(())
 	}
 );
+
+test_vk!(multi_head_attention_step_matches_the_causal_scan, engine, {
+	use oa::ml::nn::MultiHeadAttention;
+
+	let attention = MultiHeadAttention::new_with_seed(&engine, 8, 2, 4, 0x4b56_4348)?;
+	let host = (0..64)
+		.map(|index| 0.35 * (0.37 * index as f32 + 0.11).sin())
+		.collect::<Vec<f32>>();
+	// Two packed length-4 sequences: batch 0 occupies rows 0..4, batch 1 rows 4..8.
+	let packed = oa::Matrix::new_from_f32(&engine, [8, 8], &host)?;
+	let scan = attention.forward(&packed)?.read_f32()?;
+
+	let mut cache = attention.new_cache(2)?;
+	assert_eq!(cache.batch_size(), 2);
+	assert!(cache.is_empty());
+	for time in 0..4 {
+		let step_input = oa::Matrix::new_from_f32(
+			&engine,
+			[2, 8],
+			&[
+				&host[time * 8..time * 8 + 8],
+				&host[32 + time * 8..32 + time * 8 + 8],
+			]
+			.concat(),
+		)?;
+		let stepped = attention.step(&step_input, &mut cache)?.read_f32()?;
+		assert_eq!(cache.len(), time + 1);
+		let mut expected = Vec::with_capacity(16);
+		expected.extend_from_slice(&scan[time * 8..time * 8 + 8]);
+		expected.extend_from_slice(&scan[32 + time * 8..32 + time * 8 + 8]);
+		assert_close(&stepped, &expected, 2.0e-4);
+	}
+	Ok(())
+});
+
+test_vk!(
+	multi_head_attention_cache_enforces_ownership_and_contracts,
+	engine,
+	{
+		use oa::ml::nn::MultiHeadAttention;
+
+		let attention = MultiHeadAttention::new_with_seed(&engine, 8, 2, 4, 0x4b56_4348)?;
+		let other = MultiHeadAttention::new_with_seed(&engine, 8, 2, 4, 0x4f54_4852)?;
+		let input = oa::Matrix::new_from_f32(&engine, [2, 8], &[0.1; 16])?;
+
+		assert_eq!(
+			attention
+				.new_cache(0)
+				.err()
+				.expect("attention accepted a zero-batch cache")
+				.kind(),
+			oa::ErrorKind::InvalidArgument
+		);
+
+		let mut foreign = other.new_cache(2)?;
+		assert_eq!(
+			attention
+				.step(&input, &mut foreign)
+				.err()
+				.expect("attention accepted a foreign cache")
+				.kind(),
+			oa::ErrorKind::InvalidArgument
+		);
+
+		let mut cache = attention.new_cache(2)?;
+		let wrong_batch = oa::Matrix::new_from_f32(&engine, [1, 8], &[0.1; 8])?;
+		assert_eq!(
+			attention
+				.step(&wrong_batch, &mut cache)
+				.err()
+				.expect("attention accepted a mismatched cache batch")
+				.kind(),
+			oa::ErrorKind::InvalidArgument
+		);
+		let wrong_dtype = oa::Matrix::new_from_slice(&engine, [2, 8], &[1_u32; 16])?;
+		assert_eq!(
+			attention
+				.step(&wrong_dtype, &mut cache)
+				.err()
+				.expect("attention accepted a non-F32 step input")
+				.kind(),
+			oa::ErrorKind::InvalidArgument
+		);
+
+		let tape = oa::ml::GradientTape::new();
+		assert_eq!(
+			attention
+				.step(&input, &mut cache)
+				.err()
+				.expect("attention step ran inside a GradientTape")
+				.kind(),
+			oa::ErrorKind::FailedPrecondition
+		);
+		drop(tape);
+		Ok(())
+	}
+);

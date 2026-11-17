@@ -1,7 +1,7 @@
 use std::{error::Error, path::PathBuf, rc::Rc};
 
 use oa::Cli;
-use oa::sdk::{
+use sdk::{
 	data::HumanMl3dDataset,
 	ml::alm::{
 		AlmFfnType, AlmPrior, AlmPriorConfig, AlmTokenizer, AlmTokenizerConfig, ClipText,

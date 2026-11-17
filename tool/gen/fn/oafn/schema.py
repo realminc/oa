@@ -27,7 +27,9 @@ from .ntt import validate_ntt_schema
 from .paths import REPO_ROOT
 from .pqc import validate_cryptography_pqc_schema
 from .types import validate_types_schema
+from .uistyle import validate_ui_style_schema
 from .util import SchemaError
+from .video import validate_video_schema
 from .vision import validate_vision_schema
 
 Schemas = dict[str, tuple[dict[str, Any], str]]
@@ -56,6 +58,7 @@ SCHEMAS: dict[str, SchemaSpec] = {
 	"bigint": SchemaSpec("--crypto-bigint-schema", Path("tool/gen/fn/schema/crypto/crypto_bigint.json"), validate_bigint_schema),
 	"image": SchemaSpec("--image-schema", Path("tool/gen/fn/schema/image/image.json"), validate_image_schema),
 	"vision": SchemaSpec("--vision-schema", Path("tool/gen/fn/schema/vision/vision_detection.json"), validate_vision_schema),
+	"video": SchemaSpec("--video-schema", Path("tool/gen/fn/schema/video/video.json"), validate_video_schema),
 	"sessions": SchemaSpec("--sessions-schema", Path("tool/gen/fn/schema/sessions.json"), validate_sessions_schema),
 	"codecs": SchemaSpec("--codecs-schema", Path("tool/gen/fn/schema/codecs.json"), validate_sessions_schema),
 	"ml_parity": SchemaSpec("--ml-parity-schema", Path("tool/gen/fn/schema/ml_parity.json"), validate_sessions_schema),
@@ -63,6 +66,7 @@ SCHEMAS: dict[str, SchemaSpec] = {
 	"data_types": SchemaSpec("--data-types-schema", Path("tool/gen/fn/schema/data/data_types.json"), validate_types_schema),
 	"input_types": SchemaSpec("--input-types-schema", Path("tool/gen/fn/schema/input/input_types.json"), validate_types_schema),
 	"ui_types": SchemaSpec("--ui-types-schema", Path("tool/gen/fn/schema/ui/ui_types.json"), validate_types_schema),
+	"ui_style": SchemaSpec("--ui-style-schema", Path("tool/gen/fn/schema/ui/ui_style.json"), validate_ui_style_schema),
 	"video_types": SchemaSpec("--video-types-schema", Path("tool/gen/fn/schema/video/video_types.json"), validate_types_schema),
 	"runtime_types": SchemaSpec("--runtime-types-schema", Path("tool/gen/fn/schema/runtime/runtime_types.json"), validate_types_schema),
 	"ml_types": SchemaSpec("--ml-types-schema", Path("tool/gen/fn/schema/ml/ml_types.json"), validate_types_schema),

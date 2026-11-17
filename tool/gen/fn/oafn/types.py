@@ -2,7 +2,7 @@
 
 ``<domain>_types`` schemas carry unanchored public records — records that
 parameterize handwritten values and sessions rather than belonging to one
-generated operation. The emitter writes ``src/rs/<domain>/type.gen.rs``;
+generated operation. The emitter writes ``src/rs/lib/<domain>/type.gen.rs``;
 facades declare ``mod types`` with ``#[path]`` and re-export the names so
 public paths stay ``crate::<domain>::<Name>``, matching the oacpp/vk
 ``type.gen`` convention.

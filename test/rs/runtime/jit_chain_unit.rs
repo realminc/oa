@@ -9,14 +9,12 @@ use crate::runtime::{
 		features::ExecutionProfile,
 	},
 	dna::{
-		elementwise::Program,
-		kernel::{
-			KernelId,
-			jit::{JitArtifacts, SlangCompiler},
-		},
+		compiler::{JitArtifacts, SlangCompiler},
+		fusion,
+		ir::elementwise::Program,
+		kernel::KernelId,
 	},
-	executable_graph::{BufferUse, ComputeNode, ExecutableGraph},
-	fusion,
+	graph::executable::{BufferUse, ComputeNode, ExecutableGraph},
 };
 use std::time::Instant;
 
@@ -262,7 +260,7 @@ fn jit_chain_correctness_and_timings() -> Result<()> {
 	println!(
 		"OA_JIT_COMPILER version={} profile={} startup_ms={startup_ms:.6} compile_ms={:.6} validation_ms={:.6} spirv_bytes={} device={:?} driver={:?} driver_version={}",
 		compiler.version,
-		if bounded { "compatibility" } else { "strict" },
+		if bounded { "compatibility" } else { "core" },
 		artifact.compile_time.as_secs_f64() * 1000.0,
 		artifact.validation_time.as_secs_f64() * 1000.0,
 		artifact.words().len() * 4,

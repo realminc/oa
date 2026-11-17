@@ -183,6 +183,49 @@ test_vk!(epilogue_fuses_linear_residual_pair, engine, {
 	Ok(())
 });
 
+test_vk!(epilogue_fuses_linear_residual_activation_triple, engine, {
+	let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
+	let weight = oa::Matrix::new_from_f32(
+		&engine,
+		[4, 3],
+		&[
+			0.5, -1.0, 2.0, //
+			1.0, 2.0, -1.5, //
+			-0.25, 0.5, -2.0, //
+			1.75, -0.75, 0.25,
+		],
+	)?;
+	let bias = oa::Matrix::new_from_f32(&engine, [4], &[0.5, -1.0, 2.0, -0.25])?;
+	let residual = oa::Matrix::new_from_f32(
+		&engine,
+		[2, 4],
+		&[1.0, 0.0, -1.0, 2.0, -0.5, 1.5, 0.25, -2.0],
+	)?;
+	let linear = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
+	let reference = {
+		let pre_activation = linear.forward(&input)?;
+		let summed = oa::matrix::add(&pre_activation, &residual)?;
+		oa::ml::matrix::gelu(&summed)?.read_f32()?
+	};
+	let (plan, output) = engine.capture(|| {
+		let pre_activation = linear.forward(&input)?;
+		let summed = oa::matrix::add(&pre_activation, &residual)?;
+		oa::ml::matrix::gelu(&summed)
+	})?;
+
+	let lowering = plan.semantic_lowering();
+	assert_eq!(lowering.fused_op_count(), 3);
+	assert_eq!(lowering.fused_node_count(), 1);
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("epilogue"))
+		.expect("fused epilogue executable report must be valid JSON");
+	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
+	assert_eq!(report["nodes"][0]["kernel"], "ml.linear_residual_act.f32");
+
+	engine.submit(&plan)?.wait()?;
+	assert_eq!(output.read_f32()?, reference);
+	Ok(())
+});
+
 test_vk!(epilogue_fuses_linear_activation_pair, engine, {
 	let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
 	let weight = oa::Matrix::new_from_f32(
@@ -248,7 +291,7 @@ test_vk!(epilogue_fuses_linear_backward_prologue_pair, engine, {
 		let candidate = layers(0)?;
 		// The unfused reference runs the same eager graph with epilogue
 		// fusion disabled, so dX, dW and db come from the per-op kernels.
-		unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+		let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 		let expected = {
 			let tape = oa::ml::GradientTape::new();
 			let hidden = reference[1].forward(&reference[0].forward(&input)?)?;
@@ -261,7 +304,7 @@ test_vk!(epilogue_fuses_linear_backward_prologue_pair, engine, {
 				.map(|p| p.gradient().unwrap().read_f32())
 				.collect::<oa::Result<Vec<_>>>()?
 		};
-		unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+		drop(epilogue_disabled);
 		let (plan, _) = engine.capture(|| {
 			let tape = oa::ml::GradientTape::new();
 			let hidden = candidate[1].forward(&candidate[0].forward(&input)?)?;
@@ -317,7 +360,7 @@ test_vk!(epilogue_fuses_linear_backward_silu_mul_pair, engine, {
 	};
 	let reference = layers()?;
 	let candidate = layers()?;
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = {
 		let tape = oa::ml::GradientTape::new();
 		let hidden = reference[1].forward(&reference[0].forward(&input)?)?;
@@ -330,7 +373,7 @@ test_vk!(epilogue_fuses_linear_backward_silu_mul_pair, engine, {
 			.map(|p| p.gradient().unwrap().read_f32())
 			.collect::<oa::Result<Vec<_>>>()?
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let hidden = candidate[1].forward(&candidate[0].forward(&input)?)?;
@@ -386,7 +429,7 @@ test_vk!(epilogue_fuses_linear_backward_add_pair, engine, {
 	};
 	let reference = layers()?;
 	let candidate = layers()?;
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = {
 		let tape = oa::ml::GradientTape::new();
 		let shared = reference[0].forward(&input)?;
@@ -400,7 +443,7 @@ test_vk!(epilogue_fuses_linear_backward_add_pair, engine, {
 			.map(|p| p.gradient().unwrap().read_f32())
 			.collect::<oa::Result<Vec<_>>>()?
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let shared = candidate[0].forward(&input)?;
@@ -453,7 +496,7 @@ test_vk!(epilogue_fuses_linear_backward_scalar_mul_pair, engine, {
 	};
 	let reference = layers()?;
 	let candidate = layers()?;
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = {
 		let tape = oa::ml::GradientTape::new();
 		let logits = reference[1].forward(&reference[0].forward(&input)?)?;
@@ -465,7 +508,7 @@ test_vk!(epilogue_fuses_linear_backward_scalar_mul_pair, engine, {
 			.map(|p| p.gradient().unwrap().read_f32())
 			.collect::<oa::Result<Vec<_>>>()?
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let logits = candidate[1].forward(&candidate[0].forward(&input)?)?;
@@ -543,7 +586,7 @@ test_vk!(epilogue_fuses_linear_backward_norm_pair, engine, {
 			.map(|p| p.gradient().unwrap().read_f32())
 			.collect()
 	};
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = {
 		let tape = oa::ml::GradientTape::new();
 		let normalized = reference.1.forward(&reference.0.forward(&input)?)?;
@@ -552,7 +595,7 @@ test_vk!(epilogue_fuses_linear_backward_norm_pair, engine, {
 		tape.backward(&loss)?;
 		parameters(&reference)?
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let normalized = candidate.1.forward(&candidate.0.forward(&input)?)?;
@@ -633,7 +676,7 @@ test_vk!(epilogue_fuses_linear_backward_bmm_chain_pair, engine, {
 	};
 	let reference = layers()?;
 	let candidate = layers()?;
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = {
 		let tape = oa::ml::GradientTape::new();
 		let output = forward(&reference)?;
@@ -641,7 +684,7 @@ test_vk!(epilogue_fuses_linear_backward_bmm_chain_pair, engine, {
 		tape.backward(&loss)?;
 		parameters(&reference)?
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let output = forward(&candidate)?;
@@ -722,7 +765,7 @@ test_vk!(epilogue_fuses_linear_backward_bmm_chain_tails, engine, {
 	};
 	let reference = layers()?;
 	let candidate = layers()?;
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = {
 		let tape = oa::ml::GradientTape::new();
 		let output = forward(&reference)?;
@@ -730,7 +773,7 @@ test_vk!(epilogue_fuses_linear_backward_bmm_chain_tails, engine, {
 		tape.backward(&loss)?;
 		parameters(&reference)?
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let output = forward(&candidate)?;
@@ -818,7 +861,7 @@ test_vk!(epilogue_fuses_linear_backward_norm_add_pair, engine, {
 			.map(|p| p.gradient().unwrap().read_f32())
 			.collect()
 	};
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = {
 		let tape = oa::ml::GradientTape::new();
 		let shared = reference.0.forward(&input)?;
@@ -831,7 +874,7 @@ test_vk!(epilogue_fuses_linear_backward_norm_add_pair, engine, {
 		tape.backward(&loss)?;
 		parameters(&reference)?
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let shared = candidate.0.forward(&input)?;
@@ -929,7 +972,7 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_chain, engine, {
 			.map(|p| p.gradient().unwrap().read_f32())
 			.collect()
 	};
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = {
 		let tape = oa::ml::GradientTape::new();
 		let shared = reference.0.forward(&input)?;
@@ -943,7 +986,7 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_chain, engine, {
 		tape.backward(&loss)?;
 		parameters(&reference)?
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let shared = candidate.0.forward(&input)?;
@@ -1047,7 +1090,7 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_pair, engine, {
 			.map(|p| p.gradient().unwrap().read_f32())
 			.collect()
 	};
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = {
 		let tape = oa::ml::GradientTape::new();
 		let shared = reference.0.forward(&input)?;
@@ -1058,7 +1101,7 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_pair, engine, {
 		tape.backward(&loss)?;
 		parameters(&reference)?
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let shared = candidate.0.forward(&input)?;
@@ -1194,14 +1237,14 @@ test_vk!(epilogue_fuses_grouped_backward_prologue_pair, engine, {
 	};
 	let reference = build()?;
 	let candidate = build()?;
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = {
 		let tape = oa::ml::GradientTape::new();
 		let loss = oa::ml::loss::mse(&forward(&reference, &input)?, &target)?;
 		tape.backward(&loss)?;
 		gradients(&reference)?
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let loss = oa::ml::loss::mse(&forward(&candidate, &input)?, &target)?;
@@ -1329,7 +1372,7 @@ test_vk!(epilogue_fuses_linear_residual_norm_chain, engine, {
 			.map(|p| p.gradient().unwrap().read_f32())
 			.collect()
 	};
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let (expected_loss, expected) = {
 		let tape = oa::ml::GradientTape::new();
 		let summed = oa::matrix::add(&residual, &reference.0.forward(&input)?)?;
@@ -1341,7 +1384,7 @@ test_vk!(epilogue_fuses_linear_residual_norm_chain, engine, {
 		tape.backward(&loss)?;
 		(value, parameters(&reference)?)
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, loss) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let summed = oa::matrix::add(&residual, &candidate.0.forward(&input)?)?;
@@ -1540,7 +1583,7 @@ test_vk!(epilogue_fuses_embedding_pair_norm_chain, engine, {
 			.map(|p| p.gradient().unwrap().read_f32())
 			.collect()
 	};
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let (expected_loss, expected) = {
 		let tape = oa::ml::GradientTape::new();
 		let token_values = reference.0.forward(&tokens)?;
@@ -1554,7 +1597,7 @@ test_vk!(epilogue_fuses_embedding_pair_norm_chain, engine, {
 		tape.backward(&loss)?;
 		(value, parameters(&reference)?)
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, loss) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let token_values = candidate.0.forward(&tokens)?;
@@ -1639,7 +1682,7 @@ test_vk!(epilogue_fuses_embedding_backward_sum_pair, engine, {
 			.map(|p| p.gradient().unwrap().read_f32())
 			.collect()
 	};
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = {
 		let tape = oa::ml::GradientTape::new();
 		let summed = oa::matrix::add(
@@ -1653,7 +1696,7 @@ test_vk!(epilogue_fuses_embedding_backward_sum_pair, engine, {
 		tape.backward(&loss)?;
 		parameters(&reference)?
 	};
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let summed = oa::matrix::add(
@@ -1750,9 +1793,9 @@ test_vk!(epilogue_fuses_conv_1d_bias_transpose_pair, engine, {
 		tape.backward(&loss)?;
 		gradients(layers)
 	};
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = run(&reference)?;
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let _ = run(&candidate);
 		Ok(())
@@ -1864,9 +1907,9 @@ test_vk!(
 			tape.backward(&loss)?;
 			gradients(layers)
 		};
-		unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+		let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 		let expected = run(&reference)?;
-		unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+		drop(epilogue_disabled);
 		let (plan, _) = engine.capture(|| {
 			let _ = run(&candidate);
 			Ok(())
@@ -1963,9 +2006,9 @@ test_vk!(epilogue_fuses_conv_1d_bias_transpose_norm_relu, engine, {
 		tape.backward(&loss)?;
 		gradients(layers)
 	};
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = run(&reference)?;
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let _ = run(&candidate);
 		Ok(())
@@ -2043,9 +2086,9 @@ test_vk!(epilogue_fuses_conv_1d_bias_copy, engine, {
 		tape.backward(&loss)?;
 		gradients(layer)
 	};
-	unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = run(&reference)?;
-	unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+	drop(epilogue_disabled);
 	let (plan, _) = engine.capture(|| {
 		let _ = run(&candidate);
 		Ok(())
@@ -2122,9 +2165,9 @@ test_vk!(
 			tape.backward(&loss)?;
 			gradients(layer)
 		};
-		unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+		let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 		let expected = run(&reference)?;
-		unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+		drop(epilogue_disabled);
 		let (plan, _) = engine.capture(|| {
 			let _ = run(&candidate);
 			Ok(())
@@ -2219,9 +2262,9 @@ test_vk!(
 			outputs.iter().map(oa::Matrix::read_f32).collect()
 		};
 		for (name, build) in &cases {
-			unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+			let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 			let expected = read(&build()?);
-			unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+			drop(epilogue_disabled);
 			let expected = expected?;
 			assert!(
 				expected[0].iter().any(|value| *value != 0.0),
@@ -2265,122 +2308,6 @@ test_vk!(epilogue_fuses_sum_axis_scale_pair, engine, {
 
 	engine.submit(&plan)?.wait()?;
 	assert_eq!(output.read_f32()?, reference);
-	Ok(())
-});
-
-/// Executable kernel histogram of a captured plan.
-fn kernel_histogram(
-	plan: &oa::ExecutionPlan,
-	name: &str,
-) -> (usize, std::collections::BTreeMap<String, usize>) {
-	let report: serde_json::Value =
-		serde_json::from_str(&plan.debug_report_json(name)).expect("plan report must be valid JSON");
-	let nodes = report["nodes"].as_array().expect("nodes");
-	let mut histogram = std::collections::BTreeMap::new();
-	for node in nodes {
-		*histogram
-			.entry(node["kernel"].as_str().expect("kernel").to_owned())
-			.or_default() += 1;
-	}
-	(nodes.len(), histogram)
-}
-
-test_vk!(alm_tokenizer_plan_keeps_its_conv_tail_fusions, engine, {
-	// Pins the fused ALM training plan recorded in jit_fusion_census.md
-	// (202 nodes vs 248 unfused): every Conv1d lowering tail sits inside a
-	// fused variant and only the bias-free ConvTranspose1d backward
-	// transposes remain.
-	let config = oa::sdk::ml::alm::AlmTokenizerConfig {
-		input_dim: 16,
-		width: 32,
-		code_dim: 16,
-		num_codes: 64,
-		downsample_stages: 2,
-		depth: 2,
-		commitment_beta: 0.25,
-		ema_decay: 0.99,
-		ema_epsilon: 1e-5,
-		dead_threshold: 2.0,
-	};
-	let model = oa::sdk::ml::alm::AlmTokenizer::new(&engine, config)?;
-	let input = oa::Matrix::new_from_f32(
-		&engine,
-		[2, 32, 16],
-		&vec![0.05; 2 * 32 * 16]
-			.iter()
-			.enumerate()
-			.map(|(i, v)| v * ((i * 37 % 23) as f32 - 11.0))
-			.collect::<Vec<f32>>(),
-	)?;
-	let target = oa::Matrix::new_from_f32(&engine, [2, 32, 16], &vec![0.0; 2 * 32 * 16])?;
-	let (plan, _) = engine.capture(|| {
-		let tape = oa::ml::GradientTape::new();
-		let reconstruction = model.forward(&input)?;
-		let loss = oa::ml::loss::mse(&reconstruction, &target)?;
-		tape.backward(&loss)?;
-		Ok(())
-	})?;
-	let (total, census) = kernel_histogram(&plan, "alm");
-	assert_eq!(
-		total, 202,
-		"fused ALM training plan size changed: {census:?}"
-	);
-	assert!(
-		!census.contains_key("ml.conv_1d_bias_add.f32"),
-		"no unfused Conv1d bias add may remain"
-	);
-	assert_eq!(
-		census.get("ml.conv_1d_transpose.f32").copied().unwrap_or(0),
-		2,
-		"only the bias-free ConvTranspose1d backward transposes may remain"
-	);
-	assert!(
-		census.contains_key("ml.conv_1d_bias_transpose_residual_relu.f32"),
-		"the residual Conv1d tail must stay fused"
-	);
-	Ok(())
-});
-
-test_vk!(commands_cnn_plan_keeps_its_conv_and_pool_fusions, engine, {
-	// Pins the fused commands-CNN training plan recorded in
-	// jit_fusion_census.md (23 nodes vs 27 unfused): each Conv2d block
-	// applies ReLU at the conv store and folds the ReLU mask into the pool
-	// adjoint.
-	let model = oa::sdk::ml::audio::commands_cnn(&engine, 40, 62, 8)?;
-	let input = oa::Matrix::new_from_f32(
-		&engine,
-		[4, 1, 40, 62],
-		&vec![0.05; 4 * 40 * 62]
-			.iter()
-			.enumerate()
-			.map(|(i, v)| v * ((i * 37 % 23) as f32 - 11.0))
-			.collect::<Vec<f32>>(),
-	)?;
-	let target = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 2, 1, 3])?;
-	let (plan, _) = engine.capture(|| {
-		let tape = oa::ml::GradientTape::new();
-		let logits = model.forward(&input)?;
-		let loss = oa::ml::loss::cross_entropy(&logits, &target)?;
-		tape.backward(&loss)?;
-		Ok(())
-	})?;
-	let (total, census) = kernel_histogram(&plan, "cnn");
-	assert_eq!(
-		total, 23,
-		"fused commands-CNN training plan size changed: {census:?}"
-	);
-	for (kernel, count) in [
-		("ml.conv_2d_relu.f32", 2),
-		("ml.max_pool_2d_relu_backward.f32", 2),
-		("ml.matrix.conv_2d.f32", 0),
-		("ml.matrix.relu_backward.f32", 0),
-	] {
-		assert_eq!(
-			census.get(kernel).copied().unwrap_or(0),
-			count,
-			"{kernel}: {census:?}"
-		);
-	}
 	Ok(())
 });
 
@@ -2583,35 +2510,56 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 	assert_eq!(reused.submission_count(), 2);
 
 	let four = oa::matrix::full(&engine, [2, 3], 4.0)?;
-	plan.bind_matrix_input(&one, &four)?;
-	let rebound = plan.diagnostics();
-	assert_eq!(rebound.graph_id(), initial.graph_id());
-	assert_eq!(rebound.input_binding_count(), 2);
-	assert_eq!(rebound.input_rebinding_count(), 1);
-	let rebound_report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("rebound"))
-		.expect("rebound executable report must be valid JSON");
-	assert_eq!(rebound_report["compiled"], false);
+	#[cfg(oa_profile = "core")]
+	{
+		// Core tapes bake descriptor-array operand indices into push words;
+		// rebinding a fused-chain operand is a typed contract error there.
+		let error = plan
+			.bind_matrix_input(&one, &four)
+			.expect_err("Core fused-chain operand rebinding must be rejected");
+		assert!(
+			error
+				.to_string()
+				.contains("cannot rebind fused elementwise operands"),
+			"unexpected error: {error}"
+		);
+		let third = engine.submit(&plan)?;
+		third.wait()?;
+		assert_eq!(output.read_f32()?, [4.0; 6]);
+	}
+	#[cfg(oa_profile = "compatibility")]
+	{
+		plan.bind_matrix_input(&one, &four)?;
+		let rebound = plan.diagnostics();
+		assert_eq!(rebound.graph_id(), initial.graph_id());
+		assert_eq!(rebound.input_binding_count(), 2);
+		assert_eq!(rebound.input_rebinding_count(), 1);
+		let rebound_report: serde_json::Value =
+			serde_json::from_str(&plan.debug_report_json("rebound"))
+				.expect("rebound executable report must be valid JSON");
+		assert_eq!(rebound_report["compiled"], false);
 
-	let third = engine.submit(&plan)?;
-	let fourth = engine.submit(&plan)?;
-	plan.bind_matrix_input(&one, &one)?;
-	let restored_report: serde_json::Value =
-		serde_json::from_str(&plan.debug_report_json("restored"))
-			.expect("restored executable report must be valid JSON");
-	assert_eq!(restored_report["compiled"], true);
-	let fifth = engine.submit(&plan)?;
-	let sixth = engine.submit(&plan)?;
-	let final_diagnostics = plan.diagnostics();
-	assert_eq!(final_diagnostics.command_recording_count(), 2);
-	assert_eq!(final_diagnostics.command_cache_hit_count(), 4);
-	assert_eq!(final_diagnostics.submission_count(), 6);
-	assert_eq!(final_diagnostics.fallback_count(), 0);
-	drop(plan);
-	third.wait()?;
-	fourth.wait()?;
-	fifth.wait()?;
-	sixth.wait()?;
-	assert_eq!(output.read_f32()?, [4.0; 6]);
+		let third = engine.submit(&plan)?;
+		let fourth = engine.submit(&plan)?;
+		plan.bind_matrix_input(&one, &one)?;
+		let restored_report: serde_json::Value =
+			serde_json::from_str(&plan.debug_report_json("restored"))
+				.expect("restored executable report must be valid JSON");
+		assert_eq!(restored_report["compiled"], true);
+		let fifth = engine.submit(&plan)?;
+		let sixth = engine.submit(&plan)?;
+		let final_diagnostics = plan.diagnostics();
+		assert_eq!(final_diagnostics.command_recording_count(), 2);
+		assert_eq!(final_diagnostics.command_cache_hit_count(), 4);
+		assert_eq!(final_diagnostics.submission_count(), 6);
+		assert_eq!(final_diagnostics.fallback_count(), 0);
+		drop(plan);
+		third.wait()?;
+		fourth.wait()?;
+		fifth.wait()?;
+		sixth.wait()?;
+		assert_eq!(output.read_f32()?, [4.0; 6]);
+	}
 	Ok(())
 });
 
@@ -2691,9 +2639,9 @@ test_vk!(
 		check(outputs)?;
 
 		// With L1 disabled, the L3 donor-qualified QKV lowering applies.
-		unsafe { std::env::set_var("OA_DISABLE_EPILOGUE_FUSION", "1") };
+		let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 		let captured = capture();
-		unsafe { std::env::remove_var("OA_DISABLE_EPILOGUE_FUSION") };
+		drop(epilogue_disabled);
 		let (plan, (query_output, key_output, value_output)) = captured?;
 
 		let diagnostics = plan.diagnostics();
@@ -3061,3 +3009,90 @@ test_vk!(
 		Ok(())
 	}
 );
+
+/// Env-mutating budget tests serialize on one lock; ignored tests still run
+/// on multiple threads under --ignored.
+static SUBMISSION_BUDGET_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+struct ScopedVar {
+	name: &'static str,
+	previous: Option<std::ffi::OsString>,
+}
+
+impl ScopedVar {
+	fn set(name: &'static str, value: &str) -> Self {
+		let previous = std::env::var_os(name);
+		// SAFETY: serialized on SUBMISSION_BUDGET_LOCK; runners invoke
+		// ignored qualification tests with --test-threads=1.
+		unsafe { std::env::set_var(name, value) };
+		Self { name, previous }
+	}
+}
+
+impl Drop for ScopedVar {
+	fn drop(&mut self) {
+		// SAFETY: same serialized qualification scope as construction.
+		unsafe {
+			match &self.previous {
+				Some(value) => std::env::set_var(self.name, value),
+				None => std::env::remove_var(self.name),
+			}
+		}
+	}
+}
+
+fn budget_engine() -> oa::Result<oa::Engine> {
+	let selection = match std::env::var("OA_TEST_DEVICE_INDEX") {
+		Ok(index) => oa::DeviceSelection::Index(
+			index
+				.parse()
+				.expect("OA_TEST_DEVICE_INDEX must be a nonnegative integer"),
+		),
+		Err(_) => oa::DeviceSelection::Automatic,
+	};
+	oa::Engine::builder().devices(selection).build()
+}
+
+#[test]
+#[ignore = "mutates OA_SUBMISSION_BUDGET_MS; run with --test-threads=1 on a compute device"]
+fn submission_budget_splits_a_long_plan_and_preserves_outputs() -> oa::Result<()> {
+	let _guard = SUBMISSION_BUDGET_LOCK
+		.lock()
+		.unwrap_or_else(|poisoned| poisoned.into_inner());
+	let _budget = ScopedVar::set("OA_SUBMISSION_BUDGET_MS", "1");
+	let engine = budget_engine()?;
+	let zero = oa::matrix::full(&engine, [4, 4], 0.0)?;
+	let (plan, output) = engine.capture(|| {
+		let mut acc = oa::matrix::mat_mul_nt(&zero, &zero)?;
+		for _ in 0..200 {
+			acc = oa::matrix::mat_mul_nt(&acc, &zero)?;
+		}
+		Ok(acc)
+	})?;
+	engine.submit(&plan)?.wait()?;
+	plan.wait()?;
+	assert!(plan.is_complete()?);
+	assert_eq!(output.read_f32()?, [0.0; 16]);
+	let timed = engine.submit_timed(&plan)?;
+	assert!(timed.device_duration()? > std::time::Duration::ZERO);
+	assert!(plan.is_complete()?);
+	Ok(())
+}
+
+#[test]
+#[ignore = "mutates OA_SUBMISSION_BUDGET_MS; run with --test-threads=1 on a compute device"]
+fn submission_budget_declines_a_single_over_budget_node() -> oa::Result<()> {
+	let _guard = SUBMISSION_BUDGET_LOCK
+		.lock()
+		.unwrap_or_else(|poisoned| poisoned.into_inner());
+	let _budget = ScopedVar::set("OA_SUBMISSION_BUDGET_MS", "0");
+	let engine = budget_engine()?;
+	let one = oa::matrix::ones(&engine, [2, 3])?;
+	let (plan, _output) = engine.capture(|| oa::matrix::add(&one, &one))?;
+	let error = engine
+		.submit(&plan)
+		.expect_err("a zero budget must decline every dispatch before submission");
+	assert_eq!(error.kind(), oa::ErrorKind::ResourceExhausted);
+	assert!(error.to_string().contains("submission budget"));
+	Ok(())
+}

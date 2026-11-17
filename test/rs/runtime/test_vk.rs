@@ -37,14 +37,16 @@ fn engine_owns_flushes_and_closes_its_logging_session() -> Result<(), Box<dyn st
 		.log_path()
 		.ok_or_else(|| std::io::Error::other("engine did not expose its log path"))?;
 	let contents = std::fs::read_to_string(&path)?;
-	assert!(contents.contains("[ENGN] oa engine v"));
-	assert!(contents.contains("Vulkan · 1 compute device"));
-	assert!(contents.contains("] ComputeDevice ·"));
-	assert!(contents.contains("Driver ·"));
-	assert!(contents.contains("Hardware · PCI"));
-	assert!(contents.contains("Capability identity · oa.device.v1."));
-	assert!(contents.contains("Compute · "));
-	assert!(contents.contains("queried f16"));
+	assert!(contents.contains("[ENGN] oa::Engine · v"));
+	assert!(contents.contains("Vulkan · 1 device"));
+	assert!(contents.contains("oa::Device ["));
+	assert!(contents.contains("driver {"));
+	assert!(contents.contains("hardware {"));
+	assert!(contents.contains("capability_identity: oa.device.v1."));
+	assert!(contents.contains("compute {"));
+	assert!(contents.contains("precision {"));
+	assert!(contents.contains("features {"));
+	assert!(contents.contains("f16:  "));
 	assert!(contents.contains("[RT  ] selected engine logger"));
 	engine.close()?;
 	std::fs::remove_dir_all(directory)?;
@@ -254,7 +256,8 @@ test_vk!(
 	engine,
 	{
 		let left = oa::Matrix::new_from_f32(&engine, [2], &[1.0, 2.0])?;
-		let right = oa::Matrix::new_from_f32(&engine, [1, 2], &[3.0, 4.0])?;
+		// [2] and [1,2] broadcast legally; [2] and [3] do not.
+		let right = oa::Matrix::new_from_f32(&engine, [3], &[3.0, 4.0, 5.0])?;
 		let error = match oa::matrix::add(&left, &right) {
 			Ok(_) => panic!("shape-mismatched matrix add was accepted"),
 			Err(error) => error,
@@ -411,5 +414,25 @@ fn software_vulkan_index_executes_compute_and_crypto() -> oa::Result<()> {
 		};
 		assert_eq!(error.kind(), oa::ErrorKind::NoSuitableDevice);
 	}
+	Ok(())
+}
+
+#[cfg(oa_profile = "core")]
+#[test]
+#[ignore = "requires an explicitly available Vulkan 1.2 device"]
+fn core_build_rejects_a_vulkan_1_2_device() -> oa::Result<()> {
+	let device = oa::Engine::available_devices()?
+		.into_iter()
+		.find(|device| device.api_version().starts_with("1.2."))
+		.expect("this admission proof requires a Vulkan 1.2 device");
+	let error = match oa::Engine::builder()
+		.devices(oa::DeviceSelection::Index(device.index()))
+		.build()
+	{
+		Ok(_) => panic!("Core admitted a Vulkan 1.2 device"),
+		Err(error) => error,
+	};
+	assert_eq!(error.kind(), oa::ErrorKind::NoSuitableDevice);
+	assert!(error.to_string().contains("Core build requires Vulkan 1.3"));
 	Ok(())
 }

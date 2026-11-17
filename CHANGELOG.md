@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.11.3
+
+- Rename Strict to Core and select one Vulkan execution profile per build with `OA_BUILD_PROFILE=core|compatibility`; Core is the default and requires Vulkan 1.3 plus the admitted bindless features. Older hardware needs an explicit Compatibility build.
+- Compile and embed one shader catalog and binding backend, removing the duplicate bounded artifact table and deriving Compatibility binding capacities directly from schema metadata. Preserve profile separation in JIT and `.vkcache` admission.
+- Fix raster feature negotiation by querying/enabling `shaderDrawParameters` and declaring read-only storage buffers correctly, with shared read-only FP32 load helpers.
+- Add profile-selection, artifact-inventory and hardware-admission proofs; qualify Compatibility replay/JIT/cache and raster pixel cases under core and synchronization validation.
+
+## 0.11.2
+
+- Replace the UI compute compositor with a Vulkan raster pipeline: `record_render` records one dynamic-rendering pass per frame, elements draw in recorded order with fixed-function alpha blending, Vulkan scissor provides clipping, and RGBA media samples through per-command image samplers; the 14 UI compute shaders are retired.
+- Grow the retained `plot` model: log/symlog scales, error-band fill, grouped and stacked bars, box summaries, explicit tick control, bounded streaming series, and qualified figure file sinks (PNG/JPEG/WebP) with byte-identical cross-process headless gallery output on the Compatibility path.
+- Add `plot::FigureView` interactivity: pointer-anchored wheel zoom, drag pan, shift-drag box zoom, reset, legend toggles, crosshair tooltip, serializable `FigureViewState`, and view-transition animation.
+- Complete the `Ui` interaction surface: data table, filterable combo, color picker, multi-line text input, menus over the popup route, generic drag-drop payloads, keyboard and gamepad navigation, IME candidate-rect routing, and generated `UiStyle` token presets (`realm_dark` base; `realm_light` and `viewer_dark` derived).
+- Add `ViewerMode::Workspace`: a serializable dock tree over `split_pane`/`tab_bar` with tab transfer, edge-drop split zones, empty-leaf collapse, the `oa workspace` subcommand, and `FigureView` as a rect-aware `WorkspaceItem`.
+- Extend Python parity: the full recorded `Axes` surface, `FigureView` and `Workspace` bindings, and the gallery tutorial covering the artist batch.
+
+## 0.11.1
+
+- Add device-planar YUV video storage, host-planar upload, tier-1 native operations (resize, letterbox, plane stack, normalize), overlay/composite, range convert, and threshold/luma analysis behind schema-owned contracts, with exactly one fused `video::to_matrix` YUV→RGB/Matrix conversion boundary (VNV-01/02/03/04/06).
+- Re-compose `nn::Empyrealm` from a Mamba-3 alias into a Nemotron-style hybrid: `EmpyrealmConfig` schedules interleaved Mamba-3/causal-attention mixers with dense or routed-expert feed-forward tails, and inference-only single-token decode advances caller-owned `EmpyrealmState` with per-block `Mamba3State`/`AttentionCache` KV state.
+- Add `MultiHeadAttention::new_cache`/`step` plus `AttentionCache`; update `ByteEmpyrealm`, parity pins, Python bindings, and generated stubs for the hybrid contract.
+- Fix DNN partition operation-consumption coverage exposed by SwiGLU-tail training captures.
+
 ## 0.11.0
 
 - Add an engine-level fusion-decline census (OA-JIT-03a) and record real-workload census plus PPO phase-split evidence (OA-JIT-03b/c); reorder NLP kernel work by measured census data.

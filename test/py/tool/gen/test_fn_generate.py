@@ -32,7 +32,7 @@ class MlSchemaTests(unittest.TestCase):
 
 	def test_checked_in_ml_schema_is_complete(self) -> None:
 		self.assertEqual(len(self.digest), 64)
-		self.assertEqual(self.schema["retired_stable_ids"], [39, 115, 652])
+		self.assertEqual(self.schema["retired_stable_ids"], [39, 115, 404, 405, 406, 407, 652])
 		self.assertEqual(
 			[operation["name"] for operation in self.schema["operations"]],
 			[
@@ -40,6 +40,7 @@ class MlSchemaTests(unittest.TestCase):
 				"ppo_clipped_policy_backward",
 				"linear",
 				"linear_residual",
+				"linear_residual_act",
 				"linear_residual_norm",
 				"linear_act",
 				"linear_gated_act",
@@ -211,10 +212,6 @@ class MlSchemaTests(unittest.TestCase):
 				"sample",
 				"dqn_target",
 				"sac_target",
-				"cart_pole_reset",
-				"cart_pole_step",
-				"lunar_lander_reset",
-				"lunar_lander_step",
 				"rms_norm_gated",
 				"rms_norm_gated_backward",
 				"mamba3_preprocess",
@@ -291,32 +288,13 @@ class MlSchemaTests(unittest.TestCase):
 			},
 		)
 
-	def test_lunar_lander_preserves_donor_vector_contracts(self) -> None:
-		operations = {
-			operation["name"]: operation for operation in self.schema["operations"]
-		}
-		reset = operations["lunar_lander_reset"]
-		step = operations["lunar_lander_step"]
-		self.assertEqual((reset["stable_id"], step["stable_id"]), (406, 407))
-		self.assertEqual(reset["test"]["oracle"], "independent_scalar_lunar_lander_reset")
-		self.assertEqual(step["test"]["oracle"], "independent_scalar_lunar_lander_step")
-		self.assertEqual(step["contract"]["input_kinds"], ["matrix"] * 5)
-		self.assertEqual(step["contract"]["output_kinds"], [])
-		self.assertEqual(
-			step["contract"]["variadic_input"],
-			{"kind": "matrix", "minimum": 8},
-		)
-		self.assertEqual(
-			step["contract"]["variadic_output"],
-			{"kind": "matrix", "minimum": 8},
-		)
-		self.assertTrue(step["contract"]["aligned_variadic_aliases"])
-		provenance = next(
-			record
-			for record in self.schema["port_provenance"]
-			if record["family"] == "lunar_lander"
-		)
-		self.assertEqual(provenance["classification"], "mechanical_adaptation")
+	def test_lunar_lander_core_ids_remain_retired_after_sdk_move(self) -> None:
+		operations = {operation["name"] for operation in self.schema["operations"]}
+		for name, stable_id in (("lunar_lander_reset", 406), ("lunar_lander_step", 407)):
+			self.assertNotIn(name, operations)
+			self.assertIn(stable_id, self.schema["retired_stable_ids"])
+		# Numerical vector/reset coverage moved with the SDK-owned environment.
+		self.assertTrue((ROOT / "test/rs/sdk/ml/test_lunar_lander.rs").is_file())
 
 	def test_channel_norm_preserves_fused_donor_family(self) -> None:
 		operations = {

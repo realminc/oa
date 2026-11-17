@@ -46,9 +46,9 @@ def validate_pqc_device_api(schema: dict[str, Any]) -> None:
 		{"name": name, "executor": executor, "private_kernel": kernel} for name, executor, kernel in (
 			("mldsa_keygen", "pqc_mldsa_keygen", "ml_dsa_keygen"),
 			("mlkem_keygen", "pqc_mlkem_keygen", "ml_kem_keygen"),
-			("mldsa_sign", "pqc_mldsa_sign", "ml_dsa_sign_message"),
-			("mldsa_sign_hash_message", "pqc_mldsa_sign", "ml_dsa_sign_hash_message"),
-			("mldsa_sign_prehashed", "pqc_mldsa_sign_prehashed", "ml_dsa_sign_prehashed"),
+			("mldsa_sign", "pqc_mldsa_sign", "ml_dsa_sign"),
+			("mldsa_sign_hash_message", "pqc_mldsa_sign", "ml_dsa_sign"),
+			("mldsa_sign_prehashed", "pqc_mldsa_sign_prehashed", "ml_dsa_sign"),
 			("mlkem_encapsulate", "pqc_mlkem_encapsulate", "ml_kem_encaps"),
 			("mlkem_decapsulate", "pqc_mlkem_decapsulate", "ml_kem_decaps"),
 			("mldsa_import_key", "pqc_mldsa_import", None),
@@ -92,7 +92,7 @@ def validate_cryptography_pqc_schema(schema: dict[str, Any]) -> None:
 		require(contract["dtype_rule"] == "u8", f"{where}.dtype_rule must be u8")
 		validate_semantic_attributes(contract["attributes"], where)
 	kernels = schema.get("kernels")
-	require(isinstance(kernels, list) and kernels, "Cryptography PQC kernels must be non-empty")
+	require(isinstance(kernels, list), "Cryptography PQC kernels must be a list")
 	seen_ids: set[int] = set()
 	seen_names: set[str] = set()
 	seen_kernel_ids: set[str] = set()
@@ -148,30 +148,40 @@ def validate_cryptography_pqc_schema(schema: dict[str, Any]) -> None:
 	private = schema.get("private_kernels", [])
 	require(isinstance(private, list), "PQC private_kernels must be a list")
 	private_abis = {
-		"ml_kem_keygen": (["seed_index", "private_index", "public_index", "workspace_index", "k"], [0, 1, 3], [1, 2, 3]),
-		"ml_kem_encaps": (["seed_index", "public_index", "shared_index", "ciphertext_index", "status_index", "workspace_index", "k"], [0, 2, 5], [2, 3, 4, 5]),
-		"ml_kem_decaps": (["private_index", "ciphertext_index", "shared_index", "workspace_index", "k"], [0, 2, 3], [2, 3]),
+		"ml_kem_keygen": (["seed_index", "private_index", "public_index", "k"], [0, 1], [1, 2]),
+		"ml_kem_encaps": (["seed_index", "public_index", "shared_index", "ciphertext_index", "status_index", "k"], [0, 2], [2, 3, 4]),
+		"ml_kem_decaps": (["private_index", "ciphertext_index", "shared_index", "k"], [0, 2], [2]),
 		"ml_kem_shared_derive": (["shared_index", "info_index", "output_index", "info_len", "output_len"], [0], [2]),
 	}
 	private_abis["ml_dsa_keygen"] = (["seed_index", "private_index", "public_index", "parameter_set"], [0, 1], [1, 2])
 	private_abis["ml_dsa_sign"] = (["seed_index", "private_index", "mu_index", "signature_index", "status_index", "workspace_index", "parameter_set"], [0, 1, 5], [3, 4, 5])
-	private_abis["ml_dsa_sign_message"] = (["seed_index", "private_index", "message_index", "context_index", "signature_index", "status_index", "workspace_index", "parameter_set", "message_length", "context_length"], [0, 1, 6], [4, 5, 6])
-	private_abis["ml_dsa_sign_prehashed"] = (["seed_index", "private_index", "digest_index", "context_index", "signature_index", "status_index", "workspace_index", "parameter_set", "algorithm", "context_length"], [0, 1, 6], [4, 5, 6])
-	private_abis["ml_dsa_sign_hash_message"] = (["seed_index", "private_index", "message_index", "context_index", "signature_index", "status_index", "workspace_index", "parameter_set", "message_length", "context_length", "algorithm"], [0, 1, 6], [4, 5, 6])
+	private_abis["ml_dsa_mu"] = (["public_index", "payload_index", "context_index", "mu_index", "parameter_set", "payload_length", "context_length", "head_length", "head_w0", "head_w1", "head_w2", "head_w3"], [], [3])
+	private_abis["ml_dsa_mu_batch"] = (["input_index", "context_index", "offsets_index", "lengths_index", "pks_index", "mus_index", "batch_size", "context_offset", "context_length", "payload_stride", "input_bytes", "context_bytes", "head_length", "head_w0", "head_w1", "head_w2", "head_w3", "parameter_set"], [], [5])
+	private_abis["ml_dsa_ph_batch"] = (["input_index", "offsets_index", "lengths_index", "digests_index", "batch_size", "input_bytes", "algorithm"], [], [3])
+	private_abis["ml_dsa_verify_mu"] = (["mus_index", "sigs_index", "pks_index", "results_index", "batch_size", "parameter_set"], [], [3])
 	seen_private: set[str] = set()
 	for kernel in private:
-		require(set(kernel) == ({"stable_id", "name", "kernel_id", "source", "workgroup_size", "push_fields", "physical_write", "secret_bindings"} | ({"parameter_layouts"} if kernel.get("name", "").startswith("ml_dsa_") else set()) | ({"workspace_bytes"} if (kernel.get("name", "").startswith("ml_dsa_sign") or (kernel.get("name", "").startswith("ml_kem_") and kernel.get("name") != "ml_kem_shared_derive")) else set())), "private PQC fields are incomplete or unknown")
+		require(set(kernel) == ({"stable_id", "name", "kernel_id", "source", "workgroup_size", "push_fields", "physical_write", "secret_bindings"} | ({"parameter_layouts"} if kernel.get("name", "").startswith("ml_dsa_") else set()) | ({"workspace_bytes"} if kernel.get("name", "").startswith("ml_dsa_sign") else set()) | ({"semantic_operations"} if kernel.get("name") == "ml_dsa_verify_mu" else set())), "private PQC fields are incomplete or unknown")
 		name = kernel["name"]
 		require(name in private_abis, "unknown private PQC kernel")
 		validate_unique(name, seen_private, "private PQC name")
 		mldsa = name.startswith("ml_dsa_")
+		if name == "ml_dsa_verify_mu":
+			semantic_ops = kernel.get("semantic_operations", [])
+			require(isinstance(semantic_ops, list) and all(isinstance(op, str) and op in contract_names for op in semantic_ops), "ML-DSA verify_mu semantic operations are unknown")
+			require(set(semantic_ops) == {op for op in contract_names if op.startswith("ml_dsa_") and "_verify" in op}, "ML-DSA verify_mu semantic operations must cover every verify contract")
+		else:
+			require("semantic_operations" not in kernel, "only ml_dsa_verify_mu may serve semantic operations")
 		if mldsa:
 			expected = [{"parameter_set": parameter, "seed_bytes": 32, "public_bytes": public, "private_bytes": private} for parameter, public, private in ((44, 1312, 2560), (65, 1952, 4032), (87, 2592, 4896))]
-			if name in ("ml_dsa_sign", "ml_dsa_sign_message", "ml_dsa_sign_prehashed", "ml_dsa_sign_hash_message"):
+			if name in ("ml_dsa_sign",):
 				expected = [{"parameter_set": a, "seed_bytes": 32, "private_bytes": b, "mu_bytes": 64, "signature_bytes": c} for a, b, c in ((44, 2560, 2420), (65, 4032, 3309), (87, 4896, 4627))]
-				if name != "ml_dsa_sign":
-					for row in expected:
-						del row["mu_bytes"]
+			elif name in ("ml_dsa_mu", "ml_dsa_mu_batch"):
+				expected = [{"parameter_set": a, "public_bytes": b} for a, b in ((44, 1312), (65, 1952), (87, 2592))]
+			elif name == "ml_dsa_ph_batch":
+				expected = [{"parameter_set": a, "digest_bytes": 64} for a in (44, 65, 87)]
+			elif name == "ml_dsa_verify_mu":
+				expected = [{"parameter_set": a, "public_bytes": b, "signature_bytes": c, "mu_bytes": 64} for a, b, c in ((44, 1312, 2420), (65, 1952, 3309), (87, 2592, 4627))]
 			require(kernel["parameter_layouts"] == expected, "ML-DSA layout mismatch")
 		suffix = name.removeprefix("ml_dsa_" if mldsa else "ml_kem_")
 		fields, secrets, writes = private_abis[name]
@@ -182,18 +192,16 @@ def validate_cryptography_pqc_schema(schema: dict[str, Any]) -> None:
 		require(type(kernel["stable_id"]) is int and 0 < kernel["stable_id"] <= 65535, "invalid private PQC stable ID")
 		validate_unique(kernel["stable_id"], seen_ids, "private PQC stable ID")
 		validate_unique(kernel["kernel_id"], seen_kernel_ids, "private PQC kernel ID")
-		require(kernel["workgroup_size"] == [1, 1, 1], "PQC serial ABI requires one invocation")
+		expected_workgroup = [128, 1, 1] if (mldsa or name != "ml_kem_shared_derive") else [1, 1, 1]
+		require(kernel["workgroup_size"] == expected_workgroup, "PQC workgroup ABI mismatch")
 		require(kernel["push_fields"] == [[field, "uint32"] for field in fields], "PQC push ABI mismatch")
 		require(kernel["secret_bindings"] == secrets, "PQC secret storage classification mismatch")
 		validate_physical_write(kernel["physical_write"], f"private PQC {suffix}", required=True)
 		expected_writes = [{"binding": binding, "domain": "rows", "partition": "exclusive_per_workgroup", "extent": "row_width", "collision": "exclusive", "tail": "bounds_checked"} for binding in writes]
-		workspace = "exclusive_per_workgroup" if name.startswith("ml_dsa_sign") or (name.startswith("ml_kem_") and name != "ml_kem_shared_derive") else "none"
+		workspace = "exclusive_per_workgroup" if name.startswith("ml_dsa_sign") else "none"
 		require(kernel["physical_write"] == {"writes": expected_writes, "workspace": workspace}, "PQC write ownership mismatch")
 		if name.startswith("ml_dsa_sign"):
 			require(type(kernel["workspace_bytes"]) is int and kernel["workspace_bytes"] == (7 + 8 + 8) * 256 * 4, "ML-DSA signing workspace extent mismatch")
-
-		if name.startswith("ml_kem_") and name != "ml_kem_shared_derive":
-			require(type(kernel["workspace_bytes"]) is int and kernel["workspace_bytes"] == 4 * 256 * 4, "ML-KEM workspace extent mismatch")
 
 	validate_cryptography_api(schema, "verify")
 
@@ -446,53 +454,17 @@ static const uint MLDSA_SIGN_CACHE_BYTES = {kernel['workspace_bytes']}u;
 """
 
 
-def generate_mldsa_sign_shader(kernel: dict[str, Any], digest: str) -> str:
+def generate_mldsa_mu_shader(kernel: dict[str, Any], digest: str) -> str:
 	fields = "\n".join(f"\tuint {name};" for name, _ in kernel["push_fields"])
 	layouts = kernel["parameter_layouts"]
-	prehashed = kernel["name"] == "ml_dsa_sign_prehashed"
-	hash_message = kernel["name"] == "ml_dsa_sign_hash_message"
-	message = kernel["name"] != "ml_dsa_sign"
-	prehash_import = "\nimport mldsa_prehash_layout;" if prehashed or hash_message else ""
-	input_dimensions = """
-	storage_buffers[push.message_index].GetDimensions(message_size);
-	storage_buffers[push.context_index].GetDimensions(context_size);""" if message else "\n\tstorage_buffers[push.mu_index].GetDimensions(mu_size);"
-	input_check = """push.message_length > 0xfffffffcu || push.context_length > 255u
-		|| message_size != max(4u, (push.message_length + 3u) & ~3u)
-		|| context_size != max(4u, (push.context_length + 3u) & ~3u)""" if message else "mu_size != 64u"
-	input_load = "" if message else """
-	for (uint i = 0u; i < 64u; ++i)
-		mu[i] = (storage_buffers[push.mu_index].Load(i & ~3u) >> (8u * (i & 3u))) & 255u;"""
-	call = """mldsa_sign_message_buffer(parameter, key, rnd,
-		storage_buffers[push.message_index], 0u, push.message_length,
-		storage_buffers[push.context_index], 0u, push.context_length,
-		true, storage_buffers[push.workspace_index], 0u, signature, attempts)""" if message else "mldsa_sign_mu_buffer(parameter, key, mu, rnd, storage_buffers[push.workspace_index], 0u, signature, attempts)"
-	if prehashed:
-		input_dimensions = """\n\tstorage_buffers[push.digest_index].GetDimensions(message_size);
-	storage_buffers[push.context_index].GetDimensions(context_size);"""
-		input_check = """mldsa_prehash_bytes(push.algorithm) == 0u || push.context_length > 255u
-		|| message_size != mldsa_prehash_bytes(push.algorithm)
-		|| context_size != max(4u, (push.context_length + 3u) & ~3u)"""
-		call = """mldsa_sign_prehashed_buffer(parameter, key, rnd,
-		storage_buffers[push.digest_index], 0u, message_size,
-		storage_buffers[push.context_index], 0u, push.context_length,
-		push.algorithm, storage_buffers[push.workspace_index], 0u, signature, attempts)"""
-	if hash_message:
-		input_check = "mldsa_prehash_bytes(push.algorithm) == 0u || " + input_check
-		call = """mldsa_sign_hash_message_buffer(parameter, key, rnd,
-		storage_buffers[push.message_index], 0u, push.message_length,
-		storage_buffers[push.context_index], 0u, push.context_length,
-		push.algorithm, storage_buffers[push.workspace_index], 0u, signature, attempts)"""
-	workspace_import = "\nimport mldsa_sign_workspace_layout;"
-	workspace_dimension = "\n\tuint workspace_size;\n\tstorage_buffers[push.workspace_index].GetDimensions(workspace_size);"
-	workspace_check = " || workspace_size != MLDSA_SIGN_CACHE_BYTES"
-	def sizes(field: str) -> str:
-		return " : ".join(f"parameter == {row['parameter_set']}u ? {row[field]}u" for row in layouts) + " : 0u"
+	pk_sizes = " : ".join(f"parameter == {row['parameter_set']}u ? {row['public_bytes']}u" for row in layouts) + " : 0u"
 	return f"""// Generated by tool/gen/fn/generate.py; do not edit.
 // schema_sha256={digest}
-// Private FIPS 204 {"hashed message/context" if hash_message else "prehashed digest/context" if prehashed else "pure message/context" if message else "internal-mu"} adapter; no live C++ GPU signing donor exists.
-// Formula unchanged. Function-local secret spills remain unqualified.
+// Private FIPS 204 public-input mu adapter; derives H(ek || M') on device.
+// The M' head arrives packed in push words so one absorb path serves both
+// the pure and HashML-DSA framings. Public data only.
 import attributes;
-import {"mldsa_prehash" if prehashed or hash_message else "mldsa_sign"};{prehash_import}{workspace_import}
+import mldsa_verification_par;
 struct PushConstants {{
 {fields}
 }};
@@ -504,39 +476,249 @@ struct PushConstants {{
 [dtype("u8")]
 [status("experimental")]
 [shader("compute")]
-[numthreads(1, 1, 1)]
-void main(uint3 tid : SV_DispatchThreadID) {{
-	if (any(tid != uint3(0u, 0u, 0u))) return;
+[numthreads(128, 1, 1)]
+void main(uint3 group_thread_id : SV_GroupThreadID, uint3 group_id : SV_GroupID) {{
+	uint lane = group_thread_id.x;
+	if (group_id.x != 0u || group_id.y != 0u || group_id.z != 0u) return;
+	uint parameter = push.parameter_set;
+	uint pk_len = {pk_sizes};
+	uint pk_size, payload_size, context_size, mu_size;
+	storage_buffers[push.public_index].GetDimensions(pk_size);
+	storage_buffers[push.payload_index].GetDimensions(payload_size);
+	storage_buffers[push.context_index].GetDimensions(context_size);
+	storage_buffers[push.mu_index].GetDimensions(mu_size);
+	if (pk_len == 0u || pk_size != pk_len || mu_size != 64u
+		|| push.context_length > 255u
+		|| (push.head_length != 2u && push.head_length != 13u)
+		|| payload_size < push.payload_length
+		|| context_size < push.context_length) return;
+	mldsa_mu_par(parameter, storage_buffers[push.public_index], 0u, pk_len,
+		storage_buffers[push.payload_index], 0u, push.payload_length,
+		storage_buffers[push.context_index], 0u, push.context_length,
+		uint4(push.head_w0, push.head_w1, push.head_w2, push.head_w3), push.head_length,
+		storage_buffers[push.mu_index], 0u, lane);
+}}
+"""
+
+
+def generate_mldsa_mu_batch_shader(kernel: dict[str, Any], digest: str) -> str:
+	fields = "\n".join(f"\tuint {name};" for name, _ in kernel["push_fields"])
+	layouts = kernel["parameter_layouts"]
+	pk_sizes = " : ".join(f"parameter == {row['parameter_set']}u ? {row['public_bytes']}u" for row in layouts) + " : 0u"
+	return f"""// Generated by tool/gen/fn/generate.py; do not edit.
+// schema_sha256={digest}
+// Private FIPS 204 batched public-input mu adapter; one workgroup derives
+// H(ek || M') for one row. The payload rows come either from the offset/length
+// vectors (payload_stride == 0) or from uniform staging rows of payload_stride
+// bytes. The M' head arrives packed in push words. Public data only.
+import attributes;
+import mldsa_verification_par;
+struct PushConstants {{
+{fields}
+}};
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+[kernel_name("{kernel['name']}")]
+[domain("cryptography")]
+[variant("generic")]
+[dtype("u8")]
+[status("experimental")]
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void main(uint3 group_thread_id : SV_GroupThreadID, uint3 group_id : SV_GroupID) {{
+	uint lane = group_thread_id.x;
+	if (group_id.y != 0u || group_id.z != 0u) return;
+	uint idx = group_id.x;
+	if (idx >= push.batch_size) return;
+	uint parameter = push.parameter_set;
+	uint pk_len = {pk_sizes};
+	uint payload_base, payload_length;
+	if (push.payload_stride == 0u) {{
+		uint row_base = idx * 4u;
+		payload_base = storage_buffers[push.offsets_index].Load(row_base);
+		payload_length = storage_buffers[push.lengths_index].Load(row_base);
+	}} else {{
+		if (idx > 0xffffffffu / push.payload_stride) return;
+		payload_base = idx * push.payload_stride;
+		payload_length = push.payload_stride;
+	}}
+	// Allocation padding is not part of the semantic input or context buffers.
+	if (pk_len == 0u || idx > 0xffffffffu / pk_len || idx > 0xffffffffu / 64u
+		|| payload_base > push.input_bytes || payload_length > push.input_bytes - payload_base
+		|| push.context_offset > push.context_bytes
+		|| push.context_length > push.context_bytes - push.context_offset
+		|| push.context_length > 255u
+		|| (push.head_length != 2u && push.head_length != 13u)) return;
+	mldsa_mu_par(parameter,
+		storage_buffers[push.pks_index], idx * pk_len, pk_len,
+		storage_buffers[push.input_index], payload_base, payload_length,
+		storage_buffers[push.context_index], push.context_offset, push.context_length,
+		uint4(push.head_w0, push.head_w1, push.head_w2, push.head_w3), push.head_length,
+		storage_buffers[push.mus_index], idx * 64u, lane);
+}}
+"""
+
+
+def generate_mldsa_ph_batch_shader(kernel: dict[str, Any], digest: str) -> str:
+	fields = "\n".join(f"\tuint {name};" for name, _ in kernel["push_fields"])
+	return f"""// Generated by tool/gen/fn/generate.py; do not edit.
+// schema_sha256={digest}
+// Private FIPS 204 batched HashML-DSA prehash stage; one workgroup digests
+// one variable-length message row into uniform staging rows of
+// mldsa_prehash_bytes(algorithm) each. Public data only.
+import attributes;
+import mldsa_verification_par;
+import mldsa_prehash_layout;
+struct PushConstants {{
+{fields}
+}};
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+[kernel_name("{kernel['name']}")]
+[domain("cryptography")]
+[variant("generic")]
+[dtype("u8")]
+[status("experimental")]
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void main(uint3 group_thread_id : SV_GroupThreadID, uint3 group_id : SV_GroupID) {{
+	uint lane = group_thread_id.x;
+	if (group_id.y != 0u || group_id.z != 0u) return;
+	uint idx = group_id.x;
+	if (idx >= push.batch_size) return;
+	uint need = mldsa_prehash_bytes(push.algorithm);
+	if (need == 0u || idx > 0xffffffffu / need) return;
+	uint row_base = idx * 4u;
+	uint offset = storage_buffers[push.offsets_index].Load(row_base);
+	uint length = storage_buffers[push.lengths_index].Load(row_base);
+	// Allocation padding is not part of the semantic input buffer.
+	if (offset > push.input_bytes || length > push.input_bytes - offset) return;
+	mldsa_ph_batch_par(push.algorithm,
+		storage_buffers[push.input_index], offset, length,
+		storage_buffers[push.digests_index], idx * need, lane);
+}}
+"""
+
+
+def generate_mldsa_verify_mu_shader(kernel: dict[str, Any], digest: str) -> str:
+	fields = "\n".join(f"\tuint {name};" for name, _ in kernel["push_fields"])
+	layouts = kernel["parameter_layouts"]
+	def sizes(field: str) -> str:
+		return " : ".join(f"parameter == {row['parameter_set']}u ? {row[field]}u" for row in layouts) + " : 0u"
+	return f"""// Generated by tool/gen/fn/generate.py; do not edit.
+// schema_sha256={digest}
+// Private FIPS 204 batched external-mu verifier; consumes the 64-byte mu rows
+// produced by the public-input mu batch stage. Public data only.
+import attributes;
+import mldsa_verification_par;
+struct PushConstants {{
+{fields}
+}};
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+[kernel_name("{kernel['name']}")]
+[domain("cryptography")]
+[variant("generic")]
+[dtype("u8")]
+[status("experimental")]
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void main(uint3 group_thread_id : SV_GroupThreadID, uint3 group_id : SV_GroupID) {{
+	uint lane = group_thread_id.x;
+	if (group_id.y != 0u || group_id.z != 0u) return;
+	uint idx = group_id.x;
+	if (idx >= push.batch_size) return;
+	uint parameter = push.parameter_set;
+	uint pk_len = {sizes('public_bytes')};
+	uint sig_len = {sizes('signature_bytes')};
+	if (pk_len == 0u || sig_len == 0u || idx > 0xffffffffu / pk_len
+		|| idx > 0xffffffffu / sig_len || idx > 0xffffffffu / 64u
+		|| idx > 0xffffffffu / 4u) return;
+	bool valid = mldsa_verify_mu_par(parameter,
+		storage_buffers[push.pks_index], idx * pk_len, pk_len,
+		storage_buffers[push.sigs_index], idx * sig_len, sig_len,
+		storage_buffers[push.mus_index], idx * 64u, lane);
+	if (lane == 0u) storage_buffers[push.results_index].Store(idx * 4u, valid ? 1u : 0u);
+}}
+"""
+
+
+def generate_mldsa_sign_shader(kernel: dict[str, Any], digest: str) -> str:
+	fields = "\n".join(f"\tuint {name};" for name, _ in kernel["push_fields"])
+	layouts = kernel["parameter_layouts"]
+	prehashed = kernel["name"] == "ml_dsa_sign_prehashed"
+	message = kernel["name"] != "ml_dsa_sign"
+	prehash_import = "\nimport mldsa_prehash_layout;" if prehashed else ""
+	input_dimensions = """
+	storage_buffers[push.message_index].GetDimensions(message_size);
+	storage_buffers[push.context_index].GetDimensions(context_size);""" if message else "\n\tstorage_buffers[push.mu_index].GetDimensions(mu_size);"
+	input_check = """push.message_length > 0xfffffffcu || push.context_length > 255u
+		|| message_size != max(4u, (push.message_length + 3u) & ~3u)
+		|| context_size != max(4u, (push.context_length + 3u) & ~3u)""" if message else "mu_size != 64u"
+	call = """mldsa_sign_message_par(parameter, storage_buffers[push.private_index], storage_buffers[push.seed_index],
+		storage_buffers[push.message_index], 0u, push.message_length,
+		storage_buffers[push.context_index], 0u, push.context_length,
+		true, storage_buffers[push.workspace_index], 0u,
+		storage_buffers[push.signature_index], lane)""" if message else """mldsa_sign_mu_par(parameter, storage_buffers[push.private_index], storage_buffers[push.seed_index],
+		storage_buffers[push.mu_index], 0u, storage_buffers[push.workspace_index], 0u,
+		storage_buffers[push.signature_index], lane)"""
+	if prehashed:
+		input_dimensions = """\n\tstorage_buffers[push.digest_index].GetDimensions(message_size);
+	storage_buffers[push.context_index].GetDimensions(context_size);"""
+		input_check = """mldsa_prehash_bytes(push.algorithm) == 0u || push.context_length > 255u
+		|| message_size != mldsa_prehash_bytes(push.algorithm)
+		|| context_size != max(4u, (push.context_length + 3u) & ~3u)"""
+		call = """mldsa_sign_prehashed_par(parameter, storage_buffers[push.private_index], storage_buffers[push.seed_index],
+		storage_buffers[push.digest_index], 0u, message_size,
+		storage_buffers[push.context_index], 0u, push.context_length,
+		push.algorithm, storage_buffers[push.workspace_index], 0u,
+		storage_buffers[push.signature_index], lane)"""
+	workspace_import = "\nimport mldsa_sign_workspace_layout;"
+	workspace_dimension = "\n\tuint workspace_size;\n\tstorage_buffers[push.workspace_index].GetDimensions(workspace_size);"
+	workspace_check = " || workspace_size != MLDSA_SIGN_CACHE_BYTES"
+	def sizes(field: str) -> str:
+		return " : ".join(f"parameter == {row['parameter_set']}u ? {row[field]}u" for row in layouts) + " : 0u"
+	return f"""// Generated by tool/gen/fn/generate.py; do not edit.
+// schema_sha256={digest}
+// Private FIPS 204 {"prehashed digest/context" if prehashed else "pure message/context" if message else "internal-mu"} adapter; no live C++ GPU signing donor exists.
+// Workgroup-parallel signing on shared state; local secret spills remain unqualified.
+import attributes;
+import mldsa_sign_par;
+import mldsa_verification_par;{prehash_import}{workspace_import}
+struct PushConstants {{
+{fields}
+}};
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+[kernel_name("{kernel['name']}")]
+[domain("cryptography")]
+[variant("generic")]
+[dtype("u8")]
+[status("experimental")]
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void main(uint3 group_thread_id : SV_GroupThreadID, uint3 group_id : SV_GroupID) {{
+	uint lane = group_thread_id.x;
+	if (group_id.x != 0u || group_id.y != 0u || group_id.z != 0u) return;
 	uint parameter = push.parameter_set;
 	uint key_len = {sizes('private_bytes')};
 	uint sig_len = {sizes('signature_bytes')};
 	uint seed_size, key_size, {"message_size, context_size" if message else "mu_size"}, sig_size, status_size;
 	storage_buffers[push.seed_index].GetDimensions(seed_size);
-	storage_buffers[push.private_index].GetDimensions(key_size);
-{input_dimensions}
+	storage_buffers[push.private_index].GetDimensions(key_size);{input_dimensions}
 	storage_buffers[push.signature_index].GetDimensions(sig_size);
 	storage_buffers[push.status_index].GetDimensions(status_size);{workspace_dimension}
 	if (key_len == 0u || seed_size != 32u || key_size != key_len || {input_check}
 		|| sig_size != ((sig_len + 3u) & ~3u) || status_size != 4u{workspace_check}) return;
-	uint key[4896], rnd[32], {"" if message else "mu[64], "}signature[4627];
-	for (uint i = 0u; i < 4896u; ++i) key[i] = 0u;
-	for (uint i = 0u; i < 4627u; ++i) signature[i] = 0u;
-	for (uint i = 0u; i < key_len; ++i)
-		key[i] = (storage_buffers[push.private_index].Load(i & ~3u) >> (8u * (i & 3u))) & 255u;
-	for (uint i = 0u; i < 32u; ++i)
-		rnd[i] = (storage_buffers[push.seed_index].Load(i & ~3u) >> (8u * (i & 3u))) & 255u;
-{input_load}
-	uint attempts;
 	bool success = {call};
 	// Always overwrite the complete public output, including aligned padding.
 	// Failure exposes no partial signature and never exposes rejection counts.
-	for (uint i = 0u; i < sig_size; i += 4u) {{
-		uint word = 0u;
-		for (uint j = 0u; j < 4u; ++j)
-			if (success && i + j < sig_len) word |= signature[i + j] << (8u * j);
-		storage_buffers[push.signature_index].Store(i, word);
-	}}
-	storage_buffers[push.status_index].Store(0u, success ? 1u : 0u);
+	wg_sync();
+	if (!success)
+		for (uint i = lane * 4u; i < sig_size; i += 128u * 4u)
+			storage_buffers[push.signature_index].Store(i, 0u);
+	if (lane == 0u)
+		storage_buffers[push.status_index].Store(0u, success ? 1u : 0u);
 }}
 """
 
@@ -551,7 +733,7 @@ def generate_mldsa_keygen_shader(kernel: dict[str, Any], digest: str) -> str:
 // Private FIPS 204 adapter; no live C++ GPU keygen donor exists.
 // Existing vector-proven formulas are unchanged; secret spills remain unqualified.
 import attributes;
-import mldsa_keygen;
+import mldsa_keygen_par;
 struct PushConstants {{
 {fields}
 }};
@@ -563,9 +745,10 @@ struct PushConstants {{
 [dtype("u8")]
 [status("experimental")]
 [shader("compute")]
-[numthreads(1, 1, 1)]
-void main(uint3 tid : SV_DispatchThreadID) {{
-	if (any(tid != uint3(0u, 0u, 0u))) return;
+[numthreads(128, 1, 1)]
+void main(uint3 group_thread_id : SV_GroupThreadID, uint3 group_id : SV_GroupID) {{
+	uint lane = group_thread_id.x;
+	if (group_id.x != 0u || group_id.y != 0u || group_id.z != 0u) return;
 	uint parameter = push.parameter_set;
 	if (parameter != 44u && parameter != 65u && parameter != 87u) return;
 	uint public_len = {public_sizes};
@@ -575,18 +758,8 @@ void main(uint3 tid : SV_DispatchThreadID) {{
 	storage_buffers[push.private_index].GetDimensions(private_size);
 	storage_buffers[push.public_index].GetDimensions(public_size);
 	if (seed_size != 32u || private_size != private_len || public_size != public_len) return;
-	uint seed[32], public_key[2592], private_key[4896];
-	for (uint i = 0u; i < 2592u; ++i) public_key[i] = 0u;
-	for (uint i = 0u; i < 4896u; ++i) private_key[i] = 0u;
-	for (uint i = 0u; i < 32u; ++i) {{
-		uint word = storage_buffers[push.seed_index].Load(i & ~3u);
-		seed[i] = (word >> (8u * (i & 3u))) & 255u;
-	}}
-	mldsa_keygen_internal(parameter, seed, public_key, private_key);
-	for (uint i = 0u; i < public_len; i += 4u)
-		storage_buffers[push.public_index].Store(i, public_key[i] | (public_key[i+1u] << 8u) | (public_key[i+2u] << 16u) | (public_key[i+3u] << 24u));
-	for (uint i = 0u; i < private_len; i += 4u)
-		storage_buffers[push.private_index].Store(i, private_key[i] | (private_key[i+1u] << 8u) | (private_key[i+2u] << 16u) | (private_key[i+3u] << 24u));
+	mldsa_keygen_par(parameter, storage_buffers[push.seed_index],
+		storage_buffers[push.public_index], storage_buffers[push.private_index], lane);
 }}
 """
 
@@ -597,13 +770,11 @@ def generate_mlkem_keygen_shader(kernel: dict[str, Any], digest: str) -> str:
 // Private FIPS 203 Algorithm 16 adapter. C++ oaPqc.md has no live donor.
 // One workgroup owns all output words; host preflight admits k and exact extents.
 import attributes;
-import mlkem_kem;
-import mlkem_kpke;
+import mlkem_par;
 struct PushConstants {{
 	uint seed_index;
 	uint private_index;
 	uint public_index;
-	uint workspace_index;
 	uint k;
 }};
 [[vk::push_constant]] PushConstants push;
@@ -614,29 +785,20 @@ struct PushConstants {{
 [dtype("u8")]
 [status("experimental")]
 [shader("compute")]
-[numthreads(1, 1, 1)]
-void main(uint3 tid : SV_DispatchThreadID) {{
-	if (any(tid != uint3(0u, 0u, 0u)) || push.k < 2u || push.k > 4u) return;
-	uint seed_size, private_size, public_size, workspace_size;
+[numthreads(128, 1, 1)]
+void main(uint3 group_thread_id : SV_GroupThreadID) {{
+	uint lane = group_thread_id.x;
+	if (push.k < 2u || push.k > 4u) return;
+	uint seed_size, private_size, public_size;
 	storage_buffers[push.seed_index].GetDimensions(seed_size);
 	storage_buffers[push.private_index].GetDimensions(private_size);
 	storage_buffers[push.public_index].GetDimensions(public_size);
-	storage_buffers[push.workspace_index].GetDimensions(workspace_size);
 	uint el = 384u * push.k + 32u, dl = 768u * push.k + 96u;
-	if (seed_size != 64u || private_size != dl || public_size != el || workspace_size != {kernel['workspace_bytes']}u) return;
-	uint d[8], z[32], ek[1568], dk[3168];
-	for (uint i = 0u; i < 1568u; ++i) ek[i] = 0u;
-	for (uint i = 0u; i < 3168u; ++i) dk[i] = 0u;
-	for (uint i = 0u; i < 8u; ++i) d[i] = storage_buffers[push.seed_index].Load(4u * i);
-	for (uint i = 0u; i < 32u; ++i) {{
-		uint word = storage_buffers[push.seed_index].Load(32u + (i & ~3u));
-		z[i] = (word >> (8u * (i & 3u))) & 255u;
-	}}
-	if (!mlkem_keygen_buffer(d, z, push.k, storage_buffers[push.workspace_index], 0u, ek, dk)) return;
-	for (uint i = 0u; i < el; i += 4u)
-		storage_buffers[push.public_index].Store(i, ek[i] | (ek[i+1u] << 8u) | (ek[i+2u] << 16u) | (ek[i+3u] << 24u));
-	for (uint i = 0u; i < dl; i += 4u)
-		storage_buffers[push.private_index].Store(i, dk[i] | (dk[i+1u] << 8u) | (dk[i+2u] << 16u) | (dk[i+3u] << 24u));
+	if (seed_size != 64u || private_size != dl || public_size != el) return;
+	mlkem_keygen_par(push.k, lane,
+		storage_buffers[push.seed_index],
+		storage_buffers[push.private_index],
+		storage_buffers[push.public_index]);
 }}
 """
 
@@ -644,66 +806,41 @@ void main(uint3 tid : SV_DispatchThreadID) {{
 def generate_mlkem_kem_shader(kernel: dict[str, Any], digest: str) -> str:
 	encaps = kernel["name"] == "ml_kem_encaps"
 	fields = "\n".join(f"\tuint {name};" for name, _ in kernel["push_fields"])
-	# All arithmetic remains in the independently vector-proven mlkem_kem module.
-	# Public status reports encapsulation-key validity only. Decapsulation has
-	# no rejection status; the FIPS implicit-rejection result stays private.
-	body = """
-	uint seed_size, public_size, shared_size, ciphertext_size, status_size, workspace_size;
-	storage_buffers[push.workspace_index].GetDimensions(workspace_size);
+	# All arithmetic lives in the workgroup-parallel mlkem_par module. Public
+	# status reports encapsulation-key validity only. Decapsulation has no
+	# rejection status; the FIPS implicit-rejection result stays private.
+	if encaps:
+		body = """
+	uint seed_size, public_size, shared_size, ciphertext_size, status_size;
 	storage_buffers[push.seed_index].GetDimensions(seed_size);
 	storage_buffers[push.public_index].GetDimensions(public_size);
 	storage_buffers[push.shared_index].GetDimensions(shared_size);
 	storage_buffers[push.ciphertext_index].GetDimensions(ciphertext_size);
 	storage_buffers[push.status_index].GetDimensions(status_size);
-	if (seed_size != 32u || public_size != el || shared_size != 32u || ciphertext_size != cl || status_size != 4u || workspace_size != 4096u) return;
-	uint ek[1568], message[32], key[32], ciphertext[1568];
-	for (uint i = 0u; i < 1568u; ++i) { ek[i] = 0u; ciphertext[i] = 0u; }
-	for (uint i = 0u; i < el; ++i) {
-		uint word = storage_buffers[push.public_index].Load(i & ~3u);
-		ek[i] = (word >> (8u * (i & 3u))) & 255u;
-	}
-	bool valid = mlkem_encapsulation_key_valid(ek, push.k, el);
-	storage_buffers[push.status_index].Store(0u, uint(valid));
-	if (!valid) {
-		for (uint i = 0u; i < 32u; i += 4u) storage_buffers[push.shared_index].Store(i, 0u);
-		for (uint i = 0u; i < cl; i += 4u) storage_buffers[push.ciphertext_index].Store(i, 0u);
-		return;
-	}
-	for (uint i = 0u; i < 32u; ++i) {
-		uint word = storage_buffers[push.seed_index].Load(i & ~3u);
-		message[i] = (word >> (8u * (i & 3u))) & 255u;
-	}
-	if (!mlkem_encaps_buffer(ek, message, push.k, storage_buffers[push.workspace_index], 0u, key, ciphertext)) return;
-	for (uint i = 0u; i < cl; i += 4u)
-		storage_buffers[push.ciphertext_index].Store(i, ciphertext[i] | (ciphertext[i+1u] << 8u) | (ciphertext[i+2u] << 16u) | (ciphertext[i+3u] << 24u));
-""" if encaps else """
-	uint private_size, ciphertext_size, shared_size, workspace_size;
-	storage_buffers[push.workspace_index].GetDimensions(workspace_size);
+	if (seed_size != 32u || public_size != el || shared_size != 32u || ciphertext_size != cl || status_size != 4u) return;
+	mlkem_encaps_par(push.k, lane,
+		storage_buffers[push.seed_index],
+		storage_buffers[push.public_index],
+		storage_buffers[push.shared_index],
+		storage_buffers[push.ciphertext_index],
+		storage_buffers[push.status_index]);"""
+	else:
+		body = """
+	uint private_size, ciphertext_size, shared_size;
 	storage_buffers[push.private_index].GetDimensions(private_size);
 	storage_buffers[push.ciphertext_index].GetDimensions(ciphertext_size);
 	storage_buffers[push.shared_index].GetDimensions(shared_size);
-	if (private_size != 768u * push.k + 96u || ciphertext_size != cl || shared_size != 32u || workspace_size != 4096u) return;
-	// Only internally generated retained keys are admitted by the private owner.
-	uint dk[3168], ciphertext[1568], key[32];
-	for (uint i = 0u; i < 3168u; ++i) dk[i] = 0u;
-	for (uint i = 0u; i < 1568u; ++i) ciphertext[i] = 0u;
-	for (uint i = 0u; i < private_size; ++i) {
-		uint word = storage_buffers[push.private_index].Load(i & ~3u);
-		dk[i] = (word >> (8u * (i & 3u))) & 255u;
-	}
-	for (uint i = 0u; i < cl; ++i) {
-		uint word = storage_buffers[push.ciphertext_index].Load(i & ~3u);
-		ciphertext[i] = (word >> (8u * (i & 3u))) & 255u;
-	}
-	if (!mlkem_decaps_buffer(dk, ciphertext, push.k, storage_buffers[push.workspace_index], 0u, key)) return;
-"""
-	body = body.replace("workspace_size != 4096u", f"workspace_size != {kernel['workspace_bytes']}u")
+	if (private_size != 768u * push.k + 96u || ciphertext_size != cl || shared_size != 32u) return;
+	mlkem_decaps_par(push.k, lane,
+		storage_buffers[push.private_index],
+		storage_buffers[push.ciphertext_index],
+		storage_buffers[push.shared_index]);"""
 	return f"""// Generated by tool/gen/fn/generate.py; do not edit.
 // schema_sha256={digest}
 // Private FIPS 203 adapter; C++ oaPqc.md has no live donor.
-// Serial correctness route; secret spills and physical timing remain unqualified.
+// One workgroup owns all output words; host preflight admits k and exact extents.
 import attributes;
-import mlkem_kem;
+import mlkem_par;
 struct PushConstants {{
 {fields}
 }};
@@ -715,13 +852,13 @@ struct PushConstants {{
 [dtype("u8")]
 [status("experimental")]
 [shader("compute")]
-[numthreads(1, 1, 1)]
-void main(uint3 tid : SV_DispatchThreadID) {{
-	if (any(tid != uint3(0u, 0u, 0u)) || push.k < 2u || push.k > 4u) return;
+[numthreads(128, 1, 1)]
+void main(uint3 group_thread_id : SV_GroupThreadID) {{
+	uint lane = group_thread_id.x;
+	if (push.k < 2u || push.k > 4u) return;
 	uint el = 384u * push.k + 32u;
 	uint cl = 32u * (push.k == 4u ? 11u * push.k + 5u : 10u * push.k + 4u);
-{body}	for (uint i = 0u; i < 32u; i += 4u)
-		storage_buffers[push.shared_index].Store(i, key[i] | (key[i+1u] << 8u) | (key[i+2u] << 16u) | (key[i+3u] << 24u));
+{body}
 }}
 """
 
@@ -773,64 +910,6 @@ void main(uint3 tid : SV_DispatchThreadID) {{
 """
 
 
-def generate_mldsa_verify_shader(kernel: dict[str, Any], schema_hash: str) -> str:
-	parameter = kernel["parameter_set"]
-	pk_bytes, sig_bytes = MLDSA_WIRE_LAYOUTS[parameter]
-	fields = "\n".join(f"\tuint {name};" for name, _ in kernel["push_fields"])
-	workgroup = ", ".join(str(size) for size in kernel["workgroup_size"])
-	prehashed = kernel["name"].endswith("_verify_prehashed")
-	hash_message = kernel["name"].endswith("_verify_hash_message")
-	verification = "mldsa_verify_hash_message" if hash_message else ("mldsa_verify_prehashed" if prehashed else "mldsa_verify_external")
-	algorithm_argument = ", push.algorithm" if prehashed or hash_message else ""
-	mode = "original-message prehash" if hash_message else ("precomputed-digest" if prehashed else "pure")
-	return f"// Generated by tool/gen/fn/generate.py; do not edit.\n// schema_sha256={schema_hash}\n" + f"""// ML-DSA-{parameter} batch external {mode} verification with a shared context.
-// Experimental public-only route; physical-device qualification remains separate.
-// FIPS 204 Algorithms {"5/8" if prehashed or hash_message else "3/8"}. New implementation; OA historical shader was a stub.
-import attributes;
-import mldsa_verification;
-import shake;
-
-struct PushConstants {{
-{fields}
-}};
-[[vk::push_constant]] PushConstants push;
-[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
-
-[kernel_name("{kernel['name']}")]
-[domain("cryptography")]
-[variant("generic")]
-[dtype("u8")]
-[status("experimental")]
-[shader("compute")]
-[numthreads({workgroup})]
-void main(uint3 dispatch_thread_id : SV_DispatchThreadID) {{
-	uint idx = dispatch_thread_id.x;
-	if (idx >= push.batch_size || idx > 0xffffffffu / 4u) return;
-	uint output_base = idx * 4u;
-	if (!pqc_buffer_range(storage_buffers[push.results_index], output_base, 4u)) return;
-	storage_buffers[push.results_index].Store(output_base, 0u);
-	if (!pqc_buffer_range(storage_buffers[push.offsets_index], output_base, 4u)
-		|| !pqc_buffer_range(storage_buffers[push.lengths_index], output_base, 4u)
-		|| idx > 0xffffffffu / {pk_bytes}u
-		|| idx > 0xffffffffu / {sig_bytes}u) return;
-	uint offset = storage_buffers[push.offsets_index].Load(output_base);
-	uint length = storage_buffers[push.lengths_index].Load(output_base);
-	// Allocation padding is not part of the semantic message buffer.
-	if (offset > push.message_bytes || length > push.message_bytes - offset
-		|| push.context_length > 255u
-		|| push.context_offset > push.message_bytes
-		|| push.context_length > push.message_bytes - push.context_offset) return;
-	bool valid = {verification}(
-		{parameter}u,
-		storage_buffers[push.pks_index], idx * {pk_bytes}u, {pk_bytes}u,
-		storage_buffers[push.sigs_index], idx * {sig_bytes}u, {sig_bytes}u,
-		storage_buffers[push.input_index], offset, length,
-		storage_buffers[push.input_index], push.context_offset, push.context_length{algorithm_argument});
-	storage_buffers[push.results_index].Store(output_base, valid ? 1u : 0u);
-}}
-"""
-
-
 def pqc_device_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> dict[Path, str]:
 	api = schema["device_api"]
 	lines = ["/// FIPS 203 device-key parameter set.", "#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]", "pub enum MlKemParameters {"]
@@ -869,7 +948,7 @@ def pqc_device_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> 
 	for op in api["operations"]: py += f"from .._native import crypto_device_{op['name']} as device_{op['name']}\n"
 	for name in ("mldsa_verify_message", "mldsa_verify_hash_message", "mldsa_verify_prehashed"): py += f"from .._native import crypto_device_{name} as device_{name}\n"
 	return {
-		root / "src/rs/crypto/pqc/device/operations.gen.rs": format_rust(banner(schema_hash, "//", "crypto_pqc.json") + body, root),
+		root / "src/rs/lib/crypto/pqc/device/operations.gen.rs": format_rust(banner(schema_hash, "//", "crypto_pqc.json") + body, root),
 		root / "src/py/pyo3/crypto/pqc_device.gen.rs": format_rust(banner(schema_hash, "//", "crypto_pqc.json") + binding, root),
 		root / "src/py/oa/_gen/crypto_pqc_device.py": banner(schema_hash, "#", "crypto_pqc.json") + py,
 		root / "src/py/oa/_gen/crypto_pqc_device_native.pyi": banner(schema_hash, "#", "crypto_pqc.json") + stub,

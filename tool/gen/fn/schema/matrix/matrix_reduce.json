@@ -26,6 +26,7 @@
     {
       "stable_id": 118,
       "name": "softmax",
+      "fusion_effects": [],
       "donor_op": "oa::FnMatrix::softmax",
       "signature": {
         "parameters": [["input", "&Matrix"], ["dim", "i32"]],
@@ -325,6 +326,7 @@
       "semantic_operation": "sum",
       "lowering_only": true,
       "kernel_id": "MatrixSumAxisF32",
+      "fusion_effects": [],
       "source": "src/slang/matrix/reduce/sum_axis.slang",
       "variant": "generic",
       "physical_write": {

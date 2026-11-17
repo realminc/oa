@@ -53,6 +53,36 @@ struct AttentionMask {
 	value: Matrix,
 }
 
+/// Caller-owned incremental-decode key/value cache for `{{name}}`.
+///
+/// Each [`{{name}}::step`] call appends one `[B*H, 1, D/H]` key/value pair and
+/// attends over every cached position. The cache binds to the constructing
+/// module instance; presenting it to another attention module fails closed.
+pub struct {{cache_type}} {
+	owner_id: u64,
+	batch_size: usize,
+	keys: Option<Matrix>,
+	values: Option<Matrix>,
+	position: usize,
+}
+
+impl {{cache_type}} {
+	/// Return the fixed batch size accepted by this cache.
+	pub const fn batch_size(&self) -> usize {
+		self.batch_size
+	}
+
+	/// Return the number of cached positions.
+	pub const fn len(&self) -> usize {
+		self.position
+	}
+
+	/// Return whether no positions are cached.
+	pub const fn is_empty(&self) -> bool {
+		self.position == 0
+	}
+}
+
 impl {{name}} {
 	/// Construct four biased projections with causal visibility and automatic
 	/// backend policy.
@@ -369,6 +399,91 @@ impl {{name}} {
 			));
 		}
 		self.forward_standard(input, Some(additive_mask), false)
+	}
+
+	/// Allocate an empty incremental-decode cache owned by this module.
+	///
+	/// The cache fixes the accepted batch size and holds one `[B*H, T, D/H]`
+	/// key/value pair per [`Self::step`] call.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `batch_size` is zero.
+	pub fn new_cache(&self, batch_size: usize) -> Result<{{cache_type}}> {
+		if batch_size == 0 {
+			return Err(Error::invalid_argument(
+				"{{name}} attention cache requires a positive batch size",
+			));
+		}
+		Ok({{cache_type}} {
+			owner_id: self.query_projection.weight().data().value_id(),
+			batch_size,
+			keys: None,
+			values: None,
+			position: 0,
+		})
+	}
+
+	/// Advance one autoregressive position against `cache`.
+	///
+	/// `input` must be F32 `[batch, model_width]` for the cache's batch size.
+	/// The projected key and value append to the cache, then the query attends
+	/// over every cached position — causality is structural, so no mask is
+	/// needed. This is an inference-only operation: cache differentiation is
+	/// not admitted, and calling it while a [`crate::ml::GradientTape`] is
+	/// active returns an error.
+	///
+	/// # Errors
+	///
+	/// Returns an error for an active gradient tape, a cache owned by another
+	/// module, mismatched batch/shape/dtype, or failed recording.
+	pub fn step(&self, input: &Matrix, cache: &mut {{cache_type}}) -> Result<Matrix> {
+		if {{recording_active_operation}}() {
+			return Err(Error::failed_precondition(
+				"{{name}} incremental attention is inference-only and cannot run inside a GradientTape",
+			));
+		}
+		let owner = self.query_projection.weight().data();
+		if cache.owner_id != owner.value_id() {
+			return Err(Error::invalid_argument(
+				"{{name}} attention cache belongs to another module instance",
+			));
+		}
+		if input.shape() != [cache.batch_size, self.model_width] || input.dtype() != DType::F32 {
+			return Err(Error::invalid_argument(format!(
+				"{{name}} step requires F32 input [{}, {}]; found {:?} {}",
+				cache.batch_size,
+				self.model_width,
+				input.shape(),
+				input.dtype().token(),
+			)));
+		}
+		let (query, key, value) = self.project(input)?;
+		let query = {{split_operation}}(&query, cache.batch_size, 1, self.num_heads)?;
+		let key = {{split_operation}}(&key, cache.batch_size, 1, self.num_heads)?;
+		let value = {{split_operation}}(&value, cache.batch_size, 1, self.num_heads)?;
+		let (keys, values) = match (cache.keys.take(), cache.values.take()) {
+			(Some(keys), Some(values)) => (
+				{{concat_operation}}(&[keys, key], 1)?,
+				{{concat_operation}}(&[values, value], 1)?,
+			),
+			(None, None) => (key, value),
+			_ => {
+				return Err(Error::failed_precondition(
+					"{{name}} attention cache holds a partial key/value pair",
+				));
+			}
+		};
+		let scale = 1.0 / ((self.model_width / self.num_heads) as f32).sqrt();
+		let scores = {{score_operation}}(&query, &keys)?;
+		let scaled = {{scale_operation}}(&scores, scale)?;
+		let probabilities = {{step_softmax_operation}}(&scaled, -1)?;
+		let context = {{context_operation}}(&probabilities, &values)?;
+		cache.keys = Some(keys);
+		cache.values = Some(values);
+		cache.position += 1;
+		let context = {{merge_operation}}(&context, cache.batch_size, 1, self.num_heads)?;
+		self.output_projection.forward(&context)
 	}
 
 	/// Select the requested attention provider policy.

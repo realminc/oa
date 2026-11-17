@@ -1,6 +1,6 @@
 use pyo3::{prelude::*, types::PyBytes};
 
-use oa::sdk::ml::nlp;
+use sdk::ml::nlp;
 
 use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
 
@@ -25,7 +25,7 @@ fn all_parameters_of(module: &impl oa::ml::Module) -> PyResult<Vec<PythonParamet
 /// Deterministic dense all-position next-character sampler over the canonical corpus.
 #[pyclass(name = "CharSampler", unsendable)]
 pub(crate) struct PythonCharSampler {
-	pub(crate) inner: oa::sdk::ml::nlp::CharSampler,
+	pub(crate) inner: sdk::ml::nlp::CharSampler,
 }
 
 #[pymethods]
@@ -33,7 +33,7 @@ impl PythonCharSampler {
 	/// Construct a sampler over the canonical corpus with the given batch size.
 	#[new]
 	pub fn new(batch_size: usize) -> PyResult<Self> {
-		oa::sdk::ml::nlp::CharSampler::new(batch_size)
+		sdk::ml::nlp::CharSampler::new(batch_size)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -62,7 +62,7 @@ impl PythonCharSampler {
 /// Deterministic dense all-position next-byte sampler over the canonical corpus.
 #[pyclass(name = "ByteSampler", unsendable)]
 pub(crate) struct PythonByteSampler {
-	pub(crate) inner: oa::sdk::ml::nlp::ByteSampler,
+	pub(crate) inner: sdk::ml::nlp::ByteSampler,
 }
 
 #[pymethods]
@@ -70,7 +70,7 @@ impl PythonByteSampler {
 	/// Construct the canonical raw-byte sampler with the given batch size.
 	#[new]
 	pub fn new(batch_size: usize) -> PyResult<Self> {
-		oa::sdk::ml::nlp::ByteSampler::new(batch_size)
+		sdk::ml::nlp::ByteSampler::new(batch_size)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -107,7 +107,7 @@ pub(crate) struct PythonBpeSampler {
 	// Keep the Python tokenizer object alive so the raw ptr inside `inner`
 	// stays valid. Pyo3 pyclass objects are heap-allocated and never moved.
 	_tokenizer: Py<super::tokenizer::PythonBpeTokenizer>,
-	pub(crate) inner: oa::sdk::ml::nlp::BpeSampler<'static>,
+	pub(crate) inner: sdk::ml::nlp::BpeSampler<'static>,
 }
 
 #[pymethods]
@@ -130,7 +130,7 @@ impl PythonBpeSampler {
 			&borrowed.inner as *const oa::ml::BpeTokenizer
 		};
 		let tok_ref: &'static oa::ml::BpeTokenizer = unsafe { &*tok_ptr };
-		let inner = oa::sdk::ml::nlp::BpeSampler::new(batch_size, tok_ref).map_err(python_error)?;
+		let inner = sdk::ml::nlp::BpeSampler::new(batch_size, tok_ref).map_err(python_error)?;
 		Ok(Self {
 			_tokenizer: tokenizer,
 			inner,
@@ -178,7 +178,7 @@ impl PythonBpeSampler {
 /// Canonical character language model: Embedding → Elman RNN → Linear.
 #[pyclass(name = "CharRnn", unsendable)]
 pub(crate) struct PythonCharRnn {
-	pub(crate) inner: oa::sdk::ml::nlp::CharRnn,
+	pub(crate) inner: sdk::ml::nlp::CharRnn,
 }
 
 #[pymethods]
@@ -186,7 +186,7 @@ impl PythonCharRnn {
 	/// Construct the canonical deterministic 8,891-parameter model.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::CharRnn::new(&engine.inner)
+		sdk::ml::nlp::CharRnn::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -214,7 +214,7 @@ impl PythonCharRnn {
 /// Canonical character language model: Embedding → GRU → Linear.
 #[pyclass(name = "CharGru", unsendable)]
 pub(crate) struct PythonCharGru {
-	pub(crate) inner: oa::sdk::ml::nlp::CharGru,
+	pub(crate) inner: sdk::ml::nlp::CharGru,
 }
 
 #[pymethods]
@@ -222,7 +222,7 @@ impl PythonCharGru {
 	/// Construct the deterministic 21,435-parameter model.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::CharGru::new(&engine.inner)
+		sdk::ml::nlp::CharGru::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -250,7 +250,7 @@ impl PythonCharGru {
 /// Canonical 10,875-parameter character Transformer language model.
 #[pyclass(name = "CharTransformer", unsendable)]
 pub(crate) struct PythonCharTransformer {
-	pub(crate) inner: oa::sdk::ml::nlp::CharTransformer,
+	pub(crate) inner: sdk::ml::nlp::CharTransformer,
 }
 
 #[pymethods]
@@ -258,7 +258,7 @@ impl PythonCharTransformer {
 	/// Construct the exact one-block one-head OA C++ tutorial architecture.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::CharTransformer::new(&engine.inner)
+		sdk::ml::nlp::CharTransformer::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -286,7 +286,7 @@ impl PythonCharTransformer {
 /// Canonical character Transformer with four sparse top-two experts.
 #[pyclass(name = "CharMoeTransformer", unsendable)]
 pub(crate) struct PythonCharMoeTransformer {
-	pub(crate) inner: oa::sdk::ml::nlp::CharMoeTransformer,
+	pub(crate) inner: sdk::ml::nlp::CharMoeTransformer,
 }
 
 #[pymethods]
@@ -294,7 +294,7 @@ impl PythonCharMoeTransformer {
 	/// Construct the donor one-block one-head MoE Transformer recipe.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::CharMoeTransformer::new(&engine.inner)
+		sdk::ml::nlp::CharMoeTransformer::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -322,7 +322,7 @@ impl PythonCharMoeTransformer {
 /// Canonical character Mamba-3 language model with a flat residual head.
 #[pyclass(name = "CharMamba3", unsendable)]
 pub(crate) struct PythonCharMamba3 {
-	pub(crate) inner: oa::sdk::ml::nlp::CharMamba3,
+	pub(crate) inner: sdk::ml::nlp::CharMamba3,
 }
 
 #[pymethods]
@@ -330,7 +330,7 @@ impl PythonCharMamba3 {
 	/// Construct the donor `32/state=32/expand=2/head=16` SISO recipe.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::CharMamba3::new(&engine.inner)
+		sdk::ml::nlp::CharMamba3::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -358,7 +358,7 @@ impl PythonCharMamba3 {
 /// Canonical byte language model: ByteEmbedding → Elman RNN → ByteHead.
 #[pyclass(name = "ByteRnn", unsendable)]
 pub(crate) struct PythonByteRnn {
-	pub(crate) inner: oa::sdk::ml::nlp::ByteRnn,
+	pub(crate) inner: sdk::ml::nlp::ByteRnn,
 }
 
 #[pymethods]
@@ -366,7 +366,7 @@ impl PythonByteRnn {
 	/// Construct the deterministic donor-shaped 31,104-parameter model.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::ByteRnn::new(&engine.inner)
+		sdk::ml::nlp::ByteRnn::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -394,7 +394,7 @@ impl PythonByteRnn {
 /// Canonical byte language model: ByteEmbedding → GRU → ByteHead.
 #[pyclass(name = "ByteGru", unsendable)]
 pub(crate) struct PythonByteGru {
-	pub(crate) inner: oa::sdk::ml::nlp::ByteGru,
+	pub(crate) inner: sdk::ml::nlp::ByteGru,
 }
 
 #[pymethods]
@@ -402,7 +402,7 @@ impl PythonByteGru {
 	/// Construct the deterministic donor-shaped 43,648-parameter model.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::ByteGru::new(&engine.inner)
+		sdk::ml::nlp::ByteGru::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -430,7 +430,7 @@ impl PythonByteGru {
 /// Canonical byte Transformer language model.
 #[pyclass(name = "ByteTransformer", unsendable)]
 pub(crate) struct PythonByteTransformer {
-	pub(crate) inner: oa::sdk::ml::nlp::ByteTransformer,
+	pub(crate) inner: sdk::ml::nlp::ByteTransformer,
 }
 
 #[pymethods]
@@ -438,7 +438,7 @@ impl PythonByteTransformer {
 	/// Construct the deterministic donor one-block one-head byte model.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::ByteTransformer::new(&engine.inner)
+		sdk::ml::nlp::ByteTransformer::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -466,7 +466,7 @@ impl PythonByteTransformer {
 /// Canonical byte Transformer with four sparse top-two experts.
 #[pyclass(name = "ByteMoeTransformer", unsendable)]
 pub(crate) struct PythonByteMoeTransformer {
-	pub(crate) inner: oa::sdk::ml::nlp::ByteMoeTransformer,
+	pub(crate) inner: sdk::ml::nlp::ByteMoeTransformer,
 }
 
 #[pymethods]
@@ -474,7 +474,7 @@ impl PythonByteMoeTransformer {
 	/// Construct the donor one-block one-head byte MoE recipe.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::ByteMoeTransformer::new(&engine.inner)
+		sdk::ml::nlp::ByteMoeTransformer::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -502,7 +502,7 @@ impl PythonByteMoeTransformer {
 /// Canonical raw-byte Mamba-3 language model with a flat residual head.
 #[pyclass(name = "ByteMamba3", unsendable)]
 pub(crate) struct PythonByteMamba3 {
-	pub(crate) inner: oa::sdk::ml::nlp::ByteMamba3,
+	pub(crate) inner: sdk::ml::nlp::ByteMamba3,
 }
 
 #[pymethods]
@@ -510,7 +510,7 @@ impl PythonByteMamba3 {
 	/// Construct the donor `32/state=32/expand=2/head=16` byte recipe.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::ByteMamba3::new(&engine.inner)
+		sdk::ml::nlp::ByteMamba3::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -538,7 +538,7 @@ impl PythonByteMamba3 {
 /// Canonical byte language model using the donor Empyrealm-Core ownership tree.
 #[pyclass(name = "ByteEmpyrealm", unsendable)]
 pub(crate) struct PythonByteEmpyrealm {
-	pub(crate) inner: oa::sdk::ml::nlp::ByteEmpyrealm,
+	pub(crate) inner: sdk::ml::nlp::ByteEmpyrealm,
 }
 
 #[pymethods]
@@ -546,7 +546,7 @@ impl PythonByteEmpyrealm {
 	/// Construct the deterministic donor fidelity model.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::ByteEmpyrealm::new(&engine.inner)
+		sdk::ml::nlp::ByteEmpyrealm::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -574,7 +574,7 @@ impl PythonByteEmpyrealm {
 /// Canonical BPE language model: Embedding → Elman RNN → Linear.
 #[pyclass(name = "BpeRnn", unsendable)]
 pub(crate) struct PythonBpeRnn {
-	pub(crate) inner: oa::sdk::ml::nlp::BpeRnn,
+	pub(crate) inner: sdk::ml::nlp::BpeRnn,
 }
 
 #[pymethods]
@@ -582,7 +582,7 @@ impl PythonBpeRnn {
 	/// Construct the deterministic donor-shaped 37,312-parameter model.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::BpeRnn::new(&engine.inner)
+		sdk::ml::nlp::BpeRnn::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -610,7 +610,7 @@ impl PythonBpeRnn {
 /// Canonical BPE language model: Embedding → GRU → Linear.
 #[pyclass(name = "BpeGru", unsendable)]
 pub(crate) struct PythonBpeGru {
-	pub(crate) inner: oa::sdk::ml::nlp::BpeGru,
+	pub(crate) inner: sdk::ml::nlp::BpeGru,
 }
 
 #[pymethods]
@@ -618,7 +618,7 @@ impl PythonBpeGru {
 	/// Construct the deterministic donor-shaped 49,856-parameter model.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::BpeGru::new(&engine.inner)
+		sdk::ml::nlp::BpeGru::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -646,7 +646,7 @@ impl PythonBpeGru {
 /// Canonical BPE Transformer language model.
 #[pyclass(name = "BpeTransformer", unsendable)]
 pub(crate) struct PythonBpeTransformer {
-	pub(crate) inner: oa::sdk::ml::nlp::BpeTransformer,
+	pub(crate) inner: sdk::ml::nlp::BpeTransformer,
 }
 
 #[pymethods]
@@ -654,7 +654,7 @@ impl PythonBpeTransformer {
 	/// Construct the deterministic donor one-block one-head BPE model.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::BpeTransformer::new(&engine.inner)
+		sdk::ml::nlp::BpeTransformer::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -682,7 +682,7 @@ impl PythonBpeTransformer {
 /// Canonical BPE Transformer with four sparse top-two experts.
 #[pyclass(name = "BpeMoeTransformer", unsendable)]
 pub(crate) struct PythonBpeMoeTransformer {
-	pub(crate) inner: oa::sdk::ml::nlp::BpeMoeTransformer,
+	pub(crate) inner: sdk::ml::nlp::BpeMoeTransformer,
 }
 
 #[pymethods]
@@ -690,7 +690,7 @@ impl PythonBpeMoeTransformer {
 	/// Construct the donor one-block one-head BPE MoE recipe.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::BpeMoeTransformer::new(&engine.inner)
+		sdk::ml::nlp::BpeMoeTransformer::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -718,7 +718,7 @@ impl PythonBpeMoeTransformer {
 /// Canonical BPE Mamba-3 language model with a flat residual head.
 #[pyclass(name = "BpeMamba3", unsendable)]
 pub(crate) struct PythonBpeMamba3 {
-	pub(crate) inner: oa::sdk::ml::nlp::BpeMamba3,
+	pub(crate) inner: sdk::ml::nlp::BpeMamba3,
 }
 
 #[pymethods]
@@ -726,7 +726,7 @@ impl PythonBpeMamba3 {
 	/// Construct the donor `32/state=32/expand=2/head=16` BPE recipe.
 	#[new]
 	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		oa::sdk::ml::nlp::BpeMamba3::new(&engine.inner)
+		sdk::ml::nlp::BpeMamba3::new(&engine.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -766,7 +766,7 @@ pub(crate) fn ml_nlp_generate_greedy(
 	macro_rules! try_char_gen {
 		($($ty:ty),+ $(,)?) => {
 			$(if let Ok(m) = model.extract::<PyRef<$ty>>() {
-				return oa::sdk::ml::nlp::generate_greedy(&engine.inner, &m.inner, prompt, count)
+				return sdk::ml::nlp::generate_greedy(&engine.inner, &m.inner, prompt, count)
 					.map_err(python_error);
 			})+
 		};
@@ -797,7 +797,7 @@ pub(crate) fn ml_nlp_generate_bytes_greedy(
 	macro_rules! try_byte_gen {
 		($($ty:ty),+ $(,)?) => {
 			$(if let Ok(m) = model.extract::<PyRef<$ty>>() {
-				return oa::sdk::ml::nlp::generate_bytes_greedy(&engine.inner, &m.inner, &prompt, count)
+				return sdk::ml::nlp::generate_bytes_greedy(&engine.inner, &m.inner, &prompt, count)
 					.map_err(python_error);
 			})+
 		};
@@ -831,7 +831,7 @@ pub(crate) fn ml_nlp_generate_bpe_greedy(
 	macro_rules! try_bpe_gen {
 		($($ty:ty),+ $(,)?) => {
 			$(if let Ok(m) = model.extract::<PyRef<$ty>>() {
-				return oa::sdk::ml::nlp::generate_bpe_greedy(
+				return sdk::ml::nlp::generate_bpe_greedy(
 					&engine.inner, &m.inner, &tokenizer.inner, &prompt, byte_count,
 				).map_err(python_error);
 			})+
@@ -879,7 +879,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	module.add_function(wrap_pyfunction!(ml_nlp_generate_greedy, module)?)?;
 	module.add_function(wrap_pyfunction!(ml_nlp_generate_bytes_greedy, module)?)?;
 	module.add_function(wrap_pyfunction!(ml_nlp_generate_bpe_greedy, module)?)?;
-	// canonical workload + oracle constants (oa::sdk::ml::nlp)
+	// canonical workload + oracle constants (sdk::ml::nlp)
 	let py = module.py();
 	module.add("CONTEXT_LENGTH", nlp::CONTEXT_LENGTH)?;
 	module.add("MODEL_WIDTH", nlp::MODEL_WIDTH)?;

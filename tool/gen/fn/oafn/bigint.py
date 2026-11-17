@@ -906,5 +906,5 @@ def bigint_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> dict
 		facade += f'    crypto_bigint_{name} as bigint_{name},\n'
 	python += 'pub(super) fn register(module: &Bound<\'_, PyModule>) -> PyResult<()> {\n\tmodule.add_class::<PythonBarrettParameters>()?;\n' + ''.join(f'\tmodule.add_function(wrap_pyfunction!(crypto_bigint_{n}, module)?)?;\n' for n in names) + '\tOk(())\n}\n'
 	facade += ')\n\n__all__ = '+repr(['BarrettParameters'] + ['bigint_'+n for n in names])+'\n'
-	outputs.update({root/'src/rs/crypto/bigint/arithmetic.gen.rs':format_rust(api,root), root/'src/rs/crypto/bigint/exports.gen.rs':format_rust(mark+'pub use arithmetic::{BarrettParameters, '+', '.join(names)+'};\n',root), root/'src/py/pyo3/crypto/bigint.gen.rs':format_rust(python,root), root/'src/py/oa/_gen/crypto_bigint.py':facade, root/'src/py/oa/_gen/crypto_bigint_native.pyi':stub})
+	outputs.update({root/'src/rs/lib/crypto/bigint/arithmetic.gen.rs':format_rust(api,root), root/'src/rs/lib/crypto/bigint/exports.gen.rs':format_rust(mark+'pub use arithmetic::{BarrettParameters, '+', '.join(names)+'};\n',root), root/'src/py/pyo3/crypto/bigint.gen.rs':format_rust(python,root), root/'src/py/oa/_gen/crypto_bigint.py':facade, root/'src/py/oa/_gen/crypto_bigint_native.pyi':stub})
 	return outputs

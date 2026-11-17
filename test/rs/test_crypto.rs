@@ -15,6 +15,18 @@ mod hash_batch;
 #[path = "crypto/test_merkle_proofs.rs"]
 mod merkle_proofs;
 
+#[path = "crypto/oracles.rs"]
+mod oracles;
+
+#[path = "crypto/slang_host.rs"]
+mod slang_host;
+
+#[path = "crypto/test_slang_components.rs"]
+mod slang_components;
+
+#[path = "crypto/test_merkle_general.rs"]
+mod merkle_general;
+
 #[path = "crypto/test_bigint.rs"]
 mod bigint;
 

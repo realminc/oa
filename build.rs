@@ -20,6 +20,7 @@ const CRYPTOGRAPHY_BIGINT_SCHEMA: &str = "tool/gen/fn/schema/crypto/crypto_bigin
 const CRYPTOGRAPHY_PQC_SCHEMA: &str = "tool/gen/fn/schema/crypto/crypto_pqc.json";
 const IMAGE_SCHEMA: &str = "tool/gen/fn/schema/image/image.json";
 const VISION_SCHEMA: &str = "tool/gen/fn/schema/vision/vision_detection.json";
+const VIDEO_SCHEMA: &str = "tool/gen/fn/schema/video/video.json";
 const GENERATOR: &str = "tool/gen/fn/generate.py";
 const STORAGE: &str = "src/slang/core/math/storage.slang";
 const ATTRIBUTES: &str = "src/slang/core/attributes.slang";
@@ -37,6 +38,10 @@ const CRYPTOGRAPHY_PQC_MLDSA_PACKING: &str = "src/slang/crypto/pqc/mldsa/mldsa_p
 const CRYPTOGRAPHY_PQC_MLDSA_SAMPLING: &str = "src/slang/crypto/pqc/mldsa/mldsa_sampling.slang";
 const CRYPTOGRAPHY_PQC_SHAKE: &str = "src/slang/crypto/pqc/common/shake.slang";
 const CRYPTOGRAPHY_PQC_VERIFICATION: &str = "src/slang/crypto/pqc/mldsa/mldsa_verification.slang";
+const CRYPTOGRAPHY_PQC_VERIFICATION_PAR: &str =
+	"src/slang/crypto/pqc/mldsa/mldsa_verification_par.slang";
+const CRYPTOGRAPHY_PQC_MLDSA_KEYGEN_PAR: &str = "src/slang/crypto/pqc/mldsa/mldsa_keygen_par.slang";
+const CRYPTOGRAPHY_PQC_MLDSA_SIGN_PAR: &str = "src/slang/crypto/pqc/mldsa/mldsa_sign_par.slang";
 const CRYPTOGRAPHY_PQC_SHA3: &str = "src/slang/crypto/pqc/common/sha3.slang";
 const ENTRY_POINT: &str = "main";
 
@@ -44,16 +49,61 @@ struct ShaderBuild<'a> {
 	output_directory: &'a Path,
 	slangc: &'a std::ffi::OsStr,
 	spirv_val: &'a std::ffi::OsStr,
+	profile: BuildProfile,
 	spirv_capability: &'static str,
 	vulkan_target: &'static str,
 }
 
-fn shader_target() -> Result<(&'static str, &'static str), Box<dyn std::error::Error>> {
-	match env::var("OA_SPIRV_TARGET").as_deref() {
-		Err(env::VarError::NotPresent) | Ok("1.6") => Ok(("spirv_1_6", "vulkan1.3")),
-		Ok("1.5") => Ok(("spirv_1_5", "vulkan1.2")),
-		Ok(value) => Err(format!("unsupported OA_SPIRV_TARGET={value:?}; expected 1.5 or 1.6").into()),
-		Err(error) => Err(format!("invalid OA_SPIRV_TARGET: {error}").into()),
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BuildProfile {
+	Core,
+	Compatibility,
+}
+
+impl BuildProfile {
+	fn parse(value: Option<&str>) -> Result<Self, String> {
+		match value {
+			None | Some("core") => Ok(Self::Core),
+			Some("compatibility") => Ok(Self::Compatibility),
+			Some(value) => Err(format!(
+				"unsupported OA_BUILD_PROFILE={value:?}; expected core or compatibility"
+			)),
+		}
+	}
+
+	fn name(self) -> &'static str {
+		match self {
+			Self::Core => "core",
+			Self::Compatibility => "compatibility",
+		}
+	}
+
+	fn shader_target(self) -> Result<(&'static str, &'static str), Box<dyn std::error::Error>> {
+		// Retain the Core SPIR-V 1.5 audit override without changing its binding ABI.
+		match (self, env::var("OA_SPIRV_TARGET").as_deref()) {
+			(Self::Core, Err(env::VarError::NotPresent) | Ok("1.6")) => Ok(("spirv_1_6", "vulkan1.3")),
+			(_, Err(env::VarError::NotPresent) | Ok("1.5")) => Ok(("spirv_1_5", "vulkan1.2")),
+			(_, Ok(value)) => Err(
+				format!(
+					"unsupported OA_SPIRV_TARGET={value:?} for {}; expected {}",
+					self.name(),
+					if self == Self::Core {
+						"1.5 or 1.6"
+					} else {
+						"1.5"
+					}
+				)
+				.into(),
+			),
+			(_, Err(error)) => Err(format!("invalid OA_SPIRV_TARGET: {error}").into()),
+		}
+	}
+
+	fn storage_count(self, buffer_count: u32) -> u32 {
+		match self {
+			Self::Core => 0,
+			Self::Compatibility => buffer_count,
+		}
 	}
 }
 
@@ -77,24 +127,38 @@ const UI_CANVAS_GRID_VERT: &str = "src/slang/ui/canvas_grid.vert.slang";
 const UI_CANVAS_GRID_FRAG: &str = "src/slang/ui/canvas_grid.frag.slang";
 const RENDER_SURFACE_FRAG: &str = "src/slang/render/surface.frag.slang";
 
-const UI_CLEAR_COMPOSE: &str = "src/slang/ui/clear_compose.slang";
-const UI_BLIT_RGBA: &str = "src/slang/ui/blit_rgba.slang";
-const UI_BLIT_PLANAR: &str = "src/slang/ui/blit_planar.slang";
-const UI_DRAW_RECT: &str = "src/slang/ui/draw_rect.slang";
-const UI_DRAW_RECT_OUTLINE: &str = "src/slang/ui/draw_rect_outline.slang";
-const UI_DRAW_LINE: &str = "src/slang/ui/draw_line.slang";
-const UI_DRAW_PLOT_LINE: &str = "src/slang/ui/draw_plot_line.slang";
-const UI_MASK_ROUNDED_VIEWPORT: &str = "src/slang/ui/mask_rounded_viewport.slang";
-const UI_DRAW_WAVEFORM: &str = "src/slang/ui/draw_waveform.slang";
-const UI_DRAW_HEATMAP: &str = "src/slang/ui/draw_heatmap.slang";
-const UI_DRAW_TRIANGLE: &str = "src/slang/ui/draw_triangle.slang";
-const UI_DRAW_CANVAS_GRID: &str = "src/slang/ui/draw_canvas_grid.slang";
-const UI_DRAW_GLYPHS: &str = "src/slang/ui/draw_glyphs.slang";
-const UI_DRAW_RECT_OUTLINES: &str = "src/slang/ui/draw_rect_outlines.slang";
+const UI_RASTER_FULLSCREEN_VERT: &str = "src/slang/ui/fullscreen.vert.slang";
+const UI_RASTER_CLEAR_FRAG: &str = "src/slang/ui/clear.frag.slang";
+const UI_RASTER_RECT_FRAG: &str = "src/slang/ui/rect.frag.slang";
+const UI_RASTER_RECT_OUTLINE_FRAG: &str = "src/slang/ui/rect_outline.frag.slang";
+const UI_RASTER_LINE_FRAG: &str = "src/slang/ui/line.frag.slang";
+const UI_RASTER_TRIANGLE_FRAG: &str = "src/slang/ui/triangle.frag.slang";
+const UI_RASTER_MASK_FRAG: &str = "src/slang/ui/mask.frag.slang";
+const UI_RASTER_BLIT_TEXTURE_FRAG: &str = "src/slang/ui/blit_texture.frag.slang";
+const UI_RASTER_BLIT_PLANAR_FRAG: &str = "src/slang/ui/blit_planar.frag.slang";
+const UI_RASTER_HEATMAP_FRAG: &str = "src/slang/ui/heatmap.frag.slang";
+const UI_RASTER_WAVEFORM_FRAG: &str = "src/slang/ui/waveform.frag.slang";
+const UI_RASTER_PLOT_LINE_FRAG: &str = "src/slang/ui/plot_line.frag.slang";
+const UI_RASTER_GLYPHS_VERT: &str = "src/slang/ui/glyphs.vert.slang";
+const UI_RASTER_GLYPHS_FRAG: &str = "src/slang/ui/glyphs.frag.slang";
+const UI_RASTER_RECT_OUTLINES_VERT: &str = "src/slang/ui/rect_outlines.vert.slang";
+const UI_RASTER_RECT_OUTLINES_FRAG: &str = "src/slang/ui/rect_outlines.frag.slang";
 const UI_COMPOSITOR_COMMON: &str = "src/slang/ui/compositor_common.slang";
 const VIDEO_CVT_RGBA_TO_NV12: &str = "src/slang/video/cvt_rgba_to_nv12.slang";
+const VIDEO_CVT_RGBA64_TO_P010: &str = "src/slang/video/cvt_rgba64_to_p010.slang";
+const VIDEO_CVT_YUV420_TO_RGBA8: &str = "src/slang/video/cvt_yuv420_to_rgba8.slang";
 
 fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
+	println!("cargo:rerun-if-env-changed=OA_BUILD_PROFILE");
+	println!("cargo:rustc-check-cfg=cfg(oa_profile, values(\"core\", \"compatibility\"))");
+	let selected = env::var("OA_BUILD_PROFILE");
+	let profile = match &selected {
+		Ok(value) => BuildProfile::parse(Some(value))?,
+		Err(env::VarError::NotPresent) => BuildProfile::parse(None)?,
+		Err(error) => return Err(format!("invalid OA_BUILD_PROFILE: {error}").into()),
+	};
+	let (spirv_capability, vulkan_target) = profile.shader_target()?;
+	println!("cargo:rustc-cfg=oa_profile=\"{}\"", profile.name());
 	for source in [
 		SCHEMA,
 		BLAS_SCHEMA,
@@ -132,6 +196,9 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		CRYPTOGRAPHY_PQC_SHA3,
 		CRYPTOGRAPHY_PQC_SHAKE,
 		CRYPTOGRAPHY_PQC_VERIFICATION,
+		CRYPTOGRAPHY_PQC_VERIFICATION_PAR,
+		CRYPTOGRAPHY_PQC_MLDSA_KEYGEN_PAR,
+		CRYPTOGRAPHY_PQC_MLDSA_SIGN_PAR,
 		RENDER_VERT,
 		RENDER_FRAG,
 		RENDER_MATERIAL_COMMON,
@@ -146,20 +213,22 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		UI_CANVAS_GRID_VERT,
 		UI_CANVAS_GRID_FRAG,
 		UI_COMPOSITOR_COMMON,
-		UI_CLEAR_COMPOSE,
-		UI_BLIT_RGBA,
-		UI_BLIT_PLANAR,
-		UI_DRAW_RECT,
-		UI_DRAW_RECT_OUTLINE,
-		UI_DRAW_LINE,
-		UI_DRAW_PLOT_LINE,
-		UI_DRAW_GLYPHS,
-		UI_DRAW_RECT_OUTLINES,
-		UI_DRAW_CANVAS_GRID,
-		UI_DRAW_TRIANGLE,
-		UI_DRAW_WAVEFORM,
-		UI_DRAW_HEATMAP,
-		UI_MASK_ROUNDED_VIEWPORT,
+		UI_RASTER_FULLSCREEN_VERT,
+		UI_RASTER_CLEAR_FRAG,
+		UI_RASTER_RECT_FRAG,
+		UI_RASTER_RECT_OUTLINE_FRAG,
+		UI_RASTER_LINE_FRAG,
+		UI_RASTER_TRIANGLE_FRAG,
+		UI_RASTER_MASK_FRAG,
+		UI_RASTER_BLIT_TEXTURE_FRAG,
+		UI_RASTER_BLIT_PLANAR_FRAG,
+		UI_RASTER_HEATMAP_FRAG,
+		UI_RASTER_WAVEFORM_FRAG,
+		UI_RASTER_PLOT_LINE_FRAG,
+		UI_RASTER_GLYPHS_VERT,
+		UI_RASTER_GLYPHS_FRAG,
+		UI_RASTER_RECT_OUTLINES_VERT,
+		UI_RASTER_RECT_OUTLINES_FRAG,
 	] {
 		println!("cargo:rerun-if-changed={source}");
 	}
@@ -180,14 +249,32 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	if operations.is_empty() {
 		return Err("matrix elementwise schema contains no operations".into());
 	}
-	let output_directory = PathBuf::from(env::var_os("OUT_DIR").ok_or("OUT_DIR is unavailable")?);
+	let output_directory = PathBuf::from(env::var_os("OUT_DIR").ok_or("OUT_DIR is unavailable")?)
+		.join("shaders")
+		.join(profile.name());
+	fs::create_dir_all(&output_directory)?;
+	// Only build-owned shader files in the selected directory are retired.
+	// A profile switch cannot import an old or opposite-profile content ID.
+	for entry in fs::read_dir(&output_directory)? {
+		let path = entry?.path();
+		if matches!(
+			path.extension().and_then(|ext| ext.to_str()),
+			Some("spv" | "json" | "slang")
+		) {
+			fs::remove_file(path)?;
+		}
+	}
+	println!(
+		"cargo:rustc-env=OA_SHADER_DIR={}",
+		output_directory.display()
+	);
 	let slangc = env::var_os("SLANGC").unwrap_or_else(|| "slangc".into());
 	let spirv_val = env::var_os("SPIRV_VAL").unwrap_or_else(|| "spirv-val".into());
-	let (spirv_capability, vulkan_target) = shader_target()?;
 	let build = ShaderBuild {
 		output_directory: &output_directory,
 		slangc: &slangc,
 		spirv_val: &spirv_val,
+		profile,
 		spirv_capability,
 		vulkan_target,
 	};
@@ -423,6 +510,7 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		"src/slang/crypto/hash",
 		"src/slang/crypto/pqc/mlkem",
 		"src/slang/crypto/pqc/mldsa",
+		"src/slang/video",
 	] {
 		println!("cargo:rerun-if-changed={directory}");
 		for entry in fs::read_dir(directory)? {
@@ -454,8 +542,11 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	let cryptography_pqc_schema: Value = serde_json::from_slice(&fs::read(CRYPTOGRAPHY_PQC_SCHEMA)?)?;
 	let cryptography_pqc_kernels = array_at(&cryptography_pqc_schema, "kernels")?;
 	let cryptography_pqc_dtype = string_at(&cryptography_pqc_schema, "dtype")?;
-	if cryptography_pqc_kernels.is_empty() {
-		return Err("Cryptography PQC schema contains no kernels".into());
+	if cryptography_pqc_schema["private_kernels"]
+		.as_array()
+		.is_none_or(Vec::is_empty)
+	{
+		return Err("Cryptography PQC schema contains no private kernels".into());
 	}
 	for kernel in cryptography_pqc_kernels.iter().chain(
 		cryptography_pqc_schema["private_kernels"]
@@ -463,7 +554,7 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 			.into_iter()
 			.flatten(),
 	) {
-		build_schema_pqc_shader(
+		build_schema_shader(
 			kernel,
 			"cryptography",
 			cryptography_pqc_dtype,
@@ -504,6 +595,21 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 			&build,
 		)?;
 	}
+
+	println!("cargo:rerun-if-changed={VIDEO_SCHEMA}");
+	let video_schema: Value = serde_json::from_slice(&fs::read(VIDEO_SCHEMA)?)?;
+	for kernel in array_at(&video_schema, "kernels")? {
+		if kernel["registered"].as_bool() == Some(false) {
+			continue;
+		}
+		build_schema_shader(
+			kernel,
+			"video",
+			kernel["dtype"].as_str().unwrap_or("u8"),
+			&kernel["workgroup_size"],
+			&build,
+		)?;
+	}
 	build_graphics_shader("vertex_color_lit_vert", RENDER_VERT, "vertex", &build)?;
 	build_graphics_shader("vertex_color_lit_frag", RENDER_FRAG, "fragment", &build)?;
 	build_graphics_shader("flat_color_vert", RENDER_FLAT_COLOR_VERT, "vertex", &build)?;
@@ -525,23 +631,77 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		"fragment",
 		&build,
 	)?;
-	// UI compute shaders.
-	build_ui_shader("clear_compose", UI_CLEAR_COMPOSE, &build)?;
-	build_ui_shader("blit_rgba", UI_BLIT_RGBA, &build)?;
-	build_ui_shader("blit_planar", UI_BLIT_PLANAR, &build)?;
-	build_ui_shader("draw_rect", UI_DRAW_RECT, &build)?;
-	build_ui_shader("draw_rect_outline", UI_DRAW_RECT_OUTLINE, &build)?;
-	build_ui_shader("draw_line", UI_DRAW_LINE, &build)?;
-	build_ui_shader("draw_plot_line", UI_DRAW_PLOT_LINE, &build)?;
-	build_ui_shader("draw_glyphs", UI_DRAW_GLYPHS, &build)?;
-	build_ui_shader("draw_rect_outlines", UI_DRAW_RECT_OUTLINES, &build)?;
-	build_ui_shader("draw_canvas_grid", UI_DRAW_CANVAS_GRID, &build)?;
-	build_ui_shader("draw_waveform", UI_DRAW_WAVEFORM, &build)?;
-	build_ui_shader("draw_heatmap", UI_DRAW_HEATMAP, &build)?;
-	build_ui_shader("draw_triangle", UI_DRAW_TRIANGLE, &build)?;
-	build_ui_shader("mask_rounded_viewport", UI_MASK_ROUNDED_VIEWPORT, &build)?;
-	// Video conversion shaders (Strict bindless profile only).
-	build_video_shader("cvt_rgba_to_nv12", VIDEO_CVT_RGBA_TO_NV12, &build)?;
+	// UI raster shaders — one graphics pair per compositor family. The
+	// fullscreen vertex stage is shared by every per-pixel family; the two
+	// instanced families (glyphs, detection outlines) bring their own.
+	build_graphics_shader(
+		"ui_raster_fullscreen_vert",
+		UI_RASTER_FULLSCREEN_VERT,
+		"vertex",
+		&build,
+	)?;
+	for (stem, stage, source) in [
+		("ui_raster_clear_frag", "fragment", UI_RASTER_CLEAR_FRAG),
+		("ui_raster_rect_frag", "fragment", UI_RASTER_RECT_FRAG),
+		(
+			"ui_raster_rect_outline_frag",
+			"fragment",
+			UI_RASTER_RECT_OUTLINE_FRAG,
+		),
+		("ui_raster_line_frag", "fragment", UI_RASTER_LINE_FRAG),
+		(
+			"ui_raster_triangle_frag",
+			"fragment",
+			UI_RASTER_TRIANGLE_FRAG,
+		),
+		("ui_raster_mask_frag", "fragment", UI_RASTER_MASK_FRAG),
+		(
+			"ui_raster_blit_texture_frag",
+			"fragment",
+			UI_RASTER_BLIT_TEXTURE_FRAG,
+		),
+		(
+			"ui_raster_blit_planar_frag",
+			"fragment",
+			UI_RASTER_BLIT_PLANAR_FRAG,
+		),
+		("ui_raster_heatmap_frag", "fragment", UI_RASTER_HEATMAP_FRAG),
+		(
+			"ui_raster_waveform_frag",
+			"fragment",
+			UI_RASTER_WAVEFORM_FRAG,
+		),
+		(
+			"ui_raster_plot_line_frag",
+			"fragment",
+			UI_RASTER_PLOT_LINE_FRAG,
+		),
+		("ui_raster_glyphs_vert", "vertex", UI_RASTER_GLYPHS_VERT),
+		("ui_raster_glyphs_frag", "fragment", UI_RASTER_GLYPHS_FRAG),
+		(
+			"ui_raster_rect_outlines_vert",
+			"vertex",
+			UI_RASTER_RECT_OUTLINES_VERT,
+		),
+		(
+			"ui_raster_rect_outlines_frag",
+			"fragment",
+			UI_RASTER_RECT_OUTLINES_FRAG,
+		),
+	] {
+		build_graphics_shader(stem, source, stage, &build)?;
+	}
+	// Video conversion requires the Core storage-image heap.
+	if profile == BuildProfile::Core {
+		build_video_shader("cvt_rgba_to_nv12", VIDEO_CVT_RGBA_TO_NV12, &build)?;
+		build_video_shader("cvt_rgba64_to_p010", VIDEO_CVT_RGBA64_TO_P010, &build)?;
+		build_video_shader("cvt_yuv420_to_rgba8", VIDEO_CVT_YUV420_TO_RGBA8, &build)?;
+		build_video_shader(
+			"cvt_ycbcr_to_rgba8",
+			"src/slang/video/cvt_ycbcr_to_rgba8.slang",
+			&build,
+		)?;
+	}
 	emit_shader_content_ids(&output_directory)?;
 	Ok(())
 }
@@ -583,194 +743,12 @@ fn emit_shader_content_ids(output_directory: &Path) -> Result<(), Box<dyn std::e
 	Ok(())
 }
 
-fn build_ui_shader(
-	stem: &str,
-	source: &str,
-	build: &ShaderBuild<'_>,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let source_text = fs::read_to_string(source)?;
-	let mut strict_reflection = None;
-	for bounded in [false, true] {
-		let artifact = if bounded {
-			format!("ui_{stem}_bounded")
-		} else {
-			format!("ui_{stem}")
-		};
-		let spirv = build.output_directory.join(format!("{artifact}.spv"));
-		let reflection_path = build
-			.output_directory
-			.join(format!("{artifact}.reflection.json"));
-		let source_path = if bounded {
-			let strict: &Value = strict_reflection
-				.as_ref()
-				.ok_or("UI strict reflection missing")?;
-			let parameters = array_at(strict, "parameters")?;
-			let push = named(parameters, "pc")?;
-			let fields = push
-				.pointer("/type/elementType/fields")
-				.and_then(Value::as_array)
-				.ok_or("UI push fields missing")?;
-			let buffer_count = fields
-				.iter()
-				.filter(|field| {
-					field["name"]
-						.as_str()
-						.is_some_and(|name| name.ends_with("_idx") && name != "dst_idx")
-				})
-				.count();
-			const IMAGES: &str = "[[vk::binding(1, 0)]] RWTexture2D<float4> images[];";
-			const BUFFERS: &str = "[[vk::binding(0, 0)]] RWByteAddressBuffer heap[];";
-			if source_text.matches(IMAGES).count() != 1
-				|| source_text.matches(BUFFERS).count() != usize::from(buffer_count != 0)
-			{
-				return Err(format!("{source} has inconsistent UI resource declarations").into());
-			}
-			// Mechanical descriptor adaptation only: retain the donor algorithm and push ABI.
-			let adapted = source_text
-				.replace(
-					IMAGES,
-					"[[vk::binding(1, 0)]] RWTexture2D<float4> images[1];",
-				)
-				.replace(
-					BUFFERS,
-					&format!("[[vk::binding(0, 0)]] RWByteAddressBuffer heap[{buffer_count}];"),
-				);
-			let path = build.output_directory.join(format!("{artifact}.slang"));
-			fs::write(&path, adapted)?;
-			path
-		} else {
-			PathBuf::from(source)
-		};
-		let output = Command::new(build.slangc)
-			.arg(&source_path)
-			.args([
-				"-entry",
-				"main",
-				"-stage",
-				"compute",
-				"-target",
-				"spirv",
-				"-profile",
-				"glsl_460",
-				"-capability",
-				if bounded {
-					"spirv_1_5"
-				} else {
-					build.spirv_capability
-				},
-				"-fvk-use-entrypoint-name",
-				"-warnings-as-errors",
-				"all",
-				"-I",
-				"src/slang/core",
-				"-I",
-				"src/slang/core/math",
-				"-I",
-				"src/slang/ui",
-			])
-			.arg("-reflection-json")
-			.arg(&reflection_path)
-			.arg("-o")
-			.arg(&spirv)
-			.output()?;
-		if !output.status.success() {
-			return Err(
-				format!(
-					"{artifact} Slang compilation failed: {}",
-					String::from_utf8_lossy(&output.stderr)
-				)
-				.into(),
-			);
-		}
-		let reflection: Value = serde_json::from_slice(&fs::read(&reflection_path)?)?;
-		if let Some(strict) = &strict_reflection {
-			let parameters = array_at(&reflection, "parameters")?;
-			let strict_parameters = array_at(strict, "parameters")?;
-			require_equal(
-				named(parameters, "pc")?,
-				named(strict_parameters, "pc")?,
-				"UI bounded push ABI",
-			)?;
-			require_equal(
-				&reflection["entryPoints"],
-				&strict["entryPoints"],
-				"UI bounded entry point ABI",
-			)?;
-			let images = named(parameters, "images")?;
-			require_equal(
-				&images["type"]["elementCount"],
-				&json!(1),
-				"UI bounded image count",
-			)?;
-			require_equal(
-				&images["binding"],
-				&json!({"kind":"descriptorTableSlot","index":1}),
-				"UI image binding",
-			)?;
-			if let Some(heap) = parameters
-				.iter()
-				.find(|parameter| parameter["name"] == "heap")
-			{
-				let count = named(strict_parameters, "pc")?
-					.pointer("/type/elementType/fields")
-					.and_then(Value::as_array)
-					.ok_or("UI push fields missing")?
-					.iter()
-					.filter(|field| {
-						field["name"]
-							.as_str()
-							.is_some_and(|name| name.ends_with("_idx") && name != "dst_idx")
-					})
-					.count();
-				require_equal(
-					&heap["type"]["elementCount"],
-					&json!(count),
-					"UI bounded buffer count",
-				)?;
-				require_equal(
-					&heap["binding"],
-					&json!({"kind":"descriptorTableSlot","index":0}),
-					"UI buffer binding",
-				)?;
-			}
-		} else {
-			strict_reflection = Some(reflection);
-		}
-		let output = Command::new(build.spirv_val)
-			.args([
-				"--target-env",
-				if bounded {
-					"vulkan1.2"
-				} else {
-					build.vulkan_target
-				},
-			])
-			.arg(&spirv)
-			.output()?;
-		if !output.status.success() {
-			return Err(
-				format!(
-					"{artifact} SPIR-V validation failed: {}",
-					String::from_utf8_lossy(&output.stderr)
-				)
-				.into(),
-			);
-		}
-		if bounded {
-			validate_bounded_spirv(&spirv, &artifact)?;
-		}
-	}
-	Ok(())
-}
-
-/// Strict-profile compute artifact for the video encoder's conversion kernels.
-/// The donor RGBA→NV12 path is bindless-only; encode admission itself requires
-/// the Strict descriptor profile, so no bounded artifact is generated.
 fn build_video_shader(
 	stem: &str,
 	source: &str,
 	build: &ShaderBuild<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	println!("cargo:rerun-if-changed={source}");
 	let artifact = format!("video_{stem}");
 	let spirv = build.output_directory.join(format!("{artifact}.spv"));
 	let reflection_path = build
@@ -794,6 +772,8 @@ fn build_video_shader(
 			"all",
 			"-I",
 			"src/slang/video",
+			"-I",
+			"src/slang/core/math",
 		])
 		.arg("-reflection-json")
 		.arg(&reflection_path)
@@ -821,11 +801,22 @@ fn build_video_shader(
 		&json!({"kind":"descriptorTableSlot","index":0}),
 		"video storage-buffer binding",
 	)?;
-	require_equal(
-		&named(parameters, "storage_images")?["binding"],
-		&json!({"kind":"descriptorTableSlot","index":1}),
-		"video storage-image binding",
-	)?;
+	// Kernels that sample or store images declare `storage_images` at binding 1;
+	// buffer-only kernels omit it rather than bind an unused heap.
+	if let Some(images) = find_named(parameters, "storage_images") {
+		require_equal(
+			&images["binding"],
+			&json!({"kind":"descriptorTableSlot","index":1}),
+			"video storage-image binding",
+		)?;
+	}
+	if let Some(image) = find_named(parameters, "ycbcr_image") {
+		require_equal(
+			&image["binding"],
+			&json!({"kind":"descriptorTableSlot", "space":1, "index":0}),
+			"immutable YCbCr source binding",
+		)?;
+	}
 	let output = Command::new(build.spirv_val)
 		.args(["--target-env", build.vulkan_target])
 		.arg(&spirv)
@@ -865,6 +856,12 @@ fn build_graphics_shader(
 			"-fvk-use-entrypoint-name",
 			"-warnings-as-errors",
 			"all",
+			"-I",
+			"src/slang/core",
+			"-I",
+			"src/slang/core/math",
+			"-I",
+			"src/slang/ui",
 		])
 		.arg("-o")
 		.arg(&spirv)
@@ -939,8 +936,24 @@ fn build_shader(
 		.output_directory
 		.join(format!("matrix_{name}_{dtype}.reflection.json"));
 
+	let fields = expected_push_fields(
+		string_at(operation, "kind")?,
+		variant["variant"].as_str().unwrap_or("generic"),
+	)?;
+	let buffer_count = u32::try_from(
+		fields
+			.iter()
+			.filter(|(name, _, _)| name.ends_with("_index") || name.ends_with("_idx"))
+			.count(),
+	)?;
+	let selected_source = compute_source(
+		&source,
+		&format!("matrix_{name}_{dtype}"),
+		buffer_count,
+		build,
+	)?;
 	let slang_output = Command::new(build.slangc)
-		.arg(&source)
+		.arg(&selected_source)
 		.args([
 			"-entry",
 			ENTRY_POINT,
@@ -965,6 +978,8 @@ fn build_shader(
 			"src/slang/matrix/rng",
 			"-I",
 			"src/slang/crypto/hash",
+			"-I",
+			source_directory,
 			"-reflection-json",
 		])
 		.arg(&reflection)
@@ -990,7 +1005,7 @@ fn build_shader(
 		kernel_name,
 		dtype,
 		workgroup_size,
-		0,
+		build.profile.storage_count(buffer_count),
 	)?;
 
 	let validation_output = Command::new(build.spirv_val)
@@ -1009,166 +1024,48 @@ fn build_shader(
 			.into(),
 		);
 	}
-	build_bounded_shader(
-		&source,
-		&format!("matrix_{name}_{dtype}"),
-		&reflection,
-		variant,
-		build,
-	)?;
+	if build.profile == BuildProfile::Compatibility {
+		validate_bounded_spirv(&spirv, name)?;
+	}
 	Ok(())
 }
 
-// Mechanical binding ABI adaptation: preserve the schema-owned shader body,
-// push fields, and workgroup geometry while fixing descriptor-array extent.
-fn build_bounded_shader(
+// Mechanical binding adaptation only; shader math and push ABI stay unchanged.
+fn compute_source(
 	source_path: &str,
 	stem: &str,
-	strict_reflection: &Path,
-	metadata: &Value,
+	buffer_count: u32,
 	build: &ShaderBuild<'_>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+	if build.profile == BuildProfile::Core {
+		return Ok(PathBuf::from(source_path));
+	}
 	const UNSIZED: &str = "[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];";
 	let source = fs::read_to_string(source_path)?;
-	if source.matches(UNSIZED).count() != 1 {
+	if buffer_count == 0 || source.matches(UNSIZED).count() != 1 {
 		return Err(
-			format!("{source_path} has no unique storage-buffer descriptor declaration").into(),
+			format!("{source_path} has no unique storage-buffer declaration or buffer metadata").into(),
 		);
-	}
-	let strict: Value = serde_json::from_slice(&fs::read(strict_reflection)?)?;
-	let strict_params = array_at(&strict, "parameters")?;
-	let push = named(strict_params, "push")?;
-	let fields = push
-		.pointer("/type/elementType/fields")
-		.and_then(Value::as_array)
-		.ok_or("strict push fields missing")?;
-	let buffer_count = fields
-		.iter()
-		.filter(|field| {
-			field["name"]
-				.as_str()
-				.is_some_and(|name| name.ends_with("_index") || name.ends_with("_idx"))
-		})
-		.count();
-	if buffer_count == 0 {
-		return Err(format!("{stem} has no reflected buffer indices").into());
 	}
 	let bounded = source.replace(
 		UNSIZED,
 		&format!("[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[{buffer_count}];"),
 	);
-	let bounded_source = build.output_directory.join(format!("{stem}_bounded.slang"));
-	let spirv = build.output_directory.join(format!("{stem}_bounded.spv"));
-	let reflection = build
-		.output_directory
-		.join(format!("{stem}_bounded.reflection.json"));
-	fs::write(&bounded_source, bounded)?;
-	let mut command = Command::new(build.slangc);
-	command.arg(&bounded_source).args([
-		"-entry",
-		ENTRY_POINT,
-		"-stage",
-		"compute",
-		"-target",
-		"spirv",
-		"-profile",
-		"glsl_460",
-		"-capability",
-		"spirv_1_5",
-		"-fvk-use-entrypoint-name",
-		"-warnings-as-errors",
-		"all",
-		"-I",
-		"src/slang/core",
-		"-I",
-		"src/slang/core/math",
-		"-I",
-		"src/slang/core/rng",
-		"-I",
-		"src/slang/matrix/rng",
-		"-I",
-		"src/slang/crypto/hash",
-		"-I",
-		"src/slang/crypto/pqc/common",
-		"-I",
-		"src/slang/crypto/pqc/mldsa",
-		"-I",
-		"src/slang/crypto/pqc/mlkem",
-	]);
-	// The bounded source lives in OUT_DIR; retain adjacent module resolution.
-	if let Some(parent) = Path::new(source_path).parent() {
-		command.arg("-I").arg(parent);
-	}
-	if metadata["slang_optimization"].as_str() == Some("O0") {
-		command.arg("-O0");
-	}
-	if let Some(capabilities) = metadata["slang_capabilities"].as_array() {
-		for capability in capabilities {
-			command
-				.arg("-capability")
-				.arg(capability.as_str().ok_or("non-string Slang capability")?);
-		}
-	}
-	let output = command
-		.arg("-reflection-json")
-		.arg(&reflection)
-		.arg("-o")
-		.arg(&spirv)
-		.output()?;
-	if !output.status.success() {
-		return Err(
-			format!(
-				"bounded {stem} Slang compilation failed: {}",
-				String::from_utf8_lossy(&output.stderr)
-			)
-			.into(),
-		);
-	}
-	let bounded: Value = serde_json::from_slice(&fs::read(&reflection)?)?;
-	let bounded_params = array_at(&bounded, "parameters")?;
-	require_equal(
-		named(bounded_params, "push")?,
-		named(strict_params, "push")?,
-		"bounded push ABI",
-	)?;
-	let storage = named(bounded_params, "storage_buffers")?;
-	require_equal(
-		&storage["binding"],
-		&json!({"kind":"descriptorTableSlot","index":0}),
-		"bounded storage binding",
-	)?;
-	require_equal(
-		&storage["type"]["elementCount"],
-		&json!(buffer_count),
-		"bounded storage count",
-	)?;
-	let strict_entry = array_at(&strict, "entryPoints")?
+	let path = build.output_directory.join(format!("{stem}.slang"));
+	fs::write(&path, bounded)?;
+	Ok(path)
+}
+
+fn schema_buffer_count(operation: &Value) -> Result<u32, Box<dyn std::error::Error>> {
+	let count = array_at(operation, "push_fields")?
 		.iter()
-		.find(|entry| entry["name"] == ENTRY_POINT)
-		.ok_or("strict entry point missing")?;
-	let bounded_entry = array_at(&bounded, "entryPoints")?
-		.iter()
-		.find(|entry| entry["name"] == ENTRY_POINT)
-		.ok_or("bounded entry point missing")?;
-	require_equal(
-		&bounded_entry["threadGroupSize"],
-		&strict_entry["threadGroupSize"],
-		"bounded workgroup",
-	)?;
-	let output = Command::new(build.spirv_val)
-		.args(["--target-env", "vulkan1.2"])
-		.arg(&spirv)
-		.output()?;
-	if !output.status.success() {
-		return Err(
-			format!(
-				"bounded {stem} Vulkan 1.2 validation failed: {}",
-				String::from_utf8_lossy(&output.stderr)
-			)
-			.into(),
-		);
-	}
-	validate_bounded_spirv(&spirv, stem)
+		.filter(|field| {
+			field[0]
+				.as_str()
+				.is_some_and(|name| name.ends_with("_index") || name.ends_with("_idx"))
+		})
+		.count();
+	Ok(u32::try_from(count)?)
 }
 
 fn validate_bounded_spirv(spirv: &Path, stem: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -1327,8 +1224,18 @@ fn build_schema_shader(
 		.output_directory
 		.join(format!("{domain}_{name}_{dtype}.reflection.json"));
 
+	let buffer_count = schema_buffer_count(operation)?;
+	let selected_source = compute_source(
+		source,
+		&format!("{domain}_{name}_{dtype}"),
+		buffer_count,
+		build,
+	)?;
 	let mut command = Command::new(build.slangc);
-	command.arg(source).args([
+	if let Some(parent) = Path::new(source).parent() {
+		command.arg("-I").arg(parent);
+	}
+	command.arg(&selected_source).args([
 		"-entry",
 		ENTRY_POINT,
 		"-stage",
@@ -1358,6 +1265,8 @@ fn build_schema_shader(
 		"src/slang/crypto/pqc/mldsa",
 		"-I",
 		"src/slang/crypto/pqc/mlkem",
+		"-I",
+		"src/slang/video",
 	]);
 	if let Some(optimization) = operation["slang_optimization"].as_str() {
 		match optimization {
@@ -1395,7 +1304,14 @@ fn build_schema_shader(
 		);
 	}
 
-	validate_schema_reflection(&reflection, operation, domain, dtype, workgroup_size)?;
+	validate_schema_reflection(
+		&reflection,
+		operation,
+		domain,
+		dtype,
+		workgroup_size,
+		build.profile.storage_count(buffer_count),
+	)?;
 	let validation_output = Command::new(build.spirv_val)
 		.args(["--target-env", build.vulkan_target])
 		.arg(&spirv)
@@ -1412,113 +1328,9 @@ fn build_schema_shader(
 			.into(),
 		);
 	}
-	build_bounded_shader(
-		source,
-		&format!("{domain}_{name}_{dtype}"),
-		&reflection,
-		operation,
-		build,
-	)?;
-	Ok(())
-}
-
-fn build_schema_pqc_shader(
-	operation: &Value,
-	domain: &str,
-	dtype: &str,
-	workgroup_size: &Value,
-	build: &ShaderBuild<'_>,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let name = string_at(operation, "name")?;
-	let source = string_at(operation, "source")?;
-	println!("cargo:rerun-if-changed={source}");
-	let spirv = build
-		.output_directory
-		.join(format!("{domain}_{name}_{dtype}.spv"));
-	let reflection = build
-		.output_directory
-		.join(format!("{domain}_{name}_{dtype}.reflection.json"));
-
-	let mut command = Command::new(build.slangc);
-	command.arg(source).args([
-		"-entry",
-		ENTRY_POINT,
-		"-stage",
-		"compute",
-		"-target",
-		"spirv",
-		"-profile",
-		"glsl_460",
-		"-capability",
-		build.spirv_capability,
-		"-fvk-use-entrypoint-name",
-		"-warnings-as-errors",
-		"all",
-		"-I",
-		"src/slang/core",
-		"-I",
-		"src/slang/core/math",
-		"-I",
-		"src/slang/crypto/hash",
-		"-I",
-		"src/slang/crypto/pqc/common",
-		"-I",
-		"src/slang/crypto/pqc/mldsa",
-		"-I",
-		"src/slang/crypto/pqc/mlkem",
-	]);
-	if let Some(capabilities) = operation["slang_capabilities"].as_array() {
-		for capability in capabilities {
-			command.arg("-capability").arg(
-				capability
-					.as_str()
-					.ok_or_else(|| format!("{domain}.{name} has a non-string Slang capability"))?,
-			);
-		}
+	if build.profile == BuildProfile::Compatibility {
+		validate_bounded_spirv(&spirv, name)?;
 	}
-	let slang_output = command
-		.arg("-reflection-json")
-		.arg(&reflection)
-		.arg("-o")
-		.arg(&spirv)
-		.output()
-		.map_err(|source| format!("could not execute {:?}: {source}", build.slangc))?;
-	if !slang_output.status.success() {
-		return Err(
-			format!(
-				"{:?} failed for {domain}.{name} with {}\n{}",
-				build.slangc,
-				slang_output.status,
-				String::from_utf8_lossy(&slang_output.stderr)
-			)
-			.into(),
-		);
-	}
-
-	validate_schema_reflection(&reflection, operation, domain, dtype, workgroup_size)?;
-	let validation_output = Command::new(build.spirv_val)
-		.args(["--target-env", build.vulkan_target])
-		.arg(&spirv)
-		.output()
-		.map_err(|source| format!("could not execute {:?}: {source}", build.spirv_val))?;
-	if !validation_output.status.success() {
-		return Err(
-			format!(
-				"{:?} failed for {domain}.{name} with {}\n{}",
-				build.spirv_val,
-				validation_output.status,
-				String::from_utf8_lossy(&validation_output.stderr)
-			)
-			.into(),
-		);
-	}
-	build_bounded_shader(
-		source,
-		&format!("{domain}_{name}_{dtype}"),
-		&reflection,
-		operation,
-		build,
-	)?;
 	Ok(())
 }
 
@@ -1528,6 +1340,7 @@ fn validate_schema_reflection(
 	domain: &str,
 	dtype: &str,
 	workgroup_size: &Value,
+	storage_count: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let name = string_at(operation, "name")?;
 	let reflection: Value = serde_json::from_slice(&fs::read(path)?)?;
@@ -1624,8 +1437,8 @@ fn validate_schema_reflection(
 	)?;
 	require_equal(
 		&storage["type"]["elementCount"],
-		&json!(0),
-		"runtime storage-buffer count",
+		&json!(storage_count),
+		"storage-buffer count",
 	)?;
 	require_equal(
 		&storage["type"]["elementType"]["baseShape"],
@@ -1698,10 +1511,11 @@ fn string_at<'a>(value: &'a Value, key: &str) -> Result<&'a str, String> {
 }
 
 fn named<'a>(values: &'a [Value], name: &str) -> Result<&'a Value, String> {
-	values
-		.iter()
-		.find(|value| value["name"] == name)
-		.ok_or_else(|| format!("reflection does not contain parameter {name}"))
+	find_named(values, name).ok_or_else(|| format!("reflection does not contain parameter {name}"))
+}
+
+fn find_named<'a>(values: &'a [Value], name: &str) -> Option<&'a Value> {
+	values.iter().find(|value| value["name"] == name)
 }
 
 fn require_equal(actual: &Value, expected: &Value, label: &str) -> Result<(), String> {
@@ -1713,3 +1527,7 @@ fn require_equal(actual: &Value, expected: &Value, label: &str) -> Result<(), St
 		))
 	}
 }
+
+#[cfg(test)]
+#[path = "test/rs/runtime/build_profile_unit.rs"]
+mod build_profile_tests;

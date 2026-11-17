@@ -153,7 +153,7 @@ test_vk!(
 );
 
 test_vk!(
-	core_loss_capture_has_one_semantic_op_and_three_classified_dispatches,
+	core_loss_capture_has_one_semantic_op_and_two_classified_dispatches,
 	engine,
 	{
 		let prediction = oa::Matrix::new_from_f32(&engine, [2, 3], &[0.2, -0.7, 1.4, 0.5, -1.2, 0.9])?;
@@ -165,15 +165,12 @@ test_vk!(
 		let nodes = report["nodes"]
 			.as_array()
 			.expect("loss execution nodes must be an array");
-		assert_eq!(nodes.len(), 3);
+		assert_eq!(nodes.len(), 2);
 		let kernels = nodes
 			.iter()
 			.map(|node| node["kernel"].as_str().expect("kernel name must be text"))
 			.collect::<Vec<_>>();
-		assert_eq!(
-			kernels,
-			["ml.loss.mse.f32", "matrix.sum.f32", "matrix.scale.f32"]
-		);
+		assert_eq!(kernels, ["ml.loss.mse.f32", "ml.sum_scale.f32"]);
 		assert!(nodes.iter().all(|node| !node["physical_write"].is_null()));
 		engine.submit(&plan)?.wait()?;
 		assert_close(&output.read_f32()?, &[LossKind::Mse.value()], 3.0e-6);
@@ -336,7 +333,7 @@ test_vk!(
 		assert_eq!(
 			operation.attributes(),
 			[oa::OpAttribute::SignedInteger {
-				name: "valid_count".into(),
+				name: "validCount".into(),
 				value: 1,
 			}]
 		);
@@ -346,7 +343,7 @@ test_vk!(
 		let nodes = report["nodes"]
 			.as_array()
 			.expect("masked-loss execution nodes must be an array");
-		assert_eq!(nodes.len(), 3);
+		assert_eq!(nodes.len(), 2);
 		assert_eq!(nodes[0]["kernel"], "ml.loss.masked_cross_entropy.f32");
 		assert!(nodes.iter().all(|node| !node["physical_write"].is_null()));
 		engine.submit(&plan)?.wait()?;

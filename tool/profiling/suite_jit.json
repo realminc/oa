@@ -4,7 +4,7 @@
     {
       "name": "ml.nlp.char_transformer.fused",
       "command_id": "oars.ml.nlp.char_transformer.f32.forward_backward.fused.v2",
-      "command": ["{binary_root}/sdk/benchmarks/ml/nlp/ml_nlp_char_transformer_profile"],
+      "command": ["{binary_root}/sdk/benchmarks/ml/nlp/profile_ml_nlp_char_transformer"],
       "env": {
         "OA_DISABLE_EPILOGUE_FUSION": null,
         "OA_DISABLE_ELEMENTWISE_FUSION": null,
@@ -24,7 +24,7 @@
     {
       "name": "ml.nlp.char_transformer.unfused",
       "command_id": "oars.ml.nlp.char_transformer.f32.forward_backward.unfused.v2",
-      "command": ["{binary_root}/sdk/benchmarks/ml/nlp/ml_nlp_char_transformer_profile"],
+      "command": ["{binary_root}/sdk/benchmarks/ml/nlp/profile_ml_nlp_char_transformer"],
       "env": {
         "OA_DISABLE_EPILOGUE_FUSION": "1",
         "OA_DISABLE_ELEMENTWISE_FUSION": "1",
@@ -44,7 +44,7 @@
     {
       "name": "ml.nlp.char_transformer.jit",
       "command_id": "oars.ml.nlp.char_transformer.f32.forward_backward.jit.v2",
-      "command": ["{binary_root}/sdk/benchmarks/ml/nlp/ml_nlp_char_transformer_profile"],
+      "command": ["{binary_root}/sdk/benchmarks/ml/nlp/profile_ml_nlp_char_transformer"],
       "env": {
         "OA_DISABLE_EPILOGUE_FUSION": null,
         "OA_DISABLE_ELEMENTWISE_FUSION": null,
@@ -64,7 +64,7 @@
     {
       "name": "ml.rl.cartpole_ppo.baseline",
       "command_id": "oars.ml.rl.cartpole_ppo.f32.update.baseline.v1",
-      "command": ["{binary_root}/sdk/benchmarks/ml/rl/ml_rl_ppo_bench"],
+      "command": ["{binary_root}/sdk/benchmarks/ml/rl/bench_ml_rl_ppo"],
       "env": {
         "OA_JIT_FUSION": null,
         "OA_JIT_ROUTE": null,
@@ -84,7 +84,7 @@
     {
       "name": "ml.rl.cartpole_ppo.jit",
       "command_id": "oars.ml.rl.cartpole_ppo.f32.update.jit.v1",
-      "command": ["{binary_root}/sdk/benchmarks/ml/rl/ml_rl_ppo_bench"],
+      "command": ["{binary_root}/sdk/benchmarks/ml/rl/bench_ml_rl_ppo"],
       "env": {
         "OA_JIT_FUSION": "1",
         "OA_JIT_ROUTE": null,
@@ -104,7 +104,7 @@
     {
       "name": "core.elemwise_chain.route_unfused",
       "command_id": "oars.core.elemwise_chain.f32.e16384.c4.unfused.v1",
-      "command": ["{binary_root}/sdk/benchmarks/core/core_elemwise_chain_bench", "--name", "route-unfused", "--elements", "16384", "--chain", "4", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
+      "command": ["{binary_root}/sdk/benchmarks/core/bench_core_elemwise_chain", "--name", "route-unfused", "--elements", "16384", "--chain", "4", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
       "env": {
         "OA_JIT_FUSION": "1",
         "OA_JIT_ROUTE": "unfused",
@@ -124,7 +124,7 @@
     {
       "name": "core.elemwise_chain.route_tape",
       "command_id": "oars.core.elemwise_chain.f32.e16384.c4.tape.v1",
-      "command": ["{binary_root}/sdk/benchmarks/core/core_elemwise_chain_bench", "--name", "route-tape", "--elements", "16384", "--chain", "4", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
+      "command": ["{binary_root}/sdk/benchmarks/core/bench_core_elemwise_chain", "--name", "route-tape", "--elements", "16384", "--chain", "4", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
       "env": {
         "OA_JIT_FUSION": "1",
         "OA_JIT_ROUTE": "tape",
@@ -144,7 +144,7 @@
     {
       "name": "core.elemwise_chain.route_specialized",
       "command_id": "oars.core.elemwise_chain.f32.e16384.c4.specialized.v1",
-      "command": ["{binary_root}/sdk/benchmarks/core/core_elemwise_chain_bench", "--name", "route-specialized", "--elements", "16384", "--chain", "4", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
+      "command": ["{binary_root}/sdk/benchmarks/core/bench_core_elemwise_chain", "--name", "route-specialized", "--elements", "16384", "--chain", "4", "--device", "{device_index}", "--warmup", "5", "--samples", "20"],
       "env": {
         "OA_JIT_FUSION": "1",
         "OA_JIT_ROUTE": "specialized",

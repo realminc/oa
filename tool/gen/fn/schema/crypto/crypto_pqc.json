@@ -290,527 +290,7 @@
 			]
 		}
 	],
-	"kernels": [
-		{
-			"stable_id": 205,
-			"name": "ml_dsa_65_verify",
-			"kernel_id": "CryptographyMlDsa65VerifyU8",
-			"source": "src/slang/crypto/pqc/mldsa/mldsa_verify.slang",
-			"workgroup_size": [
-				1,
-				1,
-				1
-			],
-			"semantic_operation": "ml_dsa_65_verify_batch",
-			"push_fields": [
-				[
-					"input_index",
-					"uint32"
-				],
-				[
-					"offsets_index",
-					"uint32"
-				],
-				[
-					"lengths_index",
-					"uint32"
-				],
-				[
-					"sigs_index",
-					"uint32"
-				],
-				[
-					"pks_index",
-					"uint32"
-				],
-				[
-					"results_index",
-					"uint32"
-				],
-				[
-					"batch_size",
-					"uint32"
-				],
-				[
-					"message_bytes",
-					"uint32"
-				],
-				[
-					"context_offset",
-					"uint32"
-				],
-				[
-					"context_length",
-					"uint32"
-				]
-			],
-			"parameter_set": 65
-		},
-		{
-			"stable_id": 457,
-			"name": "ml_dsa_44_verify",
-			"kernel_id": "CryptographyMlDsa44VerifyU8",
-			"source": "src/slang/crypto/pqc/mldsa/mldsa44_verify.slang",
-			"workgroup_size": [
-				1,
-				1,
-				1
-			],
-			"semantic_operation": "ml_dsa_44_verify_batch",
-			"push_fields": [
-				[
-					"input_index",
-					"uint32"
-				],
-				[
-					"offsets_index",
-					"uint32"
-				],
-				[
-					"lengths_index",
-					"uint32"
-				],
-				[
-					"sigs_index",
-					"uint32"
-				],
-				[
-					"pks_index",
-					"uint32"
-				],
-				[
-					"results_index",
-					"uint32"
-				],
-				[
-					"batch_size",
-					"uint32"
-				],
-				[
-					"message_bytes",
-					"uint32"
-				],
-				[
-					"context_offset",
-					"uint32"
-				],
-				[
-					"context_length",
-					"uint32"
-				]
-			],
-			"parameter_set": 44
-		},
-		{
-			"stable_id": 458,
-			"name": "ml_dsa_87_verify",
-			"kernel_id": "CryptographyMlDsa87VerifyU8",
-			"source": "src/slang/crypto/pqc/mldsa/mldsa87_verify.slang",
-			"workgroup_size": [
-				1,
-				1,
-				1
-			],
-			"semantic_operation": "ml_dsa_87_verify_batch",
-			"push_fields": [
-				[
-					"input_index",
-					"uint32"
-				],
-				[
-					"offsets_index",
-					"uint32"
-				],
-				[
-					"lengths_index",
-					"uint32"
-				],
-				[
-					"sigs_index",
-					"uint32"
-				],
-				[
-					"pks_index",
-					"uint32"
-				],
-				[
-					"results_index",
-					"uint32"
-				],
-				[
-					"batch_size",
-					"uint32"
-				],
-				[
-					"message_bytes",
-					"uint32"
-				],
-				[
-					"context_offset",
-					"uint32"
-				],
-				[
-					"context_length",
-					"uint32"
-				]
-			],
-			"parameter_set": 87
-		},
-		{
-			"stable_id": 466,
-			"name": "ml_dsa_65_verify_prehashed",
-			"kernel_id": "CryptographyMlDsa65VerifyPrehashedU8",
-			"source": "src/slang/crypto/pqc/mldsa/mldsa65_verify_prehashed.slang",
-			"workgroup_size": [
-				1,
-				1,
-				1
-			],
-			"semantic_operation": "ml_dsa_65_verify_prehashed_batch",
-			"push_fields": [
-				[
-					"input_index",
-					"uint32"
-				],
-				[
-					"offsets_index",
-					"uint32"
-				],
-				[
-					"lengths_index",
-					"uint32"
-				],
-				[
-					"sigs_index",
-					"uint32"
-				],
-				[
-					"pks_index",
-					"uint32"
-				],
-				[
-					"results_index",
-					"uint32"
-				],
-				[
-					"batch_size",
-					"uint32"
-				],
-				[
-					"message_bytes",
-					"uint32"
-				],
-				[
-					"context_offset",
-					"uint32"
-				],
-				[
-					"context_length",
-					"uint32"
-				],
-				[
-					"algorithm",
-					"uint32"
-				]
-			],
-			"parameter_set": 65
-		},
-		{
-			"stable_id": 467,
-			"name": "ml_dsa_44_verify_prehashed",
-			"kernel_id": "CryptographyMlDsa44VerifyPrehashedU8",
-			"source": "src/slang/crypto/pqc/mldsa/mldsa44_verify_prehashed.slang",
-			"workgroup_size": [
-				1,
-				1,
-				1
-			],
-			"semantic_operation": "ml_dsa_44_verify_prehashed_batch",
-			"push_fields": [
-				[
-					"input_index",
-					"uint32"
-				],
-				[
-					"offsets_index",
-					"uint32"
-				],
-				[
-					"lengths_index",
-					"uint32"
-				],
-				[
-					"sigs_index",
-					"uint32"
-				],
-				[
-					"pks_index",
-					"uint32"
-				],
-				[
-					"results_index",
-					"uint32"
-				],
-				[
-					"batch_size",
-					"uint32"
-				],
-				[
-					"message_bytes",
-					"uint32"
-				],
-				[
-					"context_offset",
-					"uint32"
-				],
-				[
-					"context_length",
-					"uint32"
-				],
-				[
-					"algorithm",
-					"uint32"
-				]
-			],
-			"parameter_set": 44
-		},
-		{
-			"stable_id": 468,
-			"name": "ml_dsa_87_verify_prehashed",
-			"kernel_id": "CryptographyMlDsa87VerifyPrehashedU8",
-			"source": "src/slang/crypto/pqc/mldsa/mldsa87_verify_prehashed.slang",
-			"workgroup_size": [
-				1,
-				1,
-				1
-			],
-			"semantic_operation": "ml_dsa_87_verify_prehashed_batch",
-			"push_fields": [
-				[
-					"input_index",
-					"uint32"
-				],
-				[
-					"offsets_index",
-					"uint32"
-				],
-				[
-					"lengths_index",
-					"uint32"
-				],
-				[
-					"sigs_index",
-					"uint32"
-				],
-				[
-					"pks_index",
-					"uint32"
-				],
-				[
-					"results_index",
-					"uint32"
-				],
-				[
-					"batch_size",
-					"uint32"
-				],
-				[
-					"message_bytes",
-					"uint32"
-				],
-				[
-					"context_offset",
-					"uint32"
-				],
-				[
-					"context_length",
-					"uint32"
-				],
-				[
-					"algorithm",
-					"uint32"
-				]
-			],
-			"parameter_set": 87
-		},
-		{
-			"stable_id": 470,
-			"name": "ml_dsa_65_verify_hash_message",
-			"kernel_id": "CryptographyMlDsa65VerifyHashMessageU8",
-			"source": "src/slang/crypto/pqc/mldsa/mldsa65_verify_hash_message.slang",
-			"workgroup_size": [
-				1,
-				1,
-				1
-			],
-			"semantic_operation": "ml_dsa_65_verify_hash_message_batch",
-			"push_fields": [
-				[
-					"input_index",
-					"uint32"
-				],
-				[
-					"offsets_index",
-					"uint32"
-				],
-				[
-					"lengths_index",
-					"uint32"
-				],
-				[
-					"sigs_index",
-					"uint32"
-				],
-				[
-					"pks_index",
-					"uint32"
-				],
-				[
-					"results_index",
-					"uint32"
-				],
-				[
-					"batch_size",
-					"uint32"
-				],
-				[
-					"message_bytes",
-					"uint32"
-				],
-				[
-					"context_offset",
-					"uint32"
-				],
-				[
-					"context_length",
-					"uint32"
-				],
-				[
-					"algorithm",
-					"uint32"
-				]
-			],
-			"parameter_set": 65
-		},
-		{
-			"stable_id": 471,
-			"name": "ml_dsa_44_verify_hash_message",
-			"kernel_id": "CryptographyMlDsa44VerifyHashMessageU8",
-			"source": "src/slang/crypto/pqc/mldsa/mldsa44_verify_hash_message.slang",
-			"workgroup_size": [
-				1,
-				1,
-				1
-			],
-			"semantic_operation": "ml_dsa_44_verify_hash_message_batch",
-			"push_fields": [
-				[
-					"input_index",
-					"uint32"
-				],
-				[
-					"offsets_index",
-					"uint32"
-				],
-				[
-					"lengths_index",
-					"uint32"
-				],
-				[
-					"sigs_index",
-					"uint32"
-				],
-				[
-					"pks_index",
-					"uint32"
-				],
-				[
-					"results_index",
-					"uint32"
-				],
-				[
-					"batch_size",
-					"uint32"
-				],
-				[
-					"message_bytes",
-					"uint32"
-				],
-				[
-					"context_offset",
-					"uint32"
-				],
-				[
-					"context_length",
-					"uint32"
-				],
-				[
-					"algorithm",
-					"uint32"
-				]
-			],
-			"parameter_set": 44
-		},
-		{
-			"stable_id": 472,
-			"name": "ml_dsa_87_verify_hash_message",
-			"kernel_id": "CryptographyMlDsa87VerifyHashMessageU8",
-			"source": "src/slang/crypto/pqc/mldsa/mldsa87_verify_hash_message.slang",
-			"workgroup_size": [
-				1,
-				1,
-				1
-			],
-			"semantic_operation": "ml_dsa_87_verify_hash_message_batch",
-			"push_fields": [
-				[
-					"input_index",
-					"uint32"
-				],
-				[
-					"offsets_index",
-					"uint32"
-				],
-				[
-					"lengths_index",
-					"uint32"
-				],
-				[
-					"sigs_index",
-					"uint32"
-				],
-				[
-					"pks_index",
-					"uint32"
-				],
-				[
-					"results_index",
-					"uint32"
-				],
-				[
-					"batch_size",
-					"uint32"
-				],
-				[
-					"message_bytes",
-					"uint32"
-				],
-				[
-					"context_offset",
-					"uint32"
-				],
-				[
-					"context_length",
-					"uint32"
-				],
-				[
-					"algorithm",
-					"uint32"
-				]
-			],
-			"parameter_set": 87
-		}
-	],
+	"kernels": [],
 	"private_kernels": [
 		{
 			"stable_id": 459,
@@ -818,7 +298,7 @@
 			"kernel_id": "CryptographyMlKemKeygenU8",
 			"source": "src/slang/crypto/pqc/mlkem/mlkem_keygen.slang",
 			"workgroup_size": [
-				1,
+				128,
 				1,
 				1
 			],
@@ -833,10 +313,6 @@
 				],
 				[
 					"public_index",
-					"uint32"
-				],
-				[
-					"workspace_index",
 					"uint32"
 				],
 				[
@@ -861,24 +337,14 @@
 						"extent": "row_width",
 						"collision": "exclusive",
 						"tail": "bounds_checked"
-					},
-					{
-						"binding": 3,
-						"domain": "rows",
-						"partition": "exclusive_per_workgroup",
-						"extent": "row_width",
-						"collision": "exclusive",
-						"tail": "bounds_checked"
 					}
 				],
-				"workspace": "exclusive_per_workgroup"
+				"workspace": "none"
 			},
 			"secret_bindings": [
 				0,
-				1,
-				3
-			],
-			"workspace_bytes": 4096
+				1
+			]
 		},
 		{
 			"stable_id": 460,
@@ -886,7 +352,7 @@
 			"kernel_id": "CryptographyMlKemEncapsU8",
 			"source": "src/slang/crypto/pqc/mlkem/mlkem_encaps.slang",
 			"workgroup_size": [
-				1,
+				128,
 				1,
 				1
 			],
@@ -909,10 +375,6 @@
 				],
 				[
 					"status_index",
-					"uint32"
-				],
-				[
-					"workspace_index",
 					"uint32"
 				],
 				[
@@ -945,24 +407,14 @@
 						"extent": "row_width",
 						"collision": "exclusive",
 						"tail": "bounds_checked"
-					},
-					{
-						"binding": 5,
-						"domain": "rows",
-						"partition": "exclusive_per_workgroup",
-						"extent": "row_width",
-						"collision": "exclusive",
-						"tail": "bounds_checked"
 					}
 				],
-				"workspace": "exclusive_per_workgroup"
+				"workspace": "none"
 			},
 			"secret_bindings": [
 				0,
-				2,
-				5
-			],
-			"workspace_bytes": 4096
+				2
+			]
 		},
 		{
 			"stable_id": 461,
@@ -970,7 +422,7 @@
 			"kernel_id": "CryptographyMlKemDecapsU8",
 			"source": "src/slang/crypto/pqc/mlkem/mlkem_decaps.slang",
 			"workgroup_size": [
-				1,
+				128,
 				1,
 				1
 			],
@@ -988,10 +440,6 @@
 					"uint32"
 				],
 				[
-					"workspace_index",
-					"uint32"
-				],
-				[
 					"k",
 					"uint32"
 				]
@@ -1005,24 +453,14 @@
 						"extent": "row_width",
 						"collision": "exclusive",
 						"tail": "bounds_checked"
-					},
-					{
-						"binding": 3,
-						"domain": "rows",
-						"partition": "exclusive_per_workgroup",
-						"extent": "row_width",
-						"collision": "exclusive",
-						"tail": "bounds_checked"
 					}
 				],
-				"workspace": "exclusive_per_workgroup"
+				"workspace": "none"
 			},
 			"secret_bindings": [
 				0,
-				2,
-				3
-			],
-			"workspace_bytes": 4096
+				2
+			]
 		},
 		{
 			"stable_id": 462,
@@ -1030,7 +468,7 @@
 			"kernel_id": "CryptographyMlDsaKeygenU8",
 			"source": "src/slang/crypto/pqc/mldsa/mldsa_keygen_dispatch.slang",
 			"workgroup_size": [
-				1,
+				128,
 				1,
 				1
 			],
@@ -1104,7 +542,7 @@
 			"kernel_id": "CryptographyMlDsaSignU8",
 			"source": "src/slang/crypto/pqc/mldsa/mldsa_sign_dispatch.slang",
 			"workgroup_size": [
-				1,
+				128,
 				1,
 				1
 			],
@@ -1198,334 +636,6 @@
 			"workspace_bytes": 23552
 		},
 		{
-			"stable_id": 464,
-			"name": "ml_dsa_sign_message",
-			"kernel_id": "CryptographyMlDsaSignMessageU8",
-			"source": "src/slang/crypto/pqc/mldsa/mldsa_sign_message_dispatch.slang",
-			"workgroup_size": [
-				1,
-				1,
-				1
-			],
-			"push_fields": [
-				[
-					"seed_index",
-					"uint32"
-				],
-				[
-					"private_index",
-					"uint32"
-				],
-				[
-					"message_index",
-					"uint32"
-				],
-				[
-					"context_index",
-					"uint32"
-				],
-				[
-					"signature_index",
-					"uint32"
-				],
-				[
-					"status_index",
-					"uint32"
-				],
-				[
-					"workspace_index",
-					"uint32"
-				],
-				[
-					"parameter_set",
-					"uint32"
-				],
-				[
-					"message_length",
-					"uint32"
-				],
-				[
-					"context_length",
-					"uint32"
-				]
-			],
-			"physical_write": {
-				"writes": [
-					{
-						"binding": 4,
-						"domain": "rows",
-						"partition": "exclusive_per_workgroup",
-						"extent": "row_width",
-						"collision": "exclusive",
-						"tail": "bounds_checked"
-					},
-					{
-						"binding": 5,
-						"domain": "rows",
-						"partition": "exclusive_per_workgroup",
-						"extent": "row_width",
-						"collision": "exclusive",
-						"tail": "bounds_checked"
-					},
-					{
-						"binding": 6,
-						"domain": "rows",
-						"partition": "exclusive_per_workgroup",
-						"extent": "row_width",
-						"collision": "exclusive",
-						"tail": "bounds_checked"
-					}
-				],
-				"workspace": "exclusive_per_workgroup"
-			},
-			"secret_bindings": [
-				0,
-				1,
-				6
-			],
-			"parameter_layouts": [
-				{
-					"parameter_set": 44,
-					"seed_bytes": 32,
-					"private_bytes": 2560,
-					"signature_bytes": 2420
-				},
-				{
-					"parameter_set": 65,
-					"seed_bytes": 32,
-					"private_bytes": 4032,
-					"signature_bytes": 3309
-				},
-				{
-					"parameter_set": 87,
-					"seed_bytes": 32,
-					"private_bytes": 4896,
-					"signature_bytes": 4627
-				}
-			],
-			"workspace_bytes": 23552
-		},
-		{
-			"stable_id": 465,
-			"name": "ml_dsa_sign_prehashed",
-			"kernel_id": "CryptographyMlDsaSignPrehashedU8",
-			"source": "src/slang/crypto/pqc/mldsa/mldsa_sign_prehashed_dispatch.slang",
-			"workgroup_size": [
-				1,
-				1,
-				1
-			],
-			"push_fields": [
-				[
-					"seed_index",
-					"uint32"
-				],
-				[
-					"private_index",
-					"uint32"
-				],
-				[
-					"digest_index",
-					"uint32"
-				],
-				[
-					"context_index",
-					"uint32"
-				],
-				[
-					"signature_index",
-					"uint32"
-				],
-				[
-					"status_index",
-					"uint32"
-				],
-				[
-					"workspace_index",
-					"uint32"
-				],
-				[
-					"parameter_set",
-					"uint32"
-				],
-				[
-					"algorithm",
-					"uint32"
-				],
-				[
-					"context_length",
-					"uint32"
-				]
-			],
-			"physical_write": {
-				"writes": [
-					{
-						"binding": 4,
-						"domain": "rows",
-						"partition": "exclusive_per_workgroup",
-						"extent": "row_width",
-						"collision": "exclusive",
-						"tail": "bounds_checked"
-					},
-					{
-						"binding": 5,
-						"domain": "rows",
-						"partition": "exclusive_per_workgroup",
-						"extent": "row_width",
-						"collision": "exclusive",
-						"tail": "bounds_checked"
-					},
-					{
-						"binding": 6,
-						"domain": "rows",
-						"partition": "exclusive_per_workgroup",
-						"extent": "row_width",
-						"collision": "exclusive",
-						"tail": "bounds_checked"
-					}
-				],
-				"workspace": "exclusive_per_workgroup"
-			},
-			"secret_bindings": [
-				0,
-				1,
-				6
-			],
-			"parameter_layouts": [
-				{
-					"parameter_set": 44,
-					"seed_bytes": 32,
-					"private_bytes": 2560,
-					"signature_bytes": 2420
-				},
-				{
-					"parameter_set": 65,
-					"seed_bytes": 32,
-					"private_bytes": 4032,
-					"signature_bytes": 3309
-				},
-				{
-					"parameter_set": 87,
-					"seed_bytes": 32,
-					"private_bytes": 4896,
-					"signature_bytes": 4627
-				}
-			],
-			"workspace_bytes": 23552
-		},
-		{
-			"stable_id": 469,
-			"name": "ml_dsa_sign_hash_message",
-			"kernel_id": "CryptographyMlDsaSignHashMessageU8",
-			"source": "src/slang/crypto/pqc/mldsa/mldsa_sign_hash_message_dispatch.slang",
-			"workgroup_size": [
-				1,
-				1,
-				1
-			],
-			"push_fields": [
-				[
-					"seed_index",
-					"uint32"
-				],
-				[
-					"private_index",
-					"uint32"
-				],
-				[
-					"message_index",
-					"uint32"
-				],
-				[
-					"context_index",
-					"uint32"
-				],
-				[
-					"signature_index",
-					"uint32"
-				],
-				[
-					"status_index",
-					"uint32"
-				],
-				[
-					"workspace_index",
-					"uint32"
-				],
-				[
-					"parameter_set",
-					"uint32"
-				],
-				[
-					"message_length",
-					"uint32"
-				],
-				[
-					"context_length",
-					"uint32"
-				],
-				[
-					"algorithm",
-					"uint32"
-				]
-			],
-			"physical_write": {
-				"writes": [
-					{
-						"binding": 4,
-						"domain": "rows",
-						"partition": "exclusive_per_workgroup",
-						"extent": "row_width",
-						"collision": "exclusive",
-						"tail": "bounds_checked"
-					},
-					{
-						"binding": 5,
-						"domain": "rows",
-						"partition": "exclusive_per_workgroup",
-						"extent": "row_width",
-						"collision": "exclusive",
-						"tail": "bounds_checked"
-					},
-					{
-						"binding": 6,
-						"domain": "rows",
-						"partition": "exclusive_per_workgroup",
-						"extent": "row_width",
-						"collision": "exclusive",
-						"tail": "bounds_checked"
-					}
-				],
-				"workspace": "exclusive_per_workgroup"
-			},
-			"secret_bindings": [
-				0,
-				1,
-				6
-			],
-			"parameter_layouts": [
-				{
-					"parameter_set": 44,
-					"seed_bytes": 32,
-					"private_bytes": 2560,
-					"signature_bytes": 2420
-				},
-				{
-					"parameter_set": 65,
-					"seed_bytes": 32,
-					"private_bytes": 4032,
-					"signature_bytes": 3309
-				},
-				{
-					"parameter_set": 87,
-					"seed_bytes": 32,
-					"private_bytes": 4896,
-					"signature_bytes": 4627
-				}
-			],
-			"workspace_bytes": 23552
-		},
-		{
 			"stable_id": 613,
 			"name": "ml_kem_shared_derive",
 			"kernel_id": "CryptographyMlKemSharedDeriveU8",
@@ -1572,6 +682,359 @@
 			},
 			"secret_bindings": [
 				0
+			]
+		},
+		{
+			"stable_id": 473,
+			"name": "ml_dsa_mu",
+			"kernel_id": "CryptographyMlDsaMuU8",
+			"source": "src/slang/crypto/pqc/mldsa/mldsa_mu_dispatch.slang",
+			"workgroup_size": [
+				128,
+				1,
+				1
+			],
+			"push_fields": [
+				[
+					"public_index",
+					"uint32"
+				],
+				[
+					"payload_index",
+					"uint32"
+				],
+				[
+					"context_index",
+					"uint32"
+				],
+				[
+					"mu_index",
+					"uint32"
+				],
+				[
+					"parameter_set",
+					"uint32"
+				],
+				[
+					"payload_length",
+					"uint32"
+				],
+				[
+					"context_length",
+					"uint32"
+				],
+				[
+					"head_length",
+					"uint32"
+				],
+				[
+					"head_w0",
+					"uint32"
+				],
+				[
+					"head_w1",
+					"uint32"
+				],
+				[
+					"head_w2",
+					"uint32"
+				],
+				[
+					"head_w3",
+					"uint32"
+				]
+			],
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 3,
+						"domain": "rows",
+						"partition": "exclusive_per_workgroup",
+						"extent": "row_width",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"secret_bindings": [],
+			"parameter_layouts": [
+				{
+					"parameter_set": 44,
+					"public_bytes": 1312
+				},
+				{
+					"parameter_set": 65,
+					"public_bytes": 1952
+				},
+				{
+					"parameter_set": 87,
+					"public_bytes": 2592
+				}
+			]
+		},
+		{
+			"stable_id": 474,
+			"name": "ml_dsa_mu_batch",
+			"kernel_id": "CryptographyMlDsaMuBatchU8",
+			"source": "src/slang/crypto/pqc/mldsa/mldsa_mu_batch_dispatch.slang",
+			"workgroup_size": [
+				128,
+				1,
+				1
+			],
+			"push_fields": [
+				[
+					"input_index",
+					"uint32"
+				],
+				[
+					"context_index",
+					"uint32"
+				],
+				[
+					"offsets_index",
+					"uint32"
+				],
+				[
+					"lengths_index",
+					"uint32"
+				],
+				[
+					"pks_index",
+					"uint32"
+				],
+				[
+					"mus_index",
+					"uint32"
+				],
+				[
+					"batch_size",
+					"uint32"
+				],
+				[
+					"context_offset",
+					"uint32"
+				],
+				[
+					"context_length",
+					"uint32"
+				],
+				[
+					"payload_stride",
+					"uint32"
+				],
+				[
+					"input_bytes",
+					"uint32"
+				],
+				[
+					"context_bytes",
+					"uint32"
+				],
+				[
+					"head_length",
+					"uint32"
+				],
+				[
+					"head_w0",
+					"uint32"
+				],
+				[
+					"head_w1",
+					"uint32"
+				],
+				[
+					"head_w2",
+					"uint32"
+				],
+				[
+					"head_w3",
+					"uint32"
+				],
+				[
+					"parameter_set",
+					"uint32"
+				]
+			],
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 5,
+						"domain": "rows",
+						"partition": "exclusive_per_workgroup",
+						"extent": "row_width",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"secret_bindings": [],
+			"parameter_layouts": [
+				{
+					"parameter_set": 44,
+					"public_bytes": 1312
+				},
+				{
+					"parameter_set": 65,
+					"public_bytes": 1952
+				},
+				{
+					"parameter_set": 87,
+					"public_bytes": 2592
+				}
+			]
+		},
+		{
+			"stable_id": 476,
+			"name": "ml_dsa_ph_batch",
+			"kernel_id": "CryptographyMlDsaPhBatchU8",
+			"source": "src/slang/crypto/pqc/mldsa/mldsa_ph_batch_dispatch.slang",
+			"workgroup_size": [
+				128,
+				1,
+				1
+			],
+			"push_fields": [
+				[
+					"input_index",
+					"uint32"
+				],
+				[
+					"offsets_index",
+					"uint32"
+				],
+				[
+					"lengths_index",
+					"uint32"
+				],
+				[
+					"digests_index",
+					"uint32"
+				],
+				[
+					"batch_size",
+					"uint32"
+				],
+				[
+					"input_bytes",
+					"uint32"
+				],
+				[
+					"algorithm",
+					"uint32"
+				]
+			],
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 3,
+						"domain": "rows",
+						"partition": "exclusive_per_workgroup",
+						"extent": "row_width",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"secret_bindings": [],
+			"parameter_layouts": [
+				{
+					"parameter_set": 44,
+					"digest_bytes": 64
+				},
+				{
+					"parameter_set": 65,
+					"digest_bytes": 64
+				},
+				{
+					"parameter_set": 87,
+					"digest_bytes": 64
+				}
+			]
+		},
+		{
+			"stable_id": 475,
+			"name": "ml_dsa_verify_mu",
+			"kernel_id": "CryptographyMlDsaVerifyMuU8",
+			"source": "src/slang/crypto/pqc/mldsa/mldsa_verify_mu_dispatch.slang",
+			"workgroup_size": [
+				128,
+				1,
+				1
+			],
+			"push_fields": [
+				[
+					"mus_index",
+					"uint32"
+				],
+				[
+					"sigs_index",
+					"uint32"
+				],
+				[
+					"pks_index",
+					"uint32"
+				],
+				[
+					"results_index",
+					"uint32"
+				],
+				[
+					"batch_size",
+					"uint32"
+				],
+				[
+					"parameter_set",
+					"uint32"
+				]
+			],
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 3,
+						"domain": "rows",
+						"partition": "exclusive_per_workgroup",
+						"extent": "row_width",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"secret_bindings": [],
+			"parameter_layouts": [
+				{
+					"parameter_set": 44,
+					"public_bytes": 1312,
+					"signature_bytes": 2420,
+					"mu_bytes": 64
+				},
+				{
+					"parameter_set": 65,
+					"public_bytes": 1952,
+					"signature_bytes": 3309,
+					"mu_bytes": 64
+				},
+				{
+					"parameter_set": 87,
+					"public_bytes": 2592,
+					"signature_bytes": 4627,
+					"mu_bytes": 64
+				}
+			],
+			"semantic_operations": [
+				"ml_dsa_44_verify_batch",
+				"ml_dsa_44_verify_prehashed_batch",
+				"ml_dsa_44_verify_hash_message_batch",
+				"ml_dsa_65_verify_batch",
+				"ml_dsa_65_verify_prehashed_batch",
+				"ml_dsa_65_verify_hash_message_batch",
+				"ml_dsa_87_verify_batch",
+				"ml_dsa_87_verify_prehashed_batch",
+				"ml_dsa_87_verify_hash_message_batch"
 			]
 		}
 	],
@@ -1696,12 +1159,18 @@
 				"ml_dsa_44_verify_batch",
 				"ml_dsa_87_verify_batch"
 			],
-			"values": {},
+			"values": {
+				"head_algorithm": "0u32"
+			},
 			"stages": [
 				{
-					"kernel": "CryptographyMlDsa65VerifyU8",
+					"kernel": "CryptographyMlDsaMuBatchU8",
 					"bindings": {
 						"input_index": [
+							"read",
+							"messages"
+						],
+						"context_index": [
 							"read",
 							"messages"
 						],
@@ -1713,40 +1182,36 @@
 							"read",
 							"msg_lengths"
 						],
-						"sigs_index": [
-							"read",
-							"signatures"
-						],
 						"pks_index": [
 							"read",
 							"public_keys"
 						],
-						"results_index": [
+						"mus_index": [
 							"write",
-							"results"
+							"mus"
 						]
 					},
 					"push_constants": {
-						"message_bytes": "message_bytes",
+						"batch_size": "batch_u32",
 						"context_offset": "context_offset",
 						"context_length": "context_length",
-						"batch_size": "batch_u32"
+						"payload_stride": "0u32",
+						"input_bytes": "message_bytes",
+						"context_bytes": "message_bytes",
+						"head_length": "mu_head_length",
+						"head_w0": "mu_head[0]",
+						"head_w1": "mu_head[1]",
+						"head_w2": "mu_head[2]",
+						"head_w3": "mu_head[3]",
+						"parameter_set": "parameter_u32"
 					}
 				},
 				{
-					"kernel": "CryptographyMlDsa44VerifyU8",
+					"kernel": "CryptographyMlDsaVerifyMuU8",
 					"bindings": {
-						"input_index": [
+						"mus_index": [
 							"read",
-							"messages"
-						],
-						"offsets_index": [
-							"read",
-							"msg_offsets"
-						],
-						"lengths_index": [
-							"read",
-							"msg_lengths"
+							"mus"
 						],
 						"sigs_index": [
 							"read",
@@ -1762,45 +1227,8 @@
 						]
 					},
 					"push_constants": {
-						"message_bytes": "message_bytes",
-						"context_offset": "context_offset",
-						"context_length": "context_length",
-						"batch_size": "batch_u32"
-					}
-				},
-				{
-					"kernel": "CryptographyMlDsa87VerifyU8",
-					"bindings": {
-						"input_index": [
-							"read",
-							"messages"
-						],
-						"offsets_index": [
-							"read",
-							"msg_offsets"
-						],
-						"lengths_index": [
-							"read",
-							"msg_lengths"
-						],
-						"sigs_index": [
-							"read",
-							"signatures"
-						],
-						"pks_index": [
-							"read",
-							"public_keys"
-						],
-						"results_index": [
-							"write",
-							"results"
-						]
-					},
-					"push_constants": {
-						"message_bytes": "message_bytes",
-						"context_offset": "context_offset",
-						"context_length": "context_length",
-						"batch_size": "batch_u32"
+						"batch_size": "batch_u32",
+						"parameter_set": "parameter_u32"
 					}
 				}
 			],
@@ -1809,7 +1237,7 @@
 				"context_offset": "u64::from(context_offset)",
 				"context_length": "u64::from(context_length)"
 			},
-			"template": "verify"
+			"template": "verify_split"
 		},
 		{
 			"name": "verify_prehashed_batch",
@@ -1862,12 +1290,18 @@
 				"ml_dsa_44_verify_prehashed_batch",
 				"ml_dsa_87_verify_prehashed_batch"
 			],
-			"values": {},
+			"values": {
+				"head_algorithm": "algorithm"
+			},
 			"stages": [
 				{
-					"kernel": "CryptographyMlDsa65VerifyPrehashedU8",
+					"kernel": "CryptographyMlDsaMuBatchU8",
 					"bindings": {
 						"input_index": [
+							"read",
+							"messages"
+						],
+						"context_index": [
 							"read",
 							"messages"
 						],
@@ -1879,41 +1313,36 @@
 							"read",
 							"msg_lengths"
 						],
-						"sigs_index": [
-							"read",
-							"signatures"
-						],
 						"pks_index": [
 							"read",
 							"public_keys"
 						],
-						"results_index": [
+						"mus_index": [
 							"write",
-							"results"
+							"mus"
 						]
 					},
 					"push_constants": {
-						"message_bytes": "message_bytes",
+						"batch_size": "batch_u32",
 						"context_offset": "context_offset",
 						"context_length": "context_length",
-						"algorithm": "algorithm",
-						"batch_size": "batch_u32"
+						"payload_stride": "0u32",
+						"input_bytes": "message_bytes",
+						"context_bytes": "message_bytes",
+						"head_length": "mu_head_length",
+						"head_w0": "mu_head[0]",
+						"head_w1": "mu_head[1]",
+						"head_w2": "mu_head[2]",
+						"head_w3": "mu_head[3]",
+						"parameter_set": "parameter_u32"
 					}
 				},
 				{
-					"kernel": "CryptographyMlDsa44VerifyPrehashedU8",
+					"kernel": "CryptographyMlDsaVerifyMuU8",
 					"bindings": {
-						"input_index": [
+						"mus_index": [
 							"read",
-							"messages"
-						],
-						"offsets_index": [
-							"read",
-							"msg_offsets"
-						],
-						"lengths_index": [
-							"read",
-							"msg_lengths"
+							"mus"
 						],
 						"sigs_index": [
 							"read",
@@ -1929,47 +1358,8 @@
 						]
 					},
 					"push_constants": {
-						"message_bytes": "message_bytes",
-						"context_offset": "context_offset",
-						"context_length": "context_length",
-						"algorithm": "algorithm",
-						"batch_size": "batch_u32"
-					}
-				},
-				{
-					"kernel": "CryptographyMlDsa87VerifyPrehashedU8",
-					"bindings": {
-						"input_index": [
-							"read",
-							"messages"
-						],
-						"offsets_index": [
-							"read",
-							"msg_offsets"
-						],
-						"lengths_index": [
-							"read",
-							"msg_lengths"
-						],
-						"sigs_index": [
-							"read",
-							"signatures"
-						],
-						"pks_index": [
-							"read",
-							"public_keys"
-						],
-						"results_index": [
-							"write",
-							"results"
-						]
-					},
-					"push_constants": {
-						"message_bytes": "message_bytes",
-						"context_offset": "context_offset",
-						"context_length": "context_length",
-						"algorithm": "algorithm",
-						"batch_size": "batch_u32"
+						"batch_size": "batch_u32",
+						"parameter_set": "parameter_u32"
 					}
 				}
 			],
@@ -1979,7 +1369,7 @@
 				"context_length": "u64::from(context_length)",
 				"algorithm": "u64::from(algorithm)"
 			},
-			"template": "verify"
+			"template": "verify_split"
 		},
 		{
 			"name": "verify_hash_message_batch",
@@ -2031,10 +1421,12 @@
 				"ml_dsa_44_verify_hash_message_batch",
 				"ml_dsa_87_verify_hash_message_batch"
 			],
-			"values": {},
+			"values": {
+				"head_algorithm": "algorithm"
+			},
 			"stages": [
 				{
-					"kernel": "CryptographyMlDsa65VerifyHashMessageU8",
+					"kernel": "CryptographyMlDsaPhBatchU8",
 					"bindings": {
 						"input_index": [
 							"read",
@@ -2048,31 +1440,25 @@
 							"read",
 							"msg_lengths"
 						],
-						"sigs_index": [
-							"read",
-							"signatures"
-						],
-						"pks_index": [
-							"read",
-							"public_keys"
-						],
-						"results_index": [
+						"digests_index": [
 							"write",
-							"results"
+							"digests"
 						]
 					},
 					"push_constants": {
-						"message_bytes": "message_bytes",
-						"context_offset": "context_offset",
-						"context_length": "context_length",
-						"algorithm": "algorithm",
-						"batch_size": "batch_u32"
+						"batch_size": "batch_u32",
+						"input_bytes": "message_bytes",
+						"algorithm": "algorithm"
 					}
 				},
 				{
-					"kernel": "CryptographyMlDsa44VerifyHashMessageU8",
+					"kernel": "CryptographyMlDsaMuBatchU8",
 					"bindings": {
 						"input_index": [
+							"read",
+							"digests"
+						],
+						"context_index": [
 							"read",
 							"messages"
 						],
@@ -2084,41 +1470,36 @@
 							"read",
 							"msg_lengths"
 						],
-						"sigs_index": [
-							"read",
-							"signatures"
-						],
 						"pks_index": [
 							"read",
 							"public_keys"
 						],
-						"results_index": [
+						"mus_index": [
 							"write",
-							"results"
+							"mus"
 						]
 					},
 					"push_constants": {
-						"message_bytes": "message_bytes",
+						"batch_size": "batch_u32",
 						"context_offset": "context_offset",
 						"context_length": "context_length",
-						"algorithm": "algorithm",
-						"batch_size": "batch_u32"
+						"payload_stride": "digest_u32",
+						"input_bytes": "digests_u32",
+						"context_bytes": "message_bytes",
+						"head_length": "mu_head_length",
+						"head_w0": "mu_head[0]",
+						"head_w1": "mu_head[1]",
+						"head_w2": "mu_head[2]",
+						"head_w3": "mu_head[3]",
+						"parameter_set": "parameter_u32"
 					}
 				},
 				{
-					"kernel": "CryptographyMlDsa87VerifyHashMessageU8",
+					"kernel": "CryptographyMlDsaVerifyMuU8",
 					"bindings": {
-						"input_index": [
+						"mus_index": [
 							"read",
-							"messages"
-						],
-						"offsets_index": [
-							"read",
-							"msg_offsets"
-						],
-						"lengths_index": [
-							"read",
-							"msg_lengths"
+							"mus"
 						],
 						"sigs_index": [
 							"read",
@@ -2134,11 +1515,8 @@
 						]
 					},
 					"push_constants": {
-						"message_bytes": "message_bytes",
-						"context_offset": "context_offset",
-						"context_length": "context_length",
-						"algorithm": "algorithm",
-						"batch_size": "batch_u32"
+						"batch_size": "batch_u32",
+						"parameter_set": "parameter_u32"
 					}
 				}
 			],
@@ -2148,7 +1526,7 @@
 				"context_length": "u64::from(context_length)",
 				"algorithm": "u64::from(algorithm)"
 			},
-			"template": "verify"
+			"template": "verify_split3"
 		}
 	],
 	"device_api": {
@@ -2210,17 +1588,17 @@
 			{
 				"name": "mldsa_sign",
 				"executor": "pqc_mldsa_sign",
-				"private_kernel": "ml_dsa_sign_message"
+				"private_kernel": "ml_dsa_sign"
 			},
 			{
 				"name": "mldsa_sign_hash_message",
 				"executor": "pqc_mldsa_sign",
-				"private_kernel": "ml_dsa_sign_hash_message"
+				"private_kernel": "ml_dsa_sign"
 			},
 			{
 				"name": "mldsa_sign_prehashed",
 				"executor": "pqc_mldsa_sign_prehashed",
-				"private_kernel": "ml_dsa_sign_prehashed"
+				"private_kernel": "ml_dsa_sign"
 			},
 			{
 				"name": "mlkem_encapsulate",

@@ -1,11 +1,14 @@
+use oa::Color;
 use oa::ml::{
 	BpeTokenizer, ItTraining, ItTrainingConfig, LossMetric, Module, ProgressBar, TrainingSummary,
 };
-use oa::sdk::ml::nlp;
+use oa::plot::{Figure, FigureConfig, LineStyle, Theme};
+use sdk::ml::nlp;
 
 #[derive(Default)]
 struct Options {
 	steps: usize,
+	plot: String,
 }
 
 pub struct Tutorial<'text> {
@@ -38,6 +41,11 @@ pub fn run<M: Module>(
 		"--steps",
 		|options: &mut Options| &mut options.steps,
 		"training steps (default 300)",
+	);
+	cli.add_option(
+		"--plot",
+		|options: &mut Options| &mut options.plot,
+		"render the loss curve to an image file",
 	);
 	if !cli.parse() {
 		return Ok(());
@@ -106,6 +114,7 @@ pub fn run<M: Module>(
 	training.add_callback(&mut summary_callback);
 
 	let mut initial_loss = 0.0_f32;
+	let mut loss_curve = Vec::new();
 	let mut last_input = Vec::new();
 	let mut last_target = Vec::new();
 	for _ in 0..steps {
@@ -138,8 +147,12 @@ pub fn run<M: Module>(
 				Ok(loss)
 			},
 		)?);
-		if training.snapshot().step_count() == 1 {
-			initial_loss = training.snapshot().last_loss().unwrap_or_default();
+		let snap = training.snapshot();
+		if snap.step_count() == 1 {
+			initial_loss = snap.last_loss().unwrap_or_default();
+		}
+		if let Some(loss) = snap.last_loss() {
+			loss_curve.push(loss);
 		}
 	}
 	let program_diagnostics = training
@@ -194,6 +207,18 @@ pub fn run<M: Module>(
 		);
 	}
 
+	let plot_path = cli.config().plot.as_str();
+	if !plot_path.is_empty() {
+		write_loss_curve(
+			&engine,
+			&loss_curve,
+			title,
+			tokenizer.vocab_size(),
+			plot_path,
+		)?;
+		println!("plot: {plot_path}");
+	}
+
 	assert!(initial_loss > 5.0);
 	assert!(final_training_loss < initial_loss);
 	assert!(evaluation_loss.is_finite());
@@ -204,7 +229,7 @@ pub fn run<M: Module>(
 		assert_eq!(generated, expected_generation);
 	}
 
-	let base = oa::Path::temp().join(checkpoint_stem);
+	let base = oa::Path::temp().join(format!("{checkpoint_stem}-{}", std::process::id()));
 	let checkpoint = base.with_extension("oam");
 	let vocabulary = base.with_extension("bpe");
 	oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
@@ -235,4 +260,59 @@ pub fn run<M: Module>(
 		println!("fusion census: {}", engine.fusion_stats());
 	}
 	Ok(())
+}
+
+/// Render the recorded loss curve through `oa::plot` — the same headless GPU
+/// composition `tu_viewer_video` uses for its poster asset.
+fn write_loss_curve(
+	engine: &oa::Engine,
+	loss_curve: &[f32],
+	title: &str,
+	vocab_size: usize,
+	path: &str,
+) -> oa::Result<()> {
+	let mut fig = Figure::new(FigureConfig {
+		title: format!("{title} training"),
+		width: 960,
+		height: 540,
+		theme: Theme::Dark,
+		..Default::default()
+	});
+	fig.title(&format!("{title} — dense next-token LM"));
+	let steps: Vec<f32> = (1..=loss_curve.len()).map(|s| s as f32).collect();
+	let ax = fig.ax(0, 0);
+	ax.title("training loss");
+	ax.x_label("optimizer step");
+	ax.y_label("cross entropy");
+	ax.grid(true);
+	ax.legend(true);
+	let baseline = (vocab_size as f32).ln();
+	let peak_loss = loss_curve.iter().copied().fold(baseline, f32::max);
+	ax.limits(0.0, loss_curve.len() as f32 + 1.0, 0.0, peak_loss + 0.3);
+	ax.plot_xy(
+		&steps,
+		loss_curve,
+		LineStyle {
+			color: Color::new(0.24, 0.65, 1.0, 1.0),
+			label: "train".to_owned(),
+			width: 1.6,
+			antialias_samples: 4,
+			..Default::default()
+		},
+	);
+	ax.plot_xy(
+		&[
+			*steps.first().unwrap_or(&0.0),
+			*steps.last().unwrap_or(&1.0),
+		],
+		&[baseline, baseline],
+		LineStyle {
+			color: Color::new(0.565, 0.565, 0.565, 1.0),
+			label: format!("ln({vocab_size}) baseline"),
+			width: 1.35,
+			antialias_samples: 4,
+			..Default::default()
+		},
+	);
+	fig.save_to(engine, path)
 }

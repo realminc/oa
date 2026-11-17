@@ -32,6 +32,13 @@ public void store_u8(RWByteAddressBuffer buffer, uint element_index, uint value)
 	} while (assumed != old_value);
 }
 
+// The same FP32 addressing contract for read-only raster storage. Keep the
+// existing compute RW overload unchanged; callers preserve resource access ABI.
+[ForceInline]
+public float load_f32(ByteAddressBuffer buffer, uint element_index) {
+	return asfloat(buffer.Load(element_index * 4u));
+}
+
 [ForceInline]
 public float load_f32(RWByteAddressBuffer buffer, uint element_index) {
 	return asfloat(buffer.Load(element_index * 4u));
@@ -64,6 +71,11 @@ public void store_u32(RWByteAddressBuffer buffer, uint element_index, uint value
 
 // oaLoad — donor-compatible FP32 element load alias.
 // Used by UI shaders (drawPlotLine) that import storage and call oaLoad.
+[ForceInline]
+public float oaLoad(ByteAddressBuffer buffer, uint element_index) {
+	return load_f32(buffer, element_index);
+}
+
 [ForceInline]
 public float oaLoad(RWByteAddressBuffer buffer, uint element_index) {
 	return load_f32(buffer, element_index);

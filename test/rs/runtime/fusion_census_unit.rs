@@ -146,3 +146,79 @@ fn display_is_a_stable_ordered_key_value_record() {
 	unique.dedup();
 	assert_eq!(unique.len(), keys.len());
 }
+
+#[test]
+fn pair_proposals_have_one_rule_and_one_outcome_without_changing_public_totals() {
+	for (rule_index, rule) in PairRule::ALL.into_iter().enumerate() {
+		assert_eq!(rule as usize, rule_index);
+		for (outcome_index, outcome) in pair_outcomes().enumerate() {
+			assert_eq!(outcome.index(), outcome_index);
+			let census = FusionCensus::new();
+			census.pair(rule, outcome);
+			for (index, stats) in census.pair_diagnostics().into_iter().enumerate() {
+				assert_eq!(stats.rule, PairRule::ALL[index]);
+				for (slot, &count) in stats.counters.iter().enumerate() {
+					assert_eq!(
+						count,
+						u64::from(index == rule_index && slot == outcome_index)
+					);
+				}
+			}
+			assert_eq!(census.snapshot(), FusionStats::default());
+		}
+	}
+	let names = PairRule::ALL.map(PairRule::name);
+	assert_eq!(
+		names
+			.into_iter()
+			.collect::<std::collections::BTreeSet<_>>()
+			.len(),
+		PAIR_RULE_COUNT
+	);
+}
+
+#[test]
+fn pair_report_preserves_rule_and_reason_names_and_proposal_accounting() {
+	let census = FusionCensus::new();
+	census.pair(PairRule::LinearResidual, PairOutcome::Applied);
+	census.pair(PairRule::LinearResidual, PairOutcome::Applied);
+	census.pair(PairRule::LinearResidual, PairOutcome::LegacyGuard);
+	census.pair(
+		PairRule::LinearResidual,
+		PairOutcome::Declined(RegionDecline::NonSsaWrite),
+	);
+	assert_eq!(
+		census.pair_diagnostics()[0].to_string(),
+		concat!(
+			"rule=linear_residual proposals=4 applied=2 legacy_guard=1 ",
+			"invalid_range=0 consumed_slot=0 effect_boundary=0 non_ssa_write=1 ",
+			"missing_materialization=0 unavailable_read=0 unexpected_write=0 ",
+			"aliased_write=0 provenance=0",
+		)
+	);
+	let empty = census.pair_diagnostics()[1].to_string();
+	assert!(empty.starts_with("rule=linear_act proposals=0 applied=0 legacy_guard=0 "));
+}
+
+#[test]
+fn shared_pair_census_keeps_concurrent_decisions_after_threads_complete() {
+	let census = FusionCensus::new();
+	std::thread::scope(|scope| {
+		for _ in 0..4 {
+			let census = &census;
+			scope.spawn(move || {
+				for _ in 0..64 {
+					for rule in PairRule::ALL {
+						for outcome in pair_outcomes() {
+							census.pair(rule, outcome);
+						}
+					}
+				}
+			});
+		}
+	});
+	for stats in census.pair_diagnostics() {
+		assert!(stats.counters.into_iter().all(|count| count == 256));
+	}
+	assert_eq!(census.snapshot(), FusionStats::default());
+}
