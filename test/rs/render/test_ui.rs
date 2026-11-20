@@ -1,7 +1,7 @@
 use oa::{
 	Color,
 	input::{InputEvent, InputEventKind},
-	plot::{Figure, FigureConfig},
+	plot::{Figure, FigureConfig, figure::CellRect},
 	ui::{PixelRect, Ui},
 };
 
@@ -1651,8 +1651,18 @@ fn plot_theme_resolves_shared_ui_style_tokens() {
 
 	// Both themes resolve through `UiStyle` presets — plot colors cannot fork.
 	let dark = Theme::Dark.ui_style();
+	assert_eq!(dark.plot_background.to_u32(), 0x0A0A0AFF);
 	assert_eq!(dark.plot_background, UiStyle::default().plot_background);
 	assert_eq!(dark.data_palette, UiStyle::default().data_palette);
+	for color in [
+		dark.plot_background,
+		dark.plot_surface,
+		dark.plot_grid,
+		dark.plot_border,
+	] {
+		assert_eq!(color.r, color.g);
+		assert_eq!(color.g, color.b);
+	}
 	let light = Theme::Light.ui_style();
 	assert_eq!(
 		light.plot_background,
@@ -1661,6 +1671,84 @@ fn plot_theme_resolves_shared_ui_style_tokens() {
 	assert_ne!(light.plot_background, dark.plot_background);
 	assert_ne!(light.text, dark.text);
 }
+
+/// Recover the data viewport from its two rendered spines. Tests sample
+/// artists in data-relative coordinates, independently of the label layout.
+fn rendered_plot_rect(cell: CellRect, is_spine: impl Fn(i32, i32) -> bool) -> CellRect {
+	let columns = cell.x..cell.x + cell.w;
+	let rows = cell.y..cell.y + cell.h;
+	let bottom = rows
+		.clone()
+		.max_by_key(|&y| columns.clone().filter(|&x| is_spine(x, y)).count())
+		.unwrap();
+	let left = columns
+		.clone()
+		.max_by_key(|&x| rows.clone().filter(|&y| is_spine(x, y)).count())
+		.unwrap();
+	let top = (cell.y..bottom)
+		.find(|&y| is_spine(left, y) && is_spine(left, y + 1))
+		.unwrap();
+	let right = columns.rev().find(|&x| is_spine(x, bottom)).unwrap();
+	CellRect {
+		x: left,
+		y: top,
+		w: right - left + 1,
+		h: bottom - top + 1,
+	}
+}
+
+fn dark_plot_rect(figure: &Figure, w: u32, h: u32, values: &[f32]) -> CellRect {
+	let spine = oa::plot::Theme::Dark.ui_style().plot_border.r;
+	rendered_plot_rect(figure.cell_rect(0, 0, w, h), |x, y| {
+		(values[y as usize * w as usize + x as usize] - spine).abs() < 0.5 / 255.0
+	})
+}
+
+test_vk!(plot_dark_axes_frame_and_labels_stay_outside_data, engine, {
+	let (w, h) = (400, 260);
+	let mut figure = Figure::new(FigureConfig {
+		width: w,
+		height: h,
+		title: String::new(),
+		..Default::default()
+	});
+	let axes = figure.ax(0, 0);
+	axes.limits(-10.0, 10.0, -10.0, 10.0);
+	axes.x_label("optimizer step");
+	axes.y_label("cross entropy");
+	let values = figure.render(&engine)?.as_matrix().read_f32()?;
+	let area = dark_plot_rect(&figure, w, h, &values);
+	let cell = figure.cell_rect(0, 0, w, h);
+	let at = |x, y| values[(y * w as i32 + x) as usize];
+	let spine = oa::plot::Theme::Dark.ui_style().plot_border.r;
+	let bottom = area.y + area.h - 1;
+	let x_center = area.x + area.w / 2;
+	let y_center = area.y + area.h / 2;
+	assert_eq!(at(area.x, bottom), spine);
+	assert!(
+		at(x_center, y_center) < spine,
+		"zero is a normal interior grid tick"
+	);
+	assert!(
+		at(area.x + 6, area.y + 2) > at(area.x + 6, bottom - 2),
+		"dark surface has a subtle vertical gradient"
+	);
+	assert!(
+		(bottom + 19..cell.y + cell.h)
+			.any(|y| { (x_center - 32..x_center + 32).any(|x| at(x, y) > 0.35) }),
+		"x axis title is below the ticks"
+	);
+	assert!(
+		(cell.x..cell.x + 19).any(|x| {
+			(y_center - 32..y_center + 32)
+				.filter(|&y| at(x, y) > 0.35)
+				.count()
+				> 10
+		}),
+		"y axis title is rotated in its left gutter"
+	);
+	Ok(())
+});
 
 #[test]
 fn ui_style_viewer_dark_is_derived_from_realm_dark_tokens() {
@@ -1732,6 +1820,35 @@ test_vk!(plot_figure_light_theme_draws_light_canvas, engine, {
 	assert!(values[plane] > 0.8 && values[plane * 2] > 0.8);
 	Ok(())
 });
+
+test_vk!(
+	plot_figure_image_keeps_aspect_with_title_and_caption,
+	engine,
+	{
+		let texture = oa::render::texture_from_rgba8(&engine, &[255, 0, 0, 255].repeat(16), 4, 4)?;
+		let mut figure = Figure::new(FigureConfig {
+			width: 320,
+			height: 180,
+			title: String::new(),
+			..Default::default()
+		});
+		let axes = figure.ax(0, 0);
+		axes.title("prediction");
+		axes.caption("ground truth");
+		axes.imshow(texture);
+		let values = figure.render(&engine)?.as_matrix().read_f32()?;
+		let plane = 320 * 180;
+		let red = |x: usize, y: usize| {
+			let i = y * 320 + x;
+			values[i] > 0.9 && values[plane + i] < 0.1
+		};
+		let tile_w = (0..320).filter(|&x| red(x, 90)).count();
+		let tile_h = (0..180).filter(|&y| red(160, y)).count();
+		assert!(tile_w > 50);
+		assert_eq!(tile_w, tile_h, "the square image must stay square");
+		Ok(())
+	}
+);
 
 test_vk!(
 	plot_figure_matrix_heatmap_renders_shader_colormap,
@@ -2041,7 +2158,7 @@ test_vk!(figure_view_box_zoom_legend_toggle_and_state, engine, {
 
 	let mut figure = Figure::new(FigureConfig {
 		width: 160,
-		height: 120,
+		height: 160,
 		padding: 8,
 		..Default::default()
 	});
@@ -2054,15 +2171,23 @@ test_vk!(figure_view_box_zoom_legend_toggle_and_state, engine, {
 	);
 	figure.ax(0, 0).limits(0.0, 10.0, 0.0, 10.0);
 	let mut view = oa::plot::FigureView::new(figure);
-	let mut ui = Ui::init(&engine, 160, 120)?;
+	let mut ui = Ui::init(&engine, 160, 160)?;
 	view.open(&engine)?;
 
 	ui.begin_frame(0.0);
-	view.render(&mut ui, 160, 120)?;
+	view.render(&mut ui, 160, 160)?;
 	ui.end_frame();
 	let before = ui.render_rgba8()?;
 
-	let cell = view.figure().cell_rect(0, 0, 160, 120);
+	let spine = oa::plot::Theme::Dark
+		.ui_style()
+		.plot_border
+		.to_u32()
+		.to_be_bytes();
+	let cell = rendered_plot_rect(view.figure().cell_rect(0, 0, 160, 160), |x, y| {
+		let pixel = ((y * 160 + x) * 4) as usize;
+		before[pixel..pixel + 4] == spine
+	});
 	// Legend row 0: band x ∈ [right-86, right), y ∈ [cell.y+4, cell.y+16).
 	let lx = (cell.x + cell.w - 60) as f32;
 	let ly = (cell.y + 10) as f32;
@@ -2088,7 +2213,7 @@ test_vk!(figure_view_box_zoom_legend_toggle_and_state, engine, {
 		"legend click must toggle the first artist"
 	);
 	ui.begin_frame(0.0);
-	view.render(&mut ui, 160, 120)?;
+	view.render(&mut ui, 160, 160)?;
 	ui.end_frame();
 	let toggled = ui.render_rgba8()?;
 	assert_ne!(before, toggled, "legend toggle must hide the series");
@@ -2121,7 +2246,7 @@ test_vk!(figure_view_box_zoom_legend_toggle_and_state, engine, {
 	})?;
 	view.update(1000.0)?;
 	ui.begin_frame(0.0);
-	view.render(&mut ui, 160, 120)?;
+	view.render(&mut ui, 160, 160)?;
 	ui.end_frame();
 	let zoomed = view
 		.figure_mut()
@@ -2149,7 +2274,7 @@ test_vk!(figure_view_box_zoom_legend_toggle_and_state, engine, {
 	})?;
 	view.update(1000.0)?;
 	ui.begin_frame(0.0);
-	view.render(&mut ui, 160, 120)?;
+	view.render(&mut ui, 160, 160)?;
 	ui.end_frame();
 	assert_eq!(
 		view.figure_mut().ax(0, 0).explicit_limits(),
@@ -2159,7 +2284,7 @@ test_vk!(figure_view_box_zoom_legend_toggle_and_state, engine, {
 	// Restoring the snapshot returns to the box-zoomed view.
 	view.restore(&snapshot);
 	ui.begin_frame(0.0);
-	view.render(&mut ui, 160, 120)?;
+	view.render(&mut ui, 160, 160)?;
 	ui.end_frame();
 	let restored = view
 		.figure_mut()
@@ -2360,7 +2485,7 @@ test_vk!(ui_plot_symlog_renders_both_signs, engine, {
 	// `Image::as_matrix` is planar `[4, H, W]` — index the R plane directly.
 	let image = figure.render(&engine)?;
 	let values = image.as_matrix().read_f32()?;
-	let cell = figure.cell_rect(0, 0, 160, 120);
+	let cell = dark_plot_rect(&figure, 160, 120, &values);
 	let row_has_ink =
 		|row: i32| (cell.x..cell.x + cell.w).any(|x| values[(row * 160 + x) as usize] > 0.5);
 	assert!(
@@ -2394,13 +2519,18 @@ test_vk!(ui_plot_series_highlight_dims_others, engine, {
 		axes.limits(0.0, 10.0, 0.0, 10.0);
 		axes.legend(false);
 	}
-	let cell = figure.cell_rect(0, 0, 160, 120);
+	let base = figure.render(&engine)?.as_matrix().read_f32()?;
+	let cell = dark_plot_rect(&figure, 160, 120, &base);
 	// y=2 maps to 20% above the cell bottom; y=8 to 20% below the top.
 	let dim_row = cell.y + cell.h - 1 - (cell.h as f32 * 0.2) as i32;
 	let bright_row = cell.y + (cell.h as f32 * 0.2) as i32;
 	let col = (cell.x + cell.w / 2) as usize;
-	let sample = |values: &[f32], row: i32| values[(row * 160) as usize + col];
-	let base = figure.render(&engine)?.as_matrix().read_f32()?;
+	let sample = |values: &[f32], row: i32| {
+		(row - 1..=row + 1)
+			.map(|y| values[y as usize * 160 + col])
+			.fold(0.0, f32::max)
+	};
+	assert!(sample(&base, dim_row) > 0.5 && sample(&base, bright_row) > 0.5);
 	figure.ax(0, 0).set_series_highlight(Some(0));
 	let dimmed = figure.render(&engine)?.as_matrix().read_f32()?;
 	assert!(
@@ -2437,7 +2567,7 @@ test_vk!(ui_plot_stream_scrolls_ring_window, engine, {
 	);
 	let image = figure.render(&engine)?;
 	let values = image.as_matrix().read_f32()?;
-	let cell = figure.cell_rect(0, 0, 160, 120);
+	let cell = dark_plot_rect(&figure, 160, 120, &values);
 	// A rising ramp drawn across the whole window: ink near the top-right
 	// and bottom-left of the cell.
 	// `Image::as_matrix` is planar `[4, H, W]` — index the R plane directly.
@@ -2483,7 +2613,7 @@ test_vk!(ui_plot_band_fills_between_curves, engine, {
 	let image = figure.render(&engine)?;
 	let values = image.as_matrix().read_f32()?;
 	let plane = 160 * 120;
-	let cell = figure.cell_rect(0, 0, 160, 120);
+	let cell = dark_plot_rect(&figure, 160, 120, &values);
 	let mid_x = (cell.x + cell.w / 2) as usize;
 	// Planar [4, H, W]: G plane offset is one plane in.
 	let g = |y: i32| values[plane + (y * 160) as usize + mid_x];
@@ -2538,7 +2668,7 @@ test_vk!(ui_plot_grouped_and_stacked_bars, engine, {
 	let image = grouped.render(&engine)?;
 	let values = image.as_matrix().read_f32()?;
 	let plane = 160 * 120;
-	let cell = grouped.cell_rect(0, 0, 160, 120);
+	let cell = dark_plot_rect(&grouped, 160, 120, &values);
 	let mid_y = (cell.y + cell.h / 2) as usize;
 	let left_center = (cell.x + cell.w / 4) as usize;
 	let right_center = (cell.x + cell.w * 3 / 4) as usize;
@@ -2580,7 +2710,7 @@ test_vk!(ui_plot_grouped_and_stacked_bars, engine, {
 	}
 	let image = stacked.render(&engine)?;
 	let values = image.as_matrix().read_f32()?;
-	let cell = stacked.cell_rect(0, 0, 160, 120);
+	let cell = dark_plot_rect(&stacked, 160, 120, &values);
 	let bar_x = (cell.x + cell.w / 2) as usize;
 	// y=6 region (upper part of the stack) is green; y=2 (lower) is red.
 	let upper_y = (cell.y + cell.h / 4) as usize;
@@ -2612,42 +2742,26 @@ test_vk!(ui_plot_explicit_ticks_place_grid, engine, {
 		axes.legend(false);
 		axes.xticks(&[2.0, 5.0, 8.0]);
 	}
-	let image = figure.render(&engine)?;
-	let values = image.as_matrix().read_f32()?;
-	let plane = 160 * 120;
-	let cell = figure.cell_rect(0, 0, 160, 120);
-	// Longest run of grid-colored pixels — a vertical grid line spans the
-	// whole column while horizontal y-grid crossings are only 1-2 px tall.
-	let grid_column = |fraction: f32| -> usize {
-		let x = cell.x + (fraction * cell.w as f32) as i32;
-		let (mut run, mut best) = (0usize, 0usize);
-		for dy in 2..cell.h.saturating_sub(20) {
-			let y = (cell.y + dy) as usize;
-			let r = values[y * 160 + x as usize];
-			let g = values[plane + y * 160 + x as usize];
-			let b = values[2 * plane + y * 160 + x as usize];
-			if (r - g).abs() < 0.08 && (g - b).abs() < 0.08 && r > 0.18 && r < 0.45 {
-				run += 1;
-				best = best.max(run);
-			} else {
-				run = 0;
-			}
-		}
-		best
+	let grid = figure.render(&engine)?.as_matrix().read_f32()?;
+	figure.ax(0, 0).grid(false);
+	let plain = figure.render(&engine)?.as_matrix().read_f32()?;
+	let plot = dark_plot_rect(&figure, 160, 120, &plain);
+	let grid_column = |fraction: f32| {
+		let x = plot.x + (fraction * (plot.w - 1) as f32).round() as i32;
+		(plot.y + 2..plot.y + plot.h - 2)
+			.filter(|&y| {
+				let pixel = (y * 160 + x) as usize;
+				grid[pixel] - plain[pixel] > 0.02
+			})
+			.count()
 	};
-	assert!(
-		grid_column(0.2) > 20,
-		"explicit tick at 0.2 must draw a grid"
-	);
-	assert!(
-		grid_column(0.5) > 20,
-		"explicit tick at 0.5 must draw a grid"
-	);
-	assert!(
-		grid_column(0.8) > 20,
-		"explicit tick at 0.8 must draw a grid"
-	);
-	assert!(grid_column(0.35) < 5, "non-tick column must stay clean");
+	for fraction in [0.2, 0.5, 0.8] {
+		assert!(
+			grid_column(fraction) > 20,
+			"tick {fraction} must draw a grid line"
+		);
+	}
+	assert!(grid_column(0.35) < 10, "non-tick column must stay clear");
 	Ok(())
 });
 
@@ -2676,7 +2790,7 @@ test_vk!(ui_plot_boxplot_draws_quartiles, engine, {
 	}
 	let image = figure.render(&engine)?;
 	let values = image.as_matrix().read_f32()?;
-	let cell = figure.cell_rect(0, 0, 160, 120);
+	let cell = dark_plot_rect(&figure, 160, 120, &values);
 	let cx = (cell.x + cell.w / 2) as usize;
 	let at = |fraction_from_top: f32, x: usize| -> f32 {
 		let y = (cell.y + (fraction_from_top * cell.h as f32) as i32) as usize;
@@ -3222,7 +3336,7 @@ test_vk!(ui_workspace_renders_split_tabs_and_routes_events, engine, {
 test_vk!(ui_workspace_hosts_figure_view_in_pane, engine, {
 	use oa::plot::FigureView;
 	use oa::ui::UiDirection;
-	use oa::viewer::{Workspace, WorkspaceItem, WorkspaceNode};
+	use oa::viewer::{ViewerLiveSource, Workspace, WorkspaceItem, WorkspaceNode};
 
 	struct Solid {
 		id: &'static str,
@@ -3270,9 +3384,9 @@ test_vk!(ui_workspace_hosts_figure_view_in_pane, engine, {
 	workspace.render(&mut ui, PixelRect::new(0, 0, 400, 300))?;
 	ui.end_frame();
 
-	// Right pane center shows the figure's blue background; left stays red.
+	// The right pane's left gutter shows the figure's blue background.
 	let px = ui.render_rgba8()?;
-	let right = &px[(150 * 400 + 300) * 4..(150 * 400 + 300) * 4 + 4];
+	let right = &px[(150 * 400 + 215) * 4..(150 * 400 + 215) * 4 + 4];
 	assert!(
 		right[2] > 150 && right[0] < 80,
 		"right pane should show the figure's blue background: {right:?}"
@@ -3285,13 +3399,7 @@ test_vk!(ui_workspace_hosts_figure_view_in_pane, engine, {
 
 	// A scroll over the right pane reaches the FigureView and zooms —
 	// the re-rendered frame differs inside the pane.
-	let before = px.clone();
-	workspace.route_event(&InputEvent {
-		kind: InputEventKind::MouseMove,
-		mouse_x: 300.0,
-		mouse_y: 150.0,
-		..InputEvent::default()
-	})?;
+	let before = px;
 	workspace.route_event(&InputEvent {
 		kind: InputEventKind::MouseScroll,
 		mouse_x: 300.0,
@@ -3299,6 +3407,10 @@ test_vk!(ui_workspace_hosts_figure_view_in_pane, engine, {
 		scroll_y: 1.0,
 		..InputEvent::default()
 	})?;
+	ui.begin_frame(0.0);
+	workspace.render(&mut ui, PixelRect::new(0, 0, 400, 300))?;
+	ui.end_frame();
+	workspace.update(1000.0)?;
 	ui.begin_frame(0.0);
 	workspace.render(&mut ui, PixelRect::new(0, 0, 400, 300))?;
 	ui.end_frame();

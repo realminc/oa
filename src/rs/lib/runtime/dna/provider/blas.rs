@@ -61,6 +61,10 @@ const CAP_COOP_MAT1_WORKGROUP_BF16: u64 = 1 << 14;
 /// Small-M workgroup-reduction F32 family. Always available on an admitted
 /// compute device.
 const CAP_SMALLM_F32: u64 = 1 << 15;
+
+/// Enabled `shaderFloat16` + `storageBuffer16BitAccess`: dense binary16
+/// storage loads/stores in SSBO are legal on this device.
+pub(in crate::runtime) const CAP_F16_STORAGE: u64 = 1 << 16;
 // Bits 5–10, 14 (donor numbering) are retired; 16..63 are reserved.
 
 const fn caps_satisfy(available: u64, required: u64) -> bool {
@@ -80,6 +84,7 @@ const fn caps_satisfy(available: u64, required: u64) -> bool {
 pub(in crate::runtime) enum StoragePrecision {
 	F32 = 0,
 	Bf16 = 2,
+	F16 = 3,
 }
 
 /// Coarse kernel family used by routing policy. Explicit values are the
@@ -101,6 +106,7 @@ pub(in crate::runtime) enum GemmKernel {
 	SmallMF32 = 14,
 	StridedTiledF32 = 15,
 	SplitKF32 = 16,
+	F16sF32 = 17,
 }
 
 /// Dispatch path shape.
@@ -119,6 +125,11 @@ pub(in crate::runtime) enum GemmPrecision {
 	Auto = 0,
 	F32 = 1,
 	Bf16 = 2,
+	/// FP16-storage operands with FP32 accumulation — the CC-24 FP16 math mode.
+	F16 = 3,
+	/// Q8 integer dot-product operands — policy vocabulary only; dedicated
+	/// kernels stay Planned until a device qualifies them.
+	Q8 = 4,
 }
 
 /// Logical post-GEMM contract. Explicit in routing so a fused epilogue never
@@ -689,6 +700,8 @@ fn gemm_precision_from_u8(value: u8) -> Option<GemmPrecision> {
 		0 => Some(GemmPrecision::Auto),
 		1 => Some(GemmPrecision::F32),
 		2 => Some(GemmPrecision::Bf16),
+		3 => Some(GemmPrecision::F16),
+		4 => Some(GemmPrecision::Q8),
 		_ => None,
 	}
 }
@@ -763,7 +776,7 @@ impl MatmulDeviceContract {
 /// variant name so generated and handwritten rows share the identity space.
 pub(in crate::runtime) const INVALID_MATMUL_VARIANT_ID: u64 = 0;
 
-const fn matmul_variant_id_from_name(name: &str) -> u64 {
+pub(in crate::runtime) const fn matmul_variant_id_from_name(name: &str) -> u64 {
 	let mut hash = 0xcbf2_9ce4_8422_2325_u64;
 	let bytes = name.as_bytes();
 	let mut index = 0;
@@ -1025,6 +1038,111 @@ const VARIANTS: &[MatmulVariant] = &[
 		reduction_kernel_id: None,
 		reduction_workgroup_invocations: 0,
 	},
+	MatmulVariant {
+		id: matmul_variant_id_from_name("GemmStridedTiled"),
+		name: "GemmStridedTiled",
+		kernel_id: KernelId::MatrixMatMulNtStridedTiledF32,
+		kernel: GemmKernel::StridedTiledF32,
+		path: GemmPath::Standard,
+		epilogue: GemmEpilogue::None,
+		a_precision: StoragePrecision::F32,
+		b_precision: StoragePrecision::F32,
+		output_precision: StoragePrecision::F32,
+		accumulator_precision: StoragePrecision::F32,
+		tile_k: 16,
+		requires_aligned: false,
+		requires_transposed_b: true,
+		supports_bias: false,
+		supports_activation: false,
+		dual_output: false,
+		required_caps_mask: CAP_TILED_F32,
+		supports_arbitrary_layout: true,
+		supports_batch: true,
+		max_m: 0,
+		split_k: 1,
+		reduction_kernel_id: None,
+		reduction_workgroup_invocations: 0,
+	},
+	MatmulVariant {
+		id: matmul_variant_id_from_name("GemmStridedScalar"),
+		name: "GemmStridedScalar",
+		kernel_id: KernelId::MatrixMatMulNtStridedF32,
+		kernel: GemmKernel::StridedF32,
+		path: GemmPath::Standard,
+		epilogue: GemmEpilogue::None,
+		a_precision: StoragePrecision::F32,
+		b_precision: StoragePrecision::F32,
+		output_precision: StoragePrecision::F32,
+		accumulator_precision: StoragePrecision::F32,
+		tile_k: 1,
+		requires_aligned: false,
+		requires_transposed_b: true,
+		supports_bias: false,
+		supports_activation: false,
+		dual_output: false,
+		required_caps_mask: CAP_NAIVE_F32,
+		supports_arbitrary_layout: true,
+		supports_batch: true,
+		max_m: 0,
+		split_k: 1,
+		reduction_kernel_id: None,
+		reduction_workgroup_invocations: 0,
+	},
+	MatmulVariant {
+		id: matmul_variant_id_from_name("GemmSplitK"),
+		name: "GemmSplitK",
+		kernel_id: KernelId::MatrixMatMulNtSplitKF32,
+		kernel: GemmKernel::SplitKF32,
+		path: GemmPath::Standard,
+		epilogue: GemmEpilogue::None,
+		a_precision: StoragePrecision::F32,
+		b_precision: StoragePrecision::F32,
+		output_precision: StoragePrecision::F32,
+		accumulator_precision: StoragePrecision::F32,
+		tile_k: 1,
+		requires_aligned: false,
+		requires_transposed_b: true,
+		supports_bias: false,
+		supports_activation: false,
+		dual_output: false,
+		required_caps_mask: CAP_NAIVE_F32,
+		supports_arbitrary_layout: false,
+		supports_batch: false,
+		max_m: 0,
+		split_k: 4,
+		reduction_kernel_id: Some(KernelId::MatrixMatMulNtSplitKReduceF32),
+		reduction_workgroup_invocations: 256,
+	},
+	// FP16-storage tiled candidate: the caller's F32 operand storage is
+	// narrowed into FP16 workspace storage by the owning dispatch plan, so the
+	// problem's logical precisions stay F32 while this row records the
+	// physical kernel contract. Legal only under the F16 math mode on a
+	// device with enabled storageBuffer16BitAccess + shaderFloat16.
+	MatmulVariant {
+		id: matmul_variant_id_from_name("GemmF16s"),
+		name: "GemmF16s",
+		kernel_id: KernelId::MatrixMatMulNtF16sF32,
+		kernel: GemmKernel::F16sF32,
+		path: GemmPath::Standard,
+		epilogue: GemmEpilogue::None,
+		a_precision: StoragePrecision::F16,
+		b_precision: StoragePrecision::F16,
+		output_precision: StoragePrecision::F32,
+		accumulator_precision: StoragePrecision::F32,
+		tile_k: 16,
+		requires_aligned: false,
+		requires_transposed_b: true,
+		supports_bias: false,
+		supports_activation: false,
+		dual_output: false,
+		required_caps_mask: CAP_F16_STORAGE,
+		supports_arbitrary_layout: false,
+		supports_batch: false,
+		max_m: 0,
+		split_k: 1,
+		reduction_kernel_id: None,
+		reduction_workgroup_invocations: 0,
+	},
 ];
 
 fn all_variants() -> &'static [MatmulVariant] {
@@ -1094,6 +1212,16 @@ fn registry_build_id() -> u64 {
 fn compute_caps_mask(device: &Device) -> u64 {
 	let mut mask = CAP_TILED_F32 | CAP_NAIVE_F32 | CAP_SMALLM_F32;
 	let physical = device.physical();
+	let enabled = device.configuration().features();
+	if physical.features.shader_float16
+		&& enabled.shader_float16
+		&& physical.features.storage_buffer_16_bit_access
+		&& enabled.storage_buffer_16_bit_access
+		&& physical.features.uniform_and_storage_buffer_16_bit_access
+		&& enabled.uniform_and_storage_buffer_16_bit_access
+	{
+		mask |= CAP_F16_STORAGE;
+	}
 	let cooperative = &physical.cooperative_matrix;
 	let cooperative_enabled = physical.features.cooperative_matrix
 		&& device.configuration().features().cooperative_matrix
@@ -1283,8 +1411,22 @@ pub(in crate::runtime) fn lower_mat_mul_nt_plan(
 		return Err(Error::invalid_argument("cannot lower an empty matmul plan"));
 	}
 	// Epilogue launches bind kernel slots [A, B, bias, C] — problem buffers
-	// 0, 1, 4, 2 — matching the donor's `EpilogueBias*` binding order.
-	let (buffer_order, buffer_accesses, buffer_count) = if problem.epilogue == GemmEpilogue::None {
+	// 0, 1, 4, 2 — matching the donor's `EpilogueBias*` binding order. The
+	// split-K partial instead binds [A, B, workspace] — slots 0, 1, 3 —
+	// and the output arrives only in the reduction dispatch.
+	let (buffer_order, buffer_accesses, buffer_count) = if plan.kernel == GemmKernel::SplitKF32 {
+		(
+			[0, 1, 3, 2, 4],
+			[
+				BufferAccess::Read,
+				BufferAccess::Read,
+				BufferAccess::Write,
+				BufferAccess::Write,
+				BufferAccess::Read,
+			],
+			3,
+		)
+	} else if problem.epilogue == GemmEpilogue::None {
 		(
 			[0, 1, 2, 3, 4],
 			[
@@ -1319,11 +1461,59 @@ pub(in crate::runtime) fn lower_mat_mul_nt_plan(
 		push_count: 0,
 	};
 	match plan.kernel {
-		GemmKernel::TiledF32 | GemmKernel::Naive | GemmKernel::SmallMF32 => {
+		GemmKernel::TiledF32 | GemmKernel::Naive | GemmKernel::SmallMF32 | GemmKernel::F16sF32 => {
 			let constants = [
 				PushConstant::U32(problem.m),
 				PushConstant::U32(problem.n),
 				PushConstant::U32(problem.k),
+			];
+			launch.push_constants[..constants.len()].copy_from_slice(&constants);
+			launch.push_count = constants.len();
+		}
+		GemmKernel::StridedF32 | GemmKernel::StridedTiledF32 => {
+			// Arbitrary-layout donors bind [A, B, C] and read each
+			// operand's MatmulLayout fields straight from the push
+			// block — element (row, column) of batch `group_id.z`
+			// resolves to `offset + batch*batch_stride +
+			// row*row_stride + column*col_stride`.
+			let mut layout_words = [PushConstant::U32(0); 12];
+			for (index, field) in [
+				problem.a.row_stride,
+				problem.a.col_stride,
+				problem.a.batch_stride,
+				problem.a.offset,
+				problem.b.row_stride,
+				problem.b.col_stride,
+				problem.b.batch_stride,
+				problem.b.offset,
+				problem.c.row_stride,
+				problem.c.col_stride,
+				problem.c.batch_stride,
+				problem.c.offset,
+			]
+			.iter()
+			.enumerate()
+			{
+				layout_words[index] = PushConstant::U32(*field);
+			}
+			let constants = [
+				PushConstant::U32(problem.m),
+				PushConstant::U32(problem.n),
+				PushConstant::U32(problem.k),
+			];
+			launch.push_constants[..constants.len()].copy_from_slice(&constants);
+			launch.push_constants[constants.len()..constants.len() + layout_words.len()]
+				.copy_from_slice(&layout_words);
+			launch.push_count = constants.len() + layout_words.len();
+		}
+		GemmKernel::SplitKF32 => {
+			// The partial kernel reads one contiguous K slice per z
+			// workgroup: `k_chunk` bounds `group_id.z * k_chunk .. k`.
+			let constants = [
+				PushConstant::U32(problem.m),
+				PushConstant::U32(problem.n),
+				PushConstant::U32(problem.k),
+				PushConstant::U32(div_ceil(problem.k, plan.split_k)),
 			];
 			launch.push_constants[..constants.len()].copy_from_slice(&constants);
 			launch.push_count = constants.len();
@@ -1337,6 +1527,52 @@ pub(in crate::runtime) fn lower_mat_mul_nt_plan(
 	Ok(launch)
 }
 
+/// Lower the split-K reduction dispatch for a plan whose variant carries a
+/// reduction stage — the second half of the donor's two-dispatch launch.
+///
+/// The reduction binds kernel slots [workspace, C] — problem buffers 3, 2 —
+/// and returns `None` for plans without a split-K stage. The workspace the
+/// partial dispatch wrote is the same problem buffer in both launches.
+pub(in crate::runtime) fn lower_mat_mul_nt_reduction(
+	plan: &MatmulPlan,
+	problem: &MatmulProblem,
+) -> Result<Option<MatmulKernelLaunch>> {
+	if plan.split_k <= 1 {
+		return Ok(None);
+	}
+	let Some(reduction_kernel_id) = plan.reduction_kernel_id else {
+		return Err(Error::missing_capability(
+			"split-K matmul plan lacks a reduction kernel",
+		));
+	};
+	let element_count = problem
+		.m
+		.checked_mul(problem.n)
+		.ok_or_else(|| Error::invalid_argument("split-K element count overflows u32"))?;
+	let mut launch = MatmulKernelLaunch {
+		kernel_id: reduction_kernel_id,
+		grid: plan.reduction_grid,
+		buffer_order: [3, 2, 0, 1, 4],
+		buffer_accesses: [
+			BufferAccess::Read,
+			BufferAccess::Write,
+			BufferAccess::Read,
+			BufferAccess::Read,
+			BufferAccess::Read,
+		],
+		buffer_count: 2,
+		push_constants: [PushConstant::U32(0); MATMUL_MAX_PUSH_WORDS],
+		push_count: 0,
+	};
+	let constants = [
+		PushConstant::U32(element_count),
+		PushConstant::U32(plan.split_k),
+	];
+	launch.push_constants[..constants.len()].copy_from_slice(&constants);
+	launch.push_count = constants.len();
+	Ok(Some(launch))
+}
+
 /// Lower a validated canonical `[M, K] × [N, K]` plan — the
 /// `pub(crate)`-visible entry for callers outside `crate::runtime`, which
 /// rebuilds the same contiguous problem the plan was produced against.
@@ -1346,7 +1582,14 @@ pub(crate) fn lower_mat_mul_nt(
 	n: u32,
 	k: u32,
 ) -> Result<MatmulKernelLaunch> {
-	lower_mat_mul_nt_plan(plan, &MatmulProblem::contiguous(m, n, k))
+	let problem = MatmulProblem::contiguous(m, n, k);
+	let launch = lower_mat_mul_nt_plan(plan, &problem)?;
+	if lower_mat_mul_nt_reduction(plan, &problem)?.is_some() {
+		return Err(Error::invalid_argument(
+			"split-K matmul plans require the two-dispatch lowering path",
+		));
+	}
+	Ok(launch)
 }
 
 fn div_ceil(a: u32, b: u32) -> u32 {
@@ -1473,6 +1716,19 @@ fn variant_legal(
 	{
 		return Some(MatmulRejection::InputPrecisionMismatch);
 	}
+	// FP16-storage variants require the F16 math mode; under that mode,
+	// F32-storage variants only stay legal (as a precision fallback) on
+	// devices that cannot execute binary16 storage at all.
+	if variant.a_precision == StoragePrecision::F16 && precision != GemmPrecision::F16 {
+		return Some(MatmulRejection::InputPrecisionMismatch);
+	}
+	if precision == GemmPrecision::F16
+		&& contract.caps_mask & CAP_F16_STORAGE != 0
+		&& (variant.a_precision != StoragePrecision::F16
+			|| variant.b_precision != StoragePrecision::F16)
+	{
+		return Some(MatmulRejection::InputPrecisionMismatch);
+	}
 	if !caps_satisfy(contract.caps_mask, variant.required_caps_mask) {
 		return Some(MatmulRejection::MissingDeviceCapability);
 	}
@@ -1509,7 +1765,7 @@ fn variant_legal(
 		return Some(MatmulRejection::RequiresAligned);
 	}
 	match variant.kernel {
-		GemmKernel::TiledF32 | GemmKernel::Naive | GemmKernel::SmallMF32 => {
+		GemmKernel::TiledF32 | GemmKernel::Naive | GemmKernel::SmallMF32 | GemmKernel::F16sF32 => {
 			if problem.batch_count == 1 {
 				None
 			} else {
@@ -1581,6 +1837,7 @@ fn result_for_variant(
 ) -> (GemmPrecision, [u32; 3]) {
 	let precision = match variant.a_precision {
 		StoragePrecision::Bf16 => GemmPrecision::Bf16,
+		StoragePrecision::F16 => GemmPrecision::F16,
 		StoragePrecision::F32 => GemmPrecision::F32,
 	};
 	let grid = match variant.path {
@@ -1592,8 +1849,8 @@ fn result_for_variant(
 							problem.m.saturating_mul(problem.n),
 							variant.workgroup_invocations(),
 						),
-						variant.split_k,
 						1,
+						variant.split_k,
 					]
 				} else {
 					[
@@ -1666,7 +1923,9 @@ fn plan_for_variant(
 
 fn classify_selection(plan: &MatmulPlan, problem: &MatmulProblem) -> KernelSelectionKind {
 	let requested = resolve_precision(problem);
-	if requested == GemmPrecision::Bf16 && plan.actual_precision != GemmPrecision::Bf16 {
+	if (requested == GemmPrecision::Bf16 || requested == GemmPrecision::F16)
+		&& plan.actual_precision != requested
+	{
 		return KernelSelectionKind::PrecisionFallback;
 	}
 	if plan.kernel == GemmKernel::StridedF32 || plan.kernel == GemmKernel::StridedTiledF32 {
@@ -1747,8 +2006,26 @@ pub(in crate::runtime) fn plan(
 		return Ok(finish(variant));
 	}
 
-	// Tensor-core families in measured-policy order.
-	if precision != GemmPrecision::F32 {
+	// FP16-storage math mode: cast operands into binary16 workspace storage
+	// and run the dedicated tiled route; illegal-capability falls through to
+	// the F32 families as a precision fallback. The dedicated route owns only
+	// canonical non-batched, epilogue-free problems — strided or batched work
+	// stays on the F32 arbitrary-layout families.
+	if precision == GemmPrecision::F16
+		&& problem.epilogue == GemmEpilogue::None
+		&& problem.is_canonical()
+		&& problem.batch_count == 1
+	{
+		for variant in all_variants() {
+			if variant.kernel == GemmKernel::F16sF32 && legal(variant) {
+				return Ok(finish(variant));
+			}
+		}
+	}
+
+	// Tensor-core families in measured-policy order — an Auto or BF16 request
+	// only; an explicit FP16 or Q8 request never selects BF16 storage.
+	if matches!(precision, GemmPrecision::Auto | GemmPrecision::Bf16) {
 		for family in [GemmKernel::GemmCmWgBf16, GemmKernel::GemmCmSgBf16] {
 			for variant in all_variants() {
 				if variant.kernel == family && legal(variant) {
@@ -1758,9 +2035,11 @@ pub(in crate::runtime) fn plan(
 		}
 	}
 
-	// Non-canonical views and strided batches use the arbitrary-layout
-	// families when they register.
-	if !problem.is_canonical() {
+	// Non-canonical views and batched problems use the arbitrary-layout
+	// families when they register — every batch-capable candidate also
+	// carries arbitrary strides, so one z-dispatched launch covers both
+	// contracts.
+	if !problem.is_canonical() || problem.batch_count > 1 {
 		let work = u64::from(problem.m) * u64::from(problem.n) * u64::from(problem.k);
 		let first = if problem.m >= 16 && problem.n >= 16 && work >= 32_768 {
 			GemmKernel::StridedTiledF32
@@ -1880,10 +2159,39 @@ pub(in crate::runtime) fn validate_plan(
 }
 
 /// Plan the canonical contiguous `[M, K] × [N, K]` semantic matmul on an
-/// engine's device contract.
+/// engine's device contract. The plan launches directly — kernels that
+/// require an additional lowering stage are never selected here.
 pub(crate) fn plan_mat_mul_nt(engine: &EngineHandle, m: u32, n: u32, k: u32) -> Result<MatmulPlan> {
 	let problem = MatmulProblem::contiguous(m, n, k);
 	plan_mat_mul_nt_problem(engine, &problem, &MatmulPreference::default())
+}
+
+/// Plan the `mat_mul_nt` operation itself — the `OA_FORCE_PRECISION` math-mode
+/// request applies, so a lowered candidate such as FP16 storage may be
+/// selected for the caller's split-semantic lowering.
+pub(crate) fn plan_mat_mul_nt_lowered(
+	engine: &EngineHandle,
+	m: u32,
+	n: u32,
+	k: u32,
+) -> Result<MatmulPlan> {
+	let mut problem = MatmulProblem::contiguous(m, n, k);
+	problem.precision_hint = forced_precision_hint();
+	plan_mat_mul_nt_problem(engine, &problem, &MatmulPreference::default())
+}
+
+/// `OA_FORCE_PRECISION` request for the canonical contiguous route. `FP16`
+/// selects the FP16-storage/FP32-accumulate math mode; `BF16` keeps the
+/// donor's tensor-core request; `FP32` pins the F32 route. Any other value
+/// leaves the problem's `Auto` policy.
+fn forced_precision_hint() -> GemmPrecision {
+	match crate::core::env_flag::EnvFlag::get_string("OA_FORCE_PRECISION", "").as_str() {
+		"FP16" => GemmPrecision::F16,
+		"BF16" => GemmPrecision::Bf16,
+		"Q8" => GemmPrecision::Q8,
+		"FP32" => GemmPrecision::F32,
+		_ => GemmPrecision::Auto,
+	}
 }
 
 /// Plan one caller-constructed problem through the identical admission path —

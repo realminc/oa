@@ -1300,3 +1300,99 @@ test_vk!(
 		Ok(())
 	}
 );
+
+test_vk!(
+	lunar_lander_compiled_collect_matches_eager_bit_exact,
+	engine,
+	{
+		use oa::ml::training::{PpoTrainer, PpoTrainerConfig};
+		use oa::ml::{
+			AdamW, CategoricalActorCritic, CategoricalActorCriticConfig, CompiledRollout, Module,
+		};
+		use sdk::ml::rl::{
+			LUNAR_OBSERVATION_SIZE, LunarLander3dConfig, LunarLander3dVector, LunarLander3dVectorConfig,
+		};
+		const ENVS: u32 = 4;
+		const HORIZON: usize = 4;
+		const SEED: u64 = 0x1a7e_f00d;
+		let mut batches = Vec::new();
+		for compiled in [false, true] {
+			let model = CategoricalActorCritic::new(
+				&engine,
+				CategoricalActorCriticConfig {
+					observation_size: LUNAR_OBSERVATION_SIZE,
+					action_count: 8,
+					hidden_size: 8,
+					seed: 77,
+				},
+			)?;
+			let mut optimizer = AdamW::new(model.all_parameters()?, 0.001)?;
+			let mut environment = LunarLander3dVector::flat(
+				&engine,
+				LunarLander3dVectorConfig {
+					environments: ENVS,
+					seed: SEED,
+					environment: LunarLander3dConfig::default(),
+				},
+			)?;
+			let event = environment.submit()?;
+			environment.wait(&event)?;
+			let config = PpoTrainerConfig {
+				rollouts: 1,
+				horizon: HORIZON,
+				environments: ENVS as usize,
+				update_epochs: 1,
+				observation_shape: vec![LUNAR_OBSERVATION_SIZE],
+				seed: SEED,
+				..PpoTrainerConfig::default()
+			};
+			let mut trainer = PpoTrainer::new(&engine, &model, &mut optimizer, config)?;
+			if compiled {
+				let mut program = CompiledRollout::new();
+				trainer.collect_compiled(&mut environment, &mut program, SEED, 0, 0.0)?;
+				assert_eq!(program.replay_count(), HORIZON as u64);
+				assert_eq!(program.command_recording_count(), 3);
+			} else {
+				trainer.begin_collection()?;
+				engine.checkpoint()?.wait()?;
+				environment.reset(SEED)?;
+				for _ in 0..HORIZON {
+					let observation = environment.observation().clone();
+					let policy = trainer.act(&observation)?;
+					let transition =
+						oa::ml::environment::Environment::step(&mut environment, &policy.action)?;
+					trainer.observe(
+						transition.observation(),
+						transition.next_observation(),
+						transition.reward(),
+						transition.terminated(),
+						transition.truncated(),
+						&policy,
+					)?;
+					environment.reset_completed()?;
+				}
+				trainer.end_collection()?;
+				let event = environment.submit()?;
+				environment.wait(&event)?;
+			}
+			let batch = trainer.batch();
+			let actions = batch.action().read::<i32>()?;
+			let floats = [
+				batch.observation(),
+				batch.reward(),
+				batch.value(),
+				batch.next_value(),
+				batch.old_log_probability(),
+				batch.advantage(),
+				batch.returns(),
+			]
+			.iter()
+			.map(|matrix| matrix.read_f32())
+			.collect::<oa::Result<Vec<_>>>()?;
+			batches.push((actions, floats));
+			environment.close()?;
+		}
+		assert_eq!(batches[0], batches[1]);
+		Ok(())
+	}
+);

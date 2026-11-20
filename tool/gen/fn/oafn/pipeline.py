@@ -342,6 +342,8 @@ def expected_outputs(root: Path, schemas: Schemas) -> dict[Path, str]:
 			operation, blas, blas_hash
 		)
 	for candidate in blas.get("candidate_kernels", []):
+		if "source" in candidate:
+			continue
 		outputs[root / f"src/slang/matrix/blas/{candidate['source_stem']}.gen.slang"] = generate_blas_candidate_shader(
 			candidate, blas, blas_hash
 		)

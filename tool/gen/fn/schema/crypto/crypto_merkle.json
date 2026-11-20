@@ -83,6 +83,7 @@
  "contracts": [
   {
    "name": "merkle_tree_reduce",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -108,6 +109,7 @@
   },
   {
    "name": "merkle_frame_init",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -133,6 +135,7 @@
   },
   {
    "name": "merkle_frame_append",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix",
@@ -166,6 +169,7 @@
   },
   {
    "name": "merkle_frame_verify",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix",
@@ -193,6 +197,7 @@
   },
   {
    "name": "merkle_subtree_reduce",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],

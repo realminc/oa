@@ -11,9 +11,9 @@ struct SourceBinding {
 	set: vk::DescriptorSet,
 }
 
-pub(super) struct Conversion {
+pub(super) struct HardwareYcbcrColorConversion {
 	device: Arc<vk::Device>,
-	_images: Arc<DecodeImageStorage>,
+	_images: Arc<Vec<VideoImage>>,
 	pub color_space: u32,
 	pub full_range: bool,
 	conversion: vk::SamplerYcbcrConversion,
@@ -35,11 +35,11 @@ pub(super) fn supported(device: &Device, format: vk::Format) -> bool {
 		)
 }
 
-impl Conversion {
+impl HardwareYcbcrColorConversion {
 	#[cfg(oa_profile = "core")]
 	pub(super) fn new(
 		device: &Arc<Device>,
-		images: Arc<DecodeImageStorage>,
+		images: Arc<Vec<VideoImage>>,
 		color_space: u32,
 		full_range: bool,
 	) -> Result<Arc<Self>> {
@@ -47,7 +47,7 @@ impl Conversion {
 		if limits.max_compute_work_group_invocations < 256
 			|| limits.max_compute_work_group_size[0] < 16
 			|| limits.max_compute_work_group_size[1] < 16
-			|| limits.max_push_constants_size < 20
+			|| limits.max_push_constants_size < 28
 		{
 			return Err(Error::missing_capability(
 				"hardware YCbCr conversion exceeds compute ABI limits",
@@ -177,7 +177,7 @@ impl Conversion {
 			let layouts = [device.descriptor_layout(), state.descriptors];
 			let pushes = [vk::PushConstantRange::new()
 				.set_stage_flags(vk::ShaderStageFlagBits::COMPUTE_BIT)
-				.set_size(20)];
+				.set_size(28)];
 			state.layout = state
 				.device
 				.create_pipeline_layout(
@@ -287,7 +287,7 @@ impl Conversion {
 	#[cfg(oa_profile = "compatibility")]
 	pub(super) fn new(
 		_device: &Arc<Device>,
-		_images: Arc<DecodeImageStorage>,
+		_images: Arc<Vec<VideoImage>>,
 		_color_space: u32,
 		_full_range: bool,
 	) -> Result<Arc<Self>> {
@@ -300,16 +300,17 @@ impl Conversion {
 		&self,
 		device: &Device,
 		command: vk::CommandBuffer,
-		image: &DecodeImage,
+		image: &VideoImage,
 		layer: u32,
 		rgba: &crate::runtime::Buffer,
-		extent: video::VideoExtent,
+		session: &DecodeSession,
 	) -> Result<()> {
 		let source = self
 			.sources
 			.iter()
 			.find(|source| source.image == image.handle && source.layer == layer)
 			.ok_or_else(|| Error::invalid_argument("YCbCr frame has no retained source view"))?;
+		let extent = session.visible_extent;
 		let max = device.physical().limits.max_compute_work_group_count;
 		if extent.width.div_ceil(16) > max[0] || extent.height.div_ceil(16) > max[1] {
 			return Err(Error::missing_capability(
@@ -320,8 +321,10 @@ impl Conversion {
 			rgba.descriptor_index(),
 			extent.width,
 			extent.height,
-			extent.width,
-			extent.height,
+			session.coded_extent.width,
+			session.coded_extent.height,
+			session.visible_origin[0],
+			session.visible_origin[1],
 		];
 		// SAFETY: the active compute command, immutable pipeline/set and output
 		// belong to device. The caller acquired this layer for sampled reads and
@@ -356,7 +359,7 @@ impl Conversion {
 	}
 }
 
-impl Drop for Conversion {
+impl Drop for HardwareYcbcrColorConversion {
 	fn drop(&mut self) {
 		// SAFETY: partial construction has never submitted; a published Arc is
 		// retained through its last conversion event. Views die before images,
@@ -402,19 +405,21 @@ impl DecodeSession {
 		layer: u32,
 		color_space: u32,
 		full_range: bool,
+		frame: &NativeDecodedFrame,
 	) -> Result<NativePresentation> {
 		let pipeline = if let Some(pipeline) = self
-			.ycbcr
+			.hardware_ycbcr
 			.iter()
 			.find(|pipeline| pipeline.color_space == color_space && pipeline.full_range == full_range)
 		{
 			pipeline.clone()
 		} else {
-			let pipeline = Conversion::new(device, self.images.clone(), color_space, full_range)?;
-			self.ycbcr.push(pipeline.clone());
+			let pipeline =
+				HardwareYcbcrColorConversion::new(device, self.images.clone(), color_space, full_range)?;
+			self.hardware_ycbcr.push(pipeline.clone());
 			pipeline
 		};
-		let extent = self.coded_extent;
+		let extent = self.visible_extent;
 		let bytes = usize::try_from(extent.width)
 			.ok()
 			.and_then(|w| w.checked_mul(extent.height as usize))
@@ -435,165 +440,43 @@ impl DecodeSession {
 			vk::ImageLayout::VIDEO_DECODE_DPB_KHR
 		};
 		let (output, _, _, _) = self.picture_images(slot)?;
-		let release = device.record_video_decode(|command| {
-			barrier(
-				device.raw(),
-				command,
-				output,
-				layer,
-				families,
-				layout,
-				Phase::DecodeRelease,
-			)
-		})?;
-		let convert = device.record_compute_commands(|command| {
-			if families.0 != families.1 {
-				barrier(
-					device.raw(),
-					command,
-					output,
-					layer,
-					families,
-					layout,
-					Phase::ComputeAcquire,
-				)?;
-			}
-			pipeline.record(device, command, output, layer, &rgba, extent)?;
-			let ready = vk::BufferMemoryBarrier2::new()
-				.set_src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
-				.set_src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
-				.set_dst_stage_mask(
-					vk::PipelineStageFlagBits2::TRANSFER_BIT | vk::PipelineStageFlagBits2::HOST_BIT,
-				)
-				.set_dst_access_mask(
-					vk::AccessFlagBits2::TRANSFER_READ_BIT | vk::AccessFlagBits2::HOST_READ_BIT,
-				)
-				.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-				.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-				.set_buffer(rgba.raw())
-				.set_offset(0)
-				.set_size(rgba.size());
-			let dependency = vk::DependencyInfo::new()
-				.set_buffer_memory_barriers(std::slice::from_ref(&ready))
-				.map_err(Error::from)?;
-			// SAFETY: publish exactly this dispatch's RGBA writes to subsequent
-			// Texture upload or explicit host observation after its completion.
-			unsafe { device.raw().cmd_pipeline_barrier2(command, &dependency) }?;
-			barrier(
-				device.raw(),
-				command,
-				output,
-				layer,
-				families,
-				layout,
-				Phase::ComputeRelease,
-			)
-		})?;
-		let acquire = if families.0 == families.1 {
-			None
-		} else {
-			Some(device.record_video_decode(|command| {
-				barrier(
-					device.raw(),
-					command,
-					output,
-					layer,
-					families,
-					layout,
-					Phase::DecodeAcquire,
-				)
-			})?)
-		};
+		let mut commands = record_image_consumer(
+			device,
+			output,
+			layer,
+			families.0,
+			layout,
+			ImageUse::sample(families.1),
+			|command| {
+				pipeline.record(device, command, output, layer, &rgba, self)?;
+				let ready = vk::BufferMemoryBarrier2::new()
+					.set_src_stage_mask(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT)
+					.set_src_access_mask(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT)
+					.set_dst_stage_mask(
+						vk::PipelineStageFlagBits2::TRANSFER_BIT | vk::PipelineStageFlagBits2::HOST_BIT,
+					)
+					.set_dst_access_mask(
+						vk::AccessFlagBits2::TRANSFER_READ_BIT | vk::AccessFlagBits2::HOST_READ_BIT,
+					)
+					.set_src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+					.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+					.set_buffer(rgba.raw())
+					.set_offset(0)
+					.set_size(rgba.size());
+				let dependency = vk::DependencyInfo::new()
+					.set_buffer_memory_barriers(std::slice::from_ref(&ready))
+					.map_err(Error::from)?;
+				// SAFETY: publish exactly this dispatch's RGBA writes to subsequent
+				// Texture upload or explicit host observation after its completion.
+				unsafe { device.raw().cmd_pipeline_barrier2(command, &dependency) }?;
+				Ok(())
+			},
+		)?;
+		commands.retain(Arc::new((frame.clone(), rgba.clone(), pipeline)));
 		Ok(NativePresentation {
-			release,
-			convert,
-			acquire,
+			commands,
 			rgba,
 			extent,
-			resources: pipeline,
 		})
 	}
-}
-
-enum Phase {
-	DecodeRelease,
-	ComputeAcquire,
-	ComputeRelease,
-	DecodeAcquire,
-}
-
-fn barrier(
-	device: &vk::Device,
-	command: vk::CommandBuffer,
-	output: &DecodeImage,
-	layer: u32,
-	families: (u32, u32),
-	decoded: vk::ImageLayout,
-	phase: Phase,
-) -> Result<()> {
-	let same = families.0 == families.1;
-	let to_compute = matches!(phase, Phase::DecodeRelease | Phase::ComputeAcquire);
-	let acquire = matches!(phase, Phase::ComputeAcquire | Phase::DecodeAcquire);
-	let video_stage = vk::PipelineStageFlagBits2::VIDEO_DECODE_BIT_KHR;
-	let video_access = vk::AccessFlagBits2::VIDEO_DECODE_READ_BIT_KHR
-		| vk::AccessFlagBits2::VIDEO_DECODE_WRITE_BIT_KHR;
-	let compute_stage = vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT;
-	let compute_access = vk::AccessFlagBits2::SHADER_SAMPLED_READ_BIT;
-	let (src_stage, src_access, dst_stage, dst_access) = if to_compute {
-		(video_stage, video_access, compute_stage, compute_access)
-	} else {
-		(compute_stage, compute_access, video_stage, video_access)
-	};
-	let (old, new) = if to_compute {
-		(decoded, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-	} else {
-		(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL, decoded)
-	};
-	let transition = vk::ImageMemoryBarrier2::new()
-		.set_src_stage_mask(if acquire {
-			vk::PipelineStageFlagBits2::NONE
-		} else {
-			src_stage
-		})
-		.set_src_access_mask(if acquire {
-			vk::AccessFlagBits2::NONE
-		} else {
-			src_access
-		})
-		.set_dst_stage_mask(if !same && !acquire {
-			vk::PipelineStageFlagBits2::NONE
-		} else {
-			dst_stage
-		})
-		.set_dst_access_mask(if !same && !acquire {
-			vk::AccessFlagBits2::NONE
-		} else {
-			dst_access
-		})
-		.set_old_layout(old)
-		.set_new_layout(new)
-		.set_src_queue_family_index(if same {
-			vk::QUEUE_FAMILY_IGNORED
-		} else if to_compute {
-			families.0
-		} else {
-			families.1
-		})
-		.set_dst_queue_family_index(if same {
-			vk::QUEUE_FAMILY_IGNORED
-		} else if to_compute {
-			families.1
-		} else {
-			families.0
-		})
-		.set_image(output.handle)
-		.set_subresource_range(decode_image_subresource(layer, 1));
-	let dependency = vk::DependencyInfo::new()
-		.set_image_memory_barriers(std::slice::from_ref(&transition))
-		.map_err(Error::from)?;
-	// SAFETY: release/acquire pairs carry identical exact image layer, layouts
-	// and queue indices. Engine timeline edges order decode -> sample -> decode;
-	// source/destination scopes name only operations supported by each queue.
-	unsafe { device.cmd_pipeline_barrier2(command, &dependency) }?;
-	Ok(())
 }

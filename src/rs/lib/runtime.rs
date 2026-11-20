@@ -34,7 +34,10 @@ pub(crate) use dna::kernel::KernelId;
 pub(in crate::runtime) use dna::provider::blas::{
 	GemmEpilogue, MatmulPreference, MatmulProblem, lower_mat_mul_nt_plan, plan_mat_mul_nt_problem,
 };
-pub(crate) use dna::provider::blas::{lower_mat_mul_nt, plan_mat_mul_nt};
+pub(crate) use dna::provider::blas::{lower_mat_mul_nt, plan_mat_mul_nt, plan_mat_mul_nt_lowered};
+pub(crate) use dna::provider::precision::{
+	record_linear_f16s, record_mat_mul_nt_f16s, record_sum_f16s,
+};
 pub(crate) use engine::{
 	CaptureAttempt, EngineHandle, MlDsaDeviceKey, MlKemDeviceKey, MlKemSharedSecret,
 	RecordingTransaction, SecretLoweringScope, SemanticLoweringScope, VideoDecoderBackend,

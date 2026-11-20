@@ -12,6 +12,7 @@
  "contracts": [
   {
    "name": "add",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -30,6 +31,7 @@
   },
   {
    "name": "subtract",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -48,6 +50,7 @@
   },
   {
    "name": "multiply_low",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -66,6 +69,7 @@
   },
   {
    "name": "multiply_wide",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -84,6 +88,7 @@
   },
   {
    "name": "bit_and",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -102,6 +107,7 @@
   },
   {
    "name": "bit_or",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -120,6 +126,7 @@
   },
   {
    "name": "bit_xor",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -138,6 +145,7 @@
   },
   {
    "name": "compare",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -156,6 +164,7 @@
   },
   {
    "name": "div_rem",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -176,6 +185,7 @@
   },
   {
    "name": "shift_left",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -197,6 +207,7 @@
   },
   {
    "name": "shift_right",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -218,6 +229,7 @@
   },
   {
    "name": "reduce_mod",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -237,6 +249,7 @@
   },
   {
    "name": "add_mod",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix",
@@ -257,6 +270,7 @@
   },
   {
    "name": "subtract_mod",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix",
@@ -277,6 +291,7 @@
   },
   {
    "name": "multiply_mod",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix",
@@ -297,6 +312,7 @@
   },
   {
    "name": "square_mod",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -316,6 +332,7 @@
   },
   {
    "name": "inverse_mod",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -335,6 +352,7 @@
   },
   {
    "name": "pow_mod",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix",
@@ -355,6 +373,7 @@
   },
   {
    "name": "to_montgomery",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -374,6 +393,7 @@
   },
   {
    "name": "from_montgomery",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -393,6 +413,7 @@
   },
   {
    "name": "montgomery_multiply",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix",
@@ -413,6 +434,7 @@
   },
   {
    "name": "barrett_multiply",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix",
@@ -433,6 +455,7 @@
   },
   {
    "name": "multiply_high",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -451,6 +474,7 @@
   },
   {
    "name": "square_wide",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -468,6 +492,7 @@
   },
   {
    "name": "bit_not",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -485,6 +510,7 @@
   },
   {
    "name": "leading_zeros",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -502,6 +528,7 @@
   },
   {
    "name": "add_scalar",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -523,6 +550,7 @@
   },
   {
    "name": "compare_scalar",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -544,6 +572,7 @@
   },
   {
    "name": "div_rem_mixed",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -568,6 +597,7 @@
   },
   {
    "name": "div_rem_narrow",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -588,6 +618,7 @@
   },
   {
    "name": "div_rem_scalar",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -611,6 +642,7 @@
   },
   {
    "name": "div_rem_wide",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -631,6 +663,7 @@
   },
   {
    "name": "from_u32",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -652,6 +685,7 @@
   },
   {
    "name": "from_u64",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -673,6 +707,7 @@
   },
   {
    "name": "multiply_scalar",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -694,6 +729,7 @@
   },
   {
    "name": "reduce_montgomery",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"
@@ -713,6 +749,7 @@
   },
   {
    "name": "subtract_scalar",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -734,6 +771,7 @@
   },
   {
    "name": "to_u32",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -752,6 +790,7 @@
   },
   {
    "name": "to_u64",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -770,6 +809,7 @@
   },
   {
    "name": "setup_barrett",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix"
    ],
@@ -788,6 +828,7 @@
   },
   {
    "name": "reduce_barrett",
+   "fusion_class": "effect",
    "input_kinds": [
     "matrix",
     "matrix"

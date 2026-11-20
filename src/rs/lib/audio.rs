@@ -1,12 +1,14 @@
 //! Semantic planar FP32 audio, stateless DSP, codecs, and device sessions.
 //!
-//! Numerical algorithms and the WAV-F32 writer are OA ports. Symphonia owns
-//! bounded WAV/PCM, FLAC, and MP3 codec work; CPAL owns device I/O.
+//! Numerical algorithms and PCM/WAV encoding are OA ports. Private host
+//! adapters decode audio, and CPAL owns device I/O.
 
 #[allow(clippy::module_inception)]
 mod audio;
 mod capture;
 mod codec;
+mod decoder;
+mod demux;
 mod device;
 mod encoder;
 #[path = "audio/audio.gen.rs"]
@@ -20,9 +22,8 @@ mod transform;
 pub(crate) use audio::validate_sample_buffer;
 pub use audio::{Audio, AudioChannelLayout};
 pub use capture::{AudioCapture, AudioCaptureChunk};
-pub use codec::{
-	decode_file, decode_memory, encode_interleaved_wav_f32, encode_wav_f32, save_wav_f32,
-};
+pub use codec::wav::{encode_interleaved_wav_f32, encode_wav_f32, save_wav_f32};
+pub use decoder::{decode_file, decode_memory};
 pub use encoder::{AudioCodec, AudioEncodeProfile, AudioEncoder, EncodedAudioPacket};
 pub use player::AudioPlayer;
 pub use signal::{

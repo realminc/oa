@@ -98,11 +98,20 @@ impl PlaneMap {
 }
 
 fn require_device_planar<'a>(frame: &'a VideoFrame, operation: &str) -> Result<&'a DevicePlanar> {
-	frame.device_planar().ok_or_else(|| {
+	let planar = frame.device_planar().ok_or_else(|| {
 		Error::invalid_argument(format!(
 			"{operation} requires device-planar frames; stage host frames with VideoFrame::upload"
 		))
-	})
+	})?;
+	if !matches!(
+		planar.format,
+		VideoPixelFormat::Yuv420Planar8 | VideoPixelFormat::Nv12
+	) {
+		return Err(Error::missing_capability(format!(
+			"{operation} requires 8-bit I420 or NV12 planes"
+		)));
+	}
+	Ok(planar)
 }
 
 fn u32_field(value: usize, operation: &str, what: &str) -> Result<u32> {
@@ -1203,6 +1212,143 @@ pub fn overlay_mask(frame: &VideoFrame, mask: &VideoFrame, fill: [u8; 3]) -> Res
 		&dispatch_list,
 		SemanticDispatch {
 			contract: crate::core::operation::video::BLEND,
+			inputs: &semantic_inputs,
+			outputs: &semantic_outputs,
+			attributes: &attributes,
+		},
+		frame.timing(),
+		frame.color_info(),
+	)
+}
+
+/// Per-component stencil from a device-resident score map: where the
+/// `scores` value at the mask coordinate is at or above `threshold` the fill
+/// code is written, otherwise the base byte is copied.
+///
+/// `scores` must be an F32 matrix with exactly `width * height` elements at
+/// the frame's luma extent; chroma planes sample it at scaled luma
+/// coordinates. `fill` is the Y, U, V code triple written where the score
+/// passes. The score map stays on the device — this is the GPU-resident
+/// overlay edge for segmentation-style model output inside a captured plan.
+///
+/// # Errors
+///
+/// Returns an error if the frame is not device-planar, if the score matrix
+/// is not F32 or does not match the luma extent, if the engines differ, or
+/// if the region arithmetic overflows.
+pub fn overlay_scores(
+	frame: &VideoFrame,
+	scores: &Matrix,
+	threshold: f32,
+	fill: [u8; 3],
+) -> Result<VideoFrame> {
+	const OPERATION: &str = "video::overlay_scores";
+	let planar = require_device_planar(frame, OPERATION)?;
+	if scores.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} requires an F32 score map"
+		)));
+	}
+	let luma_elements = planar
+		.width
+		.checked_mul(planar.height)
+		.ok_or_else(|| Error::out_of_range(format!("{OPERATION} luma extent overflows")))?;
+	if scores.element_count() != luma_elements {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} requires exactly width * height score elements"
+		)));
+	}
+	let engine = planar.planes[0].engine_handle();
+	if !scores.engine_handle().same_as(engine) {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} requires one engine"
+		)));
+	}
+	let (output_planes, _) = alloc_output(planar, planar.format, OPERATION)?;
+	let mut semantic_inputs: Vec<&Matrix> = Vec::new();
+	let mut semantic_outputs: Vec<&Matrix> = Vec::new();
+	let mut bindings: Vec<Vec<BufferBinding>> = Vec::new();
+	let mut pushes = Vec::new();
+	for (plane_index, src) in planar.planes.iter().enumerate() {
+		let stride = if planar.format == VideoPixelFormat::Nv12 && plane_index == 1 {
+			2u32
+		} else {
+			1
+		};
+		let (w, h) = if plane_index == 0 {
+			(planar.width, planar.height)
+		} else {
+			(planar.width.div_ceil(2), planar.height.div_ceil(2))
+		};
+		for comp in 0..stride {
+			let fill_code = u32::from(if plane_index == 0 {
+				fill[0]
+			} else if comp == 0 {
+				fill[1]
+			} else {
+				fill[2]
+			});
+			bindings.push(vec![
+				BufferBinding::read(src.storage()),
+				BufferBinding::read(scores.storage()),
+				BufferBinding::write(output_planes[plane_index].storage()),
+			]);
+			pushes.push((
+				[
+					PushConstant::U32(u32_field(w, OPERATION, "plane")?),
+					PushConstant::U32(u32_field(h, OPERATION, "plane")?),
+					PushConstant::U32(stride),
+					PushConstant::U32(comp),
+					PushConstant::F32(threshold),
+					PushConstant::U32(fill_code),
+					PushConstant::U32(u32_field(planar.width, OPERATION, "mask")?),
+					PushConstant::U32(u32_field(planar.height, OPERATION, "mask")?),
+					PushConstant::U32(if plane_index == 0 { 0 } else { 2 }),
+				],
+				u32_field(w, OPERATION, "dispatch")?.div_ceil(16),
+				u32_field(h, OPERATION, "dispatch")?.div_ceil(16),
+			));
+		}
+		semantic_inputs.push(src);
+		semantic_inputs.push(scores);
+		semantic_outputs.push(&output_planes[plane_index]);
+	}
+	let dispatch_list: Vec<ComputeDispatch> = pushes
+		.iter()
+		.enumerate()
+		.map(|(index, (push, wg_x, wg_y))| ComputeDispatch {
+			kernel: KernelId::VideoScoreBlend,
+			buffers: &bindings[index],
+			push_constants: push,
+			workgroups: [*wg_x, *wg_y, 1],
+			indirect: None,
+		})
+		.collect();
+	let attributes = [
+		OpAttribute::Enum {
+			name: "mode".into(),
+			value: "stencil".into(),
+		},
+		OpAttribute::Float {
+			name: "threshold".into(),
+			value: f64::from(threshold),
+		},
+		OpAttribute::UnsignedInteger {
+			name: "fill".into(),
+			value: u64::from(fill[0]) << 16 | u64::from(fill[1]) << 8 | u64::from(fill[2]),
+		},
+		OpAttribute::String {
+			name: "params".into(),
+			value: String::new(),
+		},
+	];
+	record_frame(
+		planar,
+		planar.format,
+		output_planes.clone(),
+		&dispatch_list,
+		SemanticDispatch {
+			contract: crate::core::operation::video::SCORE_BLEND,
 			inputs: &semantic_inputs,
 			outputs: &semantic_outputs,
 			attributes: &attributes,

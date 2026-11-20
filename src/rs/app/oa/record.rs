@@ -430,17 +430,16 @@ impl ViewerLiveSource for RecordingSource {
 }
 
 fn recording_path() -> Result<PathBuf> {
-	let home =
-		std::env::var_os("HOME").ok_or_else(|| Error::failed_precondition("HOME is unavailable"))?;
-	let videos = std::process::Command::new("xdg-user-dir")
-		.arg("VIDEOS")
-		.output()
-		.ok()
-		.filter(|output| output.status.success())
-		.and_then(|output| String::from_utf8(output.stdout).ok())
-		.filter(|path| !path.trim().is_empty())
-		.map(|path| PathBuf::from(path.trim()))
-		.unwrap_or_else(|| PathBuf::from(home).join("Videos"));
+	use sdl3::filesystem::{Folder, get_user_folder};
+
+	let videos = match get_user_folder(Folder::VIDEOS) {
+		Ok(path) => path.to_owned(),
+		Err(_) => {
+			let home = std::env::var_os("HOME")
+				.ok_or_else(|| Error::failed_precondition("Videos folder and HOME are unavailable"))?;
+			PathBuf::from(home).join("Videos")
+		}
+	};
 	let root = videos.join("OA");
 	std::fs::create_dir_all(&root).map_err(|error| Error::io("create recording directory", error))?;
 	let stamp = std::time::SystemTime::now()

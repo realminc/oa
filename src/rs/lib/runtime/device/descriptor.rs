@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use std::sync::Mutex;
 #[cfg(oa_profile = "compatibility")]
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{Error, Result};
 
@@ -25,6 +26,10 @@ pub(super) struct DescriptorHeap {
 	set: vk::DescriptorSet,
 	buffer_capacity: u32,
 	image_capacity: u32,
+	/// Total descriptor-set writes issued against this heap (census source
+	/// for per-plan recording cost: writes amortize at buffer/image binding,
+	/// not per dispatch).
+	write_count: AtomicU64,
 	free_storage_indices: Mutex<Vec<u32>>,
 	#[cfg(oa_profile = "core")]
 	free_image_indices: Mutex<Vec<u32>>,
@@ -35,6 +40,11 @@ pub(super) struct DescriptorHeap {
 impl DescriptorHeap {
 	pub(super) fn capacities(&self) -> (u32, u32) {
 		(self.buffer_capacity, self.image_capacity)
+	}
+
+	/// Return the total descriptor writes issued against this heap.
+	pub(super) fn write_count(&self) -> u64 {
+		self.write_count.load(Ordering::Relaxed)
 	}
 
 	#[cfg(oa_profile = "core")]
@@ -140,6 +150,7 @@ impl DescriptorHeap {
 		Ok(Self {
 			pool,
 			layout,
+			write_count: AtomicU64::new(0),
 			set,
 			buffer_capacity: limits.storage_buffer_descriptors,
 			image_capacity: limits.storage_image_descriptors,
@@ -193,6 +204,7 @@ impl DescriptorHeap {
 			set: vk::DescriptorSet::default(),
 			buffer_capacity: capacity,
 			image_capacity: 0,
+			write_count: AtomicU64::new(0),
 			free_storage_indices: Mutex::new(Vec::new()),
 			virtual_next: AtomicU32::new(0),
 		})
@@ -259,6 +271,7 @@ impl DescriptorHeap {
 				.update_descriptor_sets(&[write.map_err(Error::from)?], &[])
 				.map_err(Error::from)?;
 		}
+		self.write_count.fetch_add(1, Ordering::Relaxed);
 		Ok(index)
 	}
 
@@ -306,6 +319,7 @@ impl DescriptorHeap {
 				.update_descriptor_sets(&[write.map_err(Error::from)?], &[])
 				.map_err(Error::from)?;
 		}
+		self.write_count.fetch_add(1, Ordering::Relaxed);
 		Ok(index)
 	}
 

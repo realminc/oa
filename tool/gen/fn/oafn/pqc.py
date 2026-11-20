@@ -79,7 +79,7 @@ def validate_cryptography_pqc_schema(schema: dict[str, Any]) -> None:
 		where = f"Cryptography PQC contracts[{index}]"
 		require(isinstance(contract, dict), f"{where} must be an object")
 		require(
-			set(contract) == {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes"},
+			(set(contract) - {"fusion_class"}) == {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes"},
 			f"{where} fields are incomplete or unknown",
 		)
 		name = contract["name"]

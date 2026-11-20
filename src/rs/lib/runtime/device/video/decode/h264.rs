@@ -1,10 +1,10 @@
 //! H.264 decoded-picture-buffer planning and Vulkan standard-video lowering.
 //!
 //! Mirrors the AV1 and VP9 submodule pattern. Pure bitstream parsing lives in
-//! `video::h264`; DPB slot management and picture planning belong here because
+//! `video::codec`; DPB slot management and picture planning belong here because
 //! they are a Vulkan-backend concern, not a parser concern.
 
-use crate::runtime::device::video::*;
+use super::*;
 use crate::{Error, Result, video};
 
 // ── DPB slot state ────────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ impl DpbState {
 		})
 	}
 
-	pub(super) fn plan_with_unavailable(
+	pub(super) fn plan_in_place(
 		&mut self,
 		sps: &video::H264SequenceParameterSet,
 		slice: &video::H264SliceHeader,
@@ -81,18 +81,6 @@ impl DpbState {
 				"H.264 unavailable-slot mask does not match DPB capacity",
 			));
 		}
-		let mut next = self.clone();
-		let plan = next.plan_in_place(sps, slice, unavailable)?;
-		*self = next;
-		Ok(plan)
-	}
-
-	fn plan_in_place(
-		&mut self,
-		sps: &video::H264SequenceParameterSet,
-		slice: &video::H264SliceHeader,
-		unavailable: &[bool],
-	) -> Result<PicturePlan> {
 		if slice.field_picture {
 			return Err(Error::missing_capability(
 				"H.264 DPB planning currently admits progressive pictures only",
@@ -357,7 +345,7 @@ pub(super) fn record_h264_picture(
 	sps: &video::H264SequenceParameterSet,
 	pps: &video::H264PictureParameterSet,
 	slice: &video::H264SliceHeader,
-	slice_offset: u32,
+	status_pool: vk::QueryPool,
 	bitstream: &DecodeBitstream,
 	plan: &h264::PicturePlan,
 	initialize_images: bool,
@@ -393,7 +381,7 @@ pub(super) fn record_h264_picture(
 	};
 	let mut h264_picture = vk::VideoDecodeH264PictureInfoKHR::new()
 		.set_std_picture_info(&std_picture)
-		.set_slice_offsets(std::slice::from_ref(&slice_offset))
+		.set_slice_offsets(&[0])
 		.map_err(Error::from)?;
 
 	let setup_std_reference =
@@ -580,7 +568,7 @@ pub(super) fn record_h264_picture(
 		.set_image_memory_barriers(&image_barriers)
 		.map_err(Error::from)?;
 	unsafe {
-		device.cmd_reset_query_pool(command_buffer, session.result_status_pool, 0, 1)?;
+		device.cmd_reset_query_pool(command_buffer, status_pool, 0, 1)?;
 		device.cmd_pipeline_barrier2(command_buffer, &dependency)?;
 		device.cmd_begin_video_coding_khr(command_buffer, &begin_info)?;
 	}
@@ -594,12 +582,12 @@ pub(super) fn record_h264_picture(
 	unsafe {
 		device.cmd_begin_query(
 			command_buffer,
-			session.result_status_pool,
+			status_pool,
 			0,
 			vk::QueryControlFlags::empty(),
 		)?;
 		device.cmd_decode_video_khr(command_buffer, &decode_info)?;
-		device.cmd_end_query(command_buffer, session.result_status_pool, 0)?;
+		device.cmd_end_query(command_buffer, status_pool, 0)?;
 		device.cmd_end_video_coding_khr(command_buffer, &vk::VideoEndCodingInfoKHR::new())?;
 	}
 	if release_for_readback {

@@ -59,10 +59,13 @@ struct PlayerState {
 	info: VideoContainerInfo,
 	config: VideoPlayerConfig,
 	current: Option<VideoFrame>,
-	drained: VecDeque<VideoFrame>,
+	queued: VecDeque<VideoFrame>,
+	decoder_drained: bool,
 	presentation_cache: VecDeque<CachedPresentation>,
 	presentation_cache_bytes: usize,
+	canvas_yuv: bool,
 	frame_interval: Duration,
+	duration: Duration,
 	accumulator: Duration,
 	playing: bool,
 	done: bool,
@@ -142,10 +145,10 @@ impl VideoPlayer {
 		let demuxer = VideoDemuxer::open(path)?;
 		let info = demuxer.info();
 		let indexed = info.kind() != VideoContainerKind::MpegTs;
-		let timestamp_ticks = if indexed {
+		let (timestamp_ticks, presentation_end) = if indexed {
 			demuxer.presentation_timestamps()?
 		} else {
-			Vec::new()
+			(Vec::new(), 0)
 		};
 		let mut display_timestamps = Vec::new();
 		display_timestamps
@@ -157,7 +160,6 @@ impl VideoPlayer {
 				duration: ticks_to_duration(ticks, info)?,
 			});
 		}
-		let decoder = VideoDecoder::new(engine, info)?;
 		let rate = config
 			.frame_rate_override
 			.unwrap_or_else(|| info.frame_rate());
@@ -166,7 +168,14 @@ impl VideoPlayer {
 		} else {
 			30.0
 		};
-		let frame_interval = Duration::from_secs_f64(1.0 / rate);
+		let frame_interval = Duration::try_from_secs_f64(1.0 / rate)
+			.ok()
+			.filter(|interval| !interval.is_zero())
+			.ok_or_else(|| {
+				Error::out_of_range("video player frame interval is outside Duration precision")
+			})?;
+		let duration = ticks_to_duration(presentation_end, info)?;
+		let decoder = VideoDecoder::new(engine, info)?;
 		let presentation_cache_capacity = if !indexed {
 			0
 		} else {
@@ -199,10 +208,13 @@ impl VideoPlayer {
 				info,
 				config,
 				current: None,
-				drained: VecDeque::new(),
+				queued: VecDeque::new(),
+				decoder_drained: false,
 				presentation_cache: VecDeque::new(),
 				presentation_cache_bytes: 0,
+				canvas_yuv: false,
 				frame_interval,
+				duration,
 				accumulator: Duration::ZERO,
 				playing: config.start_playing,
 				done: false,
@@ -277,6 +289,10 @@ impl VideoPlayer {
 	/// Returns the number of frames presented. Paused players do not accumulate
 	/// elapsed time, preventing a burst of implicit skipping after resume.
 	pub fn tick(&mut self, elapsed: Duration) -> Result<u32> {
+		self.tick_bounded(elapsed, u32::MAX)
+	}
+
+	pub(crate) fn tick_bounded(&mut self, elapsed: Duration, budget: u32) -> Result<u32> {
 		let state = self.state_mut()?;
 		if !state.playing || state.done {
 			return Ok(0);
@@ -286,12 +302,32 @@ impl VideoPlayer {
 			.checked_add(elapsed)
 			.ok_or_else(|| Error::out_of_range("video player clock accumulator overflowed"))?;
 		let mut advanced = 0_u32;
-		loop {
+		while advanced < budget {
 			let state = self.state_mut()?;
-			if state.accumulator < state.frame_interval {
+			// Sequential containers lack an index and packet durations. Decode
+			// at most one display frame ahead to pace from its real PTS. Keep
+			// decoder reorder output in the same queue used by manual stepping.
+			let mut interval = state.frame_interval;
+			if !state.indexed && state.config.frame_rate_override.is_none() {
+				Self::fill_display_queue(state)?;
+				if let (Some(current), Some(next)) = (&state.current, state.queued.front()) {
+					// PES packets without a timestamp carry zero. Repeated or
+					// regressing timestamps retain the last usable cadence.
+					if let Some(delta) = next
+						.timing()
+						.presentation_timestamp()
+						.checked_sub(current.timing().presentation_timestamp())
+						.filter(|delta| !delta.is_zero())
+					{
+						interval = delta;
+						state.frame_interval = delta;
+					}
+				}
+			}
+			if state.accumulator < interval {
 				break;
 			}
-			state.accumulator -= state.frame_interval;
+			state.accumulator -= interval;
 			if !self.advance_one()? {
 				break;
 			}
@@ -316,7 +352,8 @@ impl VideoPlayer {
 			let state = self.state_mut()?;
 			state.decoder.flush()?;
 			state.demuxer.seek(0)?;
-			state.drained.clear();
+			state.queued.clear();
+			state.decoder_drained = false;
 			Self::clear_presentation_cache(state);
 			state.current = None;
 			state.accumulator = Duration::ZERO;
@@ -378,6 +415,19 @@ impl VideoPlayer {
 		)
 	}
 
+	pub(crate) fn seek_time_at_or_before(&mut self, target: Duration) -> Result<()> {
+		let state = self.state_ref()?;
+		let points = &state.display_timestamps;
+		let last = points
+			.get(
+				points
+					.partition_point(|point| point.duration <= target)
+					.saturating_sub(1),
+			)
+			.ok_or_else(|| Error::data_loss("video source has no indexed display frames"))?;
+		self.seek_at_or_before(last.ticks)
+	}
+
 	/// Seek to an exact zero-based display-order frame.
 	///
 	/// A retained target is presented without decoding. Otherwise the player
@@ -396,7 +446,8 @@ impl VideoPlayer {
 				"video frame index is outside the display sequence",
 			));
 		}
-		if self.state_ref()?.display_index == index || self.present_cached(index)? {
+		let state = self.state_ref()?;
+		if (state.current.is_some() && state.display_index == index) || self.present_cached(index)? {
 			return Ok(());
 		}
 		self.rebuild_to_index(target, false)
@@ -413,8 +464,9 @@ impl VideoPlayer {
 	/// establishes a new random-access boundary.
 	pub fn flush(&mut self) -> Result<usize> {
 		let state = self.state_mut()?;
-		let discarded = state.decoder.flush()?.len() + state.drained.len();
-		state.drained.clear();
+		let discarded = state.decoder.flush()?.len() + state.queued.len();
+		state.queued.clear();
+		state.decoder_drained = false;
 		Self::clear_presentation_cache(state);
 		state.done = true;
 		state.accumulator = Duration::ZERO;
@@ -502,6 +554,38 @@ impl VideoPlayer {
 		Ok(texture)
 	}
 
+	pub(crate) fn enable_canvas_yuv(&mut self) -> Result<()> {
+		self.state_mut()?.canvas_yuv = true;
+		Ok(())
+	}
+
+	pub(crate) fn prepare_viewer_frame(&mut self) -> Result<VideoFrame> {
+		let state = self.state_mut()?;
+		let frame = state
+			.current
+			.clone()
+			.ok_or_else(|| Error::failed_precondition("VideoPlayer has no current frame"))?;
+		if frame.canvas_planes().is_some() || frame.as_texture().is_some() {
+			return Ok(frame);
+		}
+		if state.canvas_yuv
+			&& matches!(
+				frame.native_format(),
+				Some(
+					crate::video::VideoPixelFormat::P010
+						| crate::video::VideoPixelFormat::Yuv420Planar10
+						| crate::video::VideoPixelFormat::P012
+				)
+			) {
+			let staged = state.decoder.stage_native_canvas_frame(&frame)?;
+			state.current = Some(staged.clone());
+			Self::retain_presentation(state, state.display_index, staged.clone())?;
+			return Ok(staged);
+		}
+		self.current_frame_texture()?;
+		Ok(self.current_frame()?.clone())
+	}
+
 	/// Timestamp at which the next display frame may replace the current one.
 	///
 	/// Indexed containers use the next frame's PTS, which respects variable
@@ -547,6 +631,25 @@ impl VideoPlayer {
 		self.state.as_ref().map(|state| state.info)
 	}
 
+	pub(crate) fn duration(&self) -> Result<Duration> {
+		Ok(self.state_ref()?.duration)
+	}
+
+	pub(crate) fn advance_for_playback(&mut self) -> Result<bool> {
+		let state = self.state_mut()?;
+		if state.indexed
+			&& state
+				.current
+				.as_ref()
+				.is_some_and(|frame| frame.native_backing().is_some())
+		{
+			// Catch-up can skip rendering several successive frames. Release the
+			// superseded lease just as the replay path does before decoding again.
+			state.current = None;
+		}
+		self.advance_one()
+	}
+
 	/// Return a snapshot of playback counters while open.
 	pub fn stats(&self) -> Option<VideoPlayerStats> {
 		self.state.as_ref().map(|state| state.stats)
@@ -586,60 +689,64 @@ impl VideoPlayer {
 		self.advance_decoded_one()
 	}
 
-	fn advance_decoded_one(&mut self) -> Result<bool> {
-		loop {
-			let state = self.state_mut()?;
-			if let Some(frame) = state.drained.pop_front() {
-				Self::present_new(state, frame)?;
-				if state.drained.is_empty() && state.demuxer.is_eos() && !state.config.loop_playback {
-					state.done = true;
-				}
-				return Ok(true);
-			}
-			if state.done {
-				return Ok(false);
-			}
-			match state.demuxer.read_next_packet()? {
-				Some(packet) => {
-					state.stats.decoded_packets =
-						state.stats.decoded_packets.checked_add(1).ok_or_else(|| {
-							Error::resource_exhausted("video decoded-packet counter overflowed")
-						})?;
-					let frame = match state.output {
-						PlayerOutput::HostPlanar => state.decoder.decode(&packet)?,
-						PlayerOutput::Native => state.decoder.decode_native(&packet)?,
-					};
-					if let Some(frame) = frame {
-						Self::present_new(state, frame)?;
-						return Ok(true);
-					}
-				}
-				None => {
-					state.drained.extend(state.decoder.flush()?);
-					if !state.drained.is_empty() {
-						continue;
-					}
-					if !state.config.loop_playback {
-						state.done = true;
-						return Ok(false);
-					}
-					state.demuxer.seek(0)?;
-					state.stats.loop_restarts = state
-						.stats
-						.loop_restarts
-						.checked_add(1)
-						.ok_or_else(|| Error::resource_exhausted("video loop counter overflowed"))?;
-					state.stats.seek_resets = state
-						.stats
-						.seek_resets
-						.checked_add(1)
-						.ok_or_else(|| Error::resource_exhausted("video seek counter overflowed"))?;
-					state.display_index = 0;
-					state.next_display_index = 0;
-					Self::clear_presentation_cache(state);
-				}
-			}
+	fn fill_display_queue(state: &mut PlayerState) -> Result<()> {
+		while state.queued.is_empty() && !state.decoder_drained {
+			let Some(packet) = state.demuxer.read_next_packet()? else {
+				state.queued.extend(state.decoder.flush()?);
+				state.decoder_drained = true;
+				break;
+			};
+			state.stats.decoded_packets = state
+				.stats
+				.decoded_packets
+				.checked_add(1)
+				.ok_or_else(|| Error::resource_exhausted("video decoded-packet counter overflowed"))?;
+			let frame = match state.output {
+				PlayerOutput::HostPlanar => state.decoder.decode(&packet)?,
+				PlayerOutput::Native => state.decoder.decode_native(&packet)?,
+			};
+			state.queued.extend(frame);
 		}
+		Ok(())
+	}
+
+	fn advance_decoded_one(&mut self) -> Result<bool> {
+		let state = self.state_mut()?;
+		if state.done {
+			return Ok(false);
+		}
+		Self::fill_display_queue(state)?;
+		if state.queued.is_empty() && state.config.loop_playback && state.next_display_index != 0 {
+			state.demuxer.seek(0)?;
+			state.stats.loop_restarts = state
+				.stats
+				.loop_restarts
+				.checked_add(1)
+				.ok_or_else(|| Error::resource_exhausted("video loop counter overflowed"))?;
+			state.stats.seek_resets = state
+				.stats
+				.seek_resets
+				.checked_add(1)
+				.ok_or_else(|| Error::resource_exhausted("video seek counter overflowed"))?;
+			state.display_index = 0;
+			state.next_display_index = 0;
+			state.decoder_drained = false;
+			Self::clear_presentation_cache(state);
+			Self::fill_display_queue(state)?;
+		}
+		let Some(frame) = state.queued.pop_front() else {
+			state.done = true;
+			return Ok(false);
+		};
+		Self::present_new(state, frame)?;
+		if state.indexed
+			&& state.decoder_drained
+			&& state.queued.is_empty()
+			&& !state.config.loop_playback
+		{
+			state.done = true;
+		}
+		Ok(true)
 	}
 
 	fn present_new(state: &mut PlayerState, frame: VideoFrame) -> Result<()> {
@@ -751,7 +858,8 @@ impl VideoPlayer {
 			let state = self.state_mut()?;
 			state.decoder.flush()?;
 			state.demuxer.seek(timestamp)?;
-			state.drained.clear();
+			state.queued.clear();
+			state.decoder_drained = false;
 			Self::clear_presentation_cache(state);
 			state.current = None;
 			state.accumulator = Duration::ZERO;
@@ -793,7 +901,7 @@ impl VideoPlayer {
 				&& self.state_ref()?.stats.presentation_cache_capacity > 0
 				&& current >= history_start
 			{
-				self.current_frame_texture()?;
+				self.prepare_viewer_frame()?;
 			}
 			if current == target {
 				return Ok(());
@@ -807,7 +915,9 @@ impl VideoPlayer {
 	}
 
 	fn retain_presentation(state: &mut PlayerState, index: u64, frame: VideoFrame) -> Result<()> {
-		let bytes = if let Some(texture) = frame.as_texture() {
+		let bytes = if let Some((planes, _)) = frame.canvas_planes() {
+			Some(planes.byte_len())
+		} else if let Some(texture) = frame.as_texture() {
 			texture
 				.width()
 				.checked_mul(texture.height())

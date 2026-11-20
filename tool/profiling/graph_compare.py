@@ -59,7 +59,16 @@ def validate_report(report: Any) -> None:
 	require(bool(nodes), "graph report has no nodes; no comparison evidence")
 	for key in ("dispatches", "barriers", "buffer_bytes"):
 		require(integer(report["stats"].get(key)), f"$.stats.{key} must be a nonnegative integer")
-	require(report["stats"]["dispatches"] == len(nodes), "dispatch count does not match nodes")
+	copies = report["stats"].get("copies", 0)
+	require(integer(copies), "$.stats.copies must be a nonnegative integer")
+	video_commands = report["stats"].get("video_commands", 0)
+	require(integer(video_commands), "$.stats.video_commands must be a nonnegative integer")
+	image_transfers = report["stats"].get("image_transfers", 0)
+	require(integer(image_transfers), "$.stats.image_transfers must be a nonnegative integer")
+	require(
+		report["stats"]["dispatches"] + copies + video_commands == len(nodes),
+		"command count does not match nodes",
+	)
 	require(report["stats"]["barriers"] == len(barriers), "barrier count does not match barriers")
 	for index, resource in enumerate(resources):
 		path = f"$.resources[{index}]"
@@ -79,6 +88,9 @@ def validate_report(report: Any) -> None:
 		report["stats"]["buffer_bytes"] == sum(r["bytes"] for r in resources),
 		"buffer byte count does not match resources",
 	)
+	copy_nodes = 0
+	video_nodes = 0
+	handoff_nodes = 0
 	for index, node in enumerate(nodes):
 		path = f"$.nodes[{index}]"
 		record(node, {
@@ -106,6 +118,47 @@ def validate_report(report: Any) -> None:
 			f"{path}.physical_write must be an object or null",
 		)
 		require(node["index"] == index, f"{path}.index must follow execution order")
+		kind = node.get("kind", "compute")
+		require(kind in ("compute", "buffer_copy", "video_plane_command", "video_decode"), f"{path}.kind is unsupported")
+		if kind == "buffer_copy":
+			copy_nodes += 1
+			require(
+				integer(node.get("copy_bytes")) and node["copy_bytes"] > 0,
+				f"{path}.copy_bytes must be positive",
+			)
+		if kind == "video_decode":
+			video_nodes += 1
+			picture = node.get("decode_picture")
+			fixed_words, reference_words = {
+				"video.decode_h264": (14, 4),
+				"video.decode_h265": (13, 2),
+				"video.decode_av1": (18, 2),
+				"video.decode_vp9": (14, 1),
+			}.get(node["kernel"], (0, 1))
+			require(
+				fixed_words > 0 and node["queue"] == "video_decode"
+				and isinstance(picture, list) and len(picture) >= fixed_words
+				and (len(picture) - fixed_words) % reference_words == 0
+				and all(integer(v) and 0 <= v <= 0xFFFFFFFF for v in picture),
+				f"{path}.decode_picture is invalid",
+			)
+		if kind == "video_plane_command":
+			video_nodes += 1
+			geometry = node.get("image_geometry")
+			require(
+				isinstance(geometry, list)
+				and len(geometry) in (14, 19)
+				and all(integer(v) for v in geometry),
+				f"{path}.image_geometry is invalid",
+			)
+			phase = node["kernel"]
+			transition = phase in ("video.plane_release", "video.plane_acquire")
+			require(transition or phase == "video.copy_planes", f"{path} has an invalid video command")
+			handoff_nodes += int(transition)
+			require(
+				integer(node.get("family")) and node["family"] == geometry[2 if transition else 3],
+				f"{path}.family does not agree with plane ownership",
+			)
 		require(
 			bool(node["kernel"]) and bool(node["operation"]), f"{path} has an empty kernel/operation"
 		)
@@ -127,6 +180,9 @@ def validate_report(report: Any) -> None:
 			require(
 				effect["access"] in {"read", "write", "read_write"}, f"{label} has invalid access"
 			)
+	require(copies == copy_nodes, "copy count does not match nodes")
+	require(video_commands == video_nodes, "video command count does not match nodes")
+	require(image_transfers == handoff_nodes, "image transfer count does not match nodes")
 	for index, barrier in enumerate(barriers):
 		path = f"$.barriers[{index}]"
 		record(barrier, {

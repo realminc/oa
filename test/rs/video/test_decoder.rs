@@ -9,23 +9,14 @@ use oa::{
 };
 
 fn ffmpeg_yuv420(path: &std::path::Path) -> Vec<u8> {
-	let output = std::process::Command::new("ffmpeg")
-		.args(["-v", "error", "-i"])
-		.arg(path)
-		.args([
-			"-map", "0:v:0", "-pix_fmt", "yuv420p", "-f", "rawvideo", "-",
-		])
-		.output()
-		.expect("FFmpeg must be available for this ignored oracle test");
-	assert!(
-		output.status.success(),
-		"FFmpeg oracle failed: {}",
-		String::from_utf8_lossy(&output.stderr)
-	);
-	output.stdout
+	ffmpeg_yuv(path, "yuv420p")
 }
 
 fn ffmpeg_yuv420p10(path: &std::path::Path) -> Vec<u8> {
+	ffmpeg_yuv(path, "yuv420p10le")
+}
+
+fn ffmpeg_yuv(path: &std::path::Path, pixel_format: &str) -> Vec<u8> {
 	let output = std::process::Command::new("ffmpeg")
 		.args(["-v", "error", "-i"])
 		.arg(path)
@@ -33,7 +24,7 @@ fn ffmpeg_yuv420p10(path: &std::path::Path) -> Vec<u8> {
 			"-map",
 			"0:v:0",
 			"-pix_fmt",
-			"yuv420p10le",
+			pixel_format,
 			"-f",
 			"rawvideo",
 			"-",
@@ -795,5 +786,335 @@ fn public_decoder_matches_complete_h264_ffmpeg_stream() -> oa::Result<()> {
 	decoder.close();
 	assert!(!decoder.is_open());
 	assert!(decoder.info().is_none());
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires Vulkan H.264 hardware and the OA donor fixture"]
+fn decoder_rejects_work_inside_capture_and_can_retry_the_same_packet() -> oa::Result<()> {
+	let engine = Engine::new()?;
+	let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+		.join("sdk/asset/video/clip/shibuya_720p_30fps_h264_baseline_8bit_420.mp4");
+	let mut demuxer = VideoDemuxer::open(fixture)?;
+	let info = demuxer.info();
+	let mut decoder = VideoDecoder::new(&engine, info)?;
+	let first = demuxer.read_next_packet()?.expect("first access unit");
+
+	let error = engine
+		.capture(|| decoder.decode_native(&first))
+		.err()
+		.expect("decode inside capture must fail");
+	assert_eq!(error.kind(), oa::ErrorKind::FailedPrecondition);
+	assert!(error.to_string().contains("outside capture"));
+
+	let mut frame = decoder.decode_native(&first)?;
+	while frame.is_none() {
+		let packet = demuxer
+			.read_next_packet()?
+			.expect("stream produces a frame");
+		frame = decoder.decode_native(&packet)?;
+	}
+	let frame = frame.expect("native output");
+	let error = engine
+		.capture(|| decoder.read_native_yuv420p(&frame))
+		.unwrap_err();
+	assert_eq!(error.kind(), oa::ErrorKind::FailedPrecondition);
+	assert!(error.to_string().contains("outside capture"));
+	assert_eq!(
+		decoder.read_native_yuv420p(&frame)?.len(),
+		yuv420_frame_size(info.width(), info.height())
+	);
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires Vulkan H.264 hardware, the OA donor fixture, and FFmpeg"]
+fn retained_native_planes_replay_across_queue_families() -> oa::Result<()> {
+	retained_native_planes_replay("h264_baseline_8bit", "yuv420p")
+}
+
+#[test]
+#[ignore = "requires Vulkan Main10/Profile2 hardware, the OA donor fixtures, and FFmpeg"]
+fn retained_p010_planes_replay_across_queue_families() -> oa::Result<()> {
+	for profile in ["h265_main10_10bit", "vp9_profile2_10bit", "av1_main_10bit"] {
+		retained_native_planes_replay(profile, "p010le")?;
+	}
+	Ok(())
+}
+
+fn retained_native_planes_replay(profile: &str, pixel_format: &str) -> oa::Result<()> {
+	use oa::video::VideoMatrixConfig;
+
+	let engine = Engine::new()?;
+	let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+		"sdk/asset/video/clip/shibuya_720p_30fps_{profile}_420.mp4"
+	));
+	let mut demuxer = VideoDemuxer::open(&fixture)?;
+	let info = demuxer.info();
+	let mut decoder = VideoDecoder::new(&engine, info)?;
+	let frame = loop {
+		let packet = demuxer
+			.read_next_packet()?
+			.expect("stream produces a frame");
+		if let Some(frame) = decoder.decode_native(&packet)? {
+			break frame;
+		}
+	};
+	let config = VideoMatrixConfig {
+		size: Some((37, 21)),
+		..VideoMatrixConfig::default()
+	};
+	let independent = ffmpeg_yuv(&fixture, pixel_format);
+	let frame_size = yuv420_frame_size(info.width(), info.height());
+	let reference_frame = if pixel_format == "p010le" {
+		assert_eq!(
+			frame.native_format(),
+			Some(VideoPixelFormat::P010),
+			"{profile}"
+		);
+		let luma_bytes = frame.width() * frame.height() * 2;
+		oa::VideoFrame::upload_planes(
+			&engine,
+			VideoPixelFormat::P010,
+			vec![
+				independent[..luma_bytes].to_vec(),
+				independent[luma_bytes..2 * frame_size].to_vec(),
+			],
+			frame.width(),
+			frame.height(),
+			frame.timing(),
+			frame.color_info(),
+		)?
+	} else {
+		oa::VideoFrame::new_from_yuv420p(
+			independent[..frame_size].to_vec(),
+			frame.width(),
+			frame.height(),
+			frame.timing(),
+			frame.color_info(),
+		)?
+		.upload(&engine)?
+	};
+	let reference = reference_frame.to_matrix(&config)?.read_f32()?;
+
+	let eager = decoder.stage_native_planes(&frame)?;
+	assert_eq!(
+		eager.to_matrix(&config)?.read_f32()?,
+		reference,
+		"{profile}"
+	);
+
+	let (plan, staged) =
+		engine.capture(|| decoder.stage_native_planes(&frame)?.to_matrix(&config))?;
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("native planes"))
+		.expect("valid executable graph report");
+	let transfers = plan.diagnostics().ownership_transfer_count();
+	assert!(matches!(transfers, 0 | 2));
+	assert_eq!(plan.diagnostics().queue_run_count(), transfers + 1);
+	assert_eq!(plan.diagnostics().cross_queue_edge_count(), transfers);
+	assert_eq!(report["stats"]["video_commands"], transfers + 1);
+	assert_eq!(report["stats"]["image_transfers"], transfers);
+	assert_eq!(report["stats"]["dispatches"], 1);
+	plan.validate_serialized_descriptor(&plan.serialize_descriptor()?)?;
+
+	decoder.close();
+	drop(frame);
+	let first = engine.submit(&plan)?;
+	let second = engine.submit(&plan)?;
+	second.wait()?;
+	assert!(first.is_complete()?);
+	assert_eq!(staged.read_f32()?, reference, "{profile}");
+	assert_eq!(plan.diagnostics().command_cache_hit_count(), 1);
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires Vulkan Video hardware, OA fixtures, and FFmpeg"]
+fn recorded_avc_hevc_av1_packets_replay_through_compute() -> oa::Result<()> {
+	let engine = Engine::new()?;
+	for profile in [
+		"h264_baseline_8bit",
+		"h264_main_8bit",
+		"h264_high_8bit",
+		"h265_main_8bit",
+		"h265_main10_10bit",
+		"av1_main_8bit",
+		"av1_main_10bit",
+	] {
+		recorded_video_replay(&engine, profile).unwrap_or_else(|error| panic!("{profile}: {error:?}"));
+	}
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires VP9 Vulkan Video capture support, OA fixtures, and FFmpeg"]
+fn recorded_vp9_packets_replay_through_compute() -> oa::Result<()> {
+	let engine = Engine::new()?;
+	for profile in ["vp9_profile0_8bit", "vp9_profile2_10bit"] {
+		recorded_video_replay(&engine, profile).unwrap_or_else(|error| panic!("{profile}: {error:?}"));
+	}
+	Ok(())
+}
+
+#[test]
+#[ignore = "requires an Intel ANV driver older than Mesa 26.3"]
+fn recorded_vp9_rejects_host_probability_updates() -> oa::Result<()> {
+	let engine = Engine::new()?;
+	let info = engine.device_info();
+	// The rejection only applies to ANV builds older than Mesa 26.3, where
+	// the driver still rewrites mapped VP9 probability tables on the host
+	// during command recording. Other drivers, and ANV 26.3+ with the
+	// GPU-ordered update, skip this gate entirely.
+	let affected = info.driver_name().contains("Intel open-source Mesa")
+		&& info.driver_version() < (26 << 22) | (3 << 12);
+	if !affected {
+		return Ok(());
+	}
+	let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+		.join("sdk/asset/video/clip/shibuya_720p_30fps_vp9_profile0_8bit_420.mp4");
+	let mut demux = VideoDemuxer::open(&fixture)?;
+	let mut decoder = VideoDecoder::new(&engine, demux.info())?;
+	let packet = demux.read_next_packet()?.expect("fixture key picture");
+	let capture = engine.capture(|| decoder.record_to_planes(std::slice::from_ref(&packet)));
+	assert_eq!(
+		capture
+			.err()
+			.expect("affected driver must reject capture")
+			.kind(),
+		oa::ErrorKind::MissingCapability
+	);
+	assert!(decoder.decode_native(&packet)?.is_some());
+	Ok(())
+}
+
+fn recorded_video_replay(engine: &Engine, profile: &str) -> oa::Result<()> {
+	let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+		"sdk/asset/video/clip/shibuya_720p_30fps_{profile}_420.mp4"
+	));
+	let mut demux = VideoDemuxer::open(&fixture)?;
+	let info = demux.info();
+	let mut decoder = VideoDecoder::new(engine, info)?;
+	let mut packets = Vec::new();
+	while let Some(packet) = demux.read_next_packet()? {
+		packets.push(packet);
+	}
+	assert_eq!(packets.len(), 60, "{profile}");
+	assert_eq!(
+		decoder.record_to_planes(&packets).err().unwrap().kind(),
+		oa::ErrorKind::FailedPrecondition,
+	);
+	let config = oa::video::VideoMatrixConfig {
+		size: Some((37, 21)),
+		..Default::default()
+	};
+	let (plan, outputs) = engine.capture(|| {
+		assert_eq!(
+			decoder
+				.record_to_planes(&packets[1..])
+				.err()
+				.unwrap()
+				.kind(),
+			oa::ErrorKind::FailedPrecondition,
+		);
+		let frames = decoder.record_to_planes(&packets)?;
+		frames
+			.into_iter()
+			.map(|frame| {
+				Ok((
+					frame.timing(),
+					frame.color_info(),
+					frame.to_matrix(&config)?,
+				))
+			})
+			.collect::<oa::Result<Vec<_>>>()
+	})?;
+	assert_eq!(outputs.len(), packets.len(), "{profile}");
+	let mut timestamps: Vec<_> = packets
+		.iter()
+		.map(|packet| packet.presentation_timestamp())
+		.collect();
+	timestamps.sort_unstable();
+	for ((timing, _, _), pts) in outputs.iter().zip(timestamps) {
+		let timebase = info.time_base();
+		let nanos = u128::from(pts) * u128::from(timebase.numerator()) * 1_000_000_000
+			/ u128::from(timebase.denominator());
+		assert_eq!(timing.presentation_timestamp().as_nanos(), nanos);
+	}
+	assert_eq!(
+		outputs[0].2.try_read_f32().unwrap_err().kind(),
+		oa::ErrorKind::NotReady
+	);
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json(profile)).unwrap();
+	let picture_commands = report["nodes"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.filter(|node| node["kind"] == "video_decode")
+		.count();
+	assert!(picture_commands > 0, "{profile}");
+	if profile.starts_with("h26") {
+		assert_eq!(picture_commands, packets.len(), "{profile}");
+	}
+	assert_eq!(report["stats"]["dispatches"], packets.len());
+	plan.validate_serialized_descriptor(&plan.serialize_descriptor()?)?;
+
+	// A separate live decode still starts at the first access unit.
+	decoder.decode_native(&packets[0])?;
+	decoder.close();
+	drop(packets);
+
+	let first = engine.submit(&plan)?;
+	let second = engine.submit(&plan)?;
+	second.wait()?;
+	assert!(first.is_complete()?);
+	first.wait()?;
+	assert_eq!(plan.diagnostics().command_cache_hit_count(), 0);
+	assert_eq!(plan.diagnostics().command_recording_count(), 2);
+
+	let luma_bytes = info.width() as usize * info.height() as usize;
+	let frame_size = yuv420_frame_size(info.width(), info.height());
+	let (format, independent) = if profile.ends_with("_10bit") {
+		(VideoPixelFormat::P010, ffmpeg_yuv(&fixture, "p010le"))
+	} else {
+		(VideoPixelFormat::Yuv420Planar8, ffmpeg_yuv420(&fixture))
+	};
+	let frame_size = if format == VideoPixelFormat::P010 {
+		frame_size * 2
+	} else {
+		frame_size
+	};
+	assert_eq!(independent.len(), frame_size * outputs.len());
+	for ((timing, color, output), bytes) in outputs
+		.into_iter()
+		.zip(independent.chunks_exact(frame_size))
+	{
+		let planes = if format == VideoPixelFormat::P010 {
+			vec![
+				bytes[..2 * luma_bytes].to_vec(),
+				bytes[2 * luma_bytes..].to_vec(),
+			]
+		} else {
+			let uv = bytes[luma_bytes..].split_at(luma_bytes / 4);
+			vec![bytes[..luma_bytes].to_vec(), uv.0.to_vec(), uv.1.to_vec()]
+		};
+		let reference = oa::VideoFrame::upload_planes(
+			engine,
+			format,
+			planes,
+			info.width() as usize,
+			info.height() as usize,
+			timing,
+			color,
+		)?;
+		let actual = output.read_f32()?;
+		let expected = reference.to_matrix(&config)?.read_f32()?;
+		assert_eq!(actual.len(), expected.len());
+		if let Some(index) = actual.iter().zip(&expected).position(|(a, b)| a != b) {
+			panic!(
+				"{profile} at {timing:?}, sample {index}: {} != {}",
+				actual[index], expected[index]
+			);
+		}
+	}
 	Ok(())
 }

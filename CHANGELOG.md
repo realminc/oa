@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.0
+
+- Add Iris Xe replay qualification for the Vulkan Video and multimodal pipelines, including repeated decode, inference, overlay and encode.
+- Preserve intervening buffer reads in fusion legality, allow valid fusion across later overwrites, and reject invalid region ranges before allocating slot metadata.
+- Record the remaining device qualification and provider enablement decisions for the Experimental compute compiler.
+
+## 0.12.1
+
+- Harden Vulkan Video packet and image bounds, reduce host readback work, and tighten encode submission and playback synchronization. Split the Vulkan encode and decode implementations by codec.
+- Refine plot backgrounds and axis labels, and open figures on the viewer’s GPU image canvas.
+- Extend the Experimental compute compiler with opt-in tile providers, tuned BLAS routes, stricter fusion admission, and per-plan recording, memory, and queue-dependency evidence.
+- Add Experimental compiled CartPole and LunarLander collection and expose per-plan diagnostics for PPO.
+
 ## 0.12.0
 
 - Add `oa record` and portal/PipeWire `oa capture`, sharing the image/video GPU canvas, navigation camera, recording controls, elapsed timing and safe save-copy flow.

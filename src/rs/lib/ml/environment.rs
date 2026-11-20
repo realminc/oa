@@ -2,9 +2,11 @@ use crate::{DType, Error, Matrix, OpAttribute, Result, matrix};
 
 use crate::runtime::SemanticDispatch;
 
+mod compiled;
 mod session;
 mod trading;
 pub use super::types::TradingConfig;
+pub use compiled::CompiledEnvironment;
 pub use trading::{
 	TRADING_ACCOUNT_FEATURES, TRADING_LEDGER_WIDTH, TradingBook, TradingEnvironment,
 	TradingExecution, TradingMarginTier, TradingSeries, TradingState,

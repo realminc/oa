@@ -214,6 +214,43 @@ test_vk!(audio_value_rejects_invalid_matrix_metadata, engine, {
 	Ok(())
 });
 
+test_vk!(
+	captured_audio_gain_clip_matches_standalone_dispatches,
+	engine,
+	{
+		let samples: Vec<f32> = (0..514).map(|i| (i % 31 - 15) as f32 / 16.0).collect();
+		let input =
+			Audio::new_from_planar_f32(&engine, &samples, 2, 48_000, AudioChannelLayout::Stereo)?;
+		let (gain_db, minimum, maximum) = (3.75, -0.375, 0.625);
+		let gain = input.gain(gain_db)?;
+		gain.as_matrix().read_f32()?;
+		let expected = gain.clip(minimum, maximum)?.as_matrix().read_f32()?;
+
+		let (plan, output) = engine.capture(|| input.gain(gain_db)?.clip(minimum, maximum))?;
+		let report: serde_json::Value =
+			serde_json::from_str(&plan.debug_report_json("audio gain and clip"))
+				.expect("valid execution graph report");
+		assert_eq!(report["stats"]["dispatches"], 1);
+		assert_eq!(
+			report["nodes"][0]["semantic_operations"],
+			serde_json::json!([0, 1])
+		);
+		assert_eq!(output.sample_rate(), input.sample_rate());
+		assert_eq!(output.layout(), input.layout());
+
+		engine.submit(&plan)?.wait()?;
+		let actual = output.as_matrix().read_f32()?;
+		assert_eq!(actual.len(), expected.len());
+		for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+			assert!(
+				(actual - expected).abs() <= 1e-6,
+				"sample {index}: {actual} != {expected}"
+			);
+		}
+		Ok(())
+	}
+);
+
 test_vk!(audio_signal_operations_match_host_oracles, engine, {
 	use oa::audio::{BiquadCoefficients, NormalizeAudioConfig, NormalizeAudioMode, ResampleConfig};
 

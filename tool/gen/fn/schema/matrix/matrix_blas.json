@@ -1,139 +1,355 @@
 {
-  "schema_version": 1,
-  "family": "matrix_blas",
-  "domain": "matrix",
-  "dtype": "f32",
-  "workgroup_size": [256, 1, 1],
-  "output_tile_size": [64, 64, 1],
-  "k_tile_size": 16,
-  "operations": [
-    {
-      "stable_id": 21,
-      "name": "mat_mul_nt",
-      "donor_op": "oa::FnMatrix::matMulNt",
-      "autograd": {
-        "mode": "generated",
-        "family": "blas",
-        "node": "MatMulNt",
-        "saved_fields": [
-          [
-            "left",
-            "matrix"
-          ],
-          [
-            "right",
-            "matrix"
-          ],
-          [
-            "output_id",
-            "output_identity"
-          ]
-        ]
-      },
-      "kind": "mat_mul_nt",
-      "doc": "Multiply A by the transpose of B using the OA weight-layout convention.",
-      "kernel_id": "MatrixMatMulNtTiledF32",
-      "kernel_name": "mat_mul_nt",
-      "source_stem": "mat_mul_nt_tiled",
-      "variant": "tiled",
-      "dnn": {
-        "role": "matmul",
-        "providers": ["blaslt_epilogue", "qkv_projection_group", "gated_ffn"]
-      },
-      "contract": {
-        "input_kinds": ["matrix", "matrix"],
-        "output_kinds": ["matrix"],
-        "shape_rule": "left_mk_right_nk_to_mn",
-        "dtype_rule": "matching_f32",
-        "effects": ["read_inputs", "write_output"],
-        "mutated_inputs": [],
-        "output_alias_inputs": [-1],
-        "differentiation": "reverse",
-        "lowering": "gemm"
-      },
-      "test": {
-        "shapes": [
-          [2, 2, 3],
-          [1, 7, 5],
-          [9, 3, 5],
-          [3, 11, 7],
-          [1, 65, 33],
-          [4, 70, 17],
-          [128, 96, 64],
-          [5, 4, 0],
-          [0, 4, 3],
-          [4, 0, 3]
-        ],
-        "tolerance": 0.0001
-      }
-    }
-  ],
-  "candidate_kernels": [
-    {
-      "name": "mat_mul_nt_naive",
-      "kind": "mat_mul_nt",
-      "variant": "naive",
-      "stable_id": 614,
-      "kernel_id": "MatrixMatMulNtNaiveF32",
-      "kernel_name": "mat_mul_nt_naive",
-      "source_stem": "mat_mul_nt_naive",
-      "dispatch_tile_size": [1, 1, 1],
-      "semantic_operation": "mat_mul_nt"
-    },
-    {
-      "name": "mat_mul_nt_gemv",
-      "kind": "mat_mul_nt",
-      "variant": "gemv",
-      "stable_id": 636,
-      "kernel_id": "MatrixMatMulNtGemvF32",
-      "kernel_name": "mat_mul_nt_gemv",
-      "source_stem": "mat_mul_nt_gemv",
-      "dispatch_tile_size": [1, 1, 1],
-      "semantic_operation": "mat_mul_nt"
-    },
-    {
-      "name": "mat_mul_nt_bias",
-      "kind": "mat_mul_nt",
-      "variant": "bias",
-      "stable_id": 617,
-      "kernel_id": "MatrixMatMulNtBiasF32",
-      "kernel_name": "mat_mul_nt_bias",
-      "source_stem": "mat_mul_nt_bias",
-      "dispatch_tile_size": [64, 64, 1],
-      "semantic_operation": "mat_mul_nt"
-    },
-    {
-      "name": "mat_mul_nt_bias_relu",
-      "kind": "mat_mul_nt",
-      "variant": "bias_relu",
-      "stable_id": 618,
-      "kernel_id": "MatrixMatMulNtBiasReluF32",
-      "kernel_name": "mat_mul_nt_bias_relu",
-      "source_stem": "mat_mul_nt_bias_relu",
-      "dispatch_tile_size": [64, 64, 1],
-      "semantic_operation": "mat_mul_nt"
-    },
-    {
-      "name": "mat_mul_nt_bias_gelu",
-      "kind": "mat_mul_nt",
-      "variant": "bias_gelu",
-      "stable_id": 619,
-      "kernel_id": "MatrixMatMulNtBiasGeluF32",
-      "kernel_name": "mat_mul_nt_bias_gelu",
-      "source_stem": "mat_mul_nt_bias_gelu",
-      "dispatch_tile_size": [64, 64, 1],
-      "semantic_operation": "mat_mul_nt"
-    },
-    {
-      "name": "mat_mul_nt_bias_silu",
-      "kind": "mat_mul_nt",
-      "variant": "bias_silu",
-      "stable_id": 620,
-      "kernel_id": "MatrixMatMulNtBiasSiluF32",
-      "kernel_name": "mat_mul_nt_bias_silu",
-      "source_stem": "mat_mul_nt_bias_silu",
-      "dispatch_tile_size": [64, 64, 1],
-      "semantic_operation": "mat_mul_nt"
-    }
-  ]
+	"schema_version": 1,
+	"family": "matrix_blas",
+	"domain": "matrix",
+	"dtype": "f32",
+	"workgroup_size": [
+		256,
+		1,
+		1
+	],
+	"output_tile_size": [
+		64,
+		64,
+		1
+	],
+	"k_tile_size": 16,
+	"operations": [
+		{
+			"stable_id": 21,
+			"name": "mat_mul_nt",
+			"fusion_class": "gemm",
+			"donor_op": "oa::FnMatrix::matMulNt",
+			"autograd": {
+				"mode": "generated",
+				"family": "blas",
+				"node": "MatMulNt",
+				"saved_fields": [
+					[
+						"left",
+						"matrix"
+					],
+					[
+						"right",
+						"matrix"
+					],
+					[
+						"output_id",
+						"output_identity"
+					]
+				]
+			},
+			"kind": "mat_mul_nt",
+			"doc": "Multiply A by the transpose of B using the OA weight-layout convention.",
+			"kernel_id": "MatrixMatMulNtTiledF32",
+			"kernel_name": "mat_mul_nt",
+			"source_stem": "mat_mul_nt_tiled",
+			"variant": "tiled",
+			"dnn": {
+				"role": "matmul",
+				"providers": [
+					"blaslt_epilogue",
+					"qkv_projection_group",
+					"gated_ffn"
+				]
+			},
+			"contract": {
+				"input_kinds": [
+					"matrix",
+					"matrix"
+				],
+				"output_kinds": [
+					"matrix"
+				],
+				"shape_rule": "left_mk_right_nk_to_mn",
+				"dtype_rule": "matching_f32",
+				"effects": [
+					"read_inputs",
+					"write_output"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [
+					-1
+				],
+				"differentiation": "reverse",
+				"lowering": "gemm"
+			},
+			"test": {
+				"shapes": [
+					[
+						2,
+						2,
+						3
+					],
+					[
+						1,
+						7,
+						5
+					],
+					[
+						9,
+						3,
+						5
+					],
+					[
+						3,
+						11,
+						7
+					],
+					[
+						1,
+						65,
+						33
+					],
+					[
+						4,
+						70,
+						17
+					],
+					[
+						128,
+						96,
+						64
+					],
+					[
+						5,
+						4,
+						0
+					],
+					[
+						0,
+						4,
+						3
+					],
+					[
+						4,
+						0,
+						3
+					]
+				],
+				"tolerance": 0.0001
+			}
+		}
+	],
+	"candidate_kernels": [
+		{
+			"name": "mat_mul_nt_naive",
+			"kind": "mat_mul_nt",
+			"variant": "naive",
+			"stable_id": 614,
+			"kernel_id": "MatrixMatMulNtNaiveF32",
+			"kernel_name": "mat_mul_nt_naive",
+			"source_stem": "mat_mul_nt_naive",
+			"dispatch_tile_size": [
+				1,
+				1,
+				1
+			],
+			"semantic_operation": "mat_mul_nt"
+		},
+		{
+			"name": "mat_mul_nt_gemv",
+			"kind": "mat_mul_nt",
+			"variant": "gemv",
+			"stable_id": 636,
+			"kernel_id": "MatrixMatMulNtGemvF32",
+			"kernel_name": "mat_mul_nt_gemv",
+			"source_stem": "mat_mul_nt_gemv",
+			"dispatch_tile_size": [
+				1,
+				1,
+				1
+			],
+			"semantic_operation": "mat_mul_nt"
+		},
+		{
+			"name": "mat_mul_nt_bias",
+			"kind": "mat_mul_nt",
+			"variant": "bias",
+			"stable_id": 617,
+			"kernel_id": "MatrixMatMulNtBiasF32",
+			"kernel_name": "mat_mul_nt_bias",
+			"source_stem": "mat_mul_nt_bias",
+			"dispatch_tile_size": [
+				64,
+				64,
+				1
+			],
+			"semantic_operation": "mat_mul_nt"
+		},
+		{
+			"name": "mat_mul_nt_bias_relu",
+			"kind": "mat_mul_nt",
+			"variant": "bias_relu",
+			"stable_id": 618,
+			"kernel_id": "MatrixMatMulNtBiasReluF32",
+			"kernel_name": "mat_mul_nt_bias_relu",
+			"source_stem": "mat_mul_nt_bias_relu",
+			"dispatch_tile_size": [
+				64,
+				64,
+				1
+			],
+			"semantic_operation": "mat_mul_nt"
+		},
+		{
+			"name": "mat_mul_nt_bias_gelu",
+			"kind": "mat_mul_nt",
+			"variant": "bias_gelu",
+			"stable_id": 619,
+			"kernel_id": "MatrixMatMulNtBiasGeluF32",
+			"kernel_name": "mat_mul_nt_bias_gelu",
+			"source_stem": "mat_mul_nt_bias_gelu",
+			"dispatch_tile_size": [
+				64,
+				64,
+				1
+			],
+			"semantic_operation": "mat_mul_nt"
+		},
+		{
+			"name": "mat_mul_nt_bias_silu",
+			"kind": "mat_mul_nt",
+			"variant": "bias_silu",
+			"stable_id": 620,
+			"kernel_id": "MatrixMatMulNtBiasSiluF32",
+			"kernel_name": "mat_mul_nt_bias_silu",
+			"source_stem": "mat_mul_nt_bias_silu",
+			"dispatch_tile_size": [
+				64,
+				64,
+				1
+			],
+			"semantic_operation": "mat_mul_nt"
+		},
+		{
+			"name": "mat_mul_nt_strided",
+			"kind": "mat_mul_nt",
+			"variant": "strided",
+			"stable_id": 700,
+			"kernel_id": "MatrixMatMulNtStridedF32",
+			"kernel_name": "mat_mul_nt_strided",
+			"source_stem": "mat_mul_nt_strided",
+			"dispatch_tile_size": [
+				1,
+				1,
+				1
+			],
+			"semantic_operation": "mat_mul_nt"
+		},
+		{
+			"name": "mat_mul_nt_strided_tiled",
+			"kind": "mat_mul_nt",
+			"variant": "strided_tiled",
+			"stable_id": 701,
+			"kernel_id": "MatrixMatMulNtStridedTiledF32",
+			"kernel_name": "mat_mul_nt_strided_tiled",
+			"source_stem": "mat_mul_nt_strided_tiled",
+			"dispatch_tile_size": [
+				64,
+				64,
+				1
+			],
+			"semantic_operation": "mat_mul_nt"
+		},
+		{
+			"name": "mat_mul_nt_split_k",
+			"kind": "mat_mul_nt",
+			"variant": "split_k",
+			"stable_id": 702,
+			"kernel_id": "MatrixMatMulNtSplitKF32",
+			"kernel_name": "mat_mul_nt_split_k",
+			"source_stem": "mat_mul_nt_split_k",
+			"dispatch_tile_size": [
+				1,
+				1,
+				1
+			],
+			"semantic_operation": "mat_mul_nt"
+		},
+		{
+			"name": "mat_mul_nt_split_k_reduce",
+			"kind": "mat_mul_nt",
+			"variant": "split_k_reduce",
+			"stable_id": 703,
+			"kernel_id": "MatrixMatMulNtSplitKReduceF32",
+			"kernel_name": "mat_mul_nt_split_k_reduce",
+			"source_stem": "mat_mul_nt_split_k_reduce",
+			"dispatch_tile_size": [
+				1,
+				1,
+				1
+			],
+			"semantic_operation": "mat_mul_nt"
+		},
+		{
+			"name": "cast_f32_f16",
+			"kind": "cast",
+			"variant": "cast_f32_f16",
+			"stable_id": 704,
+			"kernel_id": "MatrixCastF32F16",
+			"kernel_name": "cast_f32_f16",
+			"source": "src/slang/matrix/blas/cast_f32_f16.slang",
+			"dispatch_tile_size": [
+				256,
+				1,
+				1
+			],
+			"semantic_operation": "mat_mul_nt",
+			"source_stem": "cast_f32_f16",
+			"dtype": "f16"
+		},
+		{
+			"name": "cast_f16_f32",
+			"kind": "cast",
+			"variant": "cast_f16_f32",
+			"stable_id": 705,
+			"kernel_id": "MatrixCastF16F32",
+			"kernel_name": "cast_f16_f32",
+			"source": "src/slang/matrix/blas/cast_f16_f32.slang",
+			"dispatch_tile_size": [
+				256,
+				1,
+				1
+			],
+			"semantic_operation": "mat_mul_nt",
+			"source_stem": "cast_f16_f32",
+			"dtype": "f16"
+		},
+		{
+			"name": "mat_mul_nt_f16s",
+			"kind": "mat_mul_nt",
+			"variant": "f16s",
+			"stable_id": 706,
+			"kernel_id": "MatrixMatMulNtF16sF32",
+			"kernel_name": "mat_mul_nt_f16s",
+			"source": "src/slang/matrix/blas/mat_mul_nt_f16s.slang",
+			"dispatch_tile_size": [
+				64,
+				64,
+				1
+			],
+			"semantic_operation": "mat_mul_nt",
+			"semantic_operations": ["ml::linear"],
+			"source_stem": "mat_mul_nt_f16s",
+			"dtype": "f16"
+		},
+		{
+			"name": "sum_f16s",
+			"kind": "sum",
+			"variant": "sum_f16s",
+			"stable_id": 707,
+			"kernel_id": "MatrixSumF16sF32",
+			"kernel_name": "sum_f16s",
+			"source": "src/slang/matrix/blas/sum_f16s.slang",
+			"dispatch_tile_size": [
+				1,
+				1,
+				1
+			],
+			"semantic_operation": "sum",
+			"source_stem": "sum_f16s",
+			"dtype": "f16"
+		}
+	]
 }

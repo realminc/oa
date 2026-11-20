@@ -223,32 +223,13 @@ impl FigureView {
 		self.figure.cols().max(1) as usize
 	}
 
-	fn cell_index(&self, row: i32, col: i32) -> usize {
-		row as usize * self.cols() + col as usize
-	}
-
-	/// Flattened cell index under a pointer position, if any.
+	/// Flattened index of the data viewport under a pointer, if any.
 	fn cell_at(&self, px: f32, py: f32) -> Option<usize> {
 		let [w, h] = self.extent;
 		if w == 0 || h == 0 {
 			return None;
 		}
-		for row in 0..self.figure.rows().max(1) {
-			for col in 0..self.figure.cols().max(1) {
-				let rect = self.figure.cell_rect(row, col, w, h);
-				if PixelRect::new(
-					rect.x + self.origin[0],
-					rect.y + self.origin[1],
-					rect.w.max(0) as u32,
-					rect.h.max(0) as u32,
-				)
-				.contains(px, py)
-				{
-					return Some(self.cell_index(row, col));
-				}
-			}
-		}
-		None
+		(0..self.cell_count()).find(|&cell| self.plot_rect(cell).contains(px, py))
 	}
 
 	fn cell_rect(&self, cell: usize) -> PixelRect {
@@ -264,9 +245,9 @@ impl FigureView {
 		)
 	}
 
-	/// Data-mapped plot area of a cell (post colorbar reservation).
+	/// Data viewport with the label and colorbar gutters excluded.
 	fn plot_rect(&self, cell: usize) -> PixelRect {
-		self.figure.axes()[cell].plot_area(self.cell_rect(cell))
+		self.figure.axes()[cell].layout(self.cell_rect(cell)).plot
 	}
 
 	/// Display-space limits a cell would show without a view override.
@@ -321,7 +302,7 @@ impl FigureView {
 		if !axes.cmds.show_legend {
 			return None;
 		}
-		let area = axes.plot_area(self.cell_rect(cell));
+		let area = self.plot_rect(cell);
 		let palette = self.figure.config().theme.ui_style().data_palette;
 		for entry in axes.legend_entries(&palette) {
 			if entry.row == usize::MAX {
@@ -765,8 +746,11 @@ impl ViewerLiveSource for FigureView {
 				let Some(cell) = self.cell_at(event.mouse_x, event.mouse_y) else {
 					return Ok(());
 				};
-				// Legend rows swallow the press — clicking toggles the artist.
-				if let Some((_, artist, hidden)) = self.legend_hit(cell, event.mouse_x, event.mouse_y) {
+				// Plain legend clicks toggle the artist. Shift-drag can start
+				// anywhere inside the data viewport, including under the legend.
+				if !event.shift()
+					&& let Some((_, artist, hidden)) = self.legend_hit(cell, event.mouse_x, event.mouse_y)
+				{
 					let (row, col) = (cell / self.cols(), cell % self.cols());
 					self
 						.figure

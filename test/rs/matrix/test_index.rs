@@ -351,6 +351,40 @@ test_vk!(
 );
 
 test_vk!(
+	captured_slice_adjoint_preserves_padding_after_transient_reuse,
+	engine,
+	{
+		let weights = oa::Matrix::new_from_f32(
+			&engine,
+			[2, 4],
+			&[1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0],
+		)?;
+		let embedding = oa::ml::nn::Embedding::new_from_matrix(weights.clone())?;
+		let rows = oa::Matrix::new_from_slice(&engine, [2], &[0_u32, 1])?;
+		let target = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.0; 4])?;
+		let (plan, (earlier, gradient)) = engine.capture(|| {
+			let earlier = oa::matrix::sum(&oa::matrix::scale(&weights, 4.0)?, 1)?;
+			let tape = oa::ml::GradientTape::new();
+			let slice = oa::matrix::slice(&embedding.forward(&rows)?, 1, 1, 3)?;
+			tape.backward(&oa::ml::loss::mse(&slice, &target)?)?;
+			Ok((
+				earlier,
+				embedding.weight().gradient().expect("slice gradient"),
+			))
+		})?;
+		for _ in 0..3 {
+			engine.submit(&plan)?.wait()?;
+			assert_eq!(earlier.read_f32()?, vec![40.0, -40.0]);
+			assert_eq!(
+				gradient.read_f32()?,
+				vec![0.0, 1.0, 1.5, 0.0, 0.0, -1.0, -1.5, 0.0]
+			);
+		}
+		Ok(())
+	}
+);
+
+test_vk!(
 	repeat_interleave_matches_axis_oracles_and_nonleading_axis_adjoint,
 	engine,
 	{

@@ -13,6 +13,8 @@ from .wire import generate_type, render_wire_values, validate_generated_types
 from .signature import operation_signature, signature_header
 from .util import IDENTIFIER, banner, require
 
+TILE_PROGRAM = re.compile(r"[a-z][a-z0-9_]*(\((true|false|0x[0-9a-fA-F]+|[0-9]+)(,\s*(true|false|0x[0-9a-fA-F]+|[0-9]+))*\))?")
+
 def validate_audio_schema(schema: dict[str, Any]) -> None:
 	require(schema.get("schema_version") == 1, "Audio schema_version must be 1")
 	require(schema.get("family") == "audio", "Audio family must be audio")
@@ -25,7 +27,7 @@ def validate_audio_schema(schema: dict[str, Any]) -> None:
 		where = f"Audio contracts[{index}]"
 		require(isinstance(contract, dict), f"{where} must be an object")
 		require(
-			(set(contract) - {"python", "donor_op", "control_flow"})
+			(set(contract) - {"python", "donor_op", "control_flow", "fusion_class"})
 			== {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes", "rust"},
 			f"{where} fields are incomplete or unknown",
 		)
@@ -63,6 +65,14 @@ def validate_audio_schema(schema: dict[str, Any]) -> None:
 		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
 		semantic = kernel.get("semantic_operation")
 		require(semantic is None or semantic in contract_names, f"{where}.semantic_operation is unknown")
+		require(
+			kernel.get("region_read") in {"elementwise", "gather", "bordered"},
+			f"{where}.region_read must declare the input read pattern",
+		)
+		require(
+			kernel.get("tile_program") is None or TILE_PROGRAM.fullmatch(kernel["tile_program"]) is not None,
+			f"{where}.tile_program must name a BlockProgram factory call",
+		)
 		workgroup = kernel.get("workgroup_size")
 		require(
 			isinstance(workgroup, list)

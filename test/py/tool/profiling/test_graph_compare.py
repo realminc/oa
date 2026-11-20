@@ -154,6 +154,45 @@ class GraphComparisonTests(unittest.TestCase):
 		left["new_evidence"], right["new_evidence"] = 1, True
 		self.assertFalse(graph_compare.compare_reports(left, right)["equal"])
 
+	def test_buffer_copy_is_counted_as_a_transfer_command(self):
+		before, after = report(), report()
+		after["stats"].update(dispatches=1, copies=1)
+		after["nodes"][1].update(
+			kind="buffer_copy", copy_bytes=16, groups=[0, 0, 0], kernel="vk.copy_buffer",
+		)
+		self.assertFalse(graph_compare.compare_reports(before, after)["equal"])
+		after["nodes"][1]["copy_bytes"] = 0
+		with self.assertRaisesRegex(ValueError, "copy_bytes"):
+			graph_compare.validate_report(after)
+
+	def test_video_plane_geometry_and_ownership_are_compared(self):
+		left = report()
+		left["stats"].update(dispatches=1, video_commands=1, image_transfers=0)
+		left["nodes"][1].update(
+			kind="video_plane_command", kernel="video.copy_planes", family=0,
+			image_geometry=[0, 1, 0, 0, 16, 0, 0, 32, 16, 32, 0, 0, 16, 8],
+		)
+		right = copy.deepcopy(left)
+		right["nodes"][1]["image_geometry"][5] = 2
+		self.assertFalse(graph_compare.compare_reports(left, right)["equal"])
+		right["nodes"][1]["family"] = 1
+		with self.assertRaisesRegex(ValueError, "family"):
+			graph_compare.validate_report(right)
+
+	def test_codec_picture_reference_slots_are_compared(self):
+		left = report()
+		left["stats"].update(dispatches=1, video_commands=1)
+		left["nodes"][1].update(
+			kind="video_decode", queue="video_decode", kernel="video.decode_h264",
+			decode_picture=[720, 480, 720, 480, 100, 0, 0, 256, 0, 2, 3, 6, 0, 0, 1, 2, 4, 0],
+		)
+		right = copy.deepcopy(left)
+		right["nodes"][1]["decode_picture"][14] = 0
+		self.assertFalse(graph_compare.compare_reports(left, right)["equal"])
+		right["nodes"][1]["decode_picture"].pop()
+		with self.assertRaisesRegex(ValueError, "decode_picture"):
+			graph_compare.validate_report(right)
+
 	def test_incomplete_and_invalid_reports_are_errors_even_when_identical(self):
 		mutations = [
 			lambda r: r.update(schema="oa.execution_graph.v2"),

@@ -1220,6 +1220,7 @@
     {
       "stable_id": 396,
       "name": "ppo_clipped_policy",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnLoss::ppoClippedPolicy",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlPpoClippedPolicyF32",
@@ -1252,6 +1253,7 @@
     {
       "stable_id": 397,
       "name": "ppo_clipped_policy_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlPpoClippedPolicyBackwardF32",
       "source": "src/slang/ml/loss/ppo/ppo_clipped_policy_backward.slang",
@@ -1282,6 +1284,7 @@
     {
       "stable_id": 22,
       "name": "linear",
+      "fusion_class": "gemm",
       "donor_op": "oa::FnMatrix::linear",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlLinearF32",
@@ -1326,6 +1329,7 @@
     {
       "stable_id": 638,
       "name": "linear_residual",
+      "fusion_class": "gemm",
       "kernel_id": "MlLinearResidualF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -1370,6 +1374,7 @@
     {
       "stable_id": 671,
       "name": "linear_residual_act",
+      "fusion_class": "gemm",
       "kernel_id": "MlLinearResidualActF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -1425,6 +1430,7 @@
     {
       "stable_id": 658,
       "name": "linear_residual_norm",
+      "fusion_class": "gemm",
       "kernel_id": "MlLinearResidualNormF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -1498,6 +1504,7 @@
     {
       "stable_id": 640,
       "name": "linear_act",
+      "fusion_class": "gemm",
       "kernel_id": "MlLinearActF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -1543,6 +1550,7 @@
     {
       "stable_id": 669,
       "name": "linear_gated_act",
+      "fusion_class": "gemm",
       "kernel_id": "MlLinearGatedActF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -1588,6 +1596,7 @@
     {
       "stable_id": 644,
       "name": "linear_triple",
+      "fusion_class": "gemm",
       "kernel_id": "MlLinearTripleF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -1644,6 +1653,7 @@
     {
       "stable_id": 23,
       "name": "linear_backward",
+      "fusion_class": "gemm",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlLinearBackwardF32",
       "fusion_effects": [],
@@ -1679,6 +1689,7 @@
     {
       "stable_id": 38,
       "name": "linear_parameter_backward",
+      "fusion_class": "gemm",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlLinearParameterBackwardF32",
       "source": "src/slang/ml/nn/linear/linear_parameter_backward.slang",
@@ -1713,6 +1724,7 @@
     {
       "stable_id": 653,
       "name": "linear_backward_prologue",
+      "fusion_class": "gemm",
       "kernel_id": "MlLinearBackwardPrologueF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -1759,6 +1771,7 @@
     {
       "stable_id": 654,
       "name": "linear_backward_norm",
+      "fusion_class": "gemm",
       "fusion_effects": [],
       "kernel_id": "MlLinearBackwardNormF32",
       "lowering_only": true,
@@ -1814,6 +1827,7 @@
     {
       "stable_id": 655,
       "name": "linear_backward_bmm_chain",
+      "fusion_class": "gemm",
       "fusion_effects": [],
       "kernel_id": "MlLinearBackwardBmmChainF32",
       "lowering_only": true,
@@ -1861,6 +1875,7 @@
     {
       "stable_id": 656,
       "name": "linear_backward_norm_add",
+      "fusion_class": "gemm",
       "fusion_effects": [],
       "kernel_id": "MlLinearBackwardNormAddF32",
       "lowering_only": true,
@@ -1926,6 +1941,7 @@
     {
       "stable_id": 24,
       "name": "cross_entropy",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnLoss::crossEntropy",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlCrossEntropyF32",
@@ -1966,6 +1982,7 @@
     {
       "stable_id": 57,
       "name": "cross_entropy_sum",
+      "fusion_class": "reduce",
       "kernel_id": "MlCrossEntropySumF32",
       "source": "src/slang/ml/loss/cross_entropy/cross_entropy_sum.slang",
       "variant": "generic",
@@ -1985,6 +2002,7 @@
     {
       "stable_id": 639,
       "name": "sum_scale",
+      "fusion_class": "reduce",
       "kernel_id": "MlSumScaleF32",
       "source": "src/slang/ml/loss/sum_scale.slang",
       "variant": "generic",
@@ -2016,6 +2034,7 @@
     {
       "stable_id": 25,
       "name": "cross_entropy_backward",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlCrossEntropyBackwardF32",
       "source": "src/slang/ml/loss/cross_entropy/cross_entropy_backward.slang",
@@ -2048,6 +2067,7 @@
     {
       "stable_id": 232,
       "name": "masked_cross_entropy",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnLoss::maskedCrossEntropy",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlMaskedCrossEntropyF32",
@@ -2095,6 +2115,7 @@
     {
       "stable_id": 233,
       "name": "masked_cross_entropy_backward",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlMaskedCrossEntropyBackwardF32",
       "source": "src/slang/ml/loss/masked_cross_entropy/masked_cross_entropy_backward.slang",
@@ -2134,6 +2155,7 @@
     {
       "stable_id": 297,
       "name": "smooth_l1",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnLoss::smoothL1",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlSmoothL1F32",
@@ -2161,6 +2183,7 @@
     {
       "stable_id": 298,
       "name": "smooth_l1_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlSmoothL1BackwardF32",
       "source": "src/slang/ml/loss/smooth_l1/smooth_l1_backward.slang",
@@ -2186,6 +2209,7 @@
     {
       "stable_id": 358,
       "name": "smooth_l1_mean",
+      "fusion_class": "reduce",
       "kernel_id": "MlSmoothL1MeanF32",
       "lowering_only": true,
       "semantic_operation": "smooth_l1",
@@ -2202,6 +2226,7 @@
     {
       "stable_id": 299,
       "name": "mse",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnLoss::mse",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlMseF32",
@@ -2229,6 +2254,7 @@
     {
       "stable_id": 300,
       "name": "mse_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlMseBackwardF32",
       "source": "src/slang/ml/loss/mse/mse_backward.slang",
@@ -2254,6 +2280,7 @@
     {
       "stable_id": 301,
       "name": "l1",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnLoss::l1",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlL1F32",
@@ -2281,6 +2308,7 @@
     {
       "stable_id": 302,
       "name": "l1_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlL1BackwardF32",
       "source": "src/slang/ml/loss/l1/l1_backward.slang",
@@ -2306,6 +2334,7 @@
     {
       "stable_id": 303,
       "name": "bce",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnLoss::bce",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlBceF32",
@@ -2333,6 +2362,7 @@
     {
       "stable_id": 304,
       "name": "bce_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::loss",
       "kernel_id": "MlBceBackwardF32",
       "source": "src/slang/ml/loss/bce/bce_backward.slang",
@@ -2358,6 +2388,7 @@
     {
       "stable_id": 82,
       "name": "sgd",
+      "fusion_class": "effect",
       "semantic_domain": "ml::optim",
       "kernel_id": "MlSgdF32",
       "training_replay_role": "host_stepped_optimizer",
@@ -2394,6 +2425,7 @@
     {
       "stable_id": 351,
       "name": "clip_grad_norm",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::optim",
       "kernel_id": "MlClipGradNormReduceF32",
       "source": "src/slang/ml/optim/grad_clip/clip_grad_norm_reduce.slang",
@@ -2446,6 +2478,7 @@
     {
       "stable_id": 352,
       "name": "clip_grad_norm_scale",
+      "fusion_class": "reduce",
       "kernel_id": "MlClipGradNormScaleF32",
       "lowering_only": true,
       "semantic_operation": "clip_grad_norm",
@@ -2481,6 +2514,7 @@
     {
       "stable_id": 83,
       "name": "sgd_momentum",
+      "fusion_class": "effect",
       "semantic_domain": "ml::optim",
       "kernel_id": "MlSgdMomentumF32",
       "training_replay_role": "host_stepped_optimizer",
@@ -2520,6 +2554,7 @@
     {
       "stable_id": 84,
       "name": "adam",
+      "fusion_class": "effect",
       "semantic_domain": "ml::optim",
       "kernel_id": "MlAdamF32",
       "training_replay_role": "host_stepped_optimizer",
@@ -2564,6 +2599,7 @@
     {
       "stable_id": 85,
       "name": "muon",
+      "fusion_class": "effect",
       "semantic_domain": "ml::optim",
       "kernel_id": "MlMuonNesterovF32",
       "training_replay_role": "host_stepped_optimizer",
@@ -2587,6 +2623,7 @@
     {
       "stable_id": 86,
       "name": "muon_vector",
+      "fusion_class": "effect",
       "kernel_id": "MlMuonVectorF32",
       "lowering_only": true,
       "semantic_operation": "muon",
@@ -2600,6 +2637,7 @@
     {
       "stable_id": 87,
       "name": "muon_normalize",
+      "fusion_class": "reduce",
       "kernel_id": "MlMuonNormalizeF32",
       "lowering_only": true,
       "training_replay_role": "host_stepped_optimizer",
@@ -2612,6 +2650,7 @@
     {
       "stable_id": 88,
       "name": "muon_mat_mul_axpby",
+      "fusion_class": "gemm",
       "kernel_id": "MlMuonMatMulAxpbyF32",
       "lowering_only": true,
       "training_replay_role": "host_stepped_optimizer",
@@ -2626,6 +2665,7 @@
     {
       "stable_id": 89,
       "name": "muon_linear_combination",
+      "fusion_class": "gemm",
       "kernel_id": "MlMuonLinearCombinationF32",
       "lowering_only": true,
       "training_replay_role": "host_stepped_optimizer",
@@ -2638,6 +2678,7 @@
     {
       "stable_id": 90,
       "name": "muon_transpose",
+      "fusion_class": "gather",
       "kernel_id": "MlMuonTransposeF32",
       "lowering_only": true,
       "training_replay_role": "host_stepped_optimizer",
@@ -2650,6 +2691,7 @@
     {
       "stable_id": 91,
       "name": "muon_apply",
+      "fusion_class": "effect",
       "kernel_id": "MlMuonApplyF32",
       "lowering_only": true,
       "training_replay_role": "host_stepped_optimizer",
@@ -2662,6 +2704,7 @@
     {
       "stable_id": 26,
       "name": "adamw",
+      "fusion_class": "effect",
       "semantic_domain": "ml::optim",
       "kernel_id": "MlAdamWF32",
       "training_replay_role": "host_stepped_optimizer",
@@ -2708,6 +2751,7 @@
     {
       "stable_id": 40,
       "name": "adamw_graph_advance",
+      "fusion_class": "effect",
       "semantic_domain": "ml::optim",
       "kernel_id": "MlAdamWGraphAdvanceU32",
       "training_replay_role": "optimizer_state_advance",
@@ -2738,6 +2782,7 @@
     {
       "stable_id": 41,
       "name": "adamw_graph",
+      "fusion_class": "effect",
       "semantic_domain": "ml::optim",
       "kernel_id": "MlAdamWGraphF32",
       "training_replay_role": "optimizer_state_update",
@@ -2771,6 +2816,7 @@
     {
       "stable_id": 27,
       "name": "embedding",
+      "fusion_class": "gather",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlEmbeddingF32",
       "fusion_effects": [],
@@ -2805,6 +2851,7 @@
     {
       "stable_id": 28,
       "name": "embedding_backward",
+      "fusion_class": "gather",
       "fusion_effects": [],
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlEmbeddingBackwardF32",
@@ -2838,6 +2885,7 @@
     {
       "stable_id": 443,
       "name": "channel_norm",
+      "fusion_class": "reduce",
       "fusion_effects": [],
       "donor_op": "oa::FnMatrix::channelNorm",
       "semantic_domain": "ml::matrix",
@@ -2869,6 +2917,7 @@
     {
       "stable_id": 444,
       "name": "channel_norm_backward",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlChannelNormBackwardF32",
       "source": "src/slang/ml/nn/channel_norm/channel_norm_backward.slang",
@@ -2901,6 +2950,7 @@
     {
       "stable_id": 445,
       "name": "channel_norm_relu",
+      "fusion_class": "reduce",
       "fusion_effects": [],
       "donor_op": "oa::FnMatrix::channelNormRelu",
       "semantic_domain": "ml::matrix",
@@ -2932,6 +2982,7 @@
     {
       "stable_id": 446,
       "name": "channel_norm_relu_backward",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlChannelNormReluBackwardF32",
       "source": "src/slang/ml/nn/channel_norm/channel_norm_relu_backward.slang",
@@ -2964,6 +3015,7 @@
     {
       "stable_id": 438,
       "name": "embedding_u8",
+      "fusion_class": "gather",
       "kernel_id": "MlEmbeddingU8F32",
       "lowering_only": true,
       "semantic_operation": "embedding",
@@ -2986,6 +3038,7 @@
     {
       "stable_id": 439,
       "name": "embedding_backward_u8",
+      "fusion_class": "gather",
       "kernel_id": "MlEmbeddingBackwardU8F32",
       "lowering_only": true,
       "semantic_operation": "embedding_backward",
@@ -3008,6 +3061,7 @@
     {
       "stable_id": 645,
       "name": "embedding_pair",
+      "fusion_class": "gather",
       "kernel_id": "MlEmbeddingPairF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -3036,6 +3090,7 @@
     {
       "stable_id": 659,
       "name": "embedding_pair_norm",
+      "fusion_class": "reduce",
       "kernel_id": "MlEmbeddingPairNormF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -3070,6 +3125,7 @@
     {
       "stable_id": 661,
       "name": "embedding_backward_sum",
+      "fusion_class": "reduce",
       "fusion_effects": [],
       "kernel_id": "MlEmbeddingBackwardSumF32",
       "lowering_only": true,
@@ -3093,6 +3149,7 @@
     {
       "stable_id": 29,
       "name": "rnn_scan",
+      "fusion_class": "scan",
       "donor_op": "oa::FnMatrix::rnnScan",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlRnnScanF32",
@@ -3132,6 +3189,7 @@
     {
       "stable_id": 30,
       "name": "rnn_scan_backward",
+      "fusion_class": "scan",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlRnnScanBackwardF32",
       "source": "src/slang/ml/nn/rnn/rnn_scan_backward.slang",
@@ -3170,6 +3228,7 @@
     {
       "stable_id": 31,
       "name": "layer_norm",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlLayerNormF32",
       "fusion_effects": [],
@@ -3237,6 +3296,7 @@
     {
       "stable_id": 642,
       "name": "residual_layer_norm",
+      "fusion_class": "reduce",
       "kernel_id": "MlResidualLayerNormF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -3298,6 +3358,7 @@
     {
       "stable_id": 32,
       "name": "layer_norm_backward",
+      "fusion_class": "reduce",
       "fusion_effects": [],
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlLayerNormBackwardF32",
@@ -3354,6 +3415,7 @@
     {
       "stable_id": 660,
       "name": "layer_norm_backward_sum",
+      "fusion_class": "reduce",
       "fusion_effects": [],
       "kernel_id": "MlLayerNormBackwardSumF32",
       "lowering_only": true,
@@ -3408,6 +3470,7 @@
     {
       "stable_id": 643,
       "name": "sum_axis_pair",
+      "fusion_class": "reduce",
       "fusion_effects": [],
       "kernel_id": "MlSumAxisPairF32",
       "lowering_only": true,
@@ -3449,6 +3512,7 @@
     {
       "stable_id": 646,
       "name": "sum_axis_scale",
+      "fusion_class": "reduce",
       "kernel_id": "MlSumAxisScaleF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -3490,6 +3554,7 @@
     {
       "stable_id": 113,
       "name": "rms_norm",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnMatrix::rmsNorm",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlRmsNormF32",
@@ -3540,6 +3605,7 @@
     {
       "stable_id": 114,
       "name": "rms_norm_backward",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlRmsNormBackwardF32",
       "semantic_attributes": [["epsilon", "float"]],
@@ -3596,6 +3662,7 @@
     {
       "stable_id": 33,
       "name": "gelu",
+      "fusion_class": "pointwise", "act_kind": "gelu", "tape_op": "gelu", "tape_shape": "unary",
       "donor_op": "oa::FnMatrix::gelu",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGeluF32",
@@ -3632,6 +3699,7 @@
     {
       "stable_id": 34,
       "name": "gelu_backward",
+      "fusion_class": "pointwise", "act_kind": "gelu", "tape_op": "gelu_backward", "tape_shape": "binary",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGeluBackwardF32",
       "fusion_effects": [],
@@ -3655,7 +3723,7 @@
       ]
     },
     {
-      "stable_id": 92, "name": "silu",
+      "stable_id": 92, "name": "silu", "fusion_class": "pointwise", "act_kind": "silu", "tape_op": "silu", "tape_shape": "unary",
       "donor_op": "oa::FnMatrix::silu", "semantic_domain": "ml::matrix",
       "kernel_id": "MlSiluF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/silu.slang",
@@ -3667,7 +3735,7 @@
       "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 93, "name": "silu_backward", "semantic_domain": "ml::matrix",
+      "stable_id": 93, "name": "silu_backward", "fusion_class": "pointwise", "act_kind": "silu", "tape_op": "silu_backward", "tape_shape": "binary", "semantic_domain": "ml::matrix",
       "kernel_id": "MlSiluBackwardF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/silu_backward.slang",
       "variant": "generic", "differentiation": "backward",
@@ -3676,7 +3744,7 @@
       "push_fields": [["input_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 94, "name": "relu",
+      "stable_id": 94, "name": "relu", "fusion_class": "pointwise", "act_kind": "relu", "tape_op": "relu", "tape_shape": "unary", "scalar_tail": "relu",
       "donor_op": "oa::FnMatrix::relu", "semantic_domain": "ml::matrix",
       "kernel_id": "MlReluF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/relu.slang",
@@ -3688,7 +3756,7 @@
       "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 95, "name": "relu_backward", "semantic_domain": "ml::matrix",
+      "stable_id": 95, "name": "relu_backward", "fusion_class": "pointwise", "act_kind": "relu", "tape_op": "relu_backward", "tape_shape": "binary", "semantic_domain": "ml::matrix",
       "kernel_id": "MlReluBackwardF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/relu_backward.slang",
       "variant": "generic", "differentiation": "backward",
@@ -3697,7 +3765,7 @@
       "push_fields": [["saved_output_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 96, "name": "tanh",
+      "stable_id": 96, "name": "tanh", "fusion_class": "pointwise", "act_kind": "tanh", "tape_op": "tanh", "tape_shape": "unary",
       "donor_op": "oa::FnMatrix::tanh", "semantic_domain": "ml::matrix",
       "kernel_id": "MlTanhF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/tanh.slang",
@@ -3708,7 +3776,7 @@
       "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 97, "name": "tanh_backward", "semantic_domain": "ml::matrix",
+      "stable_id": 97, "name": "tanh_backward", "fusion_class": "pointwise", "act_kind": "tanh", "tape_op": "tanh_backward", "tape_shape": "binary", "semantic_domain": "ml::matrix",
       "kernel_id": "MlTanhBackwardF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/tanh_backward.slang",
       "variant": "generic", "differentiation": "backward",
@@ -3717,7 +3785,7 @@
       "push_fields": [["saved_output_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 98, "name": "sigmoid",
+      "stable_id": 98, "name": "sigmoid", "fusion_class": "pointwise", "act_kind": "sigmoid", "tape_op": "sigmoid", "tape_shape": "unary",
       "donor_op": "oa::FnMatrix::sigmoid", "semantic_domain": "ml::matrix",
       "kernel_id": "MlSigmoidF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/sigmoid.slang",
@@ -3728,7 +3796,7 @@
       "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 99, "name": "sigmoid_backward", "semantic_domain": "ml::matrix",
+      "stable_id": 99, "name": "sigmoid_backward", "fusion_class": "pointwise", "act_kind": "sigmoid", "tape_op": "sigmoid_backward", "tape_shape": "binary", "semantic_domain": "ml::matrix",
       "kernel_id": "MlSigmoidBackwardF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/sigmoid_backward.slang",
       "variant": "generic", "differentiation": "backward",
@@ -3737,7 +3805,7 @@
       "push_fields": [["saved_output_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 100, "name": "leaky_relu",
+      "stable_id": 100, "name": "leaky_relu", "fusion_class": "pointwise", "act_kind": "leaky_relu",
       "donor_op": "oa::FnMatrix::leakyRelu", "semantic_domain": "ml::matrix",
       "kernel_id": "MlLeakyReluF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/leaky_relu.slang",
@@ -3749,7 +3817,7 @@
       "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"], ["alpha", "float32"]]
     },
     {
-      "stable_id": 101, "name": "leaky_relu_backward", "semantic_domain": "ml::matrix",
+      "stable_id": 101, "name": "leaky_relu_backward", "fusion_class": "pointwise", "act_kind": "leaky_relu", "tape_op": "leaky_relu_backward", "tape_shape": "binary_scalar", "semantic_domain": "ml::matrix",
       "kernel_id": "MlLeakyReluBackwardF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/leaky_relu_backward.slang",
       "variant": "generic", "differentiation": "backward", "semantic_attributes": [["alpha", "float"]],
@@ -3758,7 +3826,7 @@
       "push_fields": [["input_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"], ["alpha", "float32"]]
     },
     {
-      "stable_id": 102, "name": "elu",
+      "stable_id": 102, "name": "elu", "fusion_class": "pointwise", "act_kind": "elu",
       "donor_op": "oa::FnMatrix::elu", "semantic_domain": "ml::matrix",
       "kernel_id": "MlEluF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/elu.slang",
@@ -3769,7 +3837,7 @@
       "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"], ["alpha", "float32"]]
     },
     {
-      "stable_id": 103, "name": "elu_backward", "semantic_domain": "ml::matrix",
+      "stable_id": 103, "name": "elu_backward", "fusion_class": "pointwise", "act_kind": "elu", "tape_op": "elu_backward", "tape_shape": "binary_scalar", "semantic_domain": "ml::matrix",
       "kernel_id": "MlEluBackwardF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/elu_backward.slang",
       "variant": "generic", "differentiation": "backward", "semantic_attributes": [["alpha", "float"]],
@@ -3778,7 +3846,7 @@
       "push_fields": [["saved_output_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"], ["alpha", "float32"]]
     },
     {
-      "stable_id": 104, "name": "mish",
+      "stable_id": 104, "name": "mish", "fusion_class": "pointwise", "act_kind": "mish",
       "donor_op": "oa::FnMatrix::mish", "semantic_domain": "ml::matrix",
       "kernel_id": "MlMishF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/mish.slang",
@@ -3789,7 +3857,7 @@
       "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 105, "name": "mish_backward", "semantic_domain": "ml::matrix",
+      "stable_id": 105, "name": "mish_backward", "fusion_class": "pointwise", "act_kind": "mish", "tape_op": "mish_backward", "tape_shape": "binary", "semantic_domain": "ml::matrix",
       "kernel_id": "MlMishBackwardF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/mish_backward.slang",
       "variant": "generic", "differentiation": "backward",
@@ -3798,7 +3866,7 @@
       "push_fields": [["input_index", "uint32"], ["output_gradient_index", "uint32"], ["input_gradient_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 106, "name": "softplus",
+      "stable_id": 106, "name": "softplus", "fusion_class": "pointwise", "act_kind": "softplus",
       "donor_op": "oa::FnMatrix::softplus", "semantic_domain": "ml::matrix",
       "kernel_id": "MlSoftplusF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/softplus.slang",
@@ -3809,7 +3877,7 @@
       "push_fields": [["input_index", "uint32"], ["output_index", "uint32"], ["element_count", "uint32"]]
     },
     {
-      "stable_id": 107, "name": "softplus_backward", "semantic_domain": "ml::matrix",
+      "stable_id": 107, "name": "softplus_backward", "fusion_class": "pointwise", "act_kind": "softplus", "tape_op": "softplus_backward", "tape_shape": "binary", "semantic_domain": "ml::matrix",
       "kernel_id": "MlSoftplusBackwardF32",
       "fusion_effects": [], "source": "src/slang/ml/nn/activation/softplus_backward.slang",
       "variant": "generic", "differentiation": "backward",
@@ -3820,6 +3888,7 @@
     {
       "stable_id": 42,
       "name": "qkv_projection_bias",
+      "fusion_class": "gemm",
       "kernel_id": "MlQkvProjectionBiasF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/linear/qkv_projection_bias.slang",
@@ -3849,6 +3918,7 @@
     {
       "stable_id": 43,
       "name": "swiglu",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnMatrix::swiglu",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSwigluF32",
@@ -3889,6 +3959,7 @@
     {
       "stable_id": 44,
       "name": "swiglu_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSwigluBackwardF32",
       "source": "src/slang/ml/nn/swiglu/swiglu_backward.slang",
@@ -3919,6 +3990,7 @@
     {
       "stable_id": 45,
       "name": "gate_up_swiglu_bias",
+      "fusion_class": "gemm",
       "kernel_id": "MlGateUpSwigluBiasF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/linear/gate_up_swiglu_bias.slang",
@@ -3939,6 +4011,7 @@
     {
       "stable_id": 46,
       "name": "adamw_many4",
+      "fusion_class": "effect",
       "kernel_id": "MlAdamWMany4F32",
       "lowering_only": true,
       "training_replay_role": "host_stepped_optimizer",
@@ -3969,6 +4042,7 @@
     {
       "stable_id": 47,
       "name": "adamw_many4_graph",
+      "fusion_class": "effect",
       "kernel_id": "MlAdamWMany4GraphF32",
       "lowering_only": true,
       "training_replay_role": "optimizer_state_update",
@@ -3996,6 +4070,7 @@
     {
       "stable_id": 116,
       "name": "rope",
+      "fusion_class": "gather",
       "rust_family": "rope",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlRopeF32",
@@ -4029,6 +4104,7 @@
     {
       "stable_id": 117,
       "name": "rope_backward",
+      "fusion_class": "gather",
       "rust_family": "rope",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlRopeBackwardF32",
@@ -4061,6 +4137,7 @@
     {
       "stable_id": 272,
       "name": "avg_pool_2d",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlAvgPool2dF32",
       "source": "src/slang/ml/nn/pooling/avg_pool_2d.slang",
@@ -4108,6 +4185,7 @@
     {
       "stable_id": 273,
       "name": "avg_pool_2d_backward",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlAvgPool2dBackwardF32",
       "source": "src/slang/ml/nn/pooling/avg_pool_2d_backward.slang",
@@ -4154,6 +4232,7 @@
     {
       "stable_id": 274,
       "name": "max_pool_2d",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMaxPool2dF32",
       "source": "src/slang/ml/nn/pooling/max_pool_2d.slang",
@@ -4211,6 +4290,7 @@
     {
       "stable_id": 275,
       "name": "max_pool_2d_backward",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMaxPool2dBackwardF32",
       "fusion_effects": [],
@@ -4258,6 +4338,7 @@
     {
       "stable_id": 668,
       "name": "max_pool_2d_relu_backward",
+      "fusion_class": "conv",
       "kernel_id": "MlMaxPool2dReluBackwardF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -4295,6 +4376,7 @@
     {
       "stable_id": 276,
       "name": "adaptive_avg_pool_2d",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlAdaptiveAvgPool2dF32",
       "source": "src/slang/ml/nn/pooling/adaptive_avg_pool_2d.slang",
@@ -4339,6 +4421,7 @@
     {
       "stable_id": 277,
       "name": "adaptive_avg_pool_2d_backward",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlAdaptiveAvgPool2dBackwardF32",
       "source": "src/slang/ml/nn/pooling/adaptive_avg_pool_2d_backward.slang",
@@ -4382,6 +4465,7 @@
     {
       "stable_id": 278,
       "name": "batch_norm_2d",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlBatchNorm2dF32",
       "source": "src/slang/ml/nn/batch_norm_2d/batch_norm_2d.slang",
@@ -4436,6 +4520,7 @@
     {
       "stable_id": 279,
       "name": "batch_norm_2d_with_stats",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlBatchNorm2dWithStatsF32",
       "source": "src/slang/ml/nn/batch_norm_2d/batch_norm_2d_with_stats.slang",
@@ -4482,6 +4567,7 @@
     {
       "stable_id": 280,
       "name": "batch_norm_2d_running_update",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlBatchNorm2dRunningUpdateF32",
       "source": "src/slang/ml/nn/batch_norm_2d/batch_norm_2d_running_update.slang",
@@ -4536,6 +4622,7 @@
     {
       "stable_id": 281,
       "name": "batch_norm_2d_backward",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlBatchNorm2dBackwardF32",
       "source": "src/slang/ml/nn/batch_norm_2d/batch_norm_2d_backward.slang",
@@ -4591,6 +4678,7 @@
     {
       "stable_id": 282,
       "name": "batch_norm_2d_input_backward",
+      "fusion_class": "reduce",
       "kernel_id": "MlBatchNorm2dInputBackwardF32",
       "lowering_only": true,
       "source": "src/slang/ml/nn/batch_norm_2d/batch_norm_2d_input_backward.slang",
@@ -4616,6 +4704,7 @@
     {
       "stable_id": 283,
       "name": "upsample_2d",
+      "fusion_class": "effect",
       "rust_family": "upsample",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlUpsample2dNearestF32",
@@ -4666,6 +4755,7 @@
     {
       "stable_id": 284,
       "name": "upsample_2d_bilinear",
+      "fusion_class": "gemm",
       "kernel_id": "MlUpsample2dBilinearF32",
       "lowering_only": true,
       "semantic_operation": "upsample_2d",
@@ -4701,6 +4791,7 @@
     {
       "stable_id": 285,
       "name": "upsample_2d_backward",
+      "fusion_class": "effect",
       "rust_family": "upsample",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlUpsample2dNearestBackwardF32",
@@ -4750,6 +4841,7 @@
     {
       "stable_id": 286,
       "name": "upsample_2d_bilinear_backward",
+      "fusion_class": "gemm",
       "kernel_id": "MlUpsample2dBilinearBackwardF32",
       "lowering_only": true,
       "semantic_operation": "upsample_2d_backward",
@@ -4785,6 +4877,7 @@
     {
       "stable_id": 287,
       "name": "conv_2d",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlConv2dF32",
       "fusion_effects": [],
@@ -4839,6 +4932,7 @@
     {
       "stable_id": 667,
       "name": "conv_2d_relu",
+      "fusion_class": "conv",
       "kernel_id": "MlConv2dReluF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -4876,6 +4970,7 @@
     {
       "stable_id": 288,
       "name": "conv_2d_backward",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlConv2dBackwardF32",
       "source": "src/slang/ml/nn/conv/conv_2d_backward.slang",
@@ -4927,6 +5022,7 @@
     {
       "stable_id": 289,
       "name": "conv_2d_parameter_backward",
+      "fusion_class": "conv",
       "kernel_id": "MlConv2dParameterBackwardF32",
       "lowering_only": true,
       "semantic_operation": "conv_2d_backward",
@@ -4975,6 +5071,7 @@
     {
       "stable_id": 290,
       "name": "conv_1d",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlConv1dIm2ColF32",
       "source": "src/slang/ml/nn/conv/conv_1d_im2_col.slang",
@@ -5025,6 +5122,7 @@
     {
       "stable_id": 291,
       "name": "conv_1d_bias_add",
+      "fusion_class": "conv",
       "fusion_effects": [],
       "kernel_id": "MlConv1dBiasAddF32",
       "lowering_only": true,
@@ -5058,6 +5156,7 @@
     {
       "stable_id": 292,
       "name": "conv_1d_transpose",
+      "fusion_class": "conv",
       "fusion_effects": [],
       "kernel_id": "MlConv1dTransposeF32",
       "lowering_only": true,
@@ -5091,6 +5190,7 @@
     {
       "stable_id": 662,
       "name": "conv_1d_bias_transpose",
+      "fusion_class": "conv",
       "fusion_effects": [],
       "kernel_id": "MlConv1dBiasTransposeF32",
       "lowering_only": true,
@@ -5124,6 +5224,7 @@
     {
       "stable_id": 663,
       "name": "conv_1d_bias_transpose_relu",
+      "fusion_class": "conv",
       "fusion_effects": [],
       "kernel_id": "MlConv1dBiasTransposeReluF32",
       "lowering_only": true,
@@ -5156,6 +5257,7 @@
     {
       "stable_id": 670,
       "name": "conv_1d_bias_transpose_residual_relu",
+      "fusion_class": "conv",
       "fusion_effects": [],
       "kernel_id": "MlConv1dBiasTransposeResidualReluF32",
       "lowering_only": true,
@@ -5199,6 +5301,7 @@
     {
       "stable_id": 664,
       "name": "conv_1d_bias_transpose_norm",
+      "fusion_class": "conv",
       "fusion_effects": [],
       "kernel_id": "MlConv1dBiasTransposeNormF32",
       "lowering_only": true,
@@ -5242,6 +5345,7 @@
     {
       "stable_id": 665,
       "name": "conv_1d_bias_transpose_norm_relu",
+      "fusion_class": "conv",
       "fusion_effects": [],
       "kernel_id": "MlConv1dBiasTransposeNormReluF32",
       "lowering_only": true,
@@ -5285,6 +5389,7 @@
     {
       "stable_id": 666,
       "name": "conv_1d_bias_copy",
+      "fusion_class": "conv",
       "fusion_effects": [],
       "kernel_id": "MlConv1dBiasCopyF32",
       "lowering_only": true,
@@ -5316,6 +5421,7 @@
     {
       "stable_id": 293,
       "name": "conv_1d_backward",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlConv1dBackwardF32",
       "source": "src/slang/ml/nn/conv/conv_1d_backward.slang",
@@ -5366,6 +5472,7 @@
     {
       "stable_id": 294,
       "name": "conv_1d_parameter_backward",
+      "fusion_class": "conv",
       "kernel_id": "MlConv1dParameterBackwardF32",
       "lowering_only": true,
       "semantic_operation": "conv_1d_backward",
@@ -5413,6 +5520,7 @@
     {
       "stable_id": 295,
       "name": "conv_transpose_1d",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlConvTranspose1dF32",
       "source": "src/slang/ml/nn/conv/conv_transpose_1d.slang",
@@ -5464,6 +5572,7 @@
     {
       "stable_id": 296,
       "name": "conv_transpose_1d_backward",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlConvTranspose1dBackwardF32",
       "source": "src/slang/ml/nn/conv/conv_transpose_1d_backward.slang",
@@ -5513,6 +5622,7 @@
     {
       "stable_id": 305,
       "name": "conv_transpose_2d",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlConvTranspose2dF32",
       "source": "src/slang/ml/nn/conv/conv_transpose_2d.slang",
@@ -5564,6 +5674,7 @@
     {
       "stable_id": 306,
       "name": "conv_transpose_2d_bias_add",
+      "fusion_class": "conv",
       "kernel_id": "MlConvTranspose2dBiasAddF32",
       "lowering_only": true,
       "semantic_operation": "conv_transpose_2d",
@@ -5597,6 +5708,7 @@
     {
       "stable_id": 307,
       "name": "conv_transpose_2d_backward",
+      "fusion_class": "conv",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlConvTranspose2dBackwardF32",
       "source": "src/slang/ml/nn/conv/conv_transpose_2d_backward.slang",
@@ -5647,6 +5759,7 @@
     {
       "stable_id": 308,
       "name": "conv_transpose_2d_parameter_backward",
+      "fusion_class": "conv",
       "kernel_id": "MlConvTranspose2dParameterBackwardF32",
       "lowering_only": true,
       "semantic_operation": "conv_transpose_2d_backward",
@@ -5695,6 +5808,7 @@
     {
       "stable_id": 311,
       "name": "gru_scan",
+      "fusion_class": "scan",
       "donor_op": "oa::FnMatrix::gruScan",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGruScanF32",
@@ -5753,6 +5867,7 @@
     {
       "stable_id": 312,
       "name": "gru_scan_backward",
+      "fusion_class": "scan",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGruScanBackwardF32",
       "source": "src/slang/ml/nn/gru/gru_scan_backward.slang",
@@ -5809,6 +5924,7 @@
     {
       "stable_id": 313,
       "name": "gru_cell",
+      "fusion_class": "opaque",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGruCellF32",
       "source": "src/slang/ml/nn/gru/gru_cell.slang",
@@ -5865,6 +5981,7 @@
     {
       "stable_id": 314,
       "name": "gru_cell_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGruCellBackwardF32",
       "source": "src/slang/ml/nn/gru/gru_cell_backward.slang",
@@ -5928,6 +6045,7 @@
     {
       "stable_id": 315,
       "name": "rnn_cell",
+      "fusion_class": "opaque",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlRnnCellF32",
       "source": "src/slang/ml/nn/rnn/rnn_cell.slang",
@@ -5984,6 +6102,7 @@
     {
       "stable_id": 316,
       "name": "rnn_cell_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlRnnCellBackwardF32",
       "source": "src/slang/ml/nn/rnn/rnn_cell_backward.slang",
@@ -6037,6 +6156,7 @@
     {
       "stable_id": 317,
       "name": "bmm",
+      "fusion_class": "gemm",
       "donor_op": "oa::FnMatrix::bmm",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlBmmF32",
@@ -6082,6 +6202,7 @@
     {
       "stable_id": 318,
       "name": "bmm_tiled_16",
+      "fusion_class": "gemm",
       "kernel_id": "MlBmmTiled16F32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -6116,6 +6237,7 @@
     {
       "stable_id": 319,
       "name": "bmm_nt",
+      "fusion_class": "gemm",
       "donor_op": "oa::FnMatrix::bmmNt",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlBmmNtF32",
@@ -6161,6 +6283,7 @@
     {
       "stable_id": 320,
       "name": "bmm_nt_tiled_16",
+      "fusion_class": "gemm",
       "kernel_id": "MlBmmNtTiled16F32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -6195,6 +6318,7 @@
     {
       "stable_id": 321,
       "name": "bmm_tn",
+      "fusion_class": "gemm",
       "donor_op": "oa::FnMatrix::bmmTn",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlBmmTnF32",
@@ -6239,6 +6363,7 @@
     {
       "stable_id": 322,
       "name": "bmm_tn_tiled_16",
+      "fusion_class": "gemm",
       "fusion_effects": [],
       "kernel_id": "MlBmmTnTiled16F32",
       "lowering_only": true,
@@ -6273,6 +6398,7 @@
     {
       "stable_id": 323,
       "name": "split_heads",
+      "fusion_class": "gather",
       "donor_op": "oa::FnMatrix::splitHeads",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSplitHeadsF32",
@@ -6323,6 +6449,7 @@
     {
       "stable_id": 324,
       "name": "merge_heads",
+      "fusion_class": "gather",
       "donor_op": "oa::FnMatrix::mergeHeads",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMergeHeadsF32",
@@ -6373,6 +6500,7 @@
     {
       "stable_id": 325,
       "name": "softmax_scaled_masked",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnMatrix::softmaxScaledMasked",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSoftmaxScaledMaskedF32",
@@ -6419,6 +6547,7 @@
     {
       "stable_id": 326,
       "name": "softmax_scaled_masked_n32",
+      "fusion_class": "reduce",
       "kernel_id": "MlSoftmaxScaledMaskedN32F32",
       "lowering_only": true,
       "semantic_operation": "softmax_scaled_masked",
@@ -6452,6 +6581,7 @@
     {
       "stable_id": 327,
       "name": "softmax_scaled_masked_backward",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSoftmaxScaledMaskedBackwardF32",
       "source": "src/slang/ml/nn/softmax/softmax_scaled_masked_backward.slang",
@@ -6495,6 +6625,7 @@
     {
       "stable_id": 328,
       "name": "scaled_dot_product_attention",
+      "fusion_class": "attention",
       "donor_op": "oa::FnMatrix::scaledDotProductAttention",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSdpaSoftmaxF32",
@@ -6544,6 +6675,7 @@
     {
       "stable_id": 329,
       "name": "sdpa_softmax_n32",
+      "fusion_class": "attention",
       "kernel_id": "MlSdpaSoftmaxN32F32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -6579,6 +6711,7 @@
     {
       "stable_id": 330,
       "name": "flash_attention_causal",
+      "fusion_class": "attention",
       "kernel_id": "MlFlashAttentionCausalF32",
       "lowering_only": true,
       "semantic_operation": "scaled_dot_product_attention",
@@ -6624,6 +6757,7 @@
     {
       "stable_id": 331,
       "name": "scaled_dot_product_attention_backward",
+      "fusion_class": "attention",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlFlashAttentionCausalBackwardQF32",
       "source": "src/slang/ml/nn/attention/flash_causal_backward_q.slang",
@@ -6671,6 +6805,7 @@
     {
       "stable_id": 332,
       "name": "flash_attention_causal_backward_kv",
+      "fusion_class": "attention",
       "kernel_id": "MlFlashAttentionCausalBackwardKvF32",
       "lowering_only": true,
       "semantic_operation": "scaled_dot_product_attention_backward",
@@ -6717,6 +6852,7 @@
     {
       "stable_id": 333,
       "name": "moe_route_weights",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnMatrix::moeRouteWeights",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMoeRouteWeightsF32",
@@ -6759,6 +6895,7 @@
     {
       "stable_id": 334,
       "name": "moe_route_weights_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMoeRouteWeightsBackwardF32",
       "source": "src/slang/ml/nn/moe/moe_route_weights_backward.slang",
@@ -6800,6 +6937,7 @@
     {
       "stable_id": 360,
       "name": "moe_gather",
+      "fusion_class": "gather",
       "donor_op": "oa::FnMatrix::moeGather",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMoeGatherF32",
@@ -6830,6 +6968,7 @@
     {
       "stable_id": 361,
       "name": "moe_gather_backward",
+      "fusion_class": "gather",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMoeGatherBackwardF32",
       "source": "src/slang/ml/nn/moe/moe_gather_backward.slang",
@@ -6860,6 +6999,7 @@
     {
       "stable_id": 362,
       "name": "moe_combine",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnMatrix::moeCombine",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMoeCombineF32",
@@ -6891,6 +7031,7 @@
     {
       "stable_id": 363,
       "name": "moe_combine_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMoeCombineBackwardF32",
       "source": "src/slang/ml/nn/moe/moe_combine_backward.slang",
@@ -6924,6 +7065,7 @@
     {
       "stable_id": 364,
       "name": "grouped_linear_m",
+      "fusion_class": "gemm",
       "donor_op": "oa::FnMatrix::groupedLinearM",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGroupedLinearMF32",
@@ -6958,6 +7100,7 @@
     {
       "stable_id": 365,
       "name": "grouped_linear_m_backward",
+      "fusion_class": "gemm",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGroupedLinearMDataBackwardF32",
       "fusion_effects": [],
@@ -6990,6 +7133,7 @@
     {
       "stable_id": 366,
       "name": "grouped_linear_m_parameter_backward",
+      "fusion_class": "gemm",
       "kernel_id": "MlGroupedLinearMParameterBackwardF32",
       "lowering_only": true,
       "semantic_operation": "grouped_linear_m_backward",
@@ -7015,6 +7159,7 @@
     {
       "stable_id": 367,
       "name": "silu_mul",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSiluMulF32",
       "fusion_effects": [],
@@ -7046,6 +7191,8 @@
     {
       "stable_id": 368,
       "name": "silu_mul_backward",
+      "fusion_class": "pointwise",
+      "prologue_kind": "silu_mul",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSiluMulBackwardF32",
       "fusion_effects": [],
@@ -7077,6 +7224,7 @@
     {
       "stable_id": 369,
       "name": "grouped_gemm_m",
+      "fusion_class": "gemm",
       "donor_op": "oa::FnMatrix::groupedGemmM",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGroupedGemmMF32",
@@ -7110,6 +7258,7 @@
     {
       "stable_id": 370,
       "name": "grouped_gemm_m_backward",
+      "fusion_class": "gemm",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlGroupedGemmMDataBackwardF32",
       "fusion_effects": [],
@@ -7142,6 +7291,7 @@
     {
       "stable_id": 371,
       "name": "grouped_gemm_m_parameter_backward",
+      "fusion_class": "gemm",
       "kernel_id": "MlGroupedGemmMParameterBackwardF32",
       "lowering_only": true,
       "semantic_operation": "grouped_gemm_m_backward",
@@ -7164,6 +7314,7 @@
     {
       "stable_id": 379,
       "name": "linear_match",
+      "fusion_class": "gemm",
       "donor_op": "oa::FnFlow::linearMatch",
       "semantic_domain": "ml::flow",
       "kernel_id": "MlFlowLinearMatchF32",
@@ -7204,6 +7355,7 @@
     {
       "stable_id": 380,
       "name": "euler_step",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnFlow::eulerStep",
       "semantic_domain": "ml::flow",
       "kernel_id": "MlFlowEulerStepF32",
@@ -7235,6 +7387,7 @@
     {
       "stable_id": 381,
       "name": "masked_mse",
+      "fusion_class": "gather",
       "donor_op": "oa::FnFlow::maskedMse",
       "semantic_domain": "ml::flow",
       "kernel_id": "MlFlowMaskedMseF32",
@@ -7277,6 +7430,7 @@
     {
       "stable_id": 382,
       "name": "masked_mse_backward",
+      "fusion_class": "gather",
       "semantic_domain": "ml::flow",
       "kernel_id": "MlFlowMaskedMseBackwardF32",
       "source": "src/slang/ml/flow/masked_mse_backward.slang",
@@ -7312,6 +7466,7 @@
     {
       "stable_id": 383,
       "name": "gae",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnAdvantage::gae",
       "semantic_domain": "ml::advantage",
       "kernel_id": "MlGaeF32",
@@ -7350,6 +7505,7 @@
     {
       "stable_id": 384,
       "name": "append",
+      "fusion_class": "gather",
       "semantic_domain": "ml::rollout",
       "kernel_id": "MlRolloutAppendF32",
       "source": "src/slang/ml/rollout/append.slang",
@@ -7404,6 +7560,7 @@
     {
       "stable_id": 385,
       "name": "reset",
+      "fusion_class": "gather",
       "semantic_domain": "ml::rollout",
       "kernel_id": "MlRolloutResetU8",
       "source": "src/slang/ml/rollout/reset.slang",
@@ -7432,6 +7589,7 @@
     {
       "stable_id": 386,
       "name": "append_batch",
+      "fusion_class": "effect",
       "semantic_domain": "ml::replay",
       "kernel_id": "MlReplayAppendBatchF32",
       "source": "src/slang/ml/replay/append_batch.slang",
@@ -7481,6 +7639,7 @@
     {
       "stable_id": 387,
       "name": "sample",
+      "fusion_class": "effect",
       "semantic_domain": "ml::replay",
       "kernel_id": "MlReplaySampleF32",
       "source": "src/slang/ml/replay/sample.slang",
@@ -7529,6 +7688,7 @@
     {
       "stable_id": 398,
       "name": "dqn_target",
+      "fusion_class": "pointwise",
       "kernel_id": "MlDqnTargetF32",
       "source": "src/slang/ml/loss/dqn/dqn_target.slang",
       "variant": "generic",
@@ -7550,6 +7710,7 @@
     {
       "stable_id": 399,
       "name": "sac_target",
+      "fusion_class": "pointwise",
       "kernel_id": "MlSacTargetF32",
       "source": "src/slang/ml/loss/sac/sac_target.slang",
       "variant": "twin_q",
@@ -7572,6 +7733,7 @@
     {
       "stable_id": 419,
       "name": "rms_norm_gated",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnMatrix::rmsNormGated",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlRmsNormGatedF32",
@@ -7612,6 +7774,7 @@
     {
       "stable_id": 420,
       "name": "rms_norm_gated_backward",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlRmsNormGatedBackwardF32",
       "source": "src/slang/ml/nn/rms_norm/rms_norm_gated_backward.slang",
@@ -7654,6 +7817,7 @@
     {
       "stable_id": 416,
       "name": "mamba3_preprocess",
+      "fusion_class": "opaque",
       "donor_op": "oa::FnMatrix::mamba3Preprocess",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMamba3PreprocessF32",
@@ -7704,6 +7868,7 @@
     {
       "stable_id": 417,
       "name": "mamba3_preprocess_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMamba3PreprocessBackwardF32",
       "source": "src/slang/ml/nn/mamba3/mamba3_preprocess_backward.slang",
@@ -7748,6 +7913,7 @@
     {
       "stable_id": 418,
       "name": "mamba3_preprocess_backward_reduce",
+      "fusion_class": "reduce",
       "kernel_id": "MlMamba3PreprocessBackwardReduceF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_preprocess_backward",
@@ -7771,6 +7937,7 @@
     {
       "stable_id": 342,
       "name": "mamba3_siso",
+      "fusion_class": "opaque",
       "donor_op": "oa::FnMatrix::mamba3Siso",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMamba3SisoF32",
@@ -7813,6 +7980,7 @@
     {
       "stable_id": 341,
       "name": "mamba3_siso_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMamba3SisoBackwardPrepareF32",
       "source": "src/slang/ml/nn/mamba3/mamba3_siso_backward_prepare.slang",
@@ -7861,6 +8029,7 @@
     {
       "stable_id": 343,
       "name": "mamba3_siso_step",
+      "fusion_class": "opaque",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMamba3SisoStepF32",
       "source": "src/slang/ml/nn/mamba3/mamba3_siso_step.slang",
@@ -7907,6 +8076,7 @@
     {
       "stable_id": 411,
       "name": "mamba3_siso_backward_state",
+      "fusion_class": "pointwise",
       "kernel_id": "MlMamba3SisoBackwardStateF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -7937,6 +8107,7 @@
     {
       "stable_id": 412,
       "name": "mamba3_siso_backward_reverse_p16",
+      "fusion_class": "pointwise",
       "kernel_id": "MlMamba3SisoBackwardReverseP16F32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -7977,6 +8148,7 @@
     {
       "stable_id": 413,
       "name": "mamba3_siso_backward_finalize",
+      "fusion_class": "pointwise",
       "kernel_id": "MlMamba3SisoBackwardFinalizeF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -8005,6 +8177,7 @@
     {
       "stable_id": 414,
       "name": "mamba3_siso_backward_reduce",
+      "fusion_class": "reduce",
       "kernel_id": "MlMamba3SisoBackwardReduceF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -8033,6 +8206,7 @@
     {
       "stable_id": 415,
       "name": "mamba3_siso_backward_group_reduce",
+      "fusion_class": "reduce",
       "kernel_id": "MlMamba3SisoBackwardGroupReduceF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -8057,6 +8231,7 @@
     {
       "stable_id": 421,
       "name": "mamba3_mimo",
+      "fusion_class": "opaque",
       "donor_op": "oa::FnMatrix::mamba3Mimo",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMamba3MimoF32",
@@ -8247,6 +8422,7 @@
     {
       "stable_id": 422,
       "name": "mamba3_mimo_backward",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMamba3MimoBackwardCoreF32",
       "source": "src/slang/ml/nn/mamba3/mamba3_mimo_backward_core.slang",
@@ -8500,6 +8676,7 @@
     {
       "stable_id": 423,
       "name": "mamba3_mimo_step",
+      "fusion_class": "opaque",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMamba3MimoStepF32",
       "source": "src/slang/ml/nn/mamba3/mamba3_mimo_step.slang",
@@ -8750,6 +8927,7 @@
     {
       "stable_id": 424,
       "name": "mamba3_mimo_backward_prepare",
+      "fusion_class": "pointwise",
       "kernel_id": "MlMamba3MimoBackwardPrepareF32",
       "source": "src/slang/ml/nn/mamba3/mamba3_mimo_backward_prepare.slang",
       "variant": "prepare",
@@ -8948,6 +9126,7 @@
     {
       "stable_id": 425,
       "name": "mamba3_mimo_backward_post",
+      "fusion_class": "pointwise",
       "kernel_id": "MlMamba3MimoBackwardPostF32",
       "source": "src/slang/ml/nn/mamba3/mamba3_mimo_backward_post.slang",
       "variant": "post",
@@ -9142,6 +9321,7 @@
     {
       "stable_id": 426,
       "name": "mamba3_mimo_backward_rotate",
+      "fusion_class": "pointwise",
       "kernel_id": "MlMamba3MimoBackwardRotateF32",
       "source": "src/slang/ml/nn/mamba3/mamba3_mimo_backward_rotate.slang",
       "variant": "rotate",
@@ -9320,6 +9500,7 @@
     {
       "stable_id": 427,
       "name": "mamba3_mimo_backward_reduce",
+      "fusion_class": "reduce",
       "kernel_id": "MlMamba3MimoBackwardReduceF32",
       "source": "src/slang/ml/nn/mamba3/mamba3_mimo_backward_reduce.slang",
       "variant": "reduce",
@@ -9558,6 +9739,7 @@
     {
       "stable_id": 428,
       "name": "mamba3_siso_backward_generic",
+      "fusion_class": "pointwise",
       "kernel_id": "MlMamba3SisoBackwardGenericF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -9609,6 +9791,7 @@
     {
       "stable_id": 429,
       "name": "mamba3_siso_backward_generic_reduce",
+      "fusion_class": "reduce",
       "kernel_id": "MlMamba3SisoBackwardGenericReduceF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -9645,6 +9828,7 @@
     {
       "stable_id": 430,
       "name": "mamba3_siso_chunk_summary",
+      "fusion_class": "reduce",
       "kernel_id": "MlMamba3SisoChunkSummaryF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -9672,6 +9856,7 @@
     {
       "stable_id": 431,
       "name": "mamba3_siso_chunk_prefix",
+      "fusion_class": "opaque",
       "kernel_id": "MlMamba3SisoChunkPrefixF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -9696,6 +9881,7 @@
     {
       "stable_id": 432,
       "name": "mamba3_siso_chunk_dpre",
+      "fusion_class": "opaque",
       "kernel_id": "MlMamba3SisoChunkDpreF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -9729,6 +9915,7 @@
     {
       "stable_id": 433,
       "name": "mamba3_siso_chunk_backward_summary",
+      "fusion_class": "reduce",
       "kernel_id": "MlMamba3SisoChunkBackwardSummaryF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -9754,6 +9941,7 @@
     {
       "stable_id": 434,
       "name": "mamba3_siso_chunk_backward_prefix",
+      "fusion_class": "pointwise",
       "kernel_id": "MlMamba3SisoChunkBackwardPrefixF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -9778,6 +9966,7 @@
     {
       "stable_id": 435,
       "name": "mamba3_siso_chunk_backward",
+      "fusion_class": "pointwise",
       "kernel_id": "MlMamba3SisoChunkBackwardF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -9819,6 +10008,7 @@
     {
       "stable_id": 436,
       "name": "mamba3_siso_chunk_finalize",
+      "fusion_class": "opaque",
       "kernel_id": "MlMamba3SisoChunkFinalizeF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -9848,6 +10038,7 @@
     {
       "stable_id": 437,
       "name": "mamba3_siso_chunk_reduce",
+      "fusion_class": "reduce",
       "kernel_id": "MlMamba3SisoChunkReduceF32",
       "lowering_only": true,
       "semantic_operation": "mamba3_siso_backward",
@@ -9882,6 +10073,7 @@
     {
       "stable_id": 408,
       "name": "vq_assign",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnMatrix::vqAssign",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlVqAssignF32",
@@ -9915,6 +10107,7 @@
     {
       "stable_id": 409,
       "name": "vq_lookup",
+      "fusion_class": "gather",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlVqLookupF32",
       "source": "src/slang/ml/nn/vq/vq_lookup.slang",
@@ -9946,6 +10139,7 @@
     {
       "stable_id": 410,
       "name": "vq_ema_update",
+      "fusion_class": "effect",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlVqEmaUpdateF32",
       "source": "src/slang/ml/nn/vq/vq_ema_update.slang",
@@ -9988,6 +10182,7 @@
     {
       "stable_id": 600,
       "name": "trading_reset",
+      "fusion_class": "effect",
       "semantic_domain": "ml::environment",
       "kernel_id": "MlTradingResetF32",
       "source": "src/slang/ml/environment/trading/reset.slang",
@@ -10150,6 +10345,7 @@
     {
       "stable_id": 601,
       "name": "trading_step",
+      "fusion_class": "effect",
       "semantic_domain": "ml::environment",
       "kernel_id": "MlTradingStepF32",
       "source": "src/slang/ml/environment/trading/step.slang",
@@ -10386,6 +10582,7 @@
     {
       "stable_id": 602,
       "name": "causal_linear_attention",
+      "fusion_class": "attention",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlCausalLinearAttentionF32",
       "source": "src/slang/ml/nn/attention/linear_causal.slang",
@@ -10508,6 +10705,7 @@
     {
       "stable_id": 603,
       "name": "causal_linear_attention_backward",
+      "fusion_class": "attention",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlCausalLinearAttentionBackwardQF32",
       "source": "src/slang/ml/nn/attention/linear_causal_backward_q.slang",
@@ -10631,6 +10829,7 @@
     {
       "stable_id": 604,
       "name": "causal_linear_attention_backward_kv",
+      "fusion_class": "attention",
       "kernel_id": "MlCausalLinearAttentionBackwardKvF32",
       "lowering_only": true,
       "semantic_operation": "causal_linear_attention_backward",
@@ -10733,6 +10932,7 @@
     {
       "stable_id": 605,
       "name": "minibatch",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::rollout",
       "kernel_id": "MlRolloutMinibatchF32",
       "source": "src/slang/ml/rollout/minibatch.slang",
@@ -10892,6 +11092,7 @@
     {
       "stable_id": 606,
       "name": "minibatch_cursor",
+      "fusion_class": "reduce",
       "semantic_domain": "ml::rollout",
       "kernel_id": "MlRolloutMinibatchCursorF32",
       "source": "src/slang/ml/rollout/minibatch_cursor.slang",
@@ -11048,6 +11249,7 @@
     {
       "stable_id": 607,
       "name": "training_accumulate",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlTrainingAccumulateF32",
       "source": "src/slang/ml/training/accumulate.slang",
@@ -11130,6 +11332,7 @@
     {
       "stable_id": 608,
       "name": "append_cursor",
+      "fusion_class": "gather",
       "semantic_domain": "ml::rollout",
       "kernel_id": "MlRolloutAppendCursorF32",
       "source": "src/slang/ml/rollout/append_cursor.slang",
@@ -11366,6 +11569,7 @@
     {
       "stable_id": 610,
       "name": "trading_reset_cursor",
+      "fusion_class": "effect",
       "semantic_domain": "ml::environment",
       "kernel_id": "MlTradingResetCursorF32",
       "source": "src/slang/ml/environment/trading/reset_cursor.slang",
@@ -11521,6 +11725,7 @@
     {
       "stable_id": 611,
       "name": "trading_step_cursor",
+      "fusion_class": "effect",
       "semantic_domain": "ml::environment",
       "kernel_id": "MlTradingStepCursorF32",
       "source": "src/slang/ml/environment/trading/step_cursor.slang",
@@ -11754,6 +11959,7 @@
     {
       "stable_id": 609,
       "name": "sample_categorical_cursor",
+      "fusion_class": "effect",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlSampleCategoricalCursorF32",
       "source": "src/slang/ml/training/sample_categorical_cursor.slang",
@@ -11828,6 +12034,7 @@
     {
       "stable_id": 612,
       "name": "trading_cursor_advance",
+      "fusion_class": "effect",
       "semantic_domain": "ml::environment",
       "kernel_id": "MlTradingCursorAdvanceU32",
       "source": "src/slang/ml/training/trading_cursor_advance.slang",
@@ -11898,6 +12105,7 @@
 {
       "stable_id": 647,
       "name": "next_observation_append",
+      "fusion_class": "gather",
       "semantic_domain": "ml::rollout",
       "kernel_id": "MlRolloutNextObservationAppendF32",
       "source": "src/slang/ml/rollout/next_observation_append.slang",
@@ -11986,6 +12194,7 @@
 {
       "stable_id": 557,
       "name": "compute_scale_q4",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnMatrix::computeScaleQ4",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlComputeScaleQ4F32",
@@ -12062,6 +12271,7 @@
 {
       "stable_id": 558,
       "name": "quantize_q4",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnMatrix::quantizeQ4",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlQuantizeQ4F32",
@@ -12140,6 +12350,7 @@
 {
       "stable_id": 559,
       "name": "dequantize_q4",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlDequantizeQ4F32",
       "source": "src/slang/ml/quant/dequantize_q4.slang",
@@ -12217,6 +12428,7 @@
 {
       "stable_id": 560,
       "name": "compute_scale_q8",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnMatrix::computeScaleQ8",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlComputeScaleQ8F32",
@@ -12293,6 +12505,7 @@
 {
       "stable_id": 561,
       "name": "quantize_q8",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnMatrix::quantizeQ8",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlQuantizeQ8F32",
@@ -12371,6 +12584,7 @@
 {
       "stable_id": 562,
       "name": "dequantize_q8",
+      "fusion_class": "pointwise",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlDequantizeQ8F32",
       "source": "src/slang/ml/quant/dequantize_q8.slang",
@@ -12448,6 +12662,7 @@
 {
       "stable_id": 563,
       "name": "mat_mul_nt_q4",
+      "fusion_class": "gemm",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMatMulNtQ4F32",
       "source": "src/slang/ml/quant/mat_mul_nt_q4.slang",
@@ -12540,6 +12755,7 @@
 {
       "stable_id": 564,
       "name": "mat_mul_nt_q8",
+      "fusion_class": "gemm",
       "semantic_domain": "ml::matrix",
       "kernel_id": "MlMatMulNtQ8F32",
       "source": "src/slang/ml/quant/mat_mul_nt_q8.slang",
@@ -12632,6 +12848,7 @@
     {
       "stable_id": 648,
       "name": "moe_router_select",
+      "fusion_class": "gather",
       "fusion_effects": [],
       "kernel_id": "MlMoeRouterSelectF32",
       "lowering_only": true,
@@ -12733,6 +12950,7 @@
     {
       "stable_id": 649,
       "name": "linear_concat",
+      "fusion_class": "gemm",
       "kernel_id": "MlLinearConcatF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -12839,6 +13057,7 @@
     {
       "stable_id": 650,
       "name": "small_causal_sdpa",
+      "fusion_class": "attention",
       "kernel_id": "MlSmallCausalSdpaF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -12993,6 +13212,7 @@
     {
       "stable_id": 651,
       "name": "grouped_linear_m_act",
+      "fusion_class": "gemm",
       "kernel_id": "MlGroupedLinearMActF32",
       "fusion_effects": [],
       "lowering_only": true,
@@ -13091,6 +13311,7 @@
     {
       "stable_id": 657,
       "name": "grouped_backward_prologue",
+      "fusion_class": "pointwise",
       "kernel_id": "MlGroupedBackwardPrologueF32",
       "fusion_effects": [],
       "lowering_only": true,

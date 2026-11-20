@@ -6,6 +6,7 @@
 	"contracts": [
 		{
 			"name": "normalize",
+			"fusion_class": "effect",
 			"donor_op": "oa::FnAudio::normalize",
 			"input_kinds": [
 				"audio"
@@ -122,6 +123,7 @@
 		},
 		{
 			"name": "resample",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnAudio::resample",
 			"input_kinds": [
 				"audio"
@@ -218,6 +220,7 @@
 		},
 		{
 			"name": "gain",
+			"fusion_class": "pointwise",
 			"donor_op": "oa::FnAudio::gain",
 			"input_kinds": [
 				"audio"
@@ -283,6 +286,7 @@
 		},
 		{
 			"name": "clip",
+			"fusion_class": "pointwise",
 			"donor_op": "oa::FnAudio::clip",
 			"input_kinds": [
 				"audio"
@@ -357,6 +361,7 @@
 		},
 		{
 			"name": "saturate",
+			"fusion_class": "pointwise",
 			"donor_op": "oa::FnAudio::saturate",
 			"input_kinds": [
 				"audio"
@@ -431,6 +436,7 @@
 		},
 		{
 			"name": "biquad",
+			"fusion_class": "scan",
 			"donor_op": "oa::FnAudio::biquad",
 			"input_kinds": [
 				"audio"
@@ -639,6 +645,7 @@
 		},
 		{
 			"name": "reverb",
+			"fusion_class": "effect",
 			"donor_op": "oa::FnAudio::reverb",
 			"input_kinds": [
 				"audio"
@@ -1021,6 +1028,7 @@
 		},
 		{
 			"name": "sos_filter",
+			"fusion_class": "scan",
 			"donor_op": "oa::FnAudio::sosFilter",
 			"input_kinds": [
 				"audio"
@@ -1123,6 +1131,7 @@
 		},
 		{
 			"name": "pre_emphasis",
+			"fusion_class": "pointwise",
 			"donor_op": "oa::FnAudio::preEmphasis",
 			"input_kinds": [
 				"audio"
@@ -1201,6 +1210,7 @@
 		},
 		{
 			"name": "to_mono",
+			"fusion_class": "pointwise",
 			"donor_op": "oa::FnAudio::toMono",
 			"input_kinds": [
 				"audio"
@@ -1264,6 +1274,7 @@
 		},
 		{
 			"name": "fade",
+			"fusion_class": "pointwise",
 			"donor_op": "oa::FnAudio::fade",
 			"input_kinds": [
 				"audio"
@@ -1342,6 +1353,7 @@
 		},
 		{
 			"name": "mix",
+			"fusion_class": "pointwise",
 			"donor_op": "oa::FnAudio::mix",
 			"input_kinds": [
 				"audio",
@@ -1421,6 +1433,7 @@
 		},
 		{
 			"name": "amplitude_to_db",
+			"fusion_class": "pointwise",
 			"donor_op": "oa::FnAudio::amplitudeToDb",
 			"input_kinds": [
 				"audio"
@@ -1486,6 +1499,7 @@
 		},
 		{
 			"name": "waveform_envelope",
+			"fusion_class": "pointwise",
 			"donor_op": "oa::FnAudio::waveformEnvelope",
 			"input_kinds": [
 				"audio"
@@ -1564,6 +1578,7 @@
 		},
 		{
 			"name": "stft",
+			"fusion_class": "effect",
 			"donor_op": "oa::FnAudio::stft",
 			"input_kinds": [
 				"audio"
@@ -1687,6 +1702,7 @@
 		},
 		{
 			"name": "mel_spectrogram",
+			"fusion_class": "effect",
 			"donor_op": "oa::FnAudio::melSpectrogram",
 			"input_kinds": [
 				"audio"
@@ -1929,6 +1945,7 @@
 		},
 		{
 			"name": "mfcc",
+			"fusion_class": "effect",
 			"donor_op": "oa::FnAudio::mfcc",
 			"input_kinds": [
 				"audio"
@@ -2158,7 +2175,9 @@
 		{
 			"stable_id": 58,
 			"name": "gain",
+			"region_read": "elementwise",
 			"kernel_id": "AudioGainF32",
+			"tape_op": "gain_db", "tape_shape": "scalar",
 			"source": "src/slang/audio/signal/gain.slang",
 			"workgroup_size": [
 				256,
@@ -2188,7 +2207,9 @@
 		{
 			"stable_id": 59,
 			"name": "clip",
+			"region_read": "elementwise",
 			"kernel_id": "AudioClipF32",
+			"tape_op": "clamp", "tape_shape": "scalar_pair",
 			"source": "src/slang/audio/signal/clip.slang",
 			"workgroup_size": [
 				256,
@@ -2222,6 +2243,7 @@
 		{
 			"stable_id": 60,
 			"name": "saturate",
+			"region_read": "elementwise",
 			"kernel_id": "AudioSaturateF32",
 			"source": "src/slang/audio/signal/saturate.slang",
 			"workgroup_size": [
@@ -2256,6 +2278,7 @@
 		{
 			"stable_id": 61,
 			"name": "resample",
+			"region_read": "gather",
 			"kernel_id": "AudioResampleF32",
 			"source": "src/slang/audio/signal/resample.slang",
 			"workgroup_size": [
@@ -2302,6 +2325,7 @@
 		{
 			"stable_id": 62,
 			"name": "fade",
+			"region_read": "elementwise",
 			"kernel_id": "AudioFadeF32",
 			"source": "src/slang/audio/signal/fade.slang",
 			"workgroup_size": [
@@ -2340,6 +2364,7 @@
 		{
 			"stable_id": 63,
 			"name": "mix",
+			"region_read": "elementwise",
 			"kernel_id": "AudioMixF32",
 			"source": "src/slang/audio/signal/mix.slang",
 			"workgroup_size": [
@@ -2378,6 +2403,7 @@
 		{
 			"stable_id": 64,
 			"name": "amplitude_to_db",
+			"region_read": "elementwise",
 			"kernel_id": "AudioAmplitudeToDbF32",
 			"source": "src/slang/audio/signal/amplitude_to_db.slang",
 			"workgroup_size": [
@@ -2408,6 +2434,7 @@
 		{
 			"stable_id": 65,
 			"name": "waveform_envelope",
+			"region_read": "bordered",
 			"kernel_id": "AudioWaveformEnvelopeF32",
 			"source": "src/slang/audio/signal/waveform_envelope.slang",
 			"workgroup_size": [
@@ -2442,6 +2469,7 @@
 		{
 			"stable_id": 66,
 			"name": "pre_emphasis",
+			"region_read": "bordered",
 			"kernel_id": "AudioPreEmphasisF32",
 			"source": "src/slang/audio/signal/pre_emphasis.slang",
 			"workgroup_size": [
@@ -2476,6 +2504,7 @@
 		{
 			"stable_id": 67,
 			"name": "to_mono",
+			"region_read": "gather",
 			"kernel_id": "AudioToMonoF32",
 			"source": "src/slang/audio/signal/to_mono.slang",
 			"workgroup_size": [
@@ -2506,6 +2535,8 @@
 		{
 			"stable_id": 68,
 			"name": "normalize_level",
+			"region_read": "gather",
+			"fusion_class": "reduce",
 			"kernel_id": "AudioNormalizeLevelF32",
 			"source": "src/slang/audio/signal/normalize_level.slang",
 			"workgroup_size": [
@@ -2535,6 +2566,8 @@
 		{
 			"stable_id": 69,
 			"name": "normalize_apply",
+			"region_read": "elementwise",
+			"fusion_class": "pointwise",
 			"kernel_id": "AudioNormalizeApplyF32",
 			"source": "src/slang/audio/signal/normalize_apply.slang",
 			"workgroup_size": [
@@ -2568,6 +2601,8 @@
 		{
 			"stable_id": 70,
 			"name": "biquad_summary",
+			"region_read": "gather",
+			"fusion_class": "reduce",
 			"kernel_id": "AudioBiquadSummaryF32",
 			"source": "src/slang/audio/signal/biquad_summary.slang",
 			"workgroup_size": [
@@ -2625,6 +2660,8 @@
 		{
 			"stable_id": 71,
 			"name": "biquad_scan",
+			"region_read": "gather",
+			"fusion_class": "scan",
 			"kernel_id": "AudioBiquadScanF32",
 			"source": "src/slang/audio/signal/biquad_scan.slang",
 			"workgroup_size": [
@@ -2654,6 +2691,8 @@
 		{
 			"stable_id": 72,
 			"name": "biquad_apply",
+			"region_read": "gather",
+			"fusion_class": "pointwise",
 			"kernel_id": "AudioBiquadApplyF32",
 			"source": "src/slang/audio/signal/biquad_apply.slang",
 			"workgroup_size": [
@@ -2715,6 +2754,8 @@
 		{
 			"stable_id": 73,
 			"name": "reverb_comb",
+			"region_read": "gather",
+			"fusion_class": "effect",
 			"kernel_id": "AudioReverbCombF32",
 			"source": "src/slang/audio/signal/reverb_comb.slang",
 			"workgroup_size": [
@@ -2756,6 +2797,8 @@
 		{
 			"stable_id": 74,
 			"name": "reverb_sum",
+			"region_read": "gather",
+			"fusion_class": "reduce",
 			"kernel_id": "AudioReverbSumF32",
 			"source": "src/slang/audio/signal/reverb_sum.slang",
 			"workgroup_size": [
@@ -2797,6 +2840,8 @@
 		{
 			"stable_id": 75,
 			"name": "reverb_allpass",
+			"region_read": "gather",
+			"fusion_class": "effect",
 			"kernel_id": "AudioReverbAllpassF32",
 			"source": "src/slang/audio/signal/reverb_allpass.slang",
 			"workgroup_size": [
@@ -2834,6 +2879,8 @@
 		{
 			"stable_id": 76,
 			"name": "reverb_mix",
+			"region_read": "gather",
+			"fusion_class": "pointwise",
 			"kernel_id": "AudioReverbMixF32",
 			"source": "src/slang/audio/signal/reverb_mix.slang",
 			"workgroup_size": [
@@ -2875,6 +2922,7 @@
 		{
 			"stable_id": 77,
 			"name": "stft",
+			"region_read": "gather",
 			"kernel_id": "AudioStftF32",
 			"source": "src/slang/audio/transform/stft.slang",
 			"workgroup_size": [
@@ -2938,6 +2986,9 @@
 		{
 			"stable_id": 78,
 			"name": "mel_filterbank",
+			"tile_program": "audio_mel_filterbank",
+			"region_read": "gather",
+			"fusion_class": "gemm",
 			"kernel_id": "AudioMelFilterbankF32",
 			"source": "src/slang/audio/transform/mel_filterbank.slang",
 			"workgroup_size": [
@@ -2983,6 +3034,9 @@
 		{
 			"stable_id": 79,
 			"name": "mel_normalize",
+			"tile_program": "channel_normalize(256)",
+			"region_read": "elementwise",
+			"fusion_class": "pointwise",
 			"kernel_id": "AudioMelNormalizeF32",
 			"source": "src/slang/audio/transform/mel_normalize.slang",
 			"workgroup_size": [
@@ -3012,6 +3066,8 @@
 		{
 			"stable_id": 80,
 			"name": "mfcc_dct",
+			"region_read": "gather",
+			"fusion_class": "gemm",
 			"kernel_id": "AudioMfccDctF32",
 			"source": "src/slang/audio/transform/mfcc_dct.slang",
 			"workgroup_size": [
@@ -3049,6 +3105,7 @@
 		{
 			"stable_id": 81,
 			"name": "sos_filter",
+			"region_read": "gather",
 			"kernel_id": "AudioSosFilterF32",
 			"source": "src/slang/audio/signal/sos_filter.slang",
 			"workgroup_size": [

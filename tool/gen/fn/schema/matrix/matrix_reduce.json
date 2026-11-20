@@ -26,6 +26,7 @@
     {
       "stable_id": 118,
       "name": "softmax",
+      "fusion_class": "reduce",
       "fusion_effects": [],
       "donor_op": "oa::FnMatrix::softmax",
       "signature": {
@@ -96,6 +97,7 @@
     {
       "stable_id": 119,
       "name": "softmax_backward",
+      "fusion_class": "reduce",
       "signature": {
         "parameters": [["forward_output", "&Matrix"], ["output_gradient", "&Matrix"], ["dim", "i32"]],
         "returns": "Matrix",
@@ -143,6 +145,7 @@
     {
       "stable_id": 270,
       "name": "log_softmax",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnMatrix::logSoftmax",
       "signature": {
         "parameters": [["input", "&Matrix"], ["dim", "i32"]],
@@ -212,6 +215,7 @@
     {
       "stable_id": 271,
       "name": "log_softmax_backward",
+      "fusion_class": "reduce",
       "signature": {
         "parameters": [["forward_output", "&Matrix"], ["output_gradient", "&Matrix"], ["dim", "i32"]],
         "returns": "Matrix",
@@ -259,6 +263,7 @@
     {
       "stable_id": 120,
       "name": "sum",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnMatrix::sum",
       "signature": {
         "parameters": [["input", "&Matrix"], ["dim", "i32"]],
@@ -323,6 +328,7 @@
     {
       "stable_id": 121,
       "name": "sum_axis",
+      "fusion_class": "reduce",
       "semantic_operation": "sum",
       "lowering_only": true,
       "kernel_id": "MatrixSumAxisF32",
@@ -349,6 +355,7 @@
     {
       "stable_id": 122,
       "name": "sum_backward",
+      "fusion_class": "reduce",
       "signature": {
         "parameters": [["input", "&Matrix"], ["output_gradient", "&Matrix"], ["dim", "i32"]],
         "returns": "Matrix",
@@ -395,6 +402,7 @@
     {
       "stable_id": 621,
       "name": "mean",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnMatrix::mean",
       "signature": {
         "parameters": [["input", "&Matrix"], ["dim", "i32"]],
@@ -433,6 +441,7 @@
     {
       "stable_id": 622,
       "name": "max",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnMatrix::max",
       "signature": {
         "parameters": [["input", "&Matrix"], ["dim", "i32"]],
@@ -488,6 +497,7 @@
     {
       "stable_id": 623,
       "name": "max_backward",
+      "fusion_class": "reduce",
       "signature": {
         "parameters": [
           ["input", "&Matrix"], ["maximum", "&Matrix"],
@@ -536,6 +546,7 @@
     {
       "stable_id": 624,
       "name": "argmax",
+      "fusion_class": "reduce",
       "signature": {
         "parameters": [["input", "&Matrix"], ["dim", "i32"]],
         "returns": "i64",
@@ -581,6 +592,7 @@
     {
       "stable_id": 310,
       "name": "categorical_accuracy_count",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnMatrix::categoricalAccuracyCount",
       "signature": {
         "parameters": [["logits", "&Matrix"], ["labels", "&Matrix"]],
@@ -626,6 +638,7 @@
     {
       "stable_id": 234,
       "name": "masked_categorical_accuracy_count",
+      "fusion_class": "gather",
       "donor_op": "oa::FnMatrix::maskedCategoricalAccuracyCount",
       "signature": {
         "parameters": [["logits", "&Matrix"], ["labels", "&Matrix"], ["mask", "&Matrix"]],

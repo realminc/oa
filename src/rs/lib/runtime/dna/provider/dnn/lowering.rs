@@ -11,7 +11,7 @@ use super::{
 use crate::runtime::{
 	BufferAccess, CapturedResourceDesc, EngineHandle, GemmEpilogue, KernelId, MatmulPreference,
 	MatmulProblem, PushConstant, SemanticGraph, SemanticOpId, SemanticStorageBinding,
-	graph::executable::{BufferUse, ComputeNode, ExecutableGraph, ResourceLifetime},
+	graph::executable::{BufferUse, ComputeNode, ExecutableGraph, GraphNode, ResourceLifetime},
 	lower_mat_mul_nt_plan, plan_mat_mul_nt_problem,
 };
 
@@ -134,7 +134,7 @@ pub(super) fn lower_captured_plan(
 				continue;
 			}
 			lowered.extend_from_slice(&source.nodes()[source_cursor..candidate.first_node]);
-			lowered.push(candidate.node);
+			lowered.push(GraphNode::Compute(candidate.node));
 			source_cursor = candidate.first_node + candidate.node_count;
 			plan.partitions[partition_index].state = DnnPartitionState::Applied;
 			plan.applied_partition_count = plan.applied_partition_count.saturating_add(1);
@@ -210,7 +210,9 @@ pub(super) fn lower_captured_plan(
 				continue;
 			}
 			lowered.extend_from_slice(&source.nodes()[source_cursor..candidate.first_node]);
-			lowered.push(candidate.node);
+			let mut node = candidate.node;
+			crate::runtime::dna::tile::specialize_gate_up_node(&engine_handle.device(), &mut node);
+			lowered.push(GraphNode::Compute(node));
 			source_cursor = candidate.first_node + candidate.node_count;
 			plan.partitions[partition_index].state = DnnPartitionState::Applied;
 			plan.applied_partition_count = plan.applied_partition_count.saturating_add(1);
@@ -244,7 +246,7 @@ pub(super) fn lower_captured_plan(
 				continue;
 			}
 			lowered.extend_from_slice(&source.nodes()[source_cursor..candidate.first_node]);
-			lowered.push(candidate.node);
+			lowered.push(GraphNode::Compute(candidate.node));
 			source_cursor = candidate.first_node + candidate.node_count;
 			plan.partitions[partition_index].state = DnnPartitionState::Applied;
 			plan.applied_partition_count = plan.applied_partition_count.saturating_add(1);
@@ -285,13 +287,15 @@ pub(super) fn lower_captured_plan(
 			continue;
 		}
 		lowered.extend_from_slice(&source.nodes()[source_cursor..candidate.first_node]);
-		lowered.push(candidate.node);
+		let mut node = candidate.node;
+		crate::runtime::dna::tile::specialize_qkv_projection_node(&engine_handle.device(), &mut node);
+		lowered.push(GraphNode::Compute(node));
 		source_cursor = candidate.first_node + candidate.node_count;
 		plan.partitions[partition_index].state = DnnPartitionState::Applied;
 		plan.applied_partition_count = plan.applied_partition_count.saturating_add(1);
 	}
 	lowered.extend_from_slice(&source.nodes()[source_cursor..]);
-	ExecutableGraph::from_nodes(lowered)
+	ExecutableGraph::from_nodes(lowered, source.queue_families())
 }
 
 fn build_qkv_projection(
@@ -1203,7 +1207,7 @@ fn partition_node_range(partition: &DnnPartition, source: &ExecutableGraph) -> N
 	for (node_index, node) in source.nodes().iter().enumerate() {
 		let mut owns_partition = false;
 		let mut owns_outside = false;
-		for semantic in &node.semantic_ops {
+		for semantic in node.semantic().1 {
 			if let Some(index) = partition
 				.operations
 				.iter()
@@ -1231,6 +1235,9 @@ fn partition_node_range(partition: &DnnPartition, source: &ExecutableGraph) -> N
 		return rejected("partition has no executable source interval");
 	}
 	for node in &source.nodes()[first..=last] {
+		let Some(node) = node.compute() else {
+			return rejected("partition source interval crosses a non-compute operation");
+		};
 		if node.semantic_ops.is_empty() {
 			return rejected("partition source interval contains compatibility-only work");
 		}

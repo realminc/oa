@@ -136,6 +136,7 @@ const UI_RASTER_TRIANGLE_FRAG: &str = "src/slang/ui/triangle.frag.slang";
 const UI_RASTER_MASK_FRAG: &str = "src/slang/ui/mask.frag.slang";
 const UI_RASTER_BLIT_TEXTURE_FRAG: &str = "src/slang/ui/blit_texture.frag.slang";
 const UI_RASTER_BLIT_PLANAR_FRAG: &str = "src/slang/ui/blit_planar.frag.slang";
+const UI_RASTER_BLIT_YUV_FRAG: &str = "src/slang/ui/blit_yuv.frag.slang";
 const UI_RASTER_HEATMAP_FRAG: &str = "src/slang/ui/heatmap.frag.slang";
 const UI_RASTER_WAVEFORM_FRAG: &str = "src/slang/ui/waveform.frag.slang";
 const UI_RASTER_PLOT_LINE_FRAG: &str = "src/slang/ui/plot_line.frag.slang";
@@ -222,6 +223,7 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		UI_RASTER_MASK_FRAG,
 		UI_RASTER_BLIT_TEXTURE_FRAG,
 		UI_RASTER_BLIT_PLANAR_FRAG,
+		UI_RASTER_BLIT_YUV_FRAG,
 		UI_RASTER_HEATMAP_FRAG,
 		UI_RASTER_WAVEFORM_FRAG,
 		UI_RASTER_PLOT_LINE_FRAG,
@@ -665,6 +667,11 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 			"fragment",
 			UI_RASTER_BLIT_PLANAR_FRAG,
 		),
+		(
+			"ui_raster_blit_yuv_frag",
+			"fragment",
+			UI_RASTER_BLIT_YUV_FRAG,
+		),
 		("ui_raster_heatmap_frag", "fragment", UI_RASTER_HEATMAP_FRAG),
 		(
 			"ui_raster_waveform_frag",
@@ -840,6 +847,14 @@ fn build_graphics_shader(
 	build: &ShaderBuild<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let spirv = build.output_directory.join(format!("render_{stem}.spv"));
+	// Slang lowers fragment discard to OpDemoteToHelperInvocation for SPIR-V
+	// 1.6. The UI uses ordinary pixel rejection without the optional Vulkan
+	// demote feature. SPIR-V 1.5 lowers the same discard to OpKill.
+	let spirv_capability = if stage == "fragment" && build.spirv_capability == "spirv_1_6" {
+		"spirv_1_5"
+	} else {
+		build.spirv_capability
+	};
 	let output = Command::new(build.slangc)
 		.arg(source)
 		.args([
@@ -852,7 +867,7 @@ fn build_graphics_shader(
 			"-profile",
 			"glsl_460",
 			"-capability",
-			build.spirv_capability,
+			spirv_capability,
 			"-fvk-use-entrypoint-name",
 			"-warnings-as-errors",
 			"all",
@@ -862,6 +877,8 @@ fn build_graphics_shader(
 			"src/slang/core/math",
 			"-I",
 			"src/slang/ui",
+			"-I",
+			"src/slang/video",
 		])
 		.arg("-o")
 		.arg(&spirv)
@@ -927,7 +944,10 @@ fn build_shader(
 	let dtype = variant["dtype"].as_str().unwrap_or(default_dtype);
 	let kernel_name = variant["kernel_name"].as_str().unwrap_or(name);
 	let source_stem = variant["source_stem"].as_str().unwrap_or(name);
-	let source = format!("{source_directory}/{source_stem}.gen.slang");
+	let source = variant["source"].as_str().map_or_else(
+		|| format!("{source_directory}/{source_stem}.gen.slang"),
+		str::to_owned,
+	);
 	println!("cargo:rerun-if-changed={source}");
 	let spirv = build
 		.output_directory
@@ -1457,6 +1477,51 @@ fn expected_push_fields(
 	kind: &str,
 	variant: &str,
 ) -> Result<Vec<(&'static str, &'static str, u32)>, String> {
+	if let ("mat_mul_nt", "strided" | "strided_tiled") = (kind, variant) {
+		// Arbitrary-layout candidates carry the MatmulLayout fields of
+		// all three operands: row/column/batch strides plus element offset.
+		return Ok(vec![
+			("left_index", "uint32", 0),
+			("right_index", "uint32", 4),
+			("output_index", "uint32", 8),
+			("m", "uint32", 12),
+			("n", "uint32", 16),
+			("k", "uint32", 20),
+			("a_row_stride", "uint32", 24),
+			("a_col_stride", "uint32", 28),
+			("a_batch_stride", "uint32", 32),
+			("a_offset", "uint32", 36),
+			("b_row_stride", "uint32", 40),
+			("b_col_stride", "uint32", 44),
+			("b_batch_stride", "uint32", 48),
+			("b_offset", "uint32", 52),
+			("c_row_stride", "uint32", 56),
+			("c_col_stride", "uint32", 60),
+			("c_batch_stride", "uint32", 64),
+			("c_offset", "uint32", 68),
+		]);
+	}
+	if let ("mat_mul_nt", "split_k") = (kind, variant) {
+		// The partial kernel carries the K-slice extent after the canonical
+		// problem fields; `group_id.z * k_chunk` bounds each slice.
+		return Ok(vec![
+			("left_index", "uint32", 0),
+			("right_index", "uint32", 4),
+			("partial_index", "uint32", 8),
+			("m", "uint32", 12),
+			("n", "uint32", 16),
+			("k", "uint32", 20),
+			("k_chunk", "uint32", 24),
+		]);
+	}
+	if let ("mat_mul_nt", "split_k_reduce") = (kind, variant) {
+		return Ok(vec![
+			("partial_index", "uint32", 0),
+			("output_index", "uint32", 4),
+			("element_count", "uint32", 8),
+			("split_k", "uint32", 12),
+		]);
+	}
 	if let ("mat_mul_nt", "bias" | "bias_relu" | "bias_gelu" | "bias_silu") = (kind, variant) {
 		return Ok(vec![
 			("left_index", "uint32", 0),
@@ -1493,6 +1558,13 @@ fn expected_push_fields(
 			("m", "uint32", 12),
 			("n", "uint32", 16),
 			("k", "uint32", 20),
+		]),
+		// Storage casts and the F16-storage reduction share the unary
+		// [input, output, count] push contract.
+		"cast" | "sum" => Ok(vec![
+			("input_index", "uint32", 0),
+			("output_index", "uint32", 4),
+			("element_count", "uint32", 8),
 		]),
 		_ => Err(format!("unsupported matrix operation kind {kind}")),
 	}

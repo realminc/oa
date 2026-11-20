@@ -81,7 +81,7 @@ class FusionEffectsTests(unittest.TestCase):
 
 	def test_every_registered_kernel_has_a_classification_and_generated_arm(self):
 		manifest = generate_kernel_manifest(self.schemas)
-		method = manifest.split("const fn fusion_effects(self)", 1)[1].split("fn linear_workgroups", 1)[0]
+		method = manifest.split("const fn fusion_effects(self)", 1)[1].split("\n\t}\n", 1)[0]
 		for entry in self.entries:
 			with self.subTest(kernel=entry["kernel_id"]):
 				self.assertIn("fusion_effects", entry)

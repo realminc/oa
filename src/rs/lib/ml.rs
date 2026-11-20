@@ -36,7 +36,8 @@ pub use checkpoint::{
 };
 pub use collector::{RolloutCollector, RolloutCollectorMetrics};
 pub use environment::{
-	EnvironmentSpace, EnvironmentSpaceKind, EnvironmentSpec, EnvironmentTransition,
+	CompiledEnvironment, EnvironmentSpace, EnvironmentSpaceKind, EnvironmentSpec,
+	EnvironmentTransition,
 };
 pub use matrix::{QuantMatrix, Quantization, UpsampleMode};
 pub use mcp_training::{McpTraining, McpTrainingConfig};

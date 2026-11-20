@@ -163,3 +163,196 @@ impl super::JitArtifacts {
 		crate::runtime::device::vkcache::update(path, scope, &self.section_updates()?)
 	}
 }
+
+#[test]
+#[ignore = "requires explicit OA_TEST_SLANG_LIBRARY and spirv-val"]
+fn block_gemm_template_compiles_and_validates() -> Result<()> {
+	use crate::runtime::dna::ir::tile::{BiasAct, BlockProgram};
+	let library = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit compiler library");
+	let compiler = SlangCompiler::open(std::path::Path::new(&library))?;
+	// Donor geometry: src/slang/matrix/blas/mat_mul_nt_tiled.gen.slang.
+	let program = BlockProgram::mat_mul_nt(64, 64, 16, 4, 4, 4).unwrap();
+	for bounded in [true, false] {
+		let source = program.slang_source(bounded)?;
+		let words = compiler.compile_source(&source, bounded)?;
+		validate_with_spirv_tools(&words, bounded)?;
+		// Block templates carry `bindings + scalars` u32 push fields —
+		// the elementwise push contract (bindings + count) does not apply.
+		assert_eq!(
+			crate::runtime::dna::kernel::reflect_push_constant_size(&words)?,
+			(3 + 3) * 4
+		);
+		assert_eq!(words, compiler.compile_source(&source, bounded)?);
+	}
+	// The seed candidate set and a tail-geometry variant (staging width 1,
+	// where the masked path is the only staging route) must also compile.
+	for args in [
+		(64, 32, 16, 4, 4, 4),
+		(32, 64, 16, 4, 4, 4),
+		(16, 16, 4, 2, 2, 1),
+	] {
+		let program = BlockProgram::mat_mul_nt(args.0, args.1, args.2, args.3, args.4, args.5).unwrap();
+		let source = program.slang_source(true)?;
+		let words = compiler.compile_source(&source, true)?;
+		validate_with_spirv_tools(&words, true)?;
+		assert_eq!(
+			crate::runtime::dna::kernel::reflect_push_constant_size(&words)?,
+			(3 + 3) * 4
+		);
+	}
+	// The softmax row-reduce template (2 buffers + 3 scalars) exercises
+	// lane folds, tree reductions and the group guard through the same
+	// production compile path.
+	// The reduce/normalization family exercises lane folds, tree
+	// reductions, group guards and typed push scalars through the same
+	// production compile path.
+	for (program, push_u32s) in [
+		(BlockProgram::softmax(256).unwrap(), 3u32),
+		(BlockProgram::log_softmax(256).unwrap(), 3),
+		(BlockProgram::rms_norm(256).unwrap(), 3),
+		(BlockProgram::layer_norm(256).unwrap(), 3),
+		(BlockProgram::softmax_backward(256).unwrap(), 3),
+		(BlockProgram::log_softmax_backward(256).unwrap(), 3),
+		(BlockProgram::linear(64, 64, 16, 4, 4, 4).unwrap(), 3),
+		(BlockProgram::linear_act(64, 64, 16, 4, 4, 4).unwrap(), 5),
+		(
+			BlockProgram::linear_residual(64, 64, 16, 4, 4, 4).unwrap(),
+			3,
+		),
+		(
+			BlockProgram::linear_residual_act(64, 64, 16, 4, 4, 4).unwrap(),
+			5,
+		),
+		(
+			BlockProgram::linear_gated_act(64, 64, 16, 4, 4, 4).unwrap(),
+			5,
+		),
+		(BlockProgram::linear_triple(64, 64, 16, 4, 4, 4).unwrap(), 3),
+		(BlockProgram::linear_concat(64, 64, 16, 4, 4, 4).unwrap(), 6),
+		(
+			BlockProgram::linear_residual_norm(64, 64, 16, 4, 4, 4).unwrap(),
+			4,
+		),
+		(
+			BlockProgram::linear_residual_norm(64, 32, 16, 4, 4, 4).unwrap(),
+			4,
+		),
+		(
+			BlockProgram::qkv_projection_bias(32, 32, 32, 1, 4, 1).unwrap(),
+			3,
+		),
+		(
+			BlockProgram::gate_up_swiglu_bias(32, 32, 32, 1, 4, 1).unwrap(),
+			3,
+		),
+		(BlockProgram::grouped_linear_m_act().unwrap(), 5),
+		(BlockProgram::grouped_linear_m().unwrap(), 4),
+		(BlockProgram::grouped_gemm_m().unwrap(), 4),
+		(BlockProgram::grouped_linear_m_data_backward().unwrap(), 4),
+		(
+			BlockProgram::grouped_linear_m_parameter_backward().unwrap(),
+			4,
+		),
+		(
+			BlockProgram::grouped_gemm_m_parameter_backward().unwrap(),
+			4,
+		),
+		(BlockProgram::mat_mul_nt_gemv(256).unwrap(), 3),
+		// 6 bindings + 5 u32 scalars + 1 f32 alpha = 48-byte push block.
+		(BlockProgram::grouped_backward_prologue().unwrap(), 6),
+		(BlockProgram::moe_router_select(), 3),
+		(BlockProgram::moe_gather(), 2),
+		(BlockProgram::moe_gather_backward(), 4),
+		(BlockProgram::moe_combine(), 4),
+		(BlockProgram::moe_combine_backward(), 4),
+		(BlockProgram::moe_route_weights(), 3),
+		(BlockProgram::moe_route_weights_backward(), 3),
+		(BlockProgram::layer_norm_backward(256).unwrap(), 2),
+		// 5 bindings + 2 u32 scalars + 1 f32 epsilon = 32-byte push.
+		(BlockProgram::rms_norm_backward(256).unwrap(), 3),
+		(BlockProgram::cross_entropy(256, false).unwrap(), 3),
+		(BlockProgram::cross_entropy(256, true).unwrap(), 3),
+		(BlockProgram::cross_entropy_backward(256, false).unwrap(), 3),
+		(BlockProgram::cross_entropy_backward(256, true).unwrap(), 4),
+		(BlockProgram::layer_norm_backward_sum(256).unwrap(), 3),
+		(BlockProgram::embedding_backward_sum(), 3),
+		(BlockProgram::embedding_backward(), 3),
+		(BlockProgram::embedding_backward_u8(), 3),
+		(BlockProgram::sum_backward(), 3),
+		(BlockProgram::max(256).unwrap(), 1),
+		(BlockProgram::argmax(256).unwrap(), 1),
+		(BlockProgram::max_backward(), 1),
+		(BlockProgram::max_wave(256).unwrap(), 1),
+		(BlockProgram::sum_wave(256).unwrap(), 1),
+		(BlockProgram::sum_axis_cooperative(256).unwrap(), 3),
+		(BlockProgram::conv_1d_im2_col(), 8),
+		(BlockProgram::conv_1d_bias_add(), 2),
+		(BlockProgram::conv_1d_transpose(), 3),
+		(BlockProgram::conv_2d(), 11),
+		(BlockProgram::conv_2d_relu(), 11),
+		(BlockProgram::conv_1d_parameter_backward(), 10),
+		(BlockProgram::conv_1d_backward(), 9),
+		(BlockProgram::conv_transpose_1d(), 9),
+		(BlockProgram::conv_2d_backward(), 11),
+		(BlockProgram::conv_2d_parameter_backward(), 12),
+		(BlockProgram::conv_transpose_2d(), 10),
+		(BlockProgram::conv_transpose_2d_bias_add(), 4),
+		(BlockProgram::conv_transpose_2d_backward(), 10),
+		(BlockProgram::conv_transpose_2d_parameter_backward(), 11),
+		(BlockProgram::conv_1d_bias_transpose(), 3),
+		(BlockProgram::conv_1d_bias_transpose_relu(), 3),
+		(BlockProgram::conv_1d_bias_transpose_residual_relu(), 3),
+		(BlockProgram::conv_1d_bias_copy(), 2),
+		(BlockProgram::conv_1d_bias_transpose_norm(false), 4),
+		(BlockProgram::conv_1d_bias_transpose_norm(true), 4),
+		(BlockProgram::avg_pool_2d(), 9),
+		(BlockProgram::max_pool_2d(), 9),
+		(BlockProgram::adaptive_avg_pool_2d(), 6),
+		(BlockProgram::avg_pool_2d_backward(), 9),
+		(BlockProgram::max_pool_2d_backward(), 9),
+		(BlockProgram::max_pool_2d_relu_backward(), 9),
+		(BlockProgram::adaptive_avg_pool_2d_backward(), 6),
+		(BlockProgram::split_heads(), 4),
+		(BlockProgram::merge_heads(), 4),
+		(BlockProgram::sdpa_softmax(256).unwrap(), 5),
+		(BlockProgram::sdpa_softmax(32).unwrap(), 5),
+		(BlockProgram::small_causal_sdpa(), 5),
+		(BlockProgram::linear_backward(), 3),
+		(BlockProgram::linear_backward_prologue(), 5),
+		(BlockProgram::linear_backward_norm(), 3),
+		(BlockProgram::linear_backward_norm_add(), 3),
+		(BlockProgram::linear_backward_bmm_chain(), 6),
+		(BlockProgram::flash_causal(), 4),
+		(BlockProgram::flash_causal_backward_q(), 4),
+		(BlockProgram::flash_causal_backward_kv(), 4),
+		(BlockProgram::argmax_wave(256).unwrap(), 1),
+		(
+			BlockProgram::mat_mul_nt_bias(64, 64, 16, 4, 4, 4, None).unwrap(),
+			3,
+		),
+		(
+			BlockProgram::mat_mul_nt_bias(64, 64, 16, 4, 4, 4, Some(BiasAct::Relu)).unwrap(),
+			3,
+		),
+		(
+			BlockProgram::mat_mul_nt_bias(64, 64, 16, 4, 4, 4, Some(BiasAct::Gelu)).unwrap(),
+			3,
+		),
+		(
+			BlockProgram::mat_mul_nt_bias(64, 64, 16, 4, 4, 4, Some(BiasAct::Silu)).unwrap(),
+			3,
+		),
+	] {
+		for bounded in [true, false] {
+			let source = program.slang_source(bounded)?;
+			let words = compiler.compile_source(&source, bounded)?;
+			validate_with_spirv_tools(&words, bounded)?;
+			assert_eq!(
+				crate::runtime::dna::kernel::reflect_push_constant_size(&words)?,
+				(program.bindings.len() as u32 + push_u32s) * 4
+			);
+			assert_eq!(words, compiler.compile_source(&source, bounded)?);
+		}
+	}
+	Ok(())
+}

@@ -546,6 +546,11 @@ fn matrix_tensor(name: &str, matrix: &Matrix) -> Result<Tensor> {
 		.collect::<Result<Vec<_>>>()?;
 	let data = match matrix.dtype() {
 		DType::U8 => matrix.read::<u8>()?,
+		DType::F16 => matrix
+			.read::<crate::core::F16>()?
+			.into_iter()
+			.flat_map(|value| value.to_bits().to_le_bytes())
+			.collect(),
 		DType::F32 => matrix
 			.read::<f32>()?
 			.into_iter()
@@ -602,6 +607,7 @@ fn matrix_from_tensor(engine: &Engine, tensor: &Tensor) -> Result<Matrix> {
 	let shape = tensor_shape(tensor)?;
 	match tensor_dtype(tensor)? {
 		DType::U8 => Matrix::new_from_slice(engine, shape, &tensor.data),
+		DType::F16 => Matrix::new_from_slice(engine, shape, &decode_f16(&tensor.data)?),
 		DType::F32 => Matrix::new_from_slice(engine, shape, &decode_f32(&tensor.data)?),
 		DType::I32 => Matrix::new_from_slice(engine, shape, &decode_i32(&tensor.data)?),
 		DType::U32 => Matrix::new_from_slice(engine, shape, &decode_u32(&tensor.data)?),
@@ -611,6 +617,7 @@ fn matrix_from_tensor(engine: &Engine, tensor: &Tensor) -> Result<Matrix> {
 fn tensor_dtype(tensor: &Tensor) -> Result<DType> {
 	match tensor.dtype {
 		ScalarType::U8 => Ok(DType::U8),
+		ScalarType::F16 => Ok(DType::F16),
 		ScalarType::F32 => Ok(DType::F32),
 		ScalarType::I32 => Ok(DType::I32),
 		ScalarType::U32 => Ok(DType::U32),
@@ -641,6 +648,20 @@ fn decode_i32(bytes: &[u8]) -> Result<Vec<i32>> {
 
 fn decode_u32(bytes: &[u8]) -> Result<Vec<u32>> {
 	decode_words(bytes, u32::from_le_bytes)
+}
+
+fn decode_f16(bytes: &[u8]) -> Result<Vec<crate::core::F16>> {
+	let (chunks, remainder) = bytes.as_chunks::<2>();
+	let values = chunks
+		.iter()
+		.map(|chunk| crate::core::F16::from_bits(u16::from_le_bytes(*chunk)))
+		.collect::<Vec<_>>();
+	if !remainder.is_empty() {
+		return Err(Error::checkpoint_corrupt(
+			"tensor data is not a whole number of f16 elements",
+		));
+	}
+	Ok(values)
 }
 
 fn decode_words<T>(bytes: &[u8], decode: impl Fn([u8; 4]) -> T) -> Result<Vec<T>> {

@@ -2,9 +2,8 @@
 
 use crate::{Error, Result, video};
 
-use crate::runtime::{
-	device::video::DecodeBitstream, device::video::DecodeImageSet, device::video::DecodeSession,
-	device::video::decode_image_barrier, device::video::decode_image_subresource,
+use super::{
+	DecodeBitstream, DecodeImageSet, DecodeSession, decode_image_barrier, decode_image_subresource,
 };
 
 const LOGICAL_REFERENCE_COUNT: usize = 8;
@@ -38,7 +37,7 @@ impl DpbState {
 		})
 	}
 
-	pub fn plan_with_unavailable(
+	pub fn plan_in_place(
 		&mut self,
 		picture: &video::Vp9Picture,
 		unavailable: &[bool],
@@ -48,17 +47,6 @@ impl DpbState {
 				"VP9 unavailable-slot mask does not match DPB capacity",
 			));
 		}
-		let mut next = self.clone();
-		let plan = next.plan_in_place(picture, unavailable)?;
-		*self = next;
-		Ok(plan)
-	}
-
-	fn plan_in_place(
-		&mut self,
-		picture: &video::Vp9Picture,
-		unavailable: &[bool],
-	) -> Result<PicturePlan> {
 		if picture.show_existing_frame {
 			let logical = usize::from(picture.frame_to_show_map_index);
 			let slot = self
@@ -245,6 +233,7 @@ pub(super) fn record_picture(
 	device: &vk::Device,
 	command_buffer: vk::CommandBuffer,
 	session: &DecodeSession,
+	status_pool: vk::QueryPool,
 	picture: &video::Vp9Picture,
 	bitstream: &DecodeBitstream,
 	plan: &PicturePlan,
@@ -353,6 +342,7 @@ pub(super) fn record_picture(
 		device,
 		command_buffer,
 		session,
+		status_pool,
 		bitstream,
 		plan,
 		initialize_images,
@@ -371,14 +361,15 @@ fn record_decode_commands(
 	device: &vk::Device,
 	command_buffer: vk::CommandBuffer,
 	session: &DecodeSession,
+	status_pool: vk::QueryPool,
 	bitstream: &DecodeBitstream,
 	plan: &PicturePlan,
 	initialize_images: bool,
 	pending_acquire_slot: Option<u32>,
 	release_for_readback: bool,
-	output: &super::DecodeImage,
+	output: &super::VideoImage,
 	output_layer: u32,
-	dpb: &super::DecodeImage,
+	dpb: &super::VideoImage,
 	begin_info: &vk::VideoBeginCodingInfoKHR<'_>,
 	decode_info: &vk::VideoDecodeInfoKHR<'_>,
 ) -> Result<()> {
@@ -478,7 +469,7 @@ fn record_decode_commands(
 	// safety: every chained pointer borrows storage that remains live and
 	// immovable through command recording on this session's device.
 	unsafe {
-		device.cmd_reset_query_pool(command_buffer, session.result_status_pool, 0, 1)?;
+		device.cmd_reset_query_pool(command_buffer, status_pool, 0, 1)?;
 		device.cmd_pipeline_barrier2(command_buffer, &dependency)?;
 		device.cmd_begin_video_coding_khr(command_buffer, begin_info)?;
 	}
@@ -494,12 +485,12 @@ fn record_decode_commands(
 	unsafe {
 		device.cmd_begin_query(
 			command_buffer,
-			session.result_status_pool,
+			status_pool,
 			0,
 			vk::QueryControlFlags::empty(),
 		)?;
 		device.cmd_decode_video_khr(command_buffer, decode_info)?;
-		device.cmd_end_query(command_buffer, session.result_status_pool, 0)?;
+		device.cmd_end_query(command_buffer, status_pool, 0)?;
 		device.cmd_end_video_coding_khr(command_buffer, &vk::VideoEndCodingInfoKHR::new())?;
 	}
 	if release_for_readback {
@@ -512,9 +503,9 @@ fn record_release_for_readback(
 	device: &vk::Device,
 	command_buffer: vk::CommandBuffer,
 	session: &DecodeSession,
-	output: &super::DecodeImage,
+	output: &super::VideoImage,
 	output_layer: u32,
-	dpb: &super::DecodeImage,
+	dpb: &super::VideoImage,
 ) -> Result<()> {
 	let decode_family = session
 		.device

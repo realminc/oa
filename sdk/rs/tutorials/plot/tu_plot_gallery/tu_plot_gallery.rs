@@ -436,7 +436,10 @@ fn main() -> anyhow::Result<()> {
 	let engine = if show {
 		let window = oa::SdlWindow::new("OA Plot presentation probe", 1, 1)?;
 		let extensions = window.required_instance_extensions()?;
-		Engine::builder().instance_extensions(extensions).build()?
+		Engine::builder()
+			.requirements(oa::EngineRequirements::default().presentation())
+			.instance_extensions(extensions)
+			.build()?
 	} else {
 		Engine::new()?
 	};

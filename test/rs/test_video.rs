@@ -4,6 +4,9 @@
 #[path = "support/test_vk.rs"]
 mod test_vk_fixture;
 
+#[path = "support/bench_media.rs"]
+mod bench_media;
+
 #[path = "video/test_av1.rs"]
 mod av1;
 #[path = "video/test_capability.rs"]

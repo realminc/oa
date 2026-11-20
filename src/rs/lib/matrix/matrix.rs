@@ -332,7 +332,13 @@ impl Matrix {
 		self.element_count
 	}
 
-	pub(crate) fn value_id(&self) -> u64 {
+	/// Stable identity of this value for plan-validity comparisons.
+	///
+	/// Two matrices constructed independently never share an id; views and
+	/// clones of one allocation do. Compiled-plan owners (OA-CC-20) compare
+	/// identities to reject replaying a captured plan against different
+	/// storage.
+	pub fn value_id(&self) -> u64 {
 		self.semantic.id
 	}
 
@@ -510,7 +516,7 @@ impl Matrix {
 }
 
 pub(crate) fn byte_storage_len(logical_byte_len: usize, dtype: DType) -> Result<usize> {
-	if dtype != DType::U8 {
+	if dtype != DType::U8 && dtype != DType::F16 {
 		return Ok(logical_byte_len);
 	}
 	logical_byte_len

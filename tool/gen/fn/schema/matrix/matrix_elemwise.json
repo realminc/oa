@@ -57,6 +57,9 @@
     {
       "stable_id": 1,
       "name": "add",
+      "fusion_class": "pointwise",
+      "prologue_kind": "add",
+      "tape_op": "add", "tape_shape": "binary",
       "donor_op": "oa::FnMatrix::add",
       "autograd": {
         "mode": "generated",
@@ -116,6 +119,7 @@
           "kernel_id": "MatrixAddBroadcastF32",
           "source": "src/slang/matrix/elemwise/add_broadcast.slang",
           "dtype": "f32",
+          "tape_op": "add", "tape_shape": "broadcast",
           "variant": "broadcast",
           "workgroup_size": [256, 1, 1],
           "dispatch_tile_size": [256, 1, 1],
@@ -167,6 +171,7 @@
     {
       "stable_id": 615,
       "name": "bias_add",
+      "fusion_class": "pointwise",
       "donor_op": "oa::FnMatrix::biasAdd",
       "autograd": {
         "mode": "alias",
@@ -196,6 +201,7 @@
           "kernel_id": "MatrixBiasAddBroadcastF32",
           "source": "src/slang/matrix/elemwise/bias_add_broadcast.slang",
           "dtype": "f32",
+          "tape_op": "add", "tape_shape": "broadcast",
           "variant": "broadcast",
           "workgroup_size": [256, 1, 1],
           "dispatch_tile_size": [256, 1, 1],
@@ -221,6 +227,9 @@
     {
       "stable_id": 2,
       "name": "sub",
+      "fusion_class": "pointwise",
+      "prologue_kind": "sub",
+      "tape_op": "sub", "tape_shape": "binary",
       "donor_op": "oa::FnMatrix::sub",
       "autograd": {
         "mode": "generated",
@@ -261,6 +270,7 @@
           "kernel_id": "MatrixSubBroadcastF32",
           "source": "src/slang/matrix/elemwise/sub_broadcast.slang",
           "dtype": "f32",
+          "tape_op": "sub", "tape_shape": "broadcast",
           "variant": "broadcast",
           "workgroup_size": [256, 1, 1],
           "dispatch_tile_size": [256, 1, 1],
@@ -286,6 +296,9 @@
     {
       "stable_id": 3,
       "name": "mul",
+      "fusion_class": "pointwise",
+      "prologue_kind": "mul",
+      "tape_op": "mul", "tape_shape": "binary",
       "donor_op": "oa::FnMatrix::mul",
       "autograd": {
         "mode": "generated",
@@ -331,6 +344,8 @@
           "fusion_effects": [],
           "source": "src/slang/matrix/elemwise/mul_broadcast.slang",
           "dtype": "f32",
+          "tape_op": "mul", "tape_shape": "broadcast",
+          "prologue_kind": "scalar_mul",
           "variant": "broadcast",
           "workgroup_size": [256, 1, 1],
           "dispatch_tile_size": [256, 1, 1],
@@ -356,6 +371,8 @@
     {
       "stable_id": 4,
       "name": "div",
+      "fusion_class": "pointwise",
+      "tape_op": "div", "tape_shape": "binary",
       "donor_op": "oa::FnMatrix::div",
       "autograd": {
         "mode": "generated",
@@ -395,6 +412,7 @@
           "kernel_id": "MatrixDivBroadcastF32",
           "source": "src/slang/matrix/elemwise/div_broadcast.slang",
           "dtype": "f32",
+          "tape_op": "div", "tape_shape": "broadcast",
           "variant": "broadcast",
           "workgroup_size": [256, 1, 1],
           "dispatch_tile_size": [256, 1, 1],
@@ -420,6 +438,9 @@
     {
       "stable_id": 5,
       "name": "scale",
+      "fusion_class": "pointwise",
+      "tape_op": "mul", "tape_shape": "scalar",
+      "scalar_tail": "mul",
       "donor_op": "oa::FnMatrix::scale",
       "autograd": {
         "mode": "generated",
@@ -468,6 +489,9 @@
     {
       "stable_id": 6,
       "name": "neg",
+      "fusion_class": "pointwise",
+      "tape_op": "neg", "tape_shape": "unary",
+      "scalar_tail": "neg",
       "donor_op": "oa::FnMatrix::neg",
       "autograd": {
         "mode": "alias",
@@ -488,6 +512,9 @@
     {
       "stable_id": 7,
       "name": "abs",
+      "fusion_class": "pointwise",
+      "tape_op": "abs", "tape_shape": "unary",
+      "scalar_tail": "abs",
       "donor_op": "oa::FnMatrix::abs",
       "autograd": {
         "mode": "generated",
@@ -518,6 +545,9 @@
     {
       "stable_id": 8,
       "name": "log",
+      "fusion_class": "pointwise",
+      "tape_op": "log", "tape_shape": "unary",
+      "scalar_tail": "log",
       "donor_op": "oa::FnMatrix::log",
       "autograd": {
         "mode": "generated",
@@ -548,6 +578,9 @@
     {
       "stable_id": 9,
       "name": "sqrt",
+      "fusion_class": "pointwise",
+      "tape_op": "sqrt", "tape_shape": "unary",
+      "scalar_tail": "sqrt",
       "donor_op": "oa::FnMatrix::sqrt",
       "autograd": {
         "mode": "generated",
@@ -582,6 +615,8 @@
     {
       "stable_id": 10,
       "name": "pow",
+      "fusion_class": "pointwise",
+      "tape_op": "pow", "tape_shape": "scalar",
       "kind": "unary_scalar",
       "doc": "Raise every FP32 matrix element to a scalar exponent.",
       "kernel_id": "MatrixPowF32",
@@ -597,6 +632,9 @@
     {
       "stable_id": 11,
       "name": "add_scalar",
+      "fusion_class": "pointwise",
+      "tape_op": "add", "tape_shape": "scalar",
+      "scalar_tail": "add",
       "donor_op": "oa::FnMatrix::addScalar",
       "autograd": {
         "mode": "alias",
@@ -619,6 +657,9 @@
     {
       "stable_id": 12,
       "name": "sub_scalar",
+      "fusion_class": "pointwise",
+      "tape_op": "sub", "tape_shape": "scalar",
+      "scalar_tail": "sub",
       "donor_op": "oa::FnMatrix::subScalar",
       "autograd": {
         "mode": "alias",
@@ -641,6 +682,9 @@
     {
       "stable_id": 13,
       "name": "div_scalar",
+      "fusion_class": "pointwise",
+      "tape_op": "div", "tape_shape": "scalar",
+      "scalar_tail": "div",
       "donor_op": "oa::FnMatrix::divScalar",
       "autograd": {
         "mode": "alias",
@@ -663,6 +707,9 @@
     {
       "stable_id": 14,
       "name": "exp",
+      "fusion_class": "pointwise",
+      "tape_op": "exp", "tape_shape": "unary",
+      "scalar_tail": "exp",
       "donor_op": "oa::FnMatrix::exp",
       "autograd": {
         "mode": "generated",
@@ -697,6 +744,8 @@
     {
       "stable_id": 15,
       "name": "sin",
+      "fusion_class": "pointwise",
+      "tape_op": "sin", "tape_shape": "unary",
       "kind": "unary",
       "doc": "Take the sine of every FP32 matrix element.",
       "kernel_id": "MatrixSinF32",
@@ -710,6 +759,8 @@
     {
       "stable_id": 16,
       "name": "cos",
+      "fusion_class": "pointwise",
+      "tape_op": "cos", "tape_shape": "unary",
       "kind": "unary",
       "doc": "Take the cosine of every FP32 matrix element.",
       "kernel_id": "MatrixCosF32",
@@ -723,6 +774,9 @@
     {
       "stable_id": 17,
       "name": "reciprocal",
+      "fusion_class": "pointwise",
+      "tape_op": "recip", "tape_shape": "unary",
+      "scalar_tail": "recip",
       "donor_op": "oa::FnMatrix::reciprocal",
       "autograd": {
         "mode": "generated",
@@ -757,6 +811,9 @@
     {
       "stable_id": 18,
       "name": "clamp_max",
+      "fusion_class": "reduce",
+      "tape_op": "min", "tape_shape": "scalar",
+      "scalar_tail": "min",
       "donor_op": "oa::FnMatrix::clampMax",
       "autograd": {
         "mode": "generated",
@@ -780,6 +837,9 @@
     {
       "stable_id": 19,
       "name": "clamp_min",
+      "fusion_class": "reduce",
+      "tape_op": "max", "tape_shape": "scalar",
+      "scalar_tail": "max",
       "donor_op": "oa::FnMatrix::clampMin",
       "autograd": {
         "mode": "generated",
@@ -803,6 +863,7 @@
     {
       "stable_id": 400,
       "name": "copy",
+      "fusion_class": "gather",
       "donor_op": "oa::FnMatrix::copy",
       "autograd": {
         "mode": "generated",
@@ -869,6 +930,7 @@
     {
       "stable_id": 637,
       "name": "fused_chain",
+      "fusion_class": "pointwise",
       "lowering_only": true,
       "kernel_id": "MatrixFusedChainF32",
       "source": "src/slang/matrix/elemwise/fused_chain.slang",

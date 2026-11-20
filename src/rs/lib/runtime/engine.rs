@@ -15,9 +15,9 @@ use super::{
 	SceneDrawCmd, SecretBinding, SecretBuffer, SecretErasure, SemanticDispatch, Storage,
 	SurfaceBlendPipeline, SurfaceDescriptorArena, SurfaceDescriptorLayouts, SurfacePipeline, Timer,
 	UnlitDescriptorArena, UnlitDescriptorLayouts, UnlitPipeline,
-	graph::executable::ExecutableGraph,
+	device::command::RecordedBatch,
 	log::{LogSelection, Logger},
-	session::ExecutionSession,
+	session::{ExecutionSession, RecordedDecodeStep, RecordedEncodeStep},
 };
 pub use crate::runtime::types::EngineRequirements;
 
@@ -165,7 +165,8 @@ pub(crate) enum CaptureAttempt<T> {
 /// Runtime-owned implementation for public hardware video decoder sessions.
 pub(crate) struct VideoDecoderBackend {
 	engine: EngineHandle,
-	session: DecodeSession,
+	session: Arc<DecodeSession>,
+	recording: Option<Vec<RecordedDecodeStep>>,
 	av1_ready: Vec<Option<Event>>,
 	av1_host_frames: Vec<Option<crate::video::VideoHostPlanes>>,
 	vp9_ready: Vec<Option<Event>>,
@@ -178,8 +179,17 @@ impl VideoDecoderBackend {
 		profile: crate::video::VideoDecodeProfile,
 		coded_extent: crate::video::VideoExtent,
 	) -> Result<Self> {
-		let capabilities = engine.query_video_decode_capabilities(profile)?;
-		let device_capabilities = engine.query_video_device_capabilities()?;
+		Self::create_on_handle(&engine.handle, profile, coded_extent)
+	}
+
+	fn create_on_handle(
+		engine: &EngineHandle,
+		profile: crate::video::VideoDecodeProfile,
+		coded_extent: crate::video::VideoExtent,
+	) -> Result<Self> {
+		let device = engine.state.borrow().device.clone();
+		let capabilities = device.video_decode_capabilities(profile)?;
+		let device_capabilities = device.video_device_capabilities()?;
 		if !device_capabilities.supports_decode_result_status_queries() {
 			return Err(Error::missing_capability(
 				"the public decoder requires Vulkan Video result-status queries",
@@ -193,15 +203,16 @@ impl VideoDecoderBackend {
 		let max_active_references = capabilities
 			.max_active_reference_pictures()
 			.min(max_dpb_slots);
-		let session = engine
-			.handle
-			.state
-			.borrow()
-			.device
-			.create_video_decode_session(profile, coded_extent, max_dpb_slots, max_active_references)?;
+		let session = device.create_video_decode_session(
+			profile,
+			coded_extent,
+			max_dpb_slots,
+			max_active_references,
+		)?;
 		Ok(Self {
-			engine: engine.handle.clone(),
-			session,
+			engine: engine.clone(),
+			session: Arc::new(session),
+			recording: None,
 			av1_ready: vec![None; max_dpb_slots as usize],
 			av1_host_frames: vec![None; max_dpb_slots as usize],
 			vp9_ready: vec![None; max_dpb_slots as usize],
@@ -209,12 +220,120 @@ impl VideoDecoderBackend {
 		})
 	}
 
+	pub(crate) fn require_decode_submission(&self) -> Result<()> {
+		if self.recording.is_none() {
+			require_immediate_batch(&self.engine.state.borrow())?;
+		}
+		self.session.validate_ownership()
+	}
+
+	fn queue_device(&self) -> Result<Arc<Device>> {
+		let state = self.engine.state.borrow();
+		require_immediate_batch(&state)?;
+		Ok(state.device.clone())
+	}
+
+	fn submit_native_batch(
+		&self,
+		frame: &crate::runtime::NativeDecodedFrame,
+		commands: RecordedBatch,
+	) -> Result<Event> {
+		let mut state = self.engine.state.borrow_mut();
+		let start = state.next_epoch;
+		match submit_recorded_batch(&mut state, commands, false) {
+			Ok(event) => {
+				frame.mark_consumed(&event)?;
+				Ok(event)
+			}
+			Err(error) => {
+				if state.next_epoch != start {
+					// At least one ownership command may have executed without
+					// its matching return. Do not reuse the decoder's DPB.
+					frame.invalidate_ownership();
+				}
+				Err(error)
+			}
+		}
+	}
+
+	fn session_mut(&mut self) -> Result<&mut DecodeSession> {
+		self.session.validate_ownership()?;
+		Arc::get_mut(&mut self.session)
+			.ok_or_else(|| Error::failed_precondition("video decode session still has pending commands"))
+	}
+
+	fn complete_decode(&self, submitted: Result<Event>) -> Result<Event> {
+		let event = submitted.and_then(|event| {
+			event.wait()?;
+			Ok(event)
+		});
+		let event = event.inspect_err(|_| self.session.invalidate_ownership())?;
+		self
+			.session
+			.verify_decode_result()
+			.inspect_err(|_| self.session.invalidate_ownership())?;
+		Ok(event)
+	}
+
+	fn read_decoded_picture(
+		&mut self,
+		device: &Arc<Device>,
+		decode: RecordedCommandBuffer,
+	) -> Result<(crate::video::VideoHostPlanes, Event)> {
+		let mut commands = RecordedBatch::new(device);
+		commands.push(decode);
+		// Recording already advanced the decoder's tracked state. A
+		// discarded producer cannot be followed by another decode.
+		let copy = self
+			.session_mut()?
+			.record_decode_readback(device)
+			.inspect_err(|_| self.session.invalidate_ownership())?;
+		commands.push(copy);
+		commands.retain(self.session.clone());
+		let submitted = submit_recorded_batch(&mut self.engine.state.borrow_mut(), commands, false);
+		let completion = self.complete_decode(submitted)?;
+		Ok((self.session.read_decode_yuv420()?, completion))
+	}
+
+	fn complete_native_picture(&self, mut command: RecordedCommandBuffer) -> Result<Event> {
+		command.retain(self.session.clone());
+		let submitted = submit_recorded(&mut self.engine.state.borrow_mut(), command);
+		self.complete_decode(submitted)
+	}
+
 	pub(crate) fn set_h264_parameters(
 		&mut self,
 		sps: &crate::video::H264SequenceParameterSet,
 		pps: &crate::video::H264PictureParameterSet,
 	) -> Result<()> {
-		self.session.set_h264_parameters(sps, pps)
+		let coded_extent = crate::video::VideoExtent {
+			width: sps.coded_width()?,
+			height: sps.coded_height()?,
+		};
+		self.configure_coded_extent(coded_extent, |session| {
+			session.set_h264_parameters(sps, pps)
+		})
+	}
+
+	fn configure_coded_extent(
+		&mut self,
+		coded_extent: crate::video::VideoExtent,
+		configure: impl FnOnce(&mut DecodeSession) -> Result<()>,
+	) -> Result<()> {
+		if self.session.decode_extent() == coded_extent {
+			return configure(self.session_mut()?);
+		}
+		let mut replacement =
+			Self::create_on_handle(&self.engine, self.session.decode_profile(), coded_extent)?;
+		configure(replacement.session_mut()?)?;
+		replacement.recording = self.recording.take();
+		*self = replacement;
+		Ok(())
+	}
+
+	pub(crate) fn restart_h265(&mut self) -> Result<()> {
+		self.session_mut()?.restart_h265();
+		Ok(())
 	}
 
 	pub(crate) fn set_h265_parameters(
@@ -223,109 +342,264 @@ impl VideoDecoderBackend {
 		sps: &crate::video::H265SequenceParameterSet,
 		pps: &crate::video::H265PictureParameterSet,
 	) -> Result<()> {
-		self.session.set_h265_parameters(vps, sps, pps)
+		let coded_extent = crate::video::VideoExtent {
+			width: sps.coded_width,
+			height: sps.coded_height,
+		};
+		self.configure_coded_extent(coded_extent, |session| {
+			session.set_h265_parameters(vps, sps, pps)
+		})
 	}
 
 	pub(crate) fn set_av1_parameters(
 		&mut self,
 		sequence: &crate::video::Av1SequenceHeader,
 	) -> Result<()> {
-		self.session.set_av1_parameters(sequence)
+		self.session_mut()?.set_av1_parameters(sequence)
 	}
 
 	pub(crate) fn decode_h264(
 		&mut self,
-		access_unit: &[u8],
+		coded_slice: &[u8],
 		sps: &crate::video::H264SequenceParameterSet,
 		pps: &crate::video::H264PictureParameterSet,
 		slice: &crate::video::H264SliceHeader,
 	) -> Result<crate::video::VideoHostPlanes> {
-		let device = self.engine.state.borrow().device.clone();
-		self.session.upload_h264_access_unit(access_unit)?;
+		let device = self.queue_device()?;
+		self.session_mut()?.upload_bitstream(coded_slice)?;
 		let command = self
-			.session
+			.session_mut()?
 			.record_h264_picture_for_readback(&device, sps, pps, slice)?;
-		let event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
-		};
-		event.wait()?;
-		self.session.verify_decode_result()?;
-		let command = self.session.record_decode_readback(&device)?;
-		let event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
-		};
-		event.wait()?;
-		self.session.read_decode_yuv420()
+		Ok(self.read_decoded_picture(&device, command)?.0)
+	}
+
+	pub(crate) fn begin_decode_capture(&self) -> Result<Self> {
+		let state = self.engine.state.borrow();
+		if !state.capture_active || state.secret_scope.is_some() {
+			return Err(Error::failed_precondition(
+				"recorded video decode requires an active Engine capture",
+			));
+		}
+		drop(state);
+		self.session.require_capture_support()?;
+		let mut backend = Self::create_on_handle(
+			&self.engine,
+			self.session.decode_profile(),
+			self.session.decode_extent(),
+		)?;
+		backend.recording = Some(Vec::new());
+		Ok(backend)
+	}
+
+	pub(crate) fn finish_decode_capture(mut self) -> Result<()> {
+		let steps = self
+			.recording
+			.take()
+			.ok_or_else(|| Error::internal("video decode capture has no recording"))?;
+		let mut state = self.engine.state.borrow_mut();
+		let device = state.device.clone();
+		state
+			.session
+			.record_video_decode(&device, &self.session, steps)
+	}
+
+	fn append_decode_step(&mut self, step: RecordedDecodeStep) -> Result<()> {
+		self
+			.recording
+			.as_mut()
+			.ok_or_else(|| Error::internal("video decode capture has no recording"))?
+			.push(step);
+		Ok(())
+	}
+
+	fn record_coded_picture(
+		&mut self,
+		prepare: impl FnOnce(&mut DecodeSession) -> Result<(super::device::video::PreparedDecode, u32)>,
+	) -> Result<u32> {
+		let (picture, slot) = prepare(self.session_mut()?)?;
+		self.append_decode_step(RecordedDecodeStep::Picture(picture))?;
+		Ok(slot)
+	}
+
+	fn record_planes(&mut self, slot: u32) -> Result<crate::video::DevicePlanar> {
+		let copy = self.session.retain_replay_planes(slot)?;
+		let extent = copy.extent();
+		let planes =
+			self.allocate_decoded_planes(copy.format(), extent.width as usize, extent.height as usize)?;
+		self.append_decode_step(RecordedDecodeStep::Planes(Arc::new(copy), planes.clone()))?;
+		Ok(planes)
+	}
+
+	pub(crate) fn record_h264_picture(
+		&mut self,
+		coded_slice: &[u8],
+		sps: &crate::video::H264SequenceParameterSet,
+		pps: &crate::video::H264PictureParameterSet,
+		slice: &crate::video::H264SliceHeader,
+	) -> Result<crate::video::DevicePlanar> {
+		let slot = self
+			.record_coded_picture(|session| session.prepare_h264_picture(coded_slice, sps, pps, slice))?;
+		self.record_planes(slot)
+	}
+
+	pub(crate) fn record_h265_picture(
+		&mut self,
+		coded_slice: &[u8],
+		sps: &crate::video::H265SequenceParameterSet,
+		pps: &crate::video::H265PictureParameterSet,
+		slice: &crate::video::H265SliceHeader,
+	) -> Result<crate::video::DevicePlanar> {
+		let slot = self
+			.record_coded_picture(|session| session.prepare_h265_picture(coded_slice, sps, pps, slice))?;
+		self.record_planes(slot)
+	}
+
+	pub(crate) fn record_av1_picture(
+		&mut self,
+		data: &[u8],
+		picture: &crate::video::Av1Picture,
+	) -> Result<Option<crate::video::DevicePlanar>> {
+		let frame = &picture.frame;
+		if frame.show_existing_frame {
+			let slot = self.session_mut()?.resolve_av1_show_existing_slot(frame)?;
+			return self.record_planes(slot).map(Some);
+		}
+		let slot = self.record_coded_picture(|session| session.prepare_av1_picture(data, picture))?;
+		frame
+			.show_frame
+			.then(|| self.record_planes(slot))
+			.transpose()
+	}
+
+	pub(crate) fn record_vp9_picture(
+		&mut self,
+		data: &[u8],
+		picture: &crate::video::Vp9Picture,
+	) -> Result<Option<crate::video::DevicePlanar>> {
+		if picture.show_existing_frame {
+			let slot = self
+				.session_mut()?
+				.resolve_vp9_show_existing_slot(picture)?;
+			return self.record_planes(slot).map(Some);
+		}
+		let slot = self.record_coded_picture(|session| session.prepare_vp9_picture(data, picture))?;
+		picture
+			.show_frame
+			.then(|| self.record_planes(slot))
+			.transpose()
+	}
+
+	pub(crate) fn allocate_decoded_planes(
+		&self,
+		format: crate::video::VideoPixelFormat,
+		width: usize,
+		height: usize,
+	) -> Result<crate::video::DevicePlanar> {
+		let planes = crate::video::plane_extents(format, width, height)?
+			.into_iter()
+			.map(|plane| {
+				let count = plane
+					.width
+					.checked_mul(plane.height)
+					.ok_or_else(|| Error::out_of_range("decoded plane size overflows usize"))?;
+				Matrix::allocate(
+					&self.engine,
+					vec![plane.height, plane.width],
+					count,
+					crate::DType::U8,
+				)
+			})
+			.collect::<Result<Vec<_>>>()?;
+		Ok(crate::video::DevicePlanar {
+			planes: Rc::new(planes),
+			format,
+			width,
+			height,
+		})
+	}
+
+	pub(crate) fn stage_native_planes(
+		&self,
+		frame: &crate::runtime::NativeDecodedFrame,
+		planes: &[Matrix],
+	) -> Result<()> {
+		let copy = Arc::new(self.session.retain_plane_copy(frame)?);
+		let mut state = self.engine.state.borrow_mut();
+		if state.secret_scope.is_some() {
+			return Err(Error::failed_precondition(
+				"video staging cannot enter secret lowering",
+			));
+		}
+		let device = state.device.clone();
+		state.session.record_video_planes(&device, copy, planes)
+	}
+
+	pub(crate) fn stage_native_canvas_planes(
+		&mut self,
+		frame: &crate::runtime::NativeDecodedFrame,
+	) -> Result<(crate::runtime::Storage, crate::video::CanvasYuvLayout)> {
+		let device = self.queue_device()?;
+		if device.physical().graphics_queue_family != Some(device.physical().compute_queue_family) {
+			return Err(Error::missing_capability(
+				"video canvas requires a unified graphics and compute queue",
+			));
+		}
+		let crate::runtime::device::video::NativeCanvasTransfer {
+			commands,
+			planes,
+			layout,
+		} = self
+			.session
+			.record_native_plane_transfer(&device, frame, true)?;
+		let completion = self.submit_native_batch(frame, commands)?;
+		let storage = crate::runtime::Storage::from_submitted_buffer(&device, planes, completion)?;
+		Ok((storage, layout))
 	}
 
 	pub(crate) fn decode_h264_native(
 		&mut self,
-		access_unit: &[u8],
+		coded_slice: &[u8],
 		sps: &crate::video::H264SequenceParameterSet,
 		pps: &crate::video::H264PictureParameterSet,
 		slice: &crate::video::H264SliceHeader,
 	) -> Result<crate::runtime::NativeDecodedFrame> {
-		let device = self.engine.state.borrow().device.clone();
-		self.session.upload_h264_access_unit(access_unit)?;
+		let device = self.queue_device()?;
+		self.session_mut()?.upload_bitstream(coded_slice)?;
 		let (command, slot) = self
-			.session
+			.session_mut()?
 			.record_h264_picture_native(&device, sps, pps, slice)?;
-		let event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
-		};
-		event.wait()?;
-		self.session.verify_decode_result()?;
+		let event = self.complete_native_picture(command)?;
 		self.session.native_frame(slot, event)
 	}
 
 	pub(crate) fn decode_h265(
 		&mut self,
-		access_unit: &[u8],
+		coded_slice: &[u8],
 		sps: &crate::video::H265SequenceParameterSet,
 		pps: &crate::video::H265PictureParameterSet,
 		slice: &crate::video::H265SliceHeader,
 	) -> Result<crate::video::VideoHostPlanes> {
-		let device = self.engine.state.borrow().device.clone();
-		self.session.upload_h265_access_unit(access_unit)?;
+		let device = self.queue_device()?;
+		self.session_mut()?.upload_bitstream(coded_slice)?;
 		let command = self
-			.session
+			.session_mut()?
 			.record_h265_picture_for_readback(&device, sps, pps, slice)?;
-		let event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
-		};
-		event.wait()?;
-		self.session.verify_decode_result()?;
-		let command = self.session.record_decode_readback(&device)?;
-		let event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
-		};
-		event.wait()?;
-		self.session.read_decode_yuv420()
+		Ok(self.read_decoded_picture(&device, command)?.0)
 	}
 
 	pub(crate) fn decode_h265_native(
 		&mut self,
-		access_unit: &[u8],
+		coded_slice: &[u8],
 		sps: &crate::video::H265SequenceParameterSet,
 		pps: &crate::video::H265PictureParameterSet,
 		slice: &crate::video::H265SliceHeader,
 	) -> Result<crate::runtime::NativeDecodedFrame> {
-		let device = self.engine.state.borrow().device.clone();
-		self.session.upload_h265_access_unit(access_unit)?;
+		let device = self.queue_device()?;
+		self.session_mut()?.upload_bitstream(coded_slice)?;
 		let (command, slot) = self
-			.session
+			.session_mut()?
 			.record_h265_picture_native(&device, sps, pps, slice)?;
-		let event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
-		};
-		event.wait()?;
-		self.session.verify_decode_result()?;
+		let event = self.complete_native_picture(command)?;
 		self.session.native_frame(slot, event)
 	}
 
@@ -338,28 +612,16 @@ impl VideoDecoderBackend {
 			.tiles
 			.as_ref()
 			.ok_or_else(|| Error::invalid_argument("coded AV1 picture has no tile payloads"))?;
-		let device = self.engine.state.borrow().device.clone();
-		self.session.upload_av1_access_unit(access_unit)?;
-		let (command, slot) = self.session.record_av1_picture_for_readback(
+		let device = self.queue_device()?;
+		self.session_mut()?.upload_bitstream(access_unit)?;
+		let (command, slot) = self.session_mut()?.record_av1_picture_for_readback(
 			&device,
 			&picture.sequence,
 			&picture.frame,
 			picture.frame_header_offset,
 			tiles,
 		)?;
-		let decode_event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
-		};
-		decode_event.wait()?;
-		self.session.verify_decode_result()?;
-		let command = self.session.record_decode_readback(&device)?;
-		let event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
-		};
-		event.wait()?;
-		let decoded = self.session.read_decode_yuv420()?;
+		let (decoded, decode_event) = self.read_decoded_picture(&device, command)?;
 		let index =
 			usize::try_from(slot).map_err(|_| Error::internal("AV1 output slot exceeds usize"))?;
 		*self
@@ -384,21 +646,16 @@ impl VideoDecoderBackend {
 			.tiles
 			.as_ref()
 			.ok_or_else(|| Error::invalid_argument("coded AV1 picture has no tile payloads"))?;
-		let device = self.engine.state.borrow().device.clone();
-		self.session.upload_av1_access_unit(access_unit)?;
-		let (command, slot) = self.session.record_av1_picture_native(
+		let device = self.queue_device()?;
+		self.session_mut()?.upload_bitstream(access_unit)?;
+		let (command, slot) = self.session_mut()?.record_av1_picture_native(
 			&device,
 			&picture.sequence,
 			&picture.frame,
 			picture.frame_header_offset,
 			tiles,
 		)?;
-		let event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
-		};
-		event.wait()?;
-		self.session.verify_decode_result()?;
+		let event = self.complete_native_picture(command)?;
 		let index =
 			usize::try_from(slot).map_err(|_| Error::internal("AV1 output slot exceeds usize"))?;
 		*self
@@ -413,7 +670,7 @@ impl VideoDecoderBackend {
 		&mut self,
 		frame: &crate::video::Av1FrameHeader,
 	) -> Result<crate::video::VideoHostPlanes> {
-		let slot = self.session.resolve_av1_show_existing_slot(frame)?;
+		let slot = self.session_mut()?.resolve_av1_show_existing_slot(frame)?;
 		let index =
 			usize::try_from(slot).map_err(|_| Error::internal("AV1 show-existing slot exceeds usize"))?;
 		self
@@ -427,7 +684,7 @@ impl VideoDecoderBackend {
 		&mut self,
 		frame: &crate::video::Av1FrameHeader,
 	) -> Result<crate::runtime::NativeDecodedFrame> {
-		let slot = self.session.resolve_av1_show_existing_slot(frame)?;
+		let slot = self.session_mut()?.resolve_av1_show_existing_slot(frame)?;
 		let index =
 			usize::try_from(slot).map_err(|_| Error::internal("AV1 show-existing slot exceeds usize"))?;
 		let ready = self
@@ -443,24 +700,14 @@ impl VideoDecoderBackend {
 		access_unit: &[u8],
 		picture: &crate::video::Vp9Picture,
 	) -> Result<crate::video::VideoHostPlanes> {
-		let device = self.engine.state.borrow().device.clone();
-		self.session.upload_vp9_picture(access_unit, picture)?;
+		let device = self.queue_device()?;
+		self
+			.session_mut()?
+			.upload_vp9_picture(access_unit, picture)?;
 		let (command, slot) = self
-			.session
+			.session_mut()?
 			.record_vp9_picture_for_readback(&device, picture)?;
-		let decode_event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
-		};
-		decode_event.wait()?;
-		self.session.verify_decode_result()?;
-		let command = self.session.record_decode_readback(&device)?;
-		let event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
-		};
-		event.wait()?;
-		let decoded = self.session.read_decode_yuv420()?;
+		let (decoded, decode_event) = self.read_decoded_picture(&device, command)?;
 		let index =
 			usize::try_from(slot).map_err(|_| Error::internal("VP9 output slot exceeds usize"))?;
 		*self
@@ -481,15 +728,14 @@ impl VideoDecoderBackend {
 		access_unit: &[u8],
 		picture: &crate::video::Vp9Picture,
 	) -> Result<crate::runtime::NativeDecodedFrame> {
-		let device = self.engine.state.borrow().device.clone();
-		self.session.upload_vp9_picture(access_unit, picture)?;
-		let (command, slot) = self.session.record_vp9_picture_native(&device, picture)?;
-		let event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
-		};
-		event.wait()?;
-		self.session.verify_decode_result()?;
+		let device = self.queue_device()?;
+		self
+			.session_mut()?
+			.upload_vp9_picture(access_unit, picture)?;
+		let (command, slot) = self
+			.session_mut()?
+			.record_vp9_picture_native(&device, picture)?;
+		let event = self.complete_native_picture(command)?;
 		let index =
 			usize::try_from(slot).map_err(|_| Error::internal("VP9 output slot exceeds usize"))?;
 		*self
@@ -504,7 +750,9 @@ impl VideoDecoderBackend {
 		&mut self,
 		picture: &crate::video::Vp9Picture,
 	) -> Result<crate::video::VideoHostPlanes> {
-		let slot = self.session.resolve_vp9_show_existing_slot(picture)?;
+		let slot = self
+			.session_mut()?
+			.resolve_vp9_show_existing_slot(picture)?;
 		let index =
 			usize::try_from(slot).map_err(|_| Error::internal("VP9 show-existing slot exceeds usize"))?;
 		self
@@ -518,7 +766,9 @@ impl VideoDecoderBackend {
 		&mut self,
 		picture: &crate::video::Vp9Picture,
 	) -> Result<crate::runtime::NativeDecodedFrame> {
-		let slot = self.session.resolve_vp9_show_existing_slot(picture)?;
+		let slot = self
+			.session_mut()?
+			.resolve_vp9_show_existing_slot(picture)?;
 		let index =
 			usize::try_from(slot).map_err(|_| Error::internal("VP9 show-existing slot exceeds usize"))?;
 		let ready = self
@@ -533,25 +783,9 @@ impl VideoDecoderBackend {
 		&mut self,
 		frame: &crate::runtime::NativeDecodedFrame,
 	) -> Result<crate::video::VideoHostPlanes> {
-		frame.ready().wait()?;
-		let device = self.engine.state.borrow().device.clone();
-		let (release, copy, acquire) = self.session.record_native_readback(&device, frame)?;
-		{
-			let mut state = self.engine.state.borrow_mut();
-			let _release_event = submit_recorded(&mut state, release)?;
-		}
-		let copy_event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, copy)?
-		};
-		let completion = if let Some(acquire) = acquire {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, acquire)?
-		} else {
-			copy_event
-		};
-		frame.mark_consumed(&completion)?;
-		completion.wait()?;
+		let device = self.queue_device()?;
+		let commands = self.session_mut()?.record_native_readback(&device, frame)?;
+		self.submit_native_batch(frame, commands)?.wait()?;
 		self.session.read_decode_yuv420()
 	}
 
@@ -568,39 +802,15 @@ impl VideoDecoderBackend {
 		color_space: u32,
 		full_range: bool,
 	) -> Result<(crate::runtime::Storage, u32, u32)> {
-		let device = self.engine.state.borrow().device.clone();
-		let presentation =
-			self
-				.session
-				.record_native_presentation(&device, frame, color_space, full_range)?;
+		let device = self.queue_device()?;
 		let crate::runtime::device::video::NativePresentation {
-			release,
-			convert,
-			acquire,
+			commands,
 			rgba,
 			extent,
-			resources,
-		} = presentation;
-		{
-			let mut state = self.engine.state.borrow_mut();
-			let release_event = submit_recorded(&mut state, release)?;
-			release_event.retain_until_complete(resources.clone());
-		}
-		let convert_event = {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, convert)?
-		};
-		// Retain shader/view/sampler resources and the output even if recording
-		// the final ownership-acquire submission fails. No session Drop waits.
-		convert_event.retain_until_complete((resources.clone(), rgba.clone()));
-		let completion = if let Some(acquire) = acquire {
-			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, acquire)?
-		} else {
-			convert_event
-		};
-		completion.retain_until_complete(resources);
-		frame.mark_consumed(&completion)?;
+		} = self
+			.session_mut()?
+			.record_native_presentation(&device, frame, color_space, full_range)?;
+		let completion = self.submit_native_batch(frame, commands)?;
 		let storage = crate::runtime::Storage::from_submitted_buffer(&device, rgba, completion)?;
 		Ok((storage, extent.width, extent.height))
 	}
@@ -621,10 +831,19 @@ const ENCODE_COLOR_SPACE_BT709: u32 = 1;
 /// and drain through `submit_rgba` and `flush`, so no encoded frame is lost.
 pub(crate) struct VideoEncoderBackend {
 	engine: EngineHandle,
-	session: EncodeSession,
+	session: Arc<EncodeSession>,
+	settings: crate::video::VideoEncodeConfig,
+	submission: EncodeSubmission,
 	pending: Vec<Option<Event>>,
 	ready: Vec<crate::video::EncodedVideoPacket>,
+	recording: Option<Vec<RecordedEncodeStep>>,
 	next_slot: usize,
+}
+
+enum EncodeSubmission {
+	Ready,
+	Partial(Event),
+	Unconfirmed,
 }
 
 impl VideoEncoderBackend {
@@ -640,23 +859,175 @@ impl VideoEncoderBackend {
 		let slots = session.slot_count();
 		Ok(Self {
 			engine: engine.handle.clone(),
-			session,
+			session: Arc::new(session),
+			settings,
+			submission: EncodeSubmission::Ready,
 			pending: vec![None; slots],
 			ready: Vec::new(),
+			recording: None,
 			next_slot: 0,
 		})
 	}
 
-	pub(crate) const fn coded_extent(&self) -> crate::video::VideoExtent {
+	/// The engine timeline serializes conversion and encode across both queues.
+	/// Its latest outstanding event covers all earlier uses of this session.
+	pub(crate) fn retire(self) {
+		let latest = match &self.submission {
+			EncodeSubmission::Ready => self
+				.pending
+				.iter()
+				.flatten()
+				.max_by_key(|event| event.epoch()),
+			EncodeSubmission::Partial(event) => Some(event),
+			EncodeSubmission::Unconfirmed => {
+				// A queue accepted work, but submission retirement could not
+				// publish its completion. The session may still be in use.
+				std::mem::forget(self.session);
+				return;
+			}
+		};
+		if let Some(event) = latest {
+			event.retain_until_complete(self.session);
+		}
+	}
+
+	pub(crate) fn coded_extent(&self) -> crate::video::VideoExtent {
 		self.session.coded_extent()
 	}
 
-	pub(crate) const fn visible_extent(&self) -> crate::video::VideoExtent {
+	pub(crate) fn visible_extent(&self) -> crate::video::VideoExtent {
 		self.session.visible_extent()
 	}
 
 	pub(crate) fn cached_headers(&self) -> &[u8] {
 		self.session.cached_headers()
+	}
+
+	/// Begin replayable encode recording against a fresh retained session.
+	/// The live session keeps its own GOP/DPB state; the capture owns a new
+	/// `EncodeSession` whose replay-facing images transition once up front,
+	/// so every recorded replay sees steady-state layouts.
+	pub(crate) fn begin_encode_capture(&self) -> Result<Self> {
+		{
+			let state = self.engine.state.borrow();
+			if !state.capture_active || state.secret_scope.is_some() {
+				return Err(Error::failed_precondition(
+					"recorded video encode requires an active Engine capture",
+				));
+			}
+		}
+		let session = {
+			let device = self.engine.state.borrow().device.clone();
+			let capabilities = device.video_encode_capabilities(self.settings.profile)?;
+			let plan = self.settings.validate_for_device(capabilities)?;
+			Arc::new(device.create_video_encode_session(&self.settings, plan)?)
+		};
+		Ok(Self {
+			engine: self.engine.clone(),
+			session,
+			settings: self.settings,
+			submission: EncodeSubmission::Ready,
+			pending: vec![None; self.session.slot_count()],
+			ready: Vec::new(),
+			recording: Some(Vec::new()),
+			next_slot: self.next_slot,
+		})
+	}
+
+	pub(crate) fn finish_encode_capture(mut self) -> Result<()> {
+		let steps = self
+			.recording
+			.take()
+			.ok_or_else(|| Error::internal("video encode capture has no recording"))?;
+		let mut state = self.engine.state.borrow_mut();
+		let device = state.device.clone();
+		state
+			.session
+			.record_video_encode(&device, &self.session, steps)
+	}
+
+	fn append_encode_step(&mut self, step: RecordedEncodeStep) -> Result<()> {
+		self
+			.recording
+			.as_mut()
+			.ok_or_else(|| Error::internal("video encode capture has no recording"))?
+			.push(step);
+		Ok(())
+	}
+
+	/// Record one RGBA frame's conversion + encode into the capture. The
+	/// RGBA upload happens on the host now; only the conversion dispatch and
+	/// `vkCmdEncodeVideoKHR` become graph nodes.
+	pub(crate) fn record_rgba(
+		&mut self,
+		rgba: &[u8],
+		presentation_timestamp_micros: u64,
+		color_space: u32,
+		full_range: bool,
+	) -> Result<()> {
+		if self.recording.is_none() {
+			return Err(Error::failed_precondition(
+				"video encode capture is not recording",
+			));
+		}
+		self.session.validate_ownership()?;
+		let index = self.next_slot;
+		self.session.write_rgba(index, rgba)?;
+		let input = Arc::new(self.session.retain_conversion(
+			index,
+			self.session.visible_extent(),
+			color_space,
+			full_range,
+		)?);
+		let picture = self
+			.session
+			.prepare_encode_frame(index, presentation_timestamp_micros)?;
+		self.append_encode_step(RecordedEncodeStep {
+			input: Some(input),
+			planes: Vec::new(),
+			picture,
+		})?;
+		self.next_slot = (index + 1) % self.pending.len();
+		Ok(())
+	}
+
+	/// Record one frame whose input planes are already graph storage
+	/// (compute-produced NV12/P010 planes — the decode → compute → encode
+	/// chain). The staging copy is a graph node on the compute family.
+	pub(crate) fn record_planes(
+		&mut self,
+		planes: &[crate::Matrix],
+		presentation_timestamp_micros: u64,
+	) -> Result<()> {
+		if self.recording.is_none() {
+			return Err(Error::failed_precondition(
+				"video encode capture is not recording",
+			));
+		}
+		self.session.validate_ownership()?;
+		let index = self.next_slot;
+		let input = Arc::new(self.session.retain_input_copy(index)?);
+		let expected = input.plane_bytes().len();
+		if planes.len() != expected {
+			return Err(Error::invalid_argument(format!(
+				"encode input expects {expected} planes, got {}",
+				planes.len()
+			)));
+		}
+		let storages = planes
+			.iter()
+			.map(|plane| plane.storage().clone())
+			.collect::<Vec<_>>();
+		let picture = self
+			.session
+			.prepare_encode_frame(index, presentation_timestamp_micros)?;
+		self.append_encode_step(RecordedEncodeStep {
+			input: Some(input),
+			planes: storages,
+			picture,
+		})?;
+		self.next_slot = (index + 1) % self.pending.len();
+		Ok(())
 	}
 
 	/// Encode one RGBA8 frame synchronously and return its access unit.
@@ -725,16 +1096,17 @@ impl VideoEncoderBackend {
 
 	/// Wait for every pending encode job and return all remaining packets.
 	pub(crate) fn flush(&mut self) -> Result<Vec<crate::video::EncodedVideoPacket>> {
-		let mut packets = std::mem::take(&mut self.ready);
+		require_immediate_batch(&self.engine.state.borrow())?;
 		// The ring may have wrapped. Visit oldest submission first, rather than
 		// physical slot zero, so muxers receive monotonically ordered packets.
 		for offset in 0..self.pending.len() {
 			let index = (self.next_slot + offset) % self.pending.len();
 			if self.session.slot_pending(index) {
-				packets.push(self.harvest_slot(index)?);
+				let packet = self.harvest_slot(index)?;
+				self.ready.push(packet);
 			}
 		}
-		Ok(packets)
+		Ok(std::mem::take(&mut self.ready))
 	}
 
 	/// Upload and submit one frame on the next ring slot, returning its index.
@@ -750,30 +1122,58 @@ impl VideoEncoderBackend {
 		full_range: bool,
 		synchronous: bool,
 	) -> Result<usize> {
-		let device = self.engine.state.borrow().device.clone();
+		if self.recording.is_some() {
+			return Err(Error::failed_precondition(
+				"immediate encode submission during capture; use record_rgba",
+			));
+		}
+		let device = {
+			let state = self.engine.state.borrow();
+			require_immediate_batch(&state)?;
+			state.device.clone()
+		};
 		let index = self.next_slot;
-		self.next_slot = (self.next_slot + 1) % self.pending.len();
+		if !matches!(self.submission, EncodeSubmission::Ready) {
+			return Err(Error::failed_precondition(
+				"encoder requires reopening after a partial submission",
+			));
+		}
 		if self.session.slot_pending(index) {
 			let packet = self.harvest_slot(index)?;
 			self.ready.push(packet);
 		}
 		self.session.write_rgba(index, rgba)?;
-		let conversion = self.session.record_conversion(
+		let mut commands = RecordedBatch::new(&device);
+		commands.push(self.session.record_conversion(
 			&device,
 			index,
 			self.session.visible_extent(),
 			color_space,
 			full_range,
-		)?;
-		{
-			let mut state = self.engine.state.borrow_mut();
-			let _conversion_event = submit_recorded(&mut state, conversion)?;
-		}
-		let command = self.session.record_frame(&device, index)?;
+		)?);
+		commands.push(self.session.record_frame(&device, index)?);
 		let event = {
 			let mut state = self.engine.state.borrow_mut();
-			submit_recorded(&mut state, command)?
+			let starting_epoch = state.next_epoch;
+			let mut accepted = None;
+			match submit_recorded_batch_with(&mut state, commands, false, |state, command| {
+				let event = submit_recorded(state, command)?;
+				accepted = Some(event.clone());
+				Ok(event)
+			}) {
+				Ok(event) => event,
+				Err(error) => {
+					if state.next_epoch != starting_epoch {
+						self.submission = match accepted {
+							Some(event) if event.epoch() == state.next_epoch => EncodeSubmission::Partial(event),
+							_ => EncodeSubmission::Unconfirmed,
+						};
+					}
+					return Err(error);
+				}
+			}
 		};
+		self.next_slot = (index + 1) % self.pending.len();
 		self
 			.session
 			.mark_pending(index, presentation_timestamp_micros);
@@ -805,25 +1205,36 @@ impl VideoEncoderBackend {
 	/// every random-access point is self-describing Annex-B.
 	fn harvest_slot(&mut self, index: usize) -> Result<crate::video::EncodedVideoPacket> {
 		let event = self.pending[index]
-			.take()
+			.as_ref()
 			.ok_or_else(|| Error::failed_precondition("encode slot has no pending submission"))?;
 		event.wait()?;
 		let feedback = self.session.read_feedback(index)?;
 		let keyframe = self.session.slot_is_keyframe(index);
 		let pts = self.session.slot_presentation_timestamp(index);
+		let headers = if keyframe {
+			self.session.cached_headers()
+		} else {
+			&[]
+		};
+		let length = headers
+			.len()
+			.checked_add(feedback.bytes_written as usize)
+			.ok_or_else(|| Error::out_of_range("encoded packet size overflowed"))?;
+		let mut packet = Vec::new();
+		packet
+			.try_reserve_exact(length)
+			.map_err(|_| Error::resource_exhausted("encoded packet allocation failed"))?;
+		packet.extend_from_slice(headers);
+		packet.resize(length, 0);
+		self.session.read_bitstream(
+			index,
+			u64::from(feedback.bitstream_offset),
+			&mut packet[headers.len()..],
+		)?;
+		let packet = crate::video::EncodedVideoPacket::new(packet, pts, keyframe)?;
 		self.session.mark_completed(index);
-		let mut bitstream = vec![0_u8; feedback.bytes_written as usize];
-		self
-			.session
-			.read_bitstream(index, u64::from(feedback.bitstream_offset), &mut bitstream)?;
-		let headers = self.session.cached_headers();
-		if keyframe && !headers.is_empty() {
-			let mut framed = Vec::with_capacity(headers.len() + bitstream.len());
-			framed.extend_from_slice(headers);
-			framed.append(&mut bitstream);
-			bitstream = framed;
-		}
-		crate::video::EncodedVideoPacket::new(bitstream, pts, keyframe)
+		self.pending[index] = None;
+		Ok(packet)
 	}
 }
 
@@ -1640,6 +2051,10 @@ impl EngineHandle {
 	}
 
 	/// Borrow the selected device for resource creation and admission checks.
+	pub(crate) fn descriptor_write_count(&self) -> u64 {
+		self.state.borrow().device.descriptor_write_count()
+	}
+
 	pub(crate) fn device(&self) -> Arc<Device> {
 		self.state.borrow().device.clone()
 	}
@@ -3403,6 +3818,43 @@ impl EngineHandle {
 		let Some(pending) = state.session.take(&device, &[])? else {
 			return Ok(None);
 		};
+		let runs = pending.graph.queue_runs();
+		if runs.len() > 1 {
+			let start = state.next_epoch;
+			let completion = (|| {
+				if matches!(timing, FlushTiming::Borrowed(_)) {
+					return Err(Error::missing_capability(
+						"borrowed timing requires a single queue family",
+					));
+				}
+				let timed = matches!(timing, FlushTiming::Fresh);
+				let mut commands = RecordedBatch::new(&device);
+				for run in runs {
+					let command = device
+						.record_reusable_graph_range(&pending.graph, run.nodes)?
+						.submission();
+					commands.push(if timed {
+						device.time_reusable_command(command)?
+					} else {
+						command
+					});
+				}
+				submit_recorded_batch(&mut state, commands, timed)
+			})();
+			return match completion {
+				Ok(event) => {
+					pending.mark_submitted(&event);
+					Ok(Some(event))
+				}
+				Err(error) => {
+					if state.next_epoch != start {
+						pending.graph.invalidate_video_owners();
+					}
+					pending.mark_failed();
+					Err(error)
+				}
+			};
+		}
 		let borrowed = matches!(timing, FlushTiming::Borrowed(_));
 		let recorded = match timing {
 			FlushTiming::Untimed => state.device.record_compute_graph(&pending.graph),
@@ -3450,74 +3902,56 @@ impl EngineHandle {
 				return Err(error);
 			}
 		};
-		if ranges.len() > 1 {
-			// Every chunk records before anything submits: a mid-recording
-			// failure cannot leave earlier chunks partially executed. The
-			// timeline chain orders chunks; the returned event is the last
-			// submission's, which completes only after every chunk retires.
-			let mut commands = Vec::with_capacity(ranges.len());
-			for range in &ranges {
-				let sub_graph = ExecutableGraph::from_nodes(plan.graph().nodes()[range.clone()].to_vec())?;
-				let command = state
-					.device
-					.record_reusable_compute_graph(&sub_graph)?
-					.submission();
-				let command = if timed {
-					state.device.time_reusable_command(command)?
-				} else {
-					command
-				};
-				commands.push(command);
-			}
-			let mut first = None;
-			let mut last = None;
-			for command in commands {
-				match submit_recorded(&mut state, command) {
-					Ok(event) => {
-						if timed && first.is_none() {
-							first = Some(event.clone());
-						}
-						last = Some(event);
-					}
-					Err(error) => {
-						plan.mark_failed();
-						return Err(error);
-					}
+		// One submission range maps to one command buffer; ranges are
+		// bounded by queue runs, so each command stays on one queue family.
+		// Recording against the full graph keeps both sides of every
+		// cross-family ownership transfer — the producer range emits the
+		// release and the consumer range's first hazard emits the acquire.
+		let start = state.next_epoch;
+		let completion = (|| {
+			plan.graph().validate_video_owners()?;
+			let mut commands = RecordedBatch::new(&state.device);
+			if plan.graph().has_video() {
+				for range in ranges {
+					commands.push(
+						state
+							.device
+							.record_fresh_graph_range(plan.graph(), range, timed)?,
+					);
+				}
+				plan.count_command_recording();
+			} else if ranges.len() > plan.graph().queue_runs().len() {
+				for range in ranges {
+					let command = state
+						.device
+						.record_reusable_graph_range(plan.graph(), range)?
+						.submission();
+					commands.push(if timed {
+						state.device.time_reusable_command(command)?
+					} else {
+						command
+					});
+				}
+			} else {
+				for command in plan.reusable_commands(&state.device)? {
+					commands.push(if timed {
+						state.device.time_reusable_command(command)?
+					} else {
+						command
+					});
 				}
 			}
-			let mut event = match last {
-				Some(event) => event,
-				None => {
-					plan.mark_failed();
-					return Err(Error::internal("empty submission split"));
-				}
-			};
-			if let Some(first) = first {
-				event.set_timing_start(&first);
-			}
-			plan.mark_submitted(&event);
-			return Ok(event);
-		}
-		let recorded = if timed {
-			plan
-				.reusable_command(&state.device)
-				.and_then(|command| state.device.time_reusable_command(command))
-		} else {
-			plan.reusable_command(&state.device)
-		};
-		let command = match recorded {
-			Ok(command) => command,
-			Err(error) => {
-				plan.mark_failed();
-				return Err(error);
-			}
-		};
-		match submit_recorded(&mut state, command) {
+			submit_recorded_batch(&mut state, commands, timed)
+		})();
+		match completion {
 			Ok(event) => {
 				plan.mark_submitted(&event);
 				Ok(event)
 			}
 			Err(error) => {
+				if state.next_epoch != start {
+					plan.graph().invalidate_video_owners();
+				}
 				plan.mark_failed();
 				Err(error)
 			}
@@ -3584,6 +4018,9 @@ impl Drop for SemanticLoweringScope {
 struct CaptureGuard {
 	engine: EngineHandle,
 	active: bool,
+	/// Heap descriptor writes issued before capture began; the delta at
+	/// finish is this plan's binding cost (OA-CC-21 census).
+	descriptor_writes_before: u64,
 }
 
 /// Movable private recording transaction used by stateful domain sessions.
@@ -3623,9 +4060,11 @@ impl CaptureGuard {
 			state.session.begin_capture()?;
 			state.capture_active = true;
 		}
+		let descriptor_writes_before = engine.descriptor_write_count();
 		Ok(Self {
 			engine,
 			active: true,
+			descriptor_writes_before,
 		})
 	}
 
@@ -3653,7 +4092,14 @@ impl CaptureGuard {
 			));
 		};
 		pending.mark_captured();
-		ExecutionPlan::new(self.engine.clone(), pending, false)
+		let mut plan = ExecutionPlan::new(self.engine.clone(), pending, false)?;
+		plan.set_descriptor_write_count(
+			self
+				.engine
+				.descriptor_write_count()
+				.saturating_sub(self.descriptor_writes_before),
+		);
+		Ok(plan)
 	}
 
 	fn finish_preserving(mut self, observed_outputs: &[&Matrix]) -> Result<ExecutionPlan> {
@@ -3670,7 +4116,13 @@ impl CaptureGuard {
 				"execution capture recorded no executable work",
 			));
 		};
-		let plan = ExecutionPlan::new(self.engine.clone(), pending, true)?;
+		let mut plan = ExecutionPlan::new(self.engine.clone(), pending, true)?;
+		plan.set_descriptor_write_count(
+			self
+				.engine
+				.descriptor_write_count()
+				.saturating_sub(self.descriptor_writes_before),
+		);
 		plan.validate_training_replay_safety()?;
 		let mut state = self.engine.state.borrow_mut();
 		plan.precompile(&state.device)?;
@@ -3688,6 +4140,66 @@ impl Drop for CaptureGuard {
 		state.session.abort_capture();
 		state.capture_active = false;
 	}
+}
+
+fn require_immediate_batch(state: &EngineState) -> Result<()> {
+	if state.capture_active || state.secret_scope.is_some() {
+		return Err(Error::failed_precondition(
+			"an immediate command batch requires an engine outside capture and secret lowering",
+		));
+	}
+	Ok(())
+}
+
+/// Submit a fully recorded batch through the engine timeline and publish
+/// its last exact epoch. A failed submit leaves the remaining commands in
+/// the batch guard, which frees them without submitting.
+fn submit_recorded_batch(
+	state: &mut EngineState,
+	batch: RecordedBatch,
+	timed: bool,
+) -> Result<Event> {
+	submit_recorded_batch_with(state, batch, timed, submit_recorded)
+}
+
+fn submit_recorded_batch_with(
+	state: &mut EngineState,
+	mut batch: RecordedBatch,
+	timed: bool,
+	mut submit: impl FnMut(&mut EngineState, RecordedCommandBuffer) -> Result<Event>,
+) -> Result<Event> {
+	require_immediate_batch(state)?;
+	if !batch.belongs_to(&state.device) {
+		return Err(Error::invalid_argument(
+			"command batch belongs to another engine",
+		));
+	}
+	let count = u64::try_from(batch.len())
+		.ok()
+		.filter(|count| *count != 0)
+		.ok_or_else(|| Error::invalid_argument("command batch must be nonempty"))?;
+	state
+		.next_epoch
+		.checked_add(count)
+		.ok_or_else(|| Error::resource_exhausted("Vulkan submission epoch exhausted"))?;
+	let mut statuses = Vec::new();
+	let mut receipts = Vec::new();
+	let first_command = batch.next().expect("nonempty command batch");
+	statuses.extend(first_command.decode_statuses.iter().cloned());
+	receipts.extend(first_command.encode_receipts.iter().cloned());
+	let mut completion = submit(state, first_command)?;
+	let first = timed.then(|| completion.clone());
+	while let Some(command) = batch.next() {
+		statuses.extend(command.decode_statuses.iter().cloned());
+		receipts.extend(command.encode_receipts.iter().cloned());
+		completion = submit(state, command)?;
+	}
+	if let Some(first) = first {
+		completion.set_timing_start(&first);
+	}
+	completion.set_decode_statuses(statuses);
+	completion.set_encode_receipts(receipts);
+	Ok(completion)
 }
 
 fn submit_recorded(state: &mut EngineState, command: RecordedCommandBuffer) -> Result<Event> {
@@ -3752,3 +4264,7 @@ mod device_owner_tests;
 #[cfg(test)]
 #[path = "../../../../test/rs/runtime/jit_chain_unit.rs"]
 mod jit_chain_tests;
+
+#[cfg(test)]
+#[path = "../../../../test/rs/runtime/recorded_batch_unit.rs"]
+mod recorded_batch_tests;

@@ -151,7 +151,14 @@ fn absorbed_anchor_or_later_slot_cannot_be_claimed_twice() {
 #[test]
 fn malformed_ranges_decline_without_slicing_or_arithmetic_panics() {
 	let graph = chain(&[3]);
-	for (start, end) in [(0, 0), (0, 1), (1, 0), (0, 3), (usize::MAX, usize::MAX)] {
+	for (start, end) in [
+		(0, 0),
+		(0, 1),
+		(1, 0),
+		(0, 3),
+		(0, usize::MAX),
+		(usize::MAX, usize::MAX),
+	] {
 		assert!(matches!(
 			graph.contiguous(start..end, &BTreeSet::new(), &WriteAdmission::default()),
 			Err(RegionDecline::InvalidRange)
@@ -185,9 +192,96 @@ fn earlier_reader_is_not_a_version_but_a_later_writer_is() {
 	// value ordering the single emission preserves: decline.
 	let positions = BTreeSet::from([0, 2]);
 	assert!(matches!(
-		graph.window(&positions, &BTreeSet::new(), &WriteAdmission::default()),
+		graph.window(
+			&positions,
+			&BTreeSet::new(),
+			&WriteAdmission::default(),
+			&BTreeSet::new(),
+		),
 		Err(RegionDecline::NonSsaWrite)
 	));
+}
+
+#[test]
+fn relocated_gap_writer_preserves_its_write_before_member_reads() {
+	// The router shape: the passthrough at 1 writes the strict input the
+	// member at 2 reads. Unmoved, the fused node would read the pre-write
+	// version the member never observed — decline. Relocated before the
+	// fused node, write→read order is preserved — admit.
+	let graph = RegionGraph::new(
+		vec![node(&[0], &[1]), node(&[8], &[2]), node(&[2], &[3])],
+		BTreeSet::new(),
+	);
+	let positions = BTreeSet::from([0, 2]);
+	assert!(matches!(
+		graph.window(
+			&positions,
+			&BTreeSet::new(),
+			&WriteAdmission::default(),
+			&BTreeSet::new(),
+		),
+		Err(RegionDecline::NonSsaWrite)
+	));
+	assert!(
+		graph
+			.window(
+				&positions,
+				&BTreeSet::new(),
+				&WriteAdmission::default(),
+				&BTreeSet::from([1]),
+			)
+			.is_ok()
+	);
+	// A gap writer after every member read stays legal unmoved: the fused
+	// read sees the same pre-write version the member did.
+	let graph = RegionGraph::new(
+		vec![node(&[2], &[1]), node(&[8], &[2]), node(&[0], &[3])],
+		BTreeSet::new(),
+	);
+	assert!(
+		graph
+			.window(
+				&BTreeSet::from([0, 2]),
+				&BTreeSet::new(),
+				&WriteAdmission::default(),
+				&BTreeSet::new(),
+			)
+			.is_ok()
+	);
+}
+
+#[test]
+fn relocated_gap_reader_must_not_observe_a_member_write() {
+	// The moved node originally sat after the member write at 0; pushed
+	// before the fused node it would read the pre-region version.
+	let graph = RegionGraph::new(
+		vec![node(&[0], &[1]), node(&[1], &[9]), node(&[5], &[6])],
+		BTreeSet::new(),
+	);
+	assert!(matches!(
+		graph.window(
+			&BTreeSet::from([0, 2]),
+			&BTreeSet::new(),
+			&WriteAdmission::default(),
+			&BTreeSet::from([1]),
+		),
+		Err(RegionDecline::NonSsaWrite)
+	));
+	// Reading a strict input instead is relocation-neutral.
+	let graph = RegionGraph::new(
+		vec![node(&[0], &[1]), node(&[8], &[9]), node(&[5], &[6])],
+		BTreeSet::new(),
+	);
+	assert!(
+		graph
+			.window(
+				&BTreeSet::from([0, 2]),
+				&BTreeSet::new(),
+				&WriteAdmission::default(),
+				&BTreeSet::from([1]),
+			)
+			.is_ok()
+	);
 }
 
 #[test]
@@ -466,4 +560,46 @@ fn exhaustive_small_chains_preserve_exactly_the_observable_writes() {
 			}
 		}
 	}
+}
+
+#[test]
+fn partitioned_writes_cannot_move_before_a_gap_reader_of_old_contents() {
+	let graph = RegionGraph::new(
+		vec![
+			node(&[0], &[1]),
+			node(&[2], &[3]),
+			node(&[1], &[2]),
+			node(&[1], &[2]),
+		],
+		BTreeSet::new(),
+	);
+	assert!(matches!(
+		graph.window(
+			&BTreeSet::from([0, 2, 3]),
+			&BTreeSet::new(),
+			&WriteAdmission::partitioned([2]),
+			&BTreeSet::new(),
+		),
+		Err(RegionDecline::NonSsaWrite)
+	));
+}
+
+#[test]
+fn later_overwrite_does_not_extend_the_region_write_window() {
+	let graph = RegionGraph::new(
+		vec![
+			node(&[0], &[1]),
+			node(&[0], &[1]),
+			node(&[1], &[2]),
+			node(&[0], &[1]),
+		],
+		BTreeSet::new(),
+	);
+	let candidate = graph
+		.contiguous(0..2, &BTreeSet::new(), &WriteAdmission::default())
+		.unwrap();
+	assert_eq!(
+		candidate.accepts(&node(&[0], &[1]), &WriteAdmission::default()),
+		Ok(())
+	);
 }

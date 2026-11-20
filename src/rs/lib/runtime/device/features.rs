@@ -52,6 +52,8 @@ pub(in crate::runtime) struct DeviceFeatures {
 	pub(in crate::runtime) dynamic_rendering: bool,
 	pub(in crate::runtime) storage_buffer_8_bit_access: bool,
 	pub(in crate::runtime) uniform_and_storage_buffer_8_bit_access: bool,
+	pub(in crate::runtime) storage_buffer_16_bit_access: bool,
+	pub(in crate::runtime) uniform_and_storage_buffer_16_bit_access: bool,
 	pub(in crate::runtime) shader_int8: bool,
 	pub(in crate::runtime) runtime_descriptor_array: bool,
 	pub(in crate::runtime) descriptor_binding_partially_bound: bool,
@@ -127,6 +129,9 @@ impl DeviceFeatures {
 			shader_draw_parameters: features11.shader_draw_parameters == vk::TRUE,
 			sampler_ycbcr_conversion: features11.sampler_ycbcr_conversion == vk::TRUE,
 			shader_float16: features12.shader_float16 == vk::TRUE,
+			storage_buffer_16_bit_access: features11.storage_buffer16_bit_access == vk::TRUE,
+			uniform_and_storage_buffer_16_bit_access: features11.uniform_and_storage_buffer16_bit_access
+				== vk::TRUE,
 			shader_integer_dot_product: if api_version >= vk::API_VERSION_1_3 {
 				features13.shader_integer_dot_product == vk::TRUE
 			} else {

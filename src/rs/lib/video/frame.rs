@@ -126,6 +126,17 @@ pub struct VideoFrame {
 	color: VideoColorInfo,
 }
 
+/// GPU plane layout retained for the viewer canvas.
+#[derive(Clone, Copy)]
+pub(crate) struct CanvasYuvLayout {
+	pub extent: super::VideoExtent,
+	pub format: VideoPixelFormat,
+	pub sample_bits: u32,
+	pub cb_offset: u32,
+	pub cr_offset: u32,
+	pub interleaved: bool,
+}
+
 impl VideoFrame {
 	pub(crate) const fn native_backing(&self) -> Option<&NativeDecodedFrame> {
 		match &self.backing {
@@ -156,6 +167,25 @@ impl VideoFrame {
 			backing: VideoFrameBacking::Texture { texture, ready },
 			timing,
 			color,
+		}
+	}
+
+	pub(crate) fn with_canvas_planes(
+		&self,
+		storage: crate::runtime::Storage,
+		layout: CanvasYuvLayout,
+	) -> Self {
+		Self {
+			backing: VideoFrameBacking::CanvasYuv { storage, layout },
+			timing: self.timing,
+			color: self.color,
+		}
+	}
+
+	pub(crate) fn canvas_planes(&self) -> Option<(&crate::runtime::Storage, CanvasYuvLayout)> {
+		match &self.backing {
+			VideoFrameBacking::CanvasYuv { storage, layout } => Some((storage, *layout)),
+			_ => None,
 		}
 	}
 
@@ -199,6 +229,9 @@ impl VideoFrame {
 	/// visible luma extent. The returned frame carries the same timing and
 	/// color metadata the caller supplies; this is the host-to-device staging
 	/// step for native frame operations and `oa::video::to_matrix`.
+	/// For P010, each sample occupies a little-endian 16-bit lane with its
+	/// 10 bits in the high end. Its luma row has `width * 2` bytes and its
+	/// interleaved CbCr row has `width.div_ceil(2) * 4` bytes.
 	///
 	/// # Errors
 	///
@@ -290,6 +323,7 @@ impl VideoFrame {
 				)
 			}
 			VideoFrameBacking::PackedImage(_)
+			| VideoFrameBacking::CanvasYuv { .. }
 			| VideoFrameBacking::Texture { .. }
 			| VideoFrameBacking::PlanarYuv420P10 { .. }
 			| VideoFrameBacking::Native(_) => Err(Error::failed_precondition(
@@ -329,31 +363,13 @@ impl VideoFrame {
 		timing: VideoFrameTiming,
 		color: VideoColorInfo,
 	) -> Result<Self> {
-		if width == 0 || height == 0 || !width.is_multiple_of(2) || !height.is_multiple_of(2) {
-			return Err(Error::invalid_argument(
-				"planar YUV420 video frames require non-zero even dimensions",
-			));
-		}
-		let expected = width
-			.checked_mul(height)
-			.and_then(|luma| luma.checked_mul(3))
-			.and_then(|samples| samples.checked_div(2))
-			.ok_or_else(|| Error::out_of_range("planar YUV420 frame size overflows usize"))?;
-		if bytes.len() != expected {
-			return Err(Error::invalid_argument(format!(
-				"planar YUV420 frame requires {expected} bytes, but received {}",
-				bytes.len()
-			)));
-		}
-		Ok(Self {
-			backing: VideoFrameBacking::PlanarYuv420 {
-				bytes: Arc::new(bytes),
-				width,
-				height,
-			},
+		Self::from_host_planes(
+			VideoHostPlanes::U8(Arc::new(bytes)),
+			width,
+			height,
 			timing,
 			color,
-		})
+		)
 	}
 
 	/// Attach frame semantics to tightly packed planar 10-bit YUV 4:2:0
@@ -374,6 +390,22 @@ impl VideoFrame {
 		timing: VideoFrameTiming,
 		color: VideoColorInfo,
 	) -> Result<Self> {
+		Self::from_host_planes(
+			VideoHostPlanes::U16(Arc::new(bytes)),
+			width,
+			height,
+			timing,
+			color,
+		)
+	}
+
+	pub(super) fn from_host_planes(
+		planes: VideoHostPlanes,
+		width: usize,
+		height: usize,
+		timing: VideoFrameTiming,
+		color: VideoColorInfo,
+	) -> Result<Self> {
 		if width == 0 || height == 0 || !width.is_multiple_of(2) || !height.is_multiple_of(2) {
 			return Err(Error::invalid_argument(
 				"planar YUV420 video frames require non-zero even dimensions",
@@ -381,21 +413,31 @@ impl VideoFrame {
 		}
 		let expected = width
 			.checked_mul(height)
-			.and_then(|luma| luma.checked_mul(3))
-			.and_then(|samples| samples.checked_div(2))
+			.and_then(|y| y.checked_add(y / 2))
 			.ok_or_else(|| Error::out_of_range("planar YUV420 frame size overflows usize"))?;
-		if bytes.len() != expected {
+		let actual = match &planes {
+			VideoHostPlanes::U8(bytes) => bytes.len(),
+			VideoHostPlanes::U16(words) => words.len(),
+		};
+		if expected != actual {
 			return Err(Error::invalid_argument(format!(
-				"planar YUV420 10-bit frame requires {expected} samples, but received {}",
-				bytes.len()
+				"planar YUV420 frame requires {expected} samples, but received {actual}"
 			)));
 		}
-		Ok(Self {
-			backing: VideoFrameBacking::PlanarYuv420P10 {
-				bytes: Arc::new(bytes),
+		let backing = match planes {
+			VideoHostPlanes::U8(bytes) => VideoFrameBacking::PlanarYuv420 {
+				bytes,
 				width,
 				height,
 			},
+			VideoHostPlanes::U16(bytes) => VideoFrameBacking::PlanarYuv420P10 {
+				bytes,
+				width,
+				height,
+			},
+		};
+		Ok(Self {
+			backing,
 			timing,
 			color,
 		})
@@ -430,6 +472,7 @@ impl VideoFrame {
 			VideoFrameBacking::PackedImage(image) => Some(image),
 			VideoFrameBacking::Texture { .. }
 			| VideoFrameBacking::Native(_)
+			| VideoFrameBacking::CanvasYuv { .. }
 			| VideoFrameBacking::DevicePlanar(_)
 			| VideoFrameBacking::PlanarYuv420 { .. }
 			| VideoFrameBacking::PlanarYuv420P10 { .. } => None,
@@ -446,6 +489,7 @@ impl VideoFrame {
 			VideoFrameBacking::Texture { texture, .. } => Some(texture),
 			VideoFrameBacking::PackedImage(_)
 			| VideoFrameBacking::Native(_)
+			| VideoFrameBacking::CanvasYuv { .. }
 			| VideoFrameBacking::DevicePlanar(_)
 			| VideoFrameBacking::PlanarYuv420 { .. }
 			| VideoFrameBacking::PlanarYuv420P10 { .. } => None,
@@ -457,6 +501,7 @@ impl VideoFrame {
 		match &self.backing {
 			VideoFrameBacking::PlanarYuv420 { bytes, .. } => Some(bytes.as_slice()),
 			VideoFrameBacking::PackedImage(_)
+			| VideoFrameBacking::CanvasYuv { .. }
 			| VideoFrameBacking::Texture { .. }
 			| VideoFrameBacking::DevicePlanar(_)
 			| VideoFrameBacking::PlanarYuv420P10 { .. }
@@ -472,6 +517,7 @@ impl VideoFrame {
 		match &self.backing {
 			VideoFrameBacking::PlanarYuv420P10 { bytes, .. } => Some(bytes.as_slice()),
 			VideoFrameBacking::PackedImage(_)
+			| VideoFrameBacking::CanvasYuv { .. }
 			| VideoFrameBacking::Texture { .. }
 			| VideoFrameBacking::DevicePlanar(_)
 			| VideoFrameBacking::PlanarYuv420 { .. }
@@ -491,6 +537,7 @@ impl VideoFrame {
 	pub fn pixel_format(&self) -> Option<VideoPixelFormat> {
 		match &self.backing {
 			VideoFrameBacking::DevicePlanar(planar) => Some(planar.format),
+			VideoFrameBacking::CanvasYuv { layout, .. } => Some(layout.format),
 			VideoFrameBacking::Native(frame) => Some(frame.format()),
 			VideoFrameBacking::PlanarYuv420 { .. } => Some(VideoPixelFormat::Yuv420Planar8),
 			VideoFrameBacking::PlanarYuv420P10 { .. } => Some(VideoPixelFormat::Yuv420Planar10),
@@ -559,6 +606,7 @@ impl VideoFrame {
 			VideoFrameBacking::PackedImage(image) => Some(image),
 			VideoFrameBacking::Texture { .. }
 			| VideoFrameBacking::Native(_)
+			| VideoFrameBacking::CanvasYuv { .. }
 			| VideoFrameBacking::DevicePlanar(_)
 			| VideoFrameBacking::PlanarYuv420 { .. }
 			| VideoFrameBacking::PlanarYuv420P10 { .. } => None,
@@ -571,6 +619,7 @@ impl VideoFrame {
 			VideoFrameBacking::Texture { texture, .. } => Some(texture),
 			VideoFrameBacking::PackedImage(_)
 			| VideoFrameBacking::Native(_)
+			| VideoFrameBacking::CanvasYuv { .. }
 			| VideoFrameBacking::DevicePlanar(_)
 			| VideoFrameBacking::PlanarYuv420 { .. }
 			| VideoFrameBacking::PlanarYuv420P10 { .. } => None,
@@ -585,8 +634,8 @@ impl VideoFrame {
 /// right-justified (`yuv420p10le`/`yuv420p12le` layout).
 #[derive(Clone, Debug)]
 pub(crate) enum VideoHostPlanes {
-	U8(Vec<u8>),
-	U16(Vec<u16>),
+	U8(Arc<Vec<u8>>),
+	U16(Arc<Vec<u16>>),
 }
 
 #[derive(Clone)]
@@ -597,6 +646,10 @@ enum VideoFrameBacking {
 		ready: Option<Event>,
 	},
 	Native(NativeDecodedFrame),
+	CanvasYuv {
+		storage: crate::runtime::Storage,
+		layout: CanvasYuvLayout,
+	},
 	DevicePlanar(DevicePlanar),
 	PlanarYuv420 {
 		bytes: Arc<Vec<u8>>,
@@ -616,6 +669,7 @@ impl VideoFrameBacking {
 			Self::PackedImage(image) => image.width(),
 			Self::Texture { texture, .. } => texture.width(),
 			Self::Native(frame) => frame.extent().width as usize,
+			Self::CanvasYuv { layout, .. } => layout.extent.width as usize,
 			Self::DevicePlanar(planar) => planar.width,
 			Self::PlanarYuv420 { width, .. } | Self::PlanarYuv420P10 { width, .. } => *width,
 		}
@@ -626,6 +680,7 @@ impl VideoFrameBacking {
 			Self::PackedImage(image) => image.height(),
 			Self::Texture { texture, .. } => texture.height(),
 			Self::Native(frame) => frame.extent().height as usize,
+			Self::CanvasYuv { layout, .. } => layout.extent.height as usize,
 			Self::DevicePlanar(planar) => planar.height,
 			Self::PlanarYuv420 { height, .. } | Self::PlanarYuv420P10 { height, .. } => *height,
 		}

@@ -371,16 +371,16 @@ def validate_ntt_schema(schema: dict[str, Any]) -> None:
 		inputs = 0 if name == 'ntt_twiddles' else 1 if name == 'ntt_reorder' else 2
 		outputs = 2 if name == 'ntt_twiddles' else 1
 		attrs = ['modulus', 'length'] + (['span', 'inverse'] if name == 'ntt_stage' else []) + ([] if name == 'ntt_twiddles' else ['montgomery'])
-		require(contract == {'name': name, 'input_kinds': ['matrix'] * inputs, 'output_kinds': ['matrix'] * outputs, 'shape_rule': 'explicit', 'dtype_rule': 'u32', 'attributes': [[n, 'unsigned_integer'] for n in attrs]}, 'NTT semantic contract differs')
+		require(contract is not None and contract.get('fusion_class') == 'effect' and {k: v for k, v in contract.items() if k != 'fusion_class'} == {'name': name, 'input_kinds': ['matrix'] * inputs, 'output_kinds': ['matrix'] * outputs, 'shape_rule': 'explicit', 'dtype_rule': 'u32', 'attributes': [[n, 'unsigned_integer'] for n in attrs]}, 'NTT semantic contract differs')
 		validate_physical_write(kernel['physical_write'], 'NTT', required=True)
 		writes = [{'binding': inputs + i, 'domain': 'output_elements' if name == 'ntt_stage' else 'rows', 'partition': 'exclusive_per_invocation', 'extent': 'up_to_two_elements' if name == 'ntt_stage' else 'row_width', 'collision': 'exclusive', 'tail': 'bounds_checked'} for i in range(outputs)]
 		require(kernel['physical_write'] == {'writes': writes, 'workspace': 'none'}, 'NTT ownership differs')
 
 
 	transform = next((c for c in schema['contracts'] if c['name'] == 'ntt_transform'), None)
-	require(transform == {'name': 'ntt_transform', 'input_kinds': ['matrix', 'matrix'], 'output_kinds': ['matrix'], 'shape_rule': 'explicit', 'dtype_rule': 'u32', 'attributes': [[n, 'unsigned_integer'] for n in ['modulus', 'length', 'inverse', 'montgomery']]}, 'Cooperative NTT semantic contract differs')
+	require(transform is not None and transform.get('fusion_class') == 'effect' and {k: v for k, v in transform.items() if k != 'fusion_class'} == {'name': 'ntt_transform', 'input_kinds': ['matrix', 'matrix'], 'output_kinds': ['matrix'], 'shape_rule': 'explicit', 'dtype_rule': 'u32', 'attributes': [[n, 'unsigned_integer'] for n in ['modulus', 'length', 'inverse', 'montgomery']]}, 'Cooperative NTT semantic contract differs')
 	fused = next((c for c in schema['contracts'] if c['name'] == 'ntt_stage_fused'), None)
-	require(fused == {'name': 'ntt_stage_fused', 'input_kinds': ['matrix', 'matrix'], 'output_kinds': ['matrix'], 'shape_rule': 'explicit', 'dtype_rule': 'u32', 'attributes': [[n, 'unsigned_integer'] for n in ['modulus', 'length', 'inverse']]}, 'Fused NTT semantic contract differs')
+	require(fused is not None and fused.get('fusion_class') == 'effect' and {k: v for k, v in fused.items() if k != 'fusion_class'} == {'name': 'ntt_stage_fused', 'input_kinds': ['matrix', 'matrix'], 'output_kinds': ['matrix'], 'shape_rule': 'explicit', 'dtype_rule': 'u32', 'attributes': [[n, 'unsigned_integer'] for n in ['modulus', 'length', 'inverse']]}, 'Fused NTT semantic contract differs')
 	require(len({k['stable_id'] for k in schema['kernels']}) == 18 and all(type(k['stable_id']) is int and 0 < k['stable_id'] <= 65535 for k in schema['kernels']), 'NTT stable IDs must be unique positive u16 values')
 
 

@@ -8,6 +8,7 @@ use std::error::Error;
 use oa::{Cli, Viewer};
 
 mod record;
+mod tune;
 
 #[derive(Default)]
 struct Args {
@@ -16,6 +17,9 @@ struct Args {
 	camera: u32,
 	window: bool,
 	hide_cursor: bool,
+	device: u32,
+	samples: u32,
+	shapes: String,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -67,6 +71,27 @@ fn main() -> Result<(), Box<dyn Error>> {
 			"restore a dock layout JSON produced by Workspace::to_json",
 		);
 	}
+	{
+		let tune = cli.add_subcommand(
+			"tune",
+			"run the measured GEMM tile search and persist the tuned record to .vkcache",
+		);
+		tune.add_option(
+			"--device",
+			|a: &mut Args| &mut a.device,
+			"device index (default 0)",
+		);
+		tune.add_option(
+			"--samples",
+			|a: &mut Args| &mut a.samples,
+			"dispatches per geometry (default 16)",
+		);
+		tune.add_option(
+			"--shapes",
+			|a: &mut Args| &mut a.shapes,
+			"comma-separated MxNxK list (default suite)",
+		);
+	}
 	cli.require_subcommand(1, 1);
 	cli.set_epilog(
 		"`oa view` opens media; `oa record` previews a camera; `oa capture` shares a screen/window. Space records/stops and Ctrl+S saves. `oa workspace` opens two demo figures.",
@@ -87,6 +112,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 			cli.config().hide_cursor,
 		)?),
 		"workspace" => run_workspace(&cli.config().layout),
+		"tune" => Ok(tune::run(
+			cli.config().device as usize,
+			if cli.config().samples == 0 {
+				16
+			} else {
+				cli.config().samples
+			},
+			&cli.config().shapes,
+		)?),
 		name => Err(format!("unknown subcommand `{name}`").into()),
 	}
 }

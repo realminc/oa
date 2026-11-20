@@ -1,82 +1,48 @@
-# OA v0.12.0 — Experimental Rust and Python preview
+# OA v0.13.0 — Experimental Rust and Python preview
 
 ## Summary
 
-This milestone completes the local camera/screen recording applications,
-repairs video presentation and reverse scrubbing, expands Python video-encode
-parity, and brings the NLP tutorials into a consistent documented workflow.
-The library remains Experimental; hardware-specific qualification is separate
-from source connection and software Vulkan correctness.
+OA strengthens compute fusion legality and records Iris Xe qualification for
+captured media pipelines. This preview includes the compute compiler and
+media improvements developed since the public 0.12.0 preview.
 
 ## Added and improved
 
-- `oa record` captures a selected camera. `oa capture` uses the desktop's
-  monitor/window picker, with window-only and hidden-cursor options. Both share
-  the image/video GPU 2D canvas, pan/zoom camera, fit, actual-size and channel
-  controls, with a record/stop button, elapsed time and Ctrl+S save-copy flow.
-- Linux screen capture ports the donor portal/PipeWire mapped-memory route.
-  Frames own their copied pixels, static screens preserve recording time, and
-  a source-size change finishes the existing movie before recording another.
-- Native video presentation selects hardware YCbCr conversion when available.
-  Playback color handling, image/video navigation, AV1 reverse-scrub crashes,
-  and backward frame-cache behavior receive correctness and robustness fixes.
-- Python exposes the video encoder/recorder and exact profile, capability and
-  format queries through the shared schema-owned Rust implementation.
-- Rust and Python NLP tutorials include local loss curves, reproducible run
-  commands, recorded terminal output, evaluation and checkpoint evidence.
-- SDK release archives and distro packages include the `oa` application.
-  Public snapshot translation covers every workspace package and lockfile
-  identity, including the SDK used by the Python extension.
+- Retained decode, inference, YUV overlay and encode share a captured plan.
+  On Iris Xe, eight 720p replay rows reached 91.3–112.7 fps and the
+  multimodal workload reached 245.0 ten-frame clips per second.
+- The compiler uses an ordered structural fusion rule table with
+  schema-owned effect metadata, workload-specific tile providers and
+  per-plan diagnostics.
+- The viewer supports synchronized audio playback and indexed video seeks.
+  Dolby AC-3 and E-AC-3 decoding runs inside OA.
 
 ## Fixed
 
-- Request SDL's byte-order-aware RGBA32 camera format, preventing reversed
-  channels on little-endian machines.
-- Remove redundant aligned-U8 frame staging and unrelated engine-wide waits
-  before native texture upload while preserving exact producer completion.
-- Preserve the original recording on save cancellation or copy failure, and
-  stage destination replacement so saving onto a link cannot truncate it.
-- Align retained-secret ownership assertions and reject invalid ML-KEM cache
-  operands. Software CI selects its admitted ML-KEM pack before execution;
-  unadmitted ML-DSA operations are not silently converted into test successes.
+- Preserve intervening reads when checking partitioned-write fusion.
+- Keep later overwrites outside the fusion window and validate range
+  bounds before allocating slot metadata.
 
 ## Compatibility and migration
 
-Core remains the default build profile and requires its Vulkan 1.3 feature
-contract. Older hardware must explicitly build with `OA_BUILD_PROFILE=compatibility`.
-The public semantic Rust library namespace is `oa`; the registry packages remain
-`oarust` and `oapython`. Python screen/camera capture bindings are not added by
-these Rust application commands.
-
-Linux builds now need PipeWire/SPA development headers, pkg-config and libclang.
-Screen capture additionally requires libportal and a desktop ScreenCast portal
-at runtime. The desktop always owns the capture permission decision. Optional
-capture services are not initialized by headless Engine construction.
+The Rust crate is `oarust`, the Python distribution is `oapython` and both
+use the `oa` namespace. Core remains the default Rust build profile.
+GPU, queue, codec and driver capability determine route availability.
 
 ## Verification
 
-Local Intel Iris Xe qualification includes native-resolution 2496×1664 screen
-recording, 61 submitted and independently decoded frames in a two-second run,
-MP4 finalization, camera capture, and GPU canvas transform/channel oracles.
-Aligned/padded byte uploads, texture ownership and GPU-produced texture uploads
-pass independent readback checks; the latter also passes synchronization
-validation. These are local correctness/cadence samples, not cross-driver
-performance claims. Rust/Python regression, formatting, generation and Clippy
-checks are recorded with the release candidate. Published package and CI
-verification are separate gates and are not implied by those local results.
+The region legality suite includes 23 host checks. Twelve focused
+fusion tests passed on Iris Xe with synchronization validation.
+The media qualification included 256 sequential validated replays
+for each of the nine video and multimodal workloads.
 
 ## Known limitations
 
-DMA-BUF zero-copy capture, capture audio and the remaining manual desktop
-lifecycle checks remain open. Vulkan Video codec/profile support depends on
-the selected device and driver. Sustained HEVC encoding on the recorded Intel
-platform needs the qualified Mesa development-driver fix; older Mesa 26.2.7
-can lose the device. Software Vulkan does not qualify physical media, WSI,
-performance, or secret ML-DSA providers outside its admitted resource limits.
-Ignored or skipped tests are not capability claims.
+Compiler tile providers and hardware video are Experimental. Additional
+device qualification, provider default decisions and precision-specific
+training gates remain open.
 
 ## Upgrade
 
-Use `cargo add oarust` or `python -m pip install --upgrade oapython` after the
-public release completes. Use the matching SDK archive/package for the `oa`
-applications, and verify its complete SHA-256 manifest before installation.
+Use matching Rust, Python and SDK versions. Verify the published artifact
+checksums before installing from GitHub Releases.

@@ -261,6 +261,101 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 		)
 	}
 
+	/// Collect a bounded PPO chunk from any [`CompiledEnvironment`](crate::ml::environment::CompiledEnvironment),
+	/// resetting all lanes at the chunk boundary.
+	///
+	/// Replays the captured reset/step/GAE plans owned by `program` instead of
+	/// recording host commands per step (OA-CC-20).
+	///
+	/// # Errors
+	/// Rejects changed owners/geometry, stale execution, unhealthy lanes or any
+	/// replay failure. Submitted collection is not rollbackable; resume from the
+	/// last completed checkpoint after failure.
+	pub fn collect_compiled<E: crate::ml::environment::CompiledEnvironment>(
+		&mut self,
+		environment: &mut E,
+		program: &mut super::CompiledRollout,
+		reset_seed: u64,
+		check_every: u32,
+		reward_offset: f32,
+	) -> Result<std::time::Duration> {
+		self.collect_compiled_impl(
+			environment,
+			program,
+			super::CompiledCollectionOptions {
+				seed: reset_seed,
+				check_every,
+				shaping: reward_offset,
+				continuing: false,
+			},
+		)
+	}
+
+	/// Collect a bounded PPO chunk while retaining episode state across
+	/// chunks. Only actual environment episode boundaries reset lanes; GAE
+	/// bootstraps the final nonterminal value.
+	///
+	/// # Errors
+	/// Same ownership/geometry/completion gates as `collect_compiled`.
+	pub fn collect_compiled_continuing<E: crate::ml::environment::CompiledEnvironment>(
+		&mut self,
+		environment: &mut E,
+		program: &mut super::CompiledRollout,
+		reset_seed: u64,
+		check_every: u32,
+		reward_offset: f32,
+	) -> Result<std::time::Duration> {
+		self.collect_compiled_impl(
+			environment,
+			program,
+			super::CompiledCollectionOptions {
+				seed: reset_seed,
+				check_every,
+				shaping: reward_offset,
+				continuing: true,
+			},
+		)
+	}
+
+	fn collect_compiled_impl<E: crate::ml::environment::CompiledEnvironment>(
+		&mut self,
+		environment: &mut E,
+		program: &mut super::CompiledRollout,
+		options: super::CompiledCollectionOptions,
+	) -> Result<std::time::Duration> {
+		if self.collecting || self.training.phase() != RolloutTrainingPhase::Collect {
+			return Err(Error::failed_precondition(
+				"compiled collection requires idle Collect phase",
+			));
+		}
+		self.training.begin_replayed_rollout(&mut self.rollout)?;
+		self.collection_action_index = self.action_index;
+		self.collecting = true;
+		self.collection_abortable = false;
+		let mut config = self.config.clone();
+		config.seed = config
+			.seed
+			.checked_add(self.action_index)
+			.ok_or_else(|| Error::resource_exhausted("PPO action seed exhausted"))?;
+		let elapsed = program.collect(
+			self.engine,
+			self.model,
+			environment,
+			&mut self.rollout,
+			&config,
+			options,
+		)?;
+		self.action_index = self
+			.action_index
+			.checked_add(self.config.horizon as u64)
+			.ok_or_else(|| Error::resource_exhausted("PPO action cursor exhausted"))?;
+		self
+			.training
+			.finalize_rollout(&mut self.rollout, self.config.gae)?;
+		self.collecting = false;
+		Ok(elapsed)
+	}
+
 	fn collect_trading_impl(
 		&mut self,
 		environment: &mut crate::ml::environment::TradingEnvironment<'_>,

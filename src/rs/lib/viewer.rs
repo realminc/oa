@@ -430,7 +430,7 @@ impl<'src> Viewer<'src> {
 									}
 									MediaState::Video { player } => {
 										if let Some(player) = player.as_mut() {
-											player.set_looping(self.config.loop_media)?;
+											player.set_looping(self.config.loop_media);
 										}
 									}
 									_ => {}
@@ -518,7 +518,7 @@ impl<'src> Viewer<'src> {
 				// Per-frame update.
 				nav.set_motion_speed(self.config.motion_speed);
 				nav.update(delta_ms);
-				media.update(delta_ms, engine)?;
+				media.update()?;
 				if let Some(source) = self.live_source.as_deref_mut() {
 					source.update(delta_ms)?;
 					media.update_live_texture(source.canvas_texture(), &mut nav)?;
@@ -778,8 +778,7 @@ fn render_frame(
 			image_mode::render(ui, tex_ref, nav, channel_mode, full_rect, config)?;
 		}
 		MediaState::Video { player } => {
-			let p: Option<&mut crate::VideoPlayer> = player.as_mut().as_mut();
-			video_mode::render(ui, p, nav, full_rect, config)?;
+			video_mode::render(ui, player.as_mut().as_mut(), nav)?;
 		}
 		MediaState::Audio { player, analysis } => {
 			let p: Option<&mut crate::AudioPlayer> = player.as_mut().as_mut();
@@ -826,7 +825,7 @@ pub(crate) enum MediaState {
 		channel_mode: image_mode::ChannelMode,
 	},
 	Video {
-		player: Box<Option<crate::VideoPlayer>>,
+		player: Box<Option<crate::MediaPlayer>>,
 	},
 	Audio {
 		player: Box<Option<crate::AudioPlayer>>,
@@ -892,26 +891,33 @@ impl MediaState {
 						channel_mode: image_mode::ChannelMode::Rgb,
 					});
 				}
-				if let Ok(player) = video_mode::open(engine, config) {
-					return Ok(Self::Video {
-						player: Box::new(Some(player)),
-					});
-				}
-				if let Ok(mut player) = audio_mode::open(engine, config) {
-					let analysis = match audio_view::analyze(engine, &config.path, config) {
-						Ok(analysis) => analysis,
-						Err(error) => {
-							let _ = player.close();
-							return Err(error);
-						}
-					};
-					return Ok(Self::Audio {
-						player: Box::new(Some(player)),
-						analysis,
-					});
-				}
-				Err(Error::failed_precondition(
-					"Viewer Auto mode could not open path as image, video, or audio",
+				let video_error = match video_mode::open(engine, config) {
+					Ok(player) => {
+						return Ok(Self::Video {
+							player: Box::new(Some(player)),
+						});
+					}
+					Err(error) => error,
+				};
+				let audio_error = match audio_mode::open(engine, config) {
+					Ok(mut player) => {
+						let analysis = match audio_view::analyze(engine, &config.path, config) {
+							Ok(analysis) => analysis,
+							Err(error) => {
+								let _ = player.close();
+								return Err(error);
+							}
+						};
+						return Ok(Self::Audio {
+							player: Box::new(Some(player)),
+							analysis,
+						});
+					}
+					Err(error) => error,
+				};
+				Err(Error::with_kind(
+					video_error.kind(),
+					format!("Viewer could not open media (video: {video_error}, audio: {audio_error})"),
 				))
 			}
 		}
@@ -953,12 +959,20 @@ impl MediaState {
 		}
 	}
 
-	fn update(&mut self, delta_ms: f32, _engine: &Engine) -> Result<()> {
-		if let Self::Video { player } = self
-			&& let Some(p) = player.as_mut().as_mut()
-		{
-			let elapsed = std::time::Duration::from_secs_f32(delta_ms / 1000.0);
-			p.tick(elapsed)?;
+	fn update(&mut self) -> Result<()> {
+		match self {
+			Self::Video { player } => {
+				if let Some(player) = player.as_mut() {
+					// Bound catch-up after seeks, window stalls, or resize.
+					player.tick(4)?;
+				}
+			}
+			Self::Audio { player, .. } => {
+				if let Some(player) = player.as_ref() {
+					player.check_playback()?;
+				}
+			}
+			_ => {}
 		}
 		Ok(())
 	}
@@ -989,29 +1003,8 @@ impl MediaState {
 			Self::Image { channel_mode, .. } | Self::Live { channel_mode, .. } => {
 				image_mode::handle_event(ev, channel_mode, config);
 			}
-			Self::Video { player } => {
-				if let Some(p) = player.as_mut().as_mut() {
-					if ev.key == Key::Space {
-						p.toggle_play()?;
-					}
-					if ev.key == Key::Left {
-						p.step_frames(-1)?;
-					}
-					if ev.key == Key::Right {
-						p.advance()?;
-					}
-				}
-			}
-			Self::Audio { player, .. } => {
-				if let Some(p) = player.as_mut().as_mut()
-					&& ev.key == Key::Space
-				{
-					if p.is_playing() {
-						p.pause();
-					} else {
-						p.play()?;
-					}
-				}
+			Self::Video { .. } | Self::Audio { .. } if ev.key == Key::Space => {
+				self.toggle_play()?;
 			}
 			_ => {}
 		}
@@ -1020,12 +1013,10 @@ impl MediaState {
 
 	fn close(&mut self) -> Result<()> {
 		match self {
-			Self::Video { player } => {
-				if let Some(player) = player.as_mut().as_mut() {
-					player.close();
-				}
-				Ok(())
-			}
+			Self::Video { player } => player
+				.as_mut()
+				.as_mut()
+				.map_or(Ok(()), |player| player.close()),
 			Self::Audio { player, .. } => {
 				if let Some(player) = player.as_mut().as_mut() {
 					player.close()?;
@@ -1036,16 +1027,36 @@ impl MediaState {
 		}
 	}
 
+	fn audio_player(&self) -> Option<&crate::AudioPlayer> {
+		match self {
+			Self::Video { player } => player.as_ref().as_ref().and_then(|player| player.audio()),
+			Self::Audio { player, .. } => player.as_ref().as_ref(),
+			_ => None,
+		}
+	}
+
+	fn pause_playback(&mut self) -> Result<()> {
+		match self {
+			Self::Video { player } => player
+				.as_mut()
+				.as_mut()
+				.map_or(Ok(()), |player| player.pause()),
+			Self::Audio { player, .. } => {
+				if let Some(player) = player.as_ref() {
+					player.pause();
+				}
+				Ok(())
+			}
+			_ => Ok(()),
+		}
+	}
+
 	pub(crate) fn position_us(&self) -> u64 {
 		match self {
 			Self::Video { player } => player
 				.as_ref()
 				.as_ref()
-				.and_then(|p| {
-					p.current_frame().ok().map(|frame| {
-						u64::try_from(frame.timing().presentation_timestamp().as_micros()).unwrap_or(u64::MAX)
-					})
-				})
+				.and_then(|player| player.position_us().ok())
 				.unwrap_or(0),
 			Self::Audio { player, .. } => player.as_ref().as_ref().map_or(0, |p| p.position_us()),
 			_ => 0,
@@ -1054,14 +1065,7 @@ impl MediaState {
 
 	pub(crate) fn duration_us(&self) -> u64 {
 		match self {
-			Self::Video { player } => player.as_ref().as_ref().map_or(0, |p| {
-				p.info().map_or(0, |info| {
-					let tb = info.time_base();
-					let d = info.duration();
-					// ticks → µs: d * num / den * 1_000_000
-					(d as u128 * tb.numerator() as u128 * 1_000_000 / tb.denominator().max(1) as u128) as u64
-				})
-			}),
+			Self::Video { player } => player.as_ref().as_ref().map_or(0, |p| p.duration_us()),
 			Self::Audio { player, .. } => player.as_ref().as_ref().map_or(0, |p| p.duration_us()),
 			_ => 0,
 		}
@@ -1081,7 +1085,7 @@ impl MediaState {
 		match self {
 			Self::Video { player } => {
 				if let Some(p) = player.as_mut().as_mut() {
-					p.toggle_play()
+					if p.is_playing() { p.pause() } else { p.play() }
 				} else {
 					Ok(())
 				}
@@ -1107,7 +1111,6 @@ impl MediaState {
 		match self {
 			Self::Video { player } => {
 				if let Some(player) = player.as_mut() {
-					player.pause()?;
 					player.step_frames(steps)?;
 				}
 			}
@@ -1133,21 +1136,16 @@ impl MediaState {
 		let target = (dur as f64 * fraction as f64) as u64;
 		match self {
 			Self::Video { player } => {
-				if let Some(p) = player.as_mut().as_mut() {
-					// Timeline fractions are microseconds; video seek APIs take
-					// presentation timestamps in the track time base.
-					let info = p
-						.info()
-						.ok_or_else(|| Error::failed_precondition("video player has no container info"))?;
-					let time_base = info.time_base();
-					let ticks = target as u128 * u128::from(time_base.denominator())
-						/ (u128::from(time_base.numerator().max(1)) * 1_000_000);
-					let ticks = u64::try_from(ticks)
-						.map_err(|_| Error::out_of_range("video seek target exceeds u64 ticks"))?;
-					p.seek_at_or_before(ticks)
-				} else {
-					Ok(())
-				}
+				player
+					.as_mut()
+					.as_mut()
+					.map_or(Ok(()), |p| match p.seek_us(target) {
+						Err(error) if p.current_frame().is_ok() => {
+							crate::log_warn!(crate::LogComponent::VIDEO, "Viewer seek failed: {error}");
+							Ok(())
+						}
+						result => result,
+					})
 			}
 			Self::Audio { player, .. } => {
 				if let Some(p) = player.as_mut().as_mut() {

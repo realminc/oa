@@ -2,6 +2,8 @@
 
 use crate::{Error, Result};
 
+use super::codec::pcm;
+
 /// Elementary audio representation produced by [`AudioEncoder`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
@@ -199,16 +201,9 @@ fn emit_packet(state: &mut EncoderState, frames: u32) -> Result<EncodedAudioPack
 		.ok()
 		.and_then(|frames| frames.checked_mul(state.channels))
 		.ok_or_else(|| Error::invalid_argument("audio packet sample count exceeds usize"))?;
-	let byte_count = samples
-		.checked_mul(size_of::<i16>())
-		.ok_or_else(|| Error::invalid_argument("audio packet byte size exceeds usize"))?;
-	let mut bitstream = Vec::new();
-	bitstream
-		.try_reserve_exact(byte_count)
-		.map_err(|_| Error::resource_exhausted("audio packet allocation failed"))?;
-	for &sample in &state.pending[..samples] {
-		bitstream.extend_from_slice(&quantize_pcm_s16(sample).to_le_bytes());
-	}
+	let bitstream = match state.profile.codec {
+		AudioCodec::PcmS16 => pcm::encode_s16(&state.pending[..samples])?,
+	};
 	let packet = EncodedAudioPacket {
 		bitstream,
 		presentation_frame: state.next_input_frame,
@@ -220,24 +215,4 @@ fn emit_packet(state: &mut EncoderState, frames: u32) -> Result<EncodedAudioPack
 		.ok_or_else(|| Error::out_of_range("audio presentation frame exceeds i64"))?;
 	state.pending.drain(..samples);
 	Ok(packet)
-}
-
-fn quantize_pcm_s16(sample: f32) -> i16 {
-	if sample.is_nan() {
-		return 0;
-	}
-	if sample >= 1.0 {
-		return i16::MAX;
-	}
-	if sample <= -1.0 {
-		return i16::MIN;
-	}
-	let scaled = if sample < 0.0 {
-		sample * 32_768.0
-	} else {
-		sample * 32_767.0
-	};
-	// f32::round follows the donor's lround behavior for finite values here:
-	// halfway cases are rounded away from zero.
-	scaled.round() as i16
 }

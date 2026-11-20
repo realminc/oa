@@ -232,6 +232,11 @@ def validate_blas_schema(schema: dict[str, Any]) -> None:
 		require(isinstance(candidate, dict), f"{where} must be an object")
 		require(
 			set(candidate)
+			- {
+				"source",
+				"dtype",
+				"semantic_operations",
+			}
 			== {
 				"name",
 				"kind",
@@ -262,9 +267,39 @@ def validate_blas_schema(schema: dict[str, Any]) -> None:
 			f"{where}.stable_id must be a non-zero u16",
 		)
 		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
-		require(candidate["kind"] == "mat_mul_nt", f"{where}.kind must be mat_mul_nt")
 		require(
-			candidate["variant"] in {"naive", "gemv", "bias", "bias_relu", "bias_gelu", "bias_silu"},
+			candidate["kind"] in {"mat_mul_nt", "cast", "sum"},
+			f"{where}.kind is not an admitted candidate kind",
+		)
+		served = candidate.get("semantic_operations", [])
+		require(
+			isinstance(served, list)
+			and all(
+				isinstance(name, str)
+				and IDENTIFIER.fullmatch(name.split("::")[-1]) is not None
+				and len(name.split("::")) <= 2
+				for name in served
+			),
+			f"{where}.semantic_operations must be [domain::]operation identifiers",
+		)
+		require(
+			candidate["variant"]
+			in {
+				"naive",
+				"gemv",
+				"bias",
+				"bias_relu",
+				"bias_gelu",
+				"bias_silu",
+				"strided",
+				"strided_tiled",
+				"split_k",
+				"split_k_reduce",
+				"cast_f32_f16",
+				"cast_f16_f32",
+				"f16s",
+				"sum_f16s",
+			},
 			f"{where}.variant is not an admitted BLAS candidate",
 		)
 		require(
@@ -273,16 +308,21 @@ def validate_blas_schema(schema: dict[str, Any]) -> None:
 		)
 		require(
 			candidate["dispatch_tile_size"]
-			== (
-				[1, 1, 1]
-				if candidate["variant"] in {"naive", "gemv"}
-				else schema["output_tile_size"]
-			),
+			== {
+				"naive": [1, 1, 1],
+				"gemv": [1, 1, 1],
+				"strided": [1, 1, 1],
+				"split_k": [1, 1, 1],
+				"split_k_reduce": [1, 1, 1],
+				"cast_f32_f16": schema["workgroup_size"],
+				"cast_f16_f32": schema["workgroup_size"],
+				"sum_f16s": [1, 1, 1],
+			}.get(candidate["variant"], schema["output_tile_size"]),
 			f"{where}.dispatch_tile_size must match its kernel family tile",
 		)
 		require(
-			candidate["semantic_operation"] in operation_names,
-			f"{where}.semantic_operation must name a BLAS operation",
+			candidate["semantic_operation"] in operation_names | {"sum"},
+			f"{where}.semantic_operation must name a matrix operation",
 		)
 
 
@@ -1149,6 +1189,14 @@ def generate_blas_candidate_shader(
 ) -> str:
 	if candidate["variant"] == "gemv":
 		return generate_blas_gemv_shader(candidate, schema, schema_hash)
+	if candidate["variant"] == "strided_tiled":
+		return generate_blas_strided_tiled_shader(candidate, schema, schema_hash)
+	if candidate["variant"] == "strided":
+		return generate_blas_strided_scalar_shader(candidate, schema, schema_hash)
+	if candidate["variant"] == "split_k":
+		return generate_blas_split_k_shader(candidate, schema, schema_hash)
+	if candidate["variant"] == "split_k_reduce":
+		return generate_blas_split_k_reduce_shader(candidate, schema, schema_hash)
 	if candidate["variant"] != "naive":
 		return generate_blas_shader(
 			candidate, schema, schema_hash, epilogue=candidate["variant"]
@@ -1255,6 +1303,326 @@ void main(uint3 group_id : SV_GroupID, uint3 group_thread_id : SV_GroupThreadID)
 	if (lane == 0 && row < push.m && column < push.n) {{
 		store_f32(storage_buffers[push.output_index], row * push.n + column, partials[0]);
 	}}
+}}
+"""
+
+
+# Per-operand element-address contract for the arbitrary-layout BLAS
+# candidates: an operand element (row, column) of batch `group_id.z`
+# resolves to `offset + batch * batch_stride + row * row_stride +
+# column * col_stride`. All three operands share the same field order,
+# matching `MatmulLayout` in the Rust planner.
+BLAS_STRIDED_PUSH_CONSTANTS = """struct PushConstants {
+	uint left_index;
+	uint right_index;
+	uint output_index;
+	uint m;
+	uint n;
+	uint k;
+	uint a_row_stride;
+	uint a_col_stride;
+	uint a_batch_stride;
+	uint a_offset;
+	uint b_row_stride;
+	uint b_col_stride;
+	uint b_batch_stride;
+	uint b_offset;
+	uint c_row_stride;
+	uint c_col_stride;
+	uint c_batch_stride;
+	uint c_offset;
+};"""
+
+
+def generate_blas_strided_scalar_shader(
+	candidate: dict[str, Any], schema: dict[str, Any], schema_hash: str
+) -> str:
+	workgroup = schema["workgroup_size"]
+	return f"""{banner(schema_hash, '//', 'matrix_blas.json').rstrip()}
+// Semantic operation: matrix.{candidate['semantic_operation']}; stable kernel ID: {candidate['stable_id']}.
+// FP32 arbitrary-layout fallback: one invocation per output element per
+// batch. `group_id.z` selects the batch; per-operand row/column/batch
+// strides and element offsets come from the push block.
+
+import storage;
+import attributes;
+
+{BLAS_STRIDED_PUSH_CONSTANTS}
+
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+
+[kernel_name("{candidate['kernel_name']}")]
+[domain("matrix")]
+[variant("{candidate['variant']}")]
+[dtype("{schema['dtype']}")]
+[status("experimental")]
+[shader("compute")]
+[numthreads({workgroup[0]}, {workgroup[1]}, {workgroup[2]})]
+void main(uint3 group_id : SV_GroupID, uint3 dispatch_thread_id : SV_DispatchThreadID) {{
+	uint element = dispatch_thread_id.x;
+	uint batch = group_id.z;
+	if (element >= push.m * push.n) {{
+		return;
+	}}
+	uint row = element / push.n;
+	uint column = element % push.n;
+	uint left_base = push.a_offset + batch * push.a_batch_stride + row * push.a_row_stride;
+	uint right_base = push.b_offset + batch * push.b_batch_stride + column * push.b_row_stride;
+	float accumulator = 0.0f;
+	for (uint inner = 0; inner < push.k; ++inner) {{
+		accumulator += load_f32(storage_buffers[push.left_index], left_base + inner * push.a_col_stride)
+			* load_f32(storage_buffers[push.right_index], right_base + inner * push.b_col_stride);
+	}}
+	store_f32(
+		storage_buffers[push.output_index],
+		push.c_offset + batch * push.c_batch_stride
+			+ row * push.c_row_stride + column * push.c_col_stride,
+		accumulator
+	);
+}}
+"""
+
+
+def generate_blas_strided_tiled_shader(
+	candidate: dict[str, Any], schema: dict[str, Any], schema_hash: str
+) -> str:
+	workgroup = schema["workgroup_size"]
+	output_tile = schema["output_tile_size"]
+	k_tile = schema["k_tile_size"]
+	return f"""{banner(schema_hash, '//', 'matrix_blas.json').rstrip()}
+// Semantic operation: matrix.{candidate['semantic_operation']}; stable kernel ID: {candidate['stable_id']}.
+// FP32 arbitrary-layout tiled GEMM: the 64x64x16 shared-memory schedule
+// with per-operand strided addressing and `group_id.z` batch selection.
+// Loads stay scalar because operand column strides are runtime values.
+
+import storage;
+import attributes;
+
+{BLAS_STRIDED_PUSH_CONSTANTS}
+
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+
+static const uint BM = {output_tile[0]};
+static const uint BN = {output_tile[1]};
+static const uint BK = {k_tile};
+static const uint TM = 4;
+static const uint TN = 4;
+static const uint THREADS_COL = BN / TN;
+static const uint LOAD_WIDTH = 4;
+static const uint BK_PAD = BK + 1;
+
+groupshared float shared_left[BM * BK_PAD];
+groupshared float shared_right[BN * BK_PAD];
+
+void load_slice_strided(
+	uint row,
+	uint k_begin,
+	uint buffer_index,
+	uint row_limit,
+	uint base_offset,
+	uint row_stride,
+	uint col_stride,
+	out float values[LOAD_WIDTH]
+) {{
+	uint row_address = base_offset + row * row_stride;
+	[[unroll]] for (uint element = 0; element < LOAD_WIDTH; ++element) {{
+		values[element] = row < row_limit && k_begin + element < push.k
+			? load_f32(storage_buffers[buffer_index], row_address + (k_begin + element) * col_stride)
+			: 0.0f;
+	}}
+}}
+
+[kernel_name("{candidate['kernel_name']}")]
+[domain("matrix")]
+[variant("{candidate['variant']}")]
+[dtype("{schema['dtype']}")]
+[status("experimental")]
+[shader("compute")]
+[numthreads({workgroup[0]}, {workgroup[1]}, {workgroup[2]})]
+void main(uint3 group_id : SV_GroupID, uint3 group_thread_id : SV_GroupThreadID) {{
+	uint thread = group_thread_id.x;
+	uint thread_row = thread / THREADS_COL;
+	uint thread_column = thread % THREADS_COL;
+	uint batch = group_id.z;
+	uint row_base = group_id.x * BM;
+	uint column_base = group_id.y * BN;
+	uint shared_row = (thread * LOAD_WIDTH) / BK;
+	uint shared_column = (thread * LOAD_WIDTH) % BK;
+	uint shared_offset = shared_row * BK_PAD + shared_column;
+	uint left_base = push.a_offset + batch * push.a_batch_stride;
+	uint right_base = push.b_offset + batch * push.b_batch_stride;
+
+	float accumulators[TM * TN];
+	[[unroll]] for (uint index = 0; index < TM * TN; ++index) {{
+		accumulators[index] = 0.0f;
+	}}
+
+	for (uint k_base = 0; k_base < push.k; k_base += BK) {{
+		float left_values[LOAD_WIDTH];
+		float right_values[LOAD_WIDTH];
+		load_slice_strided(
+			row_base + shared_row,
+			k_base + shared_column,
+			push.left_index,
+			push.m,
+			left_base,
+			push.a_row_stride,
+			push.a_col_stride,
+			left_values
+		);
+		load_slice_strided(
+			column_base + shared_row,
+			k_base + shared_column,
+			push.right_index,
+			push.n,
+			right_base,
+			push.b_row_stride,
+			push.b_col_stride,
+			right_values
+		);
+		[[unroll]] for (uint element = 0; element < LOAD_WIDTH; ++element) {{
+			shared_left[shared_offset + element] = left_values[element];
+			shared_right[shared_offset + element] = right_values[element];
+		}}
+		GroupMemoryBarrierWithGroupSync();
+
+		[[unroll]] for (uint inner = 0; inner < BK; ++inner) {{
+			float left_fragment[TM];
+			float right_fragment[TN];
+			[[unroll]] for (uint row = 0; row < TM; ++row) {{
+				left_fragment[row] = shared_left[(thread_row * TM + row) * BK_PAD + inner];
+			}}
+			[[unroll]] for (uint column = 0; column < TN; ++column) {{
+				right_fragment[column] = shared_right[(thread_column * TN + column) * BK_PAD + inner];
+			}}
+			[[unroll]] for (uint row = 0; row < TM; ++row) {{
+				[[unroll]] for (uint column = 0; column < TN; ++column) {{
+					accumulators[row * TN + column] += left_fragment[row] * right_fragment[column];
+				}}
+			}}
+		}}
+		GroupMemoryBarrierWithGroupSync();
+	}}
+
+	uint output_base = push.c_offset + batch * push.c_batch_stride;
+	[[unroll]] for (uint row = 0; row < TM; ++row) {{
+		[[unroll]] for (uint column = 0; column < TN; ++column) {{
+			uint output_row = row_base + thread_row * TM + row;
+			uint output_column = column_base + thread_column * TN + column;
+			if (output_row < push.m && output_column < push.n) {{
+				store_f32(
+					storage_buffers[push.output_index],
+					output_base + output_row * push.c_row_stride
+						+ output_column * push.c_col_stride,
+					accumulators[row * TN + column]
+				);
+			}}
+		}}
+	}}
+}}
+"""
+
+
+def generate_blas_split_k_shader(
+	candidate: dict[str, Any], schema: dict[str, Any], schema_hash: str
+) -> str:
+	workgroup = schema["workgroup_size"]
+	return f"""{banner(schema_hash, '//', 'matrix_blas.json').rstrip()}
+// Semantic operation: matrix.{candidate['semantic_operation']}; stable kernel ID: {candidate['stable_id']}.
+// FP32 split-K partial: one invocation per output element per K slice.
+// `group_id.z` selects the K slice; partials land in the planner-owned
+// workspace at `split * m * n + element` for the reduction donor.
+
+import storage;
+import attributes;
+
+struct PushConstants {{
+	uint left_index;
+	uint right_index;
+	uint partial_index;
+	uint m;
+	uint n;
+	uint k;
+	uint k_chunk;
+}};
+
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+
+[kernel_name("{candidate['kernel_name']}")]
+[domain("matrix")]
+[variant("{candidate['variant']}")]
+[dtype("{schema['dtype']}")]
+[status("experimental")]
+[shader("compute")]
+[numthreads({workgroup[0]}, {workgroup[1]}, {workgroup[2]})]
+void main(uint3 group_id : SV_GroupID, uint3 dispatch_thread_id : SV_DispatchThreadID) {{
+	uint element = dispatch_thread_id.x;
+	if (element >= push.m * push.n) {{
+		return;
+	}}
+	uint row = element / push.n;
+	uint column = element % push.n;
+	uint k_begin = group_id.z * push.k_chunk;
+	uint k_end = min(k_begin + push.k_chunk, push.k);
+	float accumulator = 0.0f;
+	for (uint inner = k_begin; inner < k_end; ++inner) {{
+		accumulator += load_f32(storage_buffers[push.left_index], row * push.k + inner)
+			* load_f32(storage_buffers[push.right_index], column * push.k + inner);
+	}}
+	store_f32(
+		storage_buffers[push.partial_index],
+		group_id.z * push.m * push.n + element,
+		accumulator
+	);
+}}
+"""
+
+
+def generate_blas_split_k_reduce_shader(
+	candidate: dict[str, Any], schema: dict[str, Any], schema_hash: str
+) -> str:
+	workgroup = schema["workgroup_size"]
+	return f"""{banner(schema_hash, '//', 'matrix_blas.json').rstrip()}
+// Semantic operation: matrix.{candidate['semantic_operation']}; stable kernel ID: {candidate['stable_id']}.
+// FP32 split-K reduction: one invocation per output element summing the
+// per-slice partials the split-K donor wrote into the planner workspace.
+
+import storage;
+import attributes;
+
+struct PushConstants {{
+	uint partial_index;
+	uint output_index;
+	uint element_count;
+	uint split_k;
+}};
+
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+
+[kernel_name("{candidate['kernel_name']}")]
+[domain("matrix")]
+[variant("{candidate['variant']}")]
+[dtype("{schema['dtype']}")]
+[status("experimental")]
+[shader("compute")]
+[numthreads({workgroup[0]}, {workgroup[1]}, {workgroup[2]})]
+void main(uint3 dispatch_thread_id : SV_DispatchThreadID) {{
+	uint element = dispatch_thread_id.x;
+	if (element >= push.element_count) {{
+		return;
+	}}
+	float accumulator = 0.0f;
+	for (uint split = 0; split < push.split_k; ++split) {{
+		accumulator += load_f32(
+			storage_buffers[push.partial_index],
+			split * push.element_count + element
+		);
+	}}
+	store_f32(storage_buffers[push.output_index], element, accumulator);
 }}
 """
 

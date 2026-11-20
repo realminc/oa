@@ -5,21 +5,31 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from .model import validate_physical_write, validate_semantic_attributes, validate_unique
+from .model import FUSION_CLASS_VARIANTS, validate_physical_write, validate_semantic_attributes, validate_unique
 from .util import IDENTIFIER, require
 
 _CONTRACT_FIELDS = {
 	"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule",
 	"effects", "differentiation", "lowering", "attributes",
 	"variadic_input", "variadic_output", "optional_inputs", "control_flow",
-	"mutated_inputs", "output_alias_inputs", "donor_op",
+	"mutated_inputs", "output_alias_inputs", "donor_op", "fusion_class",
 }
 _KERNEL_FIELDS = {
 	"stable_id", "registered", "name", "kernel_id", "source", "variant",
 	"reflection_name", "dtype", "workgroup_size", "dispatch_tile_size",
-	"semantic_operation", "physical_write", "push_fields", "training_replay_role",
+	"semantic_operation", "physical_write", "push_fields", "training_replay_role", "fusion_class",
 }
 _KINDS = {"matrix", "parameter", "audio", "image", "video_frame", "quant_matrix", "texture"}
+
+
+def _validate_fusion_class(record: dict[str, Any], where: str) -> None:
+	if "fusion_class" not in record:
+		return
+	value = record["fusion_class"]
+	require(
+		isinstance(value, str) and value in FUSION_CLASS_VARIANTS,
+		f"{where}.fusion_class is unsupported",
+	)
 
 
 def _validate_variadic(value: Any, where: str) -> None:
@@ -50,6 +60,7 @@ def validate_video_schema(schema: dict[str, Any]) -> None:
 		)
 		for required_key in ("name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes"):
 			require(required_key in contract, f"{where}.{required_key} is missing")
+		_validate_fusion_class(contract, where)
 		name = contract["name"]
 		require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.name is invalid")
 		validate_unique(name, contract_names, f"{where}.name")
@@ -94,6 +105,7 @@ def validate_video_schema(schema: dict[str, Any]) -> None:
 			set(kernel) <= _KERNEL_FIELDS,
 			f"{where} contains unknown fields: {sorted(set(kernel) - _KERNEL_FIELDS)}",
 		)
+		_validate_fusion_class(kernel, where)
 		for key, seen in (("name", seen_names), ("kernel_id", seen_kernel_ids), ("source", seen_sources)):
 			value = kernel.get(key)
 			require(isinstance(value, str) and value, f"{where}.{key} must be non-empty")

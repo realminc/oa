@@ -2,3 +2,4 @@
 
 pub(in crate::runtime) mod blas;
 pub(super) mod dnn;
+pub(in crate::runtime) mod precision;

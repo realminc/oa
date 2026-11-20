@@ -29,7 +29,7 @@ pub use cli::Cli;
 pub use color::Color;
 pub use config::{CheckpointConfig, LogConfig};
 pub use constant::{COMPACT_BANNER, REALM_BANNER, VIEWPORT_TITLE, brand_viewport};
-pub use dtype::{DType, Element};
+pub use dtype::{DType, Element, F16};
 pub use duration::Duration;
 pub use env_flag::{EnvFlag, NumericMode, apply_numeric_mode};
 pub use error::{Error, ErrorKind, Result};
@@ -41,7 +41,8 @@ pub use mapped_file::MappedFile;
 pub use crate::matrix::Matrix;
 pub use operation::contract::{
 	BufferAccess, OpAttribute, OpAttributeKind, OpAttributeSpec, OpControlFlow, OpDTypeRule,
-	OpDifferentiation, OpEffect, OpLowering, OpShapeRule, OpValueKind, OperationContract,
+	OpDifferentiation, OpEffect, OpFusionClass, OpLowering, OpShapeRule, OpValueKind,
+	OperationContract,
 };
 pub use path::Path;
 pub use perf_stat::PerfStat;

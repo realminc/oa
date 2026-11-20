@@ -44,11 +44,10 @@ bars = figure.ax(0, 2)
 bars.title("per-class recall")
 bars.categories(["cat", "dog", "car", "bus"])
 bars.y_label("recall")
-bars.bar(
-	[0.91, 0.84, 0.77, 0.69],
-	oa.plot.BarStyle(label="epoch 40"),
+bars.bar_grouped(
+	[[0.91, 0.84, 0.77, 0.69], [0.88, 0.81, 0.72, 0.63]],
+	[oa.plot.BarStyle(label="epoch 40"), oa.plot.BarStyle(label="epoch 20")],
 )
-bars.bar_grouped([[0.88, 0.81, 0.72, 0.63]], [oa.plot.BarStyle(label="epoch 20")])
 
 hist = figure.ax(1, 0)
 hist.title("grad norm")

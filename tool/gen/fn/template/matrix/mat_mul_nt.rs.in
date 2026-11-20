@@ -52,8 +52,8 @@
 	}
 
 	let launch = if m != 0 && n != 0 && k != 0 {
-		let plan = crate::runtime::plan_mat_mul_nt(engine, m, n, k)?;
-		Some(crate::runtime::lower_mat_mul_nt(&plan, m, n, k)?)
+		let plan = crate::runtime::plan_mat_mul_nt_lowered(engine, m, n, k)?;
+		Some((plan, crate::runtime::lower_mat_mul_nt(&plan, m, n, k)?))
 	} else {
 		None
 	};
@@ -63,26 +63,30 @@
 		output_count,
 		DType::F32,
 	)?;
-	if let Some(launch) = launch {
-		let buffers = launch.bindings(&[left.storage(), right.storage(), output.storage()])?;
-		let push_constants = &launch.push_constants[..launch.push_count];
-		let inputs = [left, right];
-		let outputs = [&output];
-		engine.record_semantic(
-			ComputeDispatch {
-				kernel: launch.kernel_id,
-				buffers: &buffers,
-				push_constants,
-				workgroups: launch.grid,
-				indirect: None,
-			},
-			SemanticDispatch {
-				contract,
-				inputs: &inputs,
-				outputs: &outputs,
-				attributes: &[],
-			},
-		)?;
+	if let Some((plan, launch)) = launch {
+		if !crate::runtime::record_mat_mul_nt_f16s(
+			engine, left, right, &output, &plan, [m, n, k],
+		)? {
+			let buffers = launch.bindings(&[left.storage(), right.storage(), output.storage()])?;
+			let push_constants = &launch.push_constants[..launch.push_count];
+			let inputs = [left, right];
+			let outputs = [&output];
+			engine.record_semantic(
+				ComputeDispatch {
+					kernel: launch.kernel_id,
+					buffers: &buffers,
+					push_constants,
+					workgroups: launch.grid,
+					indirect: None,
+				},
+				SemanticDispatch {
+					contract,
+					inputs: &inputs,
+					outputs: &outputs,
+					attributes: &[],
+				},
+			)?;
+		}
 		autograd::record_mat_mul_nt(left, right, &output)?;
 	}
 	Ok(output)

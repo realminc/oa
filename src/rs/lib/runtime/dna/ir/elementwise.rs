@@ -8,6 +8,8 @@ pub(in crate::runtime) const REGISTER_COUNT: u32 = 8;
 pub(in crate::runtime) const MAX_OPERAND_SLOTS: usize = 16;
 pub(in crate::runtime) const MAX_STORE_SLOTS: usize = 6;
 pub(in crate::runtime) const MAX_TAPE_STEPS: usize = 64;
+pub(in crate::runtime) const OP_GAIN_DB: u32 = 49;
+pub(in crate::runtime) const OP_CLAMP: u32 = 50;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::runtime) enum Source {
 	Input(usize),
@@ -25,7 +27,7 @@ pub(in crate::runtime) enum Source {
 pub(in crate::runtime) struct Instruction {
 	pub opcode: u32,
 	pub sources: Vec<Source>,
-	/// Gather {rows,width,dtype}, or a backward alpha constant.
+	/// Gather geometry, backward alpha, or the upper clamp bound.
 	pub parameters: Vec<u32>,
 }
 
@@ -59,9 +61,9 @@ impl Program {
 		for (index, op) in self.instructions.iter().enumerate() {
 			let (arity, parameters) = match op.opcode {
 				4 => (2, 3),
-				10..=16 | 40..=46 => (2, 0),
+				10..=16 | 40..=46 | OP_GAIN_DB => (2, 0),
 				20..=28 | 30..=33 => (1, 0),
-				47..=48 => (2, 1),
+				47..=48 | OP_CLAMP => (2, 1),
 				_ => return false,
 			};
 			if op.sources.len() != arity || op.parameters.len() != parameters {
@@ -202,7 +204,7 @@ impl Program {
 					tape.extend_from_slice(&op.parameters);
 					tape.push(0);
 				}
-				47..=48 => {
+				47..=48 | OP_CLAMP => {
 					tape.extend_from_slice(&[op.parameters[0], 0, 0, 0]);
 				}
 				_ => {}

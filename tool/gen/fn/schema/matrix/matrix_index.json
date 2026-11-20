@@ -36,6 +36,7 @@
 		{
 			"stable_id": 195,
 			"name": "top_k",
+			"fusion_class": "reduce",
 			"fusion_effects": [],
 			"donor_op": "oa::FnMatrix::topK",
 			"kernel_id": "MatrixTopKF32",
@@ -143,6 +144,7 @@
 		{
 			"stable_id": 348,
 			"name": "top_k_mask",
+			"fusion_class": "reduce",
 			"fusion_effects": [],
 			"donor_op": "oa::FnMatrix::topKMask",
 			"kernel_id": "MatrixTopKMaskF32",
@@ -227,6 +229,7 @@
 		{
 			"stable_id": 359,
 			"name": "moe_expert_plan",
+			"fusion_class": "pointwise",
 			"donor_op": "oa::FnMatrix::moeExpertPlan",
 			"kernel_id": "MatrixMoeExpertPlanU32",
 			"source": "src/slang/matrix/index/moe_expert_plan.slang",
@@ -390,6 +393,7 @@
 		{
 			"stable_id": 372,
 			"name": "moe_routing_bias_update",
+			"fusion_class": "effect",
 			"kernel_id": "MatrixMoeRoutingBiasUpdateF32",
 			"source": "src/slang/matrix/index/moe_routing_bias_update.slang",
 			"variant": "generic",
@@ -491,6 +495,7 @@
 		{
 			"stable_id": 376,
 			"name": "slice",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnMatrix::slice",
 			"autograd": {
 				"mode": "generated",
@@ -674,6 +679,7 @@
 		{
 			"stable_id": 377,
 			"name": "slice_backward",
+			"fusion_class": "gather",
 			"kernel_id": "MatrixSliceBackwardF32",
 			"source": "src/slang/matrix/index/slice_backward.slang",
 			"variant": "generic",
@@ -835,6 +841,7 @@
 		{
 			"stable_id": 344,
 			"name": "repeat_interleave",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnMatrix::repeatInterleave",
 			"autograd": {
 				"mode": "generated",
@@ -986,6 +993,7 @@
 		{
 			"stable_id": 345,
 			"name": "repeat_interleave_backward",
+			"fusion_class": "gather",
 			"kernel_id": "MatrixRepeatInterleaveBackwardF32",
 			"source": "src/slang/matrix/index/repeat_interleave_backward.slang",
 			"variant": "generic",
@@ -1119,6 +1127,8 @@
 		{
 			"stable_id": 441,
 			"name": "gather",
+			"fusion_class": "gather",
+			"tape_op": "gather", "tape_shape": "gather",
 			"donor_op": "oa::FnMatrix::gather",
 			"autograd": {
 				"mode": "generated",
@@ -1225,6 +1235,7 @@
 		{
 			"stable_id": 442,
 			"name": "gather_backward",
+			"fusion_class": "gather",
 			"kernel_id": "MatrixGatherBackwardF32",
 			"source": "src/slang/matrix/index/gather_backward.slang",
 			"variant": "generic",
@@ -1319,6 +1330,7 @@
 		{
 			"stable_id": 388,
 			"name": "gather_last_dim",
+			"fusion_class": "reduce",
 			"donor_op": "oa::FnMatrix::gatherLastDim",
 			"autograd": {
 				"mode": "generated",
@@ -1425,6 +1437,7 @@
 		{
 			"stable_id": 389,
 			"name": "gather_last_dim_backward",
+			"fusion_class": "reduce",
 			"kernel_id": "MatrixGatherLastDimBackwardF32",
 			"source": "src/slang/matrix/index/gather_last_dim_backward.slang",
 			"variant": "generic",
@@ -1516,6 +1529,7 @@
 		{
 			"stable_id": 378,
 			"name": "concat",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnMatrix::concat",
 			"autograd": {
 				"mode": "generated",
@@ -1701,6 +1715,7 @@
 		{
 			"stable_id": 440,
 			"name": "transpose",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnMatrix::transpose",
 			"autograd": {
 				"mode": "generated",
@@ -1827,6 +1842,7 @@
 		{
 			"stable_id": 393,
 			"name": "equal",
+			"fusion_class": "pointwise",
 			"donor_op": "oa::FnMatrix::equal",
 			"kernel_id": "MatrixEqualF32",
 			"source": "src/slang/matrix/index/equal.slang",
@@ -1906,6 +1922,7 @@
 		{
 			"stable_id": 625,
 			"name": "causal_mask",
+			"fusion_class": "attention",
 			"donor_op": "oa::FnMatrix::causalMask",
 			"kernel_id": "MatrixCausalMaskF32",
 			"source": "src/slang/matrix/index/causal_mask.slang",
@@ -1989,6 +2006,7 @@
 		{
 			"stable_id": 626,
 			"name": "causal_mask_backward",
+			"fusion_class": "attention",
 			"donor_op": "oa::FnMatrix::causalMaskBwd",
 			"kernel_id": "MatrixCausalMaskBackwardF32",
 			"source": "src/slang/matrix/index/causal_mask_backward.slang",
@@ -2061,6 +2079,7 @@
 		{
 			"stable_id": 627,
 			"name": "greater_equal",
+			"fusion_class": "pointwise",
 			"donor_op": "oa::FnMatrix::greaterEqual",
 			"kernel_id": "MatrixGreaterEqualF32",
 			"source": "src/slang/matrix/index/greater_equal.slang",
@@ -2140,6 +2159,7 @@
 		{
 			"stable_id": 628,
 			"name": "split",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnMatrix::split",
 			"composite": true,
 			"autograd": {
@@ -2200,6 +2220,7 @@
 		{
 			"stable_id": 629,
 			"name": "compact_rows",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnMatrix::compactRows",
 			"kernel_id": "MatrixCompactRowsF32",
 			"source": "src/slang/matrix/index/compact_rows.slang",
@@ -2347,6 +2368,7 @@
 		{
 			"stable_id": 630,
 			"name": "compact_rows_backward",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnMatrix::compactRowsBwd",
 			"kernel_id": "MatrixCompactRowsBackwardF32",
 			"source": "src/slang/matrix/index/compact_rows_backward.slang",
@@ -2452,6 +2474,7 @@
 		{
 			"stable_id": 631,
 			"name": "scatter_rows",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnMatrix::scatterRows",
 			"kernel_id": "MatrixScatterRowsF32",
 			"source": "src/slang/matrix/index/scatter_rows.slang",
@@ -2584,6 +2607,7 @@
 		{
 			"stable_id": 632,
 			"name": "scatter_rows_backward_source",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnMatrix::scatterRowsBwdSource",
 			"kernel_id": "MatrixScatterRowsBackwardSourceF32",
 			"source": "src/slang/matrix/index/scatter_rows_backward_source.slang",
@@ -2679,6 +2703,7 @@
 		{
 			"stable_id": 633,
 			"name": "scatter_rows_indirect",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnMatrix::scatterRows",
 			"kernel_id": "MatrixScatterRowsIndirectF32",
 			"source": "src/slang/matrix/index/scatter_rows_indirect.slang",
@@ -2749,6 +2774,7 @@
 		{
 			"stable_id": 634,
 			"name": "compact_rows_backward_indirect",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnMatrix::compactRowsBwd",
 			"kernel_id": "MatrixCompactRowsBackwardIndirectF32",
 			"source": "src/slang/matrix/index/compact_rows_backward_indirect.slang",
@@ -2801,6 +2827,7 @@
 		{
 			"stable_id": 635,
 			"name": "scatter_rows_backward_source_indirect",
+			"fusion_class": "gather",
 			"donor_op": "oa::FnMatrix::scatterRowsBwdSource",
 			"kernel_id": "MatrixScatterRowsBackwardSourceIndirectF32",
 			"source": "src/slang/matrix/index/scatter_rows_backward_source_indirect.slang",

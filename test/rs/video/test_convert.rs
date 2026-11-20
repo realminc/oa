@@ -50,6 +50,82 @@ fn nv12_planes(width: usize, height: usize) -> Vec<Vec<u8>> {
 	vec![plane(width, height, 0), uv]
 }
 
+test_vk!(
+	p010_odd_plane_extents_and_color_match_fp64_oracle,
+	engine,
+	{
+		// Odd luma width and height leave the last sample in a half-full word.
+		let luma = [0, 63, 64, 255, 511, 512, 767, 939, 940];
+		let chroma = [0, 638, 402, 636, 404, 634, 406, 1023];
+		let pack = |samples: &[u16]| {
+			samples
+				.iter()
+				.flat_map(|code| ((code << 6) | 0x3f).to_le_bytes())
+				.collect::<Vec<_>>()
+		};
+		for range in [VideoColorRange::Full, VideoColorRange::Limited] {
+			let frame = oa::VideoFrame::upload_planes(
+				&engine,
+				VideoPixelFormat::P010,
+				vec![pack(&luma), pack(&chroma)],
+				3,
+				3,
+				timing(),
+				color(VideoColorMatrix::Bt709, range),
+			)?;
+			let config = VideoMatrixConfig {
+				interpolation: VideoInterpolation::Nearest,
+				layout: ImageLayout::Hwc,
+				..VideoMatrixConfig::default()
+			};
+			let output = frame.to_matrix(&config)?.read_f32()?;
+			let (pixels, tail) = output.as_chunks::<3>();
+			assert_eq!(pixels.len(), luma.len());
+			assert!(tail.is_empty());
+			for (index, (code, pixel)) in luma.iter().zip(pixels).enumerate() {
+				let (y, x) = (index / 3, index % 3);
+				let uv = ((y / 2) * 2 + x / 2) * 2;
+				let expand_luma = |value: u16| match range {
+					VideoColorRange::Full => f64::from(value) / 1023.0,
+					_ => ((f64::from(value) - 64.0) / 876.0).clamp(0.0, 1.0),
+				};
+				let expand_chroma = |value: u16| {
+					let scale = if range == VideoColorRange::Full {
+						1023.0
+					} else {
+						896.0
+					};
+					((f64::from(value) - 512.0) / scale).clamp(-0.5, 0.5)
+				};
+				let (r, g, b) = rgb(
+					(
+						expand_luma(*code),
+						expand_chroma(chroma[uv]),
+						expand_chroma(chroma[uv + 1]),
+					),
+					VideoColorMatrix::Bt709,
+				);
+				for (actual, expected) in pixel.iter().zip([r, g, b]) {
+					assert!((f64::from(*actual) - expected).abs() < 2e-6);
+				}
+			}
+			let error = oa::video::crop(
+				&frame,
+				VideoRegion {
+					x: 0,
+					y: 0,
+					width: 2,
+					height: 2,
+				},
+			)
+			.err()
+			.expect("8-bit crop must decline P010 storage");
+			assert_eq!(error.kind(), oa::ErrorKind::MissingCapability);
+		}
+		Ok(())
+	}
+);
+
 // ── FP64 host oracle ─────────────────────────────────────────────────────
 
 fn sample(plane: &[u8], width: usize, height: usize, x: f64, y: f64, nearest: bool) -> f64 {
@@ -594,12 +670,12 @@ fn shared_color_modules_have_single_importers() -> oa::Result<()> {
 	assert_eq!(
 		yuv_to_rgb_importers,
 		vec![
+			"blit_yuv.frag.slang".to_string(),
 			"cvt_yuv420_to_rgba8.slang".to_string(),
-			"to_matrix_common.slang".to_string(),
 			"to_matrix_i420.slang".to_string(),
-			"to_matrix_nv12.slang".to_string(),
+			"to_matrix_semiplanar.slang".to_string(),
 		],
-		"only the to_matrix family and the presentation fallback may import yuv_to_rgb"
+		"only the to_matrix family and video presentation may import yuv_to_rgb"
 	);
 	assert_eq!(
 		rgb_to_yuv_importers,

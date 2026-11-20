@@ -572,3 +572,96 @@ fn player_streams_mpeg_ts_without_a_display_index() -> oa::Result<()> {
 	let _ = std::fs::remove_file(output);
 	result
 }
+
+#[test]
+#[ignore = "requires FFmpeg x264/x265 and Vulkan H.264 and H.265 decode"]
+fn cropped_avc_and_open_gop_hevc_seek_match_ffmpeg() -> oa::Result<()> {
+	use std::process::Command;
+	let engine = Engine::new()?;
+	for (encoder, extension, pixel_format, encoder_args) in [
+		("libx264", "mp4", "yuv420p", &["-g", "24"][..]),
+		(
+			"libx265",
+			"mkv",
+			"yuv420p10le",
+			&[
+				"-x265-params",
+				"keyint=24:min-keyint=24:scenecut=0:open-gop=1:bframes=3:pools=1:frame-threads=1:log-level=error",
+			][..],
+		),
+	] {
+		let path = std::env::temp_dir().join(format!(
+			"oa-{encoder}-seek-{}.{extension}",
+			std::process::id()
+		));
+		let status = Command::new("ffmpeg")
+			.args([
+				"-nostdin",
+				"-v",
+				"error",
+				"-y",
+				"-f",
+				"lavfi",
+				"-i",
+				"testsrc2=size=96x70:rate=24",
+				"-t",
+				"5",
+				"-c:v",
+				encoder,
+				"-pix_fmt",
+				pixel_format,
+				"-threads",
+				"2",
+			])
+			.args(encoder_args)
+			.arg(&path)
+			.status()
+			.expect("FFmpeg available");
+		assert!(status.success());
+		let result = (|| -> oa::Result<()> {
+			let reference = Command::new("ffmpeg")
+				.args(["-nostdin", "-v", "error", "-i"])
+				.arg(&path)
+				.args(["-pix_fmt", pixel_format, "-f", "rawvideo", "pipe:1"])
+				.output()
+				.expect("FFmpeg reference");
+			assert!(reference.status.success());
+			let frame_size = 96 * 70 * 3 / 2 * if pixel_format == "yuv420p" { 1 } else { 2 };
+			assert_eq!(reference.stdout.len(), 120 * frame_size);
+			let cfg = VideoPlayerConfig {
+				loop_playback: false,
+				start_playing: false,
+				..Default::default()
+			};
+			let mut player = VideoPlayer::open(&engine, &path, cfg)?;
+			let mut native = VideoPlayer::new_native(&engine, &path, cfg)?;
+			for index in [97, 74, 110, 24, 0, 119] {
+				player.seek_frame(index)?;
+				native.seek_frame(index)?;
+				let frame = player.current_frame()?;
+				assert_eq!(player.current_frame_index()?, index);
+				let expected = &reference.stdout[index as usize * frame_size..][..frame_size];
+				if let Some(bytes) = frame.as_yuv420p() {
+					assert_eq!(bytes, expected, "{encoder} at {index}");
+				} else {
+					let samples = frame.as_yuv420p10().expect("wide planes");
+					assert!(
+						samples
+							.iter()
+							.zip(expected.as_chunks::<2>().0)
+							.all(|(a, b)| *a == u16::from_le_bytes(*b)),
+						"{encoder} at {index}"
+					);
+				}
+				let texture = native.current_frame_texture()?;
+				assert_eq!((texture.width(), texture.height()), (96, 70));
+			}
+			player.close();
+			native.close();
+			Ok(())
+		})();
+		let _ = std::fs::remove_file(&path);
+		result?;
+	}
+	Ok(())
+}

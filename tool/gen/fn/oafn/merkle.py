@@ -193,7 +193,7 @@ def validate_merkle_schema(schema: dict[str, Any]) -> None:
 		inputs = 1 if base in {'merkle_tree_reduce', 'merkle_frame_init'} else 3
 		contract = next((c for c in schema['contracts'] if c['name'] == kernel['semantic_operation']), None)
 		attrs = ['leaf_count', 'algorithm'] + (['level'] if base == 'merkle_frame_append' else [])
-		require(contract == {'name': kernel['semantic_operation'], 'input_kinds': ['matrix'] * (1 if cooperative else inputs), 'output_kinds': ['matrix'], 'shape_rule': 'explicit', 'dtype_rule': 'explicit', 'attributes': [[n, 'unsigned_integer'] for n in attrs], 'mutated_inputs': [2] if base == 'merkle_frame_append' else [], 'output_alias_inputs': [2] if base == 'merkle_frame_append' else [-1]}, 'General Merkle semantic mutation contract differs')
+		require(contract is not None and contract.get('fusion_class') == 'effect' and {k: v for k, v in contract.items() if k != 'fusion_class'} == {'name': kernel['semantic_operation'], 'input_kinds': ['matrix'] * (1 if cooperative else inputs), 'output_kinds': ['matrix'], 'shape_rule': 'explicit', 'dtype_rule': 'explicit', 'attributes': [[n, 'unsigned_integer'] for n in attrs], 'mutated_inputs': [2] if base == 'merkle_frame_append' else [], 'output_alias_inputs': [2] if base == 'merkle_frame_append' else [-1]}, 'General Merkle semantic mutation contract differs')
 		partition = 'exclusive_per_workgroup' if cooperative else 'exclusive_per_invocation'
 		require(kernel['physical_write'] == {'writes': [{'binding': 1 if cooperative else inputs, 'domain': 'rows', 'partition': partition, 'extent': 'one_scalar' if base == 'merkle_frame_verify' else 'row_width', 'collision': 'exclusive', 'tail': 'bounds_checked'}], 'workspace': 'none'}, 'General Merkle output ownership differs')
 

@@ -76,6 +76,7 @@
 		{
 			"stable_id": 33,
 			"name": "gelu",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary",
 			"kernel_id": "MlGeluF32",
@@ -103,6 +104,7 @@
 		{
 			"stable_id": 34,
 			"name": "gelu_backward",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary_backward",
 			"saved": "input",
@@ -125,6 +127,7 @@
 		{
 			"stable_id": 92,
 			"name": "silu",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary",
 			"kernel_id": "MlSiluF32",
@@ -152,6 +155,7 @@
 		{
 			"stable_id": 93,
 			"name": "silu_backward",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary_backward",
 			"saved": "input",
@@ -174,6 +178,7 @@
 		{
 			"stable_id": 94,
 			"name": "relu",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary",
 			"kernel_id": "MlReluF32",
@@ -202,6 +207,7 @@
 		{
 			"stable_id": 95,
 			"name": "relu_backward",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary_backward",
 			"saved": "output",
@@ -224,6 +230,7 @@
 		{
 			"stable_id": 96,
 			"name": "tanh",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary",
 			"kernel_id": "MlTanhF32",
@@ -251,6 +258,7 @@
 		{
 			"stable_id": 97,
 			"name": "tanh_backward",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary_backward",
 			"saved": "output",
@@ -273,6 +281,7 @@
 		{
 			"stable_id": 98,
 			"name": "sigmoid",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary",
 			"kernel_id": "MlSigmoidF32",
@@ -300,6 +309,7 @@
 		{
 			"stable_id": 99,
 			"name": "sigmoid_backward",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary_backward",
 			"saved": "output",
@@ -322,6 +332,7 @@
 		{
 			"stable_id": 100,
 			"name": "leaky_relu",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary_scalar",
 			"scalar": "alpha",
@@ -360,6 +371,7 @@
 		{
 			"stable_id": 101,
 			"name": "leaky_relu_backward",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary_scalar_backward",
 			"saved": "input",
@@ -387,6 +399,7 @@
 		{
 			"stable_id": 102,
 			"name": "elu",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary_scalar",
 			"scalar": "alpha",
@@ -425,6 +438,7 @@
 		{
 			"stable_id": 103,
 			"name": "elu_backward",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary_scalar_backward",
 			"saved": "output",
@@ -452,6 +466,7 @@
 		{
 			"stable_id": 104,
 			"name": "mish",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary",
 			"kernel_id": "MlMishF32",
@@ -479,6 +494,7 @@
 		{
 			"stable_id": 105,
 			"name": "mish_backward",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary_backward",
 			"saved": "input",
@@ -501,6 +517,7 @@
 		{
 			"stable_id": 106,
 			"name": "softplus",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary",
 			"kernel_id": "MlSoftplusF32",
@@ -528,6 +545,7 @@
 		{
 			"stable_id": 107,
 			"name": "softplus_backward",
+			"fusion_class": "pointwise",
 			"rust_family": "activation",
 			"kind": "unary_backward",
 			"saved": "output",
@@ -550,6 +568,7 @@
 		{
 			"stable_id": 43,
 			"name": "swiglu",
+			"fusion_class": "pointwise",
 			"rust_family": "swiglu",
 			"kind": "binary",
 			"kernel_id": "MlSwigluF32",
@@ -587,6 +606,7 @@
 		{
 			"stable_id": 44,
 			"name": "swiglu_backward",
+			"fusion_class": "pointwise",
 			"rust_family": "swiglu",
 			"kind": "binary_backward",
 			"inputs": [
@@ -620,6 +640,7 @@
 		{
 			"stable_id": 367,
 			"name": "silu_mul",
+			"fusion_class": "pointwise",
 			"rust_family": "swiglu",
 			"kind": "silu_mul",
 			"kernel_id": "MlSiluMulF32",
@@ -642,6 +663,7 @@
 		{
 			"stable_id": 368,
 			"name": "silu_mul_backward",
+			"fusion_class": "pointwise",
 			"rust_family": "swiglu",
 			"kind": "silu_mul_backward",
 			"kernel_id": "MlSiluMulBackwardF32",

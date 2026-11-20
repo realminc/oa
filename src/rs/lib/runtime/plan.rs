@@ -10,8 +10,9 @@ use crate::{Error, Matrix, Result, core::Element};
 use super::{
 	Buffer, BufferAccess, Device, EngineHandle, Event, RecordedCommandBuffer, ReusableCommandBuffer,
 	SemanticGraph, SemanticLoweringAnalysis, Storage,
+	device::NativeFlagBits,
 	dna::{DnnPlan, DnnPolicy, fusion},
-	graph::executable::ExecutableGraph,
+	graph::executable::{AccessState, ExecutableGraph, GraphNode},
 	session::{PendingExecution, SemanticStorageSnapshot, StableResourceSnapshot},
 };
 
@@ -57,6 +58,12 @@ pub struct ExecutionPlanDiagnostics {
 	planned_alias_group_count: usize,
 	potential_alias_savings: usize,
 	materialized_alias_savings: usize,
+	descriptor_write_count: u64,
+	push_byte_count: usize,
+	peak_memory_bytes: usize,
+	cross_queue_edge_count: usize,
+	ownership_transfer_count: usize,
+	queue_run_count: usize,
 	command_recording_count: u64,
 	command_cache_hit_count: u64,
 	submission_count: u64,
@@ -76,7 +83,7 @@ impl ExecutionPlanDiagnostics {
 		self.device_capability_identity
 	}
 
-	/// Return the number of captured compute nodes.
+	/// Return the number of captured executable nodes.
 	pub const fn node_count(self) -> usize {
 		self.node_count
 	}
@@ -258,6 +265,48 @@ impl ExecutionPlanDiagnostics {
 	/// Return how many Vulkan command buffers were recorded for this plan.
 	pub const fn command_recording_count(self) -> u64 {
 		self.command_recording_count
+	}
+
+	/// Return descriptor writes issued while this plan was captured.
+	///
+	/// On the Core profile binding amortizes at buffer/image creation, so a
+	/// plan whose inputs were already bound reports zero — the bindless
+	/// recording-cost fact OA-CC-21 measures.
+	pub const fn descriptor_write_count(self) -> u64 {
+		self.descriptor_write_count
+	}
+
+	/// Return total push-constant bytes recorded per submission of this plan.
+	pub const fn push_byte_count(self) -> usize {
+		self.push_byte_count
+	}
+
+	/// Return peak live physical-buffer bytes across the plan's node order.
+	///
+	/// Interval sweep over captured resource lifetimes: aliased transients
+	/// share one physical buffer identity, so the peak counts each live
+	/// allocation once — the memory-planning number OA-CC-23 minimizes.
+	pub const fn peak_memory_bytes(self) -> usize {
+		self.peak_memory_bytes
+	}
+
+	/// Derived cross-queue timeline edges: hazards whose source and
+	/// destination nodes submit to different queue families (OA-CC-22).
+	pub const fn cross_queue_edge_count(self) -> usize {
+		self.cross_queue_edge_count
+	}
+
+	/// Derived queue-family ownership transfers required by cross-queue
+	/// hazards on exclusive-owned buffers.
+	pub const fn ownership_transfer_count(self) -> usize {
+		self.ownership_transfer_count
+	}
+
+	/// Ordered queue runs the plan splits into by resolved queue family
+	/// (OA-CC-22). One run submits on the compute family today; a mixed
+	/// plan produces one timeline-chained submission per run.
+	pub const fn queue_run_count(self) -> usize {
+		self.queue_run_count
 	}
 
 	/// Return how many submissions reused an already recorded command buffer.
@@ -551,9 +600,10 @@ pub struct ExecutionPlan {
 	binding_contract_hash: u64,
 	captured_resources: Vec<CapturedResourceDesc>,
 	semantic_bindings: Vec<SemanticStorageBinding>,
+	descriptor_write_count: u64,
 	materialized_alias_savings: usize,
 	alias_materialization_fallback_reason: Option<String>,
-	cached_commands: RefCell<Vec<(Vec<u32>, ReusableCommandBuffer)>>,
+	cached_commands: RefCell<Vec<(Vec<u32>, Vec<ReusableCommandBuffer>)>>,
 	last_submission: RefCell<Option<Event>>,
 	counters: PlanCounters,
 }
@@ -715,11 +765,35 @@ impl ExecutionPlan {
 		);
 		let graph_id = graph.identity();
 		let semantic_lowering = graph.analyze_semantic_lowering(&semantic)?;
+		// OA-CC-23: reusable storage must first be fully written. For buffers
+		// outside the stable transient set, a final read also bounds the
+		// lifetime to this replay.
+		let mut first_access: std::collections::BTreeMap<u32, BufferAccess> =
+			std::collections::BTreeMap::new();
+		let mut last_access: std::collections::BTreeMap<u32, BufferAccess> =
+			std::collections::BTreeMap::new();
+		for node in graph.nodes() {
+			if let Some(indirect) = node.indirect() {
+				let identity = indirect.buffer.descriptor_index();
+				first_access.entry(identity).or_insert(BufferAccess::Read);
+				last_access.insert(identity, BufferAccess::Read);
+			}
+			for usage in node.buffers() {
+				let identity = usage.buffer.descriptor_index();
+				first_access.entry(identity).or_insert(usage.access);
+				last_access.insert(identity, usage.access);
+			}
+		}
 		for (index, resource) in captured_resources.iter_mut().enumerate() {
-			resource.alias_candidate = resource.stable_transient
+			let buffer = &resource_lifetimes[index].buffer;
+			let identity = buffer.descriptor_index();
+			// A first read or partial write depends on the original contents.
+			resource.alias_candidate = matches!(first_access.get(&identity), Some(BufferAccess::Write))
+				&& (resource.stable_transient
+					|| matches!(last_access.get(&identity), Some(BufferAccess::Read)))
 				&& !resource.is_externally_live()
 				&& resource.unaccounted_owner_count == 0
-				&& !fusion::buffer_is_fused_binding(graph.nodes(), &resource_lifetimes[index].buffer);
+				&& !fusion::buffer_is_fused_binding(graph.compute_nodes(), buffer);
 		}
 		let materialization = materialize_aliases(
 			&engine,
@@ -759,6 +833,7 @@ impl ExecutionPlan {
 			binding_contract_hash,
 			captured_resources,
 			semantic_bindings,
+			descriptor_write_count: 0,
 			materialized_alias_savings,
 			alias_materialization_fallback_reason,
 			cached_commands: RefCell::new(Vec::new()),
@@ -768,6 +843,11 @@ impl ExecutionPlan {
 				..PlanCounters::default()
 			},
 		})
+	}
+
+	/// Record the capture-time descriptor-write count the guard measured.
+	pub(super) fn set_descriptor_write_count(&mut self, count: u64) {
+		self.descriptor_write_count = count;
 	}
 
 	/// Return the canonical backend-independent graph captured by this plan.
@@ -1088,6 +1168,9 @@ impl ExecutionPlan {
 			device_capability_identity: self.device_capability_identity,
 			node_count: self.graph.nodes().len(),
 			barrier_count: self.graph.barrier_count(),
+			cross_queue_edge_count: self.graph.cross_queue_edge_count(),
+			ownership_transfer_count: self.graph.ownership_transfer_count(),
+			queue_run_count: self.graph.queue_runs().len(),
 			semantic_operation_count: self.semantic.operations().len(),
 			semantic_autograd_attachment_count: self.semantic.autograd().len(),
 			semantic_autograd_expanded_count: self
@@ -1151,6 +1234,27 @@ impl ExecutionPlan {
 			planned_alias_group_count,
 			potential_alias_savings,
 			materialized_alias_savings: self.materialized_alias_savings,
+			descriptor_write_count: self.descriptor_write_count,
+			peak_memory_bytes: {
+				let mut lifetimes = self.graph.resource_lifetimes();
+				lifetimes.sort_by_key(|lifetime| lifetime.first_access);
+				let mut active: Vec<(usize, u32, usize)> = Vec::new();
+				let mut peak = 0_usize;
+				for lifetime in lifetimes {
+					active.retain(|(last, _, _)| *last >= lifetime.first_access);
+					let index = lifetime.buffer.descriptor_index();
+					if !active.iter().any(|(_, live, _)| *live == index) {
+						active.push((lifetime.last_access, index, lifetime.buffer.byte_len()));
+					}
+					peak = peak.max(active.iter().map(|(_, _, bytes)| *bytes).sum::<usize>());
+				}
+				peak
+			},
+			push_byte_count: self
+				.graph
+				.compute_nodes()
+				.map(|node| node.push_constants.len() * 4)
+				.sum(),
 			command_recording_count: self.counters.command_recordings.get(),
 			command_cache_hit_count: self.counters.command_cache_hits.get(),
 			submission_count: self.counters.submissions.get(),
@@ -1231,28 +1335,48 @@ impl ExecutionPlan {
 				last_event.as_ref().map_or(0, Event::epoch),
 			),
 		);
-		let war_barriers = (0..self.graph.nodes().len())
-			.flat_map(|node| self.graph.barriers_before(node))
-			.filter(|barrier| {
-				barrier.source.reads() && !barrier.source.writes() && barrier.destination.writes()
-			})
+		let mut war_barriers = 0;
+		let mut indirect_barriers = 0;
+		for barrier in (0..self.graph.nodes().len()).flat_map(|node| self.graph.barriers_before(node)) {
+			war_barriers += usize::from(!barrier.source.writes() && barrier.destination.writes());
+			indirect_barriers += usize::from(barrier.destination.uses_indirect_commands());
+		}
+		let dispatches = self.graph.compute_nodes().count();
+		let copies = self
+			.graph
+			.nodes()
+			.iter()
+			.filter(|node| matches!(node, GraphNode::BufferCopy(_)))
 			.count();
+		let video_commands = diagnostics.node_count() - dispatches - copies;
 		let buffer_bytes = lifetimes.iter().fold(0_usize, |total, lifetime| {
 			total.saturating_add(lifetime.buffer.byte_len())
 		});
 		crate::core::push_format(
 			&mut output,
 			format_args!(
-				"  \"stats\": {{\"dispatches\": {}, \"barriers\": {}, \"war_barriers\": {}, \"indirect_barriers\": 0, \"alias_barriers\": 0, \"host_barriers\": 0, \"descriptor_sets\": 0, \"kernel_selections\": {}, \"kernel_fallbacks\": 0, \"precision_fallbacks\": 0, \"layout_fallbacks\": 0, \"naive_fallbacks\": 0, \"buffer_bytes\": {}, \"potential_alias_savings\": {}, \"materialized_alias_savings\": {}}},\n  \"resources\": [",
-				diagnostics.node_count(),
+				"  \"stats\": {{\"dispatches\": {dispatches}, \"barriers\": {}, \"war_barriers\": {}, \"indirect_barriers\": {}, \"alias_barriers\": 0, \"host_barriers\": 0, \"descriptor_sets\": 0, \"kernel_selections\": {dispatches}, \"kernel_fallbacks\": 0, \"precision_fallbacks\": 0, \"layout_fallbacks\": 0, \"naive_fallbacks\": 0, \"buffer_bytes\": {}, \"potential_alias_savings\": {}, \"materialized_alias_savings\": {}",
 				diagnostics.barrier_count(),
 				war_barriers,
-				diagnostics.node_count(),
+				indirect_barriers,
 				buffer_bytes,
 				diagnostics.potential_alias_savings(),
 				diagnostics.materialized_alias_savings(),
 			),
 		);
+		if copies != 0 {
+			crate::core::push_format(&mut output, format_args!(r#", "copies": {copies}"#));
+		}
+		if video_commands != 0 {
+			let image_transfers = self.graph.image_transfer_count();
+			crate::core::push_format(
+				&mut output,
+				format_args!(
+					r#", "video_commands": {video_commands}, "image_transfers": {image_transfers}"#
+				),
+			);
+		}
+		output.push_str("},\n  \"resources\": [");
 		for (resource, lifetime) in lifetimes.iter().enumerate() {
 			output.push_str(if resource == 0 { "\n" } else { ",\n" });
 			crate::core::push_format(
@@ -1279,24 +1403,44 @@ impl ExecutionPlan {
 				barrier_index = barrier_index.saturating_add(1);
 				let resource = graph_resource_id(&lifetimes, &barrier.buffer)
 					.expect("planned barrier resource must have a lifetime");
-				let source_node = previous_access_node(&self.graph, destination_node, &barrier.buffer)
-					.expect("planned barrier must have a source access");
-				let source_stage = vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT.as_raw();
+				let [first_source, last_source] = barrier.source_nodes;
+				let source_stage = barrier.source.vk_stages().as_raw();
+				let destination_stage = barrier.destination.vk_stages().as_raw();
 				let source_access = barrier.source.vk_access().as_raw();
 				let destination_access = barrier.destination.vk_access().as_raw();
 				crate::core::push_format(
 					&mut output,
 					format_args!(
-						"    {{\"reason\": \"{}\", \"scope\": \"buffer\", \"source_nodes\": [{source_node}, {source_node}], \"destination_node\": {destination_node}, \"source_resource\": {resource}, \"destination_resource\": {resource}, \"hazard_domain\": {resource}, \"range\": {{\"offset\": 0, \"bytes\": {}}}, \"source_queue\": \"compute\", \"destination_queue\": \"compute\", \"cross_queue\": false, \"ownership_transfer\": false, \"source_stage_mask\": \"0x{source_stage:016x}\", \"source_stages\": [\"compute_shader\"], \"source_access_mask\": \"0x{source_access:016x}\", \"source_accesses\": [",
+						"    {{\"reason\": \"{}\", \"scope\": \"buffer\", \"source_nodes\": [{first_source}, {last_source}], \"destination_node\": {destination_node}, \"source_resource\": {resource}, \"destination_resource\": {resource}, \"hazard_domain\": {resource}, \"range\": {{\"offset\": 0, \"bytes\": {}}}, \"source_queue\": \"{}\", \"destination_queue\": \"{}\", \"source_family\": {}, \"destination_family\": {}, \"cross_queue\": {}, \"ownership_transfer\": {}, \"source_stage_mask\": \"0x{source_stage:016x}\", \"source_stages\": [",
 						hazard_reason(barrier.source, barrier.destination),
 						barrier.buffer.byte_len(),
+						barrier.source_queue.name(),
+						barrier.destination_queue.name(),
+						barrier.source_family,
+						barrier.destination_family,
+						barrier.is_cross_queue(),
+						barrier.is_ownership_transfer(),
+					),
+				);
+				push_stage_names(&mut output, barrier.source);
+				crate::core::push_format(
+					&mut output,
+					format_args!(
+						"], \"source_access_mask\": \"0x{source_access:016x}\", \"source_accesses\": ["
 					),
 				);
 				push_access_names(&mut output, barrier.source);
 				crate::core::push_format(
 					&mut output,
 					format_args!(
-						"], \"destination_stage_mask\": \"0x{source_stage:016x}\", \"destination_stages\": [\"compute_shader\"], \"destination_access_mask\": \"0x{destination_access:016x}\", \"destination_accesses\": ["
+						"], \"destination_stage_mask\": \"0x{destination_stage:016x}\", \"destination_stages\": ["
+					),
+				);
+				push_stage_names(&mut output, barrier.destination);
+				crate::core::push_format(
+					&mut output,
+					format_args!(
+						"], \"destination_access_mask\": \"0x{destination_access:016x}\", \"destination_accesses\": ["
 					),
 				);
 				push_access_names(&mut output, barrier.destination);
@@ -1307,88 +1451,185 @@ impl ExecutionPlan {
 			output.push('\n');
 		}
 		output.push_str("  ],\n  \"nodes\": [");
-		for (index, node) in self.graph.nodes().iter().enumerate() {
+		for (index, graph_node) in self.graph.nodes().iter().enumerate() {
+			let (operation, semantic_ops, contract) = graph_node.semantic();
 			output.push_str(if index == 0 { "\n" } else { ",\n" });
 			crate::core::push_format(
 				&mut output,
 				format_args!("    {{\"index\": {index}, \"operation\": "),
 			);
-			crate::core::push_json_string(&mut output, node.operation);
+			crate::core::push_json_string(&mut output, operation);
 			output.push_str(", \"semantic_operations\": [");
-			for (owner_index, owner) in node.semantic_ops.iter().enumerate() {
+			for (owner_index, owner) in semantic_ops.iter().enumerate() {
 				if owner_index != 0 {
 					output.push_str(", ");
 				}
 				crate::core::push_format(&mut output, format_args!("{}", owner.index()));
 			}
-			let implementation_id = node.kernel.artifact().content_id();
-			crate::core::push_format(
-				&mut output,
-				format_args!(
-					"], \"implementation_id\": \"0x{implementation_id:016x}\", \"operation_contract_hash\": "
-				),
-			);
-			push_optional_hex(&mut output, node.op_contract_hash);
-			crate::core::push_format(
-				&mut output,
-				format_args!(
-					", \"problem_contract_hash\": null, \"kernel_content_hash\": \"0x{implementation_id:016x}\", \"kernel_selection\": \"direct\", \"kernel\": "
-				),
-			);
-			crate::core::push_json_string(&mut output, node.kernel.report_name());
-			output.push_str(", \"dtype_class\": null, \"dtype\": ");
-			crate::core::push_json_string(&mut output, node.kernel.dtype_report_token());
-			output.push_str(", \"physical_write\": ");
-			match node.kernel.artifact().physical_write {
-				None => output.push_str("null"),
-				Some(contract) => {
-					output.push_str("{\"writes\": [");
-					for (write_index, write) in contract.writes.iter().enumerate() {
-						if write_index != 0 {
-							output.push_str(", ");
-						}
-						crate::core::push_format(
-							&mut output,
-							format_args!(
-								"{{\"binding\": {}, \"domain\": \"{}\", \"partition\": \"{}\", \"extent\": \"{}\", \"collision\": \"{}\", \"tail\": \"{}\"}}",
-								write.binding,
-								write.domain.token(),
-								write.partition.token(),
-								write.extent.token(),
-								write.collision.token(),
-								write.tail.token(),
-							),
-						);
-					}
-					output.push_str("], \"uniform_store\": ");
-					match contract.uniform_store {
-						None => output.push_str("null"),
-						Some(proof) => crate::core::push_format(
-							&mut output,
-							format_args!(
-								"{{\"domain\": \"{}\", \"partition\": \"{}\", \"extent\": \"{}\", \"collision\": \"{}\", \"tail\": \"{}\"}}",
-								proof.domain.token(),
-								proof.partition.token(),
-								proof.extent.token(),
-								proof.collision.token(),
-								proof.tail.token(),
-							),
+			match graph_node {
+				GraphNode::Compute(node) => {
+					let implementation_id = node.kernel.artifact().content_id();
+					crate::core::push_format(
+						&mut output,
+						format_args!(
+							"], \"implementation_id\": \"0x{implementation_id:016x}\", \"operation_contract_hash\": "
 						),
+					);
+					push_optional_hex(&mut output, contract);
+					crate::core::push_format(
+						&mut output,
+						format_args!(
+							", \"problem_contract_hash\": null, \"kernel_content_hash\": \"0x{implementation_id:016x}\", \"kernel_selection\": \"direct\", \"kernel\": "
+						),
+					);
+					crate::core::push_json_string(&mut output, node.kernel.report_name());
+					output.push_str(", \"dtype_class\": null, \"dtype\": ");
+					crate::core::push_json_string(&mut output, node.kernel.dtype_report_token());
+					output.push_str(", \"physical_write\": ");
+					match node.kernel.artifact().physical_write {
+						None => output.push_str("null"),
+						Some(contract) => {
+							output.push_str("{\"writes\": [");
+							for (write_index, write) in contract.writes.iter().enumerate() {
+								if write_index != 0 {
+									output.push_str(", ");
+								}
+								crate::core::push_format(
+									&mut output,
+									format_args!(
+										"{{\"binding\": {}, \"domain\": \"{}\", \"partition\": \"{}\", \"extent\": \"{}\", \"collision\": \"{}\", \"tail\": \"{}\"}}",
+										write.binding,
+										write.domain.token(),
+										write.partition.token(),
+										write.extent.token(),
+										write.collision.token(),
+										write.tail.token(),
+									),
+								);
+							}
+							output.push_str("], \"uniform_store\": ");
+							match contract.uniform_store {
+								None => output.push_str("null"),
+								Some(proof) => crate::core::push_format(
+									&mut output,
+									format_args!(
+										"{{\"domain\": \"{}\", \"partition\": \"{}\", \"extent\": \"{}\", \"collision\": \"{}\", \"tail\": \"{}\"}}",
+										proof.domain.token(),
+										proof.partition.token(),
+										proof.extent.token(),
+										proof.collision.token(),
+										proof.tail.token(),
+									),
+								),
+							}
+							crate::core::push_format(
+								&mut output,
+								format_args!(", \"workspace\": \"{}\"}}", contract.workspace.token()),
+							);
+						}
 					}
 					crate::core::push_format(
 						&mut output,
-						format_args!(", \"workspace\": \"{}\"}}", contract.workspace.token()),
+						format_args!(
+							", \"groups\": [{}, {}, {}], \"queue\": \"{}\", \"family\": {}, \"indirect\": {}",
+							node.workgroups[0],
+							node.workgroups[1],
+							node.workgroups[2],
+							graph_node.queue().name(),
+							self.graph.node_families()[index],
+							node.indirect.is_some()
+						),
 					);
 				}
+				GraphNode::BufferCopy(copy) => {
+					output.push_str(
+						r#"], "kind": "buffer_copy", "implementation_id": "0x4255465f434f5059", "operation_contract_hash": "#,
+					);
+					push_optional_hex(&mut output, contract);
+					crate::core::push_format(
+						&mut output,
+						format_args!(
+							r#", "problem_contract_hash": null, "kernel_content_hash": "0x0000000000000000", "kernel_selection": "native", "kernel": "vk.copy_buffer", "dtype_class": null, "dtype": "float32", "physical_write": null, "groups": [0, 0, 0], "queue": "{}", "family": {}, "indirect": false, "copy_bytes": {}"#,
+							graph_node.queue().name(),
+							self.graph.node_families()[index],
+							copy.bytes,
+						),
+					);
+				}
+				GraphNode::VideoDecode(video) => {
+					crate::core::push_format(
+						&mut output,
+						format_args!(
+							r#"], "kind": "video_decode", "implementation_id": "0x5649444445434f44", "operation_contract_hash": null, "problem_contract_hash": null, "kernel_content_hash": "0x0000000000000000", "kernel_selection": "native", "kernel": "{operation}", "dtype_class": null, "dtype": "uint8", "physical_write": null, "groups": [0, 0, 0], "queue": "{}", "family": {}, "indirect": false, "decode_picture": ["#,
+							graph_node.queue().name(),
+							self.graph.node_families()[index],
+						),
+					);
+					for (index, word) in video.descriptor_words().into_iter().enumerate() {
+						if index != 0 {
+							output.push_str(", ");
+						}
+						crate::core::push_format(&mut output, format_args!("{word}"));
+					}
+					output.push(']');
+				}
+
+				GraphNode::VideoEncode(video) => {
+					crate::core::push_format(
+						&mut output,
+						format_args!(
+							r#"], "kind": "video_encode", "implementation_id": "0x564944454e434f44", "operation_contract_hash": null, "problem_contract_hash": null, "kernel_content_hash": "0x0000000000000000", "kernel_selection": "native", "kernel": "{operation}", "dtype_class": null, "dtype": "uint8", "physical_write": null, "groups": [0, 0, 0], "queue": "{}", "family": {}, "indirect": false, "encode_picture": ["#,
+							graph_node.queue().name(),
+							self.graph.node_families()[index],
+						),
+					);
+					for (index, word) in video.descriptor_words().into_iter().enumerate() {
+						if index != 0 {
+							output.push_str(", ");
+						}
+						crate::core::push_format(&mut output, format_args!("{word}"));
+					}
+					output.push(']');
+				}
+				GraphNode::VideoEncodeInput(video) => {
+					crate::core::push_format(
+						&mut output,
+						format_args!(
+							r#"], "kind": "video_encode_input", "implementation_id": "0x564944454e43494e", "operation_contract_hash": null, "problem_contract_hash": null, "kernel_content_hash": "0x0000000000000000", "kernel_selection": "native", "kernel": "{}", "dtype_class": null, "dtype": "uint8", "physical_write": null, "groups": [0, 0, 0], "queue": "{}", "family": {}, "indirect": false, "image_geometry": ["#,
+							video.copy.name(),
+							graph_node.queue().name(),
+							self.graph.node_families()[index],
+						),
+					);
+					for (index, word) in video.copy.descriptor_words().enumerate() {
+						if index != 0 {
+							output.push_str(", ");
+						}
+						crate::core::push_format(&mut output, format_args!("{word}"));
+					}
+					output.push(']');
+				}
+				GraphNode::VideoPlanes(video) => {
+					crate::core::push_format(
+						&mut output,
+						format_args!(
+							r#"], "kind": "video_plane_command", "implementation_id": "0x564944504c414e45", "operation_contract_hash": null, "problem_contract_hash": null, "kernel_content_hash": "0x0000000000000000", "kernel_selection": "native", "kernel": "{}", "dtype_class": null, "dtype": "uint8", "physical_write": null, "groups": [0, 0, 0], "queue": "{}", "family": {}, "indirect": false, "image_geometry": ["#,
+							video.phase.name(),
+							graph_node.queue().name(),
+							self.graph.node_families()[index],
+						),
+					);
+					for (index, word) in video.copy.descriptor_words().enumerate() {
+						if index != 0 {
+							output.push_str(", ");
+						}
+						crate::core::push_format(&mut output, format_args!("{word}"));
+					}
+					output.push(']');
+				}
 			}
-			crate::core::push_format(
-				&mut output,
-				format_args!(
-					", \"groups\": [{}, {}, {}], \"queue\": \"compute\", \"indirect\": false, \"effects\": [",
-					node.workgroups[0], node.workgroups[1], node.workgroups[2]
-				),
-			);
-			for (effect_index, effect) in node.buffers.iter().enumerate() {
+			output.push_str(r#", "effects": ["#);
+			for (effect_index, effect) in graph_node.buffers().iter().enumerate() {
 				if effect_index != 0 {
 					output.push_str(", ");
 				}
@@ -1428,57 +1669,101 @@ impl ExecutionPlan {
 	}
 
 	/// Node ranges of the executable graph that each fit the device's
-	/// estimated submission budget. A single returned range keeps the
-	/// one-buffer fast path; several ranges become sequential timeline
-	/// submissions at node boundaries. A node whose own estimate exceeds
-	/// the budget declines here, before anything records or submits.
+	/// estimated submission budget. Splitting is per queue run — every
+	/// emitted range resolves to one queue family. A single returned range
+	/// keeps the one-buffer fast path; several ranges become sequential
+	/// timeline submissions at node boundaries. A node whose own estimate
+	/// exceeds the budget declines here, before anything records or
+	/// submits.
 	pub(super) fn submission_ranges(
 		&self,
 		device: &Arc<Device>,
 	) -> Result<Vec<std::ops::Range<usize>>> {
-		self
-			.graph
-			.budget_ranges(device.submission_budget_ns())
-			.map_err(|(index, estimate)| {
-				let budget = device.submission_budget_ns();
-				Error::resource_exhausted(format!(
-					"node {} ({}) estimated {:.1}ms exceeds the {:.1}ms submission budget",
-					index,
-					self.graph.nodes()[index].operation,
-					estimate as f64 / 1e6,
-					budget as f64 / 1e6,
-				))
-			})
+		let budget = device.submission_budget_ns();
+		let mut ranges = Vec::new();
+		for run in self.graph.queue_runs() {
+			for range in
+				self
+					.graph
+					.budget_ranges_within(run.nodes, budget)
+					.map_err(|(index, estimate)| {
+						Error::resource_exhausted(format!(
+							"node {} ({}) estimated {:.1}ms exceeds the {:.1}ms submission budget",
+							index,
+							self.graph.nodes()[index].semantic().0,
+							estimate as f64 / 1e6,
+							budget as f64 / 1e6,
+						))
+					})? {
+				if !range.is_empty() {
+					ranges.push(range);
+				}
+			}
+		}
+		Ok(ranges)
 	}
 
 	pub(super) fn graph(&self) -> &ExecutableGraph {
 		&self.graph
 	}
 
-	pub(super) fn reusable_command(&self, device: &Arc<Device>) -> Result<RecordedCommandBuffer> {
+	/// One reusable command buffer per queue run, in submission order.
+	/// A single-run graph returns one command; a mixed-family graph
+	/// returns one command per run for the timeline-chained batch.
+	pub(super) fn reusable_commands(
+		&self,
+		device: &Arc<Device>,
+	) -> Result<Vec<RecordedCommandBuffer>> {
 		let key = self.binding_key();
-		if let Some((_, command)) = self
+		if let Some((_, commands)) = self
 			.cached_commands
 			.borrow()
 			.iter()
 			.find(|(cached_key, _)| *cached_key == key)
 		{
 			increment(&self.counters.command_cache_hits);
-			return Ok(command.submission());
+			return Ok(
+				commands
+					.iter()
+					.map(|command| command.submission())
+					.collect(),
+			);
 		}
-		let command = device.record_reusable_compute_graph(&self.graph)?;
+		let runs = self.graph.queue_runs();
+		let commands = if runs.len() == 1 {
+			vec![device.record_reusable_compute_graph(&self.graph)?]
+		} else {
+			runs
+				.into_iter()
+				.map(|run| device.record_reusable_graph_range(&self.graph, run.nodes))
+				.collect::<Result<Vec<_>>>()?
+		};
 		increment(&self.counters.command_recordings);
-		let submission = command.submission();
+		let submissions = commands
+			.iter()
+			.map(|command| command.submission())
+			.collect();
 		let mut cache = self.cached_commands.borrow_mut();
 		if cache.len() == MAX_CACHED_BINDING_COMMANDS {
 			cache.remove(0);
 		}
-		cache.push((key, command));
-		Ok(submission)
+		cache.push((key, commands));
+		Ok(submissions)
+	}
+
+	pub(super) fn count_command_recording(&self) {
+		increment(&self.counters.command_recordings);
 	}
 
 	pub(super) fn precompile(&self, device: &Arc<Device>) -> Result<()> {
-		let _ = self.reusable_command(device)?;
+		if self.graph.has_video() {
+			let mut commands = super::device::command::RecordedBatch::new(device);
+			for range in self.submission_ranges(device)? {
+				commands.push(device.record_fresh_graph_range(&self.graph, range, false)?);
+			}
+		} else {
+			let _ = self.reusable_commands(device)?;
+		}
 		Ok(())
 	}
 
@@ -1520,38 +1805,68 @@ fn graph_resource_id(
 		.position(|lifetime| lifetime.buffer.same_as(buffer))
 }
 
-fn previous_access_node(
-	graph: &ExecutableGraph,
-	destination_node: usize,
-	buffer: &Buffer,
-) -> Option<usize> {
-	graph.nodes()[..destination_node]
-		.iter()
-		.rposition(|node| node.buffers.iter().any(|use_| use_.buffer.same_as(buffer)))
-}
-
-const fn hazard_reason(
-	source: super::graph::executable::AccessState,
-	destination: super::graph::executable::AccessState,
-) -> &'static str {
-	if source.writes() && destination.writes() {
-		"write_after_write"
-	} else if source.writes() {
-		"read_after_write"
-	} else {
-		"write_after_read"
+const fn hazard_reason(source: AccessState, destination: AccessState) -> &'static str {
+	match (source.writes(), destination.writes()) {
+		(true, true) => "write_after_write",
+		(true, false) => "read_after_write",
+		(false, true) => "write_after_read",
+		(false, false) => "queue_ownership",
 	}
 }
 
-fn push_access_names(output: &mut String, access: super::graph::executable::AccessState) {
+fn push_stage_names(output: &mut String, access: AccessState) {
+	let mask = access.vk_stages();
+	push_names(
+		output,
+		[
+			(
+				mask.contains(vk::PipelineStageFlagBits2::COMPUTE_SHADER_BIT),
+				"compute_shader",
+			),
+			(
+				mask.contains(vk::PipelineStageFlagBits2::DRAW_INDIRECT_BIT),
+				"draw_indirect",
+			),
+			(mask.contains(vk::PipelineStageFlagBits2::COPY_BIT), "copy"),
+		],
+	);
+}
+
+fn push_access_names(output: &mut String, access: AccessState) {
+	let mask = access.vk_access();
+	push_names(
+		output,
+		[
+			(
+				mask.contains(vk::AccessFlagBits2::SHADER_STORAGE_READ_BIT),
+				"shader_storage_read",
+			),
+			(
+				mask.contains(vk::AccessFlagBits2::SHADER_STORAGE_WRITE_BIT),
+				"shader_storage_write",
+			),
+			(
+				mask.contains(vk::AccessFlagBits2::INDIRECT_COMMAND_READ_BIT),
+				"indirect_command_read",
+			),
+			(
+				mask.contains(vk::AccessFlagBits2::TRANSFER_READ_BIT),
+				"transfer_read",
+			),
+			(
+				mask.contains(vk::AccessFlagBits2::TRANSFER_WRITE_BIT),
+				"transfer_write",
+			),
+		],
+	);
+}
+
+fn push_names(output: &mut String, names: impl IntoIterator<Item = (bool, &'static str)>) {
 	let mut separator = "";
-	if access.reads() {
-		output.push_str("\"shader_storage_read\"");
-		separator = ", ";
-	}
-	if access.writes() {
+	for (_, name) in names.into_iter().filter(|(present, _)| *present) {
 		output.push_str(separator);
-		output.push_str("\"shader_storage_write\"");
+		crate::core::push_json_string(output, name);
+		separator = ", ";
 	}
 }
 

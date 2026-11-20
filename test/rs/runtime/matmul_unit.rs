@@ -1,12 +1,12 @@
 //! Host-side matmul planner legality, identity, and rejection evidence tests.
 
 use super::{
-	CAP_COOP_MAT1_BF16_INPUT, CAP_NAIVE_F32, CAP_SMALLM_F32, CAP_TILED_F32, GemmEpilogue, GemmKernel,
-	GemmPrecision, INVALID_MATMUL_VARIANT_ID, KernelSelectionKind, MatmulDeviceContract,
-	MatmulPreference, MatmulProblem, MatmulRejection, MatmulRouteCache, MatmulRouteKey,
-	MatmulRouteValue, StoragePrecision, VARIANTS, caps_satisfy, classify_selection,
-	device_contract_hash, find_variant, matmul_variant_id_from_name, plan, problem_contract_hash,
-	registry_build_id, route_key, validate_plan, variant_legal,
+	CAP_COOP_MAT1_BF16_INPUT, CAP_F16_STORAGE, CAP_NAIVE_F32, CAP_SMALLM_F32, CAP_TILED_F32,
+	GemmEpilogue, GemmKernel, GemmPrecision, INVALID_MATMUL_VARIANT_ID, KernelSelectionKind,
+	MatmulDeviceContract, MatmulPreference, MatmulProblem, MatmulRejection, MatmulRouteCache,
+	MatmulRouteKey, MatmulRouteValue, StoragePrecision, VARIANTS, caps_satisfy, classify_selection,
+	device_contract_hash, find_variant, lower_mat_mul_nt_plan, matmul_variant_id_from_name, plan,
+	problem_contract_hash, registry_build_id, route_key, validate_plan, variant_legal,
 };
 use crate::runtime::{BufferAccess, KernelId, PushConstant};
 
@@ -34,6 +34,20 @@ fn naive() -> &'static super::MatmulVariant {
 
 fn small_m() -> &'static super::MatmulVariant {
 	find_variant(matmul_variant_id_from_name("GemmSmallM")).expect("GemmSmallM must be registered")
+}
+
+fn strided_tiled() -> &'static super::MatmulVariant {
+	find_variant(matmul_variant_id_from_name("GemmStridedTiled"))
+		.expect("GemmStridedTiled must be registered")
+}
+
+fn strided_scalar() -> &'static super::MatmulVariant {
+	find_variant(matmul_variant_id_from_name("GemmStridedScalar"))
+		.expect("GemmStridedScalar must be registered")
+}
+
+fn split_k() -> &'static super::MatmulVariant {
+	find_variant(matmul_variant_id_from_name("GemmSplitK")).expect("GemmSplitK must be registered")
 }
 
 fn measured(winner: u64) -> MatmulRouteValue {
@@ -269,6 +283,202 @@ fn non_canonical_layout_is_rejected() {
 }
 
 #[test]
+fn strided_variants_pin_exact_artifact_identity() {
+	let tiled = strided_tiled();
+	assert_eq!(tiled.kernel_id, KernelId::MatrixMatMulNtStridedTiledF32);
+	assert_eq!(tiled.kernel, GemmKernel::StridedTiledF32);
+	assert_eq!(tiled.tile_m(), 64);
+	assert_eq!(tiled.tile_n(), 64);
+	assert_eq!(tiled.workgroup_invocations(), 256);
+	assert!(tiled.supports_arbitrary_layout);
+	assert!(tiled.supports_batch);
+	assert_eq!(tiled.required_caps_mask, CAP_TILED_F32);
+	let scalar = strided_scalar();
+	assert_eq!(scalar.kernel_id, KernelId::MatrixMatMulNtStridedF32);
+	assert_eq!(scalar.kernel, GemmKernel::StridedF32);
+	assert_eq!(scalar.tile_m(), 1);
+	assert_eq!(scalar.tile_n(), 1);
+	assert!(scalar.supports_arbitrary_layout);
+	assert!(scalar.supports_batch);
+	assert_eq!(scalar.required_caps_mask, CAP_NAIVE_F32);
+	assert_eq!(scalar.shared_memory_bytes().unwrap_or(0), 0);
+}
+
+#[test]
+fn non_canonical_layout_routes_to_the_strided_families() {
+	// Padded rows are a non-canonical view: the tiled family rejects them
+	// and the planner must not silently drop to the naive fallback.
+	let mut problem = MatmulProblem::contiguous(64, 64, 64);
+	problem.a.row_stride = problem.k + 4;
+	assert_eq!(
+		variant_legal(&contract(), tiled(), &problem, GemmPrecision::Auto),
+		Some(MatmulRejection::NonCanonicalLayout)
+	);
+	let tiled_plan = plan(&contract(), &problem, &MatmulPreference::default(), None)
+		.expect("the strided families admit padded layouts");
+	assert_eq!(tiled_plan.kernel, GemmKernel::StridedTiledF32);
+	assert_eq!(tiled_plan.selection, KernelSelectionKind::LayoutFallback);
+	// Small non-canonical work prefers the scalar family.
+	let mut small = MatmulProblem::contiguous(8, 8, 8);
+	small.c.offset = 3;
+	let scalar_plan = plan(&contract(), &small, &MatmulPreference::default(), None)
+		.expect("the scalar strided family admits small views");
+	assert_eq!(scalar_plan.kernel, GemmKernel::StridedF32);
+	assert_eq!(scalar_plan.selection, KernelSelectionKind::LayoutFallback);
+}
+
+#[test]
+fn strided_lowering_carries_the_full_layout_push_contract() {
+	let mut problem = MatmulProblem::contiguous(33, 70, 47);
+	problem.batch_count = 2;
+	problem.a.offset = 5;
+	problem.a.row_stride = 50;
+	problem.a.batch_stride = 1_700;
+	problem.b.offset = 11;
+	problem.b.col_stride = 2;
+	problem.b.batch_stride = 3_600;
+	problem.c.offset = 7;
+	problem.c.row_stride = 80;
+	problem.c.batch_stride = 2_800;
+	let plan = plan(&contract(), &problem, &MatmulPreference::default(), None)
+		.expect("the strided families admit batched views");
+	assert_eq!(plan.grid[2], 2);
+	let launch = lower_mat_mul_nt_plan(&plan, &problem).expect("strided lowering");
+	assert_eq!(launch.buffer_count, 3);
+	assert_eq!(&launch.buffer_order[..3], &[0, 1, 2]);
+	assert_eq!(launch.push_count, 15);
+	let words = launch
+		.push_constants
+		.iter()
+		.take(launch.push_count)
+		.map(|constant| match constant {
+			PushConstant::U32(value) => *value,
+			PushConstant::F32(_) => panic!("strided push words are u32"),
+		})
+		.collect::<Vec<_>>();
+	assert_eq!(
+		words,
+		vec![
+			33, 70, 47, // m, n, k
+			50, 1, 1_700, 5, // a: row/col/batch strides, offset
+			47, 2, 3_600, 11, // b
+			80, 1, 2_800, 7, // c
+		]
+	);
+}
+
+#[test]
+fn split_k_variant_pins_exact_artifact_identity() {
+	let variant = split_k();
+	assert_eq!(variant.kernel_id, KernelId::MatrixMatMulNtSplitKF32);
+	assert_eq!(variant.kernel, GemmKernel::SplitKF32);
+	assert_eq!(variant.split_k, 4);
+	assert_eq!(
+		variant.reduction_kernel_id,
+		Some(KernelId::MatrixMatMulNtSplitKReduceF32)
+	);
+	assert_eq!(variant.reduction_workgroup_invocations, 256);
+	assert_eq!(variant.tile_m(), 1);
+	assert_eq!(variant.tile_n(), 1);
+	assert!(!variant.supports_arbitrary_layout);
+	assert!(!variant.supports_batch);
+}
+
+#[test]
+fn split_k_plan_requires_an_explicit_workspace_budget() {
+	let problem = MatmulProblem::contiguous(64, 48, 200);
+	let pinned = |budget: u64| MatmulPreference {
+		required_variant: matmul_variant_id_from_name("GemmSplitK"),
+		max_workspace_bytes: budget,
+		..MatmulPreference::default()
+	};
+	// The default zero budget keeps split-K out of every existing route.
+	assert!(plan(&contract(), &problem, &pinned(0), None).is_err());
+	assert_eq!(
+		super::calculate_workspace_bytes(split_k(), &problem),
+		64 * 48 * 4 * 4
+	);
+	let split_plan = plan(&contract(), &problem, &pinned(1 << 20), None)
+		.expect("split-K is legal under an explicit workspace budget");
+	assert_eq!(split_plan.grid, [12, 1, 4]);
+	assert_eq!(split_plan.reduction_grid, [12, 1, 1]);
+	assert_eq!(split_plan.split_k, 4);
+	assert_eq!(
+		split_plan.reduction_kernel_id,
+		Some(KernelId::MatrixMatMulNtSplitKReduceF32)
+	);
+}
+
+#[test]
+fn split_k_legality_rejects_shallow_k_batches_and_views() {
+	let mut shallow = MatmulProblem::contiguous(64, 64, 2);
+	assert_eq!(
+		variant_legal(&contract(), split_k(), &shallow, GemmPrecision::Auto),
+		Some(MatmulRejection::FamilyConstraint)
+	);
+	shallow = MatmulProblem::contiguous(64, 64, 64);
+	shallow.batch_count = 2;
+	assert_eq!(
+		variant_legal(&contract(), split_k(), &shallow, GemmPrecision::Auto),
+		Some(MatmulRejection::BatchUnsupported)
+	);
+	let mut view = MatmulProblem::contiguous(64, 64, 64);
+	view.a.offset = 4;
+	assert_eq!(
+		variant_legal(&contract(), split_k(), &view, GemmPrecision::Auto),
+		Some(MatmulRejection::NonCanonicalLayout)
+	);
+}
+
+#[test]
+fn split_k_lowering_emits_partial_and_reduction_launches() {
+	let problem = MatmulProblem::contiguous(64, 48, 200);
+	let pinned = MatmulPreference {
+		required_variant: matmul_variant_id_from_name("GemmSplitK"),
+		max_workspace_bytes: 1 << 20,
+		..MatmulPreference::default()
+	};
+	let split_plan = plan(&contract(), &problem, &pinned, None).unwrap();
+	// The partial binds [A, B, workspace] and carries the K-slice extent.
+	let launch = lower_mat_mul_nt_plan(&split_plan, &problem).expect("partial lowering");
+	assert_eq!(launch.kernel_id, KernelId::MatrixMatMulNtSplitKF32);
+	assert_eq!(launch.buffer_count, 3);
+	assert_eq!(&launch.buffer_order[..3], &[0, 1, 3]);
+	assert_eq!(launch.buffer_accesses[2], BufferAccess::Write);
+	assert_eq!(
+		&launch.push_constants[..launch.push_count],
+		&[
+			PushConstant::U32(64),
+			PushConstant::U32(48),
+			PushConstant::U32(200),
+			PushConstant::U32(50)
+		]
+	);
+	// The reduction binds [workspace, C] and sums the four slices.
+	let reduction = super::lower_mat_mul_nt_reduction(&split_plan, &problem)
+		.expect("reduction lowering")
+		.expect("split-K plans carry a reduction launch");
+	assert_eq!(reduction.kernel_id, KernelId::MatrixMatMulNtSplitKReduceF32);
+	assert_eq!(reduction.buffer_count, 2);
+	assert_eq!(&reduction.buffer_order[..2], &[3, 2]);
+	assert_eq!(reduction.buffer_accesses[0], BufferAccess::Read);
+	assert_eq!(reduction.buffer_accesses[1], BufferAccess::Write);
+	assert_eq!(reduction.grid, [12, 1, 1]);
+	assert_eq!(
+		&reduction.push_constants[..reduction.push_count],
+		&[PushConstant::U32(64 * 48), PushConstant::U32(4)]
+	);
+	// Canonical plans carry no reduction stage.
+	let canonical = MatmulProblem::contiguous(64, 64, 64);
+	let canonical_plan = plan(&contract(), &canonical, &MatmulPreference::default(), None).unwrap();
+	assert!(
+		super::lower_mat_mul_nt_reduction(&canonical_plan, &canonical)
+			.unwrap()
+			.is_none()
+	);
+}
+
+#[test]
 fn batched_problem_is_rejected_by_single_dispatch_variants() {
 	let mut problem = MatmulProblem::contiguous(64, 64, 64);
 	problem.batch_count = 2;
@@ -276,7 +486,12 @@ fn batched_problem_is_rejected_by_single_dispatch_variants() {
 		variant_legal(&contract(), tiled(), &problem, GemmPrecision::Auto),
 		Some(MatmulRejection::BatchUnsupported)
 	);
-	assert!(plan(&contract(), &problem, &MatmulPreference::default(), None).is_err());
+	// Canonical batches stay contiguous; the planner routes them to the
+	// z-dispatched arbitrary-layout families rather than failing.
+	let plan = plan(&contract(), &problem, &MatmulPreference::default(), None)
+		.expect("the strided families admit canonical batched problems");
+	assert_eq!(plan.kernel, GemmKernel::StridedTiledF32);
+	assert_eq!(plan.grid[2], 2);
 }
 
 #[test]
@@ -485,7 +700,17 @@ fn every_registered_variant_reports_rejection_or_acceptance() {
 		};
 		let mut problem = MatmulProblem::contiguous(m, 64, 64);
 		problem.epilogue = variant.epilogue;
-		let outcome = variant_legal(&contract(), variant, &problem, GemmPrecision::Auto);
+		let mut device = contract();
+		// Lowered-storage variants are legal only under their math mode on a
+		// device that admits the capability.
+		let precision = match variant.a_precision {
+			StoragePrecision::F16 => {
+				device.caps_mask |= CAP_F16_STORAGE;
+				GemmPrecision::F16
+			}
+			_ => GemmPrecision::Auto,
+		};
+		let outcome = variant_legal(&device, variant, &problem, precision);
 		assert!(outcome.is_none(), "{} unexpectedly rejected", variant.name);
 	}
 }
@@ -762,7 +987,7 @@ fn lowering_rejects_empty_plans_and_unlowered_kernels() {
 	assert!(super::lower_mat_mul_nt_plan(&plan, &problem).is_err());
 
 	plan.variant = matmul_variant_id_from_name("GemmTiled");
-	plan.kernel = GemmKernel::StridedF32;
+	plan.kernel = GemmKernel::GemmCmWgBf16;
 	assert!(super::lower_mat_mul_nt_plan(&plan, &problem).is_err());
 }
 

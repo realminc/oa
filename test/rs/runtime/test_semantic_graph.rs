@@ -1,7 +1,7 @@
 use oa::{
 	DType, ErrorKind, OpAttribute, OpAttributeKind, OpAttributeSpec, OpDifferentiation, OpEffect,
-	OpLowering, OpShapeRule, OpValueKind, OperationContract, SemanticAccessMode, SemanticGraph,
-	SemanticValueDesc,
+	OpFusionClass, OpLowering, OpShapeRule, OpValueKind, OperationContract, SemanticAccessMode,
+	SemanticGraph, SemanticValueDesc,
 };
 
 const MATRIX: &[OpValueKind] = &[OpValueKind::Matrix];
@@ -347,4 +347,47 @@ fn preserves_lowering_and_generation_contracts() -> oa::Result<()> {
 	assert_eq!(copy.generation(), 2);
 	assert!(copy.values().is_empty());
 	Ok(())
+}
+
+/// Generated contracts carry their schema-declared fusion class, and the
+/// taxonomy's region-exclusion boundary holds: opaque and effect operations
+/// are never region-admitted.
+#[test]
+fn generated_contracts_carry_schema_fusion_classes() {
+	use oa::core::operation::matrix as matrix_ops;
+	use oa::core::operation::ml as ml_ops;
+	use oa::core::operation::video as video_ops;
+
+	assert_eq!(video_ops::TO_MATRIX.fusion_class(), OpFusionClass::Gather);
+	assert_eq!(video_ops::BLEND.fusion_class(), OpFusionClass::Pointwise);
+	assert_eq!(matrix_ops::ADD.fusion_class(), OpFusionClass::Pointwise);
+	assert_eq!(matrix_ops::MAT_MUL_NT.fusion_class(), OpFusionClass::Gemm);
+	assert_eq!(
+		matrix_ops::PHILOX_UNIFORM.fusion_class(),
+		OpFusionClass::Effect
+	);
+	assert_eq!(matrix_ops::DROPOUT.fusion_class(), OpFusionClass::Effect);
+	assert_eq!(
+		matrix_ops::MOE_ROUTING_BIAS_UPDATE.fusion_class(),
+		OpFusionClass::Effect
+	);
+	assert_eq!(
+		ml_ops::PPO_CLIPPED_POLICY.fusion_class(),
+		OpFusionClass::Pointwise
+	);
+
+	assert!(!OpFusionClass::Opaque.is_region_admitted());
+	assert!(!OpFusionClass::Effect.is_region_admitted());
+	for class in [
+		OpFusionClass::Pointwise,
+		OpFusionClass::Broadcast,
+		OpFusionClass::Gather,
+		OpFusionClass::Reduce,
+		OpFusionClass::Scan,
+		OpFusionClass::Gemm,
+		OpFusionClass::Conv,
+		OpFusionClass::Attention,
+	] {
+		assert!(class.is_region_admitted(), "{class:?}");
+	}
 }

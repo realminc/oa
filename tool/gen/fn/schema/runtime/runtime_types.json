@@ -68,6 +68,12 @@
 					"doc": ""
 				},
 				{
+					"name": "local_memory_unified",
+					"type": "bool",
+					"visibility": "pub(crate)",
+					"doc": "Whether device-local memory is host-visible on this device."
+				},
+				{
 					"name": "max_compute_shared_memory_bytes",
 					"type": "u32",
 					"visibility": "pub(crate)",
@@ -178,6 +184,12 @@
 				{
 					"name": "cooperative_matrix_tuple_count",
 					"type": "usize",
+					"visibility": "pub(crate)",
+					"doc": ""
+				},
+				{
+					"name": "storage_buffer_16_bit_access",
+					"type": "bool",
 					"visibility": "pub(crate)",
 					"doc": ""
 				}

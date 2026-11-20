@@ -1,7 +1,9 @@
 //! Private Vulkan Video profile, format, and StdVideo translation.
 
-use crate::runtime::device::NativeFlagBits;
-use crate::runtime::device::video::*;
+use crate::runtime::{DevicePhysical, Instance, device::NativeFlagBits};
+use crate::{Error, Result, video};
+
+const MAX_VIDEO_FORMATS: u32 = 256;
 
 pub(super) struct DecodeCapabilityQuery {
 	pub(super) capabilities: video::VideoDecodeCapabilities,

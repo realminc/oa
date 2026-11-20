@@ -17,7 +17,7 @@ const ANNEX_B_START_CODE: [u8; 4] = [0, 0, 0, 1];
 pub struct NalUnit<'a> {
 	nal_unit_type: u8,
 	reference_idc: u8,
-	payload: &'a [u8],
+	bytes: &'a [u8],
 	start_code_offset: Option<usize>,
 	start_code_len: usize,
 }
@@ -35,7 +35,7 @@ impl<'a> NalUnit<'a> {
 		Ok(Self {
 			nal_unit_type: header & 0x1f,
 			reference_idc: (header >> 5) & 0x03,
-			payload,
+			bytes: payload,
 			start_code_offset: None,
 			start_code_len: 0,
 		})
@@ -53,7 +53,16 @@ impl<'a> NalUnit<'a> {
 
 	/// Return the borrowed payload including its NAL header byte.
 	pub const fn payload(self) -> &'a [u8] {
-		self.payload
+		self.bytes.split_at(self.start_code_len).1
+	}
+
+	/// Borrow the coded unit with the three-byte prefix consumed by Vulkan Video.
+	pub(super) fn prefixed_slice(self) -> Result<&'a [u8]> {
+		match self.start_code_len {
+			3 => Ok(self.bytes),
+			4 => Ok(&self.bytes[1..]),
+			_ => Err(Error::internal("coded slice has no Annex-B prefix")),
+		}
 	}
 
 	/// Return the source Annex-B start-code byte offset, when parsed from a stream.
@@ -83,6 +92,7 @@ pub fn parse_nal_annex_b(bytes: &[u8]) -> Vec<NalUnit<'_>> {
 		let next = find_start_code(bytes, payload_start);
 		let payload_end = next.map_or(bytes.len(), |(offset, _)| offset);
 		if let Ok(mut unit) = NalUnit::new_from_h264_payload(&bytes[payload_start..payload_end]) {
+			unit.bytes = &bytes[current..payload_end];
 			unit.start_code_offset = Some(current);
 			unit.start_code_len = prefix_len;
 			units.push(unit);
@@ -106,7 +116,7 @@ pub fn emit_nal_annex_b(units: &[NalUnit<'_>]) -> Result<Vec<u8>> {
 	let total = units.iter().try_fold(0_usize, |total, unit| {
 		total
 			.checked_add(ANNEX_B_START_CODE.len())
-			.and_then(|total| total.checked_add(unit.payload.len()))
+			.and_then(|total| total.checked_add(unit.payload().len()))
 			.ok_or_else(|| Error::invalid_argument("Annex-B output size overflows usize"))
 	})?;
 	let mut output = Vec::new();
@@ -115,7 +125,7 @@ pub fn emit_nal_annex_b(units: &[NalUnit<'_>]) -> Result<Vec<u8>> {
 		.map_err(|_| Error::resource_exhausted("Annex-B output allocation failed"))?;
 	for unit in units {
 		output.extend_from_slice(&ANNEX_B_START_CODE);
-		output.extend_from_slice(unit.payload);
+		output.extend_from_slice(unit.payload());
 	}
 	Ok(output)
 }
@@ -165,7 +175,7 @@ fn extract_first_h264(bytes: &[u8], nal_unit_type: u8) -> Option<Vec<u8>> {
 	parse_nal_annex_b(bytes)
 		.into_iter()
 		.find(|unit| unit.nal_unit_type == nal_unit_type)
-		.map(|unit| unit.payload.to_vec())
+		.map(|unit| unit.payload().to_vec())
 }
 
 fn extract_first_h265(bytes: &[u8], nal_unit_type: u8) -> Option<Vec<u8>> {

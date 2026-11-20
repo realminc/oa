@@ -6,7 +6,7 @@
 
 use std::{
 	fs::File,
-	io::{Read, Seek, SeekFrom},
+	io::{self, BufReader, Read, Seek, SeekFrom},
 	path::Path,
 };
 
@@ -46,14 +46,50 @@ struct CodecConfig {
 	decode_profile: Option<VideoDecodeProfile>,
 }
 
+struct IndexReader<'a> {
+	reader: BufReader<&'a mut File>,
+	position: u64,
+}
+
+impl IndexReader<'_> {
+	fn read_exact(&mut self, bytes: &mut [u8]) -> io::Result<()> {
+		let end = self
+			.position
+			.checked_add(bytes.len() as u64)
+			.ok_or_else(|| io::Error::other("Matroska read position overflow"))?;
+		self.reader.read_exact(bytes)?;
+		self.position = end;
+		Ok(())
+	}
+
+	fn seek(&mut self, offset: u64) -> Result<()> {
+		// Relative seeks within the buffer avoid a syscall per EBML element.
+		let displacement = i128::from(offset) - i128::from(self.position);
+		if let Ok(displacement) = i64::try_from(displacement) {
+			self.reader.seek_relative(displacement)
+		} else {
+			self.reader.seek(SeekFrom::Start(offset)).map(|_| ())
+		}
+		.map_err(|source| Error::io("Matroska seek", source))?;
+		self.position = offset;
+		Ok(())
+	}
+}
+
 pub(super) fn parse(file: &mut File, file_size: u64, path: &Path) -> Result<ParsedMovie> {
-	seek(file, 0)?;
+	file
+		.seek(SeekFrom::Start(0))
+		.map_err(|source| Error::io("Matroska seek", source))?;
+	let file = &mut IndexReader {
+		reader: BufReader::new(file),
+		position: 0,
+	};
 	let header = read_element(file, file_size)?
 		.ok_or_else(|| Error::data_loss("Matroska EBML header is absent"))?;
 	if header.id != 0x1a45_dfa3 {
 		return Err(Error::data_loss("Matroska EBML header is absent"));
 	}
-	seek(file, header.end)?;
+	file.seek(header.end)?;
 	let segment =
 		read_element(file, file_size)?.ok_or_else(|| Error::data_loss("Matroska segment is absent"))?;
 	if segment.id != 0x1853_8067 {
@@ -63,7 +99,7 @@ pub(super) fn parse(file: &mut File, file_size: u64, path: &Path) -> Result<Pars
 	let mut track = None;
 	let mut track_count = 0_u32;
 	let mut clusters = Vec::new();
-	seek(file, segment.data_offset)?;
+	file.seek(segment.data_offset)?;
 	while let Some(element) = read_element(file, segment.end)? {
 		match element.id {
 			0x1549_a966 => parse_info(file, element, &mut timecode_scale)?,
@@ -81,7 +117,7 @@ pub(super) fn parse(file: &mut File, file_size: u64, path: &Path) -> Result<Pars
 			}
 			_ => {}
 		}
-		seek(file, element.end)?;
+		file.seek(element.end)?;
 	}
 	let track = track.ok_or_else(|| Error::data_loss("Matroska has no video track"))?;
 	if track.number == 0 || track.width == 0 || track.height == 0 || timecode_scale == 0 {
@@ -198,7 +234,10 @@ fn codec_config(track: &Track) -> Result<CodecConfig> {
 	}
 }
 
-fn vp9_profile(file: &mut File, samples: &[Sample]) -> Result<Option<VideoDecodeProfile>> {
+fn vp9_profile(
+	file: &mut IndexReader<'_>,
+	samples: &[Sample],
+) -> Result<Option<VideoDecodeProfile>> {
 	let Some(sample) = samples.iter().find(|sample| sample.keyframe) else {
 		return Ok(None);
 	};
@@ -207,7 +246,7 @@ fn vp9_profile(file: &mut File, samples: &[Sample]) -> Result<Option<VideoDecode
 		.try_reserve_exact(sample.size as usize)
 		.map_err(|_| Error::resource_exhausted("Matroska VP9 profile packet allocation failed"))?;
 	bytes.resize(sample.size as usize, 0);
-	seek(file, sample.offset)?;
+	file.seek(sample.offset)?;
 	file
 		.read_exact(&mut bytes)
 		.map_err(|source| Error::io("Matroska VP9 profile packet read", source))?;
@@ -244,24 +283,24 @@ fn vp9_profile(file: &mut File, samples: &[Sample]) -> Result<Option<VideoDecode
 	}))
 }
 
-fn parse_info(file: &mut File, parent: Element, scale: &mut u64) -> Result<()> {
-	seek(file, parent.data_offset)?;
+fn parse_info(file: &mut IndexReader<'_>, parent: Element, scale: &mut u64) -> Result<()> {
+	file.seek(parent.data_offset)?;
 	while let Some(element) = read_element(file, parent.end)? {
 		if element.id == 0x002a_d7b1 {
 			*scale = read_unsigned(file, element)?;
 		}
-		seek(file, element.end)?;
+		file.seek(element.end)?;
 	}
 	Ok(())
 }
 
 fn parse_tracks(
-	file: &mut File,
+	file: &mut IndexReader<'_>,
 	parent: Element,
 	selected: &mut Option<Track>,
 	count: &mut u32,
 ) -> Result<()> {
-	seek(file, parent.data_offset)?;
+	file.seek(parent.data_offset)?;
 	while let Some(element) = read_element(file, parent.end)? {
 		if element.id == 0xae {
 			*count = count
@@ -272,14 +311,14 @@ fn parse_tracks(
 				*selected = Some(track);
 			}
 		}
-		seek(file, element.end)?;
+		file.seek(element.end)?;
 	}
 	Ok(())
 }
 
-fn parse_track(file: &mut File, parent: Element) -> Result<Track> {
+fn parse_track(file: &mut IndexReader<'_>, parent: Element) -> Result<Track> {
 	let mut track = Track::default();
-	seek(file, parent.data_offset)?;
+	file.seek(parent.data_offset)?;
 	while let Some(element) = read_element(file, parent.end)? {
 		match element.id {
 			0xd7 => track.number = read_unsigned(file, element)?,
@@ -302,13 +341,13 @@ fn parse_track(file: &mut File, parent: Element) -> Result<Track> {
 			0xe0 => parse_video(file, element, &mut track)?,
 			_ => {}
 		}
-		seek(file, element.end)?;
+		file.seek(element.end)?;
 	}
 	Ok(track)
 }
 
-fn parse_video(file: &mut File, parent: Element, track: &mut Track) -> Result<()> {
-	seek(file, parent.data_offset)?;
+fn parse_video(file: &mut IndexReader<'_>, parent: Element, track: &mut Track) -> Result<()> {
+	file.seek(parent.data_offset)?;
 	while let Some(element) = read_element(file, parent.end)? {
 		match element.id {
 			0xb0 => {
@@ -321,33 +360,33 @@ fn parse_video(file: &mut File, parent: Element, track: &mut Track) -> Result<()
 			}
 			_ => {}
 		}
-		seek(file, element.end)?;
+		file.seek(element.end)?;
 	}
 	Ok(())
 }
 
 fn parse_cluster(
-	file: &mut File,
+	file: &mut IndexReader<'_>,
 	parent: Element,
 	track: &Track,
 	scale: u64,
 	samples: &mut Vec<Sample>,
 ) -> Result<()> {
 	let mut cluster_timecode = 0_u64;
-	seek(file, parent.data_offset)?;
+	file.seek(parent.data_offset)?;
 	while let Some(element) = read_element(file, parent.end)? {
 		match element.id {
 			0xe7 => cluster_timecode = read_unsigned(file, element)?,
 			0xa3 => parse_simple_block(file, element, track, scale, cluster_timecode, samples)?,
 			_ => {}
 		}
-		seek(file, element.end)?;
+		file.seek(element.end)?;
 	}
 	Ok(())
 }
 
 fn parse_simple_block(
-	file: &mut File,
+	file: &mut IndexReader<'_>,
 	block: Element,
 	track: &Track,
 	scale: u64,
@@ -407,10 +446,8 @@ fn parse_simple_block(
 	Ok(())
 }
 
-fn read_element(file: &mut File, limit: u64) -> Result<Option<Element>> {
-	let start = file
-		.stream_position()
-		.map_err(|source| Error::io("Matroska position", source))?;
+fn read_element(file: &mut IndexReader<'_>, limit: u64) -> Result<Option<Element>> {
+	let start = file.position;
 	if start == limit {
 		return Ok(None);
 	}
@@ -419,9 +456,7 @@ fn read_element(file: &mut File, limit: u64) -> Result<Option<Element>> {
 	}
 	let (id, _, _) = read_vint(file, true)?;
 	let (size, _, unknown) = read_vint(file, false)?;
-	let data_offset = file
-		.stream_position()
-		.map_err(|source| Error::io("Matroska position", source))?;
+	let data_offset = file.position;
 	if data_offset > limit {
 		return Err(Error::data_loss("Matroska element header exceeds parent"));
 	}
@@ -442,7 +477,7 @@ fn read_element(file: &mut File, limit: u64) -> Result<Option<Element>> {
 	}))
 }
 
-fn read_vint(file: &mut File, keep_marker: bool) -> Result<(u64, u64, bool)> {
+fn read_vint(file: &mut IndexReader<'_>, keep_marker: bool) -> Result<(u64, u64, bool)> {
 	let mut first = [0_u8; 1];
 	file
 		.read_exact(&mut first)
@@ -469,7 +504,7 @@ fn read_vint(file: &mut File, keep_marker: bool) -> Result<(u64, u64, bool)> {
 	Ok((value, length, unknown))
 }
 
-fn read_unsigned(file: &mut File, element: Element) -> Result<u64> {
+fn read_unsigned(file: &mut IndexReader<'_>, element: Element) -> Result<u64> {
 	let size = element.end - element.data_offset;
 	if size == 0 || size > 8 {
 		return Err(Error::data_loss(
@@ -487,12 +522,12 @@ fn read_unsigned(file: &mut File, element: Element) -> Result<u64> {
 	Ok(value)
 }
 
-fn read_string(file: &mut File, element: Element) -> Result<String> {
+fn read_string(file: &mut IndexReader<'_>, element: Element) -> Result<String> {
 	String::from_utf8(read_bytes(file, element)?)
 		.map_err(|_| Error::data_loss("Matroska codec id is not UTF-8"))
 }
 
-fn read_bytes(file: &mut File, element: Element) -> Result<Vec<u8>> {
+fn read_bytes(file: &mut IndexReader<'_>, element: Element) -> Result<Vec<u8>> {
 	let size = usize::try_from(element.end - element.data_offset)
 		.map_err(|_| Error::out_of_range("Matroska field exceeds usize"))?;
 	let mut bytes = Vec::new();
@@ -504,11 +539,4 @@ fn read_bytes(file: &mut File, element: Element) -> Result<Vec<u8>> {
 		.read_exact(&mut bytes)
 		.map_err(|source| Error::io("Matroska field read", source))?;
 	Ok(bytes)
-}
-
-fn seek(file: &mut File, offset: u64) -> Result<()> {
-	file
-		.seek(SeekFrom::Start(offset))
-		.map_err(|source| Error::io("Matroska seek", source))?;
-	Ok(())
 }

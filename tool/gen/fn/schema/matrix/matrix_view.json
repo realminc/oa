@@ -13,6 +13,7 @@
 	"operations": [
 		{
 			"name": "reshape",
+			"fusion_class": "gather",
 			"differentiation": "reverse",
 			"metadata_only": true,
 			"autograd": {

@@ -48,6 +48,16 @@ pub(super) struct JitFusion {
 	/// `None` marks an admission that failed this session — compile, ABI,
 	/// layout or pipeline creation — so it is never retried.
 	pipelines: HashMap<Vec<u8>, Option<Arc<ComputePipeline>>>,
+	/// `true` once `.vkcache` block-artifact sections have been replayed;
+	/// restore runs once on the first block admission that can open the
+	/// compiler (compiler-version invalidation needs its identity).
+	block_restored: bool,
+	/// Validated block SPIR-V keyed by `block_key` — compiled this
+	/// session or restored from `.vkcache`; persisted at Engine drop.
+	block_artifacts: BTreeMap<Vec<u8>, BlockArtifact>,
+	/// Compiler identity recorded with block artifacts; empty until the
+	/// block compiler first opens.
+	block_compiler_version: String,
 	/// Per-signature route measurements and the hysteresis selection they
 	/// drive, keyed by `jit::signature_key` of the canonical program.
 	observations: BTreeMap<u64, RouteObservation>,
@@ -66,6 +76,9 @@ impl JitFusion {
 			compiler: None,
 			artifacts: JitArtifacts::new(),
 			pipelines: HashMap::new(),
+			block_restored: false,
+			block_artifacts: BTreeMap::new(),
+			block_compiler_version: String::new(),
 			observations: BTreeMap::new(),
 			pending: VecDeque::new(),
 			worker: None,
@@ -137,6 +150,133 @@ impl JitFusion {
 		}
 		self.queue_compile(census, program, bounded);
 		None
+	}
+
+	/// Admit a tile-template `BlockProgram` through the same pipeline table
+	/// the elementwise specializations use (OA-CC-13). Compilation is
+	/// synchronous — the experimental `OA_TILE_GEMM` route admits once per
+	/// program key and caches every failure mode negative, so a hot
+	/// dispatch never re-enters the compiler. Route observations do not
+	/// apply: candidate selection is an OA-CC-12 deliverable.
+	pub(super) fn admit_block(
+		&mut self,
+		device: &Device,
+		program: &crate::runtime::dna::ir::tile::BlockProgram,
+	) -> Option<Vec<u8>> {
+		let census = device.fusion_census();
+		let bounded = cfg!(oa_profile = "compatibility");
+		let key = block_key(program, bounded);
+		self.restore_once(device);
+		self.restore_blocks_once(device);
+		self.drain_pending();
+		if matches!(
+			jit_route_override(),
+			Some(JitRouteOverride::Tape) | Some(JitRouteOverride::Unfused)
+		) {
+			census.jit(JitOutcome::Disabled);
+			return None;
+		}
+		// OA-CC-12: measured incumbent-vs-tile selection. The hysteresis
+		// policy probes the losing route at a bounded cadence; a declined
+		// admission lets the canonical kernel run so its timing records
+		// under the node's `fusion_signature`.
+		if jit_route_override() != Some(JitRouteOverride::Specialized)
+			&& let Some(observation) = self.observation_mut(block_signature(program))
+		{
+			observation.records = observation.records.saturating_add(1);
+			if !select_route(observation, true) {
+				census.jit(JitOutcome::PolicyTape);
+				return None;
+			}
+		}
+		if let Some(slot) = self.pipelines.get(&key) {
+			census.jit(if slot.is_some() {
+				JitOutcome::Reused
+			} else {
+				JitOutcome::CachedNegative
+			});
+			return slot.is_some().then_some(key);
+		}
+		if self.pipelines.len() >= MAX_PIPELINE_ENTRIES {
+			census.jit(JitOutcome::Bound);
+			return None;
+		}
+		// Block-aware push ABI: the reflected push range must equal the
+		// program's `buffers + u32 scalars + f32 scalars` u32 fields —
+		// the record-time substitute writes exactly that. The program is
+		// the authority; restored words are re-checked against it here.
+		let expected_push =
+			(program.bindings.len() + program.push_scalars.len() + program.push_f32_scalars.len()) as u32
+				* 4;
+		let pipeline = (|| {
+			let words = match self.block_artifacts.get(&key) {
+				Some(artifact) => artifact.words.clone(),
+				None => {
+					let source = program.slang_source(bounded).ok()?;
+					let words = self
+						.block_compiler()?
+						.compile_source(&source, bounded)
+						.ok()?;
+					crate::runtime::dna::compiler::validate_with_spirv_tools(&words, bounded).ok()?;
+					if self.block_artifacts.len() < MAX_PIPELINE_ENTRIES {
+						self.block_artifacts.insert(
+							key.clone(),
+							BlockArtifact {
+								words: words.clone(),
+								push_bytes: expected_push,
+								bindings: program.bindings.len() as u32,
+								lanes: program.shape.lanes,
+							},
+						);
+					}
+					words
+				}
+			};
+			if crate::runtime::dna::kernel::reflect_push_constant_size(&words).ok()? != expected_push {
+				return None;
+			}
+			let layout = if bounded {
+				device.bounded_descriptor_layout(program.bindings.len() as u32)
+			} else {
+				Some(device.descriptor_layout())
+			}?;
+			device.pipeline_cache().ok().and_then(|cache| {
+				ComputePipeline::from_words(
+					device.raw_arc(),
+					layout,
+					&words,
+					[program.shape.lanes, 1, 1],
+					device.physical().limits,
+					cache.raw(),
+				)
+				.ok()
+			})
+		})();
+		match pipeline {
+			Some(pipeline) => {
+				census.jit(JitOutcome::Admitted);
+				self.pipelines.insert(key.clone(), Some(Arc::new(pipeline)));
+				Some(key)
+			}
+			None => {
+				census.jit(JitOutcome::PipelineRejected);
+				self.negative_admission(key);
+				None
+			}
+		}
+	}
+
+	/// Lazily opened compiler for the synchronous block route. Unlike the
+	/// elementwise path the compiler stays resident here rather than
+	/// moving into a background worker.
+	fn block_compiler(&mut self) -> Option<&SlangCompiler> {
+		if let Some(Ok(compiler)) = &self.compiler {
+			self.block_compiler_version = compiler.version.clone();
+		}
+		if self.compiler.is_none() {
+			self.compiler = Some(SlangCompiler::open_default());
+		}
+		self.compiler.as_ref()?.as_ref().ok()
 	}
 
 	/// Queue `program` for background compilation. The canonical route keeps
@@ -356,6 +496,29 @@ impl JitFusion {
 		}
 	}
 
+	/// Read-only candidate evidence for CC-12 multi-candidate
+	/// selection: `(specialized median ns, contributing samples,
+	/// admission attempts)` for one signature — the live window first,
+	/// the `.vkcache` median while the window is still empty. Restores
+	/// run once like the admit path so a fresh session sees persisted
+	/// evidence without a prior admission.
+	pub(super) fn route_stats(
+		&mut self,
+		device: &Device,
+		signature: u64,
+	) -> (Option<u64>, usize, u64) {
+		self.restore_once(device);
+		self.restore_blocks_once(device);
+		match self.observations.get(&signature) {
+			Some(observation) => (
+				observation.specialized_p50(),
+				observation.specialized_ns.len() + observation.restored_samples as usize,
+				observation.records,
+			),
+			None => (None, 0, 0),
+		}
+	}
+
 	fn observation_mut(&mut self, signature: u64) -> Option<&mut RouteObservation> {
 		if !self.observations.contains_key(&signature)
 			&& self.observations.len() >= MAX_OBSERVED_SIGNATURES
@@ -407,6 +570,85 @@ impl JitFusion {
 		}
 	}
 
+	/// Replay persisted block artifacts once — compiler-version
+	/// invalidated, `spirv-val` revalidated, and push-size re-checked at
+	/// admission against the live program. Records failing any check are
+	/// skipped individually so one damaged entry cannot discard the rest.
+	fn restore_blocks_once(&mut self, device: &Device) {
+		if self.block_restored {
+			return;
+		}
+		self.block_restored = true;
+		let Some(compiler) = self.block_compiler() else {
+			return;
+		};
+		let version = compiler.version.clone().into_bytes();
+		let bounded = cfg!(oa_profile = "compatibility");
+		let scope = VkCacheScope::new(device.physical());
+		let file = match super::vkcache::VkCacheFile::open(&scope.path(), &scope) {
+			Ok(file) => file,
+			Err(_) => return,
+		};
+		let index = match file.section(super::vkcache::SECTION_BLOCK_ARTIFACT_INDEX) {
+			Some(section) if section.version == 1 => jit::decode_index(&section.bytes),
+			_ => return,
+		};
+		let table = match file.section(super::vkcache::SECTION_BLOCK_SPIRV_ARTIFACTS) {
+			Some(section) if section.version == 1 => jit::decode_spirv(&section.bytes),
+			_ => return,
+		};
+		let (index, table) = match (index, table) {
+			(Ok(index), Ok(table)) => (index, table),
+			_ => return,
+		};
+		let table: BTreeMap<u64, Vec<u32>> = table
+			.into_iter()
+			.map(|record| (record.artifact_id, record.words))
+			.collect();
+		let descriptor_profile = u32::from(bounded);
+		for record in index {
+			if self.block_artifacts.len() >= MAX_PIPELINE_ENTRIES {
+				break;
+			}
+			if record.descriptor_profile != descriptor_profile
+				|| record.emitter_version != BLOCK_EMITTER_VERSION
+				|| record.spirv_environment != u32::from(!bounded)
+				|| record.compiler != version
+				|| !(2..=64).contains(&record.binding_count)
+				|| record.push_bytes == 0
+				|| record.push_bytes % 4 != 0
+				|| !(32..=1024).contains(&record.workgroup_size)
+				|| record.flags != 0
+				|| jit::artifact_id(
+					&record.key,
+					record.descriptor_profile,
+					record.emitter_version,
+				) != record.artifact_id
+			{
+				continue;
+			}
+			let Some(words) = table.get(&record.artifact_id) else {
+				continue;
+			};
+			if crate::runtime::dna::compiler::validate_with_spirv_tools(words, bounded).is_err()
+				|| crate::runtime::dna::kernel::reflect_push_constant_size(words)
+					.map(|size| size != record.push_bytes)
+					.unwrap_or(true)
+			{
+				continue;
+			}
+			self.block_artifacts.insert(
+				record.key,
+				BlockArtifact {
+					words: words.clone(),
+					push_bytes: record.push_bytes,
+					bindings: record.binding_count,
+					lanes: record.workgroup_size,
+				},
+			);
+		}
+	}
+
 	/// Snapshot `.vkcache` section updates for the Engine's single atomic
 	/// commit; empty when no artifacts exist.
 	pub(super) fn section_updates(
@@ -418,6 +660,43 @@ impl JitFusion {
 		// snapshot; anything still compiling simply recompiles next process.
 		self.drain_compiles(census);
 		let mut updates = self.artifacts.section_updates().unwrap_or_default();
+		if !self.block_artifacts.is_empty() {
+			let bounded = cfg!(oa_profile = "compatibility");
+			let descriptor_profile = u32::from(bounded);
+			let mut index = Vec::with_capacity(self.block_artifacts.len());
+			let mut spirv = Vec::with_capacity(self.block_artifacts.len());
+			for (key, artifact) in &self.block_artifacts {
+				let artifact_id = jit::artifact_id(key, descriptor_profile, BLOCK_EMITTER_VERSION);
+				index.push(jit::JitIndexRecord {
+					artifact_id,
+					key: key.clone(),
+					descriptor_profile,
+					spirv_environment: u32::from(!bounded),
+					workgroup_size: artifact.lanes,
+					binding_count: artifact.bindings,
+					push_bytes: artifact.push_bytes,
+					emitter_version: BLOCK_EMITTER_VERSION,
+					compiler: self.block_compiler_version.clone().into_bytes(),
+					flags: 0,
+				});
+				spirv.push(jit::JitSpirvRecord {
+					artifact_id,
+					words: artifact.words.clone(),
+				});
+			}
+			if let (Ok(index), Ok(spirv)) = (jit::encode_index(&index), jit::encode_spirv(&spirv)) {
+				updates.push(super::vkcache::SectionUpdate::replace(
+					super::vkcache::SECTION_BLOCK_ARTIFACT_INDEX,
+					1,
+					index,
+				));
+				updates.push(super::vkcache::SectionUpdate::replace(
+					super::vkcache::SECTION_BLOCK_SPIRV_ARTIFACTS,
+					1,
+					spirv,
+				));
+			}
+		}
 		if !self.observations.is_empty() {
 			let records: Vec<RouteObservationRecord> = self
 				.observations
@@ -436,8 +715,48 @@ impl JitFusion {
 	}
 }
 
+/// Validated block-artifact words keyed by `block_key` — the SPIR-V
+/// plus the reflected push size the program must still match at
+/// admission. `bindings`/`lanes` live in the program, not the record.
+struct BlockArtifact {
+	words: Vec<u32>,
+	push_bytes: u32,
+	bindings: u32,
+	lanes: u32,
+}
+
+/// Emitter generation for persisted block artifacts — bump when the
+/// tile-IR emission contract changes so stale artifacts invalidate.
+const BLOCK_EMITTER_VERSION: u32 = 2;
+
 fn jit_missing(what: &str) -> crate::Error {
 	crate::Error::missing_capability(format!("JIT specialization {what} unavailable"))
+}
+
+/// Deterministic admission key for a tile-template program: template
+/// identity plus its full IR description and descriptor profile.
+/// Compiler-version invalidation and `.vkcache` persistence are
+/// OA-CC-12 artifact-key deliverables.
+pub(in crate::runtime) fn block_key(
+	program: &crate::runtime::dna::ir::tile::BlockProgram,
+	bounded: bool,
+) -> Vec<u8> {
+	let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+	for byte in format!("oa.tile.v1:{bounded}:{program:?}").bytes() {
+		hash ^= u64::from(byte);
+		hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+	}
+	format!("oa.tile.gemm_nt.{hash:016x}").into_bytes()
+}
+
+/// Route-observation signature for a block program: one problem class per
+/// (template, geometry, descriptor profile), persisted through the shared
+/// section-6 observation table. Shape scalars are push data, not program
+/// identity — all shapes under one tile class share the record.
+pub(in crate::runtime) fn block_signature(
+	program: &crate::runtime::dna::ir::tile::BlockProgram,
+) -> u64 {
+	jit::signature_key(&block_key(program, cfg!(oa_profile = "compatibility")))
 }
 
 #[cfg(test)]

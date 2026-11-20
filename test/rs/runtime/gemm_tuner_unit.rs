@@ -13,8 +13,8 @@
 
 use super::{
 	GemmEpilogue, GemmKernel, MatmulPreference, MatmulProblem, MatmulRouteValue, MatmulVariant,
-	VARIANTS, calculate_workspace_bytes, find_variant, lower_mat_mul_nt_plan, plan,
-	resolve_precision, route_key, variant_legal,
+	VARIANTS, calculate_workspace_bytes, find_variant, lower_mat_mul_nt_plan,
+	lower_mat_mul_nt_reduction, plan, resolve_precision, route_key, variant_legal,
 };
 use crate::runtime::{ComputeDispatch, EngineHandle, LogComponent, SemanticDispatch};
 use crate::{Engine, Error, Result};
@@ -465,8 +465,29 @@ fn benchmark_candidate(
 	let Ok(launch) = lower_mat_mul_nt_plan(&candidate_plan, problem) else {
 		return INVALID_MEASUREMENT_MS;
 	};
+	let Ok(reduction) = lower_mat_mul_nt_reduction(&candidate_plan, problem) else {
+		return INVALID_MEASUREMENT_MS;
+	};
 	// Problem-buffer slots [A, B, C, workspace, epilogue]; unused slots repeat
 	// the output so the epilogue launch can bind bias at index 4.
+	let Ok(workspace) = reduction.as_ref().map_or(Ok(None), |_| {
+		let elements = usize::try_from(candidate_plan.workspace_bytes / 4)
+			.map_err(|_| Error::invalid_argument("split-K workspace extent overflows usize"));
+		elements.and_then(|elements| {
+			crate::Matrix::allocate(
+				&engine.handle(),
+				vec![elements],
+				elements,
+				crate::DType::F32,
+			)
+			.map(Some)
+		})
+	}) else {
+		return INVALID_MEASUREMENT_MS;
+	};
+	let workspace_storage = workspace
+		.as_ref()
+		.map_or_else(|| output.storage(), |workspace| workspace.storage());
 	let epilogue_storage = bias
 		.as_ref()
 		.map_or_else(|| output.storage(), |bias| bias.storage());
@@ -474,14 +495,44 @@ fn benchmark_candidate(
 		a.storage(),
 		b.storage(),
 		output.storage(),
-		output.storage(),
+		workspace_storage,
 		epilogue_storage,
 	];
 	let Ok(buffers) = launch.bindings(&problem_buffers) else {
 		return INVALID_MEASUREMENT_MS;
 	};
+	let reduce_buffers = reduction
+		.as_ref()
+		.and_then(|reduction| reduction.bindings(&problem_buffers).ok());
 
 	let record_once = || -> Result<()> {
+		let semantic = SemanticDispatch {
+			contract: crate::core::operation::matrix::MAT_MUL_NT,
+			inputs: &[&a, &b],
+			outputs: &[&output],
+			attributes: &[],
+		};
+		if let (Some(reduction), Some(reduce_buffers)) = (&reduction, &reduce_buffers) {
+			return engine.handle().record_split_semantic(
+				&[
+					ComputeDispatch {
+						kernel: launch.kernel_id,
+						buffers: &buffers,
+						push_constants: &launch.push_constants[..launch.push_count],
+						workgroups: launch.grid,
+						indirect: None,
+					},
+					ComputeDispatch {
+						kernel: reduction.kernel_id,
+						buffers: reduce_buffers,
+						push_constants: &reduction.push_constants[..reduction.push_count],
+						workgroups: reduction.grid,
+						indirect: None,
+					},
+				],
+				semantic,
+			);
+		}
 		engine.handle().record_semantic(
 			ComputeDispatch {
 				kernel: launch.kernel_id,
@@ -490,12 +541,7 @@ fn benchmark_candidate(
 				workgroups: launch.grid,
 				indirect: None,
 			},
-			SemanticDispatch {
-				contract: crate::core::operation::matrix::MAT_MUL_NT,
-				inputs: &[&a, &b],
-				outputs: &[&output],
-				attributes: &[],
-			},
+			semantic,
 		)
 	};
 
@@ -569,33 +615,73 @@ fn validate_candidate(
 	let contract = engine.handle().matmul_device_contract();
 	let candidate_plan = plan(&contract, problem, &pinned, None)?;
 	let launch = lower_mat_mul_nt_plan(&candidate_plan, problem)?;
+	let reduction = lower_mat_mul_nt_reduction(&candidate_plan, problem)?;
 	// Problem-buffer slots [A, B, C, workspace, epilogue]; unused slots repeat
 	// the output so the epilogue launch can bind bias at index 4.
+	let workspace = reduction.as_ref().map_or(Ok(None), |_| {
+		let elements = usize::try_from(candidate_plan.workspace_bytes / 4)
+			.map_err(|_| Error::invalid_argument("split-K workspace extent overflows usize"))?;
+		crate::Matrix::allocate(
+			&engine.handle(),
+			vec![elements],
+			elements,
+			crate::DType::F32,
+		)
+		.map(Some)
+	})?;
+	let workspace_storage = workspace
+		.as_ref()
+		.map_or_else(|| output.storage(), |workspace| workspace.storage());
 	let epilogue_storage = bias
 		.as_ref()
 		.map_or_else(|| output.storage(), |bias| bias.storage());
-	let buffers = launch.bindings(&[
+	let problem_buffers = [
 		a.storage(),
 		b.storage(),
 		output.storage(),
-		output.storage(),
+		workspace_storage,
 		epilogue_storage,
-	])?;
-	engine.handle().record_semantic(
-		ComputeDispatch {
-			kernel: launch.kernel_id,
-			buffers: &buffers,
-			push_constants: &launch.push_constants[..launch.push_count],
-			workgroups: launch.grid,
-			indirect: None,
-		},
-		SemanticDispatch {
-			contract: crate::core::operation::matrix::MAT_MUL_NT,
-			inputs: &[&a, &b],
-			outputs: &[&output],
-			attributes: &[],
-		},
-	)?;
+	];
+	let buffers = launch.bindings(&problem_buffers)?;
+	let semantic = SemanticDispatch {
+		contract: crate::core::operation::matrix::MAT_MUL_NT,
+		inputs: &[&a, &b],
+		outputs: &[&output],
+		attributes: &[],
+	};
+	if let Some(reduction) = &reduction {
+		let reduce_buffers = reduction.bindings(&problem_buffers)?;
+		engine.handle().record_split_semantic(
+			&[
+				ComputeDispatch {
+					kernel: launch.kernel_id,
+					buffers: &buffers,
+					push_constants: &launch.push_constants[..launch.push_count],
+					workgroups: launch.grid,
+					indirect: None,
+				},
+				ComputeDispatch {
+					kernel: reduction.kernel_id,
+					buffers: &reduce_buffers,
+					push_constants: &reduction.push_constants[..reduction.push_count],
+					workgroups: reduction.grid,
+					indirect: None,
+				},
+			],
+			semantic,
+		)?;
+	} else {
+		engine.handle().record_semantic(
+			ComputeDispatch {
+				kernel: launch.kernel_id,
+				buffers: &buffers,
+				push_constants: &launch.push_constants[..launch.push_count],
+				workgroups: launch.grid,
+				indirect: None,
+			},
+			semantic,
+		)?;
+	}
 	engine.checkpoint()?.wait()?;
 	let output_data = output.read_f32()?;
 	validate_numerical_output(shape, &a_data, &b_data, &bias_data, &output_data)

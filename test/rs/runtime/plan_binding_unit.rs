@@ -84,3 +84,74 @@ fn binding_contract_describes_inputs_and_outputs() -> crate::Result<()> {
 	recaptured.validate_serialized_descriptor(&plan.serialize_descriptor()?)?;
 	Ok(())
 }
+
+fn alias_desc(
+	resource: u32,
+	byte_len: usize,
+	first: usize,
+	last: usize,
+	candidate: bool,
+) -> CapturedResourceDesc {
+	CapturedResourceDesc {
+		resource,
+		byte_len,
+		first_access: first,
+		last_access: last,
+		stable_replay_input: false,
+		stable_transient: true,
+		semantic_external: false,
+		observed_output: false,
+		capture_retained_owner_count: 0,
+		unaccounted_owner_count: 0,
+		alias_candidate: candidate,
+		alias_materialized: false,
+	}
+}
+
+#[test]
+fn alias_groups_only_join_disjoint_live_ranges() {
+	let resources = vec![
+		alias_desc(0, 16, 0, 3, true),
+		alias_desc(1, 8, 1, 2, true),
+		alias_desc(2, 4, 4, 6, true),
+		alias_desc(3, 8, 7, 9, true),
+	];
+	let groups = alias_groups(&resources);
+	for group in &groups {
+		for (i, a) in group.resources.iter().enumerate() {
+			for b in &group.resources[i + 1..] {
+				let (a, b) = (resources[*a], resources[*b]);
+				assert!(
+					a.first_access > b.last_access || a.last_access < b.first_access,
+					"alias group shares a physical allocation across overlapping live ranges"
+				);
+			}
+		}
+	}
+	// Resources 0/1 overlap and must not share a group; 2 and 3 chain after 0.
+	assert!(
+		groups
+			.iter()
+			.any(|g| g.resources.contains(&0) && g.resources.contains(&2))
+	);
+	assert!(
+		!groups
+			.iter()
+			.any(|g| g.resources.contains(&0) && g.resources.contains(&1))
+	);
+}
+
+#[test]
+fn alias_groups_size_and_membership_are_exact() {
+	let resources = vec![
+		alias_desc(0, 16, 0, 2, true),
+		alias_desc(1, 8, 3, 5, true),
+		alias_desc(2, 64, 0, 5, false),
+	];
+	let groups = alias_groups(&resources);
+	// The non-candidate is excluded entirely; the two disjoint candidates share one group.
+	assert_eq!(groups.len(), 1);
+	let shared = &groups[0];
+	assert_eq!(shared.resources, vec![0, 1]);
+	assert_eq!(shared.required_size, 16);
+}

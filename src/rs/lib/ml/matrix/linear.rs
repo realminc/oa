@@ -63,6 +63,20 @@ pub(in crate::ml) fn linear(input: &Matrix, weight: &Matrix, bias: &Matrix) -> R
 		DType::F32,
 	)?;
 	if output_count != 0 {
+		let contract = KernelId::MlLinearF32
+			.semantic_contract()
+			.ok_or_else(|| Error::internal("MlLinearF32 cannot own one semantic ML operation"))?;
+		if crate::runtime::record_linear_f16s(
+			input.engine_handle(),
+			input,
+			weight,
+			bias,
+			&output,
+			contract,
+			[batch, input_features, output_features],
+		)? {
+			return Ok(output);
+		}
 		let buffers = [
 			BufferBinding::read(input.storage()),
 			BufferBinding::read(weight.storage()),

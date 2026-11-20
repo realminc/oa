@@ -1136,36 +1136,40 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_pair, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_grouped_backward_prologue_pair, engine, {
-	// grouped_linear_m → silu_mul → grouped_linear_m on tape: the
-	// [silu_mul_backward → grouped data adjoint] pair fuses into
-	// grouped_backward_prologue while the grouped parameter adjoint keeps
-	// its republished upstream operand. 120 rows over three experts with
-	// offsets [0, 40, 80, 120] places two 32-row bands inside one expert
-	// and two across expert boundaries, covering the tiled and the
-	// mixed-expert fallback paths of the fused kernel.
-	const ROWS: usize = 120;
-	const WIDTH: usize = 2;
-	const HIDDEN: usize = 2;
-	const OUTPUT: usize = 3;
+// grouped_linear_m → silu_mul → grouped_linear_m on tape: the
+// [silu_mul_backward → grouped data adjoint] pair fuses into
+// grouped_backward_prologue while the grouped parameter adjoint keeps
+// its republished upstream operand. The oracle compares fused parameter
+// gradients bit-exact against an unfused capture.
+fn grouped_backward_prologue_oracle(
+	engine: &oa::Engine,
+	rows: usize,
+	width: usize,
+	hidden: usize,
+	output: usize,
+	offsets_values: &[u32],
+) -> oa::Result<()> {
+	let experts = offsets_values.len() - 1;
 	let pseudo = |index: usize, salt: usize| {
 		((index.wrapping_mul(31).wrapping_add(salt * 17) % 43) as f32 - 21.0) / 11.0
 	};
-	let input_values: Vec<f32> = (0..ROWS * WIDTH).map(|i| pseudo(i, 1)).collect();
-	let gate_up_weight: Vec<f32> = (0..3 * 2 * HIDDEN * WIDTH)
+	let input_values: Vec<f32> = (0..rows * width).map(|i| pseudo(i, 1)).collect();
+	let gate_up_weight: Vec<f32> = (0..experts * 2 * hidden * width)
 		.map(|i| pseudo(i, 2) * 0.4)
 		.collect();
-	let gate_up_bias: Vec<f32> = (0..3 * 2 * HIDDEN).map(|i| pseudo(i, 3) * 0.1).collect();
-	let down_weight: Vec<f32> = (0..3 * OUTPUT * HIDDEN)
+	let gate_up_bias: Vec<f32> = (0..experts * 2 * hidden)
+		.map(|i| pseudo(i, 3) * 0.1)
+		.collect();
+	let down_weight: Vec<f32> = (0..experts * output * hidden)
 		.map(|i| pseudo(i, 4) * 0.4)
 		.collect();
-	let down_bias: Vec<f32> = (0..3 * OUTPUT).map(|i| pseudo(i, 5) * 0.1).collect();
-	let target_values: Vec<f32> = (0..ROWS * OUTPUT).map(|i| pseudo(i, 6)).collect();
-	let offsets_values = [0_u32, 40, 80, 120];
-	let target = oa::Matrix::new_from_f32(&engine, [ROWS, OUTPUT], &target_values)?;
-	let offsets = oa::Matrix::new_from_slice(&engine, [4], &offsets_values)?;
-	let expert_ids = oa::Matrix::new_from_slice(&engine, [3], &[0_u32, 1, 2])?;
-	let input = oa::Matrix::new_from_f32(&engine, [ROWS, WIDTH], &input_values)?;
+	let down_bias: Vec<f32> = (0..experts * output).map(|i| pseudo(i, 5) * 0.1).collect();
+	let target_values: Vec<f32> = (0..rows * output).map(|i| pseudo(i, 6)).collect();
+	let target = oa::Matrix::new_from_f32(engine, [rows, output], &target_values)?;
+	let offsets = oa::Matrix::new_from_slice(engine, [offsets_values.len()], offsets_values)?;
+	let expert_ids =
+		oa::Matrix::new_from_slice(engine, [experts], &(0..experts as u32).collect::<Vec<_>>())?;
+	let input = oa::Matrix::new_from_f32(engine, [rows, width], &input_values)?;
 	let build = || -> oa::Result<(
 		oa::ml::nn::Embedding,
 		oa::ml::nn::Embedding,
@@ -1174,23 +1178,23 @@ test_vk!(epilogue_fuses_grouped_backward_prologue_pair, engine, {
 	)> {
 		Ok((
 			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-				&engine,
-				[3, 2 * HIDDEN * WIDTH],
+				engine,
+				[experts, 2 * hidden * width],
 				&gate_up_weight,
 			)?)?,
 			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-				&engine,
-				[3, 2 * HIDDEN],
+				engine,
+				[experts, 2 * hidden],
 				&gate_up_bias,
 			)?)?,
 			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-				&engine,
-				[3, OUTPUT * HIDDEN],
+				engine,
+				[experts, output * hidden],
 				&down_weight,
 			)?)?,
 			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-				&engine,
-				[3, OUTPUT],
+				engine,
+				[experts, output],
 				&down_bias,
 			)?)?,
 		))
@@ -1206,17 +1210,20 @@ test_vk!(epilogue_fuses_grouped_backward_prologue_pair, engine, {
 		let gate_up_weight = weights
 			.0
 			.forward(&expert_ids)?
-			.reshape([3, 2 * HIDDEN, WIDTH])?;
-		let gate_up_bias = weights.1.forward(&expert_ids)?.reshape([3, 2 * HIDDEN])?;
+			.reshape([experts, 2 * hidden, width])?;
+		let gate_up_bias = weights
+			.1
+			.forward(&expert_ids)?
+			.reshape([experts, 2 * hidden])?;
 		let down_weight = weights
 			.2
 			.forward(&expert_ids)?
-			.reshape([3, OUTPUT, HIDDEN])?;
-		let down_bias = weights.3.forward(&expert_ids)?.reshape([3, OUTPUT])?;
+			.reshape([experts, output, hidden])?;
+		let down_bias = weights.3.forward(&expert_ids)?.reshape([experts, output])?;
 		let gate_up =
 			oa::ml::matrix::grouped_linear_m(input, &gate_up_weight, &gate_up_bias, &offsets)?;
-		let hidden = oa::ml::matrix::silu_mul(&gate_up, HIDDEN)?;
-		oa::ml::matrix::grouped_linear_m(&hidden, &down_weight, &down_bias, &offsets)
+		let hidden_out = oa::ml::matrix::silu_mul(&gate_up, hidden)?;
+		oa::ml::matrix::grouped_linear_m(&hidden_out, &down_weight, &down_bias, &offsets)
 	};
 	let gradients = |weights: &(
 		oa::ml::nn::Embedding,
@@ -1262,7 +1269,9 @@ test_vk!(epilogue_fuses_grouped_backward_prologue_pair, engine, {
 				.as_str()
 				.unwrap()
 				.ends_with("grouped_backward_prologue.f32")),
-		"gated grouped adjoint must fuse into grouped_backward_prologue.f32"
+		"gated grouped adjoint must fuse into grouped_backward_prologue.f32 \
+		 at rows={rows} width={width} hidden={hidden} output={output} \
+		 offsets={offsets_values:?}"
 	);
 	assert!(
 		report["nodes"]
@@ -1280,11 +1289,48 @@ test_vk!(epilogue_fuses_grouped_backward_prologue_pair, engine, {
 	for (actual, expected) in actual.iter().flatten().zip(expected.iter().flatten()) {
 		assert_eq!(
 			actual, expected,
-			"fused grouped backward must match unfused"
+			"fused grouped backward must match unfused \
+			 at rows={rows} width={width} hidden={hidden} output={output} \
+			 offsets={offsets_values:?}"
 		);
 	}
 	Ok(())
+}
+
+test_vk!(epilogue_fuses_grouped_backward_prologue_pair, engine, {
+	// 120 rows over three experts with offsets [0, 40, 80, 120] places two
+	// 32-row bands inside one expert and two across expert boundaries,
+	// covering the single-expert and mixed-expert segment paths.
+	grouped_backward_prologue_oracle(&engine, 120, 2, 2, 3, &[0, 40, 80, 120])
 });
+
+test_vk!(
+	epilogue_fuses_grouped_backward_prologue_boundary_shapes,
+	engine,
+	{
+		// The fused kernel tiles rows by 32, output features by 16 and input
+		// features by 2×32 column groups; every case keeps the bit-exact
+		// gradient oracle while pushing a different boundary:
+		// - odd rows and offsets inside tiles, plus a 1-row tail tile;
+		// - input 33 and output features 20: masked tails inside one group;
+		// - input 65: second column group with a 1-wide tail;
+		// - an empty middle expert (offsets 16, 16) inside a mixed tile;
+		// - input 96 and output features 64: multiple column groups and
+		//   multiple full reduction tiles;
+		// - a single row, and rows 33 with trailing empty experts.
+		for (rows, width, hidden, output, offsets) in [
+			(97_usize, 2, 2, 3, &[0_u32, 33, 64, 97][..]),
+			(70, 33, 10, 5, &[0, 32, 64, 70]),
+			(48, 65, 4, 3, &[0, 16, 16, 48]),
+			(64, 96, 32, 4, &[0, 20, 44, 64]),
+			(1, 2, 2, 3, &[0, 1, 1, 1]),
+			(33, 64, 8, 3, &[0, 33, 33, 33]),
+		] {
+			grouped_backward_prologue_oracle(&engine, rows, width, hidden, output, offsets)?;
+		}
+		Ok(())
+	}
+);
 
 test_vk!(epilogue_fuses_residual_layer_norm_pair, engine, {
 	// [512, 4]: the elementwise add launches eight workgroups while the fused
@@ -3064,7 +3110,10 @@ fn submission_budget_splits_a_long_plan_and_preserves_outputs() -> oa::Result<()
 	let zero = oa::matrix::full(&engine, [4, 4], 0.0)?;
 	let (plan, output) = engine.capture(|| {
 		let mut acc = oa::matrix::mat_mul_nt(&zero, &zero)?;
-		for _ in 0..200 {
+		for index in 0..200 {
+			if index == 124 {
+				acc = acc.copy()?;
+			}
 			acc = oa::matrix::mat_mul_nt(&acc, &zero)?;
 		}
 		Ok(acc)
@@ -3088,11 +3137,177 @@ fn submission_budget_declines_a_single_over_budget_node() -> oa::Result<()> {
 	let _budget = ScopedVar::set("OA_SUBMISSION_BUDGET_MS", "0");
 	let engine = budget_engine()?;
 	let one = oa::matrix::ones(&engine, [2, 3])?;
-	let (plan, _output) = engine.capture(|| oa::matrix::add(&one, &one))?;
-	let error = engine
-		.submit(&plan)
-		.expect_err("a zero budget must decline every dispatch before submission");
-	assert_eq!(error.kind(), oa::ErrorKind::ResourceExhausted);
-	assert!(error.to_string().contains("submission budget"));
+	for (plan, _output) in [
+		engine.capture(|| oa::matrix::add(&one, &one))?,
+		engine.capture(|| one.copy())?,
+	] {
+		let error = engine
+			.submit(&plan)
+			.expect_err("a zero budget must decline every executable command before submission");
+		assert_eq!(error.kind(), oa::ErrorKind::ResourceExhausted);
+		assert!(error.to_string().contains("submission budget"));
+	}
 	Ok(())
 }
+
+test_vk!(indirect_dispatch_reports_the_recorded_dependency, engine, {
+	let input = oa::Matrix::new_from_f32(&engine, [4, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])?;
+	let mask = oa::Matrix::new_from_f32(&engine, [4], &[1.0, 0.0, 1.0, 0.0])?;
+	let base = oa::Matrix::new_from_f32(
+		&engine,
+		[4, 2],
+		&[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
+	)?;
+	let (plan, (output, args_copy)) = engine.capture(|| {
+		let packed = oa::matrix::compact_rows(&input, &mask)?;
+		// The preceding shader-storage read only exposes the writer to that
+		// stage. The indirect launch needs a separate dependency on it.
+		let args_copy = packed.dispatch_args.copy()?;
+		let output = oa::matrix::scatter_rows_indirect(&base, &packed.values, &packed)?;
+		Ok((output, args_copy))
+	})?;
+
+	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("indirect"))
+		.expect("valid executable graph report");
+	let nodes = report["nodes"].as_array().expect("executable nodes");
+	let dispatch = nodes
+		.iter()
+		.position(|node| node["indirect"] == true)
+		.expect("GPU-authored dispatch");
+	assert_eq!(nodes[dispatch]["queue"], "compute");
+	assert_eq!(report["stats"]["indirect_barriers"], 1);
+	let barriers = report["barriers"].as_array().expect("planned barriers");
+	let barrier = barriers
+		.iter()
+		.find(|barrier| {
+			barrier["destination_node"] == dispatch
+				&& barrier["destination_accesses"]
+					.as_array()
+					.is_some_and(|access| access.iter().any(|name| name == "indirect_command_read"))
+		})
+		.expect("dependency on the indirect argument writer");
+	assert_eq!(barrier["reason"], "read_after_write");
+	assert_eq!(barrier["source_nodes"], serde_json::json!([0, 0]));
+	assert_eq!(
+		barrier["destination_stages"],
+		serde_json::json!(["compute_shader", "draw_indirect"])
+	);
+	assert_eq!(
+		barrier["source_stages"],
+		serde_json::json!(["compute_shader"])
+	);
+	assert_eq!(
+		barrier["source_accesses"],
+		serde_json::json!(["shader_storage_write"])
+	);
+
+	for _ in 0..2 {
+		engine.submit(&plan)?.wait()?;
+		assert_eq!(args_copy.read::<u32>()?, [1, 1, 1]);
+		assert_eq!(
+			output.read_f32()?,
+			[11.0, 22.0, 30.0, 40.0, 55.0, 66.0, 70.0, 80.0]
+		);
+	}
+	Ok(())
+});
+
+test_vk!(
+	captured_buffer_copy_replays_between_compute_dispatches,
+	engine,
+	{
+		let left = oa::Matrix::new_from_f32(&engine, [3], &[2.0, -4.0, 8.0])?;
+		let right = oa::Matrix::new_from_f32(&engine, [3], &[1.0, 3.0, -2.0])?;
+		let (plan, (copy, output)) = engine.capture(|| {
+			let sum = oa::matrix::add(&left, &right)?;
+			let copy = sum.copy()?;
+			let output = oa::matrix::add(&copy, &right)?;
+			Ok((copy, output))
+		})?;
+
+		let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("transfer"))
+			.expect("valid executable graph report");
+		assert_eq!(report["stats"]["dispatches"], 2);
+		assert_eq!(report["stats"]["copies"], 1);
+		assert_eq!(report["nodes"][1]["kind"], "buffer_copy");
+		assert_eq!(report["nodes"][1]["copy_bytes"], 12);
+		// The copy carries the transfer role; without a dedicated transfer
+		// queue it resolves to the compute family, so neither barrier is a
+		// cross-queue edge.
+		assert_eq!(report["nodes"][1]["queue"], "transfer");
+		assert_eq!(report["nodes"][1]["family"], report["nodes"][0]["family"]);
+		assert_eq!(report["barriers"][0]["cross_queue"], false);
+		assert_eq!(report["barriers"][1]["cross_queue"], false);
+		assert_eq!(
+			report["nodes"][1]["semantic_operations"],
+			serde_json::json!([1])
+		);
+		assert_eq!(
+			report["barriers"][0]["source_stages"],
+			serde_json::json!(["compute_shader"])
+		);
+		assert_eq!(
+			report["barriers"][0]["destination_stages"],
+			serde_json::json!(["copy"])
+		);
+		assert_eq!(
+			report["barriers"][0]["destination_accesses"],
+			serde_json::json!(["transfer_read"])
+		);
+		assert_eq!(
+			report["barriers"][0]["source_queue"],
+			serde_json::json!("compute")
+		);
+		assert_eq!(
+			report["barriers"][0]["destination_queue"],
+			serde_json::json!("transfer")
+		);
+		assert_eq!(
+			report["barriers"][1]["source_stages"],
+			serde_json::json!(["copy"])
+		);
+		assert_eq!(
+			report["barriers"][1]["source_accesses"],
+			serde_json::json!(["transfer_write"])
+		);
+		assert_eq!(
+			report["barriers"][1]["destination_stages"],
+			serde_json::json!(["compute_shader"])
+		);
+
+		let descriptor = plan.serialize_descriptor()?;
+		plan.validate_serialized_descriptor(&descriptor)?;
+		for _ in 0..2 {
+			engine.submit(&plan)?.wait()?;
+			assert_eq!(copy.read_f32()?, [3.0, -1.0, 6.0]);
+			assert_eq!(output.read_f32()?, [4.0, 2.0, 4.0]);
+		}
+		assert_eq!(plan.diagnostics().command_cache_hit_count(), 1);
+		Ok(())
+	}
+);
+
+test_vk!(
+	buffer_copy_only_plan_rebinds_its_source_and_refreshes_mapping,
+	engine,
+	{
+		let source = oa::Matrix::new_from_f32(&engine, [3], &[1.0, -0.0, 3.0])?;
+		let replacement =
+			oa::Matrix::new_from_f32(&engine, [3], &[f32::from_bits(0x7fc0_1234), 5.0, 6.0])?;
+		let (mut plan, copy) = engine.capture(|| source.copy())?;
+		let report: serde_json::Value =
+			serde_json::from_str(&plan.debug_report_json("copy only")).expect("valid copy graph report");
+		assert_eq!(report["stats"]["dispatches"], 0);
+		assert_eq!(report["stats"]["copies"], 1);
+		assert_eq!(plan.diagnostics().push_byte_count(), 0);
+
+		engine.submit(&plan)?.wait()?;
+		assert_eq!(copy.read_f32()?[1].to_bits(), (-0.0_f32).to_bits());
+		plan.bind_matrix_input(&source, &replacement)?;
+		engine.submit_timed(&plan)?.wait()?;
+		let copied = copy.read_f32()?;
+		assert_eq!(copied[0].to_bits(), 0x7fc0_1234);
+		assert_eq!(copied[1..], [5.0, 6.0]);
+		Ok(())
+	}
+);

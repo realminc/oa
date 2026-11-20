@@ -60,12 +60,16 @@ pub(in crate::runtime) const SECTION_JIT_ARTIFACT_INDEX: u32 = 4;
 pub(in crate::runtime) const SECTION_JIT_SPIRV_ARTIFACTS: u32 = 5;
 /// Route-choice statistics; the producer arrives with adaptive routing.
 pub(in crate::runtime) const SECTION_FUSION_ROUTE_OBSERVATIONS: u32 = 6;
+/// Block-program (tile-IR) artifact identity/ABI records.
+pub(in crate::runtime) const SECTION_BLOCK_ARTIFACT_INDEX: u32 = 7;
+/// Block-program SPIR-V word table keyed by artifact identity.
+pub(in crate::runtime) const SECTION_BLOCK_SPIRV_ARTIFACTS: u32 = 8;
 
 /// Directory flag marking a section required for every reader.
 const SECTION_FLAG_REQUIRED: u32 = 1;
 
 /// Highest section type the current implementation understands.
-const SECTION_TYPE_MAX_KNOWN: u32 = SECTION_FUSION_ROUTE_OBSERVATIONS;
+const SECTION_TYPE_MAX_KNOWN: u32 = SECTION_BLOCK_SPIRV_ARTIFACTS;
 
 /// Cache scope derived from one selected physical device.
 ///

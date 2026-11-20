@@ -24,6 +24,7 @@ impl DeviceConfiguration {
 		let mut queue_family_indices = vec![physical.compute_queue_family];
 		for family in [
 			physical.graphics_queue_family,
+			physical.transfer_queue_family,
 			physical.video.decode_queue_family,
 			physical.video.encode_queue_family,
 		]
@@ -203,6 +204,10 @@ impl DeviceConfiguration {
 		vk::PhysicalDeviceVulkan11Features::new()
 			.set_shader_draw_parameters(u32::from(self.features.shader_draw_parameters))
 			.set_sampler_ycbcr_conversion(u32::from(self.features.sampler_ycbcr_conversion))
+			.set_storage_buffer16_bit_access(u32::from(self.features.storage_buffer_16_bit_access))
+			.set_uniform_and_storage_buffer16_bit_access(u32::from(
+				self.features.uniform_and_storage_buffer_16_bit_access,
+			))
 	}
 
 	fn features12(&self) -> vk::PhysicalDeviceVulkan12Features<'static> {
@@ -272,6 +277,17 @@ impl DeviceConfiguration {
 			&& !features.uniform_and_storage_buffer_8_bit_access
 		{
 			missing.push("uniformAndStorageBuffer8BitAccess");
+		}
+		if requirements.shader_float16 && !features.shader_float16 {
+			missing.push("shaderFloat16");
+		}
+		if requirements.storage_buffer_16_bit_access && !features.storage_buffer_16_bit_access {
+			missing.push("storageBuffer16BitAccess");
+		}
+		if requirements.uniform_and_storage_buffer_16_bit_access
+			&& !features.uniform_and_storage_buffer_16_bit_access
+		{
+			missing.push("uniformAndStorageBuffer16BitAccess");
 		}
 		if requirements.subgroup_basic
 			&& ((subgroup_stages & vk::ShaderStageFlagBits::COMPUTE_BIT)

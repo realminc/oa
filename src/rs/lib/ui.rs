@@ -336,6 +336,7 @@ impl<'engine> Ui<'engine> {
 					state.input.pointer_down = true;
 					state.input.l_pressed = true;
 					state.input.l_click_count = event.click_count;
+					state.press_origin = [event.mouse_x, event.mouse_y];
 				} else if event.button == 2 {
 					state.input.m_button = true;
 				} else if event.button == 3 {
@@ -344,7 +345,6 @@ impl<'engine> Ui<'engine> {
 				// If the pressed widget matches hovered, consume.
 				if state.hovered != 0 && event.button == 1 {
 					state.pressed = state.hovered;
-					state.press_origin = [event.mouse_x, event.mouse_y];
 					return true;
 				}
 			}
@@ -2238,6 +2238,48 @@ impl<'engine> Ui<'engine> {
 		self.image_at_channel(texture, rect, 0)
 	}
 
+	pub(crate) fn video_planes_at(
+		&mut self,
+		frame: &crate::VideoFrame,
+		dst: PixelRect,
+	) -> Result<()> {
+		use crate::video::{VideoColorMatrix, VideoColorRange};
+		let (planes, layout) = frame
+			.canvas_planes()
+			.ok_or_else(|| Error::invalid_argument("video canvas requires a staged plane buffer"))?;
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
+		let color = frame.color_info();
+		let matrix = match color.matrix() {
+			VideoColorMatrix::Bt601 => 0,
+			VideoColorMatrix::Bt709 | VideoColorMatrix::Unspecified => 1,
+			VideoColorMatrix::Bt2020 => 2,
+		};
+		let planes_idx = state.engine_handle.storage_descriptor_index(planes)?;
+		state.cmds.push(UiCmd::BlitYuv {
+			planes_idx,
+			dst,
+			push: [
+				layout.extent.width,
+				layout.extent.height,
+				dst.x as u32,
+				dst.y as u32,
+				dst.w,
+				dst.h,
+				layout.cb_offset,
+				layout.cr_offset,
+				layout.sample_bits,
+				u32::from(layout.interleaved),
+				matrix,
+				u32::from(color.range() == VideoColorRange::Full),
+			],
+		});
+		state.frame_storages.push(planes.clone());
+		Ok(())
+	}
+
 	/// Blit a sampled RGBA8 Texture, optionally exposing one channel as
 	/// grayscale.
 	///
@@ -2693,15 +2735,19 @@ impl<'engine> Ui<'engine> {
 		let clip = rect;
 
 		let hovered = point_in_rect(state.input.pointer_x, state.input.pointer_y, rect);
-		if hovered && state.input.pointer_down {
-			state.pressed = widget_id;
+		if state.input.l_pressed {
+			if point_in_rect(state.press_origin[0], state.press_origin[1], rect) {
+				state.pressed = widget_id;
+			} else if state.pressed == widget_id {
+				state.pressed = 0;
+			}
 		}
 		if hovered {
 			state.hovered = widget_id;
 		}
 		let dragging = state.pressed == widget_id && state.input.pointer_down;
 		let mut changed = false;
-		if dragging {
+		if dragging || (state.pressed == widget_id && state.input.l_released) {
 			let new_frac =
 				((state.input.pointer_x - rect.x as f32) / rect.w.max(1) as f32).clamp(0.0, 1.0);
 			if (*fraction - new_frac).abs() > 1e-5 {
@@ -5931,6 +5977,17 @@ impl<'engine> Ui<'engine> {
 					)?;
 				}
 			}
+			UiCmd::BlitYuv { dst, push, .. } => unsafe {
+				Self::record_draw(
+					device,
+					cmd_buf,
+					&state.pipelines.blit_yuv,
+					Self::scissor_rect(state, fullscreen.clip(dst)),
+					bytemuck_push(push),
+					3,
+					1,
+				)?;
+			},
 			UiCmd::BlitPlanar {
 				src_w,
 				src_h,

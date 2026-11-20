@@ -12,7 +12,10 @@
 
 use crate::{Error, Result};
 
-use super::super::{Buffer, BufferAccess, PushConstant, graph::executable::ResourceLifetime};
+use super::super::{
+	Buffer, BufferAccess, PushConstant,
+	graph::executable::{BufferUse, GraphNode, ResourceLifetime},
+};
 use super::ExecutionPlan;
 
 /// `"OAEXPLAN"` — identical to the donor descriptor magic.
@@ -180,14 +183,64 @@ fn write_executable_graph(plan: &ExecutionPlan, out: &mut DescriptorWriter) -> R
 	let lifetimes = plan.graph.resource_lifetimes();
 	let nodes = plan.graph.nodes();
 	out.count(nodes.len());
-	for (index, node) in nodes.iter().enumerate() {
-		out.string(node.operation);
+	for (index, graph_node) in nodes.iter().enumerate() {
+		let (operation, semantic_ops, contract) = graph_node.semantic();
+		out.string(operation);
 		out.count(plan.graph.barriers_before(index).len());
-		out.count(node.semantic_ops.len());
-		for operation in &node.semantic_ops {
+		out.count(semantic_ops.len());
+		for operation in semantic_ops {
 			out.u32(operation.index());
 		}
-		out.u64(node.op_contract_hash);
+		out.u64(contract);
+		let node = match graph_node {
+			GraphNode::Compute(node) => node,
+			GraphNode::BufferCopy(copy) => {
+				// Compute kernel IDs occupy the u16 range in the v1 descriptor.
+				out.u32(u32::MAX);
+				out.u64(copy.bytes);
+				write_buffer_uses(out, &lifetimes, &copy.buffers)?;
+				continue;
+			}
+			GraphNode::VideoDecode(video) => {
+				out.u32(u32::MAX - 2);
+				let descriptor = video.descriptor_words();
+				out.count(descriptor.len());
+				for word in descriptor {
+					out.u32(word);
+				}
+				continue;
+			}
+			GraphNode::VideoEncode(video) => {
+				out.u32(u32::MAX - 4);
+				let descriptor = video.descriptor_words();
+				out.count(descriptor.len());
+				for word in descriptor {
+					out.u32(word);
+				}
+				continue;
+			}
+			GraphNode::VideoEncodeInput(video) => {
+				out.u32(u32::MAX - 3);
+				let words = video.copy.descriptor_words();
+				out.count(video.copy.descriptor_words().count());
+				for word in words {
+					out.u32(word);
+				}
+				write_buffer_uses(out, &lifetimes, graph_node.buffers())?;
+				continue;
+			}
+
+			GraphNode::VideoPlanes(video) => {
+				out.u32(u32::MAX - 1);
+				let words = video.copy.descriptor_words();
+				out.count(video.copy.descriptor_words().count());
+				for word in words {
+					out.u32(word);
+				}
+				write_buffer_uses(out, &lifetimes, graph_node.buffers())?;
+				continue;
+			}
+		};
 		out.u32(u32::from(node.kernel as u16));
 		let artifact = node.kernel.artifact();
 		out.u64(artifact.content_id());
@@ -207,16 +260,7 @@ fn write_executable_graph(plan: &ExecutionPlan, out: &mut DescriptorWriter) -> R
 				out.u8(contract.workspace as u8);
 			}
 		}
-		out.count(node.buffers.len());
-		for buffer_use in &node.buffers {
-			out.u32(resource_id(&lifetimes, &buffer_use.buffer)?);
-			out.u64(buffer_use.buffer.byte_len() as u64);
-			out.u8(match buffer_use.access {
-				BufferAccess::Read => 0,
-				BufferAccess::Write => 1,
-				BufferAccess::ReadWrite => 2,
-			});
-		}
+		write_buffer_uses(out, &lifetimes, &node.buffers)?;
 		out.count(node.push_constants.len());
 		for constant in &node.push_constants {
 			match *constant {
@@ -241,6 +285,24 @@ fn write_executable_graph(plan: &ExecutionPlan, out: &mut DescriptorWriter) -> R
 				out.u64(indirect.offset);
 			}
 		}
+	}
+	Ok(())
+}
+
+fn write_buffer_uses(
+	out: &mut DescriptorWriter,
+	lifetimes: &[ResourceLifetime],
+	buffers: &[BufferUse],
+) -> Result<()> {
+	out.count(buffers.len());
+	for buffer_use in buffers {
+		out.u32(resource_id(lifetimes, &buffer_use.buffer)?);
+		out.u64(buffer_use.buffer.byte_len() as u64);
+		out.u8(match buffer_use.access {
+			BufferAccess::Read => 0,
+			BufferAccess::Write => 1,
+			BufferAccess::ReadWrite => 2,
+		});
 	}
 	Ok(())
 }

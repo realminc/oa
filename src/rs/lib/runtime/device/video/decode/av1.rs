@@ -2,9 +2,8 @@
 
 use crate::{Error, Result, video};
 
-use crate::runtime::{
-	device::video::DecodeBitstream, device::video::DecodeImageSet, device::video::DecodeSession,
-	device::video::decode_image_barrier, device::video::decode_image_subresource,
+use super::{
+	DecodeBitstream, DecodeImageSet, DecodeSession, decode_image_barrier, decode_image_subresource,
 };
 
 const LOGICAL_REFERENCE_COUNT: usize = 8;
@@ -50,7 +49,7 @@ impl DpbState {
 		})
 	}
 
-	pub fn plan_with_unavailable(
+	pub fn plan_in_place(
 		&mut self,
 		frame: &video::Av1FrameHeader,
 		unavailable: &[bool],
@@ -60,17 +59,6 @@ impl DpbState {
 				"AV1 unavailable-slot mask does not match DPB capacity",
 			));
 		}
-		let mut next = self.clone();
-		let plan = next.plan_in_place(frame, unavailable)?;
-		*self = next;
-		Ok(plan)
-	}
-
-	fn plan_in_place(
-		&mut self,
-		frame: &video::Av1FrameHeader,
-		unavailable: &[bool],
-	) -> Result<PicturePlan> {
 		if frame.show_existing_frame {
 			let logical = usize::from(frame.frame_to_show_map_idx);
 			let slot = self
@@ -509,6 +497,7 @@ pub(super) fn record_picture(
 	device: &vk::Device,
 	command_buffer: vk::CommandBuffer,
 	session: &DecodeSession,
+	status_pool: vk::QueryPool,
 	sequence: &video::Av1SequenceHeader,
 	frame: &video::Av1FrameHeader,
 	frame_header_offset: u32,
@@ -758,7 +747,7 @@ pub(super) fn record_picture(
 	// safety: every pointer chained into the coding scope borrows stack or vector
 	// storage that remains live and immovable through the decode command call.
 	unsafe {
-		device.cmd_reset_query_pool(command_buffer, session.result_status_pool, 0, 1)?;
+		device.cmd_reset_query_pool(command_buffer, status_pool, 0, 1)?;
 		device
 			.cmd_pipeline_barrier2(command_buffer, &dependency)
 			.map_err(Error::from)?;
@@ -782,14 +771,14 @@ pub(super) fn record_picture(
 	unsafe {
 		device.cmd_begin_query(
 			command_buffer,
-			session.result_status_pool,
+			status_pool,
 			0,
 			vk::QueryControlFlags::empty(),
 		)?;
 		device
 			.cmd_decode_video_khr(command_buffer, &decode_info)
 			.map_err(Error::from)?;
-		device.cmd_end_query(command_buffer, session.result_status_pool, 0)?;
+		device.cmd_end_query(command_buffer, status_pool, 0)?;
 		device.cmd_end_video_coding_khr(command_buffer, &vk::VideoEndCodingInfoKHR::new())?;
 	}
 	if release_for_readback {

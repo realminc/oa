@@ -9,7 +9,7 @@ pub(super) fn remove_emulation_prevention(data: &[u8]) -> Vec<u8> {
 			continue;
 		}
 		output.push(byte);
-		zeros = if byte == 0 { zeros + 1 } else { 0 };
+		zeros = if byte == 0 { (zeros + 1).min(2) } else { 0 };
 	}
 	output
 }
@@ -29,28 +29,24 @@ impl<'a> BitReader<'a> {
 	}
 
 	pub(super) fn read_bits(&mut self, count: usize) -> Result<u32> {
-		if count > 32
-			|| self
-				.bit
-				.checked_add(count)
-				.is_none_or(|end| end > self.data.len() * 8)
-		{
-			return Err(Error::data_loss("truncated codec bitstream"));
+		if count > 32 {
+			return Err(Error::data_loss("codec bit field exceeds u32"));
 		}
+		let start = self.bit;
+		self.skip_bits(count)?;
 		let mut value = 0_u32;
-		for _ in 0..count {
-			value = (value << 1) | u32::from((self.data[self.bit / 8] >> (7 - self.bit % 8)) & 1);
-			self.bit += 1;
+		for bit in start..self.bit {
+			value = (value << 1) | u32::from((self.data[bit / 8] >> (7 - bit % 8)) & 1);
 		}
 		Ok(value)
 	}
 
-	pub(super) fn skip_bits(&mut self, mut count: usize) -> Result<()> {
-		while count != 0 {
-			let chunk = count.min(32);
-			self.read_bits(chunk)?;
-			count -= chunk;
-		}
+	pub(super) fn skip_bits(&mut self, count: usize) -> Result<()> {
+		self.bit = self
+			.bit
+			.checked_add(count)
+			.filter(|end| end.div_ceil(8) <= self.data.len())
+			.ok_or_else(|| Error::data_loss("truncated codec bitstream"))?;
 		Ok(())
 	}
 
@@ -87,7 +83,7 @@ impl<'a> BitReader<'a> {
 		else {
 			return false;
 		};
-		let stop_bit = byte_index * 8 + (u8::BITS - 1 - byte.trailing_zeros()) as usize;
-		self.bit < stop_bit
+		let stop_in_byte = (u8::BITS - 1 - byte.trailing_zeros()) as usize;
+		(self.bit / 8, self.bit % 8) < (byte_index, stop_in_byte)
 	}
 }

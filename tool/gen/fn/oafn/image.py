@@ -13,6 +13,8 @@ from .wire import generate_type, render_dispatch_body, validate_dispatch_generat
 from .signature import operation_signature, signature_header
 from .util import IDENTIFIER, banner, require
 
+TILE_PROGRAM = re.compile(r"[a-z][a-z0-9_]*(\((true|false|0x[0-9a-fA-F]+|[0-9]+)(,\s*(true|false|0x[0-9a-fA-F]+|[0-9]+))*\))?")
+
 def validate_image_schema(schema: dict[str, Any]) -> None:
 	require(schema.get("schema_version") == 1, "Image schema_version must be 1")
 	require(schema.get("family") == "image", "Image family must be image")
@@ -84,7 +86,7 @@ def validate_image_schema(schema: dict[str, Any]) -> None:
 		where = f"Image contracts[{index}]"
 		require(isinstance(contract, dict), f"{where} must be an object")
 		require(
-			(set(contract) - {"python", "donor_op", "control_flow", "dnn"})
+			(set(contract) - {"python", "donor_op", "control_flow", "dnn", "fusion_class", "region_read", "tile_program"})
 			== {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes", "rust"},
 			f"{where} fields are incomplete or unknown",
 		)
@@ -99,6 +101,14 @@ def validate_image_schema(schema: dict[str, Any]) -> None:
 		require(contract["shape_rule"] == "explicit", f"{where}.shape_rule must be explicit")
 		require(contract["dtype_rule"] in {"f32", "explicit"}, f"{where}.dtype_rule is invalid")
 		validate_semantic_attributes(contract["attributes"], where)
+		require(
+			contract.get("region_read") in {"elementwise", "gather", "bordered"},
+			f"{where}.region_read must declare the input read pattern",
+		)
+		require(
+			contract.get("tile_program") is None or TILE_PROGRAM.fullmatch(contract["tile_program"]) is not None,
+			f"{where}.tile_program must name a BlockProgram factory call",
+		)
 	kernels = schema.get("kernels")
 	require(isinstance(kernels, list) and kernels, "Image kernels must be non-empty")
 	seen_ids: set[int] = set()

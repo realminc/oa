@@ -27,7 +27,7 @@ use crate::runtime::{
 	device::features::ExecutionProfile,
 	dna::{
 		ir::elementwise::{Instruction, MAX_OPERAND_SLOTS, MAX_STORE_SLOTS, Program, Source},
-		kernel::KernelId,
+		kernel::{KernelId, KernelRegionRead, KernelScalarTail, KernelTapeShape},
 	},
 	graph::executable::{BufferUse, ComputeNode, JitNode},
 	graph::semantic::SemanticOpId,
@@ -85,9 +85,16 @@ fn epilogue_fusion_disabled() -> bool {
 		|| std::env::var_os("OA_DISABLE_EPILOGUE_FUSION").is_some()
 }
 
-fn single_head_sdpa_fusion_enabled() -> bool {
-	SINGLE_HEAD_SDPA_FUSION_DEPTH.with(|depth| depth.get() != 0)
-		|| std::env::var_os("OA_ENABLE_SINGLE_HEAD_SDPA_FUSION").is_some()
+/// Per-device route record for the single-head SDPA merge, seeded at device
+/// creation. The route changed the canonical Byte-MoE trajectory on Xe and
+/// was net-negative on Haswell, so every current class seeds `false`; the
+/// env var and `SingleHeadSdpaFusionEnabled` stay as laboratory overrides.
+pub(in crate::runtime) fn single_head_sdpa_seed(_info: &crate::DeviceInfo) -> bool {
+	std::env::var_os("OA_ENABLE_SINGLE_HEAD_SDPA_FUSION").is_some()
+}
+
+fn single_head_sdpa_fusion_enabled(device: &Device) -> bool {
+	SINGLE_HEAD_SDPA_FUSION_DEPTH.with(|depth| depth.get() != 0) || device.single_head_sdpa_route()
 }
 
 /// `OA_DISABLE_FUSION_RULES=name1,name2` suppresses the named pair/merge
@@ -138,49 +145,10 @@ pub(in crate::runtime) fn tape_bound_seed(_info: &crate::DeviceInfo) -> u32 {
 	MAX_FUSION_ELEMENTS
 }
 
-const OP_GATHER: u32 = 4;
-const OP_ADD: u32 = 10;
-const OP_SUB: u32 = 11;
-const OP_MUL: u32 = 12;
-const OP_DIV: u32 = 13;
-const OP_POW: u32 = 14;
-const OP_MIN: u32 = 15;
-const OP_MAX: u32 = 16;
-const OP_NEG: u32 = 20;
-const OP_RECIP: u32 = 21;
-const OP_ABS: u32 = 22;
-const OP_EXP: u32 = 23;
-const OP_LOG: u32 = 24;
-const OP_SQRT: u32 = 25;
-const OP_SIN: u32 = 26;
-const OP_COS: u32 = 27;
-const OP_TANH: u32 = 28;
-const OP_SIGMOID: u32 = 30;
-const OP_RELU: u32 = 31;
-const OP_GELU: u32 = 32;
-const OP_SILU: u32 = 33;
-
-#[derive(Clone, Copy)]
-enum ElementwiseShape {
-	/// `[read, read, write]` buffers and one element-count push word.
-	Binary,
-	/// `[read, write]` buffers and one element-count push word.
-	Unary,
-	/// `[read, write]` buffers, element count plus an `f32` immediate.
-	Scalar,
-	Broadcast,
-	Gather,
-	BinaryScalar,
-}
-
-impl ElementwiseShape {
-	const fn read_count(self) -> usize {
-		match self {
-			Self::Binary | Self::Broadcast | Self::Gather | Self::BinaryScalar => 2,
-			_ => 1,
-		}
-	}
-}
+/// The fused-tape buffer/immediate shape a node presents — the
+/// schema-declared `tape_shape` generated as `KernelTapeShape`
+/// (OA-CC-34).
+type ElementwiseShape = KernelTapeShape;
 
 /// One recorded node decoded into the fused kernel's tape vocabulary.
 #[derive(Clone, Copy)]
@@ -189,54 +157,13 @@ struct NodeOp {
 	shape: ElementwiseShape,
 	element_count: u32,
 	scalar: f32,
+	extra: f32,
 	// Broadcast shape plus two input strides, or gather {rows,width,dtype}.
 	metadata: [u32; 25],
 }
 
 fn elementwise_op(kernel: KernelId) -> Option<(u32, ElementwiseShape)> {
-	Some(match kernel {
-		KernelId::MatrixAddBroadcastF32 | KernelId::MatrixBiasAddBroadcastF32 => {
-			(OP_ADD, ElementwiseShape::Broadcast)
-		}
-		KernelId::MatrixSubBroadcastF32 => (OP_SUB, ElementwiseShape::Broadcast),
-		KernelId::MatrixMulBroadcastF32 => (OP_MUL, ElementwiseShape::Broadcast),
-		KernelId::MatrixDivBroadcastF32 => (OP_DIV, ElementwiseShape::Broadcast),
-		KernelId::MatrixGatherF32 => (OP_GATHER, ElementwiseShape::Gather),
-		KernelId::MlEluBackwardF32 => (47, ElementwiseShape::BinaryScalar),
-		KernelId::MlLeakyReluBackwardF32 => (48, ElementwiseShape::BinaryScalar),
-		KernelId::MlReluBackwardF32 => (40, ElementwiseShape::Binary),
-		KernelId::MlGeluBackwardF32 => (41, ElementwiseShape::Binary),
-		KernelId::MlSiluBackwardF32 => (42, ElementwiseShape::Binary),
-		KernelId::MlTanhBackwardF32 => (43, ElementwiseShape::Binary),
-		KernelId::MlSigmoidBackwardF32 => (44, ElementwiseShape::Binary),
-		KernelId::MlSoftplusBackwardF32 => (45, ElementwiseShape::Binary),
-		KernelId::MlMishBackwardF32 => (46, ElementwiseShape::Binary),
-		KernelId::MatrixAddF32 => (OP_ADD, ElementwiseShape::Binary),
-		KernelId::MatrixSubF32 => (OP_SUB, ElementwiseShape::Binary),
-		KernelId::MatrixMulF32 => (OP_MUL, ElementwiseShape::Binary),
-		KernelId::MatrixDivF32 => (OP_DIV, ElementwiseShape::Binary),
-		KernelId::MatrixNegF32 => (OP_NEG, ElementwiseShape::Unary),
-		KernelId::MatrixAbsF32 => (OP_ABS, ElementwiseShape::Unary),
-		KernelId::MatrixLogF32 => (OP_LOG, ElementwiseShape::Unary),
-		KernelId::MatrixSqrtF32 => (OP_SQRT, ElementwiseShape::Unary),
-		KernelId::MatrixExpF32 => (OP_EXP, ElementwiseShape::Unary),
-		KernelId::MatrixSinF32 => (OP_SIN, ElementwiseShape::Unary),
-		KernelId::MatrixCosF32 => (OP_COS, ElementwiseShape::Unary),
-		KernelId::MatrixReciprocalF32 => (OP_RECIP, ElementwiseShape::Unary),
-		KernelId::MlTanhF32 => (OP_TANH, ElementwiseShape::Unary),
-		KernelId::MlSigmoidF32 => (OP_SIGMOID, ElementwiseShape::Unary),
-		KernelId::MlReluF32 => (OP_RELU, ElementwiseShape::Unary),
-		KernelId::MlGeluF32 => (OP_GELU, ElementwiseShape::Unary),
-		KernelId::MlSiluF32 => (OP_SILU, ElementwiseShape::Unary),
-		KernelId::MatrixScaleF32 => (OP_MUL, ElementwiseShape::Scalar),
-		KernelId::MatrixPowF32 => (OP_POW, ElementwiseShape::Scalar),
-		KernelId::MatrixAddScalarF32 => (OP_ADD, ElementwiseShape::Scalar),
-		KernelId::MatrixSubScalarF32 => (OP_SUB, ElementwiseShape::Scalar),
-		KernelId::MatrixDivScalarF32 => (OP_DIV, ElementwiseShape::Scalar),
-		KernelId::MatrixClampMinF32 => (OP_MAX, ElementwiseShape::Scalar),
-		KernelId::MatrixClampMaxF32 => (OP_MIN, ElementwiseShape::Scalar),
-		_ => return None,
-	})
+	kernel.tape_op()
 }
 
 /// Whether a kernel is the lowering-only fused elementwise interpreter.
@@ -254,8 +181,11 @@ pub(in crate::runtime) fn is_tape_binding(node: &ComputeNode, index: usize) -> b
 /// Buffers bound to fused dispatches. Tape source words bake the resolved
 /// storage-buffer index, so Core-profile identity replacements (plan input
 /// rebinding, alias arena materialization) must not swap them.
-pub(in crate::runtime) fn buffer_is_fused_binding(nodes: &[ComputeNode], buffer: &Buffer) -> bool {
-	nodes.iter().any(|node| {
+pub(in crate::runtime) fn buffer_is_fused_binding<'a>(
+	mut nodes: impl Iterator<Item = &'a ComputeNode>,
+	buffer: &Buffer,
+) -> bool {
+	nodes.any(|node| {
 		is_fused_chain_kernel(node.kernel)
 			&& node
 				.buffers
@@ -283,35 +213,54 @@ fn decode_node(node: &ComputeNode) -> Option<NodeOp> {
 	{
 		return None;
 	}
-	let scalar_pushes = usize::from(matches!(
-		shape,
-		ElementwiseShape::Scalar | ElementwiseShape::BinaryScalar
-	));
-	let push_count = match shape {
-		ElementwiseShape::Broadcast => 26,
-		ElementwiseShape::Gather => 4,
-		_ => 1 + scalar_pushes,
+	let (count, operands) = node.push_constants.split_first()?;
+	let operands = match (node.kernel, operands) {
+		// The shared image pixel kernel has an operation selector and
+		// four parameter slots. Check the selector before discarding it.
+		(KernelId::ImageClampF32, [PushConstant::U32(6), _, _, _, _]) => &operands[1..3],
+		(KernelId::ImageInvertF32, [PushConstant::U32(7), _, _, _, _]) => &operands[1..2],
+		(KernelId::ImageClampF32 | KernelId::ImageInvertF32, _) => return None,
+		(_, operands) => operands,
 	};
-	if node.push_constants.len() != push_count {
+	let operand_count = match shape {
+		ElementwiseShape::Broadcast => 25,
+		ElementwiseShape::Gather => 3,
+		ElementwiseShape::ScalarPair => 2,
+		ElementwiseShape::Scalar | ElementwiseShape::ScalarFirst | ElementwiseShape::BinaryScalar => 1,
+		ElementwiseShape::Binary | ElementwiseShape::Unary => 0,
+	};
+	if operands.len() != operand_count {
 		return None;
 	}
-	let element_count = match node.push_constants.first() {
-		Some(PushConstant::U32(count)) if *count > 0 => *count,
+	let element_count = match count {
+		PushConstant::U32(count) if *count > 0 => *count,
 		_ => return None,
 	};
-	let scalar = match (shape, node.push_constants.get(1)) {
-		(ElementwiseShape::Scalar | ElementwiseShape::BinaryScalar, Some(PushConstant::F32(value))) => {
-			*value
+	let (scalar, extra) = match (shape, operands) {
+		(ElementwiseShape::ScalarPair, [PushConstant::F32(min), PushConstant::F32(max)])
+			if min.is_finite() && max.is_finite() && min <= max =>
+		{
+			(*min, *max)
 		}
-		(ElementwiseShape::Scalar | ElementwiseShape::BinaryScalar, _) => return None,
-		(_, _) => 0.0,
+		(
+			ElementwiseShape::Scalar | ElementwiseShape::ScalarFirst | ElementwiseShape::BinaryScalar,
+			[PushConstant::F32(value)],
+		) => (*value, 0.0),
+		(
+			ElementwiseShape::ScalarPair
+			| ElementwiseShape::Scalar
+			| ElementwiseShape::ScalarFirst
+			| ElementwiseShape::BinaryScalar,
+			_,
+		) => return None,
+		(_, _) => (0.0, 0.0),
 	};
 	let mut metadata = [0u32; 25];
 	if matches!(
 		shape,
 		ElementwiseShape::Broadcast | ElementwiseShape::Gather
 	) {
-		for (word, push) in metadata.iter_mut().zip(&node.push_constants[1..]) {
+		for (word, push) in metadata.iter_mut().zip(operands) {
 			let PushConstant::U32(value) = push else {
 				return None;
 			};
@@ -345,6 +294,7 @@ fn decode_node(node: &ComputeNode) -> Option<NodeOp> {
 		shape,
 		element_count,
 		scalar,
+		extra,
 		metadata,
 	})
 }
@@ -387,25 +337,6 @@ fn storage_unobservable(refs: &[&Storage], buffer: &Buffer) -> bool {
 	internal > 0 && storage.owner_count() == internal
 }
 
-/// Whether replacing `sources` with `fused` hides no observable write: every
-/// buffer a source writes is either still written by a replacement node or
-/// owned by nothing outside the pending execution. In-graph readers are the
-/// matcher's responsibility; this closes the external-owner half of the proof.
-fn elided_writes_unobservable<'a>(
-	refs: &[&Storage],
-	sources: impl IntoIterator<Item = &'a ComputeNode>,
-	fused: &[&ComputeNode],
-) -> bool {
-	sources
-		.into_iter()
-		.flat_map(|node| node.buffers.iter())
-		.filter(|usage| usage.access != BufferAccess::Read)
-		.all(|usage| {
-			fused.iter().any(|node| node_writes(node, &usage.buffer))
-				|| storage_unobservable(refs, &usage.buffer)
-		})
-}
-
 /// Whether none of `slots` was already absorbed by an earlier lookahead match.
 /// A consumed slot either carries a deferred replacement or none at all, so
 /// absorbing it again would fuse its work twice or skip that replacement.
@@ -440,662 +371,14 @@ pub(in crate::runtime) fn fuse_epilogue_pairs(
 	if epilogue_fusion_disabled() {
 		return nodes;
 	}
-	let rl_fusion = std::env::var_os("OA_DISABLE_RL_FUSION").is_none();
-	let has_residual = device.require_kernel(KernelId::MlLinearResidualF32).is_ok();
-	let has_act = device.require_kernel(KernelId::MlLinearActF32).is_ok()
-		&& device.require_kernel(KernelId::MlLinearGatedActF32).is_ok();
-	let has_grouped_act = rl_fusion
-		&& device
-			.require_kernel(KernelId::MlGroupedLinearMActF32)
-			.is_ok();
-	let has_residual_norm = device
-		.require_kernel(KernelId::MlResidualLayerNormF32)
-		.is_ok();
-	let has_triple = device.require_kernel(KernelId::MlLinearTripleF32).is_ok();
-	let has_embedding_pair = device.require_kernel(KernelId::MlEmbeddingPairF32).is_ok();
-	let has_sum_axis_scale = device.require_kernel(KernelId::MlSumAxisScaleF32).is_ok();
-	let has_router = rl_fusion
-		&& device
-			.require_kernel(KernelId::MlMoeRouterSelectF32)
-			.is_ok();
-	let has_concat = rl_fusion && device.require_kernel(KernelId::MlLinearConcatF32).is_ok();
-	let has_small_sdpa = rl_fusion
-		&& device
-			.require_kernel(KernelId::MlSmallCausalSdpaF32)
-			.is_ok();
-	// The single-head route changes the canonical Byte-MoE training
-	// trajectory on Xe. Retain it only for explicit laboratory runs.
-	// The separate multi-head route retains its incumbent policy.
-	let has_single_head_sdpa = has_small_sdpa && single_head_sdpa_fusion_enabled();
-	let has_backward_prologue = device
-		.require_kernel(KernelId::MlLinearBackwardPrologueF32)
-		.is_ok();
-	let has_backward_norm = device
-		.require_kernel(KernelId::MlLinearBackwardNormF32)
-		.is_ok();
-	let has_backward_norm_add = device
-		.require_kernel(KernelId::MlLinearBackwardNormAddF32)
-		.is_ok();
-	let has_backward_bmm = device
-		.require_kernel(KernelId::MlLinearBackwardBmmChainF32)
-		.is_ok();
-	let has_grouped_backward = device
-		.require_kernel(KernelId::MlGroupedBackwardPrologueF32)
-		.is_ok();
-	let has_linear_residual_norm = device
-		.require_kernel(KernelId::MlLinearResidualNormF32)
-		.is_ok();
-	let has_linear_residual_act = device
-		.require_kernel(KernelId::MlLinearResidualActF32)
-		.is_ok();
-	let has_embedding_pair_norm = device
-		.require_kernel(KernelId::MlEmbeddingPairNormF32)
-		.is_ok();
-	let has_backward_norm_sum = device
-		.require_kernel(KernelId::MlLayerNormBackwardSumF32)
-		.is_ok();
-	let has_embedding_backward_sum = device
-		.require_kernel(KernelId::MlEmbeddingBackwardSumF32)
-		.is_ok();
-	let has_conv_1d_bias_tail = [
-		KernelId::MlConv1dBiasTransposeF32,
-		KernelId::MlConv1dBiasTransposeReluF32,
-		KernelId::MlConv1dBiasTransposeResidualReluF32,
-		KernelId::MlConv1dBiasTransposeNormF32,
-		KernelId::MlConv1dBiasTransposeNormReluF32,
-		KernelId::MlConv1dBiasCopyF32,
-	]
-	.iter()
-	.all(|kernel| device.require_kernel(*kernel).is_ok());
-	let has_conv_2d_relu = device.require_kernel(KernelId::MlConv2dReluF32).is_ok();
-	let has_max_pool_relu_backward = device
-		.require_kernel(KernelId::MlMaxPool2dReluBackwardF32)
-		.is_ok();
-	if !has_residual
-		&& !has_act
-		&& !has_grouped_act
-		&& !has_residual_norm
-		&& !has_triple
-		&& !has_embedding_pair
-		&& !has_sum_axis_scale
-		&& !has_router
-		&& !has_concat
-		&& !has_small_sdpa
-		&& !has_backward_prologue
-		&& !has_backward_norm
-		&& !has_backward_norm_add
-		&& !has_backward_bmm
-		&& !has_grouped_backward
-		&& !has_linear_residual_norm
-		&& !has_linear_residual_act
-		&& !has_embedding_pair_norm
-		&& !has_backward_norm_sum
-		&& !has_embedding_backward_sum
-		&& !has_conv_1d_bias_tail
-		&& !has_conv_2d_relu
-		&& !has_max_pool_relu_backward
-	{
-		return nodes;
-	}
-	let mut result = Vec::with_capacity(nodes.len());
-	let mut regions = 0;
-	let mut index = 0;
-	let mut consumed = std::collections::BTreeSet::new();
-	// Fused nodes deferred to a later slot: the combine feeding a norm
-	// backward can only run once its last addend exists, which may be after
-	// the earliest absorbed add the window was anchored at.
-	let mut deferred = std::collections::BTreeMap::<usize, ComputeNode>::new();
-	// The first OA-CC-10 slice proves the six incumbent pair lowerings.
-	// Build the access index only if an existing matcher proposes a pair;
-	// all other families retain their current guards until migrated.
-	let pair_regions = std::cell::OnceCell::new();
-	while index < nodes.len() {
-		if let Some(fused) = deferred.remove(&index) {
-			result.push(fused);
-		}
-		if consumed.contains(&index) {
-			index += 1;
-			continue;
-		}
-		// Admit a replacement of the adjacent `count`-node window at `index`.
-		let window_ok = |count: usize, fused: &[&ComputeNode]| {
-			index + count <= nodes.len()
-				&& slots_free(&consumed, index + 1..index + count)
-				&& elided_writes_unobservable(refs, &nodes[index..index + count], fused)
-		};
-		// Dual gate for migrated contiguous single-emit merges: the incumbent
-		// matcher and legacy window check still own L1–L3/geometry, then the
-		// shared region proof must additionally admit the proposed node.
-		macro_rules! merge_proven {
-			($rule:expr, $count:expr, $fused:expr) => {
-				merge_proven!($rule, $count, $fused, region::WriteAdmission::default())
-			};
-			($rule:expr, $count:expr, $fused:expr, $admission:expr) => {{
-				if fusion_rule_disabled($rule.name()) {
-					false
-				} else if !window_ok($count, &[$fused]) {
-					device
-						.fusion_census()
-						.merge($rule, census::PairOutcome::LegacyGuard);
-					false
-				} else {
-					let admission: region::WriteAdmission = $admission;
-					let proof = pair_regions
-						.get_or_init(|| region::RegionGraph::from_compute(device, &nodes, refs))
-						.contiguous(index..index + $count, &consumed, &admission)
-						.and_then(|candidate| {
-							candidate.accepts_compute(&nodes[index..index + $count], $fused, &admission)
-						});
-					let outcome = match &proof {
-						Ok(()) => census::PairOutcome::Applied,
-						Err(decline) => census::PairOutcome::Declined(*decline),
-					};
-					if crate::EnvFlag::is_set("OA_JIT_TRACE") {
-						let detail = match &outcome {
-							census::PairOutcome::Applied => {
-								format!("merge applied {:?} at {index}", $rule)
-							}
-							census::PairOutcome::Declined(reason) => {
-								format!("merge decline {:?} at {index}: {:?}", $rule, reason)
-							}
-							_ => unreachable!(),
-						};
-						crate::log_info!(crate::LogComponent::COMPUTE, "fusion {detail}");
-					}
-					device.fusion_census().merge($rule, outcome);
-					proof.is_ok()
-				}
-			}};
-		}
-		// Two-node emission: one fused node plus one sibling (bias-grad
-		// reduction) over the same contiguous window. The sibling may read a
-		// region-internal intermediate the fused node publishes.
-		macro_rules! merge_proven_many {
-			($rule:expr, $count:expr, $fused:expr) => {{
-				if fusion_rule_disabled($rule.name()) {
-					false
-				} else if !window_ok($count, $fused) {
-					device
-						.fusion_census()
-						.merge($rule, census::PairOutcome::LegacyGuard);
-					false
-				} else {
-					let proof = pair_regions
-						.get_or_init(|| region::RegionGraph::from_compute(device, &nodes, refs))
-						.contiguous(
-							index..index + $count,
-							&consumed,
-							&region::WriteAdmission::default(),
-						)
-						.and_then(|candidate| {
-							candidate.accepts_many(
-								&nodes[index..index + $count],
-								$fused,
-								&region::WriteAdmission::default(),
-							)
-						});
-					let outcome = match &proof {
-						Ok(()) => census::PairOutcome::Applied,
-						Err(decline) => census::PairOutcome::Declined(*decline),
-					};
-					if crate::EnvFlag::is_set("OA_JIT_TRACE") {
-						let detail = match &outcome {
-							census::PairOutcome::Applied => {
-								format!("merge applied {:?} at {index}", $rule)
-							}
-							census::PairOutcome::Declined(reason) => {
-								format!("merge decline {:?} at {index}: {:?}", $rule, reason)
-							}
-							_ => unreachable!(),
-						};
-						crate::log_info!(crate::LogComponent::COMPUTE, "fusion {detail}");
-					}
-					device.fusion_census().merge($rule, outcome);
-					proof.is_ok()
-				}
-			}};
-		}
-		// Lookahead merges absorb non-adjacent positions. `$positions` is the
-		// full index set including the anchor; `$sources` the matching node
-		// refs; `$fused` the emitted replacement(s) — a single node goes
-		// through `accepts_compute`, several through `accepts_many`.
-		macro_rules! merge_proven_scatter {
-			($rule:expr, $positions:expr, $slots:expr, $sources:expr, $fused:expr $(,)?) => {{
-				let positions: std::collections::BTreeSet<usize> = $positions;
-				let sources: Vec<&ComputeNode> = $sources;
-				let fused: &[&ComputeNode] = $fused;
-				let legacy = slots_free(&consumed, $slots)
-					&& elided_writes_unobservable(refs, sources.iter().copied(), fused);
-				if fusion_rule_disabled($rule.name()) {
-					false
-				} else if !legacy {
-					device
-						.fusion_census()
-						.merge($rule, census::PairOutcome::LegacyGuard);
-					false
-				} else {
-					let proof = pair_regions
-						.get_or_init(|| region::RegionGraph::from_compute(device, &nodes, refs))
-						.window(&positions, &consumed, &region::WriteAdmission::default())
-						.and_then(|candidate| {
-							if fused.len() == 1 {
-								candidate.accepts_compute(
-									sources.iter().copied(),
-									fused[0],
-									&region::WriteAdmission::default(),
-								)
-							} else {
-								candidate.accepts_many(
-									sources.iter().copied(),
-									fused,
-									&region::WriteAdmission::default(),
-								)
-							}
-						});
-					let outcome = match &proof {
-						Ok(()) => census::PairOutcome::Applied,
-						Err(decline) => census::PairOutcome::Declined(*decline),
-					};
-					if crate::EnvFlag::is_set("OA_JIT_TRACE") {
-						let detail = match &outcome {
-							census::PairOutcome::Applied => {
-								format!("merge applied {:?} at {index}", $rule)
-							}
-							census::PairOutcome::Declined(reason) => {
-								format!("merge decline {:?} at {index}: {:?}", $rule, reason)
-							}
-							_ => unreachable!(),
-						};
-						crate::log_info!(crate::LogComponent::COMPUTE, "fusion {detail}");
-					}
-					device.fusion_census().merge($rule, outcome);
-					proof.is_ok()
-				}
-			}};
-		}
-		if has_backward_bmm
-			&& index + 1 < nodes.len()
-			&& let Some((fused, distance)) = match_linear_backward_bmm_chain(
-				&nodes[index..(index + MAX_BMM_CHAIN_LOOKAHEAD + 1).min(nodes.len())],
-			) && merge_proven_scatter!(
-			rules::MergeRule::LinearBackwardBmmChain,
-			[index, index + distance].into_iter().collect(),
-			std::iter::once(index + distance),
-			vec![&nodes[index], &nodes[index + distance]],
-			&[&fused],
-		) {
-			regions += 1;
-			result.push(fused);
-			consumed.insert(index + distance);
-			index += 1;
-			continue;
-		}
-		if has_small_sdpa {
-			if index + 7 <= nodes.len()
-				&& let Some(fused) = match_small_causal_sdpa(&nodes[index..index + 7])
-				&& merge_proven!(rules::MergeRule::SmallCausalSdpa, 7, &fused)
-			{
-				regions += 1;
-				result.push(fused);
-				index += 7;
-				continue;
-			}
-			if has_single_head_sdpa
-				&& index + 3 <= nodes.len()
-				&& let Some(fused) = match_single_head_sdpa(&nodes[index..index + 3])
-				// The emission's aliased slots republish the loaded Q/K/V
-				// bytes at identical addresses — declared identity writes
-				// on the region inputs (audited kernel contract).
-				&& merge_proven!(
-					rules::MergeRule::SingleHeadSdpa,
-					3,
-					&fused,
-					region::WriteAdmission::identity(
-						fused.buffers[3..6]
-							.iter()
-							.map(|usage| usage.buffer.descriptor_index())
-					)
-				) {
-				regions += 1;
-				result.push(fused);
-				index += 3;
-				continue;
-			}
-		}
-		if has_concat {
-			let mut matched = None;
-			for count in [3, 2] {
-				if index + count < nodes.len()
-					&& let Some(fused) =
-						match_concat_linear(&nodes[index..index + count], &nodes[index + count])
-					// The concat parts write disjoint extents of the shared
-					// buffer — the matcher proves the partition from the
-					// accumulated row offsets; declared partitioned writes.
-					&& merge_proven!(
-						rules::MergeRule::ConcatLinear,
-						count + 1,
-						&fused,
-						region::WriteAdmission::partitioned(std::iter::once(
-							nodes[index + count].buffers[0].buffer.descriptor_index()
-						))
-					) {
-					matched = Some((count, fused));
-					break;
-				}
-			}
-			if let Some((count, fused)) = matched {
-				regions += 1;
-				result.push(fused);
-				index += count + 1;
-				continue;
-			}
-		}
-		if has_router {
-			if index + 3 < nodes.len()
-				&& let Some(fused) =
-					match_router_select(&nodes[index], &nodes[index + 2], &nodes[index + 3])
-				&& router_bias_can_precede_softmax(&nodes[index], &nodes[index + 1], &nodes[index + 2])
-				&& merge_proven_scatter!(
-					rules::MergeRule::RouterSelect,
-					[index, index + 2, index + 3].into_iter().collect(),
-					index + 1..index + 4,
-					vec![&nodes[index], &nodes[index + 2], &nodes[index + 3]],
-					&[&fused],
-				) {
-				result.push(nodes[index + 1].clone());
-				regions += 1;
-				result.push(fused);
-				index += 4;
-				continue;
-			}
-			if index + 2 < nodes.len()
-				&& let Some(fused) =
-					match_router_select(&nodes[index], &nodes[index + 1], &nodes[index + 2])
-				&& merge_proven!(rules::MergeRule::RouterSelect, 3, &fused)
-			{
-				regions += 1;
-				result.push(fused);
-				index += 3;
-				continue;
-			}
-		}
-		if index + 2 < nodes.len()
-			&& has_triple
-			&& let Some(fused) = match_linear_triple(&nodes[index], &nodes[index + 1], &nodes[index + 2])
-			&& merge_proven!(rules::MergeRule::LinearTriple, 3, &fused)
-		{
-			regions += 1;
-			result.push(fused);
-			index += 3;
-			continue;
-		}
-		if index + 3 < nodes.len()
-			&& has_embedding_pair_norm
-			&& let Some(fused) = match_embedding_pair_norm(
-				&nodes[index],
-				&nodes[index + 1],
-				&nodes[index + 2],
-				&nodes[index + 3],
-			) && merge_proven!(rules::MergeRule::EmbeddingPairNorm, 4, &fused)
-		{
-			regions += 1;
-			result.push(fused);
-			index += 4;
-			continue;
-		}
-		if index + 2 < nodes.len()
-			&& has_embedding_pair
-			&& let Some(fused) = match_embedding_pair(&nodes[index], &nodes[index + 1], &nodes[index + 2])
-			&& merge_proven!(rules::MergeRule::EmbeddingPair, 3, &fused)
-		{
-			regions += 1;
-			result.push(fused);
-			index += 3;
-			continue;
-		}
-		if index + 3 < nodes.len()
-			&& has_backward_norm_add
-			&& let Some((fused, reduction)) = match_linear_backward_norm_add(
-				&nodes[index],
-				&nodes[index + 1],
-				&nodes[index + 2],
-				&nodes[index + 3],
-			) && merge_proven_many!(
-			rules::MergeRule::LinearBackwardNormAdd,
-			4,
-			&[&fused, &reduction]
-		) {
-			regions += 1;
-			result.push(fused);
-			result.push(reduction);
-			index += 4;
-			continue;
-		}
-		if index + 2 < nodes.len()
-			&& has_backward_norm
-			&& let Some((fused, reduction)) =
-				match_linear_backward_norm(&nodes[index], &nodes[index + 1], &nodes[index + 2])
-			&& merge_proven_many!(
-				rules::MergeRule::LinearBackwardNorm,
-				3,
-				&[&fused, &reduction]
-			) {
-			regions += 1;
-			result.push(fused);
-			result.push(reduction);
-			index += 3;
-			continue;
-		}
-		if has_backward_norm_sum
-			&& let Some((fused, absorbed, emit)) = match_layer_norm_backward_sum(&nodes[index..])
-			&& merge_proven_scatter!(
-				rules::MergeRule::LayerNormBackwardSum,
-				std::iter::once(index)
-					.chain(absorbed.iter().map(|distance| index + distance))
-					.collect(),
-				absorbed.iter().map(|distance| index + distance),
-				std::iter::once(&nodes[index])
-					.chain(absorbed.iter().map(|distance| &nodes[index + distance]))
-					.collect(),
-				&[&fused],
-			) {
-			regions += 1;
-			for distance in absorbed {
-				consumed.insert(index + distance);
-			}
-			if emit == 0 {
-				result.push(fused);
-			} else {
-				deferred.insert(index + emit, fused);
-			}
-			index += 1;
-			continue;
-		}
-		if has_embedding_backward_sum
-			&& let Some(emissions) = match_embedding_backward_sum(&nodes[index..])
-			&& merge_proven_scatter!(
-				rules::MergeRule::EmbeddingBackwardSum,
-				std::iter::once(index)
-					.chain(emissions.iter().map(|(distance, _)| index + distance))
-					.collect(),
-				emissions.iter().map(|(distance, _)| index + distance),
-				std::iter::once(&nodes[index])
-					.chain(
-						emissions
-							.iter()
-							.map(|(distance, _)| &nodes[index + distance])
-					)
-					.collect(),
-				&emissions.iter().map(|(_, fused)| fused).collect::<Vec<_>>(),
-			) {
-			regions += emissions.len();
-			for (distance, fused) in emissions {
-				consumed.insert(index + distance);
-				deferred.insert(index + distance, fused);
-			}
-			index += 1;
-			continue;
-		}
-		if has_conv_1d_bias_tail
-			&& index + 1 < nodes.len()
-			&& let Some((fused, count)) =
-				match_conv_1d_bias_tail(&nodes[index..], |buffer| storage_unobservable(refs, buffer))
-			// `MlConv1dBiasAddF32` updates the projected GEMM buffer in place:
-			// a versioned write on a region input the proof model now admits.
-			&& merge_proven!(rules::MergeRule::Conv1dBiasTail, count, &fused)
-		{
-			regions += 1;
-			result.push(fused);
-			index += count;
-			continue;
-		}
-		if has_conv_2d_relu
-			&& index + 1 < nodes.len()
-			&& let Some(fused) = match_conv_2d_relu(&nodes[index..])
-			&& merge_proven!(rules::MergeRule::ConvRelu, 2, &fused)
-		{
-			regions += 1;
-			result.push(fused);
-			index += 2;
-			continue;
-		}
-		if has_max_pool_relu_backward
-			&& index + 1 < nodes.len()
-			&& let Some(fused) = match_max_pool_relu_backward(&nodes[index..])
-			&& merge_proven!(rules::MergeRule::MaxPoolReluBackward, 2, &fused)
-		{
-			regions += 1;
-			result.push(fused);
-			index += 2;
-			continue;
-		}
-		if index + 2 < nodes.len()
-			&& has_linear_residual_norm
-			&& let Some(fused) =
-				match_linear_residual_norm(&nodes[index], &nodes[index + 1], &nodes[index + 2])
-			&& merge_proven!(rules::MergeRule::LinearResidualNorm, 3, &fused)
-		{
-			regions += 1;
-			result.push(fused);
-			index += 3;
-			continue;
-		}
-		if index + 2 < nodes.len()
-			&& has_linear_residual_act
-			&& let Some(fused) =
-				match_linear_residual_act(&nodes[index], &nodes[index + 1], &nodes[index + 2])
-			&& merge_proven!(rules::MergeRule::LinearResidualAct, 3, &fused)
-		{
-			regions += 1;
-			result.push(fused);
-			index += 3;
-			continue;
-		}
-		if index + 1 < nodes.len()
-			&& has_grouped_act
-			&& let Some(fused) = match_grouped_linear_act(&nodes[index], &nodes[index + 1])
-			&& merge_proven!(rules::MergeRule::GroupedLinearAct, 2, &fused)
-		{
-			regions += 1;
-			result.push(fused);
-			index += 2;
-			continue;
-		}
-		if index + 1 < nodes.len() {
-			use rules::PairRule;
-			let fused = PairRule::ALL
-				.into_iter()
-				.filter(|rule| match rule {
-					PairRule::LinearResidual => has_residual,
-					PairRule::LinearAct => has_act,
-					PairRule::ResidualNorm => has_residual_norm,
-					PairRule::SumAxisScale => has_sum_axis_scale,
-					PairRule::LinearBackwardPrologue => has_backward_prologue,
-					PairRule::GroupedBackwardPrologue => has_grouped_backward,
-				})
-				.find_map(|rule| {
-					if fusion_rule_disabled(rule.name()) {
-						return None;
-					}
-					rule
-						.lower(&nodes[index], &nodes[index + 1])
-						.filter(|fused| {
-							if !window_ok(2, &[fused]) {
-								device
-									.fusion_census()
-									.pair(rule, census::PairOutcome::LegacyGuard);
-								return false;
-							}
-							let proof = pair_regions
-								.get_or_init(|| region::RegionGraph::from_compute(device, &nodes, refs))
-								.contiguous(
-									index..index + 2,
-									&consumed,
-									&region::WriteAdmission::default(),
-								)
-								.and_then(|candidate| {
-									candidate.accepts_compute(
-										&nodes[index..index + 2],
-										fused,
-										&region::WriteAdmission::default(),
-									)
-								});
-							let outcome = match proof {
-								Ok(()) => census::PairOutcome::Applied,
-								Err(decline) => census::PairOutcome::Declined(decline),
-							};
-							if crate::EnvFlag::is_set("OA_JIT_TRACE") {
-								let detail = match &outcome {
-									census::PairOutcome::Applied => {
-										format!("pair applied {:?} at {index}", rule)
-									}
-									census::PairOutcome::Declined(reason) => {
-										format!("pair decline {:?} at {index}: {:?}", rule, reason)
-									}
-									_ => unreachable!(),
-								};
-								crate::log_info!(crate::LogComponent::COMPUTE, "fusion {detail}");
-							}
-							device.fusion_census().pair(rule, outcome);
-							proof.is_ok()
-						})
-				});
-			if let Some(fused) = fused {
-				regions += 1;
-				result.push(fused);
-				index += 2;
-				continue;
-			}
-		}
-		result.push(nodes[index].clone());
-		index += 1;
-	}
-	// Each replacement turns k source nodes into one, so the absorbed total
-	// is the length reduction plus one per region.
-	device
-		.fusion_census()
-		.structural(regions, nodes.len() - result.len() + regions);
-	result
+	rules::fuse(device, nodes, refs)
 }
 
 /// Decode the common `MlLinearF32` producer, or `None` when the node lies
 /// outside the fused kernel's buffer and scalar vocabulary. Returns the
 /// linear output buffer plus `(batch, output_features)` for coverage
 /// checks against the consumer node.
-fn match_linear_producer(linear: &ComputeNode) -> Option<(&Buffer, u32, u32)> {
-	if linear.kernel != KernelId::MlLinearF32
-		|| linear.indirect.is_some()
-		|| linear.buffers.len() != 4
-		|| linear.push_constants.len() != 3
-		|| linear
-			.buffers
-			.iter()
-			.take(3)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| linear.buffers[3].access != BufferAccess::Write
-	{
-		return None;
-	}
+fn linear_geometry(linear: &ComputeNode) -> Option<(&Buffer, u32, u32)> {
 	let (PushConstant::U32(batch), PushConstant::U32(output_features)) =
 		(linear.push_constants[0], linear.push_constants[2])
 	else {
@@ -1162,49 +445,13 @@ fn fused_identity(
 	}
 }
 
-/// Decode the `linear → add` residual pair, or `None` when either node lies
-/// outside the fused kernel's buffer and scalar vocabulary. The sum may not
-/// alias any bound operand; residual may alias only read operands.
-fn match_linear_residual(linear: &ComputeNode, add: &ComputeNode) -> Option<ComputeNode> {
-	let (linear_output, batch, output_features) = match_linear_producer(linear)?;
-	if add.kernel != KernelId::MatrixAddF32
-		|| add.indirect.is_some()
-		|| add.buffers.len() != 3
-		|| add.push_constants.len() != 1
-		|| add
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| add.buffers[2].access != BufferAccess::Write
-	{
-		return None;
-	}
-	let residual = match (
-		add.buffers[0].buffer.same_as(linear_output),
-		add.buffers[1].buffer.same_as(linear_output),
-	) {
-		(true, false) => &add.buffers[1].buffer,
-		(false, true) => &add.buffers[0].buffer,
-		_ => return None,
-	};
-	// The elementwise sum must cover the full [batch, output_features] tile.
-	if add.push_constants[0] != PushConstant::U32(batch.checked_mul(output_features)?) {
-		return None;
-	}
+/// Pack the validated linear residual bindings and publish both writes.
+fn lower_linear_residual(linear: &ComputeNode, add: &ComputeNode) -> ComputeNode {
+	let linear_output = &linear.buffers[3].buffer;
+	let residual = &add.buffers[usize::from(add.buffers[0].buffer.same_as(linear_output))].buffer;
 	let sum = &add.buffers[2].buffer;
-	let collides = |buffer: &Buffer| {
-		linear
-			.buffers
-			.iter()
-			.any(|usage| usage.buffer.same_as(buffer))
-			|| residual.same_as(buffer)
-	};
-	if collides(sum) {
-		return None;
-	}
 	let kernel = KernelId::MlLinearResidualF32;
-	Some(fused_node(
+	fused_node(
 		linear,
 		add,
 		kernel,
@@ -1227,47 +474,23 @@ fn match_linear_residual(linear: &ComputeNode, add: &ComputeNode) -> Option<Comp
 		],
 		linear.push_constants.clone(),
 		linear.workgroups,
-	))
+	)
 }
 
 /// Decode three adjacent `MlLinearF32` nodes sharing one input and one
 /// geometry — the Q/K/V projection group — into a single z-dispatched node.
 /// Outputs must be three distinct buffers that alias none of the reads.
-fn match_linear_triple(
+fn lower_linear_triple(
 	first: &ComputeNode,
 	second: &ComputeNode,
 	third: &ComputeNode,
 ) -> Option<ComputeNode> {
-	let (first_output, _, _) = match_linear_producer(first)?;
-	let (second_output, _, _) = match_linear_producer(second)?;
-	let (third_output, _, _) = match_linear_producer(third)?;
-	if first.push_constants != second.push_constants
-		|| first.push_constants != third.push_constants
-		|| first.workgroups != second.workgroups
-		|| first.workgroups != third.workgroups
-		|| !second.buffers[0].buffer.same_as(&first.buffers[0].buffer)
-		|| !third.buffers[0].buffer.same_as(&first.buffers[0].buffer)
-	{
-		return None;
-	}
+	let (first_output, _, _) = linear_geometry(first)?;
+	let (second_output, _, _) = linear_geometry(second)?;
+	let (third_output, _, _) = linear_geometry(third)?;
 	if first_output.same_as(second_output)
 		|| second_output.same_as(third_output)
 		|| first_output.same_as(third_output)
-	{
-		return None;
-	}
-	let collides = |buffer: &Buffer| {
-		[first, second, third].iter().any(|node| {
-			node
-				.buffers
-				.iter()
-				.take(3)
-				.any(|usage| usage.buffer.same_as(buffer))
-		})
-	};
-	if [first_output, second_output, third_output]
-		.iter()
-		.any(|buffer| collides(buffer))
 	{
 		return None;
 	}
@@ -1316,23 +539,11 @@ fn match_linear_triple(
 
 /// Decode one `embedding`/`embedding_u8` gather node into its buffers and
 /// scalar geometry, or `None` outside the fused kernel's vocabulary.
-fn match_embedding(node: &ComputeNode) -> Option<(&Buffer, bool)> {
-	if !matches!(
-		node.kernel,
-		KernelId::MlEmbeddingF32 | KernelId::MlEmbeddingU8F32
-	) || node.indirect.is_some()
-		|| node.buffers.len() != 3
-		|| node.push_constants.len() != 3
-		|| node.buffers[0].access != BufferAccess::Read
-		|| node.buffers[1].access != BufferAccess::Read
-		|| node.buffers[2].access != BufferAccess::Write
-	{
-		return None;
-	}
-	Some((
+fn embedding_output(node: &ComputeNode) -> (&Buffer, bool) {
+	(
 		&node.buffers[2].buffer,
 		node.kernel == KernelId::MlEmbeddingU8F32,
-	))
+	)
 }
 
 /// Decode the `embedding → embedding → add` token/position head into one
@@ -1340,52 +551,15 @@ fn match_embedding(node: &ComputeNode) -> Option<(&Buffer, bool)> {
 /// gathers must share index count and embedding width so the sum covers the
 /// full element domain; every write lands on a distinct buffer aliasing none
 /// of the reads.
-fn match_embedding_pair(
+fn lower_embedding_pair(
 	first: &ComputeNode,
 	second: &ComputeNode,
 	add: &ComputeNode,
 ) -> Option<ComputeNode> {
-	let (first_output, first_u8) = match_embedding(first)?;
-	let (second_output, second_u8) = match_embedding(second)?;
-	if add.kernel != KernelId::MatrixAddF32
-		|| add.indirect.is_some()
-		|| add.buffers.len() != 3
-		|| add.push_constants.len() != 1
-		|| add
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| add.buffers[2].access != BufferAccess::Write
-		|| first.push_constants[0] != second.push_constants[0]
-		|| first.push_constants[2] != second.push_constants[2]
-	{
-		return None;
-	}
-	if add.push_constants[0]
-		!= match (first.push_constants[0], first.push_constants[2]) {
-			(PushConstant::U32(count), PushConstant::U32(dim)) => {
-				PushConstant::U32(count.checked_mul(dim)?)
-			}
-			_ => return None,
-		} {
-		return None;
-	}
-	let consumes = |a: &BufferUse, b: &BufferUse| {
-		(a.buffer.same_as(first_output) && b.buffer.same_as(second_output))
-			|| (a.buffer.same_as(second_output) && b.buffer.same_as(first_output))
-	};
-	if !consumes(&add.buffers[0], &add.buffers[1]) {
-		return None;
-	}
+	let (first_output, first_u8) = embedding_output(first);
+	let (second_output, second_u8) = embedding_output(second);
 	let sum = &add.buffers[2].buffer;
-	let collides = |buffer: &Buffer| {
-		[first, second]
-			.iter()
-			.flat_map(|node| node.buffers.iter())
-			.any(|usage| usage.buffer.same_as(buffer))
-	};
-	if first_output.same_as(second_output) || collides(sum) {
+	if first_output.same_as(second_output) {
 		return None;
 	}
 	let kernel = KernelId::MlEmbeddingPairF32;
@@ -1437,54 +611,15 @@ fn match_embedding_pair(
 /// sum, then runs the norm's statistics and affine passes — every write
 /// the unfused four-node run performs stays materialized. The window is
 /// tried before the pair matcher claims the add for `embedding_pair`.
-fn match_embedding_pair_norm(
+fn lower_embedding_pair_norm(
 	first: &ComputeNode,
 	second: &ComputeNode,
 	add: &ComputeNode,
 	norm: &ComputeNode,
 ) -> Option<ComputeNode> {
-	let (first_output, first_u8) = match_embedding(first)?;
-	let (second_output, second_u8) = match_embedding(second)?;
-	if add.kernel != KernelId::MatrixAddF32
-		|| norm.kernel != KernelId::MlLayerNormF32
-		|| add.indirect.is_some()
-		|| norm.indirect.is_some()
-		|| add.buffers.len() != 3
-		|| norm.buffers.len() != 6
-		|| add.push_constants.len() != 1
-		|| norm.push_constants.len() != 3
-		|| first.push_constants[0] != second.push_constants[0]
-		|| first.push_constants[2] != second.push_constants[2]
-		|| add
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| add.buffers[2].access != BufferAccess::Write
-		|| norm
-			.buffers
-			.iter()
-			.take(3)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| norm
-			.buffers
-			.iter()
-			.skip(3)
-			.any(|usage| usage.access != BufferAccess::Write)
-	{
-		return None;
-	}
-	let consumes = |a: &BufferUse, b: &BufferUse| {
-		(a.buffer.same_as(first_output) && b.buffer.same_as(second_output))
-			|| (a.buffer.same_as(second_output) && b.buffer.same_as(first_output))
-	};
-	if !consumes(&add.buffers[0], &add.buffers[1]) {
-		return None;
-	}
+	let (first_output, first_u8) = embedding_output(first);
+	let (second_output, second_u8) = embedding_output(second);
 	let sum = &add.buffers[2].buffer;
-	if !norm.buffers[0].buffer.same_as(sum) {
-		return None;
-	}
 	let (PushConstant::U32(index_count), PushConstant::U32(embedding_dim)) =
 		(first.push_constants[0], first.push_constants[2])
 	else {
@@ -1585,30 +720,8 @@ fn match_embedding_pair_norm(
 /// lowering and MoE auxiliary-loss reductions share it — into one fused node
 /// writing both the raw sum and the scaled result. The scaled output may not
 /// alias any other bound buffer.
-fn match_sum_axis_scale(sum: &ComputeNode, scale: &ComputeNode) -> Option<ComputeNode> {
-	if sum.kernel != KernelId::MatrixSumAxisF32
-		|| sum.indirect.is_some()
-		|| sum.buffers.len() != 2
-		|| sum.push_constants.len() != 3
-		|| sum.buffers[0].access != BufferAccess::Read
-		|| sum.buffers[1].access != BufferAccess::Write
-		|| scale.kernel != KernelId::MatrixScaleF32
-		|| scale.indirect.is_some()
-		|| scale.buffers.len() != 2
-		|| scale.push_constants.len() != 2
-		|| scale.buffers[0].access != BufferAccess::Read
-		|| scale.buffers[1].access != BufferAccess::Write
-		|| !scale.buffers[0].buffer.same_as(&sum.buffers[1].buffer)
-	{
-		return None;
-	}
-	let output_count = match (sum.push_constants[0], sum.push_constants[2]) {
-		(PushConstant::U32(outer), PushConstant::U32(inner)) => outer.checked_mul(inner)?,
-		_ => return None,
-	};
-	if scale.push_constants[0] != PushConstant::U32(output_count)
-		|| !matches!(scale.push_constants[1], PushConstant::F32(_))
-	{
+fn lower_sum_axis_scale(sum: &ComputeNode, scale: &ComputeNode) -> Option<ComputeNode> {
+	if !matches!(scale.push_constants[1], PushConstant::F32(_)) {
 		return None;
 	}
 	let scaled = &scale.buffers[1].buffer;
@@ -1647,88 +760,15 @@ fn match_sum_axis_scale(sum: &ComputeNode, scale: &ComputeNode) -> Option<Comput
 /// Map an elementwise activation kernel to its `linear_act` epilogue code,
 /// matching the `act_kind` vocabulary in `linear_act.slang`.
 fn act_kind(kernel: KernelId) -> Option<u32> {
-	match kernel {
-		KernelId::MlReluF32 => Some(0),
-		KernelId::MlGeluF32 => Some(1),
-		KernelId::MlSiluF32 => Some(2),
-		KernelId::MlTanhF32 => Some(3),
-		KernelId::MlSigmoidF32 => Some(4),
-		KernelId::MlMishF32 => Some(5),
-		KernelId::MlEluF32 => Some(6),
-		KernelId::MlLeakyReluF32 => Some(7),
-		KernelId::MlSoftplusF32 => Some(8),
-		_ => None,
-	}
+	kernel.act_kind()
 }
 
-/// Decode the `add → layer_norm` pair, or `None` when either node lies
-/// outside the fused kernel's buffer and scalar vocabulary. The norm's input
-/// must be exactly the recorded sum; every write buffer must be disjoint
-/// from the read operands.
-fn match_add_layer_norm(add: &ComputeNode, norm: &ComputeNode) -> Option<ComputeNode> {
-	if add.kernel != KernelId::MatrixAddF32
-		|| norm.kernel != KernelId::MlLayerNormF32
-		|| add.indirect.is_some()
-		|| norm.indirect.is_some()
-		|| add.buffers.len() != 3
-		|| norm.buffers.len() != 6
-		|| add.push_constants.len() != 1
-		|| norm.push_constants.len() != 3
-		|| add
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| add.buffers[2].access != BufferAccess::Write
-		|| norm
-			.buffers
-			.iter()
-			.take(3)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| norm
-			.buffers
-			.iter()
-			.skip(3)
-			.any(|usage| usage.access != BufferAccess::Write)
-	{
-		return None;
-	}
+/// Pack the validated residual norm bindings while retaining the sum and
+/// every normalization output.
+fn lower_add_layer_norm(add: &ComputeNode, norm: &ComputeNode) -> ComputeNode {
 	let sum = &add.buffers[2].buffer;
-	if !norm.buffers[0].buffer.same_as(sum) {
-		return None;
-	}
-	let (PushConstant::U32(rows), PushConstant::U32(columns)) =
-		(norm.push_constants[0], norm.push_constants[1])
-	else {
-		return None;
-	};
-	if add.push_constants[0] != PushConstant::U32(rows.checked_mul(columns)?) {
-		return None;
-	}
-	let collides = |buffer: &Buffer| {
-		add
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.buffer.same_as(buffer))
-			|| norm
-				.buffers
-				.iter()
-				.skip(1)
-				.take(2)
-				.any(|usage| usage.buffer.same_as(buffer))
-	};
-	if collides(sum)
-		|| norm
-			.buffers
-			.iter()
-			.skip(3)
-			.any(|usage| collides(&usage.buffer))
-	{
-		return None;
-	}
 	let kernel = KernelId::MlResidualLayerNormF32;
-	Some(fused_node(
+	fused_node(
 		add,
 		norm,
 		kernel,
@@ -1747,7 +787,7 @@ fn match_add_layer_norm(add: &ComputeNode, norm: &ComputeNode) -> Option<Compute
 		],
 		norm.push_constants.clone(),
 		norm.workgroups,
-	))
+	)
 }
 
 /// The widest row the `linear_residual_norm` in-tile norm admits: one
@@ -1762,54 +802,17 @@ const MAX_RESIDUAL_NORM_COLUMNS: u32 = 64;
 /// the residual sum, the norm output, the normalized row and the inverse
 /// stddev — so downstream consumers and autograd saves observe identical
 /// storage.
-fn match_linear_residual_norm(
+fn lower_linear_residual_norm(
 	linear: &ComputeNode,
 	add: &ComputeNode,
 	norm: &ComputeNode,
 ) -> Option<ComputeNode> {
-	let (linear_output, batch, output_features) = match_linear_producer(linear)?;
+	let (linear_output, batch, output_features) = linear_geometry(linear)?;
 	let PushConstant::U32(input_features) = linear.push_constants[1] else {
 		return None;
 	};
-	if add.kernel != KernelId::MatrixAddF32
-		|| norm.kernel != KernelId::MlLayerNormF32
-		|| add.indirect.is_some()
-		|| norm.indirect.is_some()
-		|| add.buffers.len() != 3
-		|| norm.buffers.len() != 6
-		|| add.push_constants.len() != 1
-		|| norm.push_constants.len() != 3
-		|| add
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| add.buffers[2].access != BufferAccess::Write
-		|| norm
-			.buffers
-			.iter()
-			.take(3)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| norm
-			.buffers
-			.iter()
-			.skip(3)
-			.any(|usage| usage.access != BufferAccess::Write)
-	{
-		return None;
-	}
-	let residual = match (
-		add.buffers[0].buffer.same_as(linear_output),
-		add.buffers[1].buffer.same_as(linear_output),
-	) {
-		(true, false) => &add.buffers[1].buffer,
-		(false, true) => &add.buffers[0].buffer,
-		_ => return None,
-	};
+	let residual = &add.buffers[usize::from(add.buffers[0].buffer.same_as(linear_output))].buffer;
 	let sum = &add.buffers[2].buffer;
-	if !norm.buffers[0].buffer.same_as(sum) {
-		return None;
-	}
 	let (PushConstant::U32(rows), PushConstant::U32(columns), PushConstant::F32(epsilon)) = (
 		norm.push_constants[0],
 		norm.push_constants[1],
@@ -1897,47 +900,18 @@ fn match_linear_residual_norm(
 /// gated `silu_mul` stays with the pair route because its packed operands do
 /// not follow a residual combine. All three source writes (linear output,
 /// sum, activation output) stay materialized for autograd saves.
-fn match_linear_residual_act(
+fn lower_linear_residual_act(
 	linear: &ComputeNode,
 	add: &ComputeNode,
 	act: &ComputeNode,
 ) -> Option<ComputeNode> {
-	let (linear_output, batch, output_features) = match_linear_producer(linear)?;
+	let (linear_output, batch, output_features) = linear_geometry(linear)?;
 	let PushConstant::U32(input_features) = linear.push_constants[1] else {
 		return None;
 	};
 	let kind = act_kind(act.kernel)?;
-	if add.kernel != KernelId::MatrixAddF32
-		|| add.indirect.is_some()
-		|| act.indirect.is_some()
-		|| add.buffers.len() != 3
-		|| act.buffers.len() != 2
-		|| add.push_constants.len() != 1
-		|| act.buffers[0].access != BufferAccess::Read
-		|| act.buffers[1].access != BufferAccess::Write
-		|| add
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| add.buffers[2].access != BufferAccess::Write
-	{
-		return None;
-	}
-	let residual = match (
-		add.buffers[0].buffer.same_as(linear_output),
-		add.buffers[1].buffer.same_as(linear_output),
-	) {
-		(true, false) => &add.buffers[1].buffer,
-		(false, true) => &add.buffers[0].buffer,
-		_ => return None,
-	};
+	let residual = &add.buffers[usize::from(add.buffers[0].buffer.same_as(linear_output))].buffer;
 	let sum = &add.buffers[2].buffer;
-	if !act.buffers[0].buffer.same_as(sum)
-		|| add.push_constants[0] != PushConstant::U32(batch.checked_mul(output_features)?)
-	{
-		return None;
-	}
 	let (elements, alpha) = match act.push_constants.as_slice() {
 		[PushConstant::U32(elements)] => (*elements, 0.0),
 		[PushConstant::U32(elements), PushConstant::F32(alpha)] => (*elements, *alpha),
@@ -2010,21 +984,13 @@ fn match_linear_residual_act(
 /// outside the fused kernel's buffer and scalar vocabulary. The activation
 /// must consume the linear output elementwise over the full tile; `elu` and
 /// `leaky_relu` carry their `alpha` push through.
-fn match_linear_act(linear: &ComputeNode, act: &ComputeNode) -> Option<ComputeNode> {
-	let (linear_output, batch, output_features) = match_linear_producer(linear)?;
+fn lower_linear_act(linear: &ComputeNode, act: &ComputeNode) -> Option<ComputeNode> {
+	let (linear_output, batch, output_features) = linear_geometry(linear)?;
 	let gated = act.kernel == KernelId::MlSiluMulF32;
 	if gated && std::env::var_os("OA_DISABLE_RL_FUSION").is_some() {
 		return None;
 	}
 	let kind = if gated { 9 } else { act_kind(act.kernel)? };
-	if act.indirect.is_some()
-		|| act.buffers.len() != 2
-		|| act.buffers[0].access != BufferAccess::Read
-		|| act.buffers[1].access != BufferAccess::Write
-		|| !act.buffers[0].buffer.same_as(linear_output)
-	{
-		return None;
-	}
 	let (elements, alpha) = match act.push_constants.as_slice() {
 		[PushConstant::U32(elements)] if !gated => (*elements, 0.0),
 		[PushConstant::U32(elements), PushConstant::F32(alpha)] if !gated => (*elements, *alpha),
@@ -2044,15 +1010,6 @@ fn match_linear_act(linear: &ComputeNode, act: &ComputeNode) -> Option<ComputeNo
 		return None;
 	}
 	let output = &act.buffers[1].buffer;
-	let collides = |buffer: &Buffer| {
-		linear
-			.buffers
-			.iter()
-			.any(|usage| usage.buffer.same_as(buffer))
-	};
-	if collides(output) {
-		return None;
-	}
 	let kernel = if gated {
 		KernelId::MlLinearGatedActF32
 	} else {
@@ -2091,28 +1048,8 @@ fn match_linear_act(linear: &ComputeNode, act: &ComputeNode) -> Option<ComputeNo
 /// `linear_backward_prologue` kind — the first nine entries of the
 /// `prologue_kind` vocabulary, matching `linear_act.slang`.
 fn backward_act_kind(kernel: KernelId) -> Option<u32> {
-	match kernel {
-		KernelId::MlReluBackwardF32 => Some(0),
-		KernelId::MlGeluBackwardF32 => Some(1),
-		KernelId::MlSiluBackwardF32 => Some(2),
-		KernelId::MlTanhBackwardF32 => Some(3),
-		KernelId::MlSigmoidBackwardF32 => Some(4),
-		KernelId::MlMishBackwardF32 => Some(5),
-		KernelId::MlEluBackwardF32 => Some(6),
-		KernelId::MlLeakyReluBackwardF32 => Some(7),
-		KernelId::MlSoftplusBackwardF32 => Some(8),
-		_ => None,
-	}
+	kernel.act_kind()
 }
-
-/// The gated `silu_mul` adjoint's `prologue_kind`.
-const PROLOGUE_SILU_MUL: u32 = 9;
-/// Pointwise combine prologues folded from a producing Binary node.
-const PROLOGUE_ADD: u32 = 10;
-const PROLOGUE_SUB: u32 = 11;
-const PROLOGUE_MUL: u32 = 12;
-/// Broadcast `mul` where one operand is a one-element splat.
-const PROLOGUE_SCALAR_MUL: u32 = 13;
 
 /// Decode a pointwise combine producer — a Binary `add`/`sub`/`mul` or a
 /// scalar broadcast `mul` — into `(kind, upstream_slot, saved_slot, alpha)`
@@ -2134,11 +1071,7 @@ fn backward_pointwise_prologue(
 			if *count != elements {
 				return None;
 			}
-			let kind = match producer.kernel {
-				KernelId::MatrixAddF32 => PROLOGUE_ADD,
-				KernelId::MatrixSubF32 => PROLOGUE_SUB,
-				_ => PROLOGUE_MUL,
-			};
+			let kind = producer.kernel.prologue_kind()?;
 			Some((kind, 0, 1, 0.0))
 		}
 		KernelId::MatrixMulBroadcastF32 => {
@@ -2178,7 +1111,7 @@ fn backward_pointwise_prologue(
 			if producer.buffers[splat].buffer.byte_len() != 4 {
 				return None;
 			}
-			Some((PROLOGUE_SCALAR_MUL, matrix, splat, 0.0))
+			Some((producer.kernel.prologue_kind()?, matrix, splat, 0.0))
 		}
 		_ => None,
 	}
@@ -2191,34 +1124,10 @@ fn backward_pointwise_prologue(
 /// upstream operand over the full `[batch, output_features]` tile, and both
 /// writes must stay disjoint from every other bound operand. `elu` and
 /// `leaky_relu` carry their `alpha` push through.
-fn match_linear_backward_prologue(
+fn lower_linear_backward_prologue(
 	producer: &ComputeNode,
 	backward: &ComputeNode,
 ) -> Option<ComputeNode> {
-	if backward.kernel != KernelId::MlLinearBackwardF32
-		|| producer.indirect.is_some()
-		|| backward.indirect.is_some()
-		|| producer.buffers.len() != 3
-		|| backward.buffers.len() != 3
-		|| backward.push_constants.len() != 3
-		|| producer
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| producer.buffers[2].access != BufferAccess::Write
-		|| backward
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| backward.buffers[2].access != BufferAccess::Write
-		|| !backward.buffers[1]
-			.buffer
-			.same_as(&producer.buffers[2].buffer)
-	{
-		return None;
-	}
 	let (PushConstant::U32(batch), PushConstant::U32(output_features)) =
 		(backward.push_constants[0], backward.push_constants[2])
 	else {
@@ -2258,22 +1167,13 @@ fn match_linear_backward_prologue(
 		{
 			return None;
 		}
-		(PROLOGUE_SILU_MUL, 1, 0, 0.0)
+		(producer.kernel.prologue_kind()?, 1, 0, 0.0)
 	} else {
 		backward_pointwise_prologue(producer, batch, output_features)?
 	};
 	let dy = &producer.buffers[2].buffer;
 	let dx = &backward.buffers[2].buffer;
-	let collides = |buffer: &Buffer| {
-		[
-			&backward.buffers[0].buffer,
-			&producer.buffers[upstream].buffer,
-			&producer.buffers[saved].buffer,
-		]
-		.iter()
-		.any(|operand| operand.same_as(buffer))
-	};
-	if collides(dy) || collides(dx) || dy.same_as(dx) {
+	if dy.same_as(dx) {
 		return None;
 	}
 	let kernel = KernelId::MlLinearBackwardPrologueF32;
@@ -2307,36 +1207,10 @@ fn match_linear_backward_prologue(
 /// prologue vocabulary with `rows` standing in for `batch`; the fused node
 /// materializes `dY` so the grouped parameter adjoint keeps its unfused
 /// operand.
-fn match_grouped_backward_prologue(
+fn lower_grouped_backward_prologue(
 	producer: &ComputeNode,
 	backward: &ComputeNode,
 ) -> Option<ComputeNode> {
-	if !matches!(
-		backward.kernel,
-		KernelId::MlGroupedLinearMDataBackwardF32 | KernelId::MlGroupedGemmMDataBackwardF32
-	) || producer.indirect.is_some()
-		|| backward.indirect.is_some()
-		|| producer.buffers.len() != 3
-		|| backward.buffers.len() != 4
-		|| backward.push_constants.len() != 4
-		|| producer
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| producer.buffers[2].access != BufferAccess::Write
-		|| backward
-			.buffers
-			.iter()
-			.take(3)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| backward.buffers[3].access != BufferAccess::Write
-		|| !backward.buffers[0]
-			.buffer
-			.same_as(&producer.buffers[2].buffer)
-	{
-		return None;
-	}
 	let (
 		PushConstant::U32(rows),
 		PushConstant::U32(output_features),
@@ -2364,9 +1238,6 @@ fn match_grouped_backward_prologue(
 			_ => return None,
 		}
 	} else if producer.kernel == KernelId::MlSiluMulBackwardF32 {
-		if std::env::var_os("OA_DISABLE_RL_FUSION").is_some() {
-			return None;
-		}
 		let [
 			PushConstant::U32(output_count),
 			PushConstant::U32(intermediate),
@@ -2379,23 +1250,13 @@ fn match_grouped_backward_prologue(
 		{
 			return None;
 		}
-		(PROLOGUE_SILU_MUL, 1, 0, 0.0)
+		(producer.kernel.prologue_kind()?, 1, 0, 0.0)
 	} else {
 		backward_pointwise_prologue(producer, rows, output_features)?
 	};
 	let dy = &producer.buffers[2].buffer;
 	let dx = &backward.buffers[3].buffer;
-	let collides = |buffer: &Buffer| {
-		[
-			&producer.buffers[upstream].buffer,
-			&producer.buffers[saved].buffer,
-			&backward.buffers[1].buffer,
-			&backward.buffers[2].buffer,
-		]
-		.iter()
-		.any(|operand| operand.same_as(buffer))
-	};
-	if collides(dy) || collides(dx) || dy.same_as(dx) {
+	if dy.same_as(dx) {
 		return None;
 	}
 	Some(fused_node(
@@ -2421,7 +1282,10 @@ fn match_grouped_backward_prologue(
 			PushConstant::U32(kind),
 			PushConstant::F32(alpha),
 		],
-		backward.workgroups,
+		// The fused kernel walks column tiles and expert segments inside
+		// one workgroup per row tile; a 2-D grid would recompute the
+		// prologue per column tile.
+		[rows.div_ceil(32), 1, 1],
 	))
 }
 
@@ -2434,52 +1298,11 @@ fn match_grouped_backward_prologue(
 /// keeps the reduction dispatch verbatim behind the fused node so `dγ`/`dβ`
 /// keep their unfused operands. All three fused writes must stay disjoint
 /// from every bound read.
-fn match_linear_backward_norm(
+fn lower_linear_backward_norm(
 	norm: &ComputeNode,
 	reduction: &ComputeNode,
 	backward: &ComputeNode,
 ) -> Option<(ComputeNode, ComputeNode)> {
-	if norm.kernel != KernelId::MlLayerNormBackwardF32
-		|| reduction.kernel != KernelId::MlSumAxisPairF32
-		|| backward.kernel != KernelId::MlLinearBackwardF32
-		|| norm.indirect.is_some()
-		|| reduction.indirect.is_some()
-		|| backward.indirect.is_some()
-		|| norm.buffers.len() != 6
-		|| reduction.buffers.len() != 4
-		|| backward.buffers.len() != 3
-		|| norm.push_constants.len() != 2
-		|| reduction.push_constants.len() != 3
-		|| backward.push_constants.len() != 3
-		|| norm
-			.buffers
-			.iter()
-			.take(4)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| norm.buffers[4].access != BufferAccess::Write
-		|| norm.buffers[5].access != BufferAccess::Write
-		|| reduction
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| reduction
-			.buffers
-			.iter()
-			.skip(2)
-			.any(|usage| usage.access != BufferAccess::Write)
-		|| backward
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| backward.buffers[2].access != BufferAccess::Write
-		|| !reduction.buffers[0].buffer.same_as(&norm.buffers[5].buffer)
-		|| !reduction.buffers[1].buffer.same_as(&norm.buffers[3].buffer)
-		|| !backward.buffers[1].buffer.same_as(&norm.buffers[4].buffer)
-	{
-		return None;
-	}
 	let (
 		PushConstant::U32(batch),
 		PushConstant::U32(_input_features),
@@ -2552,65 +1375,12 @@ fn match_linear_backward_norm(
 /// and `dX` earlier than the dispatches they replace; the two
 /// intervening nodes may only read the fused operands and must never
 /// write them or touch the moved writes.
-fn match_linear_backward_norm_add(
+fn lower_linear_backward_norm_add(
 	norm: &ComputeNode,
 	reduction: &ComputeNode,
 	combine: &ComputeNode,
 	backward: &ComputeNode,
 ) -> Option<(ComputeNode, ComputeNode)> {
-	if norm.kernel != KernelId::MlLayerNormBackwardF32
-		|| reduction.kernel != KernelId::MlSumAxisPairF32
-		|| combine.kernel != KernelId::MatrixAddF32
-		|| backward.kernel != KernelId::MlLinearBackwardF32
-		|| norm.indirect.is_some()
-		|| reduction.indirect.is_some()
-		|| combine.indirect.is_some()
-		|| backward.indirect.is_some()
-		|| norm.buffers.len() != 6
-		|| reduction.buffers.len() != 4
-		|| combine.buffers.len() != 3
-		|| backward.buffers.len() != 3
-		|| norm.push_constants.len() != 2
-		|| reduction.push_constants.len() != 3
-		|| combine.push_constants.len() != 1
-		|| backward.push_constants.len() != 3
-		|| norm
-			.buffers
-			.iter()
-			.take(4)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| norm.buffers[4].access != BufferAccess::Write
-		|| norm.buffers[5].access != BufferAccess::Write
-		|| reduction
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| reduction
-			.buffers
-			.iter()
-			.skip(2)
-			.any(|usage| usage.access != BufferAccess::Write)
-		|| combine
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| combine.buffers[2].access != BufferAccess::Write
-		|| backward
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| backward.buffers[2].access != BufferAccess::Write
-		|| !reduction.buffers[0].buffer.same_as(&norm.buffers[5].buffer)
-		|| !reduction.buffers[1].buffer.same_as(&norm.buffers[3].buffer)
-		|| !backward.buffers[1]
-			.buffer
-			.same_as(&combine.buffers[2].buffer)
-	{
-		return None;
-	}
 	// One addend must be the norm's materialized input gradient.
 	let addend = if combine.buffers[0].buffer.same_as(&norm.buffers[4].buffer) {
 		&combine.buffers[1]
@@ -2669,14 +1439,13 @@ fn match_linear_backward_norm_add(
 		return None;
 	}
 	// The reduction may only read the republished operands; its dγ/dβ
-	// writes must stay clear of every fused operand. The combine reads the
-	// norm gradient and the addend and writes the combined gradient, so
-	// the only early-publish hazard left is a buffer touching `dX`.
+	// writes must stay clear of every fused operand on the one fused
+	// dispatch. A combine buffer touching `dX` is the region proof's
+	// ordering decline, not a matcher check.
 	if reduction.buffers.iter().skip(2).any(|usage| {
 		reads.iter().any(|read| read.same_as(&usage.buffer))
 			|| writes.iter().any(|write| write.same_as(&usage.buffer))
-	}) || combine.buffers.iter().any(|usage| usage.buffer.same_as(dx))
-	{
+	}) {
 		return None;
 	}
 	let kernel = KernelId::MlLinearBackwardNormAddF32;
@@ -2734,42 +1503,16 @@ const MAX_NORM_BACKWARD_SUM_LOOKAHEAD: usize = 8;
 /// combined `dY` for the surviving `sum_axis_pair`. Returns the fused
 /// node, the distances of the consumed nodes, and the distance at which
 /// the fused node must be emitted.
-fn match_layer_norm_backward_sum(
+fn lower_layer_norm_backward_sum(
 	nodes: &[ComputeNode],
 ) -> Option<(ComputeNode, Vec<usize>, usize)> {
 	let first = &nodes[0];
-	if first.kernel != KernelId::MatrixAddF32
-		|| first.indirect.is_some()
-		|| first.buffers.len() != 3
-		|| first.push_constants.len() != 1
-		|| first
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| first.buffers[2].access != BufferAccess::Write
-	{
-		return None;
-	}
 	let first_output = &first.buffers[2].buffer;
 	let norm_index = (1..=MAX_NORM_BACKWARD_SUM_LOOKAHEAD).find(|&distance| {
 		distance < nodes.len() && nodes[distance].kernel == KernelId::MlLayerNormBackwardF32
 	})?;
 	let norm = &nodes[norm_index];
-	if norm.indirect.is_some()
-		|| norm.buffers.len() != 6
-		|| norm.push_constants.len() != 2
-		|| norm
-			.buffers
-			.iter()
-			.take(4)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| norm
-			.buffers
-			.iter()
-			.skip(4)
-			.any(|usage| usage.access != BufferAccess::Write)
-	{
+	if !rules::NORM_BACKWARD.matches(norm) {
 		return None;
 	}
 	let dy = &norm.buffers[3].buffer;
@@ -2792,13 +1535,7 @@ fn match_layer_norm_backward_sum(
 				&& node.buffers[2].buffer.same_as(dy)
 		})?;
 		let outer = &nodes[outer_index];
-		if outer.indirect.is_some()
-			|| outer.push_constants.len() != 1
-			|| outer
-				.buffers
-				.iter()
-				.take(2)
-				.any(|usage| usage.access != BufferAccess::Read)
+		if !rules::ADD.matches(outer)
 			|| !outer
 				.buffers
 				.iter()
@@ -2807,17 +1544,8 @@ fn match_layer_norm_backward_sum(
 		{
 			return None;
 		}
-		// An absorbed inner add's output may have no other reader: it
-		// is never written once the whole tree moves into the kernel.
-		if nodes.iter().enumerate().skip(1).any(|(other, node)| {
-			other != outer_index
-				&& node
-					.buffers
-					.iter()
-					.any(|usage| usage.buffer.same_as(first_output))
-		}) {
-			return None;
-		}
+		// A third-party reader of the elided inner output is the region
+		// proof's materialization decline, not a matcher scan.
 		let third = if outer.buffers[0].buffer.same_as(first_output) {
 			&outer.buffers[1].buffer
 		} else {
@@ -2861,43 +1589,10 @@ fn match_layer_norm_backward_sum(
 	{
 		return None;
 	}
-	// Nodes before the combine may produce the third addend but must not
-	// rewrite the inner add's captured operands (the kernel reads them at
-	// the combine's slot, not the inner's) nor touch the moved writes.
-	if nodes
-		.iter()
-		.enumerate()
-		.skip(1)
-		.take(outer_index.saturating_sub(1))
-		.any(|(_, node)| {
-			node.buffers.iter().any(|usage| {
-				writes.iter().any(|write| write.same_as(&usage.buffer))
-					|| (usage.access != BufferAccess::Read
-						&& [&first.buffers[0].buffer, &first.buffers[1].buffer]
-							.iter()
-							.any(|operand| operand.same_as(&usage.buffer)))
-			})
-		}) {
-		return None;
-	}
-	// Nodes between the combine and the norm must leave every operand the
-	// kernel still reads alone and never touch the moved dx/contribution/dy
-	// writes.
-	if nodes
-		.iter()
-		.enumerate()
-		.skip(outer_index + 1)
-		.take(norm_index - outer_index - 1)
-		.any(|(_, node)| {
-			node.buffers.iter().any(|usage| {
-				reads
-					.iter()
-					.any(|read| read.same_as(&usage.buffer) && usage.access != BufferAccess::Read)
-					|| writes.iter().any(|write| write.same_as(&usage.buffer))
-			})
-		}) {
-		return None;
-	}
+	// Nodes between the absorbed slots — producers of the third addend,
+	// or anything else in the lookahead gap — keep running in place; the
+	// region proof declines any that mutate a consumed operand or touch
+	// the moved writes.
 	let kernel = KernelId::MlLayerNormBackwardSumF32;
 	let semantic_ops = if outer_index != 0 {
 		merged_semantic_ops(&[&first.semantic_ops, &outer.semantic_ops, &norm.semantic_ops])
@@ -2908,7 +1603,7 @@ fn match_layer_norm_backward_sum(
 	let mut consumed = vec![norm_index];
 	if outer_index != 0 {
 		consumed.push(outer_index);
-		// `merge_proven_scatter!` builds the proof's source list in absorbed
+		// The scatter rule builds the proof's source list in absorbed
 		// order; the emission claims owners in `[first, outer, norm]` order
 		// and `outer_index < norm_index`, so keep the list ascending.
 		consumed.sort_unstable();
@@ -2966,48 +1661,17 @@ fn match_layer_norm_backward_sum(
 /// match declines. Returns one `(distance, fused)` emission per consumer
 /// plus the absorbed add — emissions run at the consumer slots where the
 /// unfused dispatch would have read the sum.
-fn match_embedding_backward_sum(nodes: &[ComputeNode]) -> Option<Vec<(usize, ComputeNode)>> {
+fn lower_embedding_backward_sum(nodes: &[ComputeNode]) -> Option<Vec<(usize, ComputeNode)>> {
 	let add = &nodes[0];
-	if add.kernel != KernelId::MatrixAddF32
-		|| add.indirect.is_some()
-		|| add.buffers.len() != 3
-		|| add.push_constants.len() != 1
-		|| add
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| add.buffers[2].access != BufferAccess::Write
-	{
-		return None;
-	}
 	let sum = &add.buffers[2].buffer;
 	let addend_a = &add.buffers[0].buffer;
 	let addend_b = &add.buffers[1].buffer;
 	let mut emissions = Vec::new();
 	for (distance, consumer) in nodes.iter().enumerate().skip(1) {
-		if !consumer
-			.buffers
-			.iter()
-			.any(|usage| usage.buffer.same_as(sum))
-		{
+		if !rules::EMBEDDING_BACKWARD.matches(consumer) || !consumer.buffers[1].buffer.same_as(sum) {
+			// Anything else touching the sum is not absorbed; the region
+			// proof declines the window it poisons.
 			continue;
-		}
-		if consumer.kernel != KernelId::MlEmbeddingBackwardF32
-			|| consumer.indirect.is_some()
-			|| consumer.buffers.len() != 3
-			|| consumer.push_constants.len() != 3
-			|| consumer
-				.buffers
-				.iter()
-				.take(2)
-				.any(|usage| usage.access != BufferAccess::Read)
-			|| consumer.buffers[2].access != BufferAccess::Write
-			|| !consumer.buffers[1].buffer.same_as(sum)
-		{
-			// Anything that is not an eligible embedding backward touching
-			// the sum — including another writer — ends the match.
-			return None;
 		}
 		let (
 			PushConstant::U32(index_count),
@@ -3100,35 +1764,13 @@ fn match_embedding_backward_sum(nodes: &[ComputeNode]) -> Option<Vec<(usize, Com
 /// read a different value than the unfused chain produced. Variants that
 /// drop the transposed output buffer additionally require it to have no
 /// other readers; the channel-norm variants republish it because the
-/// backward adjoint consumes it as saved state. `unobservable` proves that
-/// no owner outside the pending execution holds a buffer whose final
-/// contents the fused shape changes; without that proof the tail degrades
-/// to the shape that still materializes it, or declines.
-fn match_conv_1d_bias_tail(
-	nodes: &[ComputeNode],
-	unobservable: impl Fn(&Buffer) -> bool,
-) -> Option<(ComputeNode, usize)> {
+/// backward adjoint consumes it as saved state. External ownership and
+/// suffix-reader materialization are the region proof's, not the matcher's:
+/// without that proof the tail degrades to the shape that still
+/// materializes it, or declines.
+fn lower_conv_1d_bias_tail(nodes: &[ComputeNode]) -> Option<(ComputeNode, usize)> {
 	let add = &nodes[0];
-	if add.kernel != KernelId::MlConv1dBiasAddF32
-		|| add.indirect.is_some()
-		|| add.buffers.len() != 2
-		|| add.push_constants.len() != 2
-		|| add.buffers[0].access != BufferAccess::ReadWrite
-		|| add.buffers[1].access != BufferAccess::Read
-	{
-		return None;
-	}
 	let transpose = &nodes[1];
-	if transpose.kernel != KernelId::MlConv1dTransposeF32
-		|| transpose.indirect.is_some()
-		|| transpose.buffers.len() != 2
-		|| transpose.push_constants.len() != 3
-		|| transpose.buffers[0].access != BufferAccess::Read
-		|| transpose.buffers[1].access != BufferAccess::Write
-		|| !transpose.buffers[0].buffer.same_as(&add.buffers[0].buffer)
-	{
-		return None;
-	}
 	// The add covers the full [batch * rows, columns] tile the transpose
 	// reshapes: `rows` is the output length T and `columns` is channels C.
 	let (PushConstant::U32(batch), PushConstant::U32(rows), PushConstant::U32(columns)) = (
@@ -3138,32 +1780,12 @@ fn match_conv_1d_bias_tail(
 	) else {
 		return None;
 	};
-	if add.push_constants[0] != PushConstant::U32(batch.checked_mul(rows)?)
-		|| add.push_constants[1] != PushConstant::U32(columns)
-	{
-		return None;
-	}
 	let projected = &add.buffers[0].buffer;
 	let conv_out = &transpose.buffers[1].buffer;
-	let buffer_free_after = |buffer: &Buffer, skip: usize| {
-		unobservable(buffer)
-			&& !nodes.iter().skip(skip).any(|node| {
-				node
-					.buffers
-					.iter()
-					.any(|usage| usage.buffer.same_as(buffer))
-			})
-	};
-	let projected_free_after = |skip: usize| buffer_free_after(projected, skip);
 	if nodes.len() > 2 {
 		let consumer = &nodes[2];
-		if consumer.kernel == KernelId::MlReluF32
-			&& consumer.indirect.is_none()
-			&& consumer.buffers.len() == 2
-			&& consumer.push_constants.len() == 1
-			&& consumer.buffers[0].access == BufferAccess::Read
+		if rules::RELU.matches(consumer)
 			&& consumer.buffers[0].buffer.same_as(conv_out)
-			&& consumer.buffers[1].access == BufferAccess::Write
 			&& !consumer.buffers[1].buffer.same_as(projected)
 			&& !consumer.buffers[1].buffer.same_as(&add.buffers[1].buffer)
 			&& consumer.push_constants[0]
@@ -3176,16 +1798,7 @@ fn match_conv_1d_bias_tail(
 				// same tile pass: the kernel republishes the activated
 				// output the ReLU adjoint saves and writes
 				// relu + residual for the sum's consumers.
-				let residual = if sum_node.kernel == KernelId::MatrixAddF32
-					&& sum_node.indirect.is_none()
-					&& sum_node.buffers.len() == 3
-					&& sum_node.push_constants.len() == 1
-					&& sum_node
-						.buffers
-						.iter()
-						.take(2)
-						.all(|usage| usage.access == BufferAccess::Read)
-					&& sum_node.buffers[2].access == BufferAccess::Write
+				let residual = if rules::ADD.matches(sum_node)
 					&& sum_node.push_constants[0]
 						== PushConstant::U32(batch.checked_mul(rows)?.checked_mul(columns)?)
 				{
@@ -3213,8 +1826,6 @@ fn match_conv_1d_bias_tail(
 						&& !sum.same_as(relu_out)
 						&& !sum.same_as(residual)
 						&& !sum.same_as(conv_out)
-						&& projected_free_after(4)
-						&& buffer_free_after(conv_out, 4)
 					{
 						let kernel = KernelId::MlConv1dBiasTransposeResidualReluF32;
 						let semantic_ops = merged_semantic_ops(&[
@@ -3252,7 +1863,7 @@ fn match_conv_1d_bias_tail(
 					}
 				}
 			}
-			if projected_free_after(3) && buffer_free_after(conv_out, 3) {
+			{
 				let kernel = KernelId::MlConv1dBiasTransposeReluF32;
 				let semantic_ops = merged_semantic_ops(&[
 					&add.semantic_ops,
@@ -3282,25 +1893,14 @@ fn match_conv_1d_bias_tail(
 				return Some((fused, 3));
 			}
 		}
-		if (consumer.kernel == KernelId::MlChannelNormF32
-			|| consumer.kernel == KernelId::MlChannelNormReluF32)
-			&& consumer.indirect.is_none()
-			&& consumer.buffers.len() == 4
-			&& consumer.push_constants.len() == 4
-			&& consumer
-				.buffers
-				.iter()
-				.take(3)
-				.all(|usage| usage.access == BufferAccess::Read)
+		if rules::CHANNEL_NORM.matches(consumer)
 			&& consumer.buffers[0].buffer.same_as(conv_out)
-			&& consumer.buffers[3].access == BufferAccess::Write
 			&& !consumer.buffers[3].buffer.same_as(projected)
 			&& !consumer.buffers[3].buffer.same_as(&add.buffers[1].buffer)
 			&& consumer.push_constants[0] == PushConstant::U32(batch)
 			&& consumer.push_constants[1] == PushConstant::U32(columns)
 			&& consumer.push_constants[2] == PushConstant::U32(rows)
 			&& matches!(consumer.push_constants[3], PushConstant::F32(_))
-			&& projected_free_after(3)
 		{
 			let kernel = if consumer.kernel == KernelId::MlChannelNormReluF32 {
 				KernelId::MlConv1dBiasTransposeNormReluF32
@@ -3345,13 +1945,8 @@ fn match_conv_1d_bias_tail(
 			};
 			return Some((fused, 3));
 		}
-		if consumer.kernel == KernelId::MatrixTransposeF32
-			&& consumer.indirect.is_none()
-			&& consumer.buffers.len() == 2
-			&& consumer.push_constants.len() == 3
-			&& consumer.buffers[0].access == BufferAccess::Read
+		if rules::TRANSPOSE.matches(consumer)
 			&& consumer.buffers[0].buffer.same_as(conv_out)
-			&& consumer.buffers[1].access == BufferAccess::Write
 			&& !consumer.buffers[1].buffer.same_as(projected)
 			&& !consumer.buffers[1].buffer.same_as(&add.buffers[1].buffer)
 			// The generic transpose must be the exact inverse of the NCL
@@ -3359,8 +1954,6 @@ fn match_conv_1d_bias_tail(
 			&& consumer.push_constants[0] == PushConstant::U32(batch)
 			&& consumer.push_constants[1] == PushConstant::U32(columns)
 			&& consumer.push_constants[2] == PushConstant::U32(rows)
-			&& projected_free_after(3)
-			&& buffer_free_after(conv_out, 3)
 		{
 			let kernel = KernelId::MlConv1dBiasCopyF32;
 			let semantic_ops = merged_semantic_ops(&[
@@ -3391,9 +1984,6 @@ fn match_conv_1d_bias_tail(
 			return Some((fused, 3));
 		}
 	}
-	if !projected_free_after(2) {
-		return None;
-	}
 	let fused = fused_node(
 		add,
 		transpose,
@@ -3419,64 +2009,15 @@ fn match_conv_1d_bias_tail(
 /// reproduces every value the unfused pair publishes, and the match
 /// requires the conv output to have no other readers. The caller rejects
 /// the replacement when an external owner still holds the conv output.
-fn match_conv_2d_relu(nodes: &[ComputeNode]) -> Option<ComputeNode> {
+fn lower_conv_2d_relu(nodes: &[ComputeNode]) -> Option<ComputeNode> {
 	let conv = &nodes[0];
-	if conv.kernel != KernelId::MlConv2dF32
-		|| conv.indirect.is_some()
-		|| conv.buffers.len() != 4
-		|| conv.push_constants.len() != 11
-		|| conv
-			.buffers
-			.iter()
-			.take(3)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| conv.buffers[3].access != BufferAccess::Write
-	{
-		return None;
-	}
 	let relu = &nodes[1];
-	if relu.kernel != KernelId::MlReluF32
-		|| relu.indirect.is_some()
-		|| relu.buffers.len() != 2
-		|| relu.push_constants.len() != 1
-		|| relu.buffers[0].access != BufferAccess::Read
-		|| !relu.buffers[0].buffer.same_as(&conv.buffers[3].buffer)
-		|| relu.buffers[1].access != BufferAccess::Write
+	if conv
+		.buffers
+		.iter()
+		.take(3)
+		.any(|usage| relu.buffers[1].buffer.same_as(&usage.buffer))
 	{
-		return None;
-	}
-	// The ReLU element count must cover the conv's whole output tile:
-	// batch × output_channels × output_height × output_width.
-	let (PushConstant::U32(batch), PushConstant::U32(output_channels)) =
-		(conv.push_constants[0], conv.push_constants[2])
-	else {
-		return None;
-	};
-	let (PushConstant::U32(output_height), PushConstant::U32(output_width)) =
-		(conv.push_constants[8], conv.push_constants[9])
-	else {
-		return None;
-	};
-	let output_count = batch
-		.checked_mul(output_channels)?
-		.checked_mul(output_height)?
-		.checked_mul(output_width)?;
-	if relu.push_constants[0] != PushConstant::U32(output_count) {
-		return None;
-	}
-	let conv_out = &conv.buffers[3].buffer;
-	if relu.buffers[1].buffer.same_as(conv_out)
-		|| conv
-			.buffers
-			.iter()
-			.take(3)
-			.any(|usage| relu.buffers[1].buffer.same_as(&usage.buffer))
-		|| nodes.iter().skip(2).any(|node| {
-			node
-				.buffers
-				.iter()
-				.any(|usage| usage.buffer.same_as(conv_out))
-		}) {
 		return None;
 	}
 	Some(fused_node(
@@ -3500,63 +2041,13 @@ fn match_conv_2d_relu(nodes: &[ComputeNode]) -> Option<ComputeNode> {
 /// is never materialized, so the match requires it to have no other
 /// readers and the caller requires it to have no external owner; the fused
 /// write is the ReLU input gradient, identical to the unfused pair's.
-fn match_max_pool_relu_backward(nodes: &[ComputeNode]) -> Option<ComputeNode> {
+fn lower_max_pool_relu_backward(nodes: &[ComputeNode]) -> Option<ComputeNode> {
 	let pool = &nodes[0];
-	if pool.kernel != KernelId::MlMaxPool2dBackwardF32
-		|| pool.indirect.is_some()
-		|| pool.buffers.len() != 3
-		|| pool.push_constants.len() != 9
-		|| pool
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| pool.buffers[2].access != BufferAccess::Write
-	{
-		return None;
-	}
 	let relu = &nodes[1];
-	if relu.kernel != KernelId::MlReluBackwardF32
-		|| relu.indirect.is_some()
-		|| relu.buffers.len() != 3
-		|| relu.push_constants.len() != 1
-		|| relu.buffers[0].access != BufferAccess::Read
-		|| relu.buffers[1].access != BufferAccess::Read
-		|| !relu.buffers[1].buffer.same_as(&pool.buffers[2].buffer)
-		|| relu.buffers[2].access != BufferAccess::Write
-	{
-		return None;
-	}
-	// The mask covers the pool's whole input tile:
-	// batch × channels × input_height × input_width.
-	let (PushConstant::U32(batch), PushConstant::U32(channels)) =
-		(pool.push_constants[0], pool.push_constants[1])
-	else {
-		return None;
-	};
-	let (PushConstant::U32(input_height), PushConstant::U32(input_width)) =
-		(pool.push_constants[2], pool.push_constants[3])
-	else {
-		return None;
-	};
-	let input_count = batch
-		.checked_mul(channels)?
-		.checked_mul(input_height)?
-		.checked_mul(input_width)?;
-	if relu.push_constants[0] != PushConstant::U32(input_count) {
-		return None;
-	}
-	let pool_out = &pool.buffers[2].buffer;
-	if relu.buffers[2].buffer.same_as(pool_out)
-		|| relu.buffers[2].buffer.same_as(&pool.buffers[0].buffer)
+	if relu.buffers[2].buffer.same_as(&pool.buffers[0].buffer)
 		|| relu.buffers[2].buffer.same_as(&pool.buffers[1].buffer)
 		|| relu.buffers[2].buffer.same_as(&relu.buffers[0].buffer)
-		|| nodes.iter().skip(2).any(|node| {
-			node
-				.buffers
-				.iter()
-				.any(|usage| usage.buffer.same_as(pool_out))
-		}) {
+	{
 		return None;
 	}
 	Some(fused_node(
@@ -3586,25 +2077,13 @@ const MAX_BMM_CHAIN_LOOKAHEAD: usize = 8;
 /// the bmm operands, the weight, the republished `dY` and the consumer's
 /// `dX` writes untouched, because the fused dispatch runs at the
 /// producer's position with the consumer's original operands.
-fn match_linear_backward_bmm_chain(nodes: &[ComputeNode]) -> Option<(ComputeNode, usize)> {
+fn lower_linear_backward_bmm_chain(nodes: &[ComputeNode]) -> Option<(ComputeNode, usize)> {
 	let producer = &nodes[0];
 	let kind = match producer.kernel {
 		KernelId::MlBmmTiled16F32 => 0,
 		KernelId::MlBmmTnTiled16F32 => 1,
 		_ => return None,
 	};
-	if producer.indirect.is_some()
-		|| producer.buffers.len() != 3
-		|| producer.push_constants.len() != 4
-		|| producer
-			.buffers
-			.iter()
-			.take(2)
-			.any(|usage| usage.access != BufferAccess::Read)
-		|| producer.buffers[2].access != BufferAccess::Write
-	{
-		return None;
-	}
 	let (
 		PushConstant::U32(batch),
 		PushConstant::U32(rows),
@@ -3623,31 +2102,14 @@ fn match_linear_backward_bmm_chain(nodes: &[ComputeNode]) -> Option<(ComputeNode
 		return None;
 	}
 	let dy = &producer.buffers[2].buffer;
-	for distance in 1..nodes.len() {
-		let consumer = &nodes[distance];
-		if consumer
-			.buffers
-			.iter()
-			.any(|usage| usage.access != BufferAccess::Read && usage.buffer.same_as(dy))
-		{
-			return None;
-		}
+	for (distance, consumer) in nodes.iter().enumerate().skip(1) {
 		if consumer.kernel != KernelId::MlLinearBackwardF32
 			|| consumer.buffers.len() != 3
 			|| !consumer.buffers[1].buffer.same_as(dy)
 		{
 			continue;
 		}
-		if consumer.indirect.is_some()
-			|| consumer.buffers.len() != 3
-			|| consumer.push_constants.len() != 3
-			|| consumer
-				.buffers
-				.iter()
-				.take(2)
-				.any(|usage| usage.access != BufferAccess::Read)
-			|| consumer.buffers[2].access != BufferAccess::Write
-		{
+		if !rules::LINEAR_BACKWARD.matches(consumer) {
 			return None;
 		}
 		let (
@@ -3670,22 +2132,10 @@ fn match_linear_backward_bmm_chain(nodes: &[ComputeNode]) -> Option<(ComputeNode
 		}
 		let weight = &consumer.buffers[0].buffer;
 		let dx = &consumer.buffers[2].buffer;
-		// Intervening nodes may freely read the operands and the bmm result,
-		// but nothing may mutate them, and nothing may touch the gradient:
-		// the fused node publishes dx at the producer's slot, earlier than
-		// the consumer dispatch it replaces.
-		if nodes[1..distance].iter().any(|node| {
-			node.buffers.iter().any(|usage| {
-				usage.buffer.same_as(dx)
-					|| (usage.access != BufferAccess::Read
-						&& (usage.buffer.same_as(&producer.buffers[0].buffer)
-							|| usage.buffer.same_as(&producer.buffers[1].buffer)
-							|| usage.buffer.same_as(weight)
-							|| usage.buffer.same_as(dy)))
-			})
-		}) {
-			return None;
-		}
+		// Intervening nodes may freely read the operands and the bmm result;
+		// a writer of any consumed buffer — and any earlier reader of `dx`,
+		// which the fused node publishes at the producer's slot — is the
+		// region proof's decline, not a matcher check.
 		let reads = [
 			&producer.buffers[0].buffer,
 			&producer.buffers[1].buffer,
@@ -3994,12 +2444,19 @@ fn build_program(
 				});
 			}
 		}
-		if matches!(op.shape, ElementwiseShape::Scalar) {
-			sources.push(Source::Constant(op.scalar.to_bits()));
+		match op.shape {
+			ElementwiseShape::Scalar | ElementwiseShape::ScalarPair => {
+				sources.push(Source::Constant(op.scalar.to_bits()));
+			}
+			ElementwiseShape::ScalarFirst => {
+				sources.insert(0, Source::Constant(op.scalar.to_bits()));
+			}
+			_ => {}
 		}
 		let parameters = match op.shape {
 			ElementwiseShape::Gather => op.metadata[..3].to_vec(),
 			ElementwiseShape::BinaryScalar => vec![op.scalar.to_bits()],
+			ElementwiseShape::ScalarPair => vec![op.extra.to_bits()],
 			_ => Vec::new(),
 		};
 		instructions.push(Instruction {
@@ -4206,31 +2663,11 @@ fn fit_segment(
 // formulas retain their source order in the shader. Every source output is
 // materialized, including top-k values and probabilities saved by autograd.
 // Keep larger expert/route geometries on source until measured qualification.
-fn match_router_select(
+fn lower_router_select(
 	softmax: &ComputeNode,
 	top_k: &ComputeNode,
 	mask: &ComputeNode,
 ) -> Option<ComputeNode> {
-	let source = [
-		(softmax, KernelId::MatrixSoftmaxF32, 1, 1),
-		(top_k, KernelId::MatrixTopKF32, 1, 2),
-		(mask, KernelId::MatrixTopKMaskF32, 1, 1),
-	];
-	for (node, kernel, reads, writes) in source {
-		if node.kernel != kernel
-			|| node.indirect.is_some()
-			|| node.buffers.len() != reads + writes
-			|| node.push_constants.len() != 3
-			|| node.buffers[..reads]
-				.iter()
-				.any(|b| b.access != BufferAccess::Read)
-			|| node.buffers[reads..]
-				.iter()
-				.any(|b| b.access != BufferAccess::Write)
-		{
-			return None;
-		}
-	}
 	let [
 		PushConstant::U32(rows),
 		PushConstant::U32(experts),
@@ -4250,10 +2687,8 @@ fn match_router_select(
 				PushConstant::U32(rows),
 				PushConstant::U32(experts),
 				PushConstant::U32(1),
-			] || mask.push_constants != top_k.push_constants
-		|| softmax.workgroups != [rows, 1, 1]
+			] || softmax.workgroups != [rows, 1, 1]
 		|| top_k.workgroups != [rows, 1, 1]
-		|| !mask.buffers[0].buffer.same_as(&top_k.buffers[2].buffer)
 	{
 		return None;
 	}
@@ -4309,58 +2744,17 @@ fn match_router_select(
 	})
 }
 
-// The balancing broadcast is independent of softmax. Move it before the
-// combined router only when neither node can observe the other's writes.
-// It keeps its original ABI, semantic owner and materialized output.
-fn router_bias_can_precede_softmax(
-	softmax: &ComputeNode,
-	add: &ComputeNode,
-	top_k: &ComputeNode,
-) -> bool {
-	if !matches!(
-		add.kernel,
-		KernelId::MatrixAddF32 | KernelId::MatrixAddBroadcastF32
-	) || add.indirect.is_some()
-		|| add.buffers.len() != 3
-		|| add.buffers[..2]
-			.iter()
-			.any(|b| b.access != BufferAccess::Read)
-		|| add.buffers[2].access != BufferAccess::Write
-		|| !add.buffers[2].buffer.same_as(&top_k.buffers[0].buffer)
-	{
-		return false;
-	}
-	let probabilities = &softmax.buffers[1].buffer;
-	!add.buffers.iter().any(|b| b.buffer.same_as(probabilities))
-		&& !add.buffers[2].buffer.same_as(&softmax.buffers[0].buffer)
-		&& !add.buffers[..2]
-			.iter()
-			.any(|b| b.buffer.same_as(&add.buffers[2].buffer))
-}
-
 // Rank-two contiguous concat into Linear. Source concat regions share one
 // semantic owner; retain their materialized output and all Linear arithmetic.
-fn match_concat_linear(parts: &[ComputeNode], linear: &ComputeNode) -> Option<ComputeNode> {
-	if !(2..=3).contains(&parts.len()) {
-		return None;
-	}
-	let (_, batch, outputs) = match_linear_producer(linear)?;
+fn lower_concat_linear(parts: &[ComputeNode], linear: &ComputeNode) -> Option<ComputeNode> {
+	let (_, batch, outputs) = linear_geometry(linear)?;
 	let PushConstant::U32(inner) = linear.push_constants[1] else {
 		return None;
 	};
-	let concat = &linear.buffers[0].buffer;
 	let mut widths = [0u32; 3];
 	let mut offset = 0u32;
 	for (i, part) in parts.iter().enumerate() {
-		if part.kernel != KernelId::MatrixConcatF32
-			|| part.indirect.is_some()
-			|| part.buffers.len() != 2
-			|| part.push_constants.len() != 18
-			|| part.buffers[0].access != BufferAccess::Read
-			|| part.buffers[1].access != BufferAccess::Write
-			|| !part.buffers[1].buffer.same_as(concat)
-			|| part.semantic_ops != parts[0].semantic_ops
-		{
+		if part.semantic_ops != parts[0].semantic_ops {
 			return None;
 		}
 		let words = part
@@ -4454,22 +2848,10 @@ fn distinct_outputs(buffers: &[BufferUse], first_write: usize) -> bool {
 
 // Full packed causal Standard-attention region. Dropout, additive masks,
 // unsupported sizes and aliases retain source work.
-fn match_small_causal_sdpa(nodes: &[ComputeNode]) -> Option<ComputeNode> {
+fn lower_small_causal_sdpa(nodes: &[ComputeNode]) -> Option<ComputeNode> {
 	let [q, k, v, score, probability, context, merge] = nodes else {
 		return None;
 	};
-	for split in [q, k, v] {
-		if split.kernel != KernelId::MlSplitHeadsF32
-			|| split.indirect.is_some()
-			|| split.buffers.len() != 2
-			|| split.push_constants.len() != 4
-			|| split.buffers[0].access != BufferAccess::Read
-			|| split.buffers[1].access != BufferAccess::Write
-			|| split.push_constants != q.push_constants
-		{
-			return None;
-		}
-	}
 	let [
 		PushConstant::U32(batch),
 		PushConstant::U32(sequence),
@@ -4490,35 +2872,8 @@ fn match_small_causal_sdpa(nodes: &[ComputeNode]) -> Option<ComputeNode> {
 		return None;
 	}
 	let bh = batch.checked_mul(heads)?;
-	for (node, kernel, reads) in [
-		(score, score.kernel, 2),
-		(context, context.kernel, 2),
-		(probability, probability.kernel, 2),
-		(merge, KernelId::MlMergeHeadsF32, 1),
-	] {
-		if node.kernel != kernel
-			|| node.indirect.is_some()
-			|| node.buffers.len() != reads + 1
-			|| node.buffers[..reads]
-				.iter()
-				.any(|b| b.access != BufferAccess::Read)
-			|| node.buffers[reads].access != BufferAccess::Write
-		{
-			return None;
-		}
-	}
-	if !matches!(
-		score.kernel,
-		KernelId::MlBmmNtF32 | KernelId::MlBmmNtTiled16F32
-	) || !matches!(
-		context.kernel,
-		KernelId::MlBmmF32 | KernelId::MlBmmTiled16F32
-	) || !matches!(
-		probability.kernel,
-		KernelId::MlSdpaSoftmaxN32F32 | KernelId::MlSdpaSoftmaxF32
-	) || score.push_constants != [bh, sequence, dim, sequence].map(PushConstant::U32)
+	if score.push_constants != [bh, sequence, dim, sequence].map(PushConstant::U32)
 		|| context.push_constants != [bh, sequence, sequence, dim].map(PushConstant::U32)
-		|| merge.push_constants != q.push_constants
 	{
 		return None;
 	}
@@ -4532,23 +2887,7 @@ fn match_small_causal_sdpa(nodes: &[ComputeNode]) -> Option<ComputeNode> {
 	else {
 		return None;
 	};
-	if rows != bh.checked_mul(sequence)?
-		|| columns != sequence
-		|| !scale.is_finite()
-		|| !score.buffers[0].buffer.same_as(&q.buffers[1].buffer)
-		|| !score.buffers[1].buffer.same_as(&k.buffers[1].buffer)
-		|| !probability.buffers[0]
-			.buffer
-			.same_as(&score.buffers[2].buffer)
-		|| !probability.buffers[1]
-			.buffer
-			.same_as(&score.buffers[2].buffer)
-		|| !context.buffers[0]
-			.buffer
-			.same_as(&probability.buffers[2].buffer)
-		|| !context.buffers[1].buffer.same_as(&v.buffers[1].buffer)
-		|| !merge.buffers[0].buffer.same_as(&context.buffers[2].buffer)
-	{
+	if rows != bh.checked_mul(sequence)? || columns != sequence || !scale.is_finite() {
 		return None;
 	}
 	let buffers = vec![
@@ -4612,33 +2951,10 @@ fn match_small_causal_sdpa(nodes: &[ComputeNode]) -> Option<ComputeNode> {
 // Q/K/V buffers stand in for the split slots and the context buffer is
 // also the merged output. The kernel writes at those aliased slots
 // reproduce the loaded values at identical addresses.
-fn match_single_head_sdpa(nodes: &[ComputeNode]) -> Option<ComputeNode> {
+fn lower_single_head_sdpa(nodes: &[ComputeNode]) -> Option<ComputeNode> {
 	let [score, probability, context] = nodes else {
 		return None;
 	};
-	for node in [score, probability, context] {
-		if node.indirect.is_some()
-			|| node.buffers.len() != 3
-			|| node.buffers[..2]
-				.iter()
-				.any(|b| b.access != BufferAccess::Read)
-			|| node.buffers[2].access != BufferAccess::Write
-		{
-			return None;
-		}
-	}
-	if !matches!(
-		score.kernel,
-		KernelId::MlBmmNtF32 | KernelId::MlBmmNtTiled16F32
-	) || !matches!(
-		context.kernel,
-		KernelId::MlBmmF32 | KernelId::MlBmmTiled16F32
-	) || !matches!(
-		probability.kernel,
-		KernelId::MlSdpaSoftmaxN32F32 | KernelId::MlSdpaSoftmaxF32
-	) {
-		return None;
-	}
 	let [
 		PushConstant::U32(batch),
 		PushConstant::U32(sequence),
@@ -4669,19 +2985,7 @@ fn match_single_head_sdpa(nodes: &[ComputeNode]) -> Option<ComputeNode> {
 	else {
 		return None;
 	};
-	if rows != batch.checked_mul(sequence)?
-		|| columns != sequence
-		|| !scale.is_finite()
-		|| !probability.buffers[0]
-			.buffer
-			.same_as(&score.buffers[2].buffer)
-		|| !probability.buffers[1]
-			.buffer
-			.same_as(&score.buffers[2].buffer)
-		|| !context.buffers[0]
-			.buffer
-			.same_as(&probability.buffers[2].buffer)
-	{
+	if rows != batch.checked_mul(sequence)? || columns != sequence || !scale.is_finite() {
 		return None;
 	}
 	let buffers = vec![
@@ -4753,24 +3057,7 @@ fn match_single_head_sdpa(nodes: &[ComputeNode]) -> Option<ComputeNode> {
 	})
 }
 
-fn match_grouped_linear_act(linear: &ComputeNode, act: &ComputeNode) -> Option<ComputeNode> {
-	if linear.kernel != KernelId::MlGroupedLinearMF32
-		|| linear.indirect.is_some()
-		|| linear.buffers.len() != 5
-		|| linear.push_constants.len() != 4
-		|| linear.buffers[..4]
-			.iter()
-			.any(|b| b.access != BufferAccess::Read)
-		|| linear.buffers[4].access != BufferAccess::Write
-		|| act.kernel != KernelId::MlSiluMulF32
-		|| act.indirect.is_some()
-		|| act.buffers.len() != 2
-		|| act.buffers[0].access != BufferAccess::Read
-		|| act.buffers[1].access != BufferAccess::Write
-		|| !act.buffers[0].buffer.same_as(&linear.buffers[4].buffer)
-	{
-		return None;
-	}
+fn lower_grouped_linear_act(linear: &ComputeNode, act: &ComputeNode) -> Option<ComputeNode> {
 	let [
 		PushConstant::U32(rows),
 		PushConstant::U32(outputs),
@@ -4814,4 +3101,428 @@ fn f32_bytes(elements: u32) -> Option<usize> {
 	usize::try_from(elements)
 		.ok()?
 		.checked_mul(std::mem::size_of::<f32>())
+}
+
+/// The tile gather kernels whose `BlockProgram` factories accept a
+/// scalar store tail — the image geometric family (OA-CC-33).
+fn tile_scalar_tail_program(
+	node: &ComputeNode,
+) -> Option<crate::runtime::dna::ir::tile::BlockProgram> {
+	node.jit.as_ref()?;
+	if node.kernel == KernelId::AudioMelFilterbankF32 && node.semantic_ops.len() > 1 {
+		return audio_mel_chain_program(node.push_constants.as_slice());
+	}
+	node.kernel.tile_program()
+}
+
+/// The tile consumers whose input binding is read only through
+/// elementwise `LoadF32` — flip/crop/rotate permutations and the
+/// channel-normalize reduction. A pointwise prologue commutes with a
+/// permutation or a plain element read, so folding the producer into
+/// the load is exact. Interpolating gathers (`resize`, `warp`,
+/// `remap`) and bordered fetches (`pad`) read the input through typed
+/// helpers where the fold would need to reach inside each tap —
+/// deferred.
+fn tile_scalar_prologue_elementwise(kernel: KernelId) -> bool {
+	kernel.region_read() == KernelRegionRead::Elementwise
+}
+
+/// The admit route matching a tail-admissible tile kernel — the image
+/// and audio gates stay separate per domain.
+fn tile_scalar_tail_admit(
+	device: &Arc<Device>,
+	kernel: KernelId,
+	program: &crate::runtime::dna::ir::tile::BlockProgram,
+) -> Option<Vec<u8>> {
+	match kernel {
+		KernelId::AudioMelNormalizeF32 | KernelId::AudioMelFilterbankF32 => {
+			device.jit_admit_tile_audio(program)
+		}
+		_ => device.jit_admit_tile_image(program),
+	}
+}
+
+/// A `f32` scalar or unary pointwise consumer decodable into a
+/// `ScalarTail`: scalar donors carry `[U32(elements), F32(scalar)]`,
+/// unary donors carry `[U32(elements)]` — all one read and one write.
+fn scalar_tail_op(node: &ComputeNode) -> Option<crate::runtime::dna::ir::tile::ScalarTail> {
+	use crate::runtime::dna::ir::tile::ScalarTail;
+	let tail = node.kernel.scalar_tail()?;
+	match node.push_constants.as_slice() {
+		[PushConstant::U32(_), PushConstant::F32(scalar)] => Some(match tail {
+			KernelScalarTail::Add => ScalarTail::Add(*scalar),
+			KernelScalarTail::Sub => ScalarTail::Sub(*scalar),
+			KernelScalarTail::Mul => ScalarTail::Mul(*scalar),
+			KernelScalarTail::Div => ScalarTail::Div(*scalar),
+			KernelScalarTail::Max => ScalarTail::Max(*scalar),
+			KernelScalarTail::Min => ScalarTail::Min(*scalar),
+			_ => return None,
+		}),
+		[PushConstant::U32(_)] => Some(match tail {
+			KernelScalarTail::Neg => ScalarTail::Neg,
+			KernelScalarTail::Abs => ScalarTail::Abs,
+			KernelScalarTail::Log => ScalarTail::Log,
+			KernelScalarTail::Exp => ScalarTail::Exp,
+			KernelScalarTail::Sqrt => ScalarTail::Sqrt,
+			KernelScalarTail::Recip => ScalarTail::Recip,
+			KernelScalarTail::Relu => ScalarTail::Relu,
+			_ => return None,
+		}),
+		_ => None,
+	}
+}
+
+/// The staged `mel_filterbank → mel_normalize` chain program's
+/// staging capacity derives from the node's `frames × num_mels` run
+/// length — the same value the merge proved fits the declared shared
+/// row. `None` when the pushes do not describe an admitted chain.
+fn audio_mel_chain_program(
+	push_constants: &[PushConstant],
+) -> Option<crate::runtime::dna::ir::tile::BlockProgram> {
+	let [
+		PushConstant::U32(_),
+		PushConstant::U32(frames),
+		PushConstant::U32(_),
+		PushConstant::U32(num_mels),
+		PushConstant::U32(_),
+	] = push_constants
+	else {
+		return None;
+	};
+	let values = frames.checked_mul(*num_mels)?;
+	if values == 0 || values > 4096 {
+		return None;
+	}
+	let lanes = 256_u32;
+	let capacity = values.next_power_of_two().max(lanes);
+	crate::runtime::dna::ir::tile::BlockProgram::audio_mel_chain(lanes, capacity).ok()
+}
+
+/// Merge `AudioMelFilterbankF32 → AudioMelNormalizeF32` into the
+/// staged `audio_mel_chain` region (OA-CC-32's post-FFT boundary):
+/// the serial filterbank fold stages each element once in
+/// `groupshared`, then the cooperative normalize reduces and rescales
+/// the row — both donor passes in one dispatch. Admission mirrors the
+/// scalar-epilogue resource proofs: the intermediate is written only
+/// by the filterbank node, read only by the normalize node, invisible
+/// to non-compute accesses, element-aligned with the recorded
+/// `values_per_channel`, and within the staged-row capacity. The
+/// merged node keeps the filterbank's buffers with the normalize
+/// output substituted, and its `semantic_ops` records both donors so
+/// `tile_scalar_tail_program` re-emits this program for a later
+/// scalar tail.
+fn try_fuse_audio_mel_chain(
+	device: &Arc<Device>,
+	nodes: &mut Vec<ComputeNode>,
+	refs: &[&Storage],
+	index: usize,
+) -> bool {
+	if !device.tile_audio_enabled() || index + 1 >= nodes.len() {
+		return false;
+	}
+	let filterbank = &nodes[index];
+	let normalize = &nodes[index + 1];
+	if filterbank.kernel != KernelId::AudioMelFilterbankF32
+		|| filterbank.semantic_ops.len() != 1
+		|| normalize.kernel != KernelId::AudioMelNormalizeF32
+		|| normalize.semantic_ops.len() != 1
+	{
+		return false;
+	}
+	let [spectrum, scratch, weights] = filterbank.buffers.as_slice() else {
+		return false;
+	};
+	let [normalize_in, normalize_out] = normalize.buffers.as_slice() else {
+		return false;
+	};
+	if spectrum.access != BufferAccess::Read
+		|| scratch.access != BufferAccess::Write
+		|| weights.access != BufferAccess::Read
+		|| normalize_in.access != BufferAccess::Read
+		|| normalize_out.access != BufferAccess::Write
+		|| !scratch.buffer.same_as(&normalize_in.buffer)
+		|| normalize_out.buffer.same_as(&scratch.buffer)
+	{
+		return false;
+	}
+	let [
+		PushConstant::U32(channels),
+		PushConstant::U32(frames),
+		PushConstant::U32(_),
+		PushConstant::U32(num_mels),
+		PushConstant::U32(_),
+	] = filterbank.push_constants.as_slice()
+	else {
+		return false;
+	};
+	let (channels, frames, num_mels) = (*channels, *frames, *num_mels);
+	let [
+		PushConstant::U32(normalize_channels),
+		PushConstant::U32(values),
+	] = normalize.push_constants.as_slice()
+	else {
+		return false;
+	};
+	let Some(expected_values) = frames.checked_mul(num_mels) else {
+		return false;
+	};
+	if *normalize_channels != channels || *values != expected_values || expected_values == 0 {
+		return false;
+	}
+	// Donor grids must still match the recorded nodes: the filterbank
+	// tiles mels over lanes per (frame, channel); the normalize runs
+	// one workgroup per channel.
+	if filterbank.workgroups != [num_mels.div_ceil(32), frames, channels]
+		|| normalize.workgroups != [channels, 1, 1]
+		|| normalize_out.buffer.byte_len() != scratch.buffer.byte_len()
+	{
+		return false;
+	}
+	let normalize_output = normalize_out.buffer.clone();
+	if !storage_unobservable(refs, &scratch.buffer)
+		|| nodes
+			.iter()
+			.enumerate()
+			.any(|(other, node)| other != index + 1 && node_reads(node, &scratch.buffer))
+		|| nodes
+			.iter()
+			.enumerate()
+			.any(|(other, node)| other != index && node_writes(node, &scratch.buffer))
+	{
+		return false;
+	}
+	let Some(program) = audio_mel_chain_program(filterbank.push_constants.as_slice()) else {
+		return false;
+	};
+	let Some(key) = device.jit_admit_tile_audio(&program) else {
+		return false;
+	};
+	let semantic_ops = merged_semantic_ops(&[
+		nodes[index].semantic_ops.as_slice(),
+		nodes[index + 1].semantic_ops.as_slice(),
+	]);
+	let node = &mut nodes[index];
+	node.buffers[1] = BufferUse {
+		buffer: normalize_output,
+		access: BufferAccess::Write,
+	};
+	node.workgroups = [channels, 1, 1];
+	node.fusion_signature = Some(device.tile_signature(&program));
+	node.jit = Some(JitNode {
+		key,
+		buffers: node.buffers.clone(),
+		push_constants: node.push_constants.clone(),
+	});
+	let (operation, contract_hash) = fused_identity(&semantic_ops, node, node.kernel);
+	node.operation = operation;
+	node.op_contract_hash = contract_hash;
+	node.semantic_ops = semantic_ops;
+	nodes.remove(index + 1);
+	true
+}
+
+/// Merge scalar pointwise consumers into admitted tile gather
+/// producers (OA-CC-33): `image.* → scalar chain` re-emits as one JIT
+/// region whose shader folds the tail operands as constants, so the
+/// merged dispatch keeps the producer's binding and push contract and
+/// only the store target, signature, and key change. Runs before the
+/// incumbent pair matchers and the elementwise tape so a tile program
+/// claims its tail while the scalar ops are still discrete nodes.
+///
+/// Admission conditions mirror the tape fusion's resource proofs: the
+/// intermediate must be produced by the tile node, consumed by exactly
+/// the scalar node, invisible to every other node and to non-compute
+/// accesses, and element-aligned with the scalar kernel's declared
+/// count. Any failure leaves both nodes on their canonical routes.
+pub(in crate::runtime) fn fuse_tile_scalar_epilogues(
+	device: &Arc<Device>,
+	mut nodes: Vec<ComputeNode>,
+	refs: &[&Storage],
+) -> Vec<ComputeNode> {
+	if epilogue_fusion_disabled() || !(device.tile_image_enabled() || device.tile_audio_enabled()) {
+		return nodes;
+	}
+	let mut index = 0;
+	while index < nodes.len() {
+		// A `mel_filterbank → mel_normalize` pair merges into the staged
+		// chain region first; the merged node then flows through the
+		// scalar-tail path below so a following pointwise consumer still
+		// folds into the chain program.
+		if try_fuse_audio_mel_chain(device, &mut nodes, refs, index) {
+			continue;
+		}
+		let Some(program) = tile_scalar_tail_program(&nodes[index]) else {
+			index += 1;
+			continue;
+		};
+		let [_, producer_out] = nodes[index].buffers.as_slice() else {
+			index += 1;
+			continue;
+		};
+		if producer_out.access != BufferAccess::Write {
+			index += 1;
+			continue;
+		}
+		// Fold every consecutive scalar consumer into one tail; the
+		// merged write target is the last consumer's output.
+		let mut tail = Vec::new();
+		let mut consumed = 0_usize;
+		let mut current = producer_out.buffer.clone();
+		while index + 1 + consumed < nodes.len() {
+			let consumer = &nodes[index + 1 + consumed];
+			let [input, output] = consumer.buffers.as_slice() else {
+				break;
+			};
+			if input.access != BufferAccess::Read
+				|| output.access != BufferAccess::Write
+				|| !input.buffer.same_as(&current)
+				|| output.buffer.same_as(&current)
+			{
+				break;
+			}
+			let Some(op) = scalar_tail_op(consumer) else {
+				break;
+			};
+			let Some(PushConstant::U32(elements)) = consumer.push_constants.first() else {
+				break;
+			};
+			if current.byte_len() != f32_bytes(*elements).unwrap_or(usize::MAX) {
+				break;
+			}
+			// The folded value must be produced only by this node and
+			// read only by this consumer — no other node or external
+			// access may observe the intermediate.
+			// `current`'s single writer is the previous chain node —
+			// the tile producer for the first fold, the last absorbed
+			// consumer afterwards.
+			let writer = if consumed == 0 {
+				index
+			} else {
+				index + consumed
+			};
+			if !storage_unobservable(refs, &current)
+				|| nodes
+					.iter()
+					.enumerate()
+					.any(|(other, node)| other != index + 1 + consumed && node_reads(node, &current))
+				|| nodes
+					.iter()
+					.enumerate()
+					.any(|(other, node)| other != writer && node_writes(node, &current))
+			{
+				break;
+			}
+			tail.push(op);
+			current = output.buffer.clone();
+			consumed += 1;
+		}
+		// Prologue direction: fold preceding scalar producers into this
+		// node's input binding — the loaded value passes through each
+		// op before the tile program's reads (OA-CC-33). Restricted to
+		// consumers whose input read is elementwise.
+		let mut prologue = Vec::new();
+		let mut producers = 0_usize;
+		let mut source = nodes[index].buffers[0].buffer.clone();
+		while tile_scalar_prologue_elementwise(nodes[index].kernel) && index > producers {
+			let producer = &nodes[index - 1 - producers];
+			let [input, output] = producer.buffers.as_slice() else {
+				break;
+			};
+			if input.access != BufferAccess::Read
+				|| output.access != BufferAccess::Write
+				|| !output.buffer.same_as(&source)
+				|| input.buffer.same_as(&source)
+			{
+				break;
+			}
+			let Some(op) = scalar_tail_op(producer) else {
+				break;
+			};
+			let Some(PushConstant::U32(elements)) = producer.push_constants.first() else {
+				break;
+			};
+			if source.byte_len() != f32_bytes(*elements).unwrap_or(usize::MAX)
+				|| input.buffer.byte_len() != source.byte_len()
+			{
+				break;
+			}
+			// `source` must be written only by this producer and read
+			// only by this consumer — folding re-points the consumer's
+			// input at the producer's input, so `source` never
+			// materializes.
+			if !storage_unobservable(refs, &source)
+				|| nodes
+					.iter()
+					.enumerate()
+					.any(|(other, node)| other != index && node_reads(node, &source))
+				|| nodes
+					.iter()
+					.enumerate()
+					.any(|(other, node)| other != index - 1 - producers && node_writes(node, &source))
+			{
+				break;
+			}
+			prologue.insert(0, op);
+			source = input.buffer.clone();
+			producers += 1;
+		}
+		if consumed == 0 && producers == 0 {
+			index += 1;
+			continue;
+		}
+		let kernel = nodes[index].kernel;
+		let Some(key) = tile_scalar_tail_admit(
+			device,
+			kernel,
+			&program
+				.clone()
+				.with_scalar_prologue(0, &prologue)
+				.with_scalar_tail(&tail),
+		) else {
+			index += 1;
+			continue;
+		};
+		let merged_program = program
+			.with_scalar_prologue(0, &prologue)
+			.with_scalar_tail(&tail);
+		let parts = nodes[index + 1..=index + consumed]
+			.iter()
+			.map(|node| node.semantic_ops.as_slice())
+			.chain(std::iter::once(nodes[index].semantic_ops.as_slice()))
+			.chain(
+				nodes[index - producers..index]
+					.iter()
+					.map(|node| node.semantic_ops.as_slice()),
+			)
+			.collect::<Vec<_>>();
+		let merged = merged_semantic_ops(&parts);
+		let producer = &mut nodes[index];
+		let (operation, contract_hash) = fused_identity(&merged, producer, producer.kernel);
+		producer.operation = operation;
+		producer.op_contract_hash = contract_hash;
+		if producers > 0 {
+			producer.buffers[0] = BufferUse {
+				buffer: source,
+				access: BufferAccess::Read,
+			};
+		}
+		if consumed > 0 {
+			producer.buffers[1] = BufferUse {
+				buffer: current,
+				access: BufferAccess::Write,
+			};
+		}
+		producer.fusion_signature = Some(device.tile_signature(&merged_program));
+		producer.jit = Some(JitNode {
+			key,
+			buffers: producer.buffers.clone(),
+			push_constants: producer.push_constants.clone(),
+		});
+		producer.semantic_ops = merged;
+		nodes.drain(index + 1..=index + consumed);
+		nodes.drain(index - producers..index);
+		index -= producers;
+		index += 1;
+	}
+	nodes
 }

@@ -71,6 +71,12 @@ impl DeviceInfo {
 		self.hardware.local_memory_budget_bytes
 	}
 
+	/// Whether device-local memory is host-visible on this device — mapped
+	/// writes reach the storage heap without a staging copy.
+	pub const fn local_memory_unified(&self) -> bool {
+		self.hardware.local_memory_unified
+	}
+
 	/// Local memory usage observed when the engine was created, if advertised.
 	pub const fn local_memory_usage_bytes(&self) -> Option<u64> {
 		self.hardware.local_memory_usage_bytes
@@ -100,6 +106,14 @@ impl DeviceInfo {
 
 	pub const fn supports_shader_float16(&self) -> bool {
 		self.software.shader_float16
+	}
+
+	pub const fn supports_storage_buffer_16_bit_access(&self) -> bool {
+		self.software.storage_buffer_16_bit_access
+	}
+
+	pub const fn supports_fp16_storage(&self) -> bool {
+		self.software.shader_float16 && self.software.storage_buffer_16_bit_access
 	}
 
 	pub const fn supports_shader_float64(&self) -> bool {
@@ -184,6 +198,7 @@ pub(in crate::runtime) struct DevicePhysicalInfo {
 	pub(in crate::runtime) local_memory_bytes: u64,
 	pub(in crate::runtime) local_memory_budget_bytes: Option<u64>,
 	pub(in crate::runtime) local_memory_usage_bytes: Option<u64>,
+	pub(in crate::runtime) local_memory_unified: bool,
 }
 
 /// Format a byte count as GiB or MiB.
@@ -293,16 +308,26 @@ pub(super) fn log_compute_device(device: &super::Device, p: &str, is_last: bool)
 	) {
 		(Some(budget), Some(usage)) => crate::log_info!(
 			crate::LogComponent::RUNTIME,
-			"{}local-memory:   {} / {}",
+			"{}local-memory:   {} / {}{}",
 			pp,
 			format_capacity_value(usage),
 			format_capacity_value(budget),
+			if info.local_memory_unified {
+				" (host-visible)"
+			} else {
+				""
+			},
 		),
 		_ => crate::log_info!(
 			crate::LogComponent::RUNTIME,
-			"{}local-memory:   {}",
+			"{}local-memory:   {}{}",
 			pp,
 			format_capacity_value(info.local_memory_bytes),
+			if info.local_memory_unified {
+				" (host-visible)"
+			} else {
+				""
+			},
 		),
 	}
 	let tier = match (

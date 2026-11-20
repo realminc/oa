@@ -185,12 +185,7 @@ impl PreparedChain {
 					.raw()
 					.cmd_dispatch(command, self.count.div_ceil(256).max(1), 1, 1)?;
 			}
-			record_host_visibility(
-				device.raw(),
-				device.sync_commands(),
-				command,
-				&[BufferAccess::Write],
-			)
+			record_host_visibility(device.raw(), device.sync_commands(), command, true, false)
 		};
 		if let Err(error) = encode() {
 			pool.free_handle(device.raw(), command);
@@ -201,6 +196,7 @@ impl PreparedChain {
 			command,
 			CommandRetention {
 				resources: self.buffers.to_vec(),
+				video_owners: Vec::new(),
 				accesses: (0..self.buffers.len())
 					.map(|i| {
 						if i < self.input_count {

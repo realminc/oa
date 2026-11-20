@@ -7,7 +7,7 @@ import json
 from typing import Any
 
 from .effects import kernel_fusion_effects, rust_fusion_effects
-from .model import count_buffer_indices, operation_lowering_variants, operation_variants, rust_physical_write, validate_physical_write, validate_retired_stable_ids, validate_unique
+from .model import FUSION_CLASS_VARIANTS, count_buffer_indices, operation_lowering_variants, operation_variants, rust_physical_write, validate_physical_write, validate_retired_stable_ids, validate_unique
 from .paths import FN_ROOT
 from .pqc import MLDSA_WIRE_LAYOUTS
 from .schema import Schemas, ensure_schemas
@@ -44,6 +44,11 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 					"dispatch_tile_size": elementwise["workgroup_size"],
 					"training_replay_role": "safe",
 					"physical_write": operation.get("physical_write"),
+					"fusion_class": operation.get("fusion_class"),
+					"scalar_tail": operation.get("scalar_tail"),
+					"prologue_kind": operation.get("prologue_kind"),
+					"tape_op": operation.get("tape_op"),
+					"tape_shape": operation.get("tape_shape"),
 					"fusion_effects": kernel_fusion_effects(operation),
 					"semantic_contract": None,
 				}
@@ -61,6 +66,11 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 					"dispatch_tile_size": elementwise["workgroup_size"],
 					"training_replay_role": "safe",
 					"physical_write": operation.get("physical_write"),
+					"fusion_class": operation.get("fusion_class"),
+					"scalar_tail": operation.get("scalar_tail") if variant["kernel_id"] == operation["kernel_id"] else None,
+					"prologue_kind": operation.get("prologue_kind") if variant["kernel_id"] == operation["kernel_id"] else None,
+					"tape_op": operation.get("tape_op") if variant["kernel_id"] == operation["kernel_id"] else None,
+					"tape_shape": operation.get("tape_shape") if variant["kernel_id"] == operation["kernel_id"] else None,
 					"fusion_effects": kernel_fusion_effects(operation if variant["kernel_id"] == operation["kernel_id"] else variant, inherited=operation),
 					"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(operation['name'])}",
 				}
@@ -77,6 +87,11 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 					"dispatch_tile_size": lowering.get("dispatch_tile_size", lowering.get("workgroup_size", elementwise["workgroup_size"])),
 					"training_replay_role": "safe",
 					"physical_write": lowering["physical_write"],
+					"fusion_class": operation.get("fusion_class"),
+					"scalar_tail": None,
+					"prologue_kind": lowering.get("prologue_kind"),
+					"tape_op": lowering.get("tape_op"),
+					"tape_shape": lowering.get("tape_shape"),
 					"fusion_effects": kernel_fusion_effects(lowering, inherited=operation),
 					"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(operation['name'])}",
 				}
@@ -93,24 +108,36 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": blas["output_tile_size"],
 				"training_replay_role": "safe",
 				"physical_write": operation.get("physical_write"),
-				"fusion_effects": kernel_fusion_effects(operation),
+				"fusion_class": operation.get("fusion_class"),
+					"fusion_effects": kernel_fusion_effects(operation),
 				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(operation['name'])}",
 			}
 		)
+	def candidate_contract_ref(semantic):
+		parts = semantic.split("::")
+		domain = parts[0] if len(parts) == 2 else "matrix"
+		operation = parts[-1]
+		return f"crate::core::operation::{domain}::{rust_const_name(operation)}"
+
 	for candidate in blas.get("candidate_kernels", []):
 		entries.append(
 			{
 				"domain": "matrix",
 				"name": candidate["name"],
-				"dtype": blas["dtype"],
+				"dtype": candidate.get("dtype", blas["dtype"]),
 				"kernel_id": candidate["kernel_id"],
 				"stable_id": candidate["stable_id"],
 				"workgroup_size": blas["workgroup_size"],
 				"dispatch_tile_size": candidate["dispatch_tile_size"],
 				"training_replay_role": "safe",
 				"physical_write": candidate.get("physical_write"),
-				"fusion_effects": kernel_fusion_effects(candidate),
+				"fusion_class": operation.get("fusion_class"),
+					"fusion_effects": kernel_fusion_effects(candidate),
 				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(candidate['semantic_operation'])}",
+				"semantic_contracts": [
+					candidate_contract_ref(semantic)
+					for semantic in candidate.get("semantic_operations", [])
+				],
 			}
 		)
 	for operation in reduce["operations"]:
@@ -128,7 +155,8 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": [1, 1, 1],
 				"training_replay_role": "safe",
 				"physical_write": operation.get("physical_write"),
-				"fusion_effects": kernel_fusion_effects(operation),
+				"fusion_class": operation.get("fusion_class"),
+					"fusion_effects": kernel_fusion_effects(operation),
 				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(semantic)}",
 			}
 		)
@@ -148,7 +176,8 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				),
 				"training_replay_role": operation.get("training_replay_role", "safe"),
 				"physical_write": operation.get("physical_write"),
-				"fusion_effects": kernel_fusion_effects(operation),
+				"fusion_class": operation.get("fusion_class"),
+					"fusion_effects": kernel_fusion_effects(operation),
 				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(semantic)}",
 			}
 		)
@@ -169,7 +198,10 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				),
 				"training_replay_role": "safe",
 				"physical_write": operation.get("physical_write"),
-				"fusion_effects": kernel_fusion_effects(operation),
+				"fusion_class": operation.get("fusion_class"),
+				"tape_op": operation.get("tape_op"),
+				"tape_shape": operation.get("tape_shape"),
+					"fusion_effects": kernel_fusion_effects(operation),
 				"semantic_contract": f"crate::core::operation::matrix::{rust_const_name(semantic)}",
 			}
 		)
@@ -190,7 +222,13 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				),
 				"training_replay_role": operation.get("training_replay_role", "safe"),
 				"physical_write": operation.get("physical_write"),
-				"fusion_effects": kernel_fusion_effects(operation),
+				"fusion_class": operation.get("fusion_class"),
+				"scalar_tail": operation.get("scalar_tail"),
+				"prologue_kind": operation.get("prologue_kind"),
+				"tape_op": operation.get("tape_op"),
+				"tape_shape": operation.get("tape_shape"),
+				"act_kind": operation.get("act_kind"),
+					"fusion_effects": kernel_fusion_effects(operation),
 				"semantic_contract": (
 					None
 					if operation.get("lowering_only", False) and "semantic_operation" not in operation
@@ -198,6 +236,13 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				),
 			}
 		)
+	cryptography_operations = {operation["name"]: operation for operation in cryptography["contracts"]}
+	pqc_operations = {operation["name"]: operation for operation in cryptography_pqc["contracts"]}
+	image_operations = {operation["name"]: operation for operation in image["contracts"]}
+	vision_operations = {operation["name"]: operation for operation in vision["contracts"]}
+	video_operations = {operation["name"]: operation for operation in video["contracts"]}
+	bigint_operations = {operation["name"]: operation for operation in bigint["contracts"]} if bigint is not None else {}
+	audio_operations = {operation["name"]: operation for operation in audio["contracts"]}
 	for kernel in audio["kernels"]:
 		semantic = kernel.get("semantic_operation")
 		entries.append(
@@ -211,7 +256,12 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
 				"training_replay_role": "safe",
 				"physical_write": kernel.get("physical_write"),
-				"fusion_effects": kernel_fusion_effects(kernel),
+				"fusion_class": kernel_fusion_class(kernel, audio_operations),
+				"region_read": kernel_region_read(kernel, audio_operations),
+				"tile_program": kernel.get("tile_program"),
+				"tape_op": kernel.get("tape_op"),
+				"tape_shape": kernel.get("tape_shape"),
+					"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": (
 					None
 					if semantic is None
@@ -233,7 +283,8 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
 				"training_replay_role": "safe",
 				"physical_write": kernel.get("physical_write"),
-				"fusion_effects": kernel_fusion_effects(kernel),
+				"fusion_class": kernel_fusion_class(kernel, cryptography_operations),
+					"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": f"crate::core::operation::crypto::hash::{rust_const_name(semantic)}",
 			}
 		)
@@ -251,7 +302,8 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
 				"training_replay_role": "safe",
 				"physical_write": kernel.get("physical_write"),
-				"fusion_effects": kernel_fusion_effects(kernel),
+				"fusion_class": kernel_fusion_class(kernel, pqc_operations),
+					"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": f"crate::core::operation::crypto::pqc::{rust_const_name(semantic)}",
 			}
 		)
@@ -262,7 +314,8 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 			"kernel_id": kernel["kernel_id"], "stable_id": kernel["stable_id"],
 			"workgroup_size": kernel["workgroup_size"], "dispatch_tile_size": kernel["workgroup_size"],
 			"training_replay_role": "safe", "physical_write": kernel["physical_write"],
-			"fusion_effects": kernel_fusion_effects(kernel),
+			"fusion_class": kernel_fusion_class(kernel, pqc_operations),
+					"fusion_effects": kernel_fusion_effects(kernel),
 			"semantic_contract": None,
 			"semantic_contracts": [
 				f"crate::core::operation::crypto::pqc::{rust_const_name(semantic)}"
@@ -283,8 +336,13 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
 				"training_replay_role": "safe",
 				"physical_write": kernel["physical_write"],
-				"fusion_effects": kernel_fusion_effects(kernel),
+				"fusion_class": kernel_fusion_class(kernel, image_operations),
+				"region_read": kernel_region_read(kernel, image_operations),
+				"tape_op": kernel.get("tape_op"),
+				"tape_shape": kernel.get("tape_shape"),
+					"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": f"crate::core::operation::image::{rust_const_name(semantic)}",
+				"tile_program": kernel_tile_program(kernel, image_operations),
 			}
 		)
 	for kernel in vision["kernels"]:
@@ -300,7 +358,8 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
 				"training_replay_role": "safe",
 				"physical_write": kernel["physical_write"],
-				"fusion_effects": kernel_fusion_effects(kernel),
+				"fusion_class": kernel_fusion_class(kernel, vision_operations),
+					"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": f"crate::core::operation::vision::{rust_const_name(semantic)}",
 			}
 		)
@@ -319,7 +378,8 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"dispatch_tile_size": kernel.get("dispatch_tile_size", kernel["workgroup_size"]),
 				"training_replay_role": kernel.get("training_replay_role", "safe"),
 				"physical_write": kernel.get("physical_write"),
-				"fusion_effects": kernel_fusion_effects(kernel),
+				"fusion_class": kernel_fusion_class(kernel, video_operations),
+					"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": (
 					None
 					if semantic is None
@@ -335,17 +395,18 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 				"stable_id": kernel["stable_id"], "workgroup_size": kernel["workgroup_size"],
 				"dispatch_tile_size": kernel["workgroup_size"], "training_replay_role": "safe",
 				"physical_write": kernel["physical_write"],
-				"fusion_effects": kernel_fusion_effects(kernel),
+				"fusion_class": kernel_fusion_class(kernel, bigint_operations),
+					"fusion_effects": kernel_fusion_effects(kernel),
 				"semantic_contract": f"crate::core::operation::crypto::bigint::{rust_const_name(kernel['semantic_operation'])}",
 			})
 	for kernel in merkle['kernels']:
 		entries.append({'domain': 'cryptography', 'report_domain': 'cryptography.merkle', 'name': kernel['name'], 'dtype': 'u32',
 			'kernel_id': kernel['kernel_id'], 'stable_id': kernel['stable_id'], 'workgroup_size': kernel['workgroup_size'], 'dispatch_tile_size': kernel['workgroup_size'],
-			'training_replay_role': 'safe', 'physical_write': kernel['physical_write'], 'fusion_effects': kernel_fusion_effects(kernel), 'semantic_contract': f"crate::core::operation::crypto::merkle::{rust_const_name(kernel['semantic_operation'])}"})
+			'training_replay_role': 'safe', 'physical_write': kernel['physical_write'], 'fusion_class': 'opaque', 'fusion_effects': kernel_fusion_effects(kernel), 'semantic_contract': f"crate::core::operation::crypto::merkle::{rust_const_name(kernel['semantic_operation'])}"})
 	for kernel in ntt['kernels']:
 		entries.append({'domain': 'cryptography', 'report_domain': 'cryptography.ntt', 'name': kernel['name'], 'dtype': 'u32',
 			'kernel_id': kernel['kernel_id'], 'stable_id': kernel['stable_id'], 'workgroup_size': kernel['workgroup_size'], 'dispatch_tile_size': kernel['workgroup_size'],
-			'training_replay_role': 'safe', 'physical_write': kernel['physical_write'], 'fusion_effects': kernel_fusion_effects(kernel), 'semantic_contract': f"crate::core::operation::crypto::ntt::{rust_const_name(kernel['semantic_operation'])}"})
+			'training_replay_role': 'safe', 'physical_write': kernel['physical_write'], 'fusion_class': 'opaque', 'fusion_effects': kernel_fusion_effects(kernel), 'semantic_contract': f"crate::core::operation::crypto::ntt::{rust_const_name(kernel['semantic_operation'])}"})
 	buffer_counts: dict[str, int] = {}
 	for kernel in ntt['kernels'] + merkle['kernels']:
 		buffer_counts[kernel['kernel_id']] = count_buffer_indices(kernel)
@@ -361,9 +422,19 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 			buffer_counts[lowering["kernel_id"]] = count_buffer_indices(lowering)
 	for operation in blas["operations"]:
 		buffer_counts[operation["kernel_id"]] = 3
+	def candidate_contract_ref(semantic):
+		parts = semantic.split("::")
+		domain = parts[0] if len(parts) == 2 else "matrix"
+		operation = parts[-1]
+		return f"crate::core::operation::{domain}::{rust_const_name(operation)}"
+
 	for candidate in blas.get("candidate_kernels", []):
 		buffer_counts[candidate["kernel_id"]] = (
-			3 if candidate["variant"] in {"naive", "gemv"} else 4
+			3
+			if candidate["variant"] in {"naive", "gemv", "strided", "strided_tiled", "split_k", "f16s"}
+			else 2
+			if candidate["variant"] in {"split_k_reduce", "cast_f32_f16", "cast_f16_f32", "sum_f16s"}
+			else 4
 		)
 	for schema in [reduce, rng, index, ml, audio, cryptography, cryptography_pqc, image, vision]:
 		for operation in schema.get("operations", schema.get("kernels", [])) + schema.get("private_kernels", []):
@@ -420,7 +491,7 @@ def generate_kernel_manifest(schemas: Schemas) -> str:
 			vision_hash,
 		).rstrip(),
 		"",
-		"use super::{CollisionPolicy, LogicalWriteDomain, KernelEffects, PhysicalWrite, PhysicalWriteContract, ShaderArtifact, TailPolicy, UniformStoreProof, WorkspacePartition, WriteExtent, WritePartition, content_ids};",
+		"use super::{CollisionPolicy, KernelEffects, KernelRegionRead, KernelScalarTail, KernelTapeShape, LogicalWriteDomain, PhysicalWrite, PhysicalWriteContract, ShaderArtifact, TailPolicy, UniformStoreProof, WorkspacePartition, WriteExtent, WritePartition, content_ids};",
 		"",
 		f"pub(crate) const MAX_BOUNDED_STORAGE_BUFFERS: u32 = {max(entry['bounded_buffer_count'] for entry in entries)};",
 		"",
@@ -581,7 +652,7 @@ def generate_kernel_manifest(schemas: Schemas) -> str:
 			"\t\tmatch self {",
 		]
 	)
-	dtype_tokens = {"f32": "float32", "i32": "int32", "u32": "uint32", "u8": "uint8"}
+	dtype_tokens = {"f32": "float32", "f16": "float16", "i32": "int32", "u32": "uint32", "u8": "uint8"}
 	for entry in entries:
 		lines.append(
 			f'\t\t\tSelf::{entry["kernel_id"]} => "{dtype_tokens[entry["dtype"]]}",'
@@ -601,8 +672,93 @@ def generate_kernel_manifest(schemas: Schemas) -> str:
 	lines.extend(["\t\t}", "\t}", "", "\tpub(crate) const fn fusion_effects(self) -> KernelEffects {", "\t\tmatch self {"])
 	for entry in entries:
 		lines.append(f"\t\t\tSelf::{entry['kernel_id']} => {rust_fusion_effects(entry['fusion_effects'])},")
+	lines.extend(["\t\t}", "\t}", "", "\tpub(crate) const fn fusion_class(self) -> crate::core::OpFusionClass {", "\t\tmatch self {"])
+	for entry in entries:
+		lines.append(f"\t\t\tSelf::{entry['kernel_id']} => crate::core::OpFusionClass::{fusion_class_variant(entry['fusion_class'] or 'opaque')},")
 	lines.extend(
 		[
+			"\t\t}",
+			"\t}",
+			"",
+			"\tpub(crate) const fn region_read(self) -> KernelRegionRead {",
+			"\t\tmatch self {",
+		]
+	)
+	for entry in entries:
+		lines.append(f"\t\t\tSelf::{entry['kernel_id']} => KernelRegionRead::{region_read_variant(entry.get('region_read'))},")
+	lines.extend(["\t\t}", "\t}", "", "\tpub(crate) const fn scalar_tail(self) -> Option<KernelScalarTail> {", "\t\tmatch self {"])
+	for entry in entries:
+		tail = scalar_tail_variant(entry.get("scalar_tail"))
+		if tail is not None:
+			lines.append(f"\t\t\tSelf::{entry['kernel_id']} => Some(KernelScalarTail::{tail}),")
+	lines.extend(
+		[
+			"\t\t\t_ => None,",
+			"\t\t}",
+			"\t}",
+			"",
+			"\tpub(crate) const fn tape_op(self) -> Option<(u32, KernelTapeShape)> {",
+			"\t\tmatch self {",
+		]
+	)
+	for entry in entries:
+		code = tape_op_code(entry.get("tape_op"))
+		shape = tape_shape_variant(entry.get("tape_shape"))
+		if code is not None and shape is not None:
+			lines.append(f"\t\t\tSelf::{entry['kernel_id']} => Some(({code}, KernelTapeShape::{shape})),")
+		elif code is not None or shape is not None:
+			raise SchemaError(f"{entry['kernel_id']} declares tape_op without tape_shape or vice versa")
+	lines.extend(
+		[
+			"\t\t\t_ => None,",
+			"\t\t}",
+			"\t}",
+			"",
+			"\tpub(crate) const fn act_kind(self) -> Option<u32> {",
+			"\t\tmatch self {",
+		]
+	)
+	for entry in entries:
+		kind = act_kind_code(entry.get("act_kind"))
+		if kind is not None:
+			lines.append(f"\t\t\tSelf::{entry['kernel_id']} => Some({kind}),")
+	lines.extend(
+		[
+			"\t\t\t_ => None,",
+			"\t\t}",
+			"\t}",
+			"",
+			"\tpub(crate) const fn prologue_kind(self) -> Option<u32> {",
+			"\t\tmatch self {",
+		]
+	)
+	for entry in entries:
+		kind = prologue_kind_code(entry.get("prologue_kind"))
+		if kind is not None:
+			lines.append(f"\t\t\tSelf::{entry['kernel_id']} => Some({kind}),")
+	lines.extend(
+		[
+			"\t\t\t_ => None,",
+			"\t\t}",
+			"\t}",
+			"",
+			"\tpub(in crate::runtime) fn tile_program(self) -> Option<crate::runtime::dna::ir::tile::BlockProgram> {",
+			"\t\tuse crate::runtime::dna::ir::tile::BlockProgram;",
+			"\t\tmatch self {",
+		]
+	)
+	for entry in entries:
+		program = entry.get("tile_program")
+		if program is not None:
+			name = program.split("(")[0]
+			if name not in TILE_PROGRAM_FACTORIES:
+				raise SchemaError(f"{entry['kernel_id']} declares unknown tile_program '{program}'")
+			call = program if "(" in program else f"{program}()"
+			expr = f"BlockProgram::{call}.ok()" if name in TILE_PROGRAM_RESULT_FACTORIES else f"Some(BlockProgram::{call})"
+			lines.append(f"\t\t\tSelf::{entry['kernel_id']} => {expr},")
+	lines.extend(
+		[
+			"\t\t\t_ => None,",
 			"\t\t}",
 			"\t}",
 			"",
@@ -694,6 +850,175 @@ _CONTRACT_VALUE_KIND_DONOR = {
 
 def contract_value_kind_variant(token: str) -> str:
 	return _CONTRACT_VALUE_KIND_VARIANT.get(token, "Matrix")
+
+
+def fusion_class_variant(token: str) -> str:
+	"""Map a schema ``fusion_class`` token to its ``OpFusionClass`` variant."""
+	if token not in FUSION_CLASS_VARIANTS:
+		raise SchemaError(f"unknown fusion_class {token}")
+	return FUSION_CLASS_VARIANTS[token]
+
+
+def region_read_variant(token: str | None) -> str:
+	"""Map the schema `region_read` token to the generated enum variant.
+
+	Absent metadata stays `Gather` — the non-admitting default for the
+	elementwise-prologue admission this read pattern feeds.
+	"""
+	return {
+		"elementwise": "Elementwise",
+		"gather": "Gather",
+		"bordered": "Bordered",
+	}.get(token, "Gather")
+
+
+def scalar_tail_variant(token: str | None) -> str | None:
+	"""Map the schema `scalar_tail` token to the generated enum variant.
+
+	Absent metadata means the kernel does not admit a scalar store tail.
+	"""
+	if token is None:
+		return None
+	variants = {
+		"add": "Add",
+		"sub": "Sub",
+		"mul": "Mul",
+		"div": "Div",
+		"max": "Max",
+		"min": "Min",
+		"neg": "Neg",
+		"abs": "Abs",
+		"log": "Log",
+		"exp": "Exp",
+		"sqrt": "Sqrt",
+		"recip": "Recip",
+		"relu": "Relu",
+	}
+	if token not in variants:
+		raise SchemaError(f"unknown scalar_tail {token}")
+	return variants[token]
+
+
+def tape_op_code(token: str | None) -> int | None:
+	"""Map the schema `tape_op` token to the fused-chain tape opcode.
+
+	The numeric values are the `matrix_fused_chain` Slang ABI in
+	`elementwise.slang` `eval_element` — the schema token names the op,
+	the generator owns the ABI number."""
+	if token is None:
+		return None
+	codes = {
+		"gather": 4,
+		"add": 10, "sub": 11, "mul": 12, "div": 13, "pow": 14,
+		"min": 15, "max": 16,
+		"neg": 20, "recip": 21, "abs": 22, "exp": 23, "log": 24,
+		"sqrt": 25, "sin": 26, "cos": 27, "tanh": 28,
+		"sigmoid": 30, "relu": 31, "gelu": 32, "silu": 33,
+		"relu_backward": 40, "gelu_backward": 41, "silu_backward": 42,
+		"tanh_backward": 43, "sigmoid_backward": 44,
+		"softplus_backward": 45, "mish_backward": 46,
+		"elu_backward": 47, "leaky_relu_backward": 48,
+		"gain_db": 49, "clamp": 50,
+	}
+	if token not in codes:
+		raise SchemaError(f"unknown tape_op {token}")
+	return codes[token]
+
+
+def tape_shape_variant(token: str | None) -> str | None:
+	"""Map the schema `tape_shape` token to the generated enum variant."""
+	if token is None:
+		return None
+	variants = {
+		"binary": "Binary",
+		"unary": "Unary",
+		"scalar": "Scalar",
+		"scalar_first": "ScalarFirst",
+		"scalar_pair": "ScalarPair",
+		"broadcast": "Broadcast",
+		"gather": "Gather",
+		"binary_scalar": "BinaryScalar",
+	}
+	if token not in variants:
+		raise SchemaError(f"unknown tape_shape {token}")
+	return variants[token]
+
+
+def act_kind_code(token: str | None) -> int | None:
+	"""Map the schema `act_kind` token to the fused `linear_act`
+	family's activation-kind push value (Slang ABI: `apply_act`
+	switch). Forward and backward ops declare the same family token."""
+	if token is None:
+		return None
+	codes = {
+		"relu": 0, "gelu": 1, "silu": 2, "tanh": 3, "sigmoid": 4,
+		"mish": 5, "elu": 6, "leaky_relu": 7, "softplus": 8,
+	}
+	if token not in codes:
+		raise SchemaError(f"unknown act_kind {token}")
+	return codes[token]
+
+
+def prologue_kind_code(token: str | None) -> int | None:
+	"""Map the schema `prologue_kind` token to the fused
+	`linear_backward_prologue` family's prologue-kind push value."""
+	if token is None:
+		return None
+	codes = {
+		"silu_mul": 9, "add": 10, "sub": 11, "mul": 12, "scalar_mul": 13,
+	}
+	if token not in codes:
+		raise SchemaError(f"unknown prologue_kind {token}")
+	return codes[token]
+
+
+TILE_PROGRAM_FACTORIES = {
+	"image_resize", "image_flip", "image_pad", "image_warp", "image_remap",
+	"image_crop", "image_rotate", "image_convolve", "image_separable_convolve",
+	"image_average_blur", "image_morphology_once", "image_morphology_twice",
+	"image_morphology_gradient", "image_morphology_hat", "image_directional_linear",
+	"image_laplacian", "image_sharpen", "image_gaussian", "image_bilateral",
+	"image_unsharp", "image_adaptive_threshold", "image_pointwise",
+	"image_segmentation_overlay", "image_normalize", "image_convert_color",
+	"image_resize_normalize", "image_grayscale", "image_channel_reorder",
+	"image_color_twist", "image_composite", "audio_mel_filterbank",
+	"channel_normalize", "video_to_matrix",
+}
+
+TILE_PROGRAM_RESULT_FACTORIES = {"image_resize", "channel_normalize", "video_to_matrix"}
+
+
+def kernel_tile_program(kernel: dict, contracts: dict) -> str | None:
+	"""Resolve the `tile_program` BlockProgram factory token: kernel record
+	first, owning contract via `semantic_operation` second, absent -> None."""
+	if kernel.get("tile_program"):
+		return kernel["tile_program"]
+	semantic = kernel.get("semantic_operation")
+	if semantic in contracts:
+		return contracts[semantic].get("tile_program")
+	return None
+
+
+def kernel_region_read(kernel: dict, contracts: dict) -> str | None:
+	"""Resolve a kernel entry's input read pattern from its own record or
+	owning contract. Absent metadata means the consuming admission stays
+	conservative (`region_read_variant` defaults to `gather`)."""
+	if kernel.get("region_read"):
+		return kernel["region_read"]
+	semantic = kernel.get("semantic_operation")
+	if semantic is not None and semantic in contracts:
+		return contracts[semantic].get("region_read")
+	return None
+
+
+def kernel_fusion_class(kernel: dict, operations: dict) -> str | None:
+	"""Resolve a kernel entry's fusion class from its own record or owning operation."""
+	if kernel.get("fusion_class"):
+		return kernel["fusion_class"]
+	semantic = kernel.get("semantic_operation")
+	if semantic is not None and semantic in operations:
+		return operations[semantic].get("fusion_class")
+	return None
 
 
 def contract_shape_rule_variant(token: str) -> str:
@@ -809,6 +1134,7 @@ def semantic_contract_lines(
 	contract: dict[str, Any],
 	attributes: list[dict[str, str]],
 	donor_op: str | None = None,
+	fusion_class: str | None = None,
 ) -> list[str]:
 	inputs = ", ".join(f"OpValueKind::{contract_value_kind_variant(kind)}" for kind in contract["input_kinds"])
 	outputs = ", ".join(f"OpValueKind::{contract_value_kind_variant(kind)}" for kind in contract["output_kinds"])
@@ -857,6 +1183,7 @@ def semantic_contract_lines(
 			f".with_dtype_rule({dtype_rule})",
 			f".with_differentiation({differentiation})",
 			f".with_lowering({lowering})",
+			f".with_fusion_class(OpFusionClass::{fusion_class_variant(fusion_class or 'opaque')})",
 			".effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))",
 		]
 	)
@@ -925,7 +1252,8 @@ def generate_operation_registry(schemas: Schemas) -> str:
 		"",
 		"use super::{",
 		"\tOpAttributeKind, OpAttributeSpec, OpControlFlow, OpDTypeRule, OpDifferentiation,",
-		"\tOpEffect, OpLowering, OpShapeRule, OpValueKind, OperationContract,",
+		"\tOpEffect, OpFusionClass, OpLowering, OpShapeRule, OpValueKind,",
+		"\tOperationContract,",
 		"};",
 		"",
 		"/// Generated semantic contracts for Matrix operations.",
@@ -944,11 +1272,11 @@ def generate_operation_registry(schemas: Schemas) -> str:
 		attributes = []
 		if operation["kind"] == "unary_scalar":
 			attributes = [{"name": operation["scalar_name"], "kind": "float"}]
-		for line in semantic_contract_lines("matrix", operation["name"], contract, attributes, operation.get("donor_op")):
+		for line in semantic_contract_lines("matrix", operation["name"], contract, attributes, operation.get("donor_op"), operation.get("fusion_class")):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
 	for operation in blas["operations"]:
-		for line in semantic_contract_lines("matrix", operation["name"], operation["contract"], [], operation.get("donor_op")):
+		for line in semantic_contract_lines("matrix", operation["name"], operation["contract"], [], operation.get("donor_op"), operation.get("fusion_class")):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
 	for operation in reduce["operations"]:
@@ -960,7 +1288,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 			{"name": name, "kind": kind}
 			for name, kind in operation["semantic_attributes"]
 		]
-		for line in semantic_contract_lines("matrix", operation["name"], contract, attributes, operation.get("donor_op")):
+		for line in semantic_contract_lines("matrix", operation["name"], contract, attributes, operation.get("donor_op"), operation.get("fusion_class")):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
 	for operation in rng["operations"]:
@@ -972,7 +1300,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 			{"name": name, "kind": kind}
 			for name, kind in operation.get("semantic_attributes", [])
 		]
-		for line in semantic_contract_lines("matrix", operation["name"], contract, attributes, operation.get("donor_op")):
+		for line in semantic_contract_lines("matrix", operation["name"], contract, attributes, operation.get("donor_op"), operation.get("fusion_class")):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
 	for operation in index["operations"]:
@@ -984,7 +1312,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 			{"name": name, "kind": kind}
 			for name, kind in operation.get("semantic_attributes", [])
 		]
-		for line in semantic_contract_lines("matrix", operation["name"], contract, attributes, operation.get("donor_op")):
+		for line in semantic_contract_lines("matrix", operation["name"], contract, attributes, operation.get("donor_op"), operation.get("fusion_class")):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
 	lines.extend(["}", "", "/// Generated compatibility contracts for current ML kernels.", "pub mod ml {", "\tuse super::*;", ""])
@@ -1001,7 +1329,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 		]
 		for line in semantic_contract_lines(
 			operation["semantic_domain"], operation["name"], contract, attributes,
-			operation.get("donor_op"),
+			operation.get("donor_op"), operation.get("fusion_class"),
 		):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
@@ -1014,7 +1342,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 		]
 		for line in semantic_contract_lines(
 			operation["semantic_domain"], operation["name"], contract, attributes,
-			operation.get("donor_op"),
+			operation.get("donor_op"), operation.get("fusion_class"),
 		):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
@@ -1036,7 +1364,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 		if "optional_inputs" in operation:
 			contract["optional_inputs"] = operation["optional_inputs"]
 		attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
-		for line in semantic_contract_lines("audio", operation["name"], contract, attributes, operation.get("donor_op")):
+		for line in semantic_contract_lines("audio", operation["name"], contract, attributes, operation.get("donor_op"), operation.get("fusion_class")):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
 	lines.extend([
@@ -1067,7 +1395,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 		if "optional_inputs" in operation:
 			contract["optional_inputs"] = operation["optional_inputs"]
 		attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
-		for line in semantic_contract_lines("crypto::hash", operation["name"], contract, attributes, operation.get("donor_op")):
+		for line in semantic_contract_lines("crypto::hash", operation["name"], contract, attributes, operation.get("donor_op"), operation.get("fusion_class")):
 			lines.append(f"\t\t{line}" if line else "")
 		lines.append("")
 	if bigint is not None:
@@ -1076,7 +1404,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 			contract = {key: operation[key] for key in ("input_kinds", "output_kinds", "shape_rule", "dtype_rule")}
 			contract.update(effects=["read_inputs", "write_outputs"], mutated_inputs=[], output_alias_inputs=[-1] * len(operation["output_kinds"]), differentiation="none", lowering="compute_dispatch")
 			attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
-			for line in semantic_contract_lines("crypto::bigint", operation["name"], contract, attributes, operation.get("donor_op")):
+			for line in semantic_contract_lines("crypto::bigint", operation["name"], contract, attributes, operation.get("donor_op"), operation.get("fusion_class")):
 				lines.append(f"\t\t{line}" if line else "")
 			lines.append("")
 		lines.insert(1, f"// cryptography_bigint_sha256={bigint_hash}")
@@ -1085,7 +1413,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 		contract = {key: operation[key] for key in ('input_kinds', 'output_kinds', 'shape_rule', 'dtype_rule')}
 		contract.update(effects=['read_inputs', 'write_outputs'], mutated_inputs=[], output_alias_inputs=[-1] * len(operation['output_kinds']), differentiation='none', lowering='compute_dispatch')
 		attributes = [{'name': name, 'kind': kind} for name, kind in operation['attributes']]
-		for line in semantic_contract_lines('crypto::ntt', operation['name'], contract, attributes, operation.get('donor_op')):
+		for line in semantic_contract_lines('crypto::ntt', operation['name'], contract, attributes, operation.get('donor_op'), operation.get('fusion_class')):
 			lines.append(f"\t\t{line}" if line else "")
 		lines.append('')
 	lines.insert(1, f'// cryptography_ntt_sha256={ntt_hash}')
@@ -1098,7 +1426,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 		if 'optional_inputs' in operation:
 			contract['optional_inputs'] = operation['optional_inputs']
 		attributes = [{'name': name, 'kind': kind} for name, kind in operation['attributes']]
-		for line in semantic_contract_lines('crypto::merkle', operation['name'], contract, attributes, operation.get('donor_op')):
+		for line in semantic_contract_lines('crypto::merkle', operation['name'], contract, attributes, operation.get('donor_op'), operation.get('fusion_class')):
 			lines.append(f"\t\t{line}" if line else "")
 		lines.append('')
 	lines.insert(1, f'// cryptography_merkle_sha256={merkle_hash}')
@@ -1131,7 +1459,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 		if "optional_inputs" in operation:
 			contract["optional_inputs"] = operation["optional_inputs"]
 		attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
-		for line in semantic_contract_lines("crypto::pqc", operation["name"], contract, attributes, operation.get("donor_op")):
+		for line in semantic_contract_lines("crypto::pqc", operation["name"], contract, attributes, operation.get("donor_op"), operation.get("fusion_class")):
 			lines.append(f"\t\t{line}" if line else "")
 		lines.append("")
 	lines.extend(["\t}", "}", "", "/// Generated semantic contracts for Image operations.", "pub mod image {", "\tuse super::*;", ""])
@@ -1152,7 +1480,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 		if "optional_inputs" in operation:
 			contract["optional_inputs"] = operation["optional_inputs"]
 		attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
-		for line in semantic_contract_lines("image", operation["name"], contract, attributes, operation.get("donor_op")):
+		for line in semantic_contract_lines("image", operation["name"], contract, attributes, operation.get("donor_op"), operation.get("fusion_class")):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
 	lines.extend(["}", ""])
@@ -1174,7 +1502,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 		if "optional_inputs" in operation:
 			contract["optional_inputs"] = operation["optional_inputs"]
 		attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
-		for line in semantic_contract_lines("vision", operation["name"], contract, attributes, operation.get("donor_op")):
+		for line in semantic_contract_lines("vision", operation["name"], contract, attributes, operation.get("donor_op"), operation.get("fusion_class")):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
 	lines.extend(["}", ""])
@@ -1195,7 +1523,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 			if key in operation:
 				contract[key] = operation[key]
 		attributes = [{"name": name, "kind": kind} for name, kind in operation["attributes"]]
-		for line in semantic_contract_lines("video", operation["name"], contract, attributes, operation.get("donor_op")):
+		for line in semantic_contract_lines("video", operation["name"], contract, attributes, operation.get("donor_op"), operation.get("fusion_class")):
 			lines.append(f"\t{line}" if line else "")
 		lines.append("")
 	lines.extend(["}", ""])

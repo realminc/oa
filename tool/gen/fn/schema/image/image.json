@@ -6,6 +6,8 @@
   "contracts": [
     {
       "name": "resize",
+      "fusion_class": "gather",
+      "region_read": "gather",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -67,6 +69,9 @@
     },
     {
       "name": "crop",
+      "region_read": "elementwise",
+      "tile_program": "image_crop",
+      "fusion_class": "gather",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -110,6 +115,9 @@
     },
     {
       "name": "flip",
+      "region_read": "elementwise",
+      "tile_program": "image_flip",
+      "fusion_class": "gather",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -144,6 +152,9 @@
     },
     {
       "name": "rotate",
+      "region_read": "elementwise",
+      "tile_program": "image_rotate",
+      "fusion_class": "gather",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -176,6 +187,9 @@
     },
     {
       "name": "pad",
+      "region_read": "bordered",
+      "tile_program": "image_pad",
+      "fusion_class": "gather",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -239,6 +253,9 @@
     },
     {
       "name": "center_crop",
+      "region_read": "elementwise",
+      "tile_program": "image_crop",
+      "fusion_class": "gather",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -272,6 +289,9 @@
     },
     {
       "name": "remap",
+      "region_read": "gather",
+      "tile_program": "image_remap",
+      "fusion_class": "gather",
       "input_kinds": ["image", "matrix"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -332,6 +352,9 @@
     },
     {
       "name": "warp_affine",
+      "region_read": "gather",
+      "tile_program": "image_warp(false)",
+      "fusion_class": "gather",
       "input_kinds": ["image", "matrix"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -402,6 +425,9 @@
     },
     {
       "name": "warp_perspective",
+      "region_read": "gather",
+      "tile_program": "image_warp(true)",
+      "fusion_class": "gather",
       "input_kinds": ["image", "matrix"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -478,6 +504,9 @@
     },
     {
       "name": "threshold_binary",
+      "region_read": "elementwise",
+      "tile_program": "image_pointwise(0)",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -518,6 +547,9 @@
     },
     {
       "name": "threshold_binary_inv",
+      "region_read": "elementwise",
+      "tile_program": "image_pointwise(1)",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -558,6 +590,9 @@
     },
     {
       "name": "threshold_truncate",
+      "region_read": "elementwise",
+      "tile_program": "image_pointwise(2)",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -595,6 +630,9 @@
     },
     {
       "name": "threshold_to_zero",
+      "region_read": "elementwise",
+      "tile_program": "image_pointwise(3)",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -632,6 +670,9 @@
     },
     {
       "name": "threshold_to_zero_inv",
+      "region_read": "elementwise",
+      "tile_program": "image_pointwise(4)",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -669,6 +710,9 @@
     },
     {
       "name": "in_range",
+      "region_read": "elementwise",
+      "tile_program": "image_pointwise(5)",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -710,6 +754,9 @@
     },
     {
       "name": "clamp",
+      "region_read": "elementwise",
+      "tile_program": "image_pointwise(6)",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -747,6 +794,9 @@
     },
     {
       "name": "invert",
+      "region_read": "elementwise",
+      "tile_program": "image_pointwise(7)",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -789,6 +839,9 @@
     },
     {
       "name": "brightness_contrast",
+      "region_read": "elementwise",
+      "tile_program": "image_pointwise(8)",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -829,6 +882,9 @@
     },
     {
       "name": "gamma_contrast",
+      "region_read": "elementwise",
+      "tile_program": "image_pointwise(9)",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -866,6 +922,9 @@
     },
     {
       "name": "solarize",
+      "region_read": "elementwise",
+      "tile_program": "image_pointwise(10)",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -906,6 +965,9 @@
     },
     {
       "name": "posterize",
+      "region_read": "elementwise",
+      "tile_program": "image_pointwise(11)",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -947,6 +1009,9 @@
     },
     {
       "name": "grayscale",
+      "region_read": "elementwise",
+      "tile_program": "image_grayscale",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -982,6 +1047,9 @@
     },
     {
       "name": "alpha_blend",
+      "region_read": "elementwise",
+      "tile_program": "image_composite",
+      "fusion_class": "pointwise",
       "input_kinds": ["image", "image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1035,6 +1103,9 @@
     },
     {
       "name": "composite",
+      "region_read": "elementwise",
+      "tile_program": "image_composite",
+      "fusion_class": "pointwise",
       "input_kinds": ["image", "image", "image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1088,6 +1159,9 @@
     },
     {
       "name": "erase",
+      "region_read": "elementwise",
+      "tile_program": "image_composite",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1153,6 +1227,9 @@
     },
     {
       "name": "color_twist",
+      "region_read": "elementwise",
+      "tile_program": "image_color_twist",
+      "fusion_class": "pointwise",
       "input_kinds": ["image", "matrix"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1191,6 +1268,9 @@
     },
     {
       "name": "channel_reorder",
+      "region_read": "elementwise",
+      "tile_program": "image_channel_reorder",
+      "fusion_class": "gather",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1248,6 +1328,8 @@
     },
     {
       "name": "gaussian_noise",
+      "region_read": "elementwise",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1288,6 +1370,8 @@
     },
     {
       "name": "salt_pepper_noise",
+      "region_read": "elementwise",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1330,6 +1414,9 @@
     },
     {
       "name": "convolve_2d",
+      "region_read": "bordered",
+      "tile_program": "image_convolve",
+      "fusion_class": "conv",
       "input_kinds": ["image", "matrix"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1396,6 +1483,9 @@
     },
     {
       "name": "separable_convolve_2d",
+      "region_read": "bordered",
+      "tile_program": "image_separable_convolve",
+      "fusion_class": "conv",
       "input_kinds": ["image", "matrix", "matrix"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1468,6 +1558,9 @@
     },
     {
       "name": "average_blur",
+      "region_read": "bordered",
+      "tile_program": "image_average_blur",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1534,6 +1627,9 @@
     },
     {
       "name": "sobel",
+      "region_read": "bordered",
+      "tile_program": "image_directional_linear(0x40000000, 0x3f800000)",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1600,6 +1696,9 @@
     },
     {
       "name": "scharr",
+      "region_read": "bordered",
+      "tile_program": "image_directional_linear(0x41200000, 0x40400000)",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1666,6 +1765,9 @@
     },
     {
       "name": "laplacian",
+      "region_read": "bordered",
+      "tile_program": "image_laplacian",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1728,6 +1830,9 @@
     },
     {
       "name": "erode",
+      "region_read": "bordered",
+      "tile_program": "image_morphology_once(false)",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1801,6 +1906,9 @@
     },
     {
       "name": "dilate",
+      "region_read": "bordered",
+      "tile_program": "image_morphology_once(true)",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1874,6 +1982,9 @@
     },
     {
       "name": "morphology_open",
+      "region_read": "bordered",
+      "tile_program": "image_morphology_twice(false)",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -1947,6 +2058,9 @@
     },
     {
       "name": "morphology_close",
+      "region_read": "bordered",
+      "tile_program": "image_morphology_twice(true)",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2020,6 +2134,9 @@
     },
     {
       "name": "morphology_gradient",
+      "region_read": "bordered",
+      "tile_program": "image_morphology_gradient",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2093,6 +2210,9 @@
     },
     {
       "name": "gaussian_blur",
+      "region_read": "bordered",
+      "tile_program": "image_gaussian",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2158,6 +2278,9 @@
     },
     {
       "name": "sharpen",
+      "region_read": "bordered",
+      "tile_program": "image_sharpen",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2223,6 +2346,8 @@
     },
     {
       "name": "median_blur",
+      "region_read": "bordered",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2288,6 +2413,9 @@
     },
     {
       "name": "bilateral_filter",
+      "region_read": "bordered",
+      "tile_program": "image_bilateral",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2361,6 +2489,9 @@
     },
     {
       "name": "unsharp_mask",
+      "region_read": "bordered",
+      "tile_program": "image_unsharp",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2427,6 +2558,9 @@
     },
     {
       "name": "morphology_top_hat",
+      "region_read": "bordered",
+      "tile_program": "image_morphology_hat(true)",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2500,6 +2634,9 @@
     },
     {
       "name": "morphology_black_hat",
+      "region_read": "bordered",
+      "tile_program": "image_morphology_hat(false)",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2573,6 +2710,9 @@
     },
     {
       "name": "adaptive_threshold_mean",
+      "region_read": "bordered",
+      "tile_program": "image_adaptive_threshold(false)",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2640,6 +2780,9 @@
     },
     {
       "name": "adaptive_threshold_gaussian",
+      "region_read": "bordered",
+      "tile_program": "image_adaptive_threshold(true)",
+      "fusion_class": "conv",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2721,6 +2864,9 @@
     },
     {
       "name": "normalize",
+      "region_read": "elementwise",
+      "tile_program": "image_normalize",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2795,6 +2941,9 @@
     },
     {
       "name": "convert_color",
+      "region_read": "elementwise",
+      "tile_program": "image_convert_color",
+      "fusion_class": "pointwise",
       "input_kinds": ["image"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2838,6 +2987,9 @@
     },
     {
       "name": "resize_normalize",
+      "region_read": "gather",
+      "tile_program": "image_resize_normalize",
+      "fusion_class": "gather",
       "control_flow": "conditional",
       "donor_op": "oa::FnImage::resizeNormalize",
       "input_kinds": ["image"],
@@ -2933,6 +3085,9 @@
     },
     {
       "name": "segmentation_overlay",
+      "region_read": "elementwise",
+      "tile_program": "image_segmentation_overlay",
+      "fusion_class": "pointwise",
       "input_kinds": ["image", "matrix", "matrix"],
       "output_kinds": ["image"],
       "shape_rule": "explicit",
@@ -2983,6 +3138,7 @@
     {
       "stable_id": 123,
       "name": "resize_nearest",
+      "tile_program": "image_resize(true)",
       "kernel_id": "ImageResizeNearestF32",
       "source": "src/slang/image/geometric/resize_nearest.slang",
       "variant": "nearest",
@@ -3016,6 +3172,7 @@
     {
       "stable_id": 124,
       "name": "resize_bilinear",
+      "tile_program": "image_resize(false)",
       "kernel_id": "ImageResizeBilinearF32",
       "source": "src/slang/image/geometric/resize_bilinear.slang",
       "variant": "bilinear_align_corners_false",
@@ -3534,6 +3691,7 @@
       "stable_id": 151,
       "name": "clamp",
       "kernel_id": "ImageClampF32",
+      "tape_op": "clamp", "tape_shape": "scalar_pair",
       "source": "src/slang/image/pixel/pointwise.slang",
       "reflection_name": "pointwise",
       "variant": "parameterized",
@@ -3567,6 +3725,7 @@
       "stable_id": 152,
       "name": "invert",
       "kernel_id": "ImageInvertF32",
+      "tape_op": "sub", "tape_shape": "scalar_first",
       "source": "src/slang/image/pixel/pointwise.slang",
       "reflection_name": "pointwise",
       "variant": "parameterized",

@@ -1,10 +1,10 @@
 //! H.265/HEVC decoded-picture-buffer planning and Vulkan standard-video lowering.
 //!
 //! Mirrors the AV1, VP9, and H.264 submodule pattern. Pure bitstream parsing
-//! lives in `video::h265`; DPB slot management and picture planning belong here
+//! lives in `video::codec`; DPB slot management and picture planning belong here
 //! because they are a Vulkan-backend concern, not a parser concern.
 
-use crate::runtime::device::video::*;
+use super::*;
 use crate::{Error, Result, video};
 
 // ── DPB slot state ────────────────────────────────────────────────────────────
@@ -43,6 +43,7 @@ pub(super) struct DpbState {
 	previous_poc_lsb: i32,
 	previous_poc_msb: i32,
 	has_previous_poc: bool,
+	pub(super) restart: bool,
 	decode_index: u64,
 }
 
@@ -58,11 +59,12 @@ impl DpbState {
 			previous_poc_lsb: 0,
 			previous_poc_msb: 0,
 			has_previous_poc: false,
+			restart: false,
 			decode_index: 0,
 		})
 	}
 
-	pub(super) fn plan_with_unavailable(
+	pub(super) fn plan_in_place(
 		&mut self,
 		sps: &video::H265SequenceParameterSet,
 		slice: &video::H265SliceHeader,
@@ -73,18 +75,6 @@ impl DpbState {
 				"H.265 unavailable-slot mask does not match DPB capacity",
 			));
 		}
-		let mut next = self.clone();
-		let plan = next.plan_in_place(sps, slice, unavailable)?;
-		*self = next;
-		Ok(plan)
-	}
-
-	fn plan_in_place(
-		&mut self,
-		sps: &video::H265SequenceParameterSet,
-		slice: &video::H265SliceHeader,
-		unavailable: &[bool],
-	) -> Result<PicturePlan> {
 		let poc_bits = sps
 			.log2_max_pic_order_count_lsb_minus_4
 			.checked_add(4)
@@ -110,7 +100,7 @@ impl DpbState {
 			));
 		}
 		let is_bla = (16..=18).contains(&slice.nal_unit_type);
-		let reset_dpb = slice.is_idr || is_bla || slice.no_output_of_prior_pictures;
+		let reset_dpb = self.restart || slice.is_idr || is_bla || slice.no_output_of_prior_pictures;
 		let mut poc_msb = self.previous_poc_msb;
 		if reset_dpb || !self.has_previous_poc {
 			poc_msb = 0;
@@ -130,6 +120,8 @@ impl DpbState {
 
 		if reset_dpb {
 			self.slots.fill(DpbSlotState::default());
+			self.has_previous_poc = false;
+			self.restart = false;
 		}
 		let retained = |poc: i32| {
 			slice
@@ -240,7 +232,7 @@ pub(super) fn record_h265_picture(
 	sps: &video::H265SequenceParameterSet,
 	pps: &video::H265PictureParameterSet,
 	slice: &video::H265SliceHeader,
-	slice_offset: u32,
+	status_pool: vk::QueryPool,
 	bitstream: &DecodeBitstream,
 	plan: &h265::PicturePlan,
 	initialize_images: bool,
@@ -302,7 +294,7 @@ pub(super) fn record_h265_picture(
 	}
 	let mut h265_picture = vk::VideoDecodeH265PictureInfoKHR::new()
 		.set_std_picture_info(&std_picture)
-		.set_slice_segment_offsets(std::slice::from_ref(&slice_offset))
+		.set_slice_segment_offsets(&[0])
 		.map_err(Error::from)?;
 
 	let setup_std_reference = h265_reference_info(plan.picture_order_count, !slice.is_reference);
@@ -487,7 +479,7 @@ pub(super) fn record_h265_picture(
 	// result-status query is reused only after the caller has completed and
 	// checked the preceding picture event.
 	unsafe {
-		device.cmd_reset_query_pool(command_buffer, session.result_status_pool, 0, 1)?;
+		device.cmd_reset_query_pool(command_buffer, status_pool, 0, 1)?;
 		device.cmd_pipeline_barrier2(command_buffer, &dependency)?;
 		device.cmd_begin_video_coding_khr(command_buffer, &begin_info)?;
 	}
@@ -501,12 +493,12 @@ pub(super) fn record_h265_picture(
 	unsafe {
 		device.cmd_begin_query(
 			command_buffer,
-			session.result_status_pool,
+			status_pool,
 			0,
 			vk::QueryControlFlags::empty(),
 		)?;
 		device.cmd_decode_video_khr(command_buffer, &decode_info)?;
-		device.cmd_end_query(command_buffer, session.result_status_pool, 0)?;
+		device.cmd_end_query(command_buffer, status_pool, 0)?;
 		device.cmd_end_video_coding_khr(command_buffer, &vk::VideoEndCodingInfoKHR::new())?;
 	}
 	if release_for_readback {

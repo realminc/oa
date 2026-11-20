@@ -2,12 +2,12 @@
 
 use crate::{Error, Result};
 
-use super::{Av1Profile, VideoChromaSubsampling, VideoComponentBitDepth};
+use crate::video::{Av1Profile, VideoChromaSubsampling, VideoComponentBitDepth};
 
-mod frame;
+mod frame_header;
 
 pub use crate::video::types::{Av1AccessUnitInfo, Av1ColorConfig, Av1TimingInfo};
-pub use frame::{
+pub use frame_header::{
 	Av1FrameHeader, Av1FrameType, Av1GlobalMotionType, Av1InterpolationFilter, Av1ReferenceState,
 	Av1RestorationType, Av1TileGroup, Av1TransformMode, parse_av1_frame_header, parse_av1_tile_group,
 };

@@ -995,10 +995,12 @@ fn parse_decoded_picture_buffer(
 		result.max_decoded_picture_buffering_minus_1[index] = bits.read_ue()?;
 		result.max_num_reorder_pictures[index] = bits.read_ue()?;
 		result.max_latency_increase_plus_1[index] = bits.read_ue()?;
-		if result.max_num_reorder_pictures[index] > result.max_decoded_picture_buffering_minus_1[index]
+		if result.max_decoded_picture_buffering_minus_1[index] >= 16
+			|| result.max_num_reorder_pictures[index]
+				> result.max_decoded_picture_buffering_minus_1[index]
 		{
 			return Err(Error::data_loss(
-				"H.265 reorder count exceeds decoded-picture-buffer capacity",
+				"H.265 sub-layer buffering or reorder count exceeds DPB capacity",
 			));
 		}
 	}

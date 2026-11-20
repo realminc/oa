@@ -1257,6 +1257,7 @@ impl SemanticGraph {
 const fn dtype_report_token(dtype: DType) -> &'static str {
 	match dtype {
 		DType::U8 => "uint8",
+		DType::F16 => "float16",
 		DType::F32 => "float32",
 		DType::I32 => "int32",
 		DType::U32 => "uint32",

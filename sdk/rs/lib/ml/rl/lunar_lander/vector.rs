@@ -26,6 +26,10 @@ const RESET_SPIRV: &[u8] = include_bytes!(concat!(
 	env!("OA_SHADER_DIR"),
 	"/ml_lunar_lander_reset_f32.spv"
 ));
+const RESET_CURSOR_SPIRV: &[u8] = include_bytes!(concat!(
+	env!("OA_SHADER_DIR"),
+	"/ml_lunar_lander_reset_cursor_f32.spv"
+));
 const STEP_SPIRV: &[u8] = include_bytes!(concat!(
 	env!("OA_SHADER_DIR"),
 	"/ml_lunar_lander_step_f32.spv"
@@ -111,6 +115,7 @@ pub struct LunarLander3dVector<'engine> {
 	end_reason: Matrix,
 	no_external_stop: Matrix,
 	reset_kernel: Kernel,
+	reset_cursor_kernel: Kernel,
 	step_kernel: Kernel,
 	pending_seed: Option<u64>,
 	has_committed_state: bool,
@@ -212,6 +217,13 @@ impl<'engine> LunarLander3dVector<'engine> {
 				"sdk.rl.lunar_lander_reset",
 				RESET_SPIRV,
 				7,
+				WORKGROUP_SIZE,
+			)?,
+			reset_cursor_kernel: Kernel::compile(
+				engine,
+				"sdk.rl.lunar_lander_reset_cursor",
+				RESET_CURSOR_SPIRV,
+				8,
 				WORKGROUP_SIZE,
 			)?,
 			step_kernel: Kernel::compile(
@@ -347,7 +359,7 @@ impl<'engine> LunarLander3dVector<'engine> {
 		}
 	}
 
-	fn record_reset_impl(&mut self, only_completed: bool) -> Result<()> {
+	fn record_reset_impl(&mut self, only_completed: bool, cursor: Option<&Matrix>) -> Result<()> {
 		if only_completed && !self.has_committed_state && !self.has_pending_full_reset {
 			return Err(Error::failed_precondition(
 				"Lunar Lander completed reset requires submitted state or an earlier full reset",
@@ -355,6 +367,26 @@ impl<'engine> LunarLander3dVector<'engine> {
 		}
 		if !only_completed {
 			self.has_pending_full_reset = true;
+		}
+		if let Some(cursor) = cursor {
+			return self.engine.dispatch_kernel(
+				&self.reset_cursor_kernel,
+				&[
+					KernelBinding::Read(&self.config_f32),
+					KernelBinding::Read(&self.config_u32),
+					KernelBinding::Read(&self.terrain_f32),
+					KernelBinding::Write(&self.state_f32),
+					KernelBinding::ReadWrite(&self.state_u32),
+					KernelBinding::Write(&self.observation),
+					KernelBinding::Write(&self.end_reason),
+					KernelBinding::Read(cursor),
+				],
+				&[
+					KernelPush::U32(self.config.environments),
+					KernelPush::U32(u32::from(only_completed)),
+				],
+				[self.config.environments.div_ceil(WORKGROUP_SIZE[0]), 1, 1],
+			);
 		}
 		let seed = self.pending_seed.unwrap_or(self.config.seed);
 		self.engine.dispatch_kernel(
@@ -441,7 +473,7 @@ impl Environment for LunarLander3dVector<'_> {
 
 	fn record_reset(&mut self, seed: u64) -> Result<()> {
 		self.pending_seed = Some(seed);
-		self.record_reset_impl(false)
+		self.record_reset_impl(false, None)
 	}
 
 	fn record_step(&mut self, action: &Matrix) -> Result<EnvironmentTransition> {
@@ -457,7 +489,7 @@ impl Environment for LunarLander3dVector<'_> {
 	}
 
 	fn record_reset_completed(&mut self) -> Result<()> {
-		self.record_reset_impl(true)
+		self.record_reset_impl(true, None)
 	}
 
 	fn commit_recorded_state(&mut self) {
@@ -661,4 +693,65 @@ fn validate_terminal_state(reason: u32, terminated: u32, truncated: u32) -> Resu
 		));
 	}
 	Ok(())
+}
+
+impl oa::ml::environment::CompiledEnvironment for LunarLander3dVector<'_> {
+	fn replay_initialized(&self) -> bool {
+		self.has_committed_state
+	}
+
+	fn replay_slots(&self) -> Vec<&Matrix> {
+		// State is read-modify-write across reset and step, observation is
+		// rewritten by step from the surviving state, and end_reason is
+		// rewritten by both programs — every buffer bound in more than one
+		// captured plan must restore its readiness between captures.
+		vec![
+			&self.state_f32,
+			&self.state_u32,
+			&self.observation,
+			&self.end_reason,
+		]
+	}
+
+	fn replay_identity(&self) -> Vec<u64> {
+		// config/terrain buffer identities cover the complete versioned
+		// recipe; the collection seed is excluded because it arrives through
+		// cursor words 3,4.
+		vec![
+			self.config_f32.value_id(),
+			self.config_u32.value_id(),
+			self.terrain_f32.value_id(),
+			self.state_f32.value_id(),
+			self.state_u32.value_id(),
+			self.observation.value_id(),
+			self.transition_observation.value_id(),
+			self.reward.value_id(),
+			self.terminated.value_id(),
+			self.truncated.value_id(),
+			self.end_reason.value_id(),
+			self.no_external_stop.value_id(),
+			u64::from(self.config.environments),
+		]
+	}
+
+	fn record_reset_replay(&mut self, only_done: bool, cursor: &Matrix) -> Result<()> {
+		self.record_reset_impl(only_done, Some(cursor))
+	}
+
+	fn record_step_replay(
+		&mut self,
+		action: &Matrix,
+		_cursor: &Matrix,
+	) -> Result<EnvironmentTransition> {
+		// Lunar Lander dynamics are deterministic given state and action;
+		// episode entropy was consumed at reset.
+		self.record_step(action)
+	}
+
+	fn replay_observation(&mut self, _observation: Matrix) {
+		// `observation` is fixed storage bound into the captured plans; the
+		// submitted reset established committed device state.
+		self.has_committed_state = true;
+		self.has_pending_full_reset = false;
+	}
 }

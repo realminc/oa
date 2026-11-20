@@ -94,3 +94,18 @@ public void atomic_add_f32(RWByteAddressBuffer buffer, uint element_index, float
 		buffer.InterlockedCompareExchange(address, assumed, next, old_value);
 	} while (assumed != old_value);
 }
+
+// IEEE-754 binary16 storage access. Two bytes per logical element; loads widen
+// to f32 and stores narrow with the device rounding rule (round-to-nearest-even
+// on every qualified backend). These helpers require the enabled
+// storageBuffer16BitAccess and shaderFloat16 device features; the routing layer
+// admits them only behind that queried contract.
+[ForceInline]
+public float load_f16(RWByteAddressBuffer buffer, uint element_index) {
+	return float(buffer.Load<float16_t>(element_index * 2u));
+}
+
+[ForceInline]
+public void store_f16(RWByteAddressBuffer buffer, uint element_index, float value) {
+	buffer.Store<float16_t>(element_index * 2u, float16_t(value));
+}

@@ -49,5 +49,7 @@ public float eval_element(uint opcode, float a, float b, float extra) {
 	}
 	if (opcode == 47u) return b * (a > 0.0f ? 1.0f : a + extra);
 	if (opcode == 48u) return a > 0.0f ? b : b * extra;
+	if (opcode == 49u) return a * exp2(b / 6.020599913279624f);
+	if (opcode == 50u) return clamp(a, b, extra);
 	return a;
 }

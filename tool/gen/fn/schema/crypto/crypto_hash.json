@@ -6,6 +6,7 @@
   "contracts": [
     {
       "name": "shake128",
+      "fusion_class": "effect",
       "control_flow": "straight_line",
       "donor_op": "oa::FnHash::shake128",
       "input_kinds": [
@@ -25,6 +26,7 @@
     },
     {
       "name": "shake256",
+      "fusion_class": "effect",
       "control_flow": "straight_line",
       "donor_op": "oa::FnHash::shake256",
       "input_kinds": [
@@ -44,6 +46,7 @@
     },
     {
       "name": "keccak_f1600",
+      "fusion_class": "effect",
       "control_flow": "straight_line",
       "donor_op": "oa::FnHash::keccakF1600",
       "input_kinds": [
@@ -58,6 +61,7 @@
     },
     {
       "name": "merkle_root",
+      "fusion_class": "effect",
       "control_flow": "loop",
       "donor_op": "oa::FnHash::merkleRoot",
       "input_kinds": [
@@ -72,6 +76,7 @@
     },
     {
       "name": "sha224",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -84,6 +89,7 @@
     },
     {
       "name": "sha256",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -96,6 +102,7 @@
     },
     {
       "name": "sha384",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -108,6 +115,7 @@
     },
     {
       "name": "sha512",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -120,6 +128,7 @@
     },
     {
       "name": "sha512_224",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -132,6 +141,7 @@
     },
     {
       "name": "sha512_256",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -144,6 +154,7 @@
     },
     {
       "name": "sha3_224",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -156,6 +167,7 @@
     },
     {
       "name": "sha3_256",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -168,6 +180,7 @@
     },
     {
       "name": "sha3_384",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -180,6 +193,7 @@
     },
     {
       "name": "sha3_512",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -192,6 +206,7 @@
     },
     {
       "name": "merkle_proofs",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix",
         "matrix"
@@ -205,6 +220,7 @@
     },
     {
       "name": "verify_merkle_proofs",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix",
         "matrix",
@@ -224,6 +240,7 @@
     },
     {
       "name": "poseidon2_babybear16",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -241,6 +258,7 @@
     },
     {
       "name": "poseidon2_babybear16_permute",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -253,6 +271,7 @@
     },
     {
       "name": "poseidon2_babybear24",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -270,6 +289,7 @@
     },
     {
       "name": "poseidon2_babybear24_permute",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -282,6 +302,7 @@
     },
     {
       "name": "poseidon2_koalabear16",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -299,6 +320,7 @@
     },
     {
       "name": "poseidon2_koalabear16_permute",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -311,6 +333,7 @@
     },
     {
       "name": "poseidon2_koalabear24",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],
@@ -328,6 +351,7 @@
     },
     {
       "name": "poseidon2_koalabear24_permute",
+      "fusion_class": "effect",
       "input_kinds": [
         "matrix"
       ],

@@ -6,12 +6,12 @@ use crate::{DType, Engine, Error, Matrix, Result, Texture, runtime::VideoDecoder
 
 use super::{
 	Av1Parser, Av1Profile, Av1SequenceHeader, H264PictureLayout, H264PictureParameterSet,
-	H264Profile, H264SequenceParameterSet, H265PictureParameterSet, H265Profile,
-	H265SequenceParameterSet, VideoChromaSubsampling, VideoCodec, VideoColorInfo, VideoColorMatrix,
-	VideoColorRange, VideoComponentBitDepth, VideoContainerInfo, VideoDecodeProfile, VideoFrame,
-	VideoFrameTiming, VideoPacket, Vp9Parser, Vp9Profile, parse_h264_pps, parse_h264_slice_header,
-	parse_h264_sps, parse_h265_pps, parse_h265_slice_header, parse_h265_sps, parse_h265_vps,
-	parse_nal_annex_b,
+	H264Profile, H264SequenceParameterSet, H264SliceHeader, H265PictureParameterSet, H265Profile,
+	H265SequenceParameterSet, H265VideoParameterSet, NalUnit, VideoChromaSubsampling, VideoCodec,
+	VideoColorInfo, VideoColorMatrix, VideoColorRange, VideoComponentBitDepth, VideoContainerInfo,
+	VideoDecodeProfile, VideoFrame, VideoFrameTiming, VideoPacket, Vp9Parser, Vp9Profile,
+	parse_h264_pps, parse_h264_slice_header, parse_h264_sps, parse_h265_pps, parse_h265_slice_header,
+	parse_h265_sps, parse_h265_vps, parse_nal_annex_b,
 };
 
 /// Stateful hardware decoder for one demuxed video stream.
@@ -34,6 +34,7 @@ struct DecoderState {
 	next_decode_sequence: u64,
 	reorder_depth: usize,
 	require_random_access: bool,
+	h265_skip_rasl: bool,
 	output_mode: Option<DecodeOutputMode>,
 }
 
@@ -41,11 +42,13 @@ struct DecoderState {
 enum DecodeOutputMode {
 	HostPlanar,
 	Native,
+	RecordedPlanes,
 }
 
 enum DecodedBacking {
 	HostPlanar(crate::video::VideoHostPlanes),
 	Native(crate::runtime::NativeDecodedFrame),
+	DevicePlanar(super::DevicePlanar),
 }
 
 enum DecoderCodecState {
@@ -54,6 +57,7 @@ enum DecoderCodecState {
 		picture_parameter_set: Option<Box<H264PictureParameterSet>>,
 	},
 	H265 {
+		video_parameter_set: Option<Box<H265VideoParameterSet>>,
 		sequence_parameter_set: Option<Box<H265SequenceParameterSet>>,
 		picture_parameter_set: Option<Box<H265PictureParameterSet>>,
 	},
@@ -79,6 +83,22 @@ impl VideoDecoder {
 		let profile = info.decode_profile().ok_or_else(|| {
 			Error::missing_capability("the stream has no Vulkan-queryable decode profile")
 		})?;
+		let backend = VideoDecoderBackend::create(
+			engine,
+			profile,
+			super::VideoExtent {
+				width: info.width(),
+				height: info.height(),
+			},
+		)?;
+		Self::with_backend(info, profile, backend)
+	}
+
+	fn with_backend(
+		info: VideoContainerInfo,
+		profile: VideoDecodeProfile,
+		backend: VideoDecoderBackend,
+	) -> Result<Self> {
 		let codec = match (info.codec(), profile) {
 			(
 				VideoCodec::H264,
@@ -112,6 +132,7 @@ impl VideoDecoder {
 					chroma_bit_depth: VideoComponentBitDepth::Eight | VideoComponentBitDepth::Ten,
 				},
 			) => DecoderCodecState::H265 {
+				video_parameter_set: None,
 				sequence_parameter_set: None,
 				picture_parameter_set: None,
 			},
@@ -145,14 +166,6 @@ impl VideoDecoder {
 				));
 			}
 		};
-		let backend = VideoDecoderBackend::create(
-			engine,
-			profile,
-			super::VideoExtent {
-				width: info.width(),
-				height: info.height(),
-			},
-		)?;
 		Ok(Self {
 			state: Some(DecoderState {
 				backend,
@@ -162,6 +175,7 @@ impl VideoDecoder {
 				next_decode_sequence: 0,
 				reorder_depth: 0,
 				require_random_access: true,
+				h265_skip_rasl: false,
 				output_mode: None,
 			}),
 		})
@@ -225,7 +239,7 @@ impl VideoDecoder {
 			Error::invalid_argument("native video readback requires a native decoded frame")
 		})?;
 		match state.backend.read_native_yuv420(native)? {
-			crate::video::VideoHostPlanes::U8(bytes) => Ok(bytes),
+			crate::video::VideoHostPlanes::U8(bytes) => Ok(std::sync::Arc::unwrap_or_clone(bytes)),
 			crate::video::VideoHostPlanes::U16(_) => Err(Error::missing_capability(
 				"read_native_yuv420p requires an 8-bit native frame; use read_native_yuv420p10",
 			)),
@@ -251,7 +265,7 @@ impl VideoDecoder {
 			Error::invalid_argument("native video readback requires a native decoded frame")
 		})?;
 		match state.backend.read_native_yuv420(native)? {
-			crate::video::VideoHostPlanes::U16(bytes) => Ok(bytes),
+			crate::video::VideoHostPlanes::U16(bytes) => Ok(std::sync::Arc::unwrap_or_clone(bytes)),
 			crate::video::VideoHostPlanes::U8(_) => Err(Error::missing_capability(
 				"read_native_yuv420p10 requires a 10- or 12-bit native frame",
 			)),
@@ -301,6 +315,99 @@ impl VideoDecoder {
 		crate::render::texture_from_matrix(data, width as usize, height as usize)
 	}
 
+	/// Copy an already-decoded I420, NV12, or P010 frame into device plane buffers.
+	///
+	/// The output supports [`VideoFrame::to_matrix`]. I420 and NV12 also support
+	/// native geometry and luma operations. The copy can be recorded inside
+	/// [`Engine::capture`]. The plan retains the decoder image layer and restores
+	/// its ownership on each replay.
+	///
+	/// # Errors
+	///
+	/// Returns an error for closed or mismatched decoders, unsupported formats,
+	/// or failure to allocate or record the planes.
+	pub fn stage_native_planes(&self, frame: &VideoFrame) -> Result<VideoFrame> {
+		let state = self
+			.state
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("VideoDecoder is closed"))?;
+		let native = frame
+			.native_backing()
+			.ok_or_else(|| Error::invalid_argument("plane staging requires a native decoded frame"))?;
+		let width = frame.width();
+		let height = frame.height();
+		let format = native.format();
+		let planes = state
+			.backend
+			.allocate_decoded_planes(format, width, height)?;
+		state.backend.stage_native_planes(native, &planes.planes)?;
+		Ok(VideoFrame::from_device_planar(
+			planes,
+			frame.timing(),
+			frame.color_info(),
+		))
+	}
+
+	/// Record a self-contained packet sequence into an active execution capture.
+	///
+	/// Packets enter in decode order, beginning with a random-access access
+	/// unit. H.264 requires an IDR with SPS/PPS, HEVC an IRAP with VPS/SPS/PPS,
+	/// AV1 a key picture with its sequence header, and VP9 a key picture.
+	/// The returned device-planar frames follow presentation order. Hidden
+	/// pictures update decode state and show-existing pictures reuse their
+	/// reconstructed image. No packet pixels cross the host.
+	///
+	/// The plan owns its compressed bytes and decode session. This decoder's
+	/// live packet position and pending frames are unaffected.
+	///
+	/// # Errors
+	///
+	/// Returns an error outside capture, after close, for an empty sequence,
+	/// for packets from another track or with changing codec parameters, or
+	/// when the decoder cannot plan the sequence.
+	pub fn record_to_planes(&self, packets: &[VideoPacket]) -> Result<Vec<VideoFrame>> {
+		let state = self
+			.state
+			.as_ref()
+			.ok_or_else(|| Error::failed_precondition("VideoDecoder is closed"))?;
+		if packets.is_empty() {
+			return Err(Error::invalid_argument(
+				"recorded decode requires at least one packet",
+			));
+		}
+		let profile = state
+			.info
+			.decode_profile()
+			.ok_or_else(|| Error::internal("open decoder has no decode profile"))?;
+		let mut recording =
+			Self::with_backend(state.info, profile, state.backend.begin_decode_capture()?)?;
+		let mut frames = Vec::with_capacity(packets.len());
+		for packet in packets {
+			if let Some(frame) = recording.decode_with_mode(packet, DecodeOutputMode::RecordedPlanes)? {
+				frames.push(frame);
+			}
+		}
+		let recording = recording
+			.state
+			.take()
+			.ok_or_else(|| Error::internal("video decode recording was closed"))?;
+		frames.extend(recording.pending_display.into_values());
+		recording.backend.finish_decode_capture()?;
+		Ok(frames)
+	}
+
+	pub(crate) fn stage_native_canvas_frame(&mut self, frame: &VideoFrame) -> Result<VideoFrame> {
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("VideoDecoder is closed"))?;
+		let native = frame
+			.native_backing()
+			.ok_or_else(|| Error::invalid_argument("canvas staging requires a native decoded frame"))?;
+		let (storage, layout) = state.backend.stage_native_canvas_planes(native)?;
+		Ok(frame.with_canvas_planes(storage, layout))
+	}
+
 	fn decode_with_mode(
 		&mut self,
 		packet: &VideoPacket,
@@ -310,6 +417,7 @@ impl VideoDecoder {
 			.state
 			.as_mut()
 			.ok_or_else(|| Error::failed_precondition("VideoDecoder is closed"))?;
+		state.backend.require_decode_submission()?;
 		if packet.track_id() != state.info.track_id() {
 			return Err(Error::invalid_argument(
 				"video packet track does not match the decoder stream",
@@ -336,34 +444,8 @@ impl VideoDecoder {
 					picture_parameter_set,
 				} => {
 					let nals = parse_nal_annex_b(packet.data());
-					let find_parameter = |nal_type| {
-						nals
-							.iter()
-							.find(|nal| nal.nal_unit_type() == nal_type)
-							.map(|nal| nal.payload())
-					};
 					if sequence_parameter_set.is_none() {
-						let sps = parse_h264_sps(find_parameter(7).ok_or_else(|| {
-							Error::failed_precondition("initial H.264 packet contains no SPS")
-						})?)?;
-						let pps = parse_h264_pps(
-							find_parameter(8).ok_or_else(|| {
-								Error::failed_precondition("initial H.264 packet contains no PPS")
-							})?,
-							&sps,
-						)?;
-						if !sps.frame_mbs_only || !matches!(sps.pic_order_count_type, 0 | 2) {
-							return Err(Error::missing_capability(
-								"the H.264 decoder currently requires progressive POC-type-zero or POC-type-two streams",
-							));
-						}
-						if sps.coded_width()? != state.info.width()
-							|| sps.coded_height()? != state.info.height()
-						{
-							return Err(Error::invalid_argument(
-								"H.264 parameter-set geometry differs from container metadata",
-							));
-						}
+						let (sps, pps) = h264_parameters(&nals, state.info)?;
 						state.backend.set_h264_parameters(&sps, &pps)?;
 						state.reorder_depth = sps
 							.vui
@@ -381,39 +463,48 @@ impl VideoDecoder {
 					let pps = picture_parameter_set.as_ref().ok_or_else(|| {
 						Error::failed_precondition("H.264 decoder has no picture parameter set")
 					})?;
-					let mut coded = nals
-						.iter()
-						.filter(|nal| matches!(nal.nal_unit_type(), 1 | 5));
-					let slice_nal = coded
-						.next()
-						.ok_or_else(|| Error::invalid_argument("H.264 access unit contains no coded slice"))?;
-					if coded.next().is_some() {
-						return Err(Error::missing_capability(
-							"the H.264 decoder currently accepts one slice per picture",
-						));
+					if output_mode == DecodeOutputMode::RecordedPlanes && !state.require_random_access {
+						for nal in &nals {
+							let changed = match nal.nal_unit_type() {
+								7 => parse_h264_sps(nal.payload())? != **sps,
+								8 => parse_h264_pps(nal.payload(), sps)? != **pps,
+								_ => false,
+							};
+							if changed {
+								return Err(Error::missing_capability(
+									"recorded H.264 parameter sets must remain unchanged",
+								));
+							}
+						}
 					}
-					let slice = parse_h264_slice_header(slice_nal.payload(), sps, pps)?;
+					let (coded_slice, slice) = h264_picture(&nals, sps, pps)?;
 					let backing =
 						match output_mode {
 							DecodeOutputMode::HostPlanar => DecodedBacking::HostPlanar(
-								state.backend.decode_h264(packet.data(), sps, pps, &slice)?,
+								state.backend.decode_h264(coded_slice, sps, pps, &slice)?,
 							),
 							DecodeOutputMode::Native => DecodedBacking::Native(
 								state
 									.backend
-									.decode_h264_native(packet.data(), sps, pps, &slice)?,
+									.decode_h264_native(coded_slice, sps, pps, &slice)?,
+							),
+							DecodeOutputMode::RecordedPlanes => DecodedBacking::DevicePlanar(
+								state
+									.backend
+									.record_h264_picture(coded_slice, sps, pps, &slice)?,
 							),
 						};
 					Some((
 						backing,
-						usize::try_from(sps.coded_width()?)
+						usize::try_from(state.info.width())
 							.map_err(|_| Error::out_of_range("H.264 width exceeds usize"))?,
-						usize::try_from(sps.coded_height()?)
+						usize::try_from(state.info.height())
 							.map_err(|_| Error::out_of_range("H.264 height exceeds usize"))?,
 						h264_color_info(sps),
 					))
 				}
 				DecoderCodecState::H265 {
+					video_parameter_set,
 					sequence_parameter_set,
 					picture_parameter_set,
 				} => {
@@ -434,7 +525,7 @@ impl VideoDecoder {
 						let pps = parse_h265_pps(find_parameter(34).ok_or_else(|| {
 							Error::failed_precondition("initial H.265 packet contains no PPS")
 						})?)?;
-						if sps.coded_width != state.info.width() || sps.coded_height != state.info.height() {
+						if sps.width != state.info.width() || sps.height != state.info.height() {
 							return Err(Error::invalid_argument(
 								"H.265 parameter-set geometry differs from container metadata",
 							));
@@ -447,6 +538,9 @@ impl VideoDecoder {
 								Error::data_loss("H.265 SPS reorder depth has no active sub-layer")
 							})?)
 							.map_err(|_| Error::out_of_range("H.265 reorder depth exceeds usize"))?;
+						if output_mode == DecodeOutputMode::RecordedPlanes {
+							*video_parameter_set = Some(Box::new(vps));
+						}
 						*sequence_parameter_set = Some(Box::new(sps));
 						*picture_parameter_set = Some(Box::new(pps));
 					}
@@ -456,6 +550,21 @@ impl VideoDecoder {
 					let pps = picture_parameter_set.as_ref().ok_or_else(|| {
 						Error::failed_precondition("H.265 decoder has no picture parameter set")
 					})?;
+					if output_mode == DecodeOutputMode::RecordedPlanes && !state.require_random_access {
+						for nal in &nals {
+							let changed = match (nal.payload()[0] >> 1) & 0x3f {
+								32 => video_parameter_set.as_deref() != Some(&parse_h265_vps(nal.payload())?),
+								33 => parse_h265_sps(nal.payload())? != **sps,
+								34 => parse_h265_pps(nal.payload())? != **pps,
+								_ => false,
+							};
+							if changed {
+								return Err(Error::missing_capability(
+									"recorded HEVC parameter sets must remain unchanged",
+								));
+							}
+						}
+					}
 					let mut coded = nals
 						.iter()
 						.filter(|nal| ((nal.payload()[0] >> 1) & 0x3f) < 32);
@@ -468,22 +577,46 @@ impl VideoDecoder {
 						));
 					}
 					let slice = parse_h265_slice_header(slice_nal.payload(), sps, pps)?;
+					if state.require_random_access {
+						if !slice.is_irap {
+							return Err(Error::data_loss(
+								"H.265 random access requires an IRAP picture",
+							));
+						}
+						state.backend.restart_h265()?;
+					}
+					if slice.is_irap {
+						state.h265_skip_rasl =
+							state.require_random_access || (16..=20).contains(&slice.nal_unit_type);
+					}
+					// RASL pictures associated with a new random-access point may
+					// depend on pictures that preceded it in decode order.
+					if state.h265_skip_rasl && (8..=9).contains(&slice.nal_unit_type) {
+						return Ok(None);
+					}
+
+					let coded_slice = slice_nal.prefixed_slice()?;
 					let backing =
 						match output_mode {
 							DecodeOutputMode::HostPlanar => DecodedBacking::HostPlanar(
-								state.backend.decode_h265(packet.data(), sps, pps, &slice)?,
+								state.backend.decode_h265(coded_slice, sps, pps, &slice)?,
 							),
 							DecodeOutputMode::Native => DecodedBacking::Native(
 								state
 									.backend
-									.decode_h265_native(packet.data(), sps, pps, &slice)?,
+									.decode_h265_native(coded_slice, sps, pps, &slice)?,
+							),
+							DecodeOutputMode::RecordedPlanes => DecodedBacking::DevicePlanar(
+								state
+									.backend
+									.record_h265_picture(coded_slice, sps, pps, &slice)?,
 							),
 						};
 					Some((
 						backing,
-						usize::try_from(sps.coded_width)
+						usize::try_from(sps.width)
 							.map_err(|_| Error::out_of_range("H.265 width exceeds usize"))?,
-						usize::try_from(sps.coded_height)
+						usize::try_from(sps.height)
 							.map_err(|_| Error::out_of_range("H.265 height exceeds usize"))?,
 						h265_color_info(sps),
 					))
@@ -546,26 +679,31 @@ impl VideoDecoder {
 					state.reorder_depth = 0;
 					let mut displayed = None;
 					for picture in &pictures {
-						let backing = if picture.frame.show_existing_frame {
-							match output_mode {
-								DecodeOutputMode::HostPlanar => {
-									DecodedBacking::HostPlanar(state.backend.show_existing_av1(&picture.frame)?)
-								}
-								DecodeOutputMode::Native => {
-									DecodedBacking::Native(state.backend.show_existing_av1_native(&picture.frame)?)
-								}
+						let backing = match output_mode {
+							DecodeOutputMode::RecordedPlanes => state
+								.backend
+								.record_av1_picture(packet.data(), picture)?
+								.map(DecodedBacking::DevicePlanar),
+							DecodeOutputMode::HostPlanar => {
+								let planes = if picture.frame.show_existing_frame {
+									state.backend.show_existing_av1(&picture.frame)?
+								} else {
+									state.backend.decode_av1(packet.data(), picture)?
+								};
+								Some(DecodedBacking::HostPlanar(planes))
 							}
-						} else {
-							match output_mode {
-								DecodeOutputMode::HostPlanar => {
-									DecodedBacking::HostPlanar(state.backend.decode_av1(packet.data(), picture)?)
-								}
-								DecodeOutputMode::Native => {
-									DecodedBacking::Native(state.backend.decode_av1_native(packet.data(), picture)?)
-								}
+							DecodeOutputMode::Native => {
+								let frame = if picture.frame.show_existing_frame {
+									state.backend.show_existing_av1_native(&picture.frame)?
+								} else {
+									state.backend.decode_av1_native(packet.data(), picture)?
+								};
+								Some(DecodedBacking::Native(frame))
 							}
 						};
-						if picture.frame.show_existing_frame || picture.frame.show_frame {
+						if (picture.frame.show_existing_frame || picture.frame.show_frame)
+							&& let Some(backing) = backing
+						{
 							displayed = Some(backing);
 						}
 					}
@@ -620,26 +758,31 @@ impl VideoDecoder {
 					state.reorder_depth = 0;
 					let mut displayed = None;
 					for picture in &pictures {
-						let backing = if picture.show_existing_frame {
-							match output_mode {
-								DecodeOutputMode::HostPlanar => {
-									DecodedBacking::HostPlanar(state.backend.show_existing_vp9(picture)?)
-								}
-								DecodeOutputMode::Native => {
-									DecodedBacking::Native(state.backend.show_existing_vp9_native(picture)?)
-								}
+						let backing = match output_mode {
+							DecodeOutputMode::RecordedPlanes => state
+								.backend
+								.record_vp9_picture(packet.data(), picture)?
+								.map(DecodedBacking::DevicePlanar),
+							DecodeOutputMode::HostPlanar => {
+								let planes = if picture.show_existing_frame {
+									state.backend.show_existing_vp9(picture)?
+								} else {
+									state.backend.decode_vp9(packet.data(), picture)?
+								};
+								Some(DecodedBacking::HostPlanar(planes))
 							}
-						} else {
-							match output_mode {
-								DecodeOutputMode::HostPlanar => {
-									DecodedBacking::HostPlanar(state.backend.decode_vp9(packet.data(), picture)?)
-								}
-								DecodeOutputMode::Native => {
-									DecodedBacking::Native(state.backend.decode_vp9_native(packet.data(), picture)?)
-								}
+							DecodeOutputMode::Native => {
+								let frame = if picture.show_existing_frame {
+									state.backend.show_existing_vp9_native(picture)?
+								} else {
+									state.backend.decode_vp9_native(packet.data(), picture)?
+								};
+								Some(DecodedBacking::Native(frame))
 							}
 						};
-						if picture.show_existing_frame || picture.show_frame {
+						if (picture.show_existing_frame || picture.show_frame)
+							&& let Some(backing) = backing
+						{
 							displayed = Some((backing, picture.color));
 						}
 					}
@@ -661,13 +804,11 @@ impl VideoDecoder {
 		};
 		let timing = packet_timing(packet, state.info)?;
 		let frame = match backing {
-			DecodedBacking::HostPlanar(crate::video::VideoHostPlanes::U8(bytes)) => {
-				VideoFrame::new_from_yuv420p(bytes, width, height, timing, color)?
-			}
-			DecodedBacking::HostPlanar(crate::video::VideoHostPlanes::U16(bytes)) => {
-				VideoFrame::new_from_yuv420p10(bytes, width, height, timing, color)?
+			DecodedBacking::HostPlanar(planes) => {
+				VideoFrame::from_host_planes(planes, width, height, timing, color)?
 			}
 			DecodedBacking::Native(frame) => VideoFrame::from_native(frame, timing, color),
+			DecodedBacking::DevicePlanar(planes) => VideoFrame::from_device_planar(planes, timing, color),
 		};
 		let sequence = state.next_decode_sequence;
 		state.next_decode_sequence = state
@@ -718,6 +859,59 @@ impl VideoDecoder {
 	pub fn info(&self) -> Option<VideoContainerInfo> {
 		self.state.as_ref().map(|state| state.info)
 	}
+}
+
+fn h264_parameters(
+	nals: &[NalUnit<'_>],
+	info: VideoContainerInfo,
+) -> Result<(H264SequenceParameterSet, H264PictureParameterSet)> {
+	let parameter = |kind| {
+		nals
+			.iter()
+			.find(|nal| nal.nal_unit_type() == kind)
+			.map(|nal| nal.payload())
+	};
+	let sps = parse_h264_sps(
+		parameter(7)
+			.ok_or_else(|| Error::failed_precondition("initial H.264 packet contains no SPS"))?,
+	)?;
+	let pps = parse_h264_pps(
+		parameter(8)
+			.ok_or_else(|| Error::failed_precondition("initial H.264 packet contains no PPS"))?,
+		&sps,
+	)?;
+	if !sps.frame_mbs_only || !matches!(sps.pic_order_count_type, 0 | 2) {
+		return Err(Error::missing_capability(
+			"the H.264 decoder currently requires progressive POC-type-zero or POC-type-two streams",
+		));
+	}
+	let (_, visible) = sps.progressive_420_crop()?;
+	if visible.width != info.width() || visible.height != info.height() {
+		return Err(Error::invalid_argument(
+			"H.264 parameter-set geometry differs from container metadata",
+		));
+	}
+	Ok((sps, pps))
+}
+
+fn h264_picture<'a>(
+	nals: &[NalUnit<'a>],
+	sps: &H264SequenceParameterSet,
+	pps: &H264PictureParameterSet,
+) -> Result<(&'a [u8], H264SliceHeader)> {
+	let mut coded = nals
+		.iter()
+		.filter(|nal| matches!(nal.nal_unit_type(), 1 | 5));
+	let nal = coded
+		.next()
+		.ok_or_else(|| Error::invalid_argument("H.264 access unit contains no coded slice"))?;
+	if coded.next().is_some() {
+		return Err(Error::missing_capability(
+			"the H.264 decoder currently accepts one slice per picture",
+		));
+	}
+	let slice = parse_h264_slice_header(nal.payload(), sps, pps)?;
+	Ok((nal.prefixed_slice()?, slice))
 }
 
 fn packet_timing(packet: &VideoPacket, info: VideoContainerInfo) -> Result<VideoFrameTiming> {

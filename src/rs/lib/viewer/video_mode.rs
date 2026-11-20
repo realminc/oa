@@ -5,44 +5,41 @@
 use super::config::ViewerConfig;
 use crate::input::Navigation;
 use crate::ui::{Ui, types::PixelRect};
-use crate::video::VideoPlayerConfig;
-use crate::{Engine, Result, VideoPlayer};
+use crate::{Engine, MediaPlayer, Result};
 
-/// Open a VideoPlayer from the config path.
-pub fn open(engine: &Engine, config: &ViewerConfig) -> Result<VideoPlayer> {
-	let player_config = VideoPlayerConfig {
-		loop_playback: config.loop_media,
-		start_playing: config.start_playing,
-		..VideoPlayerConfig::default()
-	};
-	VideoPlayer::new_native(engine, &config.path, player_config)
+/// Open video with its default embedded audio track when available.
+pub(super) fn open(engine: &Engine, config: &ViewerConfig) -> Result<MediaPlayer> {
+	let mut player = MediaPlayer::open_viewer(engine, std::path::Path::new(&config.path))?;
+	player.set_looping(config.loop_media);
+	if config.start_playing {
+		player.play()?;
+	}
+	Ok(player)
 }
 
-/// Render the current decoded video frame through the native-plane Texture path.
-pub fn render(
+/// Render the current decoded video frame on the shared image canvas.
+pub(super) fn render(
 	ui: &mut Ui<'_>,
-	player: Option<&mut VideoPlayer>,
+	player: Option<&mut MediaPlayer>,
 	nav: &Navigation,
-	_viewport: PixelRect,
-	_config: &ViewerConfig,
 ) -> Result<()> {
 	let Some(player) = player else {
 		return Ok(());
 	};
-	let (width, height) = match player.current_frame() {
-		Ok(f) => (f.width(), f.height()),
-		Err(_) => return Ok(()),
+	let Some(frame) = player.current_viewer_frame()? else {
+		return Ok(());
 	};
+	let (width, height) = (frame.width(), frame.height());
 	let dst = PixelRect {
 		x: nav.pan_x().round() as i32,
 		y: nav.pan_y().round() as i32,
 		w: ((width as f32) * nav.zoom()).round().max(1.0) as u32,
 		h: ((height as f32) * nav.zoom()).round().max(1.0) as u32,
 	};
-	if dst.w == 0 || dst.h == 0 {
-		return Ok(());
+	if let Some(texture) = frame.as_texture() {
+		ui.image_at(texture, dst)?;
+	} else {
+		ui.video_planes_at(&frame, dst)?;
 	}
-	let texture = player.current_frame_texture()?;
-	ui.image_at(&texture, dst)?;
 	Ok(())
 }

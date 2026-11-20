@@ -6,6 +6,7 @@
   "contracts": [
     {
       "name": "box_iou",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnDetection::boxIou",
       "input_kinds": [
         "matrix",
@@ -95,6 +96,7 @@
     },
     {
       "name": "nms",
+      "fusion_class": "effect",
       "donor_op": "oa::FnDetection::nms",
       "input_kinds": [
         "matrix",
@@ -246,6 +248,7 @@
     },
     {
       "name": "confusion_matrix",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnDetection::confusionMatrix",
       "input_kinds": [
         "matrix",
@@ -356,6 +359,7 @@
     },
     {
       "name": "binary_mask_counts",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnDetection::binaryMaskCounts",
       "input_kinds": [
         "matrix",
@@ -459,6 +463,7 @@
     },
     {
       "name": "evaluate",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnDetection::evaluate",
       "input_kinds": [
         "matrix",
@@ -694,6 +699,7 @@
     },
     {
       "name": "evaluate_segmentation",
+      "fusion_class": "reduce",
       "donor_op": "oa::FnDetection::evaluateSegmentation",
       "input_kinds": [
         "matrix",
@@ -848,6 +854,7 @@
     {
       "stable_id": 125,
       "name": "box_iou",
+      "fusion_class": "reduce",
       "kernel_id": "VisionBoxIouF32",
       "source": "src/slang/vision/detection/box_iou.slang",
       "variant": "pairwise_center_xywh",
@@ -901,6 +908,7 @@
     {
       "stable_id": 126,
       "name": "nms",
+      "fusion_class": "effect",
       "kernel_id": "VisionNmsF32",
       "source": "src/slang/vision/detection/nms.slang",
       "variant": "deterministic_serial",
@@ -977,6 +985,7 @@
     {
       "stable_id": 127,
       "name": "confusion_matrix",
+      "fusion_class": "reduce",
       "kernel_id": "VisionConfusionMatrixI32",
       "source": "src/slang/vision/detection/confusion_matrix.slang",
       "variant": "atomic_u32",
@@ -1026,6 +1035,7 @@
     {
       "stable_id": 128,
       "name": "binary_mask_counts",
+      "fusion_class": "reduce",
       "kernel_id": "VisionBinaryMaskCountsU8",
       "source": "src/slang/vision/detection/binary_mask_counts.slang",
       "variant": "atomic_u32",
@@ -1416,6 +1426,7 @@
     {
       "stable_id": 134,
       "name": "confusion_matrix_clear",
+      "fusion_class": "effect",
       "kernel_id": "VisionConfusionMatrixClearU32",
       "source": "src/slang/vision/detection/confusion_matrix_clear.slang",
       "variant": "replay_safe_zero",
@@ -1453,6 +1464,7 @@
     {
       "stable_id": 135,
       "name": "binary_mask_counts_clear",
+      "fusion_class": "effect",
       "kernel_id": "VisionBinaryMaskCountsClearU32",
       "source": "src/slang/vision/detection/binary_mask_counts_clear.slang",
       "variant": "replay_safe_zero",
@@ -1490,6 +1502,7 @@
     {
       "stable_id": 136,
       "name": "segmentation_confusion_clear",
+      "fusion_class": "effect",
       "kernel_id": "VisionSegmentationConfusionClearU32",
       "source": "src/slang/vision/detection/segmentation_confusion_clear.slang",
       "variant": "replay_safe_zero",

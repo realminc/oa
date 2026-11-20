@@ -6,6 +6,7 @@
 	"contracts": [
 		{
 			"name": "ml_dsa_65_verify_batch",
+			"fusion_class": "effect",
 			"input_kinds": [
 				"matrix",
 				"matrix",
@@ -35,6 +36,7 @@
 		},
 		{
 			"name": "ml_dsa_44_verify_batch",
+			"fusion_class": "effect",
 			"input_kinds": [
 				"matrix",
 				"matrix",
@@ -64,6 +66,7 @@
 		},
 		{
 			"name": "ml_dsa_87_verify_batch",
+			"fusion_class": "effect",
 			"input_kinds": [
 				"matrix",
 				"matrix",
@@ -93,6 +96,7 @@
 		},
 		{
 			"name": "ml_dsa_65_verify_prehashed_batch",
+			"fusion_class": "effect",
 			"input_kinds": [
 				"matrix",
 				"matrix",
@@ -126,6 +130,7 @@
 		},
 		{
 			"name": "ml_dsa_44_verify_prehashed_batch",
+			"fusion_class": "effect",
 			"input_kinds": [
 				"matrix",
 				"matrix",
@@ -159,6 +164,7 @@
 		},
 		{
 			"name": "ml_dsa_87_verify_prehashed_batch",
+			"fusion_class": "effect",
 			"input_kinds": [
 				"matrix",
 				"matrix",
@@ -192,6 +198,7 @@
 		},
 		{
 			"name": "ml_dsa_65_verify_hash_message_batch",
+			"fusion_class": "effect",
 			"input_kinds": [
 				"matrix",
 				"matrix",
@@ -225,6 +232,7 @@
 		},
 		{
 			"name": "ml_dsa_44_verify_hash_message_batch",
+			"fusion_class": "effect",
 			"input_kinds": [
 				"matrix",
 				"matrix",
@@ -258,6 +266,7 @@
 		},
 		{
 			"name": "ml_dsa_87_verify_hash_message_batch",
+			"fusion_class": "effect",
 			"input_kinds": [
 				"matrix",
 				"matrix",

@@ -11,6 +11,10 @@ const RESET_SPIRV: &[u8] = include_bytes!(concat!(
 	env!("OA_SHADER_DIR"),
 	"/ml_cart_pole_reset_f32.spv"
 ));
+const RESET_CURSOR_SPIRV: &[u8] = include_bytes!(concat!(
+	env!("OA_SHADER_DIR"),
+	"/ml_cart_pole_reset_cursor_f32.spv"
+));
 const STEP_SPIRV: &[u8] =
 	include_bytes!(concat!(env!("OA_SHADER_DIR"), "/ml_cart_pole_step_f32.spv"));
 
@@ -109,6 +113,7 @@ pub struct CartPole<'engine> {
 	episode_steps: Matrix,
 	episode_index: Matrix,
 	reset_kernel: Kernel,
+	reset_cursor_kernel: Kernel,
 	step_kernel: Kernel,
 	pending_seed: Option<u64>,
 	has_committed_state: bool,
@@ -166,6 +171,13 @@ impl<'engine> CartPole<'engine> {
 				4,
 				WORKGROUP_SIZE,
 			)?,
+			reset_cursor_kernel: Kernel::compile(
+				engine,
+				"sdk.rl.cart_pole_reset_cursor",
+				RESET_CURSOR_SPIRV,
+				5,
+				WORKGROUP_SIZE,
+			)?,
 			step_kernel: Kernel::compile(
 				engine,
 				"sdk.rl.cart_pole_step",
@@ -205,7 +217,7 @@ impl<'engine> CartPole<'engine> {
 		self.pending_seed.unwrap_or(self.config.seed)
 	}
 
-	fn record_reset_impl(&mut self, only_done: bool) -> Result<()> {
+	fn record_reset_impl(&mut self, only_done: bool, cursor: Option<&Matrix>) -> Result<()> {
 		if only_done && !self.has_committed_state && !self.has_pending_full_reset {
 			return Err(Error::failed_precondition(
 				"CartPole completed reset requires submitted state or an earlier full reset",
@@ -213,6 +225,23 @@ impl<'engine> CartPole<'engine> {
 		}
 		if !only_done {
 			self.has_pending_full_reset = true;
+		}
+		if let Some(cursor) = cursor {
+			return self.engine.dispatch_kernel(
+				&self.reset_cursor_kernel,
+				&[
+					KernelBinding::ReadWrite(&self.done),
+					KernelBinding::Write(&self.state),
+					KernelBinding::Write(&self.episode_steps),
+					KernelBinding::ReadWrite(&self.episode_index),
+					KernelBinding::Read(cursor),
+				],
+				&[
+					KernelPush::U32(self.config.environments),
+					KernelPush::U32(u32::from(only_done)),
+				],
+				[self.config.environments.div_ceil(WORKGROUP_SIZE[0]), 1, 1],
+			);
 		}
 		let seed = self.effective_seed();
 		self.engine.dispatch_kernel(
@@ -261,7 +290,7 @@ impl Environment for CartPole<'_> {
 
 	fn record_reset(&mut self, seed: u64) -> Result<()> {
 		self.pending_seed = Some(seed);
-		self.record_reset_impl(false)
+		self.record_reset_impl(false, None)
 	}
 
 	fn record_step(&mut self, action: &Matrix) -> Result<EnvironmentTransition> {
@@ -306,7 +335,7 @@ impl Environment for CartPole<'_> {
 	}
 
 	fn record_reset_completed(&mut self) -> Result<()> {
-		self.record_reset_impl(true)
+		self.record_reset_impl(true, None)
 	}
 
 	fn commit_recorded_state(&mut self) {
@@ -355,4 +384,59 @@ fn validate_config(config: CartPoleConfig) -> Result<()> {
 		));
 	}
 	Ok(())
+}
+
+impl oa::ml::environment::CompiledEnvironment for CartPole<'_> {
+	fn replay_initialized(&self) -> bool {
+		self.has_committed_state
+	}
+
+	fn replay_slots(&self) -> Vec<&Matrix> {
+		vec![
+			&self.state,
+			&self.done,
+			&self.episode_steps,
+			&self.episode_index,
+		]
+	}
+
+	fn replay_identity(&self) -> Vec<u64> {
+		// The collection seed is deliberately absent: it arrives through
+		// cursor words 3,4 so one captured plan serves every collection seed.
+		vec![
+			self.state.value_id(),
+			self.transition_observation.value_id(),
+			self.reward.value_id(),
+			self.terminated.value_id(),
+			self.truncated.value_id(),
+			self.done.value_id(),
+			self.episode_steps.value_id(),
+			self.episode_index.value_id(),
+			self.config.dynamics_identity(),
+			u64::from(self.config.environments),
+			u64::from(self.config.max_episode_steps),
+		]
+	}
+
+	fn record_reset_replay(&mut self, only_done: bool, cursor: &Matrix) -> Result<()> {
+		self.record_reset_impl(only_done, Some(cursor))
+	}
+
+	fn record_step_replay(
+		&mut self,
+		action: &Matrix,
+		_cursor: &Matrix,
+	) -> Result<EnvironmentTransition> {
+		// CartPole dynamics are deterministic; the captured step program
+		// replays unchanged while the episode_index buffer differentiates
+		// completed-lane resets on device.
+		self.record_step(action)
+	}
+
+	fn replay_observation(&mut self, _observation: Matrix) {
+		// `state` is fixed storage bound into the captured plans; the
+		// submitted reset established committed device state.
+		self.has_committed_state = true;
+		self.has_pending_full_reset = false;
+	}
 }

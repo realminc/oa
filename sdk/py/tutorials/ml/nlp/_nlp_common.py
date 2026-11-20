@@ -643,6 +643,6 @@ def _write_loss_curve(
 	ax.plot_xy(
 		[steps_x[0], steps_x[-1]],
 		[baseline, baseline],
-		oa.plot.LineStyle(label=f"ln({vocab_size}) baseline"),
+		oa.plot.LineStyle(color=(0.565, 0.565, 0.565, 1.0), label=f"ln({vocab_size}) baseline"),
 	)
 	fig.save_to(engine, path)

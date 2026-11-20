@@ -68,6 +68,17 @@ pub(in crate::runtime) enum FrameDraw {
 }
 
 /// Vulkan executor resources, owned once by Device; never independently retained.
+/// Explicit reduction-order selection for tile candidates:
+/// `Deterministic` suppresses order-changing subgroup candidates,
+/// `Throughput` offers every one the device supports, and `Default`
+/// keeps each per-kernel flag in charge.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::runtime) enum TileReduceOrder {
+	Default,
+	Deterministic,
+	Throughput,
+}
+
 pub(in crate::runtime) struct DeviceLogical {
 	handle: ManuallyDrop<std::sync::Arc<vk::Device>>,
 	sync_commands: SyncCommands,
@@ -75,6 +86,7 @@ pub(in crate::runtime) struct DeviceLogical {
 	allocator: ManuallyDrop<vk::mem::SynchronizedAllocator<'static>>,
 	command_pool: Mutex<CommandPool>,
 	graphics_command_pool: Mutex<Option<CommandPool>>,
+	transfer_command_pool: Mutex<Option<CommandPool>>,
 	video_decode_command_pool: Mutex<Option<CommandPool>>,
 	video_encode_command_pool: Mutex<Option<CommandPool>>,
 	timeline: Timeline,
@@ -95,12 +107,17 @@ pub(in crate::runtime) struct DeviceLogical {
 	/// Tape-vs-per-op element bound for elementwise fusion, seeded per
 	/// device at creation. Routing policy, not a capability bound.
 	tape_bound_elements: u32,
+	/// Single-head SDPA merge admission, seeded per device at creation.
+	/// Every current class seeds `false` — the route changed the canonical
+	/// Byte-MoE trajectory on Xe and was net-negative on Haswell.
+	single_head_sdpa_route: bool,
 	/// Per-submission estimated-cost budget in nanoseconds, seeded per
 	/// device at creation. Plans over the estimate split at node
 	/// boundaries; a single over-budget node declines before submission.
 	submission_budget_ns: u64,
 	compute_queue: vk::Queue,
 	graphics_queue: Option<vk::Queue>,
+	transfer_queue: Option<vk::Queue>,
 	video_decode_queue: Option<vk::Queue>,
 	video_encode_queue: Option<vk::Queue>,
 	timestamp_period_ns: f64,
@@ -488,6 +505,13 @@ impl Device {
 		self.logical.tape_bound_elements
 	}
 
+	/// Per-device single-head SDPA merge admission. Routing policy, not a
+	/// capability bound — the qualified trajectory record, not kernel
+	/// presence, is the gate.
+	pub(in crate::runtime) fn single_head_sdpa_route(&self) -> bool {
+		self.logical.single_head_sdpa_route
+	}
+
 	/// Per-device estimated submission-cost budget in nanoseconds. Plans
 	/// whose summed node estimates exceed it split at legal node
 	/// boundaries; a single node over budget declines before submission
@@ -525,6 +549,337 @@ impl Device {
 			.lock()
 			.ok()?
 			.admit(self, program, tape_eligible)
+	}
+
+	/// Whether the opt-in `OA_TILE_GEMM` tile-template route is enabled.
+	pub(in crate::runtime) fn tile_gemm_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_GEMM")
+	}
+
+	/// Ungated tile-template admission: synchronously compile and publish
+	/// the block program's pipeline, returning its artifact key for the
+	/// jit override on success. Callers own the route's opt-in gate;
+	/// every failure mode returns `None` so the canonical registry
+	/// kernel executes.
+	/// Route-observation signature for a tile block program — one problem
+	/// class per (template, geometry, descriptor profile).
+	pub(in crate::runtime) fn tile_signature(
+		&self,
+		program: &crate::runtime::dna::ir::tile::BlockProgram,
+	) -> u64 {
+		super::specialization::block_signature(program)
+	}
+
+	pub(in crate::runtime) fn jit_admit_tile(
+		&self,
+		program: &crate::runtime::dna::ir::tile::BlockProgram,
+	) -> Option<Vec<u8>> {
+		self.logical.jit.lock().ok()?.admit_block(self, program)
+	}
+
+	/// CC-12 candidate evidence for `tile_signature`: `(specialized
+	/// median ns, contributing samples, admission attempts)` recorded
+	/// under the signature — live observations first, restored
+	/// `.vkcache` medians while a window is still empty.
+	pub(in crate::runtime) fn tile_route_stats(&self, signature: u64) -> (Option<u64>, usize, u64) {
+		self
+			.logical
+			.jit
+			.lock()
+			.map(|mut jit| jit.route_stats(self, signature))
+			.unwrap_or((None, 0, 0))
+	}
+
+	/// Opt-in `OA_TILE_GEMM` admission: synchronously compile and publish
+	/// the block program's pipeline, returning its artifact key for the
+	/// jit override on success. Every failure mode returns `None` so the
+	/// canonical registry kernel executes.
+	pub(in crate::runtime) fn jit_admit_tile_gemm(
+		&self,
+		program: &crate::runtime::dna::ir::tile::BlockProgram,
+	) -> Option<Vec<u8>> {
+		if !self.tile_gemm_enabled() {
+			return None;
+		}
+		self.jit_admit_tile(program)
+	}
+
+	/// Whether the opt-in `OA_TILE_SOFTMAX` tile-template route is enabled.
+	pub(in crate::runtime) fn tile_softmax_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_SOFTMAX")
+	}
+
+	/// Whether the opt-in `OA_TILE_VIDEO` route is enabled.
+	pub(in crate::runtime) fn tile_video_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_VIDEO")
+	}
+
+	/// Opt-in `OA_TILE_VIDEO` admission on the block pipeline table —
+	/// the `to_matrix` typed plane-load programs.
+	pub(in crate::runtime) fn jit_admit_tile_video(
+		&self,
+		program: &crate::runtime::dna::ir::tile::BlockProgram,
+	) -> Option<Vec<u8>> {
+		if !self.tile_video_enabled() {
+			return None;
+		}
+		self.jit_admit_tile(program)
+	}
+
+	/// Whether the opt-in `OA_TILE_IMAGE` route is enabled.
+	pub(in crate::runtime) fn tile_image_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_IMAGE")
+	}
+
+	/// Opt-in `OA_TILE_IMAGE` admission on the block pipeline table —
+	/// the image gather programs.
+	pub(in crate::runtime) fn jit_admit_tile_image(
+		&self,
+		program: &crate::runtime::dna::ir::tile::BlockProgram,
+	) -> Option<Vec<u8>> {
+		if !self.tile_image_enabled() {
+			return None;
+		}
+		self.jit_admit_tile(program)
+	}
+
+	/// Whether the opt-in `OA_TILE_AUDIO` route is enabled.
+	pub(in crate::runtime) fn tile_audio_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_AUDIO")
+	}
+
+	/// Opt-in `OA_TILE_AUDIO` admission on the block pipeline table —
+	/// the audio `channel_normalize` programs.
+	pub(in crate::runtime) fn jit_admit_tile_audio(
+		&self,
+		program: &crate::runtime::dna::ir::tile::BlockProgram,
+	) -> Option<Vec<u8>> {
+		if !self.tile_audio_enabled() {
+			return None;
+		}
+		self.jit_admit_tile(program)
+	}
+
+	/// Opt-in `OA_TILE_SOFTMAX` admission on the same block pipeline
+	/// table as `jit_admit_tile_gemm`.
+	pub(in crate::runtime) fn jit_admit_tile_softmax(
+		&self,
+		program: &crate::runtime::dna::ir::tile::BlockProgram,
+	) -> Option<Vec<u8>> {
+		if !self.tile_softmax_enabled() {
+			return None;
+		}
+		self.jit_admit_tile(program)
+	}
+
+	/// Whether the opt-in `OA_TILE_GEMV` route is enabled.
+	pub(in crate::runtime) fn tile_gemv_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_GEMV")
+	}
+
+	/// Opt-in `OA_TILE_GEMV` admission on the block pipeline table.
+	pub(in crate::runtime) fn jit_admit_tile_gemv(
+		&self,
+		program: &crate::runtime::dna::ir::tile::BlockProgram,
+	) -> Option<Vec<u8>> {
+		if !self.tile_gemv_enabled() {
+			return None;
+		}
+		self.jit_admit_tile(program)
+	}
+
+	/// Whether the opt-in `OA_TILE_LOG_SOFTMAX` route is enabled.
+	pub(in crate::runtime) fn tile_log_softmax_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_LOG_SOFTMAX")
+	}
+
+	/// Whether the opt-in `OA_TILE_RMS_NORM` route is enabled.
+	pub(in crate::runtime) fn tile_rms_norm_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_RMS_NORM")
+	}
+
+	/// Whether the opt-in `OA_TILE_LAYER_NORM` route is enabled.
+	pub(in crate::runtime) fn tile_layer_norm_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_LAYER_NORM")
+	}
+
+	/// Whether the opt-in `OA_TILE_SOFTMAX_BACKWARD` route is enabled.
+	pub(in crate::runtime) fn tile_softmax_backward_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_SOFTMAX_BACKWARD")
+	}
+
+	/// Whether the opt-in `OA_TILE_LOG_SOFTMAX_BACKWARD` route is enabled.
+	pub(in crate::runtime) fn tile_log_softmax_backward_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_LOG_SOFTMAX_BACKWARD")
+	}
+
+	/// Whether the opt-in `OA_TILE_LAYER_NORM_BACKWARD` route is enabled.
+	pub(in crate::runtime) fn tile_layer_norm_backward_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_LAYER_NORM_BACKWARD")
+	}
+
+	/// Whether the opt-in `OA_TILE_RMS_NORM_BACKWARD` route is enabled.
+	pub(in crate::runtime) fn tile_rms_norm_backward_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_RMS_NORM_BACKWARD")
+	}
+
+	/// Whether the opt-in `OA_TILE_LINEAR` route is enabled.
+	pub(in crate::runtime) fn tile_linear_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_LINEAR")
+	}
+
+	/// Whether the opt-in `OA_TILE_LINEAR_ACT` route is enabled.
+	pub(in crate::runtime) fn tile_linear_act_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_LINEAR_ACT")
+	}
+
+	/// Whether the opt-in `OA_TILE_SUM` route is enabled.
+	pub(in crate::runtime) fn tile_sum_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_SUM")
+	}
+
+	/// Whether the opt-in `OA_TILE_SUM_AXIS` route is enabled.
+	pub(in crate::runtime) fn tile_sum_axis_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_SUM_AXIS")
+	}
+
+	/// Whether the opt-in `OA_TILE_LINEAR_TRIPLE` route is enabled.
+	pub(in crate::runtime) fn tile_linear_triple_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_LINEAR_TRIPLE")
+	}
+
+	pub(in crate::runtime) fn tile_linear_concat_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_LINEAR_CONCAT")
+	}
+
+	/// Whether the opt-in `OA_TILE_RESIDUAL_NORM` route is enabled.
+	pub(in crate::runtime) fn tile_residual_norm_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_RESIDUAL_NORM")
+	}
+
+	/// Whether the opt-in `OA_TILE_QKV` route is enabled.
+	pub(in crate::runtime) fn tile_qkv_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_QKV")
+	}
+
+	/// Whether the opt-in `OA_TILE_GATE_UP` route is enabled.
+	pub(in crate::runtime) fn tile_gate_up_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_GATE_UP")
+	}
+
+	/// Whether the opt-in `OA_TILE_GROUPED_LINEAR_ACT` route is enabled.
+	pub(in crate::runtime) fn tile_grouped_linear_act_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_GROUPED_LINEAR_ACT")
+	}
+
+	/// Whether the opt-in `OA_TILE_GROUPED_LINEAR` route is enabled.
+	pub(in crate::runtime) fn tile_grouped_linear_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_GROUPED_LINEAR")
+	}
+
+	/// Whether the opt-in `OA_TILE_GROUPED_GEMM` route is enabled.
+	pub(in crate::runtime) fn tile_grouped_gemm_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_GROUPED_GEMM")
+	}
+
+	/// Whether the opt-in `OA_TILE_GROUPED_BACKWARD` route is enabled.
+	pub(in crate::runtime) fn tile_grouped_backward_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_GROUPED_BACKWARD")
+	}
+
+	/// Whether the opt-in `OA_TILE_MOE` route is enabled.
+	pub(in crate::runtime) fn tile_moe_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_MOE")
+	}
+
+	/// Whether the opt-in `OA_TILE_CONV` route is enabled.
+	pub(in crate::runtime) fn tile_conv_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_CONV")
+	}
+
+	/// Whether the opt-in `OA_TILE_POOL` route is enabled.
+	pub(in crate::runtime) fn tile_pool_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_POOL")
+	}
+
+	/// Whether the opt-in `OA_TILE_CROSS_ENTROPY` route is enabled.
+	pub(in crate::runtime) fn tile_cross_entropy_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_CROSS_ENTROPY")
+	}
+
+	/// Whether the opt-in `OA_TILE_EMBEDDING` route is enabled.
+	pub(in crate::runtime) fn tile_embedding_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_EMBEDDING")
+	}
+
+	/// Whether the opt-in `OA_TILE_MAX` route is enabled.
+	pub(in crate::runtime) fn tile_max_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_MAX")
+	}
+
+	/// Whether the opt-in `OA_TILE_MAX_WAVE` subgroup route is enabled.
+	pub(in crate::runtime) fn tile_max_wave_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_MAX_WAVE")
+	}
+
+	/// Whether the opt-in `OA_TILE_ATTENTION` route is enabled.
+	pub(in crate::runtime) fn tile_attention_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_ATTENTION")
+	}
+
+	/// Whether the opt-in `OA_TILE_LINEAR_BACKWARD` route is enabled.
+	pub(in crate::runtime) fn tile_linear_backward_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_LINEAR_BACKWARD")
+	}
+
+	/// Whether the opt-in `OA_TILE_SUM_WAVE` subgroup route is enabled.
+	/// The wave candidate changes sum's reduction order versus the
+	/// shared tree, so callers qualify it against a tolerance oracle.
+	pub(in crate::runtime) fn tile_sum_wave_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_SUM_WAVE")
+	}
+
+	/// Explicit reduction-order mode: `OA_TILE_REDUCE_ORDER=throughput`
+	/// offers every subgroup-order candidate the device supports, and
+	/// `deterministic` suppresses order-changing candidates even when
+	/// their per-kernel flag is set. Unset keeps the per-kernel flags.
+	pub(in crate::runtime) fn tile_reduce_order(&self) -> TileReduceOrder {
+		match crate::EnvFlag::get_string("OA_TILE_REDUCE_ORDER", "").as_str() {
+			"throughput" => TileReduceOrder::Throughput,
+			"deterministic" => TileReduceOrder::Deterministic,
+			_ => TileReduceOrder::Default,
+		}
+	}
+
+	/// Whether an order-changing subgroup reduction candidate is offered
+	/// under the order mode, the per-kernel flag, and the queried
+	/// subgroup arithmetic support.
+	pub(in crate::runtime) fn tile_reduce_wave_offered(&self, per_kernel_flag: bool) -> bool {
+		let offered = match self.tile_reduce_order() {
+			TileReduceOrder::Deterministic => false,
+			TileReduceOrder::Throughput => true,
+			TileReduceOrder::Default => per_kernel_flag,
+		};
+		offered
+			&& (self.physical().limits.subgroup_supported_stages & vk::ShaderStageFlagBits::COMPUTE_BIT)
+				== vk::ShaderStageFlagBits::COMPUTE_BIT
+			&& (self.physical().limits.subgroup_supported_operations
+				& vk::SubgroupFeatureFlagBits::ARITHMETIC_BIT)
+				== vk::SubgroupFeatureFlagBits::ARITHMETIC_BIT
+	}
+
+	/// Whether the opt-in `OA_TILE_GEMM_BIAS` route for the
+	/// `mat_mul_nt_bias*` epilogue donors is enabled.
+	pub(in crate::runtime) fn tile_gemm_bias_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_GEMM_BIAS")
+	}
+
+	/// Whether the opt-in `OA_TILE_GEMM_SEARCH` geometry search is
+	/// enabled: the seed tile stays the `OA_TILE_GEMM` candidate while
+	/// the flag admits the bounded 32/64 row-column set as measured
+	/// CC-12 candidates.
+	pub(in crate::runtime) fn tile_gemm_search_enabled(&self) -> bool {
+		crate::EnvFlag::is_set("OA_TILE_GEMM_SEARCH")
 	}
 
 	/// Record-time pipeline lookup for a key `jit_admit` prepared. Extension
@@ -658,6 +1013,14 @@ impl Device {
 
 	pub(in crate::runtime) fn release_storage_buffer(&self, index: u32) {
 		self.logical.descriptors.release_storage_buffer(index);
+	}
+
+	/// Return the total descriptor writes issued against the device heap.
+	///
+	/// Writes amortize at buffer/image binding, not per dispatch — the
+	/// per-plan census compares a capture's before/after snapshots.
+	pub(in crate::runtime) fn descriptor_write_count(&self) -> u64 {
+		self.logical.descriptors.write_count()
 	}
 
 	/// Return the shared descriptor set for command recording.
@@ -2182,40 +2545,156 @@ impl Device {
 			.record_custom(&self.logical.handle, record)
 	}
 
+	/// Queue-family index a command pool kind records for; the resolved
+	/// family drives both recording and queue selection at submission.
+	fn family_for_pool_kind(&self, kind: CommandPoolKind) -> Result<u32> {
+		let physical = &self.physical;
+		match kind {
+			CommandPoolKind::Compute => Ok(physical.compute_queue_family),
+			CommandPoolKind::Graphics => physical
+				.graphics_queue_family
+				.ok_or_else(|| Error::missing_capability("no Vulkan graphics queue is enabled")),
+			CommandPoolKind::Transfer => physical
+				.transfer_queue_family
+				.filter(|family| *family != physical.compute_queue_family)
+				.ok_or_else(|| Error::missing_capability("no dedicated Vulkan transfer queue is enabled")),
+			CommandPoolKind::VideoDecode => physical
+				.video
+				.decode_queue_family
+				.ok_or_else(|| Error::missing_capability("no Vulkan Video decode queue is enabled")),
+			CommandPoolKind::VideoEncode => physical
+				.video
+				.encode_queue_family
+				.ok_or_else(|| Error::missing_capability("no Vulkan Video encode queue is enabled")),
+		}
+	}
+
+	/// Run `record` against the command pool serving `family`, lazily
+	/// creating the pool for enabled non-compute families on first use.
+	fn with_pool_for_family<R>(
+		&self,
+		family: u32,
+		record: impl FnOnce(&mut CommandPool) -> Result<R>,
+	) -> Result<R> {
+		let physical = &self.physical;
+		if family == physical.compute_queue_family {
+			let mut pool = self
+				.logical
+				.command_pool
+				.lock()
+				.unwrap_or_else(|poisoned| poisoned.into_inner());
+			return record(&mut pool);
+		}
+		let (slot, kind) = if physical.transfer_queue_family == Some(family) {
+			(
+				&self.logical.transfer_command_pool,
+				CommandPoolKind::Transfer,
+			)
+		} else if physical.graphics_queue_family == Some(family) {
+			(
+				&self.logical.graphics_command_pool,
+				CommandPoolKind::Graphics,
+			)
+		} else if physical.video.decode_queue_family == Some(family) {
+			(
+				&self.logical.video_decode_command_pool,
+				CommandPoolKind::VideoDecode,
+			)
+		} else if physical.video.encode_queue_family == Some(family) {
+			(
+				&self.logical.video_encode_command_pool,
+				CommandPoolKind::VideoEncode,
+			)
+		} else {
+			return Err(Error::missing_capability(format!(
+				"no queue or command pool is enabled for queue family {family}"
+			)));
+		};
+		let mut slot = slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+		if slot.is_none() {
+			*slot = Some(CommandPool::new(&self.logical.handle, family, kind)?);
+		}
+		record(slot.as_mut().expect("command pool was initialized"))
+	}
+
+	/// Record `graph`'s node range `nodes` on the queue family the range
+	/// resolves to. Every node in the range must share one resolved family;
+	/// queue-run splitting is the caller's contract.
+	fn record_graph_range(
+		self: &Arc<Self>,
+		graph: &ExecutableGraph,
+		nodes: std::ops::Range<usize>,
+		timing: Option<TimestampPair>,
+		reusable_device: Option<Arc<Device>>,
+	) -> Result<RecordedCommandBuffer> {
+		let family = graph
+			.node_families()
+			.get(nodes.start)
+			.copied()
+			.ok_or_else(|| Error::invalid_argument("execution graph range is empty"))?;
+		self.with_pool_for_family(family, |pool| {
+			pool.record_compute_graph(
+				self,
+				&self.logical.pipelines,
+				self.logical.descriptors.set(),
+				graph,
+				nodes.clone(),
+				timing.clone(),
+				reusable_device.clone(),
+			)
+		})
+	}
+
+	pub(in crate::runtime) fn record_fresh_graph_range(
+		self: &Arc<Self>,
+		graph: &ExecutableGraph,
+		nodes: std::ops::Range<usize>,
+		timed: bool,
+	) -> Result<RecordedCommandBuffer> {
+		let timing = if timed {
+			let family = graph
+				.node_families()
+				.get(nodes.start)
+				.copied()
+				.ok_or_else(|| Error::invalid_argument("execution graph range is empty"))?;
+			Some(self.timestamp_pair_for(family)?)
+		} else {
+			None
+		};
+		self.record_graph_range(graph, nodes, timing, None)
+	}
+
 	pub(in crate::runtime) fn record_compute_graph(
 		self: &Arc<Self>,
 		graph: &ExecutableGraph,
 	) -> Result<RecordedCommandBuffer> {
-		let mut command_pool = match self.logical.command_pool.lock() {
-			Ok(command_pool) => command_pool,
-			Err(poisoned) => poisoned.into_inner(),
-		};
-		command_pool.record_compute_graph(
-			self,
-			&self.logical.pipelines,
-			self.logical.descriptors.set(),
-			graph,
-			None,
-			None,
-		)
+		self.record_graph_range(graph, 0..graph.nodes().len(), None, None)
 	}
 
 	pub(in crate::runtime) fn record_reusable_compute_graph(
 		self: &Arc<Self>,
 		graph: &ExecutableGraph,
 	) -> Result<ReusableCommandBuffer> {
-		let mut command_pool = match self.logical.command_pool.lock() {
-			Ok(command_pool) => command_pool,
-			Err(poisoned) => poisoned.into_inner(),
-		};
-		let command = command_pool.record_compute_graph(
-			self,
-			&self.logical.pipelines,
-			self.logical.descriptors.set(),
-			graph,
-			None,
-			Some(self.clone()),
-		)?;
+		let command =
+			self.record_graph_range(graph, 0..graph.nodes().len(), None, Some(self.clone()))?;
+		command.reusable().ok_or_else(|| {
+			Error::backend_failure(
+				"Vulkan",
+				"reusable command-buffer recording",
+				std::io::Error::other("recording did not retain reusable ownership"),
+			)
+		})
+	}
+
+	/// Record one queue run of a mixed-family graph as a reusable command.
+	/// The range's resolved family selects the pool and, at submission,
+	/// the queue.
+	pub(in crate::runtime) fn record_reusable_graph_range(
+		self: &Arc<Self>,
+		graph: &ExecutableGraph,
+		nodes: std::ops::Range<usize>,
+	) -> Result<ReusableCommandBuffer> {
+		let command = self.record_graph_range(graph, nodes, None, Some(self.clone()))?;
 		command.reusable().ok_or_else(|| {
 			Error::backend_failure(
 				"Vulkan",
@@ -2228,11 +2707,22 @@ impl Device {
 	/// Create a fresh timestamp pair against this device's compute queue
 	/// timestamp capability.
 	pub(in crate::runtime) fn new_timestamp_pair(self: &Arc<Self>) -> Result<TimestampPair> {
-		TimestampPair::new(
-			self,
-			self.logical.timestamp_period_ns,
-			self.logical.compute_timestamp_valid_bits,
-		)
+		self.timestamp_pair_for(self.physical.compute_queue_family)
+	}
+
+	/// Create a timestamp pair for a specific queue family. Families
+	/// advertising zero timestamp-valid bits cannot bracket timing.
+	pub(in crate::runtime) fn timestamp_pair_for(
+		self: &Arc<Self>,
+		family: u32,
+	) -> Result<TimestampPair> {
+		let valid_bits = self.physical.timestamp_valid_bits(family);
+		if valid_bits == 0 {
+			return Err(Error::missing_capability(format!(
+				"queue family {family} reports no timestamp support"
+			)));
+		}
+		TimestampPair::new(self, self.logical.timestamp_period_ns, valid_bits)
 	}
 
 	pub(in crate::runtime) fn record_timed_compute_graph(
@@ -2250,49 +2740,38 @@ impl Device {
 		graph: &ExecutableGraph,
 		timing: TimestampPair,
 	) -> Result<RecordedCommandBuffer> {
-		let mut command_pool = match self.logical.command_pool.lock() {
-			Ok(command_pool) => command_pool,
-			Err(poisoned) => poisoned.into_inner(),
-		};
-		command_pool.record_compute_graph(
-			self,
-			&self.logical.pipelines,
-			self.logical.descriptors.set(),
-			graph,
-			Some(timing),
-			None,
-		)
+		self.record_graph_range(graph, 0..graph.nodes().len(), Some(timing), None)
 	}
 
 	pub(in crate::runtime) fn time_reusable_command(
 		self: &Arc<Self>,
 		command: RecordedCommandBuffer,
 	) -> Result<RecordedCommandBuffer> {
-		let timing = self.new_timestamp_pair()?;
+		let timing = self.timestamp_pair_for(self.family_for_pool_kind(command.pool_kind())?)?;
 		self.time_reusable_command_with(command, timing)
 	}
 
 	/// Wrap a reusable command in begin/end timestamp brackets using a
-	/// caller-owned pair.
+	/// caller-owned pair. The bracket commands record in the same queue
+	/// family as the command they wrap — a submission's bracket buffers
+	/// must share its queue.
 	pub(in crate::runtime) fn time_reusable_command_with(
 		self: &Arc<Self>,
 		command: RecordedCommandBuffer,
 		timing: TimestampPair,
 	) -> Result<RecordedCommandBuffer> {
-		let mut pool = self
-			.logical
-			.command_pool
-			.lock()
-			.unwrap_or_else(|p| p.into_inner());
-		let before = pool.record_custom(self.raw(), |buffer| timing.record_begin(buffer))?;
-		let after = match pool.record_custom(self.raw(), |buffer| timing.record_end(buffer)) {
-			Ok(after) => after,
-			Err(error) => {
-				pool.free_handle(self.raw(), before.raw());
-				return Err(error);
-			}
-		};
-		Ok(command.with_timing_brackets(before, after, timing))
+		let family = self.family_for_pool_kind(command.pool_kind())?;
+		self.with_pool_for_family(family, |pool| {
+			let before = pool.record_custom(self.raw(), |buffer| timing.record_begin(buffer))?;
+			let after = match pool.record_custom(self.raw(), |buffer| timing.record_end(buffer)) {
+				Ok(after) => after,
+				Err(error) => {
+					pool.free_handle(self.raw(), before.raw());
+					return Err(error);
+				}
+			};
+			Ok(command.with_timing_brackets(before, after, timing))
+		})
 	}
 
 	pub(in crate::runtime) fn submit(
@@ -2332,6 +2811,9 @@ impl Device {
 				.graphics_queue
 				.as_ref()
 				.ok_or_else(|| Error::missing_capability("no Vulkan graphics queue is enabled"))?,
+			CommandPoolKind::Transfer => *self.logical.transfer_queue.as_ref().ok_or_else(|| {
+				Error::missing_capability("no dedicated Vulkan transfer queue is enabled")
+			})?,
 			CommandPoolKind::VideoDecode => *self
 				.logical
 				.video_decode_queue
@@ -2375,6 +2857,14 @@ impl Device {
 		let Some((handle, pool, _bounded_sets)) = command.into_owned_handle() else {
 			return;
 		};
+		self.free_command_buffer_handle(handle, pool);
+	}
+
+	pub(super) fn free_command_buffer_handle(
+		&self,
+		handle: vk::CommandBuffer,
+		pool: CommandPoolKind,
+	) {
 		match pool {
 			CommandPoolKind::Compute => {
 				let mut command_pool = match self.logical.command_pool.lock() {
@@ -2385,6 +2875,15 @@ impl Device {
 			}
 			CommandPoolKind::Graphics => {
 				let mut slot = match self.logical.graphics_command_pool.lock() {
+					Ok(pool) => pool,
+					Err(poisoned) => poisoned.into_inner(),
+				};
+				if let Some(command_pool) = slot.as_mut() {
+					command_pool.free_handle(&self.logical.handle, handle);
+				}
+			}
+			CommandPoolKind::Transfer => {
+				let mut slot = match self.logical.transfer_command_pool.lock() {
 					Ok(pool) => pool,
 					Err(poisoned) => poisoned.into_inner(),
 				};
@@ -2411,14 +2910,6 @@ impl Device {
 				}
 			}
 		}
-	}
-
-	pub(in crate::runtime) fn free_command_buffer_handle(&self, handle: vk::CommandBuffer) {
-		let mut command_pool = match self.logical.command_pool.lock() {
-			Ok(command_pool) => command_pool,
-			Err(poisoned) => poisoned.into_inner(),
-		};
-		command_pool.free_handle(&self.logical.handle, handle);
 	}
 
 	pub(in crate::runtime) fn is_complete(&self, epoch: u64) -> Result<bool> {
@@ -2474,6 +2965,17 @@ impl DeviceLogical {
 			.encode_queue_family
 			.map(|family| {
 				// SAFETY: same queue-creation proof as the decode queue above.
+				unsafe { handle.get_device_queue(family, 0) }.map_err(Error::from)
+			})
+			.transpose()?;
+		// A dedicated transfer queue exists only when the transfer family is
+		// distinct from compute — a same-family transfer resolves to the
+		// compute queue instead of a second handle on one family.
+		let transfer_queue = physical
+			.transfer_queue_family
+			.filter(|family| *family != physical.compute_queue_family)
+			.map(|family| {
+				// SAFETY: same queue-creation proof as the graphics queue above.
 				unsafe { handle.get_device_queue(family, 0) }.map_err(Error::from)
 			})
 			.transpose()?;
@@ -2576,6 +3078,7 @@ impl DeviceLogical {
 			allocator: ManuallyDrop::new(allocator),
 			command_pool: Mutex::new(command_pool),
 			graphics_command_pool: Mutex::new(None),
+			transfer_command_pool: Mutex::new(None),
 			video_decode_command_pool: Mutex::new(None),
 			video_encode_command_pool: Mutex::new(None),
 			timeline,
@@ -2589,11 +3092,15 @@ impl DeviceLogical {
 			extensions: Mutex::new(std::collections::HashMap::new()),
 			fusion_census: crate::runtime::dna::fusion::census::FusionCensus::new(),
 			tape_bound_elements: crate::runtime::dna::fusion::tape_bound_seed(&physical.device_info()),
+			single_head_sdpa_route: crate::runtime::dna::fusion::single_head_sdpa_seed(
+				&physical.device_info(),
+			),
 			submission_budget_ns: crate::runtime::graph::executable::submission_budget_seed(
 				&physical.device_info(),
 			),
 			compute_queue,
 			graphics_queue,
+			transfer_queue,
 			video_decode_queue,
 			video_encode_queue,
 			timestamp_period_ns,

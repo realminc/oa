@@ -7,6 +7,7 @@
 pub(super) use super::{AdamW, CheckpointOptimizer, Optimizer};
 
 mod callbacks;
+mod compiled_rollout;
 mod dqn;
 mod iterator;
 mod ppo;
@@ -18,6 +19,7 @@ mod schedule;
 mod session;
 mod target;
 mod trading_rollout;
+pub use compiled_rollout::{CompiledCollectionOptions, CompiledRollout};
 pub use trading_rollout::TradingRolloutProgram;
 
 pub use super::types::{

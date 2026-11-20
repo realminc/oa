@@ -8,6 +8,19 @@ from .util import IDENTIFIER, require
 
 KINDS = {"binary", "unary", "unary_scalar"}
 
+FUSION_CLASS_VARIANTS = {
+	"pointwise": "Pointwise",
+	"broadcast": "Broadcast",
+	"gather": "Gather",
+	"reduce": "Reduce",
+	"scan": "Scan",
+	"gemm": "Gemm",
+	"conv": "Conv",
+	"attention": "Attention",
+	"opaque": "Opaque",
+	"effect": "Effect",
+}
+
 
 DTYPES = {
 	"u8": {

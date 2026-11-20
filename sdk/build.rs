@@ -18,6 +18,11 @@ const COMPUTE_SHADERS: &[(&str, &str, u32)] = &[
 		4,
 	),
 	(
+		"slang/ml/rl/cart_pole/reset_cursor.slang",
+		"ml_cart_pole_reset_cursor_f32",
+		5,
+	),
+	(
 		"slang/ml/rl/cart_pole/step.slang",
 		"ml_cart_pole_step_f32",
 		8,
@@ -26,6 +31,11 @@ const COMPUTE_SHADERS: &[(&str, &str, u32)] = &[
 		"slang/ml/rl/lunar_lander/reset.slang",
 		"ml_lunar_lander_reset_f32",
 		7,
+	),
+	(
+		"slang/ml/rl/lunar_lander/reset_cursor.slang",
+		"ml_lunar_lander_reset_cursor_f32",
+		8,
 	),
 	(
 		"slang/ml/rl/lunar_lander/step.slang",

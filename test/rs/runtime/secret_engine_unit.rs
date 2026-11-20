@@ -1368,14 +1368,12 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 	} else {
 		verify_prehashed_batch
 	};
-	let prompt: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/crypto/mldsa/sigGen-prompt.json"
+	// First SHAKE-256 case in each deterministic prehash parameter group
+	// from the full NIST sigGen prompt and expected-results fixtures.
+	let vectors: serde_json::Value = serde_json::from_str(include_str!(
+		"../../fixtures/crypto/mldsa/capture-shake256.json"
 	))
-	.expect("pinned prompt");
-	let answers: serde_json::Value = serde_json::from_str(include_str!(
-		"../../fixtures/crypto/mldsa/sigGen-expectedResults.json"
-	))
-	.expect("pinned answers");
+	.expect("pinned SHAKE-256 capture vectors");
 	let decode = |value: &serde_json::Value| -> Vec<u8> {
 		let hex = value.as_str().expect("hex string");
 		(0..hex.len())
@@ -1388,32 +1386,7 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 		(MlDsaParameters::MlDsa65, "ML-DSA-65"),
 		(MlDsaParameters::MlDsa87, "ML-DSA-87"),
 	] {
-		let group = prompt["testGroups"]
-			.as_array()
-			.expect("groups")
-			.iter()
-			.find(|g| {
-				g["parameterSet"] == name && g["preHash"] == "preHash" && g["deterministic"] == true
-			})
-			.expect("prehash group");
-		let case = group["tests"]
-			.as_array()
-			.expect("cases")
-			.iter()
-			.find(|c| c["hashAlg"] == "SHAKE-256")
-			.expect("SHAKE fixture");
-		let answer_group = answers["testGroups"]
-			.as_array()
-			.expect("answers")
-			.iter()
-			.find(|g| g["tgId"] == group["tgId"])
-			.expect("answer group");
-		let answer = answer_group["tests"]
-			.as_array()
-			.expect("answers")
-			.iter()
-			.find(|c| c["tcId"] == case["tcId"])
-			.expect("answer");
+		let case = &vectors[name];
 		let sk = decode(&case["sk"]);
 		macro_rules! public_key {
 			($parameter:ty) => {{
@@ -1430,7 +1403,7 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 			MlDsaParameters::MlDsa65 => public_key!(ml_dsa::MlDsa65),
 			MlDsaParameters::MlDsa87 => public_key!(ml_dsa::MlDsa87),
 		};
-		let sig = decode(&answer["signature"]);
+		let sig = decode(&case["signature"]);
 		let context = decode(&case["context"]);
 		let mut digest = [0_u8; 64];
 		shake256(&decode(&case["message"]), &mut digest);

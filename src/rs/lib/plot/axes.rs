@@ -468,21 +468,34 @@ pub(super) struct LegendEntry {
 /// Pixels reserved at the right of a cell for a heatmap colorbar.
 pub(super) const COLORBAR_RESERVE: u32 = 46;
 
-/// Legend geometry shared between figure replay and `FigureView` hit-testing.
-pub(super) const LEGEND_WIDTH: f32 = 84.0;
-pub(super) const LEGEND_ROW_STEP: f32 = 13.0;
-pub(super) const LEGEND_FIRST_BASELINE: f32 = 14.0;
+/// Data viewport and surrounding text bands within one figure cell.
+pub(super) struct AxesLayout {
+	pub(super) plot: PixelRect,
+	pub(super) title: PixelRect,
+	pub(super) caption: PixelRect,
+	pub(super) x_ticks: PixelRect,
+	pub(super) y_ticks: PixelRect,
+	pub(super) x_label: PixelRect,
+	pub(super) y_label: PixelRect,
+}
 
-/// Clickable rect for legend row `row` inside plot area `rect`.
-///
-/// Covers the swatch and text band drawn at `LEGEND_FIRST_BASELINE + row *
-/// LEGEND_ROW_STEP`.
+const LEGEND_WIDTH: u32 = 124;
+const LEGEND_INSET: u32 = 6;
+const LEGEND_ROW_HEIGHT: u32 = 15;
+
+/// Legend geometry shared by figure replay and `FigureView` hit-testing.
 pub(super) fn legend_row_rect(rect: PixelRect, row: usize) -> PixelRect {
+	let w = rect.w.saturating_sub(2 * LEGEND_INSET).min(LEGEND_WIDTH);
+	let h = rect.h.saturating_sub(2 * LEGEND_INSET);
+	let offset = row.saturating_mul(LEGEND_ROW_HEIGHT as usize);
+	if w < 38 || offset.saturating_add(LEGEND_ROW_HEIGHT as usize) > h as usize {
+		return PixelRect::default();
+	}
 	PixelRect::new(
-		rect.x + rect.w as i32 - LEGEND_WIDTH as i32 - 2,
-		rect.y + (LEGEND_FIRST_BASELINE - 10.0 + row as f32 * LEGEND_ROW_STEP) as i32,
-		LEGEND_WIDTH as u32 + 2,
-		12,
+		rect.x + (rect.w - w - LEGEND_INSET) as i32,
+		rect.y + LEGEND_INSET as i32 + offset as i32,
+		w,
+		LEGEND_ROW_HEIGHT,
 	)
 }
 
@@ -535,18 +548,18 @@ impl Axes {
 		self.cmds.caption_color = color;
 	}
 
-	/// Set the horizontal axis label.
+	/// Set the horizontal axis label centered below the tick labels.
 	pub fn x_label(&mut self, text: &str) {
 		self.cmds.x_label = text.to_owned();
 	}
 
-	/// Set the vertical axis label. The first GPU text slice renders it at the
-	/// upper-left edge; rotated vertical layout follows the text transform pass.
+	/// Set the vertical axis label, read bottom-to-top to the left of the ticks.
 	pub fn y_label(&mut self, text: &str) {
 		self.cmds.y_label = text.to_owned();
 	}
 
-	/// Display a texture as a raster base for this axes.
+	/// Display a texture as a raster base for this axes. Standalone images
+	/// fit inside the subplot with their aspect ratio preserved.
 	pub fn imshow(&mut self, texture: crate::Texture) {
 		self.cmds.imshow = Some(ImshowCmd { texture });
 	}
@@ -1048,11 +1061,21 @@ impl Axes {
 
 	// ── Shared layout / legend helpers ──────────────────────────────────────
 
-	/// Plot region inside `cell` after the colorbar reservation.
+	/// Whether the cell records data on numeric or categorical axes.
+	pub(super) fn has_ticks(&self) -> bool {
+		!self.cmds.artists.is_empty()
+			|| !self.cmds.annotations.is_empty()
+			|| self.cmds.limits.is_some()
+			|| self.cmds.x_ticks.is_some()
+			|| self.cmds.y_ticks.is_some()
+			|| !self.cmds.categories.is_empty()
+	}
+
+	/// Reserve title, label, tick and colorbar bands around the data viewport.
 	///
 	/// Figure replay and `FigureView` hit-testing share this helper so
 	/// pixel↔data mapping always agrees with the drawn artists.
-	pub(super) fn plot_area(&self, cell: PixelRect) -> PixelRect {
+	pub(super) fn layout(&self, cell: PixelRect) -> AxesLayout {
 		let colorbar = self
 			.cmds
 			.heatmap
@@ -1063,12 +1086,63 @@ impl Axes {
 				.heatmap_matrix
 				.as_ref()
 				.is_some_and(|heatmap| heatmap.style.colorbar);
-		if !colorbar {
-			return cell;
-		}
-		PixelRect {
-			w: cell.w.saturating_sub(COLORBAR_RESERVE),
-			..cell
+		// Keep at least half the cell available for data, including when a
+		// workspace pane is temporarily too small to display all its labels.
+		let reserve = |budget: &mut u32, pixels: u32| {
+			let pixels = pixels.min(*budget);
+			*budget -= pixels;
+			pixels
+		};
+		let mut width_budget = cell.w / 2;
+		let mut height_budget = cell.h / 2;
+		let ticks = self.has_ticks() && cell.w >= 64 && cell.h >= 36;
+		let colorbar_w = reserve(
+			&mut width_budget,
+			if colorbar { COLORBAR_RESERVE } else { 0 },
+		);
+		let y_label_w = reserve(
+			&mut width_budget,
+			if self.cmds.y_label.is_empty() { 0 } else { 19 },
+		);
+		let right = reserve(&mut width_budget, if ticks && !colorbar { 15 } else { 0 });
+		let y_ticks_w = reserve(&mut width_budget, if ticks { 48 } else { 0 });
+		let top = reserve(
+			&mut height_budget,
+			if !self.cmds.title.is_empty() {
+				22
+			} else if ticks {
+				8
+			} else {
+				0
+			},
+		);
+		let x_label_h = reserve(
+			&mut height_budget,
+			if self.cmds.x_label.is_empty() { 0 } else { 19 },
+		);
+		let x_ticks_h = reserve(&mut height_budget, if ticks { 18 } else { 0 });
+		let caption_h = reserve(
+			&mut height_budget,
+			if self.cmds.caption.is_empty() { 0 } else { 18 },
+		);
+		let x = cell.x + (y_label_w + y_ticks_w) as i32;
+		let y = cell.y + top as i32;
+		let w = cell.w - y_label_w - y_ticks_w - right - colorbar_w;
+		let h = cell.h - top - x_ticks_h - x_label_h - caption_h;
+		let bottom = y + h as i32;
+		AxesLayout {
+			plot: PixelRect::new(x, y, w, h),
+			title: PixelRect::new(x, cell.y, w, top),
+			caption: PixelRect::new(x, bottom + (x_ticks_h + x_label_h) as i32, w, caption_h),
+			x_ticks: PixelRect::new(cell.x, bottom, cell.w - colorbar_w, x_ticks_h),
+			y_ticks: PixelRect::new(
+				cell.x + y_label_w as i32,
+				cell.y,
+				y_ticks_w,
+				top + h + x_ticks_h,
+			),
+			x_label: PixelRect::new(x, bottom + x_ticks_h as i32, w, x_label_h),
+			y_label: PixelRect::new(cell.x, y, y_label_w, h),
 		}
 	}
 

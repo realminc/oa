@@ -151,7 +151,7 @@ def validate_cryptography_hash_schema(schema: dict[str, Any]) -> None:
 		where = f"Cryptography Hash contracts[{index}]"
 		require(isinstance(contract, dict), f"{where} must be an object")
 		require(
-			(set(contract) - {"donor_op", "control_flow"})
+			(set(contract) - {"donor_op", "control_flow", "fusion_class"})
 			== {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes"},
 			f"{where} fields are incomplete or unknown",
 		)

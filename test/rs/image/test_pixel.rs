@@ -8,6 +8,36 @@ fn normalization_defaults_preserve_the_identity_transform() {
 }
 
 test_vk!(
+	captured_image_invert_clamp_matches_standalone_dispatches,
+	engine,
+	{
+		let samples: Vec<f32> = (0..273).map(|i| (i % 31 - 15) as f32 / 16.0).collect();
+		let input = Image::new(
+			Matrix::new_from_f32(&engine, [1, 1, 13, 21], &samples)?,
+			ImageLayout::Nchw,
+			ImageFormat::Gray,
+		)?;
+		let inverted = input.invert(0.25)?;
+		inverted.as_matrix().read_f32()?;
+		let expected = inverted.clamp(-0.375, 0.625)?.as_matrix().read_f32()?;
+		let (plan, output) = engine.capture(|| input.invert(0.25)?.clamp(-0.375, 0.625))?;
+		let report: serde_json::Value =
+			serde_json::from_str(&plan.debug_report_json("image invert and clamp"))
+				.expect("valid execution graph report");
+		assert_eq!(report["stats"]["dispatches"], 1);
+		assert_eq!(
+			report["nodes"][0]["semantic_operations"],
+			serde_json::json!([0, 1])
+		);
+		assert_eq!(output.layout(), input.layout());
+		assert_eq!(output.format(), input.format());
+		engine.submit(&plan)?.wait()?;
+		assert_eq!(output.as_matrix().read_f32()?, expected);
+		Ok(())
+	}
+);
+
+test_vk!(
 	pointwise_pixel_family_matches_independent_scalar_oracles,
 	engine,
 	{

@@ -73,6 +73,12 @@ pub(crate) enum UiCmd {
 		/// exact nearest otherwise.
 		linear: bool,
 	},
+	/// Draw one bounded, independently retained YUV plane buffer.
+	BlitYuv {
+		planes_idx: u32,
+		dst: PixelRect,
+		push: [u32; 12],
+	},
 	/// Direct retained matrix visualization, exact donor ABI.
 	Heatmap {
 		values_idx: u32,

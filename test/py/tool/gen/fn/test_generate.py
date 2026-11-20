@@ -43,6 +43,7 @@ import oafn.schema as oa_schema
 import oafn.signature as oa_signature
 import oafn.uistyle as oa_uistyle
 import oafn.util as oa_util
+import oafn.video as oa_video
 import oafn.vision as oa_vision
 
 
@@ -455,7 +456,8 @@ class GeneratorTests(unittest.TestCase):
 			self.assertEqual(
 				len(outputs),
 				variant_count
-				+ len(self.blas_schema["operations"]) + len(self.blas_schema.get("candidate_kernels", []))
+				+ len(self.blas_schema["operations"])
+				+ sum("source" not in candidate for candidate in self.blas_schema.get("candidate_kernels", []))
 				+ 2 * matrix_autograd_family_count + 3
 				+ 2 * autograd_family_count + 1
 				+ body_family_count + activation_family_count + 1
@@ -799,10 +801,16 @@ class GeneratorTests(unittest.TestCase):
 			self.ui_schema["kernels"] + self.render_schema["kernels"] + self.video_schema["kernels"]
 		):
 			with self.subTest(kernel=row["name"]):
-				source = (REPOSITORY_ROOT / row["source"]).read_text()
-				declaration = re.search(r"\[\[vk::push_constant\]\]\s*(\w+)\s+\w+", source)
+				path = REPOSITORY_ROOT / row["source"]
+				source = path.read_text()
+				# Entry files may share the push ABI through a sibling include.
+				abi_source = source + "\n".join(
+					path.with_name(included).read_text()
+					for included in re.findall(r'^#include "([\w.]+\.slang)"', source, re.MULTILINE)
+				)
+				declaration = re.search(r"\[\[vk::push_constant\]\]\s*(\w+)\s+\w+", abi_source)
 				push_name = declaration.group(1) if declaration else "PushConstants"
-				push = source.split(f"struct {push_name} {{", 1)
+				push = abi_source.split(f"struct {push_name} {{", 1)
 				fields = [[name, types.get(kind, kind)] for kind, name in re.findall(
 					r"\b(?:row_major\s+|column_major\s+)?((?:u?int|float)(?:\d(?:x\d)?)?)\s+(\w+)\s*;",
 					push[1].split("};", 1)[0],
@@ -857,6 +865,11 @@ class GeneratorTests(unittest.TestCase):
 		generated_sources.update(
 			f"src/slang/matrix/blas/{candidate['source_stem']}.gen.slang"
 			for candidate in self.blas_schema.get("candidate_kernels", [])
+			if "source" not in candidate
+		)
+		schema_sources.update(
+			candidate["source"] for candidate in self.blas_schema.get("candidate_kernels", [])
+			if "source" in candidate
 		)
 		expected = schema_sources | generated_sources
 		actual = {
@@ -959,6 +972,14 @@ class GeneratorTests(unittest.TestCase):
 		del invalid["kernels"][0]["physical_write"]
 		with self.assertRaisesRegex(oa_util.SchemaError, "physical_write is required"):
 			oa_image.validate_image_schema(invalid)
+
+	def test_video_rejects_invalid_fusion_classes(self):
+		for section in ("contracts", "kernels"):
+			with self.subTest(section=section):
+				invalid = copy.deepcopy(self.video_schema)
+				invalid[section][0]["fusion_class"] = "unknown"
+				with self.assertRaisesRegex(oa_util.SchemaError, "fusion_class is unsupported"):
+					oa_video.validate_video_schema(invalid)
 
 	def test_vision_schema_owns_the_complete_detection_surface(self):
 		self.assertEqual(

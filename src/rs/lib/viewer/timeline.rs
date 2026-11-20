@@ -47,6 +47,8 @@ pub(super) fn owns_pointer(viewport: PixelRect, scale: f32, y: f32) -> bool {
 #[derive(Default)]
 pub(super) struct TransportState {
 	pub show_remaining: bool,
+	scrubbing: bool,
+	resume_after_scrub: bool,
 }
 
 #[cfg(test)]
@@ -61,9 +63,6 @@ pub(super) fn render(
 	state: &mut TransportState,
 ) -> Result<()> {
 	let duration = media.duration_us();
-	if duration == 0 {
-		return Ok(());
-	}
 	let scale = ui.content_scale();
 	let bar = geometry(viewport, scale);
 	let size = (34.0 * scale).round().max(1.0) as u32;
@@ -85,9 +84,25 @@ pub(super) fn render(
 
 	// Timeline scrubber row.
 	let position = media.position_us();
-	let mut fraction = (position as f64 / duration as f64).clamp(0.0, 1.0) as f32;
-	if ui.timeline("viewer-transport", bar, &mut fraction, None) {
-		media.seek_fraction(fraction)?;
+	if duration != 0 {
+		let mut fraction = (position as f64 / duration as f64).clamp(0.0, 1.0) as f32;
+		let mut active = false;
+		let seek = ui.timeline("viewer-transport", bar, &mut fraction, Some(&mut active));
+		if active && !state.scrubbing {
+			state.resume_after_scrub = media.is_playing();
+			media.pause_playback()?;
+		}
+		if seek {
+			media.seek_fraction(fraction)?;
+		}
+		if !active
+			&& state.scrubbing
+			&& std::mem::take(&mut state.resume_after_scrub)
+			&& !media.is_playing()
+		{
+			media.toggle_play()?;
+		}
+		state.scrubbing = active;
 	}
 
 	// Control row: play, step, volume, elapsed/total, then settings at the
@@ -127,28 +142,69 @@ pub(super) fn render(
 		media.step_temporal(1)?;
 	}
 	let volume = PixelRect::new(next.x + size as i32 + gap, controls_y, size, size);
-	let muted = matches!(media, MediaState::Audio { player, .. } if player.as_ref().as_ref().is_some_and(|player| player.is_muted()));
-	let audible =
-		matches!(media, MediaState::Audio { player, .. } if player.as_ref().as_ref().is_some());
+	let audible = media.audio_player();
+	let muted = audible.is_some_and(|player| player.is_muted());
 	if ui.icon_button(
 		if muted { "Unmute" } else { "Mute" },
 		volume,
 		if muted { UiIcon::Muted } else { UiIcon::Volume },
-		audible,
+		audible.is_some(),
 		UiIconButtonStyle::Header,
-	) && let MediaState::Audio { player, .. } = media
-		&& let Some(player) = player.as_ref().as_ref()
+	) && let Some(player) = audible
 	{
 		player.set_muted(!muted)?;
 	}
-	let end = if state.show_remaining {
+	let end = if duration == 0 {
+		"–".to_owned()
+	} else if state.show_remaining {
 		format!("-{}", timestamp(duration.saturating_sub(position)))
 	} else {
 		timestamp(duration)
 	};
 	let elapsed = format!("{} / {}", timestamp(position), end);
-	let text_x = volume.x + size as i32 + (10.0 * scale).round() as i32;
+	let space = (10.0 * scale).round() as i32;
+	let mut text_x = volume.x + size as i32 + space;
 	let text_width = (elapsed.len() as f32 * 8.0 * scale).round().max(1.0) as u32;
+	let settings = PixelRect::new(bar.x + bar.w as i32 - size as i32, controls_y, size, size);
+	if let Some(player) = audible {
+		let available = settings.x - text_x - text_width as i32 - 2 * space;
+		if available >= (64.0 * scale) as i32 {
+			let slider_width = available.min((96.0 * scale).round() as i32) as u32;
+			let slider = PixelRect::new(text_x, controls_y, slider_width, size);
+			let mut gain = player.volume();
+			if ui.timeline("Volume", slider, &mut gain, None) {
+				player.set_volume(gain)?;
+				player.set_muted(false)?;
+			}
+			text_x += slider_width as i32 + space;
+			let meter_width = (34.0 * scale).round().max(1.0) as u32;
+			if settings.x - text_x >= (text_width + meter_width) as i32 + 2 * space {
+				let meter_height = (4.0 * scale).round().max(1.0) as u32;
+				let meter = PixelRect::new(
+					text_x,
+					controls_y + (size - meter_height) as i32 / 2,
+					meter_width,
+					meter_height,
+				);
+				ui.rect_raw(
+					meter,
+					config.style.surface,
+					viewport,
+					meter_height as f32 / 2.0,
+				);
+				let w = (meter_width as f32 * player.output_peak().sqrt()).round() as u32;
+				if w > 0 {
+					ui.rect_raw(
+						PixelRect { w, ..meter },
+						config.style.accent,
+						viewport,
+						meter_height as f32 / 2.0,
+					);
+				}
+				text_x += meter_width as i32 + space;
+			}
+		}
+	}
 	if ui.text_button(
 		"Toggle duration or remaining",
 		PixelRect::new(text_x, controls_y, text_width, size),
@@ -169,7 +225,6 @@ pub(super) fn render(
 		config.style.text,
 		viewport,
 	)?;
-	let settings = PixelRect::new(bar.x + bar.w as i32 - size as i32, controls_y, size, size);
 	if ui.icon_button(
 		"Playback settings",
 		settings,

@@ -12,6 +12,17 @@
 		output_count,
 		DType::F32,
 	)?;
+	if dim == -1
+		&& crate::runtime::record_sum_f16s(
+			input.engine_handle(),
+			input,
+			&output,
+			axis.dim_size,
+			dim,
+		)? {
+		autograd::record_sum(input, &output, dim)?;
+		return Ok(output);
+	}
 	let buffers = [
 		BufferBinding::read(input.storage()),
 		BufferBinding::write(output.storage()),
@@ -25,6 +36,7 @@
 	let (kernel, push_constants, workgroups) = if dim == -1 {
 		(KernelId::MatrixSumF32, full_push.as_slice(), [1, 1, 1])
 	} else {
+
 		(
 			KernelId::MatrixSumAxisF32,
 			axis_push.as_slice(),

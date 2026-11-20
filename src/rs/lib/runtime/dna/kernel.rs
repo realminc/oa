@@ -20,6 +20,9 @@ bitflags::bitflags! {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ShaderRequirements {
+	pub(crate) shader_float16: bool,
+	pub(crate) storage_buffer_16_bit_access: bool,
+	pub(crate) uniform_and_storage_buffer_16_bit_access: bool,
 	pub(crate) shader_int64: bool,
 	pub(crate) shader_int8: bool,
 	pub(crate) uniform_and_storage_buffer_8_bit_access: bool,
@@ -71,6 +74,70 @@ pub(crate) enum CollisionPolicy {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TailPolicy {
 	BoundsChecked,
+}
+
+/// The kernel's declared input read pattern under region formation
+/// (OA-CC-34 read/write metadata): `Elementwise` reads exactly one
+/// input element per output element, `Gather` samples positions that a
+/// pointwise prologue cannot commute through, and `Bordered` reads
+/// window taps whose fold ordering must not absorb a prologue.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum KernelRegionRead {
+	Elementwise,
+	Gather,
+	Bordered,
+}
+
+/// The scalar-epilogue fold a kernel decodes into a tile store tail
+/// (OA-CC-34 read/write metadata). `Add`..`Min` consume the donor's
+/// trailing `F32` scalar push; `Neg`..`Relu` are operand-free. Kernels
+/// without a declaration emit `None` and keep the incumbent node.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum KernelScalarTail {
+	Add,
+	Sub,
+	Mul,
+	Div,
+	Max,
+	Min,
+	Neg,
+	Abs,
+	Log,
+	Exp,
+	Sqrt,
+	Recip,
+	Relu,
+}
+
+/// The buffer/immediate shape a kernel presents to the fused elementwise
+/// tape (OA-CC-34 rule-table metadata). `Binary` is `[read, read,
+/// write]`, `Unary` is `[read, write]`, `Scalar` adds one `f32`
+/// immediate, `ScalarFirst` makes the immediate the left operand,
+/// `ScalarPair` adds two immediates, `Broadcast` carries rank/strides,
+/// `Gather` carries gather geometry, and `BinaryScalar` pairs a second
+/// read with an `f32` immediate.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum KernelTapeShape {
+	Binary,
+	Unary,
+	Scalar,
+	ScalarFirst,
+	ScalarPair,
+	Broadcast,
+	Gather,
+	BinaryScalar,
+}
+
+impl KernelTapeShape {
+	pub(crate) const fn read_count(self) -> usize {
+		match self {
+			Self::Binary | Self::Broadcast | Self::Gather | Self::BinaryScalar => 2,
+			_ => 1,
+		}
+	}
 }
 
 #[repr(u8)]
@@ -259,8 +326,11 @@ pub(in crate::runtime::dna) fn decode_spirv(bytes: &[u8]) -> Result<Vec<u32>> {
 fn reflect_shader_requirements(words: &[u32]) -> Result<ShaderRequirements> {
 	const OP_CAPABILITY: u16 = 17;
 	const CAPABILITY_SHADER: u32 = 1;
+	const CAPABILITY_FLOAT16: u32 = 9;
 	const CAPABILITY_INT64: u32 = 11;
 	const CAPABILITY_INT8: u32 = 39;
+	const CAPABILITY_STORAGE_BUFFER_16_BIT_ACCESS: u32 = 4433;
+	const CAPABILITY_UNIFORM_AND_STORAGE_BUFFER_16_BIT_ACCESS: u32 = 4434;
 	const CAPABILITY_GROUP_NON_UNIFORM: u32 = 61;
 	const CAPABILITY_GROUP_NON_UNIFORM_ARITHMETIC: u32 = 63;
 	const CAPABILITY_UNIFORM_AND_STORAGE_BUFFER_8_BIT_ACCESS: u32 = 4449;
@@ -292,10 +362,17 @@ fn reflect_shader_requirements(words: &[u32]) -> Result<ShaderRequirements> {
 			}
 			match words[cursor + 1] {
 				CAPABILITY_SHADER | CAPABILITY_RUNTIME_DESCRIPTOR_ARRAY => {}
+				CAPABILITY_FLOAT16 => requirements.shader_float16 = true,
 				CAPABILITY_INT64 => requirements.shader_int64 = true,
 				CAPABILITY_INT8 => requirements.shader_int8 = true,
 				CAPABILITY_UNIFORM_AND_STORAGE_BUFFER_8_BIT_ACCESS => {
 					requirements.uniform_and_storage_buffer_8_bit_access = true;
+				}
+				CAPABILITY_STORAGE_BUFFER_16_BIT_ACCESS => {
+					requirements.storage_buffer_16_bit_access = true;
+				}
+				CAPABILITY_UNIFORM_AND_STORAGE_BUFFER_16_BIT_ACCESS => {
+					requirements.uniform_and_storage_buffer_16_bit_access = true;
 				}
 				CAPABILITY_GROUP_NON_UNIFORM => requirements.subgroup_basic = true,
 				CAPABILITY_GROUP_NON_UNIFORM_ARITHMETIC => {

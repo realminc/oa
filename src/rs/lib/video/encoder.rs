@@ -390,7 +390,9 @@ impl VideoEncoder {
 	/// Unharvested asynchronous jobs are released without being drained;
 	/// call [`flush`](Self::flush) first to keep every submitted frame.
 	pub fn close(&mut self) {
-		self.state = None;
+		if let Some(backend) = self.state.take() {
+			backend.retire();
+		}
 	}
 
 	/// Return whether the encoder still accepts frames.
@@ -439,5 +441,69 @@ impl VideoEncoder {
 			.as_mut()
 			.ok_or_else(|| Error::failed_precondition("VideoEncoder is closed"))?
 			.submit_rgba(rgba, presentation_timestamp_micros, color_space, full_range)
+	}
+
+	/// Record RGBA8 frame encodes into an active execution capture.
+	///
+	/// Inside [`Engine::capture`] this opens a retained session, records each
+	/// frame's RGBA→native conversion on the compute family and its
+	/// `vkCmdEncodeVideoKHR` picture on the encode family as execution-graph
+	/// nodes, and restores this encoder's live session afterwards. The
+	/// resulting plan replays the same frames without host work; packets
+	/// materialize from the plan's completion `Event` through
+	/// `Event::encoded_packets`.
+	///
+	/// Returns an error outside capture, after close, for an empty frame list,
+	/// or when a frame's length does not match `visible_extent()`.
+	pub fn record_frames(&mut self, frames: &[(&[u8], u64)]) -> Result<()> {
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("VideoEncoder is closed"))?;
+		if frames.is_empty() {
+			return Err(Error::invalid_argument(
+				"encode capture requires at least one frame",
+			));
+		}
+		let mut recording = state.begin_encode_capture()?;
+		for (rgba, presentation_timestamp_micros) in frames {
+			// BT.709 limited range — the synchronous encode path's default.
+			recording.record_rgba(rgba, *presentation_timestamp_micros, 1, false)?;
+		}
+		recording.finish_encode_capture()
+	}
+
+	/// Record one frame whose input planes are already engine matrices.
+	///
+	/// Each entry supplies the session's native-format planes in order (Y
+	/// then UV for NV12/P010) plus a presentation timestamp in microseconds.
+	/// Inside [`Engine::capture`], each frame's buffer→image staging records
+	/// on the compute family and its `vkCmdEncodeVideoKHR` picture on the
+	/// encode family, so a decoded-and-transformed `oa::Matrix` plane can be
+	/// re-encoded without a host round trip.
+	///
+	/// Returns an error outside capture, after close, for an empty frame
+	/// list, or when a frame's plane count or extent mismatches the session.
+	pub fn record_planes(&mut self, frames: &[(&[crate::Matrix], u64)]) -> Result<()> {
+		let state = self
+			.state
+			.as_mut()
+			.ok_or_else(|| Error::failed_precondition("VideoEncoder is closed"))?;
+		if frames.is_empty() {
+			return Err(Error::invalid_argument(
+				"encode capture requires at least one frame",
+			));
+		}
+		let mut recording = state.begin_encode_capture()?;
+		for (planes, presentation_timestamp_micros) in frames {
+			recording.record_planes(planes, *presentation_timestamp_micros)?;
+		}
+		recording.finish_encode_capture()
+	}
+}
+
+impl Drop for VideoEncoder {
+	fn drop(&mut self) {
+		self.close();
 	}
 }

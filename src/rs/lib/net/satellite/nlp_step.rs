@@ -345,6 +345,7 @@ fn decode_u32(bytes: &[u8]) -> Result<Vec<u32>> {
 fn wire_dtype_byte(dtype: DType) -> u8 {
 	match dtype {
 		DType::F32 => 0,
+		DType::F16 => 2,
 		DType::I32 => 4,
 		DType::U8 => 5,
 		DType::U32 => 10,

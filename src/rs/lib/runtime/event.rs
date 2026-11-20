@@ -1,10 +1,13 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use std::{fmt, time::Duration};
 
 use crate::Result;
 
-use super::{Device, RetirementTicket, TimestampPair};
+use super::{
+	Device, RetirementTicket, TimestampPair,
+	device::video::{DecodeStatus, EncodeReceipt},
+};
 
 /// Exact completion point for work submitted to an OA engine.
 ///
@@ -18,6 +21,8 @@ pub struct Event {
 	retirement: RetirementTicket,
 	timing: Option<TimestampPair>,
 	timing_start: Option<TimestampPair>,
+	decode_statuses: Option<Arc<Mutex<Vec<Arc<DecodeStatus>>>>>,
+	encode_receipts: Option<Arc<Mutex<Vec<Arc<EncodeReceipt>>>>>,
 }
 
 impl Event {
@@ -41,6 +46,8 @@ impl Event {
 			retirement,
 			timing,
 			timing_start: None,
+			decode_statuses: None,
+			encode_receipts: None,
 		}
 	}
 
@@ -48,6 +55,59 @@ impl Event {
 	/// its query pool alive while completion still names the final submission.
 	pub(super) fn set_timing_start(&mut self, first: &Self) {
 		self.timing_start = first.timing.clone();
+	}
+
+	pub(super) fn set_decode_statuses(&mut self, statuses: Vec<Arc<DecodeStatus>>) {
+		if !statuses.is_empty() {
+			self.decode_statuses = Some(Arc::new(Mutex::new(statuses)));
+		}
+	}
+
+	pub(super) fn set_encode_receipts(&mut self, receipts: Vec<Arc<EncodeReceipt>>) {
+		if !receipts.is_empty() {
+			self.encode_receipts = Some(Arc::new(Mutex::new(receipts)));
+		}
+	}
+
+	/// Encoded-packet receipts collected at this event's completion. The
+	/// event first verifies feedback status, so a returned packet is safe to
+	/// materialize from its slot's bitstream.
+	pub(super) fn encode_receipts(&self) -> Vec<Arc<EncodeReceipt>> {
+		self
+			.encode_receipts
+			.as_ref()
+			.map(|receipts| {
+				receipts
+					.lock()
+					.unwrap_or_else(|poisoned| poisoned.into_inner())
+					.clone()
+			})
+			.unwrap_or_default()
+	}
+
+	fn verify_encode_receipts(&self) -> Result<()> {
+		if let Some(receipts) = &self.encode_receipts {
+			let receipts = receipts
+				.lock()
+				.unwrap_or_else(|poisoned| poisoned.into_inner());
+			for receipt in receipts.iter() {
+				receipt.verify()?;
+			}
+		}
+		Ok(())
+	}
+
+	fn verify_decode_statuses(&self) -> Result<()> {
+		if let Some(statuses) = &self.decode_statuses {
+			let mut statuses = statuses
+				.lock()
+				.unwrap_or_else(|poisoned| poisoned.into_inner());
+			for status in statuses.iter() {
+				status.verify()?;
+			}
+			statuses.clear();
+		}
+		Ok(())
 	}
 
 	pub(crate) const fn epoch(&self) -> u64 {
@@ -69,12 +129,16 @@ impl Event {
 	///
 	/// # Errors
 	///
-	/// Returns an error when retirement has failed or Vulkan cannot query the
-	/// originating timeline.
+	/// Returns an error when retirement or replayed decode has failed, or
+	/// when Vulkan cannot query the originating timeline.
 	pub fn is_complete(&self) -> Result<bool> {
 		self.retirement.check_failure()?;
 		let complete = self.device.is_complete(self.epoch)?;
 		self.retirement.check_failure()?;
+		if complete {
+			self.verify_decode_statuses()?;
+			self.verify_encode_receipts()?;
+		}
 		Ok(complete)
 	}
 
@@ -83,12 +147,34 @@ impl Event {
 	///
 	/// # Errors
 	///
-	/// Returns an error when the exact timeline wait or submission retirement fails.
+	/// Returns an error when the exact timeline wait, submission retirement,
+	/// or any replayed video decode fails.
 	pub fn wait(&self) -> Result<()> {
 		// The worker performs the exact device wait and retains every resource.
 		// Observe its outcome instead of issuing a second Vulkan wait, including
 		// after the execution domain has entered terminal failure.
-		self.retirement.wait()
+		self.retirement.wait()?;
+		self.verify_decode_statuses()?;
+		self.verify_encode_receipts()
+	}
+
+	/// Materialize every encoded packet captured by this event's plan.
+	///
+	/// The event waits for completion first, so returned packets are
+	/// guaranteed complete feedback plus a readable bitstream. Plans without
+	/// recorded encode nodes return an empty list.
+	///
+	/// # Errors
+	///
+	/// Returns an error when the wait fails, feedback did not complete, or a
+	/// packet cannot be read back from its slot.
+	pub fn encoded_packets(&self) -> Result<Vec<crate::video::EncodedVideoPacket>> {
+		self.wait()?;
+		self
+			.encode_receipts()
+			.iter()
+			.map(|receipt| receipt.packet())
+			.collect()
 	}
 
 	/// Return the complete device duration without waiting.

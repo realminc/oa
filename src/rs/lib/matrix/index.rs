@@ -1538,7 +1538,8 @@ pub(crate) fn slice_backward(
 	if copy_count != 0 {
 		let buffers = [
 			BufferBinding::read(output_gradient.storage()),
-			BufferBinding::write(output.storage()),
+			// The donor region copy leaves the initialized padding untouched.
+			BufferBinding::read_write(output.storage()),
 		];
 		let push_constants = region_push_constants(
 			copy_count,

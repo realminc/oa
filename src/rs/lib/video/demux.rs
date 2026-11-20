@@ -1,8 +1,9 @@
 //! Bounded local video packet demuxing.
 
+pub(super) mod edits;
 mod fragmented;
-mod matroska;
-mod mpeg_ts;
+mod mkv;
+mod mpegts;
 
 pub use crate::video::types::VideoContainerInfo;
 use std::{
@@ -208,11 +209,12 @@ pub struct VideoDemuxer {
 	info: VideoContainerInfo,
 	samples: Vec<Sample>,
 	current_sample: usize,
+	keyframes: Vec<usize>,
 	nal_length_size: Option<usize>,
 	codec_config: Vec<u8>,
 	need_codec_config: bool,
 	eos: bool,
-	ts: Option<mpeg_ts::TsState>,
+	ts: Option<mpegts::TsState>,
 }
 
 impl VideoDemuxer {
@@ -241,9 +243,9 @@ impl VideoDemuxer {
 			.seek(SeekFrom::Start(0))
 			.map_err(|source| Error::io("video container rewind", source))?;
 		let (parsed, ts) = if magic == [0x1a, 0x45, 0xdf, 0xa3] {
-			(matroska::parse(&mut file, file_size, path)?, None)
+			(mkv::parse(&mut file, file_size, path)?, None)
 		} else if magic[0] == 0x47 && file_size >= 188 {
-			let (info, state) = mpeg_ts::open(&mut file, file_size)?;
+			let (info, state) = mpegts::open(&mut file, file_size)?;
 			(
 				ParsedMovie {
 					info,
@@ -261,11 +263,30 @@ impl VideoDemuxer {
 			}
 			(parsed, None)
 		};
+		let mut keyframes = Vec::new();
+		keyframes
+			.try_reserve_exact(
+				parsed
+					.samples
+					.iter()
+					.filter(|sample| sample.keyframe)
+					.count(),
+			)
+			.map_err(|_| Error::resource_exhausted("video keyframe index allocation failed"))?;
+		keyframes.extend(
+			parsed
+				.samples
+				.iter()
+				.enumerate()
+				.filter_map(|(index, sample)| sample.keyframe.then_some(index)),
+		);
+		keyframes.sort_unstable_by_key(|&index| (parsed.samples[index].pts, index));
 		Ok(Self {
 			file: Some(file),
 			info: parsed.info,
 			samples: parsed.samples,
 			current_sample: 0,
+			keyframes,
 			nal_length_size: parsed.nal_length_size,
 			codec_config: parsed.codec_config,
 			need_codec_config: true,
@@ -289,7 +310,7 @@ impl VideoDemuxer {
 		self.current_sample
 	}
 
-	pub(crate) fn presentation_timestamps(&self) -> Result<Vec<u64>> {
+	pub(crate) fn presentation_timestamps(&self) -> Result<(Vec<u64>, u64)> {
 		if self.ts.is_some() {
 			return Err(Error::missing_capability(
 				"MPEG-TS does not expose a display-order frame index",
@@ -299,9 +320,18 @@ impl VideoDemuxer {
 		timestamps
 			.try_reserve_exact(self.samples.len())
 			.map_err(|_| Error::resource_exhausted("video timestamp index allocation failed"))?;
-		timestamps.extend(self.samples.iter().map(|sample| sample.pts));
+		let mut end = self.info.duration;
+		for sample in &self.samples {
+			timestamps.push(sample.pts);
+			end = end.max(
+				sample
+					.pts
+					.checked_add(u64::from(sample.duration))
+					.ok_or_else(|| Error::data_loss("video presentation end overflows its time base"))?,
+			);
+		}
 		timestamps.sort_unstable();
-		Ok(timestamps)
+		Ok((timestamps, end))
 	}
 
 	/// Read the next compressed access unit, or `None` at end of stream.
@@ -402,20 +432,15 @@ impl VideoDemuxer {
 			self.eos = false;
 			return Ok(());
 		}
-		let index = self
-			.samples
-			.iter()
-			.enumerate()
-			.filter(|(_, sample)| sample.keyframe && sample.pts <= presentation_timestamp)
-			.max_by_key(|(_, sample)| sample.pts)
-			.or_else(|| {
-				self
-					.samples
-					.iter()
-					.enumerate()
-					.find(|(_, sample)| sample.keyframe)
-			})
-			.map(|(index, _)| index)
+		let (preceding, _) = self.keyframes.split_at(
+			self
+				.keyframes
+				.partition_point(|&index| self.samples[index].pts <= presentation_timestamp),
+		);
+		let index = preceding
+			.last()
+			.or_else(|| self.keyframes.iter().min())
+			.copied()
 			.ok_or_else(|| Error::data_loss("video track has no random-access sample"))?;
 		self.current_sample = index;
 		self.need_codec_config = true;

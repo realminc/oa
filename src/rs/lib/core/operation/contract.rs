@@ -119,6 +119,64 @@ impl OpLowering {
 	}
 }
 
+/// Fusion taxonomy class declared by an operation schema.
+///
+/// Region formation uses the class to admit or reject an operation:
+/// `Opaque` and `Effect` operations never enter a fusion region, while the
+/// structural classes name the read/write pattern the region compiler
+/// reasons about. `Opaque` is the default so an undeclared operation fails
+/// closed rather than silently joining a region.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OpFusionClass {
+	/// Element-local arithmetic with no cross-lane reads.
+	Pointwise,
+	/// Element-local arithmetic with broadcast input expansion.
+	Broadcast,
+	/// Indexed or layout reads (gather, index, reshape, transpose).
+	Gather,
+	/// Cross-element reduction (sum, mean, norm, softmax, argmax).
+	Reduce,
+	/// Ordered prefix accumulation.
+	Scan,
+	/// Dense matrix multiplication family.
+	Gemm,
+	/// Convolution or pooling stencil.
+	Conv,
+	/// Attention-family kernel (SDPA, flash, causal variants).
+	Attention,
+	/// Internally fused composite that must not be decomposed or joined
+	/// into a region (SSM cells, recurrent cells, cryptographic kernels).
+	#[default]
+	Opaque,
+	/// Stateful or side-effecting operation (RNG cursors, environment
+	/// steps, parameter update kernels) excluded from region formation.
+	Effect,
+}
+
+impl OpFusionClass {
+	/// Return the stable schema/report token.
+	pub const fn token(self) -> &'static str {
+		match self {
+			Self::Pointwise => "pointwise",
+			Self::Broadcast => "broadcast",
+			Self::Gather => "gather",
+			Self::Reduce => "reduce",
+			Self::Scan => "scan",
+			Self::Gemm => "gemm",
+			Self::Conv => "conv",
+			Self::Attention => "attention",
+			Self::Opaque => "opaque",
+			Self::Effect => "effect",
+		}
+	}
+
+	/// Whether the class admits the operation to fusion-region formation.
+	pub const fn is_region_admitted(self) -> bool {
+		!matches!(self, Self::Opaque | Self::Effect)
+	}
+}
+
 /// Semantic control-flow class of an operation.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -285,6 +343,7 @@ pub struct OperationContract {
 	differentiation: OpDifferentiation,
 	lowering: OpLowering,
 	effects: OpEffect,
+	fusion_class: OpFusionClass,
 	mutated_input_mask: u8,
 	optional_input_mask: u8,
 	output_alias_inputs: [Option<u8>; Self::MAX_VALUES],
@@ -318,6 +377,7 @@ impl OperationContract {
 			differentiation: OpDifferentiation::None,
 			lowering: OpLowering::Dispatch,
 			effects: OpEffect::empty(),
+			fusion_class: OpFusionClass::Opaque,
 			mutated_input_mask: 0,
 			optional_input_mask: 0,
 			output_alias_inputs: [None; Self::MAX_VALUES],
@@ -371,6 +431,12 @@ impl OperationContract {
 	/// Declare the backend-neutral lowering family.
 	pub const fn with_lowering(mut self, value: OpLowering) -> Self {
 		self.lowering = value;
+		self
+	}
+
+	/// Declare the schema's fusion taxonomy class.
+	pub const fn with_fusion_class(mut self, value: OpFusionClass) -> Self {
+		self.fusion_class = value;
 		self
 	}
 
@@ -445,6 +511,11 @@ impl OperationContract {
 	/// Return the declared lowering family.
 	pub const fn lowering(self) -> OpLowering {
 		self.lowering
+	}
+
+	/// Return the schema-declared fusion taxonomy class.
+	pub const fn fusion_class(self) -> OpFusionClass {
+		self.fusion_class
 	}
 
 	/// Return the declared control-flow class.

@@ -118,7 +118,7 @@ pub(super) fn render(
 			match media {
 				MediaState::Video { player } => {
 					if let Some(player) = player.as_mut() {
-						player.set_looping(config.loop_media)?;
+						player.set_looping(config.loop_media);
 					}
 				}
 				MediaState::Audio { player, .. } => {

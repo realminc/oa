@@ -12,7 +12,7 @@ use crate::{Error, Matrix, Result};
 
 use super::VideoPixelFormat;
 
-/// Row extent of one plane in `u8` elements.
+/// Plane dimensions with row width measured in stored bytes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct PlaneExtent {
 	pub(crate) width: usize,
@@ -27,10 +27,8 @@ pub(crate) fn plane_count(format: VideoPixelFormat) -> usize {
 	}
 }
 
-/// Per-plane extents of one admitted 8-bit format for a visible luma extent.
-///
-/// Ten- and twelve-bit formats need 16-bit samples and are rejected until the
-/// VNV-01 storage decision lands; they never reach this function.
+/// Per-plane byte extents for a visible luma extent.
+/// P010 stores the 10 sample bits in the high bits of each little-endian lane.
 pub(crate) fn plane_extents(
 	format: VideoPixelFormat,
 	width: usize,
@@ -55,16 +53,31 @@ pub(crate) fn plane_extents(
 				height: chroma_height,
 			},
 		],
-		VideoPixelFormat::Nv12 => vec![
-			PlaneExtent { width, height },
-			PlaneExtent {
-				width: chroma_width * 2,
-				height: chroma_height,
-			},
-		],
-		VideoPixelFormat::Yuv420Planar10 | VideoPixelFormat::P010 | VideoPixelFormat::P012 => {
+		VideoPixelFormat::Nv12 | VideoPixelFormat::P010 => {
+			let sample_bytes = if format == VideoPixelFormat::P010 {
+				2
+			} else {
+				1
+			};
+			let row_bytes = |sites: usize, components: usize| {
+				sites
+					.checked_mul(components * sample_bytes)
+					.ok_or_else(|| Error::out_of_range("video plane row size overflows usize"))
+			};
+			vec![
+				PlaneExtent {
+					width: row_bytes(width, 1)?,
+					height,
+				},
+				PlaneExtent {
+					width: row_bytes(chroma_width, 2)?,
+					height: chroma_height,
+				},
+			]
+		}
+		VideoPixelFormat::Yuv420Planar10 | VideoPixelFormat::P012 => {
 			return Err(Error::missing_capability(
-				"10- and 12-bit planar frames wait for the VNV-01 storage decision",
+				"device-planar video supports I420, NV12, and P010",
 			));
 		}
 	};

@@ -14,6 +14,28 @@ use super::{
 	storage::ReadinessSnapshot,
 };
 
+use super::{
+	device::video::{
+		DecodeSession, DecodedPlaneCopy, EncodePlaneCopy, EncodeSession, PreparedDecode,
+		PreparedEncode, RetainedDecode, RetainedEncode,
+	},
+	graph::executable::{GraphNode, QueueFamilies},
+};
+
+pub(super) enum RecordedDecodeStep {
+	Picture(PreparedDecode),
+	Planes(Arc<DecodedPlaneCopy>, crate::video::DevicePlanar),
+}
+
+/// One captured encode frame: `input`/`planes` stage plane buffers into the
+/// slot's input image (skipped when the input already came from conversion),
+/// and `picture` freezes the session's encode position.
+pub(super) struct RecordedEncodeStep {
+	pub(super) input: Option<Arc<EncodePlaneCopy>>,
+	pub(super) planes: Vec<crate::runtime::Storage>,
+	pub(super) picture: PreparedEncode,
+}
+
 /// Private mutable eager-recording owner for one engine.
 pub(super) struct ExecutionSession {
 	graphs: Vec<ExecutableGraph>,
@@ -407,6 +429,97 @@ impl ExecutionSession {
 			workgroups,
 		)?;
 		self.push_graph(graph, outputs);
+		Ok(())
+	}
+
+	pub(super) fn record_video_planes(
+		&mut self,
+		device: &Arc<Device>,
+		copy: Arc<super::device::video::DecodedPlaneCopy>,
+		planes: &[Matrix],
+	) -> Result<()> {
+		let bindings = planes
+			.iter()
+			.map(|plane| BufferBinding::write(plane.storage()))
+			.collect::<Vec<_>>();
+		for binding in &bindings {
+			binding.storage.validate_recording_access(binding.access)?;
+		}
+		let graph = ExecutableGraph::from_video_planes(device, copy, &bindings)?;
+		let outputs = planes.iter().map(|plane| plane.storage().clone()).collect();
+		self.push_graph(graph, outputs);
+		Ok(())
+	}
+
+	pub(super) fn record_video_decode(
+		&mut self,
+		device: &Arc<Device>,
+		session: &Arc<DecodeSession>,
+		steps: Vec<RecordedDecodeStep>,
+	) -> Result<()> {
+		let mut outputs = Vec::new();
+		let mut nodes = Vec::new();
+		for step in steps {
+			match step {
+				RecordedDecodeStep::Picture(picture) => {
+					nodes.push(GraphNode::VideoDecode(Arc::new(RetainedDecode::new(
+						session, picture,
+					))));
+				}
+				RecordedDecodeStep::Planes(copy, frame) => {
+					let mut bindings = Vec::with_capacity(frame.planes.len());
+					for plane in frame.planes.iter() {
+						let storage = plane.storage();
+						storage.validate_recording_access(BufferAccess::Write)?;
+						bindings.push(BufferBinding::write(storage));
+						outputs.push(storage.clone());
+					}
+					ExecutableGraph::append_video_planes(&mut nodes, device, copy, &bindings)?;
+				}
+			}
+		}
+		let graph =
+			ExecutableGraph::from_nodes(nodes, QueueFamilies::from_physical(device.physical()))?;
+		self.push_graph(graph, outputs);
+		Ok(())
+	}
+
+	/// Append one captured encode batch. Each step stages its input planes on
+	/// the compute family (the input image is CONCURRENT across compute and
+	/// encode families) then records the retained `vkCmdEncodeVideoKHR`
+	/// picture; resolved queue runs and the engine timeline order the two.
+	pub(super) fn record_video_encode(
+		&mut self,
+		device: &Arc<Device>,
+		session: &Arc<EncodeSession>,
+		steps: Vec<RecordedEncodeStep>,
+	) -> Result<()> {
+		session.validate_ownership()?;
+		let mut nodes = Vec::new();
+		let last = steps.len().saturating_sub(1);
+		for (index, mut step) in steps.into_iter().enumerate() {
+			if let Some(copy) = step.input {
+				let bindings = step
+					.planes
+					.iter()
+					.map(|plane| {
+						plane.validate_recording_access(BufferAccess::Read)?;
+						Ok(BufferBinding::read(plane))
+					})
+					.collect::<Result<Vec<_>>>()?;
+				ExecutableGraph::append_encode_input(&mut nodes, device, copy, &bindings)?;
+			}
+			if index == last {
+				step.picture.mark_replay_boundary();
+			}
+			nodes.push(GraphNode::VideoEncode(Arc::new(RetainedEncode::new(
+				session,
+				step.picture,
+			))));
+		}
+		let graph =
+			ExecutableGraph::from_nodes(nodes, QueueFamilies::from_physical(device.physical()))?;
+		self.push_graph(graph, Vec::new());
 		Ok(())
 	}
 
@@ -863,28 +976,8 @@ impl ExecutionSession {
 					&semantic_bindings,
 					&observed_outputs,
 				);
-				let fusion_start = std::time::Instant::now();
-				let joined = fusion::fuse_epilogue_pairs(device, graph.nodes().to_vec(), &refs);
-				let (nodes, tapes) = fusion::fuse_elementwise_nodes(device, joined, &refs);
-				let fusion_elapsed = fusion_start.elapsed();
-				device.fusion_census().fusion_pass(fusion_elapsed);
-				if crate::EnvFlag::is_set("OA_JIT_TRACE") {
-					crate::log_info!(
-						crate::LogComponent::COMPUTE,
-						"fusion host_ns={}",
-						fusion_elapsed.as_nanos(),
-					);
-				}
-				if nodes.len() != graph.nodes().len()
-					&& let Ok(fused) = ExecutableGraph::from_nodes(nodes)
-				{
-					graph = fused;
-					stable_resources.extend(tapes.into_iter().map(|storage| StableResourceSnapshot {
-						storage,
-						replay_input: false,
-						transient: true,
-					}));
-				}
+				let tapes = fuse_compute_graph(device, &mut graph, &refs);
+				stable_resources.extend(tapes);
 				Ok(Some(PendingExecution {
 					graph,
 					outputs,
@@ -949,28 +1042,8 @@ impl ExecutionSession {
 			&semantic_bindings,
 			&observed_outputs,
 		);
-		let fusion_start = std::time::Instant::now();
-		let joined = fusion::fuse_epilogue_pairs(device, graph.nodes().to_vec(), &refs);
-		let (nodes, tapes) = fusion::fuse_elementwise_nodes(device, joined, &refs);
-		let fusion_elapsed = fusion_start.elapsed();
-		device.fusion_census().fusion_pass(fusion_elapsed);
-		if crate::EnvFlag::is_set("OA_JIT_TRACE") {
-			crate::log_info!(
-				crate::LogComponent::COMPUTE,
-				"fusion host_ns={}",
-				fusion_elapsed.as_nanos(),
-			);
-		}
-		if nodes.len() != graph.nodes().len()
-			&& let Ok(fused) = ExecutableGraph::from_nodes(nodes)
-		{
-			graph = fused;
-			stable_resources.extend(tapes.into_iter().map(|storage| StableResourceSnapshot {
-				storage,
-				replay_input: false,
-				transient: true,
-			}));
-		}
+		let tapes = fuse_compute_graph(device, &mut graph, &refs);
+		stable_resources.extend(tapes);
 		Ok(Some(PendingExecution {
 			graph,
 			outputs,
@@ -1615,3 +1688,50 @@ fn validate_split_recording_access(dispatches: &[ComputeDispatch<'_>]) -> Result
 #[cfg(test)]
 #[path = "../../../../test/rs/runtime/session_readiness_unit.rs"]
 mod split_readiness_tests;
+
+fn fuse_compute_graph(
+	device: &Arc<Device>,
+	graph: &mut ExecutableGraph,
+	refs: &[&Storage],
+) -> Vec<StableResourceSnapshot> {
+	// Ordered non-compute accesses must be visible to any fusion pass.
+	if graph.nodes().iter().any(|node| node.compute().is_none()) {
+		return Vec::new();
+	}
+	let fusion_start = std::time::Instant::now();
+	// Tile producers claim scalar tails while the ops are still
+	// discrete nodes (OA-CC-33), ahead of the incumbent pair matchers
+	// and the elementwise tape.
+	let claimed =
+		fusion::fuse_tile_scalar_epilogues(device, graph.compute_nodes().cloned().collect(), refs);
+	let joined = fusion::fuse_epilogue_pairs(device, claimed, refs);
+	let (nodes, tapes) = fusion::fuse_elementwise_nodes(device, joined, refs);
+	let fusion_elapsed = fusion_start.elapsed();
+	device.fusion_census().fusion_pass(fusion_elapsed);
+	if crate::EnvFlag::is_set("OA_JIT_TRACE") {
+		crate::log_info!(
+			crate::LogComponent::COMPUTE,
+			"fusion host_ns={}",
+			fusion_elapsed.as_nanos(),
+		);
+	}
+	let mut retained = Vec::new();
+	if nodes.len() != graph.nodes().len()
+		&& let Ok(fused) = ExecutableGraph::from_compute_nodes(nodes, graph.queue_families())
+	{
+		*graph = fused;
+		retained.extend(tapes.into_iter().map(|storage| StableResourceSnapshot {
+			storage,
+			replay_input: false,
+			transient: true,
+		}));
+	}
+	// Failure to prepare the physical route preserves the proved source graph.
+	if let Err(error) = super::dna::lower_buffer_copies(graph) {
+		crate::log_warn!(
+			crate::LogComponent::COMPUTE,
+			"buffer-copy lowering: {error}"
+		);
+	}
+	retained
+}

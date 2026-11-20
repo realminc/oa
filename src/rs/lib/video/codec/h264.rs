@@ -144,6 +144,36 @@ impl H264SequenceParameterSet {
 			.checked_mul(if self.frame_mbs_only { 16 } else { 32 })
 			.ok_or_else(|| Error::data_loss("H.264 coded height overflows u32"))
 	}
+	/// Visible rectangle for the progressively coded 4:2:0 decode route.
+	pub(crate) fn progressive_420_crop(&self) -> Result<([u32; 2], crate::video::VideoExtent)> {
+		if !self.frame_mbs_only || self.chroma_format_idc != 1 {
+			return Err(Error::missing_capability(
+				"H.264 visible output requires progressive 4:2:0",
+			));
+		}
+		let dimension = |coded: u32, start: u32, end: u32| -> Result<(u32, u32)> {
+			let crop = start
+				.checked_add(end)
+				.and_then(|sum| sum.checked_mul(2))
+				.ok_or_else(|| Error::data_loss("H.264 crop overflows u32"))?;
+			let visible = coded
+				.checked_sub(crop)
+				.filter(|&visible| visible > 0)
+				.ok_or_else(|| Error::data_loss("H.264 crop exceeds coded extent"))?;
+			Ok((start * 2, visible))
+		};
+		let (x, width) = dimension(
+			self.coded_width()?,
+			self.frame_crop_left_offset,
+			self.frame_crop_right_offset,
+		)?;
+		let (y, height) = dimension(
+			self.coded_height()?,
+			self.frame_crop_top_offset,
+			self.frame_crop_bottom_offset,
+		)?;
+		Ok(([x, y], crate::video::VideoExtent { width, height }))
+	}
 }
 
 /// Parsed H.264 picture parameter set required by decode-session setup.
@@ -273,6 +303,11 @@ pub fn parse_h264_sps(nal: &[u8]) -> Result<H264SequenceParameterSet> {
 		));
 	}
 	let max_num_ref_frames = bits.read_ue()?;
+	if max_num_ref_frames > 16 {
+		return Err(Error::data_loss(
+			"H.264 reference frame count exceeds DPB capacity",
+		));
+	}
 	let gaps_in_frame_num_value_allowed = bits.read_bits(1)? != 0;
 	let width_in_macroblocks = bits
 		.read_ue()?
@@ -691,7 +726,7 @@ fn parse_h264_vui(bits: &mut BitReader<'_>) -> Result<H264VuiParameters> {
 	};
 	let picture_structure_present = bits.read_bits(1)? != 0;
 	let bitstream_restriction = if bits.read_bits(1)? != 0 {
-		Some(H264BitstreamRestriction {
+		let restriction = H264BitstreamRestriction {
 			motion_vectors_over_picture_boundaries: bits.read_bits(1)? != 0,
 			max_bytes_per_picture_denom: bits.read_ue()?,
 			max_bits_per_macroblock_denom: bits.read_ue()?,
@@ -699,7 +734,15 @@ fn parse_h264_vui(bits: &mut BitReader<'_>) -> Result<H264VuiParameters> {
 			log2_max_motion_vector_length_vertical: bits.read_ue()?,
 			max_num_reorder_frames: bits.read_ue()?,
 			max_dec_frame_buffering: bits.read_ue()?,
-		})
+		};
+		if restriction.max_dec_frame_buffering > 16
+			|| restriction.max_num_reorder_frames > restriction.max_dec_frame_buffering
+		{
+			return Err(Error::data_loss(
+				"H.264 VUI reorder or buffering count exceeds DPB capacity",
+			));
+		}
+		Some(restriction)
 	} else {
 		None
 	};
@@ -753,7 +796,9 @@ fn read_h264_scaling_list(bits: &mut BitReader<'_>, output: &mut [u8]) -> Result
 	let mut use_default = false;
 	for (index, value) in output.iter_mut().enumerate() {
 		if next_scale != 0 {
-			next_scale = (last_scale + bits.read_se()? + 256) % 256;
+			let delta = i8::try_from(bits.read_se()?)
+				.map_err(|_| Error::data_loss("H.264 scaling-list delta exceeds signed byte range"))?;
+			next_scale = (last_scale + i32::from(delta)).rem_euclid(256);
 			use_default = index == 0 && next_scale == 0;
 		}
 		let scale = if next_scale == 0 {

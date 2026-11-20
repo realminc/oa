@@ -11,6 +11,7 @@ use std::{
 };
 
 use super::{BufferAccess, ComputeNode, Device, Storage, storage_unobservable};
+use crate::runtime::graph::executable::BufferUse;
 
 /// Descriptor slots identify retained physical buffers within one Device,
 /// as in ExecutableGraph's hazard planner. Never serialize these identifiers.
@@ -130,8 +131,24 @@ impl WriteAdmission {
 
 impl NodeAccess {
 	fn from_compute(node: &ComputeNode) -> Self {
-		let mut bindings: Vec<(u32, BufferAccess)> = node
-			.buffers
+		Self::access(node, node.buffers.as_slice(), true)
+	}
+
+	/// Audit the dispatch's *executed* buffer set for the jit-transparent
+	/// proof variant: an attached substitution binds `jit.buffers`, so
+	/// that list — not the incumbent declaration — is the consumed truth.
+	/// The substitution itself is transparent: the semantic kernel and
+	/// its declared side effects still gate opacity.
+	fn from_compute_executed(node: &ComputeNode) -> Self {
+		let buffers = node
+			.jit
+			.as_ref()
+			.map_or(node.buffers.as_slice(), |jit| jit.buffers.as_slice());
+		Self::access(node, buffers, false)
+	}
+
+	fn access(node: &ComputeNode, buffers: &[BufferUse], opaque_jit: bool) -> Self {
+		let mut bindings: Vec<(u32, BufferAccess)> = buffers
 			.iter()
 			.map(|usage| (usage.buffer.descriptor_index(), usage.access))
 			.collect();
@@ -145,20 +162,29 @@ impl NodeAccess {
 			// An explicit schema audit is necessary, never sufficient: pair
 			// matchers and the resource/alias proofs still restrict admission.
 			opaque: !node.kernel.fusion_effects().is_empty()
+				|| !node.kernel.fusion_class().is_region_admitted()
 				|| node.indirect.is_some()
-				|| node.jit.is_some(),
+				|| (opaque_jit && node.jit.is_some()),
 		}
 	}
 }
 
 impl RegionGraph {
-	pub(super) fn from_compute(device: &Device, nodes: &[ComputeNode], refs: &[&Storage]) -> Self {
+	/// Region model auditing each node's executed binding set, so a jit
+	/// substitution does not by itself fence a merge. Every fused route is
+	/// preferred over the member substitutions, so all families prove
+	/// their window against this graph.
+	pub(super) fn from_compute_executed(
+		device: &Device,
+		nodes: &[ComputeNode],
+		refs: &[&Storage],
+	) -> Self {
 		let mut external = BTreeSet::new();
 		let mut seen = BTreeSet::new();
 		let accesses = nodes
 			.iter()
 			.map(|node| {
-				let mut access = NodeAccess::from_compute(node);
+				let mut access = NodeAccess::from_compute_executed(node);
 				for usage in &node.buffers {
 					access.opaque |= !usage.buffer.belongs_to(device);
 					if usage.access != BufferAccess::Read
@@ -200,7 +226,10 @@ impl RegionGraph {
 		consumed: &BTreeSet<usize>,
 		admission: &WriteAdmission,
 	) -> Result<RegionCandidate, RegionDecline> {
-		self.window(&range.collect(), consumed, admission)
+		if range.end > self.nodes.len() || range.len() < 2 {
+			return Err(RegionDecline::InvalidRange);
+		}
+		self.window(&range.collect(), consumed, admission, &BTreeSet::new())
 	}
 
 	/// Region over an arbitrary set of node positions. Lookahead merges absorb
@@ -222,12 +251,19 @@ impl RegionGraph {
 		positions: &BTreeSet<usize>,
 		consumed: &BTreeSet<usize>,
 		admission: &WriteAdmission,
+		moved: &BTreeSet<usize>,
 	) -> Result<RegionCandidate, RegionDecline> {
 		if positions.len() < 2 || positions.iter().any(|&index| index >= self.nodes.len()) {
 			return Err(RegionDecline::InvalidRange);
 		}
 		if positions.iter().any(|index| consumed.contains(index)) {
 			return Err(RegionDecline::ConsumedSlot);
+		}
+		if moved
+			.iter()
+			.any(|index| positions.contains(index) || *index >= self.nodes.len())
+		{
+			return Err(RegionDecline::InvalidRange);
 		}
 		let first = *positions.iter().next().unwrap_or(&0);
 		let last = *positions.iter().next_back().unwrap_or(&0);
@@ -279,6 +315,54 @@ impl RegionGraph {
 				}
 			}
 		}
+		// A strict input written by a gap node inside the position range is a
+		// version hazard: the fused read must observe the same version every
+		// member read did. A gap writer the merge relocates before the fused
+		// node (`moved`) is legal only when every member reader sat after it;
+		// a gap writer staying in place is legal only when every member
+		// reader sat before it. Member readers straddling the writer can
+		// never agree on a single fused read version.
+		for &resource in &reads {
+			if writes.contains(&resource) {
+				continue;
+			}
+			let lifetime = &self.resources[&resource];
+			for &writer in &lifetime.writers {
+				if positions.contains(&writer) || !(first..=last).contains(&writer) {
+					continue;
+				}
+				let before = moved.contains(&writer);
+				let consistent = lifetime
+					.readers
+					.iter()
+					.filter(|reader| positions.contains(reader))
+					.all(|&reader| (writer < reader) == before);
+				if !consistent {
+					return Err(RegionDecline::NonSsaWrite);
+				}
+			}
+		}
+		// A relocated gap node also reads before the fused node: a member
+		// write it once observed after its own position would surface as the
+		// pre-fusion version. Only writes the reader preceded originally are
+		// safe — they exposed the same pre-region version.
+		for &position in moved {
+			for &(resource, access) in &self.nodes[position].bindings {
+				if access == BufferAccess::Write
+					|| (!writes.contains(&resource) && !partitioned.contains(&resource))
+				{
+					continue;
+				}
+				let lifetime = &self.resources[&resource];
+				if lifetime
+					.writers
+					.iter()
+					.any(|writer| positions.contains(writer) && *writer < position)
+				{
+					return Err(RegionDecline::NonSsaWrite);
+				}
+			}
+		}
 		for &resource in &multi_writes {
 			let lifetime = &self.resources[&resource];
 			// A writer inside the position range but outside the position set
@@ -292,7 +376,12 @@ impl RegionGraph {
 			{
 				return Err(RegionDecline::NonSsaWrite);
 			}
-			let last_w = lifetime.writers.iter().max().copied().unwrap_or(0);
+			let last_w = lifetime
+				.writers
+				.iter()
+				.rfind(|&&writer| writer <= last)
+				.copied()
+				.expect("multi-write resource has writers inside the region");
 			if lifetime.readers.iter().any(|&r| {
 				if positions.contains(&r) {
 					// An in-region reader before the final version's writer —
@@ -313,18 +402,18 @@ impl RegionGraph {
 		}
 		for &resource in &partitioned {
 			let lifetime = &self.resources[&resource];
-			let (min_w, max_w) = (
-				lifetime.writers.iter().min().copied().unwrap_or(0),
-				lifetime.writers.iter().max().copied().unwrap_or(0),
-			);
+			let max_w = *lifetime
+				.writers
+				.last()
+				.expect("partitioned resource has writers inside the region");
 			// A reader inside the region must see the completed partition;
-			// a gap reader between the first and last writer would observe
-			// a half-written buffer.
+			// moving publication to the start of the region would change
+			// what a gap reader before the final writer observes.
 			if lifetime.readers.iter().any(|&r| {
 				if positions.contains(&r) {
 					r <= max_w
 				} else {
-					(min_w..=max_w).contains(&r)
+					(first..=max_w).contains(&r)
 				}
 			}) {
 				return Err(RegionDecline::NonSsaWrite);

@@ -1,22 +1,16 @@
 //! `oa::plot::Figure` — top-level container for a grid of `oa::plot::Axes`.
 //!
 //! Three terminal sinks:
-//! - `show()` — replay through `Ui`'s GPU compositor in a live window.
+//! - `show()` — compose once and open the figure in the image viewer.
 //! - `save_to(engine, path)` — headless GPU render → image file (Experimental).
 //! - `render(engine)` — return the composition as an `oa::Image` (Experimental).
 //!
 //! Donor reference: `oa/ui/plot/figure.h`, `oa/ui/plot/figure.cpp`
 
-use super::axes::{Axes, Scale, TickFormat, scale_value};
+use super::axes::{Axes, AxesLayout, Scale, TickFormat, legend_row_rect, scale_value};
 pub use super::types::FigureConfig;
-use crate::ui::{TextLayoutConfig, Ui, types::PixelRect};
+use crate::ui::{TextLayoutConfig, Ui, UiGridConfig, UiStyle, types::PixelRect};
 use crate::{Color, Engine, Error, Image, Result, Texture};
-
-fn preserve_first(result: &mut Result<()>, next: Result<()>) {
-	if result.is_ok() {
-		*result = next;
-	}
-}
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
@@ -214,74 +208,28 @@ impl Figure {
 		Image::new(matrix, crate::ImageLayout::Nchw, crate::ImageFormat::Rgba)
 	}
 
-	/// Open an interactive SDL3 window and present the figure.
+	/// Compose the figure once and open it in the OA image viewer.
 	///
-	/// GPU composition + SDL3 window loop is Experimental.
+	/// The window uses the image canvas with pan, zoom and fit controls.
+	/// The supplied engine must support desktop presentation. This call
+	/// returns when the viewer closes.
+	///
+	/// # Errors
+	///
+	/// Returns an error if composition fails or the viewer cannot open or
+	/// present the texture on the supplied engine.
 	pub fn show(&self, engine: &Engine) -> Result<()> {
-		let w = self.config.width;
-		let h = self.config.height;
-		let window = crate::SdlWindow::new(&self.config.title, w, h)
-			.map_err(|e| Error::backend_failure("SDL3", "Figure::show window", e))?;
-		let mut presenter = crate::Presenter::new(engine, &window)?;
-		if !presenter.supports_swapchain() {
-			return Err(Error::missing_capability(
-				"Figure::show requires a presentation-capable device",
-			));
-		}
-		if !presenter.has_present() {
-			return Err(Error::missing_capability(
-				"Figure::show requires a queue family that can present to the window surface",
-			));
-		}
-		presenter.init_swapchain(&window)?;
-		let mut ui = Ui::init(engine, w, h)?;
-		let mut run_result = (|| -> Result<()> {
-			let mut event_pump = window
-				.event_pump()
-				.map_err(|e| Error::backend_failure("SDL3", "Figure::show event pump", e))?;
-			loop {
-				let mut quit = false;
-				for ev in event_pump.poll_iter() {
-					if matches!(ev, sdl3::event::Event::Quit { .. }) {
-						quit = true;
-					}
-					if let sdl3::event::Event::KeyDown {
-						keycode: Some(sdl3::keyboard::Keycode::Escape | sdl3::keyboard::Keycode::Q),
-						..
-					} = ev
-					{
-						quit = true;
-					}
-				}
-				if quit {
-					break;
-				}
-				let [draw_w, draw_h] = window.drawable_extent();
-				if draw_w == 0 || draw_h == 0 {
-					continue;
-				}
-				if ui.compose_extent() != Some([draw_w, draw_h]) {
-					ui.resize(draw_w, draw_h)?;
-				}
-				if presenter.swapchain_extent_px() != Some([draw_w, draw_h]) {
-					presenter.notify_pixel_size_changed(draw_w, draw_h);
-				}
-				if presenter.needs_swapchain_recreate() {
-					presenter.wait_presentation_idle()?;
-					presenter.recreate_swapchain(&window)?;
-				}
-				ui.begin_frame(0.0);
-				self.record_into(&mut ui, PixelRect::new(0, 0, draw_w, draw_h))?;
-				ui.end_frame();
-				if ui.present_to(&mut presenter)? {
-					presenter.notify_pixel_size_changed(draw_w, draw_h);
-				}
-			}
-			Ok(())
-		})();
-		preserve_first(&mut run_result, presenter.wait_presentation_idle());
-		preserve_first(&mut run_result, ui.close());
-		run_result
+		let texture = self.render_to_texture(engine)?;
+		crate::viewer::Viewer::show_with_config(
+			engine,
+			&texture,
+			crate::viewer::ViewerConfig {
+				title: self.config.title.clone(),
+				width: self.config.width,
+				height: self.config.height,
+				..Default::default()
+			},
+		)
 	}
 
 	// ── Composition ──────────────────────────────────────────────────────────
@@ -309,7 +257,7 @@ impl Figure {
 
 	/// Compose the figure into a packed RGBA8 Texture.
 	///
-	/// Commands are lowered through the UI compute compositor and copied through
+	/// Commands are lowered through the UI GPU compositor and copied through
 	/// its explicit blocking headless readback boundary.
 	fn render_to_texture(&self, engine: &Engine) -> Result<Texture> {
 		let w = self.config.width;
@@ -384,7 +332,8 @@ impl Figure {
 
 		// Figure-level x label (below the grid).
 		if !self.fig_x_label.is_empty() {
-			let lx = layout.frame.x as f32 + layout.frame.w as f32 / 2.0;
+			let text_w = ui.measure_text(&self.fig_x_label, label_cfg)?;
+			let lx = layout.frame.x as f32 + (layout.frame.w as f32 - text_w) / 2.0;
 			let ly = (layout.frame.y + layout.frame.h as i32
 				- layout.outer_pad as i32
 				- (layout.bottom_band / 2) as i32) as f32;
@@ -394,7 +343,7 @@ impl Figure {
 		// Figure-level y label (left of the grid), bottom-to-top like
 		// matplotlib's rotated axis title.
 		if !self.fig_y_label.is_empty() {
-			let text_w = ui.measure_text(&self.fig_y_label, label_cfg).unwrap_or(0.0);
+			let text_w = ui.measure_text(&self.fig_y_label, label_cfg)?;
 			let baseline_x =
 				(layout.frame.x + layout.outer_pad as i32 + layout.left_band as i32 - 4) as f32;
 			let pen_y = layout.frame.y as f32 + layout.frame.h as f32 / 2.0 + text_w / 2.0;
@@ -422,18 +371,86 @@ impl Figure {
 				};
 				let axes = &self.axes[r * cols + c];
 				let label_config = TextLayoutConfig {
-					size: 10.0,
+					size: 11.0,
 					..Default::default()
 				};
 				let subtext = style.text_secondary;
-				// Axes background.
-				ui.rect_raw(cell, style.plot_surface, cell, 0.0);
-				// Data-mapped region; a heatmap colorbar reserves its band.
-				let rect = axes.plot_area(cell);
+				let axes_layout = axes.layout(cell);
+				let rect = axes_layout.plot;
+				let has_ticks = axes.has_ticks();
+
+				// Display-space limits; axis scales fold into every mapping.
+				let limits = axes.scaled_limits();
+				let x_scale = axes.cmds.x_scale;
+				let y_scale = axes.cmds.y_scale;
+
+				// Ticks and grid share one placement so labels and lines always
+				// agree.  Entries are `(fraction of axis range, label)`.
+				let x_ticks: Vec<(f32, String)> = if !has_ticks {
+					Vec::new()
+				} else if !axes.cmds.categories.is_empty() {
+					let slots = axes.cmds.categories.len() as f32;
+					axes
+						.cmds
+						.categories
+						.iter()
+						.enumerate()
+						.map(|(index, label)| ((index as f32 + 0.5) / slots, label.clone()))
+						.collect()
+				} else if let Some(values) = &axes.cmds.x_ticks {
+					explicit_ticks(
+						values,
+						&axes.cmds.x_tick_format,
+						limits.x_min,
+						limits.x_max,
+						x_scale,
+					)
+				} else {
+					axis_ticks(
+						limits.x_min,
+						limits.x_max,
+						x_scale,
+						(rect.w as usize / 68).clamp(2, 8),
+					)
+				};
+				let y_ticks = if !has_ticks {
+					Vec::new()
+				} else if let Some(values) = &axes.cmds.y_ticks {
+					explicit_ticks(
+						values,
+						&axes.cmds.y_tick_format,
+						limits.y_min,
+						limits.y_max,
+						y_scale,
+					)
+				} else {
+					axis_ticks(
+						limits.y_min,
+						limits.y_max,
+						y_scale,
+						(rect.h as usize / 48).clamp(2, 8),
+					)
+				};
+
+				record_axes_text(ui, axes, &axes_layout, &style, &x_ticks, &y_ticks)?;
+				record_plot_background(
+					ui,
+					rect,
+					axes,
+					self.config.theme,
+					&style,
+					&x_ticks,
+					&y_ticks,
+				);
 
 				// Imshow raster base.
 				if let Some(image) = &axes.cmds.imshow {
-					ui.image_at(&image.texture, rect)?;
+					let destination = if has_ticks {
+						rect
+					} else {
+						fit_plot_image(rect, &image.texture)
+					};
+					ui.image_at(&image.texture, destination)?;
 				}
 
 				// Host-recorded dense heatmap — one upload per frame, lowered
@@ -497,158 +514,7 @@ impl Figure {
 					}
 				}
 
-				// Border.
-				let border = axes.cmds.border_color.unwrap_or(style.plot_border);
-				ui.rect_outline_raw(cell, border, 1, cell);
-
-				// Display-space limits; axis scales fold into every mapping.
-				let limits = axes.scaled_limits();
-				let x_scale = axes.cmds.x_scale;
-				let y_scale = axes.cmds.y_scale;
-
-				// Axes title.
-				if !axes.cmds.title.is_empty() {
-					let title_color = if axes.cmds.title_color.a > 0.0 {
-						axes.cmds.title_color
-					} else {
-						text_color
-					};
-					ui.text_at(
-						&axes.cmds.title,
-						[rect.x as f32 + 4.0, rect.y as f32 + 12.0],
-						label_config,
-						title_color,
-						rect,
-					)?;
-				}
-
-				// Caption (below title).
-				if !axes.cmds.caption.is_empty() {
-					let caption_color = if axes.cmds.caption_color.a > 0.0 {
-						axes.cmds.caption_color
-					} else {
-						subtext
-					};
-					ui.text_at(
-						&axes.cmds.caption,
-						[rect.x as f32 + 4.0, rect.y as f32 + 24.0],
-						label_config,
-						caption_color,
-						rect,
-					)?;
-				}
-
-				// Y label.
-				if !axes.cmds.y_label.is_empty() {
-					ui.text_at(
-						&axes.cmds.y_label,
-						[rect.x as f32 + 4.0, rect.y as f32 + 36.0],
-						label_config,
-						subtext,
-						rect,
-					)?;
-				}
-
-				// X label (near bottom).
-				if !axes.cmds.x_label.is_empty() {
-					ui.text_at(
-						&axes.cmds.x_label,
-						[rect.x as f32 + 4.0, (rect.y + rect.h as i32 - 4) as f32],
-						label_config,
-						subtext,
-						rect,
-					)?;
-				}
-
-				// Ticks and grid share one placement so labels and lines always
-				// agree.  Entries are `(fraction of axis range, label)`.
-				let x_ticks: Vec<(f32, String)> = if !axes.cmds.categories.is_empty() {
-					let slots = axes.cmds.categories.len() as f32;
-					axes
-						.cmds
-						.categories
-						.iter()
-						.enumerate()
-						.map(|(index, label)| ((index as f32 + 0.5) / slots, label.clone()))
-						.collect()
-				} else if let Some(values) = &axes.cmds.x_ticks {
-					explicit_ticks(
-						values,
-						&axes.cmds.x_tick_format,
-						limits.x_min,
-						limits.x_max,
-						x_scale,
-					)
-				} else {
-					axis_ticks(limits.x_min, limits.x_max, x_scale, 5)
-				};
-				let y_ticks = if let Some(values) = &axes.cmds.y_ticks {
-					explicit_ticks(
-						values,
-						&axes.cmds.y_tick_format,
-						limits.y_min,
-						limits.y_max,
-						y_scale,
-					)
-				} else {
-					axis_ticks(limits.y_min, limits.y_max, y_scale, 5)
-				};
-
-				for (fraction, label) in &x_ticks {
-					ui.text_at(
-						label,
-						[
-							rect.x as f32 + fraction * rect.w as f32 + 2.0,
-							(rect.y + rect.h as i32 - 16) as f32,
-						],
-						label_config,
-						subtext,
-						rect,
-					)?;
-				}
-				for (fraction, label) in &y_ticks {
-					ui.text_at(
-						label,
-						[
-							rect.x as f32 + 2.0,
-							rect.y as f32 + (1.0 - fraction) * rect.h as f32 + 10.0,
-						],
-						label_config,
-						subtext,
-						rect,
-					)?;
-				}
-
-				// Grid lines at interior tick positions.
-				if axes.cmds.show_grid {
-					let grid = style.plot_grid;
-					for (fraction, _) in &x_ticks {
-						if *fraction <= f32::EPSILON || *fraction >= 1.0 - f32::EPSILON {
-							continue;
-						}
-						let x = rect.x as f32 + fraction * rect.w as f32;
-						ui.line_at(
-							[x, rect.y as f32],
-							[x, (rect.y + rect.h as i32) as f32],
-							grid,
-							1.0,
-							rect,
-						)?;
-					}
-					for (fraction, _) in &y_ticks {
-						if *fraction <= f32::EPSILON || *fraction >= 1.0 - f32::EPSILON {
-							continue;
-						}
-						let y = rect.y as f32 + (1.0 - fraction) * rect.h as f32;
-						ui.line_at(
-							[rect.x as f32, y],
-							[(rect.x + rect.w as i32) as f32, y],
-							grid,
-							1.0,
-							rect,
-						)?;
-					}
-				}
+				record_plot_axes(ui, rect, axes, &style, &x_ticks, &y_ticks)?;
 
 				let palette = style.data_palette;
 
@@ -993,7 +859,9 @@ impl Figure {
 
 				// Heatmap colorbar — a vertical value-ramp strip with
 				// min/mid/max labels in the reserved right band.
-				if let Some((v_min, v_max, colormap)) = colorbar {
+				if let Some((v_min, v_max, colormap)) = colorbar
+					&& cell.x + cell.w as i32 - (rect.x + rect.w as i32) >= 20
+				{
 					const RAMP: usize = 32;
 					// Row 0 sits at the top of the strip and shows v_max.
 					let ramp: Vec<f32> = (0..RAMP)
@@ -1022,44 +890,8 @@ impl Figure {
 					}
 				}
 
-				// Legend (line swatches + text). Entries follow artist
-				// insertion order; hidden artists render dimmed but stay
-				// clickable for `FigureView` toggling.
 				if axes.cmds.show_legend {
-					for entry in axes.legend_entries(&palette) {
-						if entry.row == usize::MAX {
-							continue;
-						}
-						let dimmed = entry.hidden || axes.highlight.is_some_and(|h| h != entry.artist);
-						let color = if dimmed {
-							Color::new(
-								entry.color.r,
-								entry.color.g,
-								entry.color.b,
-								entry.color.a * 0.35,
-							)
-						} else {
-							entry.color
-						};
-						let ly = rect.y as f32
-							+ super::axes::LEGEND_FIRST_BASELINE
-							+ entry.row as f32 * super::axes::LEGEND_ROW_STEP;
-						let legend_x = rect.x as f32 + rect.w as f32 - super::axes::LEGEND_WIDTH;
-						ui.line_at(
-							[legend_x, ly - 4.0],
-							[legend_x + 10.0, ly - 4.0],
-							color,
-							2.0,
-							rect,
-						)?;
-						ui.text_at(
-							&entry.label,
-							[legend_x + 13.0, ly],
-							label_config,
-							color,
-							rect,
-						)?;
-					}
+					record_legend(ui, rect, axes, &style, label_config)?;
 				}
 			}
 		}
@@ -1168,6 +1000,266 @@ impl FigureLayout {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn fit_plot_image(rect: PixelRect, texture: &Texture) -> PixelRect {
+	let width = texture.width() as f64;
+	let height = texture.height() as f64;
+	let scale = (f64::from(rect.w) / width).min(f64::from(rect.h) / height);
+	let w = (width * scale).round().clamp(1.0, f64::from(rect.w)) as u32;
+	let h = (height * scale).round().clamp(1.0, f64::from(rect.h)) as u32;
+	PixelRect::new(
+		rect.x + ((rect.w - w) / 2) as i32,
+		rect.y + ((rect.h - h) / 2) as i32,
+		w,
+		h,
+	)
+}
+
+fn record_legend(
+	ui: &mut Ui<'_>,
+	rect: PixelRect,
+	axes: &Axes,
+	style: &UiStyle,
+	config: TextLayoutConfig,
+) -> Result<()> {
+	let entries = axes.legend_entries(&style.data_palette);
+	let visible_rows = entries
+		.iter()
+		.filter(|entry| entry.row != usize::MAX && legend_row_rect(rect, entry.row).is_non_empty())
+		.count();
+	if visible_rows == 0 {
+		return Ok(());
+	}
+	let first = legend_row_rect(rect, 0);
+	let panel = PixelRect::new(first.x, first.y, first.w, first.h * visible_rows as u32);
+	let mut background = style.plot_background;
+	background.a = 0.94;
+	ui.rect_raw(panel, background, rect, 3.0);
+
+	for entry in entries.iter().filter(|entry| entry.row < visible_rows) {
+		let row = legend_row_rect(rect, entry.row);
+		let x = row.x as f32;
+		let y = row.y as f32 + row.h as f32 / 2.0;
+		let dim = entry.hidden || axes.highlight.is_some_and(|artist| artist != entry.artist);
+		ui.line_at(
+			[x + 5.0, y],
+			[x + 18.0, y],
+			dim_series(entry.color, dim),
+			2.0,
+			row,
+		)?;
+		ui.text_at(
+			&entry.label,
+			[x + 23.0, y + 4.0],
+			config,
+			dim_series(style.text_secondary, dim),
+			row,
+		)?;
+	}
+	Ok(())
+}
+
+fn record_axes_text(
+	ui: &mut Ui<'_>,
+	axes: &Axes,
+	layout: &AxesLayout,
+	style: &UiStyle,
+	x_ticks: &[(f32, String)],
+	y_ticks: &[(f32, String)],
+) -> Result<()> {
+	let text = TextLayoutConfig {
+		size: 12.0,
+		..Default::default()
+	};
+	let ticks = TextLayoutConfig {
+		size: 10.0,
+		..Default::default()
+	};
+	let plot = layout.plot;
+	let center_x = plot.x as f32 + plot.w as f32 / 2.0;
+	let center_y = plot.y as f32 + plot.h as f32 / 2.0;
+	let subtext = style.text_secondary;
+	for (label, band, config, color) in [
+		(
+			&axes.cmds.title,
+			layout.title,
+			text,
+			if axes.cmds.title_color.a > 0.0 {
+				axes.cmds.title_color
+			} else {
+				style.text
+			},
+		),
+		(
+			&axes.cmds.caption,
+			layout.caption,
+			ticks,
+			if axes.cmds.caption_color.a > 0.0 {
+				axes.cmds.caption_color
+			} else {
+				subtext
+			},
+		),
+		(&axes.cmds.x_label, layout.x_label, text, subtext),
+	] {
+		if !label.is_empty() && band.h >= 12 {
+			let width = ui.measure_text(label, config)?;
+			let baseline = band.y as f32 + band.h as f32 / 2.0 + 4.0;
+			ui.text_at(
+				label,
+				[center_x - width / 2.0, baseline],
+				config,
+				color,
+				band,
+			)?;
+		}
+	}
+	if !axes.cmds.y_label.is_empty() && layout.y_label.w >= 12 {
+		let width = ui.measure_text(&axes.cmds.y_label, text)?;
+		let x = layout.y_label.x as f32 + layout.y_label.w as f32 / 2.0 + 4.0;
+		ui.text_vertical_at(
+			&axes.cmds.y_label,
+			[x, center_y + width / 2.0],
+			text,
+			subtext,
+			layout.y_label,
+		)?;
+	}
+	// Tick values are centered below X and right-aligned beside Y. Permit
+	// endpoint labels to extend past the viewport into their own gutters.
+	if layout.x_ticks.h >= 12 {
+		let band = layout.x_ticks;
+		let left = band.x as f32;
+		let right = left + band.w as f32;
+		let mut labels = Vec::with_capacity(x_ticks.len());
+		for (fraction, label) in x_ticks {
+			let width = ui.measure_text(label, ticks)?;
+			let center = plot.x as f32 + 0.5 + fraction * plot.w.saturating_sub(1) as f32;
+			let x = (center - width / 2.0).clamp(left, (right - width).max(left));
+			labels.push((x, width, label));
+		}
+		labels.sort_by(|a, b| a.0.total_cmp(&b.0));
+		let mut end = left - 4.0;
+		for (x, width, label) in labels {
+			if x >= end + 4.0 {
+				ui.text_at(label, [x, band.y as f32 + 13.0], ticks, subtext, band)?;
+				end = x + width;
+			}
+		}
+	}
+	if layout.y_ticks.w >= 12 {
+		let band = layout.y_ticks;
+		let right = (plot.x - 6) as f32;
+		let mut previous = f32::INFINITY;
+		for (fraction, label) in y_ticks {
+			let y = plot.y as f32 + (1.0 - fraction) * plot.h.saturating_sub(1) as f32 + 4.0;
+			if (previous - y).abs() >= 12.0 {
+				let width = ui.measure_text(label, ticks)?;
+				ui.text_at(label, [right - width, y], ticks, subtext, band)?;
+				previous = y;
+			}
+		}
+	}
+	Ok(())
+}
+
+fn record_plot_background(
+	ui: &mut Ui<'_>,
+	rect: PixelRect,
+	axes: &Axes,
+	theme: Theme,
+	style: &UiStyle,
+	x_ticks: &[(f32, String)],
+	y_ticks: &[(f32, String)],
+) {
+	if theme == Theme::Light {
+		ui.rect_raw(rect, style.plot_surface, rect, 0.0);
+		return;
+	}
+
+	// Reuse the donor canvas grid for a neutral gradient and fine subdivisions.
+	// Add subdivisions only to regular, automatic linear ticks. Major lines
+	// are recorded separately so custom and nonlinear ticks stay exact.
+	let surface = style.plot_surface;
+	let mut grid = UiGridConfig {
+		background_top: Color::new(surface.r + 0.031, surface.g + 0.031, surface.b + 0.031, 1.0),
+		background_bottom: Color::new(surface.r - 0.020, surface.g - 0.020, surface.b - 0.020, 1.0),
+		draw_axes: false,
+		draw_grid: false,
+		..Default::default()
+	};
+	if axes.cmds.show_grid
+		&& axes.cmds.categories.is_empty()
+		&& axes.cmds.x_ticks.is_none()
+		&& axes.cmds.y_ticks.is_none()
+		&& axes.cmds.x_scale == Scale::Linear
+		&& axes.cmds.y_scale == Scale::Linear
+		&& let [x0, x1, ..] = x_ticks
+		&& let [y0, y1, ..] = y_ticks
+	{
+		let w = rect.w.saturating_sub(1) as f32;
+		let h = rect.h.saturating_sub(1) as f32;
+		let dx = (x1.0 - x0.0) * w / 10.0;
+		let dy = (y1.0 - y0.0) * h / 10.0;
+		if dx >= 4.0 && dy >= 4.0 {
+			grid.origin = [
+				rect.x as f32 + 0.5 + x0.0 * w,
+				rect.y as f32 + 0.5 + (1.0 - y0.0) * h,
+			];
+			grid.minor_spacing = [dx, dy];
+			grid.major_color = Color::new(1.0, 1.0, 1.0, 0.01);
+			grid.super_major_color = grid.major_color;
+			grid.draw_grid = true;
+		}
+	}
+	ui.grid(rect, grid);
+}
+
+fn record_plot_axes(
+	ui: &mut Ui<'_>,
+	rect: PixelRect,
+	axes: &Axes,
+	style: &UiStyle,
+	x_ticks: &[(f32, String)],
+	y_ticks: &[(f32, String)],
+) -> Result<()> {
+	let x = rect.x as f32 + 0.5;
+	let y = rect.y as f32 + 0.5;
+	let w = rect.w.saturating_sub(1) as f32;
+	let h = rect.h.saturating_sub(1) as f32;
+	if axes.cmds.show_grid {
+		for &(fraction, _) in x_ticks {
+			if fraction > f32::EPSILON && fraction < 1.0 - f32::EPSILON {
+				let tick = x + fraction * w;
+				ui.line_at([tick, y], [tick, y + h], style.plot_grid, 1.0, rect)?;
+			}
+		}
+		for &(fraction, _) in y_ticks {
+			if fraction > f32::EPSILON && fraction < 1.0 - f32::EPSILON {
+				let tick = y + (1.0 - fraction) * h;
+				ui.line_at([x, tick], [x + w, tick], style.plot_grid, 1.0, rect)?;
+			}
+		}
+	}
+	if let Some(border) = axes.cmds.border_color {
+		ui.rect_outline_raw(rect, border, 1, rect);
+	} else if axes.has_ticks() {
+		let bottom = rect.y + rect.h.saturating_sub(1) as i32;
+		ui.rect_raw(
+			PixelRect::new(rect.x, rect.y, 1, rect.h),
+			style.plot_border,
+			rect,
+			0.0,
+		);
+		ui.rect_raw(
+			PixelRect::new(rect.x, bottom, rect.w, 1),
+			style.plot_border,
+			rect,
+			0.0,
+		);
+	}
+	Ok(())
+}
 
 /// Emphasis factor for legend-hover highlighting — the hovered series keeps
 /// full alpha; the rest fade to a quarter.

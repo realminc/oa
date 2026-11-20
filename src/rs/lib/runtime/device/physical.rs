@@ -32,6 +32,18 @@ pub(in crate::runtime) struct DeviceLimits {
 	pub(in crate::runtime) compute_timestamp_valid_bits: u32,
 }
 
+impl DevicePhysical {
+	/// `timestamp_valid_bits` for a queue family index; zero when the index
+	/// is out of range so timestamp placement stays a capability check.
+	pub(in crate::runtime) fn timestamp_valid_bits(&self, family: u32) -> u32 {
+		self
+			.family_timestamp_valid_bits
+			.get(family as usize)
+			.copied()
+			.unwrap_or(0)
+	}
+}
+
 pub(in crate::runtime) struct DevicePhysical {
 	pub(in crate::runtime) handle: vk::PhysicalDevice,
 	pub(in crate::runtime) api_version: u32,
@@ -42,6 +54,10 @@ pub(in crate::runtime) struct DevicePhysical {
 	pub(in crate::runtime) graphics_queue_count: u32,
 	pub(in crate::runtime) transfer_queue_family: Option<u32>,
 	pub(in crate::runtime) transfer_queue_count: u32,
+	/// `timestamp_valid_bits` per queue family index, from the probe-time
+	/// properties snapshot. Timestamps require nonzero bits on the family
+	/// that records them.
+	pub(in crate::runtime) family_timestamp_valid_bits: Vec<u32>,
 	pub(in crate::runtime) swapchain_supported: bool,
 	pub(in crate::runtime) calibrated_timestamps_khr: bool,
 	pub(in crate::runtime) calibrated_timestamps_ext: bool,
@@ -91,6 +107,12 @@ struct LocalMemoryFacts {
 	capacity_bytes: u64,
 	budget_bytes: Option<u64>,
 	usage_bytes: Option<u64>,
+	/// A memory type that is both DEVICE_LOCAL and HOST_VISIBLE exists —
+	/// device-local allocations can be mapped directly, so host access needs
+	/// no staging copy. True on unified-memory parts and resizable-BAR
+	/// discrete devices alike; false only when device-local heaps are
+	/// entirely host-inaccessible.
+	unified_memory: bool,
 }
 
 struct DeviceIdentityProperties<'a> {
@@ -215,6 +237,7 @@ impl DevicePhysical {
 				local_memory_bytes: self.info.local_memory_bytes,
 				local_memory_budget_bytes: self.info.local_memory_budget_bytes,
 				local_memory_usage_bytes: self.info.local_memory_usage_bytes,
+				local_memory_unified: self.info.local_memory_unified,
 				max_compute_shared_memory_bytes: self.limits.max_compute_shared_memory_size,
 				max_compute_workgroup_invocations: self.limits.max_compute_work_group_invocations,
 				subgroup_size: self.limits.subgroup_size,
@@ -233,6 +256,7 @@ impl DevicePhysical {
 				shader_float64: self.features.shader_float64,
 				shader_integer_dot_product: self.features.shader_integer_dot_product,
 				cooperative_matrix_tuple_count: self.cooperative_matrix.tuples.len(),
+				storage_buffer_16_bit_access: self.features.storage_buffer_16_bit_access,
 			},
 		}
 	}
@@ -539,6 +563,10 @@ impl DevicePhysical {
 				graphics_queue_count,
 				transfer_queue_family,
 				transfer_queue_count,
+				family_timestamp_valid_bits: queue_families
+					.iter()
+					.map(|family| family.timestamp_valid_bits)
+					.collect(),
 				swapchain_supported,
 				calibrated_timestamps_khr,
 				calibrated_timestamps_ext,
@@ -564,6 +592,7 @@ impl DevicePhysical {
 					local_memory_bytes: local_memory.capacity_bytes,
 					local_memory_budget_bytes: local_memory.budget_bytes,
 					local_memory_usage_bytes: local_memory.usage_bytes,
+					local_memory_unified: local_memory.unified_memory,
 				},
 			};
 			if let Some(reason) = candidate.service_rejection(instance, requirements)? {
@@ -851,10 +880,19 @@ fn query_local_memory(
 			usage_bytes = usage_bytes.saturating_add(budget.heap_usage[index]);
 		}
 	}
+	let type_count = memory
+		.memory_type_count
+		.min(memory.memory_types.len() as u32) as usize;
+	let required =
+		vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT | vk::MemoryPropertyFlagBits::HOST_VISIBLE_BIT;
+	let unified_memory = memory.memory_types[..type_count]
+		.iter()
+		.any(|memory_type| (memory_type.property_flags & required) == required);
 	Ok(LocalMemoryFacts {
 		capacity_bytes,
 		budget_bytes: memory_budget_extension.then_some(budget_bytes),
 		usage_bytes: memory_budget_extension.then_some(usage_bytes),
+		unified_memory,
 	})
 }
 

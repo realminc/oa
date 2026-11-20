@@ -161,6 +161,7 @@ impl From<DType> for ScalarType {
 	fn from(value: DType) -> Self {
 		match value {
 			DType::U8 => Self::U8,
+			DType::F16 => Self::F16,
 			DType::F32 => Self::F32,
 			DType::I32 => Self::I32,
 			DType::U32 => Self::U32,

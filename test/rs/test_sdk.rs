@@ -13,6 +13,9 @@ mod alm_training;
 #[path = "sdk/ml/test_cart_pole.rs"]
 mod cart_pole;
 
+#[path = "sdk/ml/test_fp16_training.rs"]
+mod fp16_training;
+
 #[path = "sdk/ml/test_lunar_lander.rs"]
 mod lunar_lander;
 

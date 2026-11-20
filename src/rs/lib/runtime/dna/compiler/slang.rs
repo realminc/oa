@@ -238,7 +238,7 @@ impl SlangCompiler {
 		})
 	}
 
-	pub(super) fn compile_source(&self, source: &str, bounded: bool) -> Result<Vec<u32>> {
+	pub(in crate::runtime) fn compile_source(&self, source: &str, bounded: bool) -> Result<Vec<u32>> {
 		if source.len() > 1024 * 1024 {
 			return Err(jit_error("source exceeds specialization limit"));
 		}

@@ -40,9 +40,9 @@ pub use audio::{Audio, AudioCapture, AudioChannelLayout, AudioEncoder, AudioPlay
 pub use core::transform::Transform;
 pub use core::{
 	BufferAccess, COMPACT_BANNER, Callback, CallbackSet, CheckpointConfig, Cli, Color, DType,
-	Datetime, EnvFlag, Error, ErrorKind, Filesystem, IteratorContext, LogConfig, LogMetrics,
+	Datetime, EnvFlag, Error, ErrorKind, F16, Filesystem, IteratorContext, LogConfig, LogMetrics,
 	MappedFile, NumericMode, OpAttribute, OpAttributeKind, OpAttributeSpec, OpControlFlow,
-	OpDTypeRule, OpDifferentiation, OpEffect, OpLowering, OpShapeRule, OpValueKind,
+	OpDTypeRule, OpDifferentiation, OpEffect, OpFusionClass, OpLowering, OpShapeRule, OpValueKind,
 	OperationContract, Path, PerfStat, REALM_BANNER, Result, ScopedTimer, Stopwatch, Timestamp,
 	VIEWPORT_TITLE, Validation, ValidationSeverity, apply_numeric_mode, brand_viewport,
 };

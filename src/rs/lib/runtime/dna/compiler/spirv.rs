@@ -8,7 +8,7 @@ use std::{
 	process::{Command, Stdio},
 };
 
-pub(super) fn validate_with_spirv_tools(words: &[u32], bounded: bool) -> Result<()> {
+pub(in crate::runtime) fn validate_with_spirv_tools(words: &[u32], bounded: bool) -> Result<()> {
 	let executable = std::env::var_os("SPIRV_VAL").unwrap_or_else(|| "spirv-val".into());
 	let mut child = Command::new(executable)
 		.args([

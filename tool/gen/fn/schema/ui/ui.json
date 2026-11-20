@@ -7,109 +7,115 @@
   "retired_stable_ids": [450, 451, 452, 453, 454, 455, 456, 473, 474, 475, 476, 477, 565, 566],
   "kernels": [
     {
-      "stable_id": 671, "name": "clear", "kernel_id": "UiClear",
+      "stable_id": 671, "name": "clear", "fusion_class": "opaque", "kernel_id": "UiClear",
       "source": "src/slang/ui/clear.frag.slang",
       "stage": "fragment",
       "push_fields": [["rgba", "uint32"]]
     },
     {
-      "stable_id": 672, "name": "rect", "kernel_id": "UiRect",
+      "stable_id": 672, "name": "rect", "fusion_class": "opaque", "kernel_id": "UiRect",
       "source": "src/slang/ui/rect.frag.slang",
       "stage": "fragment",
       "push_fields": [["dst_x", "int32"],["dst_y", "int32"],["dst_w", "uint32"],["dst_h", "uint32"],["rgba", "uint32"],["corner_radius", "float32"]]
     },
     {
-      "stable_id": 673, "name": "rect_outline", "kernel_id": "UiRectOutline",
+      "stable_id": 673, "name": "rect_outline", "fusion_class": "opaque", "kernel_id": "UiRectOutline",
       "source": "src/slang/ui/rect_outline.frag.slang",
       "stage": "fragment",
       "push_fields": [["dst_x", "int32"],["dst_y", "int32"],["dst_w", "uint32"],["dst_h", "uint32"],["thickness", "uint32"],["rgba", "uint32"],["corner_radius", "float32"]]
     },
     {
-      "stable_id": 674, "name": "rect_outlines_vert", "kernel_id": "UiRectOutlinesVert",
+      "stable_id": 674, "name": "rect_outlines_vert", "fusion_class": "opaque", "kernel_id": "UiRectOutlinesVert",
       "source": "src/slang/ui/rect_outlines.vert.slang",
       "stage": "vertex",
       "push_fields": [["dst_x", "int32"],["dst_y", "int32"],["dst_w", "uint32"],["dst_h", "uint32"],["image_w", "uint32"],["image_h", "uint32"],["thickness", "uint32"],["rgba", "uint32"]]
     },
     {
-      "stable_id": 675, "name": "rect_outlines_frag", "kernel_id": "UiRectOutlinesFrag",
+      "stable_id": 675, "name": "rect_outlines_frag", "fusion_class": "opaque", "kernel_id": "UiRectOutlinesFrag",
       "source": "src/slang/ui/rect_outlines.frag.slang",
       "stage": "fragment",
       "push_fields": []
     },
     {
-      "stable_id": 676, "name": "line", "kernel_id": "UiLine",
+      "stable_id": 676, "name": "line", "fusion_class": "opaque", "kernel_id": "UiLine",
       "source": "src/slang/ui/line.frag.slang",
       "stage": "fragment",
       "push_fields": [["x0", "float32"],["y0", "float32"],["x1", "float32"],["y1", "float32"],["thickness", "float32"],["rgba", "uint32"]]
     },
     {
-      "stable_id": 677, "name": "triangle", "kernel_id": "UiTriangle",
+      "stable_id": 677, "name": "triangle", "fusion_class": "opaque", "kernel_id": "UiTriangle",
       "source": "src/slang/ui/triangle.frag.slang",
       "stage": "fragment",
       "push_fields": [["x0", "float32"],["y0", "float32"],["x1", "float32"],["y1", "float32"],["x2", "float32"],["y2", "float32"],["rgba", "uint32"]]
     },
     {
-      "stable_id": 678, "name": "blit_planar", "kernel_id": "UiBlitPlanar",
+      "stable_id": 678, "name": "blit_planar", "fusion_class": "opaque", "kernel_id": "UiBlitPlanar",
       "source": "src/slang/ui/blit_planar.frag.slang",
       "stage": "fragment",
       "push_fields": [["src_w", "uint32"],["src_h", "uint32"],["dst_x", "int32"],["dst_y", "int32"],["dtypes", "uint32"],["channels", "uint32"],["dst_w", "uint32"],["dst_h", "uint32"]]
     },
     {
-      "stable_id": 679, "name": "blit_texture", "kernel_id": "UiBlitTexture",
+      "stable_id": 679, "name": "blit_texture", "fusion_class": "opaque", "kernel_id": "UiBlitTexture",
       "source": "src/slang/ui/blit_texture.frag.slang",
       "stage": "fragment",
       "push_fields": [["src_w", "uint32"],["src_h", "uint32"],["dst_x", "int32"],["dst_y", "int32"],["dst_w", "uint32"],["dst_h", "uint32"],["channel", "uint32"],["filter", "uint32"]]
     },
     {
-      "stable_id": 680, "name": "plot_line", "kernel_id": "UiPlotLine",
+      "stable_id": 718, "name": "blit_yuv", "fusion_class": "opaque", "kernel_id": "UiBlitYuv",
+      "source": "src/slang/ui/blit_yuv.frag.slang",
+      "stage": "fragment",
+      "push_fields": [["src_w", "uint32"],["src_h", "uint32"],["dst_x", "int32"],["dst_y", "int32"],["dst_w", "uint32"],["dst_h", "uint32"],["cb_offset", "uint32"],["cr_offset", "uint32"],["sample_bits", "uint32"],["interleaved", "uint32"],["color_space", "uint32"],["full_range", "uint32"]]
+    },
+    {
+      "stable_id": 680, "name": "plot_line", "fusion_class": "opaque", "kernel_id": "UiPlotLine",
       "source": "src/slang/ui/plot_line.frag.slang",
       "stage": "fragment",
       "push_fields": [["count", "uint32"],["dst_x", "int32"],["dst_y", "int32"],["dst_w", "uint32"],["dst_h", "uint32"],["x_min", "float32"],["x_max", "float32"],["y_min", "float32"],["y_max", "float32"],["rgba", "uint32"],["flags", "uint32"],["antialias_samples", "uint32"],["line_width", "float32"]]
     },
     {
-      "stable_id": 681, "name": "glyphs_vert", "kernel_id": "UiGlyphsVert",
+      "stable_id": 681, "name": "glyphs_vert", "fusion_class": "opaque", "kernel_id": "UiGlyphsVert",
       "source": "src/slang/ui/glyphs.vert.slang",
       "stage": "vertex",
       "push_fields": [["dst_x", "int32"],["dst_y", "int32"],["dst_w", "uint32"],["dst_h", "uint32"],["image_w", "uint32"],["image_h", "uint32"],["first", "uint32"],["batch", "uint32"],["atlas_w", "uint32"],["atlas_h", "uint32"],["px_range", "float32"]]
     },
     {
-      "stable_id": 682, "name": "glyphs_frag", "kernel_id": "UiGlyphsFrag",
+      "stable_id": 682, "name": "glyphs_frag", "fusion_class": "opaque", "kernel_id": "UiGlyphsFrag",
       "source": "src/slang/ui/glyphs.frag.slang",
       "stage": "fragment",
       "push_fields": [["dst_x", "int32"],["dst_y", "int32"],["dst_w", "uint32"],["dst_h", "uint32"],["image_w", "uint32"],["image_h", "uint32"],["first", "uint32"],["batch", "uint32"],["atlas_w", "uint32"],["atlas_h", "uint32"],["px_range", "float32"]]
     },
     {
-      "stable_id": 683, "name": "canvas_grid_vert", "kernel_id": "UiCanvasGridVert",
+      "stable_id": 683, "name": "canvas_grid_vert", "fusion_class": "opaque", "kernel_id": "UiCanvasGridVert",
       "source": "src/slang/ui/canvas_grid.vert.slang",
       "stage": "vertex",
       "push_fields": []
     },
     {
-      "stable_id": 684, "name": "canvas_grid_frag", "kernel_id": "UiCanvasGridFrag",
+      "stable_id": 684, "name": "canvas_grid_frag", "fusion_class": "opaque", "kernel_id": "UiCanvasGridFrag",
       "source": "src/slang/ui/canvas_grid.frag.slang",
       "stage": "fragment",
       "push_fields": [["dst_x", "int32"],["dst_y", "int32"],["dst_w", "uint32"],["dst_h", "uint32"],["origin_x", "float32"],["origin_y", "float32"],["minor_spacing_x", "float32"],["minor_spacing_y", "float32"],["major_every", "uint32"],["super_major_every", "uint32"],["minor_thickness", "float32"],["major_thickness", "float32"],["super_major_thickness", "float32"],["axis_thickness", "float32"],["background_top_rgba", "uint32"],["background_bottom_rgba", "uint32"],["minor_rgba", "uint32"],["major_rgba", "uint32"],["super_major_rgba", "uint32"],["axis_rgba", "uint32"],["fade_center_x", "float32"],["fade_center_y", "float32"],["fade_inner_radius", "float32"],["fade_outer_radius", "float32"],["flags", "uint32"]]
     },
     {
-      "stable_id": 685, "name": "mask", "kernel_id": "UiMask",
+      "stable_id": 685, "name": "mask", "fusion_class": "opaque", "kernel_id": "UiMask",
       "source": "src/slang/ui/mask.frag.slang",
       "stage": "fragment",
       "push_fields": [["dst_x", "int32"],["dst_y", "int32"],["dst_w", "uint32"],["dst_h", "uint32"],["corner_radius", "float32"],["outside_rgba", "uint32"],["mode", "uint32"]]
     },
     {
-      "stable_id": 686, "name": "heatmap", "kernel_id": "UiHeatmap",
+      "stable_id": 686, "name": "heatmap", "fusion_class": "opaque", "kernel_id": "UiHeatmap",
       "source": "src/slang/ui/heatmap.frag.slang",
       "stage": "fragment",
       "push_fields": [["rows", "uint32"],["cols", "uint32"],["dst_x", "int32"],["dst_y", "int32"],["dst_w", "uint32"],["dst_h", "uint32"],["v_min", "float32"],["v_max", "float32"],["colormap", "uint32"],["value_type", "uint32"],["offset_elements", "uint32"],["flags", "uint32"]]
     },
     {
-      "stable_id": 687, "name": "waveform", "kernel_id": "UiWaveform",
+      "stable_id": 687, "name": "waveform", "fusion_class": "opaque", "kernel_id": "UiWaveform",
       "source": "src/slang/ui/waveform.frag.slang",
       "stage": "fragment",
       "push_fields": [["bins", "uint32"],["dst_x", "int32"],["dst_y", "int32"],["dst_w", "uint32"],["dst_h", "uint32"],["fraction", "float32"],["played_rgba", "uint32"],["remaining_rgba", "uint32"]]
     },
     {
-      "stable_id": 688, "name": "fullscreen_vert", "kernel_id": "UiFullscreenVert",
+      "stable_id": 688, "name": "fullscreen_vert", "fusion_class": "opaque", "kernel_id": "UiFullscreenVert",
       "source": "src/slang/ui/fullscreen.vert.slang",
       "stage": "vertex",
       "push_fields": []

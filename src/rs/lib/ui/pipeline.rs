@@ -56,6 +56,10 @@ static BLIT_PLANAR_FRAG_SPV: &[u8] = include_bytes!(concat!(
 	env!("OA_SHADER_DIR"),
 	"/render_ui_raster_blit_planar_frag.spv"
 ));
+static BLIT_YUV_FRAG_SPV: &[u8] = include_bytes!(concat!(
+	env!("OA_SHADER_DIR"),
+	"/render_ui_raster_blit_yuv_frag.spv"
+));
 static HEATMAP_FRAG_SPV: &[u8] = include_bytes!(concat!(
 	env!("OA_SHADER_DIR"),
 	"/render_ui_raster_heatmap_frag.spv"
@@ -115,6 +119,7 @@ pub(super) struct UiPipelines {
 	pub(super) canvas_grid: UiPipeline,
 	pub(super) blit_texture: UiPipeline,
 	pub(super) blit_planar: UiPipeline,
+	pub(super) blit_yuv: UiPipeline,
 	pub(super) heatmap: UiPipeline,
 	pub(super) waveform: UiPipeline,
 	pub(super) plot_line: UiPipeline,
@@ -167,6 +172,7 @@ impl UiPipelines {
 				BLIT_PLANAR_FRAG_SPV,
 				UiBlend::Opaque,
 			)?,
+			blit_yuv: family(1, FULLSCREEN_VERT_SPV, BLIT_YUV_FRAG_SPV, UiBlend::Opaque)?,
 			heatmap: family(1, FULLSCREEN_VERT_SPV, HEATMAP_FRAG_SPV, UiBlend::Opaque)?,
 			waveform: family(
 				1,
@@ -599,6 +605,7 @@ impl UiFrameBindings {
 				UiCmd::PlotLine { values_idx, .. }
 				| UiCmd::Waveform { values_idx, .. }
 				| UiCmd::Heatmap { values_idx, .. } => vec![*values_idx],
+				UiCmd::BlitYuv { planes_idx, .. } => vec![*planes_idx],
 				UiCmd::Glyphs {
 					glyph_idx,
 					atlas_idx,

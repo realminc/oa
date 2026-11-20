@@ -24,3 +24,5 @@ mod rng;
 
 #[path = "matrix/test_operators.rs"]
 mod operators;
+#[path = "matrix/test_precision.rs"]
+mod precision;

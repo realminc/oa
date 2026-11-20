@@ -156,10 +156,10 @@ void main(uint3 dispatch_thread_id : SV_DispatchThreadID, uint3 group_thread_id 
 			continue;
 		}
 		float a = read_source(arg_a, index, register_base);
-		float b = (opcode >= 10u && opcode <= 16u) || (opcode >= 40u && opcode <= 48u)
+		float b = (opcode >= 10u && opcode <= 16u) || (opcode >= 40u && opcode <= 50u)
 			? read_source(arg_b, index, register_base) : 0.0f;
 		float extra = 0.0f;
-		if (opcode == 47u || opcode == 48u) {
+		if (opcode == 47u || opcode == 48u || opcode == 50u) {
 			extra = asfloat(tape_words[base + 4u]);
 			step += 1u;
 		}

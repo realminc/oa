@@ -18,6 +18,8 @@ mod color;
 mod config;
 #[path = "core/test_constant.rs"]
 mod constant;
+#[path = "core/test_dtype.rs"]
+mod dtype;
 #[path = "core/test_env_flag.rs"]
 mod env_flag;
 #[path = "core/test_filesystem.rs"]

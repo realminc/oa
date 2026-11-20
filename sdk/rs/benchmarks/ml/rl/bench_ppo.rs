@@ -19,7 +19,7 @@
 use std::time::{Duration, Instant};
 
 use oa::ml::{
-	AdamW, CategoricalActorCritic, CategoricalActorCriticConfig, Module,
+	AdamW, CategoricalActorCritic, CategoricalActorCriticConfig, CompiledRollout, Module,
 	environment::Environment,
 	training::{PpoTrainer, PpoTrainerConfig, RolloutTrainingPhase},
 };
@@ -50,6 +50,7 @@ struct CollectionTiming {
 	observe: Duration,
 	finalize: Duration,
 	execute: Duration,
+	compiled: Duration,
 }
 
 fn milliseconds(duration: Duration) -> f64 {
@@ -59,8 +60,23 @@ fn milliseconds(duration: Duration) -> f64 {
 fn collect(
 	environment: &mut CartPole<'_>,
 	trainer: &mut PpoTrainer<'_, '_>,
+	program: &mut CompiledRollout,
+	compiled: bool,
 ) -> oa::Result<CollectionTiming> {
 	let mut timing = CollectionTiming::default();
+	if compiled {
+		// Compiled collection replays captured reset/step/GAE plans: one
+		// host call replaces the recorded act/step/observe/execute phases.
+		// Execution capture requires the construction reset submitted first.
+		if environment.execution().has_active_recording() {
+			let event = environment.submit()?;
+			environment.wait(&event)?;
+		}
+		let started = Instant::now();
+		trainer.collect_compiled_continuing(environment, program, TRAINING_SEED, 0, 0.0)?;
+		timing.compiled = started.elapsed();
+		return Ok(timing);
+	}
 	if environment.execution().submission_count() == 0
 		&& !environment.execution().has_active_recording()
 	{
@@ -120,6 +136,14 @@ fn main() -> oa::Result<()> {
 	let epochs = env_u64("OA_PPO_BENCH_EPOCHS", 4);
 	let hidden = env_usize("OA_PPO_BENCH_HIDDEN", 64);
 	let jit = oa::EnvFlag::is_set("OA_JIT_FUSION");
+	let compiled = oa::EnvFlag::is_set("OA_PPO_BENCH_COMPILED");
+	let route = if compiled {
+		"compiled"
+	} else if jit {
+		"jit"
+	} else {
+		"baseline"
+	};
 
 	let process_started = Instant::now();
 	let engine = oa::Engine::new()?;
@@ -152,14 +176,14 @@ fn main() -> oa::Result<()> {
 
 	println!(
 		"OA_PPO_BENCH workload=cartpole_ppo route={} rollouts={rollouts} envs={environments} horizon={horizon} epochs={epochs} hidden={hidden} seed={TRAINING_SEED:#x}",
-		if jit { "jit" } else { "baseline" }
+		route
 	);
 
 	let setup = process_started.elapsed();
 	let started = Instant::now();
 	let mut collection_total = CollectionTiming::default();
 	let mut update_total = Duration::ZERO;
-	let snapshot = {
+	let (snapshot, rollout_diagnostics) = {
 		let mut trainer = PpoTrainer::new(
 			&engine,
 			&model,
@@ -175,11 +199,12 @@ fn main() -> oa::Result<()> {
 				..PpoTrainerConfig::default()
 			},
 		)?;
+		let mut program = CompiledRollout::new();
 		let mut collection = CollectionTiming::default();
 		let mut rollout_update = Duration::ZERO;
 		while !trainer.is_done() {
 			if trainer.needs_collection() {
-				collection = collect(&mut environment, &mut trainer)?;
+				collection = collect(&mut environment, &mut trainer, &mut program, compiled)?;
 				rollout_update = Duration::ZERO;
 			}
 			let update_started = Instant::now();
@@ -188,13 +213,14 @@ fn main() -> oa::Result<()> {
 			let metrics = trainer.metrics();
 			if trainer.phase() != RolloutTrainingPhase::Update {
 				println!(
-					"OA_PPO_PHASE index={} act_ms={:.3} step_ms={:.3} observe_ms={:.3} finalize_ms={:.3} execute_ms={:.3} update_ms={:.3}",
+					"OA_PPO_PHASE index={} act_ms={:.3} step_ms={:.3} observe_ms={:.3} finalize_ms={:.3} execute_ms={:.3} compiled_ms={:.3} update_ms={:.3}",
 					metrics.rollout,
 					milliseconds(collection.act),
 					milliseconds(collection.step),
 					milliseconds(collection.observe),
 					milliseconds(collection.finalize),
 					milliseconds(collection.execute),
+					milliseconds(collection.compiled),
 					milliseconds(rollout_update)
 				);
 				collection_total.act += collection.act;
@@ -202,6 +228,7 @@ fn main() -> oa::Result<()> {
 				collection_total.observe += collection.observe;
 				collection_total.finalize += collection.finalize;
 				collection_total.execute += collection.execute;
+				collection_total.compiled += collection.compiled;
 				update_total += rollout_update;
 				println!(
 					"OA_PPO_ROLLOUT index={} wall_ms={:.3} total_loss={:.9e} policy_loss={:.9e} value_loss={:.9e} entropy={:.9e}",
@@ -214,7 +241,7 @@ fn main() -> oa::Result<()> {
 				);
 			}
 		}
-		trainer.finish()?
+		(trainer.finish()?, program.diagnostics())
 	};
 	environment.close()?;
 	let wall = started.elapsed();
@@ -222,7 +249,7 @@ fn main() -> oa::Result<()> {
 
 	println!(
 		"OA_PPO_RESULT route={} steps={} wall_s={:.3} wall_ms_per_step={:.3} gpu_mean_ms={:.3} gpu_median_ms={:.3} gpu_p95_ms={:.3} gpu_min_ms={:.3} transitions={}",
-		if jit { "jit" } else { "baseline" },
+		route,
 		snapshot.step_count(),
 		wall.as_secs_f64(),
 		snapshot.wall_ms_per_step(),
@@ -232,15 +259,37 @@ fn main() -> oa::Result<()> {
 		gpu.min_ms,
 		u64::from(environments) * horizon as u64 * rollouts
 	);
+	if let Some(diagnostics) = rollout_diagnostics {
+		for (name, plan) in [
+			("reset", Some(diagnostics.reset())),
+			("resume", diagnostics.resume()),
+			("step", Some(diagnostics.step())),
+			("gae", Some(diagnostics.gae())),
+		] {
+			if let Some(plan) = plan {
+				println!(
+					"OA_PPO_PLAN route={route} plan={name} nodes={} barriers={} descriptor_writes={} push_bytes={} peak_memory_bytes={} alias_groups={} alias_savings={}",
+					plan.node_count(),
+					plan.barrier_count(),
+					plan.descriptor_write_count(),
+					plan.push_byte_count(),
+					plan.peak_memory_bytes(),
+					plan.planned_alias_group_count(),
+					plan.materialized_alias_savings(),
+				);
+			}
+		}
+	}
 	println!(
-		"OA_PPO_PHASES route={} setup_ms={:.3} act_ms={:.3} step_ms={:.3} observe_ms={:.3} finalize_ms={:.3} execute_ms={:.3} update_ms={:.3} other_ms={:.3}",
-		if jit { "jit" } else { "baseline" },
+		"OA_PPO_PHASES route={} setup_ms={:.3} act_ms={:.3} step_ms={:.3} observe_ms={:.3} finalize_ms={:.3} execute_ms={:.3} compiled_ms={:.3} update_ms={:.3} other_ms={:.3}",
+		route,
 		milliseconds(setup),
 		milliseconds(collection_total.act),
 		milliseconds(collection_total.step),
 		milliseconds(collection_total.observe),
 		milliseconds(collection_total.finalize),
 		milliseconds(collection_total.execute),
+		milliseconds(collection_total.compiled),
 		milliseconds(update_total),
 		milliseconds(wall.saturating_sub(
 			collection_total.act
@@ -248,13 +297,10 @@ fn main() -> oa::Result<()> {
 				+ collection_total.observe
 				+ collection_total.finalize
 				+ collection_total.execute
+				+ collection_total.compiled
 				+ update_total
 		))
 	);
-	println!(
-		"OA_PPO_FUSION route={} {}",
-		if jit { "jit" } else { "baseline" },
-		engine.fusion_stats()
-	);
+	println!("OA_PPO_FUSION route={} {}", route, engine.fusion_stats());
 	Ok(())
 }

@@ -225,10 +225,10 @@ fn u32_field(value: usize, operation: &str, what: &str) -> Result<u32> {
 ///
 /// This is the only colorimetric YUV→RGB boundary in `oa::video`. Inputs
 /// must be device-planar frames with identical format, visible extent and
-/// resolved color metadata; stage host-planar frames with
-/// [`VideoFrame::upload`] first. The call records asynchronously and
-/// returns the output immediately; reading it is an explicit submission
-/// and observation point.
+/// resolved color metadata. I420, NV12, and P010 are admitted. Stage host
+/// planes with [`VideoFrame::upload_planes`] or [`VideoFrame::upload`].
+/// The call records asynchronously and returns the output immediately.
+/// Reading it is an explicit submission and observation point.
 ///
 /// # Errors
 ///
@@ -274,6 +274,9 @@ pub fn to_matrix(frames: &[VideoFrame], config: &VideoMatrixConfig) -> Result<Ma
 			return Err(Error::invalid_argument(format!(
 				"{OPERATION} requires identical resolved color metadata in one batch"
 			)));
+		}
+		for plane in planar.planes.iter() {
+			u32_field(plane.num_elements(), OPERATION, "plane byte length")?;
 		}
 		plane_inputs.extend(planar.planes.iter());
 		planars.push(planar);
@@ -395,9 +398,10 @@ pub fn to_matrix(frames: &[VideoFrame], config: &VideoMatrixConfig) -> Result<Ma
 	let kernel = match format {
 		VideoPixelFormat::Yuv420Planar8 => KernelId::VideoToMatrixI420,
 		VideoPixelFormat::Nv12 => KernelId::VideoToMatrixNv12,
-		VideoPixelFormat::Yuv420Planar10 | VideoPixelFormat::P010 | VideoPixelFormat::P012 => {
+		VideoPixelFormat::P010 => KernelId::VideoToMatrixP010,
+		VideoPixelFormat::Yuv420Planar10 | VideoPixelFormat::P012 => {
 			return Err(Error::missing_capability(format!(
-				"{OPERATION} does not admit 10- or 12-bit input before VNV-07"
+				"{OPERATION} supports I420, NV12, and P010"
 			)));
 		}
 	};

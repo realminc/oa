@@ -12,7 +12,8 @@ use crate::Error;
 use crate::runtime::dna::ir::elementwise::Program;
 pub(in crate::runtime) use artifact::JitArtifacts;
 pub(in crate::runtime) use slang::SlangCompiler;
-use spirv::{validate_program_abi, validate_with_spirv_tools};
+use spirv::validate_program_abi;
+pub(in crate::runtime) use spirv::validate_with_spirv_tools;
 
 pub(in crate::runtime) struct CompiledChain {
 	words: Vec<u32>,

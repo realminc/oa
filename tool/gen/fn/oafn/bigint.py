@@ -72,7 +72,7 @@ def validate_bigint_extended(kernel: dict[str, Any], contracts: list[dict[str, A
 		and kernel['semantic_operation'] == name and kernel['workgroup_size'] == [32, 1, 1], 'BigInt extended ABI differs')
 	validate_physical_write(kernel['physical_write'], 'BigInt', required=True)
 	require(kernel['physical_write'] == {'writes': writes, 'workspace': 'none'}, 'BigInt extended ownership differs')
-	require(sum(c == expected for c in contracts) == 1, 'BigInt extended contract differs')
+	require(sum({k: v for k, v in c.items() if k != "fusion_class"} == expected for c in contracts) == 1, 'BigInt extended contract differs')
 
 
 def bigint_extended_output(kernel: dict[str, Any]) -> tuple[str, str]:
@@ -390,7 +390,7 @@ def validate_bigint_prepared(kernel: dict[str, Any], contracts: list[dict[str, A
 		and kernel['kernel_id'] == 'CryptographyBigInt' + ''.join(w.title() for w in kernel['name'].split('_')) + 'U32'
 		and kernel['source'] == f"src/slang/crypto/bigint/{kernel['name']}.gen.slang" and kernel['semantic_operation'] == kernel['name'], 'Prepared Barrett ABI differs')
 	validate_physical_write(kernel['physical_write'], 'prepared Barrett', required=True)
-	require(kernel['physical_write'] == {'writes': writes, 'workspace': 'none'} and sum(c == expected for c in contracts) == 1, 'Prepared Barrett ownership or contract differs')
+	require(kernel['physical_write'] == {'writes': writes, 'workspace': 'none'} and sum({k: v for k, v in c.items() if k != "fusion_class"} == expected for c in contracts) == 1, 'Prepared Barrett ownership or contract differs')
 
 
 def validate_bigint_schema(schema: dict[str, Any]) -> None:
@@ -452,7 +452,7 @@ def validate_bigint_schema(schema: dict[str, Any]) -> None:
 		require(all(type(w["binding"]) is int for w in kernel["physical_write"]["writes"]), "BigInt output binding must be an integer")
 		require(kernel["physical_write"] == {"writes": writes, "workspace": "none"}, "BigInt output ownership differs")
 		expected = {"name": name, "input_kinds": ["matrix"] * input_count, "output_kinds": ["matrix"] * len(outputs), "shape_rule": "explicit", "dtype_rule": "u32", "attributes": [["width_bits", "unsigned_integer"]] + ([["shift", "unsigned_integer"]] if shift else [])}
-		require(sum(c == expected for c in contracts) == 1, "BigInt semantic contract differs")
+		require(sum(c.get("fusion_class") == "effect" and {k: v for k, v in c.items() if k != "fusion_class"} == expected for c in contracts) == 1, "BigInt semantic contract differs")
 
 
 def bigint_template(name: str, values: dict[str, str]) -> str:

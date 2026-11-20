@@ -32,9 +32,15 @@ fn main() -> anyhow::Result<()> {
 	let diagnostics = plan.diagnostics();
 	let fused_nodes = diagnostics.node_count();
 	println!(
-		"OARS_FUSION nodes={fused_nodes} fused_nodes={} fused_ops={}",
+		"OARS_FUSION nodes={fused_nodes} fused_nodes={} fused_ops={} barriers={} descriptor_writes={} push_bytes={} peak_memory_bytes={} alias_groups={} alias_savings={}",
 		diagnostics.semantic_fused_node_count(),
 		diagnostics.semantic_fused_operation_count(),
+		diagnostics.barrier_count(),
+		diagnostics.descriptor_write_count(),
+		diagnostics.push_byte_count(),
+		diagnostics.peak_memory_bytes(),
+		diagnostics.planned_alias_group_count(),
+		diagnostics.materialized_alias_savings(),
 	);
 
 	engine.submit(&plan)?.wait()?;
