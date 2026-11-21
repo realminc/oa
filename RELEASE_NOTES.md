@@ -1,3 +1,26 @@
+# OA v0.14.1 — Experimental Rust and Python preview
+
+## Summary
+
+Patch release for v0.14.0. Fixes a throughput regression where every
+`Engine::current()` clone ran the `.vkcache` persistence path on drop,
+serializing the pipeline cache and rewriting the cache file per defaulted
+operation. Persistence now runs once, when the last `Engine` clone drops.
+Measured on Iris Xe (ADL GT2), Mesa 26.3.1, `tu_nlp_bpe_transformer`
+F32: wall time recovered from 32.24 ms/step to 7.7 ms/step (1.99K to
+8.3K samples/s), restoring the v0.13 wall–GPU gap of ~16%. Also fixes
+engine clones restoring the previous logger on drop, which deselected
+the active logger after the first defaulted call.
+
+## Verification
+
+`cargo fmt --check`, `cargo clippy --workspace --all-targets
+--all-features -- -D warnings`, `cargo test --lib --all-features`
+(243 passed), `cargo test --test runtime --test core --all-features`
+(201 passed) pass on the release commit. `tu_nlp_bpe_transformer`
+verified end to end on the release candidate: cache persistence fires
+once at engine destruction and convergence is unchanged.
+
 # OA v0.14.0 — Experimental Rust and Python preview
 
 ## Summary

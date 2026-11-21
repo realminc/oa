@@ -472,6 +472,19 @@ pub(crate) struct LogSelection {
 	previous: Weak<LogInner>,
 }
 
+impl LogSelection {
+	/// A selection marker that shares this selection's identity but performs no
+	/// restore on drop. Used by `Engine` clones: only the instance that
+	/// installed the selection owns restoring the prior logger, or a temporary
+	/// clone's drop would deselect the live logger mid-process.
+	pub(crate) fn detached(&self) -> Self {
+		Self {
+			selected: Weak::new(),
+			previous: Weak::new(),
+		}
+	}
+}
+
 impl Drop for LogSelection {
 	fn drop(&mut self) {
 		let _ = CURRENT_LOG.try_with(|current| {

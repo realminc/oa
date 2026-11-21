@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.1
+
+- Fix a throughput regression: `Engine::current()` clones ran `.vkcache`
+  persistence on every drop, rewriting the cache file per defaulted
+  operation. Persistence now runs once when the last `Engine` clone
+  drops. `tu_nlp_bpe_transformer` wall time on Iris Xe recovers from
+  32.24 ms/step to 7.7 ms/step.
+- Fix engine clones restoring the previous logger on drop; only the
+  engine that installed the log selection restores it.
+
 ## 0.14.0
 
 - Add `Engine::set_default`, `Engine::current`, and defaulted constructor twins for every engine-first value constructor across matrix, nn layers, ml models and checkpoints, audio, image, video frames, render textures, and the SDK library. Explicit `..._on(&engine, ...)` forms remain for engine selection; sessions, capture, presentation, and device queries keep an explicit `&Engine`. Breaking: engine-first value constructors move to the `_on` spelling.

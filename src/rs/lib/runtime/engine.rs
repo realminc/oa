@@ -144,14 +144,38 @@ impl EngineBuilder {
 /// The current one-device recorder is thread-affine. `Engine` intentionally
 /// remains neither `Send` nor `Sync` until concurrent queue scheduling and
 /// submission synchronization are implemented and verified.
-#[derive(Clone)]
+///
+/// Clones share the execution handle and persistence guard: `.vkcache`
+/// persistence runs once, when the last `Engine` clone drops, never per
+/// temporary handle. A clone does not own the log-selection restore that the
+/// constructing engine performs on drop.
 pub struct Engine {
 	// Restore thread-local selection before closing the logger and releasing the
 	// execution handle. Rust drops fields in declaration order.
 	_log_selection: LogSelection,
 	logger: Logger,
 	handle: EngineHandle,
+	persistence: Rc<EnginePersistence>,
 	_not_send_sync: PhantomData<Rc<()>>,
+}
+
+impl Clone for Engine {
+	fn clone(&self) -> Self {
+		Self {
+			_log_selection: self._log_selection.detached(),
+			logger: self.logger.clone(),
+			handle: self.handle.clone(),
+			persistence: self.persistence.clone(),
+			_not_send_sync: PhantomData,
+		}
+	}
+}
+
+/// One-shot `.vkcache` persistence owner shared by every `Engine` clone of one
+/// engine. Dropping the last clone fires the single snapshot write, matching
+/// the lifetime semantics the engine had before it became cloneable.
+struct EnginePersistence {
+	handle: EngineHandle,
 }
 
 thread_local! {
@@ -1763,22 +1787,26 @@ impl Engine {
 			matmul_route_cache.merge_scope(&legacy, vendor_id, device_id, driver_id, driver_version);
 		}
 
+		let handle = EngineHandle {
+			state: Rc::new(RefCell::new(EngineState {
+				retirement,
+				session: ExecutionSession::new(),
+				device,
+				next_epoch: 0,
+				capture_active: false,
+				secret_scope: None,
+				compose_images: RefCell::new(Vec::new()),
+				matmul_route_cache,
+				matmul_route_section_corrupt,
+			})),
+		};
 		Ok(Self {
 			_log_selection: log_selection,
 			logger,
-			handle: EngineHandle {
-				state: Rc::new(RefCell::new(EngineState {
-					retirement,
-					session: ExecutionSession::new(),
-					device,
-					next_epoch: 0,
-					capture_active: false,
-					secret_scope: None,
-					compose_images: RefCell::new(Vec::new()),
-					matmul_route_cache,
-					matmul_route_section_corrupt,
-				})),
-			},
+			persistence: Rc::new(EnginePersistence {
+				handle: handle.clone(),
+			}),
+			handle,
 			_not_send_sync: PhantomData,
 		})
 	}
@@ -2015,7 +2043,7 @@ impl Engine {
 	}
 }
 
-impl Drop for Engine {
+impl Drop for EnginePersistence {
 	fn drop(&mut self) {
 		// One Engine-owned persistence point: gather subsystem snapshots while
 		// the device is live, then merge them into the scoped `.vkcache`
