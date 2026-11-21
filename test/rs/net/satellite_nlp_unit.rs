@@ -63,9 +63,8 @@ fn test_engine() -> Result<Engine> {
 	Engine::builder()
 		.devices(crate::DeviceSelection::Index(0))
 		.build()
-		.and_then(|engine| {
+		.inspect(|engine| {
 			Engine::set_default(engine.clone());
-			Ok(engine)
 		})
 }
 
