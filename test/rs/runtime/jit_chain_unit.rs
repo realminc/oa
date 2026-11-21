@@ -260,6 +260,7 @@ fn jit_chain_correctness_and_timings() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let bounded = device.physical().profile == ExecutionProfile::Compatibility;
 	let path = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit trusted Slang library");
@@ -498,6 +499,7 @@ fn discovered_chains_correctness_and_timings() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let bounded = device.physical().profile == ExecutionProfile::Compatibility;
 	let library = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit compiler library");
@@ -721,6 +723,7 @@ fn jit_artifacts_persist_across_restarts() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let bounded = device.physical().profile == ExecutionProfile::Compatibility;
 	let path = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit trusted Slang library");
@@ -925,6 +928,7 @@ fn production_jit_route_matches_canonical_paths() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	// The flag contract is exercised in both directions: the guard is held
 	// for the whole test so no concurrent flag user can interleave.
@@ -1071,6 +1075,7 @@ fn production_jit_route_retains_observed_intermediates() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _flag = JitFlag::set();
 
@@ -1173,6 +1178,7 @@ fn jit_route_override_forces_each_region_route() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _flag = JitFlag::set();
 	let route = ScopedVar::set("OA_JIT_ROUTE", "unfused".as_ref());
@@ -1262,6 +1268,7 @@ fn jit_admission_is_safe_across_threads() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _flag = JitFlag::set();
 
@@ -1410,6 +1417,7 @@ fn production_route_observation_measures_and_selects() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _flag = JitFlag::set();
 
@@ -1524,6 +1532,7 @@ fn production_route_observations_persist_across_restart() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let (device, signature) = run_dispatches(&engine, 12)?;
 	let before = device.jit_observations();
 	let first = before
@@ -1540,6 +1549,7 @@ fn production_route_observations_persist_across_restart() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let (device, signature_after) = run_dispatches(&engine, 2)?;
 	assert_eq!(signature_after, signature, "same chain keeps its signature");
 	let after = device.jit_observations();
@@ -1572,6 +1582,7 @@ fn production_route_observation_queue_stays_bounded() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _flag = JitFlag::set();
 
@@ -1644,6 +1655,7 @@ fn rejected_prefixes_do_not_consume_jit_artifacts() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let fixture = Fixture::with_recipe(
 		&device,
@@ -1734,6 +1746,7 @@ fn tile_gemm_route_matches_cpu_oracle() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	// The guard serializes every flag-sensitive phase in this file.
 	let _hold = JitFlag::hold();
@@ -1836,6 +1849,7 @@ fn tile_softmax_route_matches_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	// (shape, dim): last-axis rows, an odd axis interior (inner > 1
@@ -1894,6 +1908,7 @@ fn tile_gemv_route_matches_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	// m=1 decode-class shapes select the GemmSmallM/GEMV variant; the
@@ -1963,6 +1978,7 @@ fn tile_reduce_norm_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b9u64;
@@ -2044,6 +2060,7 @@ fn tile_softmax_backward_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x517cc1b727220a95u64;
@@ -2100,6 +2117,7 @@ fn tile_linear_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b97f4a7c15u64;
@@ -2401,6 +2419,7 @@ fn tile_sum_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x51ed270b16eb320bu64;
@@ -2591,6 +2610,7 @@ fn tile_dnn_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x85ebca6b9e3779b9u64;
@@ -2699,6 +2719,7 @@ fn tile_grouped_linear_act_route_matches_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x51f15eeda5u64;
@@ -2801,6 +2822,7 @@ fn tile_grouped_data_backward_route_matches_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0xbac4_9a55u64;
@@ -3036,6 +3058,7 @@ fn tile_grouped_backward_prologue_route_matches_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0xf3ed_a11cu64;
@@ -3247,6 +3270,7 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x51f0_a3d7u64;
@@ -3622,6 +3646,7 @@ fn tile_norm_backward_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9c4e_7b12u64;
@@ -3839,6 +3864,7 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x2bd9_7f3au64;
@@ -4498,6 +4524,7 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x3b9a_c077u64;
@@ -4780,6 +4807,7 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x51f2_9a3cu64;
@@ -5164,6 +5192,7 @@ fn tile_max_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x2f81_d5e6u64;
@@ -5275,6 +5304,7 @@ fn tile_gemm_bias_route_matches_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	// The epilogue launch lowering binds problem slots
@@ -5390,6 +5420,7 @@ fn mat_mul_nt_strided_routes_match_host_oracle() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 
 	struct Case {
 		m: usize,
@@ -5606,6 +5637,7 @@ fn mat_mul_nt_split_k_route_matches_host_oracle() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 
 	for (m, n, k) in [(64usize, 48usize, 200usize), (33, 19, 97), (16, 16, 4)] {
 		let a = crate::Matrix::new_from_f32([m, k], &gemm_values(m * k, 3))?;
@@ -5696,6 +5728,7 @@ fn tile_conv_1d_im2_col_route_matches_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x6a09e667f3bcc909u64;
@@ -5852,6 +5885,7 @@ fn tile_conv_1d_parameter_backward_route_matches_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b97f4a7c15u64;
@@ -5955,6 +5989,7 @@ fn tile_conv_transpose_1d_route_matches_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b97f4a7c15u64;
@@ -6049,6 +6084,7 @@ fn tile_conv_2d_backward_route_matches_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b97f4a7c15u64;
@@ -6154,6 +6190,7 @@ fn tile_conv_transpose_2d_route_matches_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b97f4a7c15u64;
@@ -6253,6 +6290,7 @@ fn tile_conv_1d_bias_tail_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x1b873593u64;
@@ -6358,6 +6396,7 @@ fn tile_pool_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b97f4a7c15u64;
@@ -6623,6 +6662,7 @@ fn tile_attention_routes_match_incumbent() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x1bf52f5f6d4e7c91u64;

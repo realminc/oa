@@ -30,6 +30,7 @@ fn figure_show_opens_image_viewer_and_closes() -> Result<(), Box<dyn std::error:
 		.requirements(oa::EngineRequirements::default().presentation())
 		.instance_extensions(probe.required_instance_extensions()?)
 		.build()?;
+	oa::Engine::set_default(engine.clone());
 	drop(probe);
 
 	let mut figure = oa::plot::Figure::new(oa::plot::FigureConfig {

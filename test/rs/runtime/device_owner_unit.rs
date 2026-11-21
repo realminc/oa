@@ -45,6 +45,7 @@ fn compute_pipelines_are_created_once_on_first_use() -> crate::Result<()> {
 	let engine = Engine::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let device = engine.handle().state.borrow().device.clone();
 	assert_eq!(device.initialized_pipeline_count(), 0);
 	let a = matrix::from_f32([1, 3], &[1.0, 2.0, 4.0])?;

@@ -31,6 +31,7 @@ fn engine_owns_flushes_and_closes_its_logging_session() -> Result<(), Box<dyn st
 				.file_output(true),
 		)
 		.build()?;
+	oa::Engine::set_default(engine.clone());
 	oa::log_info!(oa::LogComponent::RUNTIME, "selected engine logger");
 	engine.flush_log()?;
 	let path = engine
@@ -59,11 +60,13 @@ fn builder_selects_automatic_and_exact_devices() -> oa::Result<()> {
 	let automatic = oa::Engine::builder()
 		.devices(oa::DeviceSelection::Automatic)
 		.build()?;
+	oa::Engine::set_default(automatic.clone());
 	drop(automatic);
 
 	let exact = oa::Engine::builder()
 		.devices(oa::DeviceSelection::Index(0))
 		.build()?;
+	oa::Engine::set_default(exact.clone());
 	drop(exact);
 	Ok(())
 }
@@ -384,6 +387,7 @@ fn software_vulkan_index_executes_compute_and_crypto() -> oa::Result<()> {
 	let engine = oa::Engine::builder()
 		.devices(oa::DeviceSelection::Index(cpu.index()))
 		.build()?;
+	oa::Engine::set_default(engine.clone());
 	assert_eq!(engine.device_info().index(), cpu.index());
 	assert_eq!(engine.device_info().name(), cpu.name());
 	assert_eq!(engine.device_info().kind(), oa::DeviceKind::Cpu);

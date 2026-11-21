@@ -7,6 +7,7 @@ fn presenter_blits_a_native_texture_through_a_real_swapchain() -> oa::Result<()>
 	let engine = Engine::builder()
 		.instance_extensions(window.required_instance_extensions()?)
 		.build()?;
+	Engine::set_default(engine.clone());
 	let mut presenter = Presenter::new(&engine, &window)?;
 
 	assert!(presenter.has_graphics());
@@ -37,6 +38,7 @@ fn presenter_displays_a_renderer_frame() -> oa::Result<()> {
 	let engine = Engine::builder()
 		.instance_extensions(window.required_instance_extensions()?)
 		.build()?;
+	Engine::set_default(engine.clone());
 	let renderer = oa::render::Renderer::new(
 		&engine,
 		oa::render::RendererConfig {
@@ -88,6 +90,7 @@ fn presenter_retains_compositor_frames_across_resize_and_ui_close() -> oa::Resul
 		.requirements(oa::EngineRequirements::default().presentation())
 		.instance_extensions(window.required_instance_extensions()?)
 		.build()?;
+	Engine::set_default(engine.clone());
 	let mut presenter = Presenter::new(&engine, &window)?;
 	assert!(presenter.init_swapchain(&window)?);
 	let mut ui = oa::ui::Ui::init(&engine, 64, 64)?;

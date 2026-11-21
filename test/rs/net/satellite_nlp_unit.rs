@@ -63,6 +63,10 @@ fn test_engine() -> Result<Engine> {
 	Engine::builder()
 		.devices(crate::DeviceSelection::Index(0))
 		.build()
+		.and_then(|engine| {
+			Engine::set_default(engine.clone());
+			Ok(engine)
+		})
 }
 
 fn serve_with_client<'a, T: Send + 'static>(

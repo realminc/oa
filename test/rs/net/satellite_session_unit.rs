@@ -303,6 +303,7 @@ fn satellite_matrix_add_uses_exact_owned_event() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(crate::DeviceSelection::Index(0))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let (listener, _port) = bind_loopback();
 	let device_name = engine.device_info().name().to_owned();
 	let (server_status, server, client_status) = serve_with_client(
@@ -360,6 +361,7 @@ fn abandon_pending_matrix_request_does_not_submit_or_wait() -> Result<()> {
 	let engine = Engine::builder()
 		.devices(crate::DeviceSelection::Index(0))
 		.build()?;
+	Engine::set_default(engine.clone());
 	let (listener, _port) = bind_loopback();
 	let device_name = engine.device_info().name().to_owned();
 	let server =

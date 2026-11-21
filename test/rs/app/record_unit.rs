@@ -187,6 +187,7 @@ fn camera_recording_finalizes_playable_mp4() -> Result<()> {
 			oa::EngineRequirements::default().video_encode(VideoEncodeProfile::h264_high_420_8bit()),
 		)
 		.build()?;
+	Engine::set_default(engine.clone());
 	let mut source = RecordingSource::new(0);
 	source.open(&engine)?;
 	let path = std::env::temp_dir().join(format!("oa-record-hardware-{}.mp4", std::process::id()));

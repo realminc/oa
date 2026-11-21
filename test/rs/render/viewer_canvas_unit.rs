@@ -4,6 +4,7 @@ use super::*;
 #[ignore = "requires Vulkan texture upload and UI raster composition"]
 fn live_canvas_preserves_navigation_and_uses_shared_image_channels() -> Result<()> {
 	let engine = Engine::builder().build()?;
+	Engine::set_default(engine.clone());
 	let config = ViewerConfig {
 		mode: ViewerMode::Live,
 		show_stats: false,
@@ -79,6 +80,7 @@ fn yuv_canvas_matches_rgba_and_keeps_reverse_history() -> Result<()> {
 	let engine = Engine::builder()
 		.requirements(crate::EngineRequirements::default().graphics())
 		.build()?;
+	Engine::set_default(engine.clone());
 	let mut ui = Ui::init(&engine, 1280, 720)?;
 	let fixtures = [
 		"shibuya_720p_30fps_h265_main10_10bit_420.mp4",
@@ -146,6 +148,7 @@ fn measure_yuv_canvas_throughput() -> Result<()> {
 	let engine = Engine::builder()
 		.requirements(crate::EngineRequirements::default().graphics())
 		.build()?;
+	Engine::set_default(engine.clone());
 	let mut ui = Ui::init(&engine, 1280, 720)?;
 	let dst = PixelRect::new(0, 0, 1280, 720);
 	let mut measure = |path: &Path, trial: bool| -> Result<f64> {
