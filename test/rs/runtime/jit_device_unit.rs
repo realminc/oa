@@ -1,10 +1,11 @@
+use super::super::Device;
 use super::*;
 
 impl Device {
 	pub(in crate::runtime) fn record_jit_chain(
 		self: &Arc<Self>,
-		chain: &crate::runtime::device::command::jit_lab::PreparedChain,
-	) -> Result<super::super::command::ReusableCommandBuffer> {
+		chain: &crate::runtime::device::logical::command::jit_lab::PreparedChain,
+	) -> Result<super::command::ReusableCommandBuffer> {
 		let mut pool = self
 			.logical
 			.command_pool

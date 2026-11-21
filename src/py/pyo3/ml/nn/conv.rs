@@ -16,10 +16,9 @@ pub(crate) struct PythonConv1d {
 impl PythonConv1d {
 	/// Construct with symmetric-uniform weight and zero bias.
 	#[new]
-	#[pyo3(signature = (engine, input_channels, output_channels, kernel_size, stride = 1, padding = 0, dilation = 1, seed = 0))]
+	#[pyo3(signature = (input_channels, output_channels, kernel_size, stride = 1, padding = 0, dilation = 1, seed = 0, engine=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		engine: &PythonEngine,
 		input_channels: usize,
 		output_channels: usize,
 		kernel_size: usize,
@@ -27,9 +26,11 @@ impl PythonConv1d {
 		padding: usize,
 		dilation: usize,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::Conv1d::new_with_seed(
-			&engine.inner,
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::Conv1d::new_with_seed_on(
+			&engine,
 			input_channels,
 			output_channels,
 			kernel_size,
@@ -132,18 +133,19 @@ pub(crate) struct PythonConvTranspose1d {
 impl PythonConvTranspose1d {
 	/// Construct with symmetric-uniform IOK weight and no bias.
 	#[new]
-	#[pyo3(signature = (engine, input_channels, output_channels, kernel_size, stride = 1, padding = 0, seed = 0))]
+	#[pyo3(signature = (input_channels, output_channels, kernel_size, stride = 1, padding = 0, seed = 0, engine=None))]
 	pub fn new(
-		engine: &PythonEngine,
 		input_channels: usize,
 		output_channels: usize,
 		kernel_size: usize,
 		stride: usize,
 		padding: usize,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::ConvTranspose1d::new_with_seed(
-			&engine.inner,
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::ConvTranspose1d::new_with_seed_on(
+			&engine,
 			input_channels,
 			output_channels,
 			kernel_size,
@@ -233,18 +235,19 @@ pub(crate) struct PythonConvTranspose2d {
 impl PythonConvTranspose2d {
 	/// Construct with symmetric-uniform IOKK weight and zero bias.
 	#[new]
-	#[pyo3(signature = (engine, input_channels, output_channels, kernel_size, stride = 1, padding = 0, seed = 0))]
+	#[pyo3(signature = (input_channels, output_channels, kernel_size, stride = 1, padding = 0, seed = 0, engine=None))]
 	pub fn new(
-		engine: &PythonEngine,
 		input_channels: usize,
 		output_channels: usize,
 		kernel_size: usize,
 		stride: usize,
 		padding: usize,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::ConvTranspose2d::new_with_seed(
-			&engine.inner,
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::ConvTranspose2d::new_with_seed_on(
+			&engine,
 			input_channels,
 			output_channels,
 			kernel_size,
@@ -340,10 +343,9 @@ pub(crate) struct PythonConv2d {
 impl PythonConv2d {
 	/// Construct with symmetric-uniform OIHW/group weight and zero bias.
 	#[new]
-	#[pyo3(signature = (engine, input_channels, output_channels, kernel_size, stride = 1, padding = 0, groups = 1, seed = 0))]
+	#[pyo3(signature = (input_channels, output_channels, kernel_size, stride = 1, padding = 0, groups = 1, seed = 0, engine=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		engine: &PythonEngine,
 		input_channels: usize,
 		output_channels: usize,
 		kernel_size: usize,
@@ -351,9 +353,11 @@ impl PythonConv2d {
 		padding: usize,
 		groups: usize,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::Conv2d::new_with_seed(
-			&engine.inner,
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::Conv2d::new_with_seed_on(
+			&engine,
 			input_channels,
 			output_channels,
 			kernel_size,

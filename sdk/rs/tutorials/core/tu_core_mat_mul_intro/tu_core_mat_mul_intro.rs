@@ -1,7 +1,7 @@
 use std::{env, hint::black_box, time::Instant};
 
 use anyhow::{Context, bail, ensure};
-use oa::{Engine, Matrix, matrix};
+use oa::{Matrix, matrix};
 
 const CORRECTNESS_CASES: &[ShapeCase] = &[
 	ShapeCase::new("tiny-square", 8, 8, 8),
@@ -53,17 +53,16 @@ struct PerfResult {
 
 fn main() -> anyhow::Result<()> {
 	let options = parse_options()?;
-	let engine = Engine::new().context("create the OA Vulkan engine")?;
 
 	println!("OA Rust Core MatMul Intro — C = A @ Bᵀ");
 	println!("contract: FP32 [M,K] × [N,K] -> [M,N]");
-	demo_basic_syntax(&engine)?;
+	demo_basic_syntax()?;
 
 	if options.correctness {
-		run_correctness_suite(&engine)?;
+		run_correctness_suite()?;
 	}
 	if options.benchmark {
-		run_performance_suite(&engine, &options)?;
+		run_performance_suite(&options)?;
 	}
 	Ok(())
 }
@@ -111,10 +110,10 @@ fn parse_count(flag: &str, value: Option<String>) -> anyhow::Result<usize> {
 		.with_context(|| format!("{flag} requires a non-negative integer"))
 }
 
-fn demo_basic_syntax(engine: &Engine) -> anyhow::Result<()> {
+fn demo_basic_syntax() -> anyhow::Result<()> {
 	println!("\n1. Basic syntax");
-	let one = matrix::ones(engine, [2, 3])?;
-	let two = matrix::full(engine, [2, 3], 2.0)?;
+	let one = matrix::ones([2, 3])?;
+	let two = matrix::full([2, 3], 2.0)?;
 	let product = matrix::mat_mul_nt(&one, &two)?;
 	let values = product.read_f32()?;
 	ensure!(product.shape() == [2, 2], "unexpected output shape");
@@ -143,14 +142,14 @@ fn demo_basic_syntax(engine: &Engine) -> anyhow::Result<()> {
 	Ok(())
 }
 
-fn run_correctness_suite(engine: &Engine) -> anyhow::Result<()> {
+fn run_correctness_suite() -> anyhow::Result<()> {
 	println!("\n2. Correctness vs independent CPU reference");
 	for (index, &case) in CORRECTNESS_CASES.iter().enumerate() {
 		let left_values = values(case.m * case.k, index * 2 + 3);
 		let right_values = values(case.n * case.k, index * 2 + 11);
 		let expected = cpu_mat_mul_nt(&left_values, &right_values, case.m, case.n, case.k);
-		let left = Matrix::new_from_f32(engine, [case.m, case.k], &left_values)?;
-		let right = Matrix::new_from_f32(engine, [case.n, case.k], &right_values)?;
+		let left = Matrix::new_from_f32([case.m, case.k], &left_values)?;
+		let right = Matrix::new_from_f32([case.n, case.k], &right_values)?;
 		let output = matrix::mat_mul_nt(&left, &right)?;
 		let actual = output.read_f32()?;
 		let error = normalized_error(&actual, &expected)?;
@@ -164,7 +163,7 @@ fn run_correctness_suite(engine: &Engine) -> anyhow::Result<()> {
 	Ok(())
 }
 
-fn run_performance_suite(engine: &Engine, options: &Options) -> anyhow::Result<()> {
+fn run_performance_suite(options: &Options) -> anyhow::Result<()> {
 	println!("\n3. Exploratory eager end-to-end performance");
 	println!("   boundary: mat_mul_nt call through synchronized full output readback");
 	println!(
@@ -182,7 +181,7 @@ fn run_performance_suite(engine: &Engine, options: &Options) -> anyhow::Result<(
 			continue;
 		}
 		matched = true;
-		let result = bench_one(engine, case, options.warmup, options.samples)?;
+		let result = bench_one(case, options.warmup, options.samples)?;
 		println!(
 			"   {:<16} [{:5},{:5},{:5}] p50={:9.3} ms p95={:9.3} ms {:9.2} GFLOP/s",
 			case.name, case.m, case.n, case.k, result.p50_ms, result.p95_ms, result.gflops
@@ -196,14 +195,9 @@ fn run_performance_suite(engine: &Engine, options: &Options) -> anyhow::Result<(
 	Ok(())
 }
 
-fn bench_one(
-	engine: &Engine,
-	case: ShapeCase,
-	warmup: usize,
-	sample_count: usize,
-) -> anyhow::Result<PerfResult> {
-	let left = matrix::full(engine, [case.m, case.k], 0.25)?;
-	let right = matrix::full(engine, [case.n, case.k], 0.5)?;
+fn bench_one(case: ShapeCase, warmup: usize, sample_count: usize) -> anyhow::Result<PerfResult> {
+	let left = matrix::full([case.m, case.k], 0.25)?;
+	let right = matrix::full([case.n, case.k], 0.5)?;
 	// Constant-input oracle checks every timed geometry before warmup.
 	// A positive norm or maximum-error reduction alone must not hide NaNs.
 	let expected = case.k as f32 * 0.125;

@@ -187,11 +187,12 @@ impl PythonTrainingProgram {
 	#[staticmethod]
 	pub fn capture(
 		py: Python<'_>,
-		engine: &PythonEngine,
 		optimizer: &mut PythonAdamW,
 		step_fn: Py<PyAny>,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		let engine_ref: &oa::Engine = &engine.inner;
+		let engine = PythonEngine::resolve(engine)?;
+		let engine_ref: &oa::Engine = &engine;
 		let inner = oa::ml::TrainingProgram::capture(engine_ref, &mut optimizer.inner, || {
 			Python::attach(|py2| {
 				let result = step_fn
@@ -228,12 +229,13 @@ impl PythonTrainingProgram {
 	/// Submit one replay without waiting. Returns an `Event`.
 	pub fn replay(
 		&mut self,
-		engine: &PythonEngine,
 		optimizer: &mut PythonAdamW,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<crate::runtime::PythonEvent> {
+		let engine = PythonEngine::resolve(engine)?;
 		self
 			.inner
-			.replay(&engine.inner, &mut optimizer.inner)
+			.replay(&engine, &mut optimizer.inner)
 			.map(|e| crate::runtime::PythonEvent { inner: e })
 			.map_err(python_error)
 	}
@@ -241,12 +243,13 @@ impl PythonTrainingProgram {
 	/// Submit one timed replay without waiting. Returns an `Event`.
 	pub fn replay_timed(
 		&mut self,
-		engine: &PythonEngine,
 		optimizer: &mut PythonAdamW,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<crate::runtime::PythonEvent> {
+		let engine = PythonEngine::resolve(engine)?;
 		self
 			.inner
-			.replay_timed(&engine.inner, &mut optimizer.inner)
+			.replay_timed(&engine, &mut optimizer.inner)
 			.map(|e| crate::runtime::PythonEvent { inner: e })
 			.map_err(python_error)
 	}
@@ -254,24 +257,26 @@ impl PythonTrainingProgram {
 	/// Submit one replay, wait for completion, and return the scalar loss.
 	pub fn replay_and_wait(
 		&mut self,
-		engine: &PythonEngine,
 		optimizer: &mut PythonAdamW,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<f32> {
+		let engine = PythonEngine::resolve(engine)?;
 		self
 			.inner
-			.replay_and_wait(&engine.inner, &mut optimizer.inner)
+			.replay_and_wait(&engine, &mut optimizer.inner)
 			.map_err(python_error)
 	}
 
 	/// Submit one timed replay, wait, and return `(loss, device_secs)`.
 	pub fn replay_timed_and_wait(
 		&mut self,
-		engine: &PythonEngine,
 		optimizer: &mut PythonAdamW,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<(f32, f64)> {
+		let engine = PythonEngine::resolve(engine)?;
 		self
 			.inner
-			.replay_timed_and_wait(&engine.inner, &mut optimizer.inner)
+			.replay_timed_and_wait(&engine, &mut optimizer.inner)
 			.map(|(loss, dur)| (loss, dur.as_secs_f64()))
 			.map_err(python_error)
 	}

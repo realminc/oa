@@ -72,7 +72,23 @@ impl Matrix {
 	///
 	/// Returns an error when the shape overflows, its element count differs from
 	/// `values`, or storage allocation/upload fails.
-	pub fn new_from_slice<T: Element>(
+	///
+	/// This variant uploads on this thread's default engine. An engine
+	/// initialization failure is returned before the upload starts.
+	pub fn new_from_slice<T: Element>(shape: impl Into<Vec<usize>>, values: &[T]) -> Result<Self> {
+		let shape = shape.into();
+		Self::new_from_slice_on(&Engine::current()?, shape, values)
+	}
+
+	/// Create a dense matrix on a particular engine.
+	///
+	/// This is the [`new_from_slice`](Self::new_from_slice) contract evaluated
+	/// on `engine` instead of this thread's default engine.
+	///
+	/// # Errors
+	///
+	/// Returns the same errors as [`new_from_slice`](Self::new_from_slice).
+	pub fn new_from_slice_on<T: Element>(
 		engine: &Engine,
 		shape: impl Into<Vec<usize>>,
 		values: &[T],
@@ -150,12 +166,29 @@ impl Matrix {
 	///
 	/// Returns an error when the shape overflows, its element count differs from
 	/// `values`, or storage allocation/upload fails.
-	pub fn new_from_f32(
+	///
+	/// This variant uploads on this thread's default engine. An engine
+	/// initialization failure is returned before the upload starts.
+	pub fn new_from_f32(shape: impl Into<Vec<usize>>, values: &[f32]) -> Result<Self> {
+		let shape = shape.into();
+		Self::new_from_f32_on(&Engine::current()?, shape, values)
+	}
+	/// Create an FP32 matrix and initialize its device-visible storage on a
+	/// particular engine.
+	///
+	/// This is the [`new_from_f32`](Self::new_from_f32) contract evaluated on
+	/// `engine` instead of this thread's default engine.
+	///
+	/// # Errors
+	///
+	/// Returns an error when the shape overflows, its element count differs from
+	/// `values`, or storage allocation/upload fails.
+	pub fn new_from_f32_on(
 		engine: &Engine,
 		shape: impl Into<Vec<usize>>,
 		values: &[f32],
 	) -> Result<Self> {
-		Self::new_from_slice(engine, shape, values)
+		Self::new_from_slice_on(engine, shape, values)
 	}
 
 	pub(crate) fn filled_f32(
@@ -165,7 +198,7 @@ impl Matrix {
 	) -> Result<Self> {
 		let shape = shape.into();
 		let element_count = checked_element_count(&shape)?;
-		Self::new_from_f32(engine, shape, &vec![value; element_count])
+		Self::new_from_f32_on(engine, shape, &vec![value; element_count])
 	}
 
 	/// Return the matrix shape.

@@ -14,8 +14,8 @@
 			"doc": "Pre-normalized SwiGLU feed-forward network with a residual connection.",
 			"template": "ffn",
 			"values": {
-				"norm_constructor": "RmsNorm::new",
-				"projection_constructor": "Linear::new_with_seed",
+				"norm_constructor": "RmsNorm::new_on",
+				"projection_constructor": "Linear::new_with_seed_on",
 				"gate_operation": "swiglu",
 				"residual_operation": "core_matrix::add",
 				"norm_name": "norm",

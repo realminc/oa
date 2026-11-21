@@ -161,8 +161,35 @@ pub(crate) struct PythonEngine {
 	pub(crate) inner: oa::Engine,
 }
 
+impl PythonEngine {
+	/// Resolve an optional Python engine argument to the owning engine: an
+	/// explicit handle wins, otherwise the calling thread's default engine.
+	pub(crate) fn resolve(engine: Option<&PythonEngine>) -> PyResult<oa::Engine> {
+		match engine {
+			Some(engine) => Ok(engine.inner.clone()),
+			None => oa::Engine::current().map_err(python_error),
+		}
+	}
+}
+
 #[pymethods]
 impl PythonEngine {
+	/// Install this engine as the calling thread's default. Defaulted
+	/// constructor forms resolve to it; explicit engine arguments still win.
+	#[staticmethod]
+	fn set_default(engine: &PythonEngine) {
+		oa::Engine::set_default(engine.inner.clone());
+	}
+
+	/// Return a handle to the calling thread's default engine, lazily
+	/// creating it on first use.
+	#[staticmethod]
+	fn current() -> PyResult<Self> {
+		Ok(Self {
+			inner: oa::Engine::current().map_err(python_error)?,
+		})
+	}
+
 	#[new]
 	#[pyo3(signature = (device=None, logging=None, presentation=false))]
 	fn new(

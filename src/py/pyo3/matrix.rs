@@ -19,29 +19,49 @@ impl PythonMatrix {
 #[pymethods]
 impl PythonMatrix {
 	#[staticmethod]
-	fn new_from_f32(engine: &PythonEngine, shape: Vec<usize>, values: Vec<f32>) -> PyResult<Self> {
-		oa::Matrix::new_from_slice(&engine.inner, shape, &values)
+	fn new_from_f32(
+		shape: Vec<usize>,
+		values: Vec<f32>,
+		engine: Option<&PythonEngine>,
+	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		oa::Matrix::new_from_slice_on(&engine, shape, &values)
 			.map(Self::wrap)
 			.map_err(python_error)
 	}
 
 	#[staticmethod]
-	fn new_from_i32(engine: &PythonEngine, shape: Vec<usize>, values: Vec<i32>) -> PyResult<Self> {
-		oa::Matrix::new_from_slice(&engine.inner, shape, &values)
+	fn new_from_i32(
+		shape: Vec<usize>,
+		values: Vec<i32>,
+		engine: Option<&PythonEngine>,
+	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		oa::Matrix::new_from_slice_on(&engine, shape, &values)
 			.map(Self::wrap)
 			.map_err(python_error)
 	}
 
 	#[staticmethod]
-	fn new_from_u32(engine: &PythonEngine, shape: Vec<usize>, values: Vec<u32>) -> PyResult<Self> {
-		oa::Matrix::new_from_slice(&engine.inner, shape, &values)
+	fn new_from_u32(
+		shape: Vec<usize>,
+		values: Vec<u32>,
+		engine: Option<&PythonEngine>,
+	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		oa::Matrix::new_from_slice_on(&engine, shape, &values)
 			.map(Self::wrap)
 			.map_err(python_error)
 	}
 
 	#[staticmethod]
-	fn new_from_u8(engine: &PythonEngine, shape: Vec<usize>, values: Vec<u8>) -> PyResult<Self> {
-		oa::Matrix::new_from_slice(&engine.inner, shape, &values)
+	fn new_from_u8(
+		shape: Vec<usize>,
+		values: Vec<u8>,
+		engine: Option<&PythonEngine>,
+	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		oa::Matrix::new_from_slice_on(&engine, shape, &values)
 			.map(Self::wrap)
 			.map_err(python_error)
 	}
@@ -157,19 +177,24 @@ impl PythonMatrix {
 }
 
 #[pyfunction]
-pub(crate) fn matrix_ones(engine: &PythonEngine, shape: Vec<usize>) -> PyResult<PythonMatrix> {
-	oa::matrix::ones(&engine.inner, shape)
+pub(crate) fn matrix_ones(
+	shape: Vec<usize>,
+	engine: Option<&PythonEngine>,
+) -> PyResult<PythonMatrix> {
+	let engine = PythonEngine::resolve(engine)?;
+	oa::matrix::ones_on(&engine, shape)
 		.map(PythonMatrix::wrap)
 		.map_err(python_error)
 }
 
 #[pyfunction]
 pub(crate) fn matrix_full(
-	engine: &PythonEngine,
 	shape: Vec<usize>,
 	value: f32,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<PythonMatrix> {
-	oa::matrix::full(&engine.inner, shape, value)
+	let engine = PythonEngine::resolve(engine)?;
+	oa::matrix::full_on(&engine, shape, value)
 		.map(PythonMatrix::wrap)
 		.map_err(python_error)
 }

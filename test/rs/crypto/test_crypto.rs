@@ -223,7 +223,7 @@ test_vk!(
 	engine,
 	"requires a recovered hardware Vulkan compute device",
 	{
-		let input = oa::Matrix::new_from_slice(&engine, [1, 0], &[] as &[u8])?;
+		let input = oa::Matrix::new_from_slice([1, 0], &[] as &[u8])?;
 		let output = oa::crypto::hash::shake128(&input, 16)?;
 		let mut expected = [0_u8; 16];
 		shake128(b"", &mut expected);
@@ -237,7 +237,7 @@ test_vk!(
 	engine,
 	"requires a recovered hardware Vulkan compute device",
 	{
-		let input = oa::Matrix::new_from_slice(&engine, [3, 0], &[] as &[u8])?;
+		let input = oa::Matrix::new_from_slice([3, 0], &[] as &[u8])?;
 		let first = oa::crypto::hash::shake256(&input, 8)?;
 		let mut first_row = [0_u8; 8];
 		shake256(b"", &mut first_row);
@@ -263,7 +263,7 @@ test_vk!(
 	"requires a recovered hardware Vulkan compute device",
 	{
 		let values = [11_u8, 48, 85, 122, 159, 196, 233, 14, 51];
-		let input = oa::Matrix::new_from_slice(&engine, [3, 3], &values)?;
+		let input = oa::Matrix::new_from_slice([3, 3], &values)?;
 		let output = oa::crypto::hash::shake256(&input, 32)?;
 		let actual = output.read::<u8>()?;
 		for row in 0..3 {
@@ -277,7 +277,7 @@ test_vk!(
 
 test_vk!(batch_shake_matches_cpu_across_rate_boundaries, engine, {
 	eprintln!("SHAKE: recording default-length outputs");
-	let empty = oa::Matrix::new_from_slice(&engine, [2, 0], &[] as &[u8])?;
+	let empty = oa::Matrix::new_from_slice([2, 0], &[] as &[u8])?;
 	assert_eq!(oa::crypto::hash::shake128(&empty, 0)?.shape(), [2, 16]);
 	assert_eq!(oa::crypto::hash::shake256(&empty, 0)?.shape(), [2, 32]);
 	for (message_len, output_len) in [
@@ -295,7 +295,7 @@ test_vk!(batch_shake_matches_cpu_across_rate_boundaries, engine, {
 		let values = (0_usize..rows * message_len)
 			.map(|index| (index.wrapping_mul(37).wrapping_add(11) & 0xff) as u8)
 			.collect::<Vec<_>>();
-		let input = oa::Matrix::new_from_slice(&engine, [rows, message_len], &values)?;
+		let input = oa::Matrix::new_from_slice([rows, message_len], &values)?;
 
 		let output256 = oa::crypto::hash::shake256(&input, output_len)?;
 		eprintln!("SHAKE256: observing message_len={message_len}, output_len={output_len}");
@@ -337,7 +337,7 @@ test_vk!(batch_keccak_matches_cpu_permutation, engine, {
 	let values = (0_usize..rows * 200)
 		.map(|index| (index.wrapping_mul(29).wrapping_add(7) & 0xff) as u8)
 		.collect::<Vec<_>>();
-	let input = oa::Matrix::new_from_slice(&engine, [rows, 200], &values)?;
+	let input = oa::Matrix::new_from_slice([rows, 200], &values)?;
 	let output = oa::crypto::hash::keccak_f1600(&input)?;
 	let actual = output.read::<u8>()?;
 	let mut expected = Vec::with_capacity(values.len());
@@ -365,13 +365,13 @@ test_vk!(
 				.iter()
 				.flat_map(|leaf| leaf.as_bytes().iter().copied())
 				.collect::<Vec<_>>();
-			let input = oa::Matrix::new_from_slice(&engine, [leaf_count, 32], &bytes)?;
+			let input = oa::Matrix::new_from_slice([leaf_count, 32], &bytes)?;
 			let output = oa::crypto::hash::merkle_root(&input)?;
 			assert_eq!(output.shape(), [1, 32]);
 			assert_eq!(output.read::<u8>()?, merkle_root(&leaves).as_bytes());
 		}
 
-		let messages = oa::Matrix::new_from_slice(&engine, [4, 3], b"abcdefghijkl")?;
+		let messages = oa::Matrix::new_from_slice([4, 3], b"abcdefghijkl")?;
 		let hashed = oa::crypto::hash::shake256(&messages, 32)?;
 		let root = oa::crypto::hash::merkle_root(&hashed)?;
 		let leaves = b"abcdefghijkl"
@@ -389,7 +389,7 @@ test_vk!(
 	batch_hash_chain_replays_and_rebinds_without_host_intermediates,
 	engine,
 	{
-		let input = oa::Matrix::new_from_slice(&engine, [4, 3], b"abcdefghijkl")?;
+		let input = oa::Matrix::new_from_slice([4, 3], b"abcdefghijkl")?;
 		let (mut plan, root) = engine.capture(|| {
 			let leaves = oa::crypto::hash::shake256(&input, 32)?;
 			oa::crypto::hash::merkle_root(&leaves)
@@ -443,7 +443,7 @@ test_vk!(
 					plan.upload_matrix_input(&input, *messages)?;
 				}
 				2 => {
-					let replacement = oa::Matrix::new_from_slice(&engine, [4, 3], *messages)?;
+					let replacement = oa::Matrix::new_from_slice([4, 3], *messages)?;
 					plan.bind_matrix_input(&input, &replacement)?;
 					// The immutable plan retains this replacement after its local handle drops.
 				}
@@ -471,7 +471,7 @@ test_vk!(
 );
 
 test_vk!(multi_level_merkle_has_one_semantic_identity, engine, {
-	let input = oa::Matrix::new_from_slice(&engine, [4, 32], &[0_u8; 128])?;
+	let input = oa::Matrix::new_from_slice([4, 32], &[0_u8; 128])?;
 	let (plan, _root) = engine.capture(|| oa::crypto::hash::merkle_root(&input))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
@@ -483,10 +483,10 @@ test_vk!(multi_level_merkle_has_one_semantic_identity, engine, {
 });
 
 test_vk!(batch_hash_rejects_invalid_contracts, engine, {
-	let f32_input = oa::Matrix::new_from_f32(&engine, [1, 32], &[0.0; 32])?;
-	let rank_one = oa::Matrix::new_from_slice(&engine, [32], &[0_u8; 32])?;
-	let wrong_state = oa::Matrix::new_from_slice(&engine, [1, 199], &[0_u8; 199])?;
-	let wrong_leaves = oa::Matrix::new_from_slice(&engine, [3, 31], &[0_u8; 93])?;
+	let f32_input = oa::Matrix::new_from_f32([1, 32], &[0.0; 32])?;
+	let rank_one = oa::Matrix::new_from_slice([32], &[0_u8; 32])?;
+	let wrong_state = oa::Matrix::new_from_slice([1, 199], &[0_u8; 199])?;
+	let wrong_leaves = oa::Matrix::new_from_slice([3, 31], &[0_u8; 93])?;
 
 	for error in [
 		oa::crypto::hash::shake256(&f32_input, 32)
@@ -609,11 +609,11 @@ test_vk_slow!(ml_dsa_all_parameters_nist_batch_capture, engine, {
 			}
 		}
 		assert_eq!(cases, expected_cases, "{name} fixture coverage");
-		let messages = oa::Matrix::new_from_slice(&engine, [messages.len()], &messages)?;
-		let offsets = oa::Matrix::new_from_slice(&engine, [offsets.len()], &offsets)?;
-		let lengths = oa::Matrix::new_from_slice(&engine, [lengths.len()], &lengths)?;
-		let signatures = oa::Matrix::new_from_slice(&engine, [signatures.len()], &signatures)?;
-		let keys = oa::Matrix::new_from_slice(&engine, [keys.len()], &keys)?;
+		let messages = oa::Matrix::new_from_slice([messages.len()], &messages)?;
+		let offsets = oa::Matrix::new_from_slice([offsets.len()], &offsets)?;
+		let lengths = oa::Matrix::new_from_slice([lengths.len()], &lengths)?;
+		let signatures = oa::Matrix::new_from_slice([signatures.len()], &signatures)?;
+		let keys = oa::Matrix::new_from_slice([keys.len()], &keys)?;
 		let (plan, results) = engine.capture(|| {
 			verify_batch_with_parameters(parameter, &messages, &offsets, &lengths, &signatures, &keys)
 		})?;
@@ -645,8 +645,8 @@ test_vk_slow!(ml_dsa_all_parameters_nist_batch_capture, engine, {
 			.kind(),
 			oa::ErrorKind::InvalidArgument
 		);
-		let empty_bytes = oa::Matrix::new_from_slice(&engine, [0], &[] as &[u8])?;
-		let empty_indices = oa::Matrix::new_from_slice(&engine, [0], &[] as &[u32])?;
+		let empty_bytes = oa::Matrix::new_from_slice([0], &[] as &[u8])?;
+		let empty_indices = oa::Matrix::new_from_slice([0], &[] as &[u32])?;
 		let empty = verify_batch_with_parameters(
 			parameter,
 			&empty_bytes,
@@ -725,12 +725,11 @@ test_vk_slow!(ml_dsa_all_parameters_context_capture, engine, {
 			bytes.push(0xa5);
 			let offset = u32::try_from(bytes.len()).unwrap();
 			bytes.extend_from_slice(&message);
-			let messages = oa::Matrix::new_from_slice(&engine, [bytes.len()], &bytes)?;
-			let offsets = oa::Matrix::new_from_slice(&engine, [1], &[offset])?;
-			let lengths =
-				oa::Matrix::new_from_slice(&engine, [1], &[u32::try_from(message.len()).unwrap()])?;
-			let signatures = oa::Matrix::new_from_slice(&engine, [signature.len()], &signature)?;
-			let keys = oa::Matrix::new_from_slice(&engine, [key.len()], &key)?;
+			let messages = oa::Matrix::new_from_slice([bytes.len()], &bytes)?;
+			let offsets = oa::Matrix::new_from_slice([1], &[offset])?;
+			let lengths = oa::Matrix::new_from_slice([1], &[u32::try_from(message.len()).unwrap()])?;
+			let signatures = oa::Matrix::new_from_slice([signature.len()], &signature)?;
+			let keys = oa::Matrix::new_from_slice([key.len()], &key)?;
 			let (mut plan, result) = engine.capture(|| {
 				verify_batch_with_context(
 					parameter,
@@ -752,7 +751,7 @@ test_vk_slow!(ml_dsa_all_parameters_context_capture, engine, {
 			}
 			// The shared context is retained and rebound with the semantic message input.
 			bytes[1] ^= 1;
-			let changed = oa::Matrix::new_from_slice(&engine, [bytes.len()], &bytes)?;
+			let changed = oa::Matrix::new_from_slice([bytes.len()], &bytes)?;
 			plan.bind_matrix_input(&messages, &changed)?;
 			engine.submit(&plan)?.wait()?;
 			assert_eq!(result.read::<u32>()?, [0], "{name} changed context");
@@ -787,8 +786,8 @@ test_vk_slow!(ml_dsa_all_parameters_context_capture, engine, {
 					oa::ErrorKind::InvalidArgument
 				);
 			}
-			let empty_bytes = oa::Matrix::new_from_slice(&engine, [0], &[] as &[u8])?;
-			let empty_indices = oa::Matrix::new_from_slice(&engine, [0], &[] as &[u32])?;
+			let empty_bytes = oa::Matrix::new_from_slice([0], &[] as &[u8])?;
+			let empty_indices = oa::Matrix::new_from_slice([0], &[] as &[u32])?;
 			assert!(
 				verify_batch_with_context(
 					parameter,
@@ -862,13 +861,11 @@ test_vk_slow!(ml_dsa_65_gpu_batch_verify_matches_cpu_oracle, engine, {
 	signatures_bytes[3 * SIGNATURE_SIZE + 42] ^= 0x01;
 
 	// Upload buffers.
-	let msg_buf = oa::Matrix::new_from_slice(&engine, [message_bytes.len()], &message_bytes)?;
-	let off_buf = oa::Matrix::new_from_slice(&engine, [batch_size], &offsets)?;
-	let len_buf = oa::Matrix::new_from_slice(&engine, [batch_size], &lengths)?;
-	let sig_buf =
-		oa::Matrix::new_from_slice(&engine, [batch_size * SIGNATURE_SIZE], &signatures_bytes)?;
-	let pk_buf =
-		oa::Matrix::new_from_slice(&engine, [batch_size * PUBLIC_KEY_SIZE], &public_keys_bytes)?;
+	let msg_buf = oa::Matrix::new_from_slice([message_bytes.len()], &message_bytes)?;
+	let off_buf = oa::Matrix::new_from_slice([batch_size], &offsets)?;
+	let len_buf = oa::Matrix::new_from_slice([batch_size], &lengths)?;
+	let sig_buf = oa::Matrix::new_from_slice([batch_size * SIGNATURE_SIZE], &signatures_bytes)?;
+	let pk_buf = oa::Matrix::new_from_slice([batch_size * PUBLIC_KEY_SIZE], &public_keys_bytes)?;
 
 	// Run GPU batch verify.
 	let results = verify_batch(&msg_buf, &off_buf, &len_buf, &sig_buf, &pk_buf)?;
@@ -939,11 +936,11 @@ test_vk_slow!(
 			keys.extend_from_slice(kp.public_key.as_bytes());
 		}
 		let count = offsets.len();
-		let messages = oa::Matrix::new_from_slice(&engine, [bytes.len()], &bytes)?;
-		let offsets = oa::Matrix::new_from_slice(&engine, [count], &offsets)?;
-		let lengths = oa::Matrix::new_from_slice(&engine, [count], &lengths)?;
-		let signatures = oa::Matrix::new_from_slice(&engine, [signatures.len()], &signatures)?;
-		let keys = oa::Matrix::new_from_slice(&engine, [keys.len()], &keys)?;
+		let messages = oa::Matrix::new_from_slice([bytes.len()], &bytes)?;
+		let offsets = oa::Matrix::new_from_slice([count], &offsets)?;
+		let lengths = oa::Matrix::new_from_slice([count], &lengths)?;
+		let signatures = oa::Matrix::new_from_slice([signatures.len()], &signatures)?;
+		let keys = oa::Matrix::new_from_slice([keys.len()], &keys)?;
 		let (mut plan, output) =
 			engine.capture(|| verify_batch(&messages, &offsets, &lengths, &signatures, &keys))?;
 		assert_eq!(
@@ -957,7 +954,6 @@ test_vk_slow!(
 			assert_eq!(output.read::<u32>()?, expected);
 		}
 		let replacement = oa::Matrix::new_from_slice(
-			&engine,
 			[count * SIGNATURE_SIZE],
 			&vec![0_u8; count * SIGNATURE_SIZE],
 		)?;
@@ -966,8 +962,8 @@ test_vk_slow!(
 		assert_eq!(output.read::<u32>()?, vec![0_u32; count]);
 		assert_eq!(plan.diagnostics().input_rebinding_count(), 1);
 		// Empty batch has a typed empty result and no shader invocation.
-		let empty_bytes = oa::Matrix::new_from_slice(&engine, [0], &[] as &[u8])?;
-		let empty_indices = oa::Matrix::new_from_slice(&engine, [0], &[] as &[u32])?;
+		let empty_bytes = oa::Matrix::new_from_slice([0], &[] as &[u8])?;
+		let empty_indices = oa::Matrix::new_from_slice([0], &[] as &[u32])?;
 		assert!(
 			verify_batch(
 				&empty_bytes,
@@ -981,11 +977,10 @@ test_vk_slow!(
 		);
 		// A nonempty batch can verify an empty logical message buffer. Its U8
 		// allocation padding must neither become message data nor a host fallback.
-		let single_offset = oa::Matrix::new_from_slice(&engine, [1], &[0_u32])?;
+		let single_offset = oa::Matrix::new_from_slice([1], &[0_u32])?;
 		let single_signature =
-			oa::Matrix::new_from_slice(&engine, [SIGNATURE_SIZE], empty_signature.as_bytes())?;
-		let single_key =
-			oa::Matrix::new_from_slice(&engine, [PUBLIC_KEY_SIZE], kp.public_key.as_bytes())?;
+			oa::Matrix::new_from_slice([SIGNATURE_SIZE], empty_signature.as_bytes())?;
+		let single_key = oa::Matrix::new_from_slice([PUBLIC_KEY_SIZE], kp.public_key.as_bytes())?;
 		assert_eq!(
 			verify_batch(
 				&empty_bytes,
@@ -1002,15 +997,14 @@ test_vk_slow!(
 );
 
 test_vk!(ml_dsa_65_gpu_verify_batch_rejects_bad_inputs, engine, {
-	let empty_u8 = oa::Matrix::new_from_slice(&engine, [0_usize], &[] as &[u8])?;
-	let offsets_u32 = oa::Matrix::new_from_slice(&engine, [1_usize], &[0_u32])?;
-	let lengths_u32 = oa::Matrix::new_from_slice(&engine, [1_usize], &[0_u32])?;
-	let sigs_u8 = oa::Matrix::new_from_slice(&engine, [SIGNATURE_SIZE], &vec![0_u8; SIGNATURE_SIZE])?;
-	let pks_u8 =
-		oa::Matrix::new_from_slice(&engine, [PUBLIC_KEY_SIZE], &vec![0_u8; PUBLIC_KEY_SIZE])?;
+	let empty_u8 = oa::Matrix::new_from_slice([0_usize], &[] as &[u8])?;
+	let offsets_u32 = oa::Matrix::new_from_slice([1_usize], &[0_u32])?;
+	let lengths_u32 = oa::Matrix::new_from_slice([1_usize], &[0_u32])?;
+	let sigs_u8 = oa::Matrix::new_from_slice([SIGNATURE_SIZE], &vec![0_u8; SIGNATURE_SIZE])?;
+	let pks_u8 = oa::Matrix::new_from_slice([PUBLIC_KEY_SIZE], &vec![0_u8; PUBLIC_KEY_SIZE])?;
 
 	// Wrong dtype for messages (F32 instead of U8).
-	let f32_msg = oa::Matrix::new_from_f32(&engine, [1], &[0.0_f32])?;
+	let f32_msg = oa::Matrix::new_from_f32([1], &[0.0_f32])?;
 	assert_eq!(
 		verify_batch(&f32_msg, &offsets_u32, &lengths_u32, &sigs_u8, &pks_u8)
 			.err()
@@ -1020,7 +1014,7 @@ test_vk!(ml_dsa_65_gpu_verify_batch_rejects_bad_inputs, engine, {
 	);
 
 	// Mismatched batch size between offsets and lengths.
-	let two_offsets = oa::Matrix::new_from_slice(&engine, [2_usize], &[0_u32, 0_u32])?;
+	let two_offsets = oa::Matrix::new_from_slice([2_usize], &[0_u32, 0_u32])?;
 	assert_eq!(
 		verify_batch(&empty_u8, &two_offsets, &lengths_u32, &sigs_u8, &pks_u8)
 			.err()
@@ -1030,7 +1024,7 @@ test_vk!(ml_dsa_65_gpu_verify_batch_rejects_bad_inputs, engine, {
 	);
 
 	// Signature buffer size mismatch.
-	let bad_sigs = oa::Matrix::new_from_slice(&engine, [17_usize], &[0_u8; 17])?;
+	let bad_sigs = oa::Matrix::new_from_slice([17_usize], &[0_u8; 17])?;
 	assert_eq!(
 		verify_batch(&empty_u8, &offsets_u32, &lengths_u32, &bad_sigs, &pks_u8)
 			.err()

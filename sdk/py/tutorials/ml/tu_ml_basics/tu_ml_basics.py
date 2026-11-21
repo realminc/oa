@@ -5,13 +5,10 @@ Mirrors sdk/cpp/tutorials/ml/tuMnistClassifierAg.cpp — basic ML training loop.
 """
 
 import oa
+x = oa.Matrix.new_from_f32([5, 1], [-2.0, -1.0, 0.0, 1.0, 2.0])
+target = oa.Matrix.new_from_f32([5, 1], [-3.0, -1.0, 1.0, 3.0, 5.0])
 
-engine = oa.Engine()
-
-x = oa.Matrix.new_from_f32(engine, [5, 1], [-2.0, -1.0, 0.0, 1.0, 2.0])
-target = oa.Matrix.new_from_f32(engine, [5, 1], [-3.0, -1.0, 1.0, 3.0, 5.0])
-
-model = oa.ml.Linear(engine, 1, 1, seed=0)
+model = oa.ml.Linear(1, 1, seed=0)
 optimizer = oa.ml.Sgd(model.parameters(), learning_rate=0.05)
 
 initial_loss = 0.0

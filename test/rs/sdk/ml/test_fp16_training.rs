@@ -57,13 +57,13 @@ fn plan_kernel_names(plan: &oa::ExecutionPlan, label: &str) -> Vec<String> {
 		.collect()
 }
 
-fn assert_f16s_kernels_recorded(kernels: &[String], context: &str) {
+fn assert_f16_kernels_recorded(kernels: &[String], context: &str) {
 	assert!(
 		kernels.iter().any(|name| name == "matrix.cast_f32_f16.f16"),
 		"{context}: FP16 mode must record F32->F16 storage casts, found {kernels:?}"
 	);
 	assert!(
-		kernels.iter().any(|name| name.contains("_f16s.")),
+		kernels.iter().any(|name| name.contains("_f16.")),
 		"{context}: FP16 mode must record an FP16-storage kernel, found {kernels:?}"
 	);
 }
@@ -71,21 +71,19 @@ fn assert_f16s_kernels_recorded(kernels: &[String], context: &str) {
 /// NLP workload: `STEPS` eager AdamW steps of the canonical byte RNN.
 /// Returns the per-step loss trajectory and asserts every master weight
 /// remains F32 after the run.
-fn train_byte_rnn(engine: &oa::Engine) -> oa::Result<(Vec<f32>, bool)> {
+fn train_byte_rnn(_engine: &oa::Engine) -> oa::Result<(Vec<f32>, bool)> {
 	const STEPS: usize = 48;
-	let model = sdk::ml::nlp::ByteRnn::new(engine)?;
+	let model = sdk::ml::nlp::ByteRnn::new()?;
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 	let mut sampler = sdk::ml::nlp::ByteSampler::new(sdk::ml::nlp::BATCH_SIZE)?;
 	let mut losses = Vec::with_capacity(STEPS);
 	for _ in 0..STEPS {
 		let (input_values, target_values) = sampler.next_values()?;
 		let input = oa::Matrix::new_from_slice(
-			engine,
 			[sdk::ml::nlp::BATCH_SIZE, sdk::ml::nlp::CONTEXT_LENGTH],
 			&input_values,
 		)?;
 		let target = oa::Matrix::new_from_slice(
-			engine,
 			[sdk::ml::nlp::BATCH_SIZE * sdk::ml::nlp::CONTEXT_LENGTH],
 			&target_values,
 		)?;
@@ -121,7 +119,7 @@ fn train_alm_tokenizer(engine: &oa::Engine) -> oa::Result<(f32, f32, bool)> {
 		ema_epsilon: 1.0e-5,
 		dead_threshold: 0.0,
 	};
-	let tokenizer = AlmTokenizer::new_with_seed(engine, config, 11)?;
+	let tokenizer = AlmTokenizer::new_with_seed(config, 11)?;
 	let clips = vec![
 		vec![0.0, 0.1, 0.2, 0.2, 0.3, 0.4, 0.4, 0.5, 0.6, 0.6, 0.7, 0.8],
 		vec![0.8, 0.7, 0.6, 0.6, 0.5, 0.4, 0.4, 0.3, 0.2, 0.2, 0.1, 0.0],
@@ -163,14 +161,11 @@ test_vk!(
 		assert!(f32_master_weights, "F32 run must keep F32 master weights");
 		let _mode = PrecisionMode::set("FP16");
 		// Census: the workload's linear projections must lower to FP16 storage.
-		let probe = sdk::ml::nlp::ByteRnn::new(&engine)?;
-		let probe_input = oa::Matrix::new_from_slice(
-			&engine,
-			[1, sdk::ml::nlp::CONTEXT_LENGTH],
-			b"to be or not to ",
-		)?;
+		let probe = sdk::ml::nlp::ByteRnn::new()?;
+		let probe_input =
+			oa::Matrix::new_from_slice([1, sdk::ml::nlp::CONTEXT_LENGTH], b"to be or not to ")?;
 		let (plan, _logits) = engine.capture(|| probe.forward(&probe_input))?;
-		assert_f16s_kernels_recorded(
+		assert_f16_kernels_recorded(
 			&plan_kernel_names(&plan, "byte_rnn_forward"),
 			"byte rnn forward",
 		);
@@ -211,7 +206,6 @@ test_vk!(
 		// Census: the workload's codebook/quantization reductions must lower to
 		// FP16 storage where the math mode is admitted.
 		let probe = AlmTokenizer::new_with_seed(
-			&engine,
 			AlmTokenizerConfig {
 				input_dim: 3,
 				width: 4,
@@ -227,7 +221,6 @@ test_vk!(
 			11,
 		)?;
 		let probe_input = oa::Matrix::new_from_f32(
-			&engine,
 			[2, 4, 3],
 			&[
 				0.0, 0.1, 0.2, 0.2, 0.3, 0.4, 0.4, 0.5, 0.6, 0.6, 0.7, 0.8, 0.8, 0.7, 0.6, 0.6, 0.5, 0.4,
@@ -237,7 +230,7 @@ test_vk!(
 		let latent = probe.encode(&probe_input)?;
 		engine.checkpoint()?.wait()?;
 		let (plan, _result) = engine.capture(|| probe.quantize(&latent))?;
-		assert_f16s_kernels_recorded(
+		assert_f16_kernels_recorded(
 			&plan_kernel_names(&plan, "alm_tokenizer_quantize"),
 			"alm tokenizer quantize",
 		);

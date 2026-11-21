@@ -8,8 +8,8 @@
 //! fig.ax(0, 0).plot(&loss_data, Default::default());
 //! fig.ax(0, 1).imshow(texture);
 //! fig.save_to(&engine, "out.png")?;   // headless file sink
-//! let img = fig.render(&engine)?;     // → oa::Image
-//! fig.show(&engine)?;                 // interactive window
+//! let img = fig.render_on(&engine)?;     // → oa::Image
+//! fig.show_on(&engine)?;                 // interactive window
 //! ```
 //!
 //! Compact surface: raster bases plus ordered line, scatter, bar, and

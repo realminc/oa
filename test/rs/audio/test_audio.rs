@@ -185,7 +185,7 @@ test_vk!(
 	{
 		let interleaved = [0.0_f32, 1.0, 0.25, 0.75, -0.5, 0.5, -1.0, 0.0];
 		let wav = oa::audio::encode_interleaved_wav_f32(&interleaved, 22_050, 2)?;
-		let decoded = oa::audio::decode_memory(&engine, &wav)?;
+		let decoded = oa::audio::decode_memory(&wav)?;
 		assert_eq!(decoded.channels(), 2);
 		assert_eq!(decoded.samples(), 4);
 		assert_eq!(decoded.sample_rate(), 22_050);
@@ -201,16 +201,16 @@ test_vk!(
 );
 
 test_vk!(audio_value_rejects_invalid_matrix_metadata, engine, {
-	let mono = oa::Matrix::new_from_f32(&engine, [1, 4], &[0.0; 4])?;
+	let mono = oa::Matrix::new_from_f32([1, 4], &[0.0; 4])?;
 	assert!(Audio::new(mono.clone(), 0, AudioChannelLayout::Mono).is_err());
 	assert!(Audio::new(mono, 48_000, AudioChannelLayout::Stereo).is_err());
 
-	let integer = oa::Matrix::new_from_slice(&engine, [1, 4], &[0_i32; 4])?;
+	let integer = oa::Matrix::new_from_slice([1, 4], &[0_i32; 4])?;
 	assert!(Audio::new(integer, 48_000, AudioChannelLayout::Mono).is_err());
-	let rank_one = oa::Matrix::new_from_f32(&engine, [4], &[0.0; 4])?;
+	let rank_one = oa::Matrix::new_from_f32([4], &[0.0; 4])?;
 	assert!(Audio::new(rank_one, 48_000, AudioChannelLayout::Mono).is_err());
-	assert!(oa::audio::decode_memory(&engine, &[]).is_err());
-	assert!(oa::audio::decode_memory(&engine, b"not audio").is_err());
+	assert!(oa::audio::decode_memory(&[]).is_err());
+	assert!(oa::audio::decode_memory(b"not audio").is_err());
 	Ok(())
 });
 
@@ -525,8 +525,8 @@ test_vk!(
 	{
 		let asset_root = std::env::var_os("OA_DATA_DIR").expect("OA_DATA_DIR is required");
 		let audio_root = std::path::PathBuf::from(asset_root).join("audio");
-		let wav = oa::audio::decode_file(&engine, audio_root.join("oaNarration.wav"))?;
-		let flac = oa::audio::decode_file(&engine, audio_root.join("oaNarration.flac"))?;
+		let wav = oa::audio::decode_file(audio_root.join("oaNarration.wav"))?;
+		let flac = oa::audio::decode_file(audio_root.join("oaNarration.flac"))?;
 		assert_eq!(wav.sample_rate(), 24_000);
 		assert_eq!(flac.sample_rate(), wav.sample_rate());
 		assert_eq!(flac.channels(), wav.channels());
@@ -537,7 +537,7 @@ test_vk!(
 			assert_eq!(flac_samples[index], wav_samples[index]);
 		}
 
-		let mp3 = oa::audio::decode_file(&engine, audio_root.join("oaNarration.mp3"))?;
+		let mp3 = oa::audio::decode_file(audio_root.join("oaNarration.mp3"))?;
 		assert_eq!(mp3.sample_rate(), 24_000);
 		assert_eq!(mp3.channels(), 1);
 		assert!(mp3.samples() > 240_000);

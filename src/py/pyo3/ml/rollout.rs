@@ -142,8 +142,9 @@ pub(crate) struct PythonRolloutBuffer {
 impl PythonRolloutBuffer {
 	/// Allocate one empty fixed-capacity rollout on `engine`.
 	#[new]
-	pub fn new(engine: &PythonEngine, config: &PythonRolloutConfig) -> PyResult<Self> {
-		oa::ml::RolloutBuffer::new(&engine.inner, config.inner.clone())
+	pub fn new(config: &PythonRolloutConfig, engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::RolloutBuffer::new(&engine, config.inner.clone())
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

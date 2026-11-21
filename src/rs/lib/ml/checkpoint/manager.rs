@@ -9,7 +9,7 @@ use std::{
 use crate::{Engine, Error, Result};
 
 use super::{
-	CheckpointProgress, load_checkpoint, load_checkpoint_at_step, save_checkpoint_with_progress,
+	CheckpointProgress, load_checkpoint_at_step, load_checkpoint_on, save_checkpoint_with_progress,
 };
 use crate::ml::model_file::ModelFile;
 use crate::ml::{CheckpointOptimizer, Module};
@@ -195,7 +195,7 @@ impl<'engine> CheckpointManager<'engine> {
 		model: &dyn Module,
 		optimizer: &mut dyn CheckpointOptimizer,
 	) -> Result<()> {
-		load_checkpoint(self.engine, self.master_path(), model, optimizer)
+		load_checkpoint_on(self.engine, self.master_path(), model, optimizer)
 	}
 
 	/// Restore the highest-step incremental checkpoint into existing owners.

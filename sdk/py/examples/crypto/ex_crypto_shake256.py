@@ -5,12 +5,12 @@ import oa
 
 engine = oa.Engine()
 
+oa.Engine.set_default(engine=engine)
+
 rows = [b"alpha", b"bravo", b"crypt"]
 messages = oa.Matrix.new_from_u8(
-	engine,
 	[3, 5],
-	list(b"".join(rows)),
-)
+	list(b"".join(rows)), engine=engine)
 
 digests = oa.crypto.hash_shake256(messages, 32)
 

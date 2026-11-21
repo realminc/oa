@@ -73,30 +73,30 @@ struct ClipResidualBlock {
 
 impl ClipResidualBlock {
 	fn new(engine: &Engine, config: ClipTextConfig, seed: u64) -> Result<Self> {
-		let norm_attention = Rc::new(LayerNorm::new(
+		let norm_attention = Rc::new(LayerNorm::new_on(
 			engine,
 			config.hidden_size,
 			config.layer_norm_epsilon,
 		)?);
-		let attention = Rc::new(MultiHeadAttention::new_with_seed(
+		let attention = Rc::new(MultiHeadAttention::new_with_seed_on(
 			engine,
 			config.hidden_size,
 			config.num_heads,
 			config.context_length,
 			seed,
 		)?);
-		let norm_mlp = Rc::new(LayerNorm::new(
+		let norm_mlp = Rc::new(LayerNorm::new_on(
 			engine,
 			config.hidden_size,
 			config.layer_norm_epsilon,
 		)?);
-		let fc1 = Rc::new(Linear::new_with_seed(
+		let fc1 = Rc::new(Linear::new_with_seed_on(
 			engine,
 			config.hidden_size,
 			config.intermediate_size,
 			seed.wrapping_add(4),
 		)?);
-		let fc2 = Rc::new(Linear::new_with_seed(
+		let fc2 = Rc::new(Linear::new_with_seed_on(
 			engine,
 			config.intermediate_size,
 			config.hidden_size,
@@ -170,15 +170,19 @@ impl ClipText {
 		import_safetensors_config(input.as_ref(), output.as_ref(), ClipTextConfig::default())
 	}
 
-	pub fn new_with_seed(engine: &Engine, config: ClipTextConfig, seed: u64) -> Result<Self> {
+	pub fn new_with_seed(config: ClipTextConfig, seed: u64) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, config, seed)
+	}
+
+	pub fn new_with_seed_on(engine: &Engine, config: ClipTextConfig, seed: u64) -> Result<Self> {
 		validate_config(config)?;
-		let token_embedding = Rc::new(Embedding::new_with_seed(
+		let token_embedding = Rc::new(Embedding::new_with_seed_on(
 			engine,
 			config.vocab_size,
 			config.hidden_size,
 			seed,
 		)?);
-		let position_embedding = Rc::new(Embedding::new_with_seed(
+		let position_embedding = Rc::new(Embedding::new_with_seed_on(
 			engine,
 			config.context_length,
 			config.hidden_size,
@@ -197,12 +201,12 @@ impl ClipText {
 			registry.register_module(format!("layer_{index}"), layer.clone())?;
 			layers.push(layer);
 		}
-		let final_layer_norm = Rc::new(LayerNorm::new(
+		let final_layer_norm = Rc::new(LayerNorm::new_on(
 			engine,
 			config.hidden_size,
 			config.layer_norm_epsilon,
 		)?);
-		let text_projection = Rc::new(Linear::new_with_seed_and_bias(
+		let text_projection = Rc::new(Linear::new_with_seed_and_bias_on(
 			engine,
 			config.hidden_size,
 			config.projection_dim,
@@ -211,7 +215,7 @@ impl ClipText {
 		)?);
 		registry.register_module("final_layer_norm", final_layer_norm.clone())?;
 		registry.register_module("text_projection", text_projection.clone())?;
-		let position_ids = Matrix::new_from_slice(
+		let position_ids = Matrix::new_from_slice_on(
 			engine,
 			[config.context_length],
 			&(0..config.context_length)
@@ -232,8 +236,12 @@ impl ClipText {
 		Ok(model)
 	}
 
-	pub fn new(engine: &Engine, config: ClipTextConfig) -> Result<Self> {
-		Self::new_with_seed(engine, config, 0)
+	pub fn new(config: ClipTextConfig) -> Result<Self> {
+		Self::new_on(&Engine::current()?, config)
+	}
+
+	pub fn new_on(engine: &Engine, config: ClipTextConfig) -> Result<Self> {
+		Self::new_with_seed_on(engine, config, 0)
 	}
 
 	/// Save this frozen text tower as an OA `OaClipTextAg` v1 model file.
@@ -264,6 +272,10 @@ impl ClipText {
 		)
 	}
 
+	pub fn load_model(path: impl AsRef<Path>) -> Result<Self> {
+		Self::load_model_on(&Engine::current()?, path)
+	}
+
 	/// Load an OA C++/Rust `OaClipTextAg` v1 model file.
 	///
 	/// The wire file is fully validated before its architecture is constructed;
@@ -275,7 +287,7 @@ impl ClipText {
 	/// Returns `CheckpointCorrupt` for the wrong architecture/version/payload or
 	/// malformed wire data, and another error for invalid model geometry,
 	/// allocation, upload, or destination mismatch.
-	pub fn load_model(engine: &Engine, path: impl AsRef<Path>) -> Result<Self> {
+	pub fn load_model_on(engine: &Engine, path: impl AsRef<Path>) -> Result<Self> {
 		let artifact = ModuleArtifact::load(path.as_ref())?;
 		let metadata = artifact.metadata();
 		if metadata.architecture != "OaClipTextAg"
@@ -298,7 +310,7 @@ impl ClipText {
 				"CLIP summary metadata disagrees with its architecture payload",
 			));
 		}
-		let model = Self::new(engine, config)?;
+		let model = Self::new_on(engine, config)?;
 		artifact.restore(engine, &model, clip_artifact_path)?;
 		model.freeze()?;
 		Ok(model)

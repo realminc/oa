@@ -205,8 +205,9 @@ pub(crate) struct PythonReplayBuffer {
 impl PythonReplayBuffer {
 	/// Allocate empty circular replay storage on `engine`.
 	#[new]
-	pub fn new(engine: &PythonEngine, config: &PythonReplayConfig) -> PyResult<Self> {
-		oa::ml::ReplayBuffer::new(&engine.inner, config.inner.clone())
+	pub fn new(config: &PythonReplayConfig, engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::ReplayBuffer::new(&engine, config.inner.clone())
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

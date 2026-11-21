@@ -74,7 +74,9 @@ stats.xticks([0.0, 16.0, 32.0, 48.0, 63.0])
 stats.legend(True)
 
 engine = oa.Engine(presentation=len(sys.argv) == 1)
+
+oa.Engine.set_default(engine=engine)
 if len(sys.argv) > 1:
-	figure.save_to(engine, sys.argv[1])
+	figure.save_to(sys.argv[1])
 else:
-	figure.show(engine)
+	figure.show(engine=engine)

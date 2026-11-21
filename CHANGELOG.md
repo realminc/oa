@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0
+
+- Add `Engine::set_default`, `Engine::current`, and defaulted constructor twins for every engine-first value constructor across matrix, nn layers, ml models and checkpoints, audio, image, video frames, render textures, and the SDK library. Explicit `..._on(&engine, ...)` forms remain for engine selection; sessions, capture, presentation, and device queries keep an explicit `&Engine`. Breaking: engine-first value constructors move to the `_on` spelling.
+- Consolidate the internal Device command surface under `runtime/device/logical`; `runtime/device.rs` is the single composed device API.
+- Add occupancy-gated 128x64 wide-tile and FP16-storage wide GEMM variants with the admission gate derived from the device contract.
+- Raise the trading observation element budget to 128M and allow packed market histories.
+- Simplify SDK tutorials, examples, benchmarks, and tests to defaulted constructors; simple programs no longer thread an engine.
+
 ## 0.13.0
 
 - Add Iris Xe replay qualification for the Vulkan Video and multimodal pipelines, including repeated decode, inference, overlay and encode.

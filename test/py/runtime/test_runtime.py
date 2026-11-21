@@ -88,14 +88,14 @@ class EngineLoggingTest(unittest.TestCase):
 	def test_default_engine_construction_succeeds(self) -> None:
 		# Basic construction without explicit LogOptions.
 		engine = oa.Engine()
-		self.assertIsInstance(engine, oa.Engine)
+		self.assertIsInstance(oa.Engine, engine=engine)
 
 	def test_engine_with_explicit_log_options(self) -> None:
 		opts = oa.LogOptions()
 		opts.minimum_level(oa.LogLevel.Warn)
 		opts.console_output(False)
 		engine = oa.Engine(logging=opts)
-		self.assertIsInstance(engine, oa.Engine)
+		self.assertIsInstance(oa.Engine, engine=engine)
 
 	def test_log_level_getter_returns_log_level(self) -> None:
 		engine = oa.Engine()
@@ -138,7 +138,7 @@ class EngineLoggingTest(unittest.TestCase):
 
 	def test_checkpoint_returns_a_waitable_event(self) -> None:
 		engine = oa.Engine()
-		oa.matrix.ones(engine, [1])
+		oa.matrix.ones([1], engine=engine)
 		event = engine.checkpoint()
 		event.wait()
 		self.assertTrue(event.is_complete())

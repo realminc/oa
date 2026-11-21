@@ -164,7 +164,7 @@ test_vk!(plot_figure_line_sink_is_not_a_flat_placeholder, engine, {
 			..Default::default()
 		},
 	);
-	let image = figure.render(&engine)?;
+	let image = figure.render()?;
 	let values = image.as_matrix().read_f32()?;
 	let plane = 96 * 64;
 	assert!(
@@ -182,7 +182,7 @@ test_vk!(
 	ui_compositor_observes_deferred_texture_and_resizes,
 	engine,
 	{
-		let source = oa::render::texture_from_rgba8(&engine, &[0_u8; 4 * 3 * 4], 4, 3)?;
+		let source = oa::render::texture_from_rgba8(&[0_u8; 4 * 3 * 4], 4, 3)?;
 		let red = oa::render::clear(&source, Color::new(1.0, 0.0, 0.0, 1.0))?;
 		let mut ui = Ui::init(&engine, 4, 3)?;
 		for (width, height) in [(4, 3), (9, 7), (4, 3)] {
@@ -356,11 +356,11 @@ test_vk!(ui_donor_audio_matrix_pixels_and_retention, engine, {
 		..Default::default()
 	});
 	ui.begin_frame(0.0);
-	let values = oa::Matrix::new_from_slice(&engine, vec![2, 2], &[0.0_f32, 1.0, 0.5, 0.25])?;
+	let values = oa::Matrix::new_from_slice(vec![2, 2], &[0.0_f32, 1.0, 0.5, 0.25])?;
 	// Grayscale gives an independent exact range/row/column pixel oracle.
 	ui.heatmap_matrix_at(&values, PixelRect::new(2, 3, 8, 6), [0.0, 1.0], 3, false)?;
 	drop(values);
-	let envelope = oa::Matrix::new_from_slice(&engine, vec![2, 2], &[-1.0_f32, 1.0, -0.5, 0.5])?;
+	let envelope = oa::Matrix::new_from_slice(vec![2, 2], &[-1.0_f32, 1.0, -0.5, 0.5])?;
 	ui.waveform_matrix_at(
 		&envelope,
 		PixelRect::new(16, 3, 8, 9),
@@ -369,7 +369,7 @@ test_vk!(ui_donor_audio_matrix_pixels_and_retention, engine, {
 		Color::new_from_u32(0x00FF00FF),
 	)?;
 	drop(envelope);
-	let wrong_dtype = oa::Matrix::new_from_slice(&engine, vec![2, 2], &[0_u32; 4])?;
+	let wrong_dtype = oa::Matrix::new_from_slice(vec![2, 2], &[0_u32; 4])?;
 	assert!(
 		ui.heatmap_matrix_at(
 			&wrong_dtype,
@@ -384,7 +384,7 @@ test_vk!(ui_donor_audio_matrix_pixels_and_retention, engine, {
 		ui.waveform_matrix_at(&wrong_dtype, PixelRect::new(0, 0, 4, 4), 0.5, base, base)
 			.is_err()
 	);
-	let valid = oa::Matrix::new_from_slice(&engine, vec![2, 2], &[0.0_f32; 4])?;
+	let valid = oa::Matrix::new_from_slice(vec![2, 2], &[0.0_f32; 4])?;
 	assert!(
 		ui.heatmap_matrix_at(&valid, PixelRect::new(0, 0, 33, 4), [0.0, 1.0], 3, false)
 			.is_err()
@@ -523,7 +523,7 @@ test_vk!(ui_donor_popup_stays_inside_viewport, engine, {
 test_vk!(ui_rect_outlines_draws_gpu_detection_records, engine, {
 	use oa::vision::{Detection, DetectionBuffer};
 
-	let mut buffer = DetectionBuffer::create_host_upload(&engine, 4)?;
+	let mut buffer = DetectionBuffer::create_host_upload(4)?;
 	buffer.upload(&[
 		Detection {
 			center_x: 0.5,
@@ -569,7 +569,7 @@ test_vk!(ui_rect_outlines_draws_gpu_detection_records, engine, {
 test_vk!(ui_glyphs_draws_solid_fill_records, engine, {
 	use oa::ui::{GlyphBuffer, GlyphInstance};
 
-	let mut buffer = GlyphBuffer::create_host_upload(&engine, 4)?;
+	let mut buffer = GlyphBuffer::create_host_upload(4)?;
 	buffer.upload(&[GlyphInstance {
 		anchor_x: 0.25,
 		anchor_y: 0.25,
@@ -648,7 +648,7 @@ test_vk!(
 			overlay.update(&items, ui.text_atlas()?)?;
 		}
 		// Pinning all three slots forces the next update to fail closed.
-		let source = oa::Matrix::new_from_f32(&engine, [4], &[1.0; 4])?;
+		let source = oa::Matrix::new_from_f32([4], &[1.0; 4])?;
 		let (plan, _) = engine.capture(|| source.add(&source))?;
 		for _ in 0..3 {
 			let event = engine.submit(&plan)?;
@@ -1158,7 +1158,7 @@ fn viewport_state_setters_and_layers() {
 test_vk!(viewport_setup_image_2d_and_aspect_fit, engine, {
 	use oa::render::texture_from_rgba8;
 
-	let texture = texture_from_rgba8(&engine, &[255_u8; 4 * 4 * 4], 4, 4)?;
+	let texture = texture_from_rgba8(&[255_u8; 4 * 4 * 4], 4, 4)?;
 	let mut view = Viewport::default();
 	view.setup_image_2d(
 		200.0,
@@ -1283,7 +1283,7 @@ test_vk!(cv_frame_render_composites_boxes_and_labels, engine, {
 			..CvBboxesConfig::default()
 		},
 	);
-	let texture = frame.render(&engine)?;
+	let texture = frame.render()?;
 	let pixels = texture.read_rgba8()?;
 	assert_eq!(pixels.len(), 64 * 48 * 4);
 	let pixel = |x: usize, y: usize| &pixels[(y * 64 + x) * 4..(y * 64 + x + 1) * 4];
@@ -1310,7 +1310,7 @@ test_vk!(cv_frame_render_composites_boxes_and_labels, engine, {
 		blue_base[index] = 255;
 		blue_base[index + 1] = 255;
 	}
-	let texture = frame.render_with_rgba(&engine, &blue_base)?;
+	let texture = frame.render_with_rgba(&blue_base)?;
 	let pixels = texture.read_rgba8()?;
 	let inside = &pixels[(40 * 64 + 50) * 4..(40 * 64 + 50 + 1) * 4];
 	assert_eq!(inside[2], 255);
@@ -1321,13 +1321,13 @@ test_vk!(cv_frame_render_composites_boxes_and_labels, engine, {
 		label_bg[2] < 100 && label_bg[0] < 40,
 		"label_bg: {label_bg:?}"
 	);
-	assert!(frame.render_with_rgba(&engine, &[0_u8; 16]).is_err());
+	assert!(frame.render_with_rgba(&[0_u8; 16]).is_err());
 	Ok(())
 });
 
 test_vk!(cv_frame_render_rejects_invalid_state, engine, {
 	let mut frame = CvFrame::default();
-	assert!(frame.render(&engine).is_err());
+	assert!(frame.render().is_err());
 	frame.w = 8;
 	frame.h = 8;
 	frame.add_bboxes(
@@ -1338,7 +1338,7 @@ test_vk!(cv_frame_render_rejects_invalid_state, engine, {
 		}],
 		&CvBboxesConfig::default(),
 	);
-	assert!(frame.render(&engine).is_err());
+	assert!(frame.render().is_err());
 	frame.clear_overlays();
 	frame.add_bboxes(
 		vec![CvBbox {
@@ -1353,9 +1353,9 @@ test_vk!(cv_frame_render_rejects_invalid_state, engine, {
 			..CvBboxesConfig::default()
 		},
 	);
-	assert!(frame.render(&engine).is_err());
+	assert!(frame.render().is_err());
 	frame.clear_overlays();
-	assert!(frame.render(&engine).is_ok());
+	assert!(frame.render().is_ok());
 	Ok(())
 });
 
@@ -1369,7 +1369,6 @@ test_vk!(image_planes_from_planes_validates_upload, engine, {
 	let g = vec![128_u8; 12];
 	let b = vec![0_u8; 12];
 	let planes = ImagePlanes::from_planes(
-		&engine,
 		&[&r, &g, &b],
 		&[ImageDtype::U8, ImageDtype::U8, ImageDtype::U8],
 		4,
@@ -1388,7 +1387,6 @@ test_vk!(image_planes_from_planes_validates_upload, engine, {
 	let f32_plane = vec![0_u8; 12 * 4];
 	let bf16_plane = vec![0_u8; 12 * 2];
 	let mixed = ImagePlanes::from_planes(
-		&engine,
 		&[&r, &u16_plane, &f32_plane, &bf16_plane],
 		&[
 			ImageDtype::U8,
@@ -1404,27 +1402,27 @@ test_vk!(image_planes_from_planes_validates_upload, engine, {
 
 	// Validation failures.
 	assert!(
-		ImagePlanes::from_planes(&engine, &[], &[], 4, 3).is_err(),
+		ImagePlanes::from_planes(&[], &[], 4, 3).is_err(),
 		"zero planes must fail"
 	);
 	assert!(
-		ImagePlanes::from_planes(&engine, &[&r, &g, &b, &r, &g], &[ImageDtype::U8; 5], 4, 3).is_err(),
+		ImagePlanes::from_planes(&[&r, &g, &b, &r, &g], &[ImageDtype::U8; 5], 4, 3).is_err(),
 		"five planes must fail"
 	);
 	assert!(
-		ImagePlanes::from_planes(&engine, &[&r, &g], &[ImageDtype::U8], 4, 3).is_err(),
+		ImagePlanes::from_planes(&[&r, &g], &[ImageDtype::U8], 4, 3).is_err(),
 		"dtype length mismatch must fail"
 	);
 	assert!(
-		ImagePlanes::from_planes(&engine, &[&r], &[ImageDtype::U8], 0, 3).is_err(),
+		ImagePlanes::from_planes(&[&r], &[ImageDtype::U8], 0, 3).is_err(),
 		"zero width must fail"
 	);
 	assert!(
-		ImagePlanes::from_planes(&engine, &[&r], &[ImageDtype::U8], 5, 3).is_err(),
+		ImagePlanes::from_planes(&[&r], &[ImageDtype::U8], 5, 3).is_err(),
 		"byte count mismatch must fail"
 	);
 	// U16 expects 2 bytes per element; a U8-sized span must fail.
-	assert!(ImagePlanes::from_planes(&engine, &[&r], &[ImageDtype::U16], 4, 3).is_err());
+	assert!(ImagePlanes::from_planes(&[&r], &[ImageDtype::U16], 4, 3).is_err());
 	Ok(())
 });
 
@@ -1432,15 +1430,15 @@ test_vk!(image_planes_load_file_decodes_rgba_png, engine, {
 	let path = std::env::temp_dir().join(format!("oa-planes-{}.png", std::process::id()));
 	// 2x1 red/green pair in RGBA8.
 	oa::image::save_rgba_file(&[255, 0, 0, 255, 0, 255, 0, 128], 2, 1, &path, 90)?;
-	let planes = ImagePlanes::load_file(&engine, &path)?;
+	let planes = ImagePlanes::load_file(&path)?;
 	let _ = std::fs::remove_file(&path);
 	assert!(planes.is_valid());
 	assert_eq!(planes.channel_count(), 4);
 	assert_eq!(planes.width(), 2);
 	assert_eq!(planes.height(), 1);
 	assert_eq!(planes.plane_dtype(0), ImageDtype::U8);
-	assert!(ImagePlanes::load_file(&engine, "").is_err());
-	assert!(ImagePlanes::load_file(&engine, path.with_extension("missing")).is_err());
+	assert!(ImagePlanes::load_file("").is_err());
+	assert!(ImagePlanes::load_file(path.with_extension("missing")).is_err());
 	Ok(())
 });
 
@@ -1448,7 +1446,6 @@ test_vk!(ui_image_planar_composites_rgb_and_gray, engine, {
 	let mut ui = Ui::init(&engine, 32, 32)?;
 	// 4x4 RGB: R=255, G=128, B=0 everywhere.
 	let planes = ImagePlanes::from_planes(
-		&engine,
 		&[vec![255_u8; 16], vec![128_u8; 16], vec![0_u8; 16]]
 			.iter()
 			.map(Vec::as_slice)
@@ -1472,7 +1469,7 @@ test_vk!(ui_image_planar_composites_rgb_and_gray, engine, {
 	assert_eq!(pixel(20, 8), pixel(31, 31));
 
 	// Single channel as grayscale through image_plane.
-	let gray = ImagePlanes::from_planes(&engine, &[&[200_u8; 16]], &[ImageDtype::U8], 4, 4)?;
+	let gray = ImagePlanes::from_planes(&[&[200_u8; 16]], &[ImageDtype::U8], 4, 4)?;
 	ui.begin_frame(16.0);
 	ui.image_plane(&gray, 0, 0, 0)?;
 	ui.end_frame();
@@ -1583,7 +1580,7 @@ test_vk!(training_viewer_renders_dashboard_and_preview, engine, {
 
 	// A published preview with a completed producer event is promoted by
 	// update and shown in the split preview panel (800 >= px(720)).
-	let texture = oa::render::texture_from_rgba8(&engine, &[250_u8; 4 * 4 * 4], 4, 4)?;
+	let texture = oa::render::texture_from_rgba8(&[250_u8; 4 * 4 * 4], 4, 4)?;
 	let completion = engine.checkpoint()?;
 	completion.wait()?;
 	source.publish_preview(oa::viewer::TrainingPreviewFrame {
@@ -1716,7 +1713,7 @@ test_vk!(plot_dark_axes_frame_and_labels_stay_outside_data, engine, {
 	axes.limits(-10.0, 10.0, -10.0, 10.0);
 	axes.x_label("optimizer step");
 	axes.y_label("cross entropy");
-	let values = figure.render(&engine)?.as_matrix().read_f32()?;
+	let values = figure.render()?.as_matrix().read_f32()?;
 	let area = dark_plot_rect(&figure, w, h, &values);
 	let cell = figure.cell_rect(0, 0, w, h);
 	let at = |x, y| values[(y * w as i32 + x) as usize];
@@ -1798,8 +1795,8 @@ test_vk!(plot_figure_render_is_deterministic, engine, {
 	figure
 		.ax(0, 0)
 		.scatter(&[0.0, 2.0, 4.0], &[0.5, 1.0, 0.25], Default::default());
-	let first = figure.render(&engine)?.as_matrix().read_f32()?;
-	let second = figure.render(&engine)?.as_matrix().read_f32()?;
+	let first = figure.render()?.as_matrix().read_f32()?;
+	let second = figure.render()?.as_matrix().read_f32()?;
 	assert_eq!(first, second, "repeated headless renders must be identical");
 	Ok(())
 });
@@ -1812,7 +1809,7 @@ test_vk!(plot_figure_light_theme_draws_light_canvas, engine, {
 		..Default::default()
 	});
 	figure.ax(0, 0).plot(&[0.0, 1.0], Default::default());
-	let image = figure.render(&engine)?;
+	let image = figure.render()?;
 	let values = image.as_matrix().read_f32()?;
 	let plane = 64 * 48;
 	// The figure corner is canvas background — the light preset must be bright.
@@ -1825,7 +1822,7 @@ test_vk!(
 	plot_figure_image_keeps_aspect_with_title_and_caption,
 	engine,
 	{
-		let texture = oa::render::texture_from_rgba8(&engine, &[255, 0, 0, 255].repeat(16), 4, 4)?;
+		let texture = oa::render::texture_from_rgba8(&[255, 0, 0, 255].repeat(16), 4, 4)?;
 		let mut figure = Figure::new(FigureConfig {
 			width: 320,
 			height: 180,
@@ -1836,7 +1833,7 @@ test_vk!(
 		axes.title("prediction");
 		axes.caption("ground truth");
 		axes.imshow(texture);
-		let values = figure.render(&engine)?.as_matrix().read_f32()?;
+		let values = figure.render()?.as_matrix().read_f32()?;
 		let plane = 320 * 180;
 		let red = |x: usize, y: usize| {
 			let i = y * 320 + x;
@@ -1856,7 +1853,7 @@ test_vk!(
 	{
 		// Device-resident ramp: row 0 holds the lowest values, row 3 the highest.
 		let ramp: Vec<f32> = (0..16).map(|i| i as f32).collect();
-		let matrix = oa::Matrix::new_from_f32(&engine, [4, 4], &ramp)?;
+		let matrix = oa::Matrix::new_from_f32([4, 4], &ramp)?;
 		let mut figure = Figure::new(FigureConfig {
 			width: 128,
 			height: 96,
@@ -1877,7 +1874,7 @@ test_vk!(
 		);
 		axes.grid(false);
 		axes.legend(false);
-		let image = figure.render(&engine)?;
+		let image = figure.render()?;
 		let values = image.as_matrix().read_f32()?;
 		let rect = figure.cell_rect(0, 0, 128, 96);
 		assert!(rect.h >= 8, "axes cell must have room for the heatmap");
@@ -1895,7 +1892,7 @@ test_vk!(
 );
 
 test_vk!(plot_figure_rejects_autoscale_on_device_heatmap, engine, {
-	let matrix = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.0, 1.0, 1.0, 0.0])?;
+	let matrix = oa::Matrix::new_from_f32([2, 2], &[0.0, 1.0, 1.0, 0.0])?;
 	let mut figure = Figure::new(FigureConfig {
 		width: 32,
 		height: 24,
@@ -1903,7 +1900,7 @@ test_vk!(plot_figure_rejects_autoscale_on_device_heatmap, engine, {
 	});
 	figure.ax(0, 0).heatmap_matrix(matrix, Default::default());
 	assert!(
-		figure.render(&engine).is_err(),
+		figure.render().is_err(),
 		"auto_scale cannot inspect device data and must fail"
 	);
 	Ok(())
@@ -2041,7 +2038,7 @@ test_vk!(plot_figure_matrix_line_matches_host_series, engine, {
 	let y: Vec<f32> = x.iter().map(|v| v * 0.5 + 0.5).collect();
 	let mut packed = x.clone();
 	packed.extend_from_slice(&y);
-	let matrix = oa::Matrix::new_from_f32(&engine, [2, 8], &packed)?;
+	let matrix = oa::Matrix::new_from_f32([2, 8], &packed)?;
 	let config = || FigureConfig {
 		width: 96,
 		height: 64,
@@ -2060,8 +2057,8 @@ test_vk!(plot_figure_matrix_line_matches_host_series, engine, {
 	axes.limits(0.0, 7.0, 0.0, 5.0);
 	axes.grid(false);
 	axes.legend(false);
-	let host_pixels = host.render(&engine)?.as_matrix().read_f32()?;
-	let device_pixels = device.render(&engine)?.as_matrix().read_f32()?;
+	let host_pixels = host.render()?.as_matrix().read_f32()?;
+	let device_pixels = device.render()?.as_matrix().read_f32()?;
 	assert_eq!(
 		host_pixels, device_pixels,
 		"device-resident [2, N] series must render identically to plot_xy"
@@ -2071,7 +2068,7 @@ test_vk!(plot_figure_matrix_line_matches_host_series, engine, {
 
 test_vk!(plot_figure_matrix_y_series_draws, engine, {
 	// [N] index-mode series: render must differ from the empty figure.
-	let matrix = oa::Matrix::new_from_f32(&engine, [8], &[0.0, 1.0, 0.0, 2.0, 0.5, 3.0, 1.0, 2.5])?;
+	let matrix = oa::Matrix::new_from_f32([8], &[0.0, 1.0, 0.0, 2.0, 0.5, 3.0, 1.0, 2.5])?;
 	let config = || FigureConfig {
 		width: 96,
 		height: 64,
@@ -2084,8 +2081,8 @@ test_vk!(plot_figure_matrix_y_series_draws, engine, {
 	let axes = figure.ax(0, 0);
 	axes.plot_matrix_y(&matrix, Default::default());
 	axes.limits(0.0, 7.0, -0.5, 3.5);
-	let a = empty.render(&engine)?.as_matrix().read_f32()?;
-	let b = figure.render(&engine)?.as_matrix().read_f32()?;
+	let a = empty.render()?.as_matrix().read_f32()?;
+	let b = figure.render()?.as_matrix().read_f32()?;
 	assert_ne!(a, b, "device-resident index series must draw");
 	Ok(())
 });
@@ -2105,10 +2102,10 @@ test_vk!(plot_figure_log_scale_changes_render, engine, {
 	let axes = log.ax(0, 0);
 	axes.plot(&[1.0, 10.0, 100.0, 1000.0], Default::default());
 	axes.yscale(oa::plot::Scale::Log10);
-	let a = linear.render(&engine)?.as_matrix().read_f32()?;
-	let b = log.render(&engine)?.as_matrix().read_f32()?;
+	let a = linear.render()?.as_matrix().read_f32()?;
+	let b = log.render()?.as_matrix().read_f32()?;
 	assert_ne!(a, b, "log scale must transform the rendered series");
-	let c = log.render(&engine)?.as_matrix().read_f32()?;
+	let c = log.render()?.as_matrix().read_f32()?;
 	assert_eq!(b, c, "log-scale render must be deterministic");
 	Ok(())
 });
@@ -2137,7 +2134,7 @@ test_vk!(plot_figure_colorbar_draws_ramp_strip, engine, {
 	);
 	figure.ax(0, 0).grid(false);
 	figure.ax(0, 0).legend(false);
-	let image = figure.render(&engine)?;
+	let image = figure.render()?;
 	let values = image.as_matrix().read_f32()?;
 	let rect = figure.cell_rect(0, 0, 160, 120);
 	// The strip sits in the reserved band: 6 px right of the plot area,
@@ -2372,7 +2369,7 @@ test_vk!(ui_image_at_samples_native_view, engine, {
 			px.copy_from_slice(&c);
 		}
 	}
-	let texture = texture_from_rgba8(&engine, &src, 4, 4)?;
+	let texture = texture_from_rgba8(&src, 4, 4)?;
 
 	// Upscale 4x -> each source texel fills a 4x4 block, exact nearest.
 	let mut ui = Ui::init(&engine, 16, 16)?;
@@ -2399,7 +2396,7 @@ test_vk!(ui_image_at_samples_native_view, engine, {
 			checks[(y * 4 + x) * 4..(y * 4 + x + 1) * 4].copy_from_slice(&[v, v, v, 255]);
 		}
 	}
-	let checker = texture_from_rgba8(&engine, &checks, 4, 4)?;
+	let checker = texture_from_rgba8(&checks, 4, 4)?;
 	let mut ui = Ui::init(&engine, 4, 4)?;
 	ui.begin_frame(16.0);
 	ui.image_at(&checker, PixelRect::new(0, 0, 2, 2))?;
@@ -2483,7 +2480,7 @@ test_vk!(ui_plot_symlog_renders_both_signs, engine, {
 		},
 	);
 	// `Image::as_matrix` is planar `[4, H, W]` — index the R plane directly.
-	let image = figure.render(&engine)?;
+	let image = figure.render()?;
 	let values = image.as_matrix().read_f32()?;
 	let cell = dark_plot_rect(&figure, 160, 120, &values);
 	let row_has_ink =
@@ -2519,7 +2516,7 @@ test_vk!(ui_plot_series_highlight_dims_others, engine, {
 		axes.limits(0.0, 10.0, 0.0, 10.0);
 		axes.legend(false);
 	}
-	let base = figure.render(&engine)?.as_matrix().read_f32()?;
+	let base = figure.render()?.as_matrix().read_f32()?;
 	let cell = dark_plot_rect(&figure, 160, 120, &base);
 	// y=2 maps to 20% above the cell bottom; y=8 to 20% below the top.
 	let dim_row = cell.y + cell.h - 1 - (cell.h as f32 * 0.2) as i32;
@@ -2532,7 +2529,7 @@ test_vk!(ui_plot_series_highlight_dims_others, engine, {
 	};
 	assert!(sample(&base, dim_row) > 0.5 && sample(&base, bright_row) > 0.5);
 	figure.ax(0, 0).set_series_highlight(Some(0));
-	let dimmed = figure.render(&engine)?.as_matrix().read_f32()?;
+	let dimmed = figure.render()?.as_matrix().read_f32()?;
 	assert!(
 		sample(&dimmed, dim_row) < sample(&base, dim_row) * 0.6 + 0.05,
 		"the non-highlighted line must fade (base={}, dimmed={})",
@@ -2565,7 +2562,7 @@ test_vk!(ui_plot_stream_scrolls_ring_window, engine, {
 			..Default::default()
 		},
 	);
-	let image = figure.render(&engine)?;
+	let image = figure.render()?;
 	let values = image.as_matrix().read_f32()?;
 	let cell = dark_plot_rect(&figure, 160, 120, &values);
 	// A rising ramp drawn across the whole window: ink near the top-right
@@ -2610,7 +2607,7 @@ test_vk!(ui_plot_band_fills_between_curves, engine, {
 		axes.grid(false);
 		axes.legend(false);
 	}
-	let image = figure.render(&engine)?;
+	let image = figure.render()?;
 	let values = image.as_matrix().read_f32()?;
 	let plane = 160 * 120;
 	let cell = dark_plot_rect(&figure, 160, 120, &values);
@@ -2665,7 +2662,7 @@ test_vk!(ui_plot_grouped_and_stacked_bars, engine, {
 		axes.grid(false);
 		axes.legend(false);
 	}
-	let image = grouped.render(&engine)?;
+	let image = grouped.render()?;
 	let values = image.as_matrix().read_f32()?;
 	let plane = 160 * 120;
 	let cell = dark_plot_rect(&grouped, 160, 120, &values);
@@ -2708,7 +2705,7 @@ test_vk!(ui_plot_grouped_and_stacked_bars, engine, {
 		axes.grid(false);
 		axes.legend(false);
 	}
-	let image = stacked.render(&engine)?;
+	let image = stacked.render()?;
 	let values = image.as_matrix().read_f32()?;
 	let cell = dark_plot_rect(&stacked, 160, 120, &values);
 	let bar_x = (cell.x + cell.w / 2) as usize;
@@ -2742,9 +2739,9 @@ test_vk!(ui_plot_explicit_ticks_place_grid, engine, {
 		axes.legend(false);
 		axes.xticks(&[2.0, 5.0, 8.0]);
 	}
-	let grid = figure.render(&engine)?.as_matrix().read_f32()?;
+	let grid = figure.render()?.as_matrix().read_f32()?;
 	figure.ax(0, 0).grid(false);
-	let plain = figure.render(&engine)?.as_matrix().read_f32()?;
+	let plain = figure.render()?.as_matrix().read_f32()?;
 	let plot = dark_plot_rect(&figure, 160, 120, &plain);
 	let grid_column = |fraction: f32| {
 		let x = plot.x + (fraction * (plot.w - 1) as f32).round() as i32;
@@ -2788,7 +2785,7 @@ test_vk!(ui_plot_boxplot_draws_quartiles, engine, {
 		axes.grid(false);
 		axes.legend(false);
 	}
-	let image = figure.render(&engine)?;
+	let image = figure.render()?;
 	let values = image.as_matrix().read_f32()?;
 	let cell = dark_plot_rect(&figure, 160, 120, &values);
 	let cx = (cell.x + cell.w / 2) as usize;
@@ -2837,7 +2834,7 @@ test_vk!(plot_figure_save_png_child, engine, {
 	let Ok(path) = std::env::var("OA_PLOT_PNG_OUT") else {
 		return Ok(());
 	};
-	plot_sink_figure().save_to(&engine, &path)?;
+	plot_sink_figure().save_to(&path)?;
 	Ok(())
 });
 
@@ -2846,7 +2843,7 @@ test_vk!(plot_figure_save_png_matches_child_process, engine, {
 	std::fs::create_dir_all(&dir).expect("create sink test dir");
 	let parent_png = dir.join("parent.png");
 	let child_png = dir.join("child.png");
-	plot_sink_figure().save_to(&engine, &parent_png.to_string_lossy())?;
+	plot_sink_figure().save_to(&parent_png.to_string_lossy())?;
 	let status = std::process::Command::new(std::env::current_exe().expect("current test exe path"))
 		.args([
 			"--include-ignored",
@@ -2876,12 +2873,12 @@ test_vk!(plot_figure_save_formats_decode_back, engine, {
 	let dir = std::env::temp_dir().join(format!("oa-plot-fmt-{}", std::process::id()));
 	std::fs::create_dir_all(&dir).expect("create format test dir");
 	let figure = plot_sink_figure();
-	let expected = figure.render(&engine)?.as_matrix().read_f32()?;
+	let expected = figure.render()?.as_matrix().read_f32()?;
 	let plane = 96 * 64;
 	for extension in ["png", "jpg", "webp"] {
 		let path = dir.join(format!("figure.{extension}"));
-		figure.save_to(&engine, &path.to_string_lossy())?;
-		let decoded = oa::image::decode_file(&engine, &path, oa::ImageFormat::Rgba)?;
+		figure.save_to(&path.to_string_lossy())?;
+		let decoded = oa::image::decode_file(&path, oa::ImageFormat::Rgba)?;
 		let values = decoded.as_matrix().read_f32()?;
 		let [batch, channels, height, width] = *decoded.as_matrix().shape() else {
 			panic!("decoded figure must be [1, 4, H, W]");

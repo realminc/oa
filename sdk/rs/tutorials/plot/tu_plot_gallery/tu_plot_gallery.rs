@@ -443,6 +443,7 @@ fn main() -> anyhow::Result<()> {
 	} else {
 		Engine::new()?
 	};
+	Engine::set_default(engine.clone());
 
 	let mut dark = gallery(Theme::Dark);
 	let mut light = gallery(Theme::Light);
@@ -455,7 +456,7 @@ fn main() -> anyhow::Result<()> {
 
 	let save = |fig: &mut oa::plot::Figure, name: &str| -> anyhow::Result<()> {
 		let path = output.join(name);
-		fig.save_to(&engine, path.to_str().unwrap_or(name))?;
+		fig.save_to(path.to_str().unwrap_or(name))?;
 		println!("  {}", path.display());
 		Ok(())
 	};
@@ -468,7 +469,7 @@ fn main() -> anyhow::Result<()> {
 	save(&mut landscapes, "oa-plot-landscapes-dark.png")?;
 
 	if show {
-		dark.show(&engine)?;
+		dark.show()?;
 	}
 	Ok(())
 }

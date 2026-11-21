@@ -121,7 +121,7 @@ test_vk!(cart_pole_gpu_step_matches_scalar_cpu_oracle, engine, {
 	environment.wait(&initial_reset)?;
 	let initial = environment.observation().read_f32()?;
 	let actions = [0_i32, 1, 1, 0];
-	let action = oa::Matrix::new_from_slice(&engine, [4], &actions)?;
+	let action = oa::Matrix::new_from_slice([4], &actions)?;
 	let transition = environment.step(&action)?;
 	let completion = environment.submit()?;
 	environment.wait(&completion)?;
@@ -173,7 +173,7 @@ test_vk!(
 		assert_eq!(environment.observation().read_f32()?, first_initial);
 		assert_eq!(environment.episode_index().read::<u32>()?, [0, 0, 0]);
 
-		let actions = oa::Matrix::new_from_slice(&engine, [3], &[0_i32, 1, 0])?;
+		let actions = oa::Matrix::new_from_slice([3], &[0_i32, 1, 0])?;
 		environment.step(&actions)?;
 		let event = environment.submit()?;
 		environment.wait(&event)?;
@@ -209,7 +209,7 @@ test_vk!(cart_pole_invalid_action_terminates_only_its_lane, engine, {
 			..CartPoleConfig::default()
 		},
 	)?;
-	let action = oa::Matrix::new_from_slice(&engine, [2], &[7_i32, 1])?;
+	let action = oa::Matrix::new_from_slice([2], &[7_i32, 1])?;
 	let transition = environment.step(&action)?;
 	let event = environment.submit()?;
 	environment.wait(&event)?;
@@ -232,7 +232,7 @@ test_vk!(
 				..CartPoleConfig::default()
 			},
 		)?;
-		let actions = oa::Matrix::new_from_slice(&engine, [2], &[0_i32, 1])?;
+		let actions = oa::Matrix::new_from_slice([2], &[0_i32, 1])?;
 		environment.step(&actions)?;
 		environment.reset_completed()?;
 		environment.step(&actions)?;
@@ -263,11 +263,8 @@ test_vk!(
 		let mut replay = CartPole::new(&engine, CartPoleConfig { seed: 0, ..config })?;
 		let event = replay.submit()?;
 		replay.wait(&event)?;
-		let cursor = oa::Matrix::new_from_slice(
-			&engine,
-			[7],
-			&[0_u32, 1, 0, seed as u32, (seed >> 32) as u32, 0, 0],
-		)?;
+		let cursor =
+			oa::Matrix::new_from_slice([7], &[0_u32, 1, 0, seed as u32, (seed >> 32) as u32, 0, 0])?;
 
 		// Full reset through the captured cursor program is bit-exact with the
 		// eager push-seeded reset under the same collection seed.
@@ -281,7 +278,7 @@ test_vk!(
 
 		// A captured deterministic step replays bit-exact against the eager step;
 		// lane 0's invalid action terminates it for the completed-reset check.
-		let action = oa::Matrix::new_from_slice(&engine, [4], &[5_i32, 1, 0, 1])?;
+		let action = oa::Matrix::new_from_slice([4], &[5_i32, 1, 0, 1])?;
 		let expected = eager.step(&action)?;
 		let event = eager.submit()?;
 		eager.wait(&event)?;
@@ -339,15 +336,12 @@ test_vk!(
 		const SEED: u64 = 0x5eed_5eed;
 		let mut batches = Vec::new();
 		for compiled in [false, true] {
-			let model = CategoricalActorCritic::new(
-				&engine,
-				CategoricalActorCriticConfig {
-					observation_size: 4,
-					action_count: 2,
-					hidden_size: 8,
-					seed: 77,
-				},
-			)?;
+			let model = CategoricalActorCritic::new(CategoricalActorCriticConfig {
+				observation_size: 4,
+				action_count: 2,
+				hidden_size: 8,
+				seed: 77,
+			})?;
 			let mut optimizer = AdamW::new(model.all_parameters()?, 0.001)?;
 			let mut environment = CartPole::new(
 				&engine,
@@ -449,15 +443,12 @@ test_vk!(
 			)?;
 			let event = environment.submit()?;
 			environment.wait(&event)?;
-			let model = CategoricalActorCritic::new(
-				&engine,
-				CategoricalActorCriticConfig {
-					observation_size: 4,
-					action_count: 2,
-					hidden_size: 8,
-					seed: 77,
-				},
-			)?;
+			let model = CategoricalActorCritic::new(CategoricalActorCriticConfig {
+				observation_size: 4,
+				action_count: 2,
+				hidden_size: 8,
+				seed: 77,
+			})?;
 			let mut optimizer = AdamW::new(model.all_parameters()?, 0.001)?;
 			let config = PpoTrainerConfig {
 				rollouts: 2,

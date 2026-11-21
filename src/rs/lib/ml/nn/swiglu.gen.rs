@@ -39,13 +39,29 @@ pub struct Swiglu {
 }
 
 impl Swiglu {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(
+		input_features: usize,
+		intermediate_size: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_on(
+			&Engine::current()?,
+			input_features,
+			intermediate_size,
+			bias,
+			seed,
+		)
+	}
+
 	/// Construct gate, up, and down projections with deterministic Xavier weights.
 	///
 	/// # Errors
 	///
 	/// Returns an error when dimensions are zero, shape arithmetic overflows, or
 	/// parameter allocation and registration fail.
-	pub fn new_with_seed(
+	pub fn new_with_seed_on(
 		engine: &Engine,
 		input_features: usize,
 		intermediate_size: usize,
@@ -189,7 +205,7 @@ fn xavier_parameter(
 	let limit = (6.0_f32 / denominator as f32).sqrt();
 	Parameter::new(
 		name,
-		Matrix::new_from_f32(
+		Matrix::new_from_f32_on(
 			engine,
 			[output_features, input_features],
 			&random::symmetric_uniform(count, limit, seed),
@@ -203,7 +219,7 @@ fn projection_bias(
 	size: usize,
 	trainable: bool,
 ) -> Result<ProjectionBias> {
-	let value = Matrix::new_from_f32(engine, [size], &vec![0.0; size])?;
+	let value = Matrix::new_from_f32_on(engine, [size], &vec![0.0; size])?;
 	if trainable {
 		Ok(ProjectionBias::Parameter(Parameter::new(name, value)?))
 	} else {

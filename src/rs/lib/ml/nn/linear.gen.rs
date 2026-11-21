@@ -39,6 +39,11 @@ impl LinearBias {
 }
 
 impl Linear {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(input_features: usize, output_features: usize, seed: u64) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, input_features, output_features, seed)
+	}
+
 	/// Construct a deterministically initialized linear layer.
 	///
 	/// `seed` controls an independent SplitMix64 Xavier-uniform initializer.
@@ -47,13 +52,29 @@ impl Linear {
 	///
 	/// Returns an error when either feature count is zero, shape arithmetic
 	/// overflows, or parameter allocation/upload fails.
-	pub fn new_with_seed(
+	pub fn new_with_seed_on(
 		engine: &Engine,
 		input_features: usize,
 		output_features: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_bias(engine, input_features, output_features, true, seed)
+		Self::new_with_seed_and_bias_on(engine, input_features, output_features, true, seed)
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed_and_bias(
+		input_features: usize,
+		output_features: usize,
+		trainable_bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_bias_on(
+			&Engine::current()?,
+			input_features,
+			output_features,
+			trainable_bias,
+			seed,
+		)
 	}
 
 	/// Construct a deterministically initialized linear layer with optional bias.
@@ -65,7 +86,7 @@ impl Linear {
 	///
 	/// Returns an error when either feature count is zero, shape arithmetic
 	/// overflows, or parameter allocation/upload fails.
-	pub fn new_with_seed_and_bias(
+	pub fn new_with_seed_and_bias_on(
 		engine: &Engine,
 		input_features: usize,
 		output_features: usize,
@@ -85,8 +106,8 @@ impl Linear {
 			.ok_or_else(|| Error::invalid_argument("linear Xavier extent overflows usize"))?;
 		let limit = (6.0_f32 / denominator as f32).sqrt();
 		let weights = random::symmetric_uniform(weight_count, limit, seed);
-		let weight = Matrix::new_from_f32(engine, [output_features, input_features], &weights)?;
-		let bias = Matrix::new_from_f32(engine, [output_features], &vec![0.0; output_features])?;
+		let weight = Matrix::new_from_f32_on(engine, [output_features, input_features], &weights)?;
+		let bias = Matrix::new_from_f32_on(engine, [output_features], &vec![0.0; output_features])?;
 		Self::new_from_parts(weight, bias, trainable_bias)
 	}
 

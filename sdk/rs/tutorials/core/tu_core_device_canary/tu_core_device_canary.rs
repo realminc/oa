@@ -54,8 +54,8 @@ fn main() -> anyhow::Result<()> {
 	// Capture a minimal plan: ones + full(2) → add.  The plan diagnostics
 	// and debug report are the device-admission evidence.
 	let (plan, result) = engine.capture(|| {
-		let a = matrix::ones(&engine, [64, 128])?;
-		let b = matrix::full(&engine, [64, 128], 2.0_f32)?;
+		let a = matrix::ones([64, 128])?;
+		let b = matrix::full([64, 128], 2.0_f32)?;
 		matrix::add(&a, &b)
 	})?;
 

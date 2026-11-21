@@ -198,24 +198,24 @@ impl State {
 			.iter()
 			.map(|p| {
 				let d = p.data();
-				Matrix::new_from_f32(engine, d.shape().to_vec(), &vec![0.; d.num_elements()])
+				Matrix::new_from_f32_on(engine, d.shape().to_vec(), &vec![0.; d.num_elements()])
 			})
 			.collect::<Result<Vec<_>>>()?;
 		let metrics: [Result<Matrix>; 4] =
-			std::array::from_fn(|_| Matrix::new_from_f32(engine, [], &[0.]));
+			std::array::from_fn(|_| Matrix::new_from_f32_on(engine, [], &[0.]));
 		let metrics: [Matrix; 4] = metrics
 			.into_iter()
 			.collect::<Result<Vec<_>>>()?
 			.try_into()
 			.map_err(|_| Error::internal("PPO metric count"))?;
-		let cursor = Matrix::new_from_slice(engine, [2], &[0_u32, 1])?;
+		let cursor = Matrix::new_from_slice_on(engine, [2], &[0_u32, 1])?;
 		engine.checkpoint()?.wait()?;
-		let normalized = Matrix::new_from_f32(
+		let normalized = Matrix::new_from_f32_on(
 			engine,
 			inputs[3].shape().to_vec(),
 			&vec![0.; inputs[3].num_elements()],
 		)?;
-		let copy_cursor = Matrix::new_from_slice(engine, [2], &[0_u32, 1])?;
+		let copy_cursor = Matrix::new_from_slice_on(engine, [2], &[0_u32, 1])?;
 		let (normalize, ()) = engine.capture_with_initialized_state(&[&normalized], || {
 			crate::ml::matrix::training_accumulate(
 				&normalized,

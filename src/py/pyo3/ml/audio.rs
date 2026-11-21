@@ -16,8 +16,9 @@ pub(crate) struct PythonSpeechCommandsDataset {
 impl PythonSpeechCommandsDataset {
 	/// Load and decode every clip under `<dir>/<label>/`.
 	#[new]
-	pub fn new(engine: &PythonEngine, dir: &str) -> PyResult<Self> {
-		audio::SpeechCommandsDataset::load(&engine.inner, std::path::Path::new(dir))
+	pub fn new(dir: &str, engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		audio::SpeechCommandsDataset::load_on(&engine, std::path::Path::new(dir))
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -28,19 +29,29 @@ impl PythonSpeechCommandsDataset {
 	}
 
 	/// One mel feature per selected clip as `[batch, 1, mels, frames]` NCHW.
-	pub fn mel_features(&self, engine: &PythonEngine, indices: Vec<usize>) -> PyResult<PythonMatrix> {
+	pub fn mel_features(
+		&self,
+		indices: Vec<usize>,
+		engine: Option<&PythonEngine>,
+	) -> PyResult<PythonMatrix> {
+		let engine = PythonEngine::resolve(engine)?;
 		self
 			.inner
-			.mel_features(&engine.inner, &indices)
+			.mel_features_on(&engine, &indices)
 			.map(PythonMatrix::wrap)
 			.map_err(python_error)
 	}
 
 	/// U32 class targets for the selected clips.
-	pub fn labels(&self, engine: &PythonEngine, indices: Vec<usize>) -> PyResult<PythonMatrix> {
+	pub fn labels(
+		&self,
+		indices: Vec<usize>,
+		engine: Option<&PythonEngine>,
+	) -> PyResult<PythonMatrix> {
+		let engine = PythonEngine::resolve(engine)?;
 		self
 			.inner
-			.labels(&engine.inner, &indices)
+			.mel_features_on(&engine, &indices)
 			.map(PythonMatrix::wrap)
 			.map_err(python_error)
 	}
@@ -53,12 +64,13 @@ impl PythonSpeechCommandsDataset {
 /// Build the TF-tutorial-mirrored command classifier as a `Sequential`.
 #[pyfunction]
 pub fn ml_audio_commands_cnn(
-	engine: &PythonEngine,
 	mel_bands: usize,
 	mel_frames: usize,
 	num_classes: usize,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<PythonSequential> {
-	audio::commands_cnn(&engine.inner, mel_bands, mel_frames, num_classes)
+	let engine = PythonEngine::resolve(engine)?;
+	audio::commands_cnn_on(&engine, mel_bands, mel_frames, num_classes)
 		.map(PythonSequential::wrap)
 		.map_err(python_error)
 }

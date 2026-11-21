@@ -8,8 +8,8 @@ const BLOCK_SIZE: usize = 32;
 const Q4_BYTES_PER_BLOCK: usize = 16;
 const Q8_BYTES_PER_BLOCK: usize = 32;
 
-fn make_input(engine: &oa::Engine, values: &[f32]) -> oa::Result<oa::Matrix> {
-	oa::Matrix::new_from_f32(engine, [values.len()], values)
+fn make_input(_engine: &oa::Engine, values: &[f32]) -> oa::Result<oa::Matrix> {
+	oa::Matrix::new_from_f32([values.len()], values)
 }
 
 fn quantize_nibble(value: f32, scale: f32) -> u8 {
@@ -214,8 +214,8 @@ test_vk!(
 	q4_invalid_scale_values_produce_deterministic_zero_blocks,
 	engine,
 	{
-		let payload = oa::Matrix::new_from_slice(&engine, [48], &[0x77_u8; 48])?;
-		let scale = oa::Matrix::new_from_f32(&engine, [3], &[f32::NAN, 0.0, -1.0])?;
+		let payload = oa::Matrix::new_from_slice([48], &[0x77_u8; 48])?;
+		let scale = oa::Matrix::new_from_f32([3], &[f32::NAN, 0.0, -1.0])?;
 		let weight = QuantMatrix::from_planes(payload, scale, vec![96], Quantization::Q4)?;
 		assert_eq!(dequantize(&weight)?.read_f32()?, vec![0.0; 96]);
 		Ok(())
@@ -314,8 +314,8 @@ test_vk!(
 	q8_invalid_scale_values_produce_deterministic_zero_blocks,
 	engine,
 	{
-		let payload = oa::Matrix::new_from_slice(&engine, [96], &[0_u8; 96])?;
-		let scale = oa::Matrix::new_from_f32(&engine, [3], &[f32::NAN, 0.0, -1.0])?;
+		let payload = oa::Matrix::new_from_slice([96], &[0_u8; 96])?;
+		let scale = oa::Matrix::new_from_f32([3], &[f32::NAN, 0.0, -1.0])?;
 		let weight = QuantMatrix::from_planes(payload, scale, vec![96], Quantization::Q8)?;
 		assert_eq!(dequantize(&weight)?.read_f32()?, vec![0.0; 96]);
 		Ok(())
@@ -345,9 +345,9 @@ test_vk!(
 		let weight_values: Vec<f32> = (0..output_features * input_features)
 			.map(|i| (i as f32 * 0.23).cos() * 7.0)
 			.collect();
-		let input = oa::Matrix::new_from_f32(&engine, [rows, input_features], &input_values)?;
+		let input = oa::Matrix::new_from_f32([rows, input_features], &input_values)?;
 		let weight = quantize(
-			&oa::Matrix::new_from_f32(&engine, [output_features, input_features], &weight_values)?,
+			&oa::Matrix::new_from_f32([output_features, input_features], &weight_values)?,
 			Quantization::Q4,
 		)?;
 		let expected = reference_mat_mul_nt(
@@ -379,9 +379,9 @@ test_vk!(
 		let weight_values: Vec<f32> = (0..output_features * input_features)
 			.map(|i| (i as f32 * 0.23).cos() * 127.0)
 			.collect();
-		let input = oa::Matrix::new_from_f32(&engine, [rows, input_features], &input_values)?;
+		let input = oa::Matrix::new_from_f32([rows, input_features], &input_values)?;
 		let weight = quantize(
-			&oa::Matrix::new_from_f32(&engine, [output_features, input_features], &weight_values)?,
+			&oa::Matrix::new_from_f32([output_features, input_features], &weight_values)?,
 			Quantization::Q8,
 		)?;
 		let expected = reference_mat_mul_nt(
@@ -413,9 +413,9 @@ test_vk!(
 		let weight_values: Vec<f32> = (0..output_features * input_features)
 			.map(|i| (i as f32 * 0.29).cos() * 5.0)
 			.collect();
-		let input = oa::Matrix::new_from_f32(&engine, [batches, rows, input_features], &input_values)?;
+		let input = oa::Matrix::new_from_f32([batches, rows, input_features], &input_values)?;
 		let weight = quantize(
-			&oa::Matrix::new_from_f32(&engine, [output_features, input_features], &weight_values)?,
+			&oa::Matrix::new_from_f32([output_features, input_features], &weight_values)?,
 			Quantization::Q8,
 		)?;
 		let dequantized = dequantize_q8_oracle(
@@ -441,7 +441,7 @@ test_vk!(
 	quantized_value_owns_format_shape_and_private_planes,
 	engine,
 	{
-		let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -2.0, 3.0, -4.0, 5.0, -6.0])?;
+		let input = oa::Matrix::new_from_f32([2, 3], &[1.0, -2.0, 3.0, -4.0, 5.0, -6.0])?;
 		let weight = quantize(&input, Quantization::Q4)?;
 		assert_eq!(weight.quantization(), Quantization::Q4);
 		assert_eq!(weight.shape(), &[2, 3]);
@@ -456,7 +456,7 @@ test_vk!(
 
 test_vk!(dequantize_restores_the_logical_shape, engine, {
 	let values: Vec<f32> = (0..99).map(|i| (i as f32 * 0.13).sin() * 5.0).collect();
-	let input = oa::Matrix::new_from_f32(&engine, [3, 33], &values)?;
+	let input = oa::Matrix::new_from_f32([3, 33], &values)?;
 	let output = dequantize(&quantize(&input, Quantization::Q8)?)?;
 	assert_eq!(output.shape(), &[3, 33]);
 	expect_round_trip(&engine, &values, Quantization::Q8)
@@ -466,19 +466,19 @@ test_vk!(
 	quantized_surface_fails_closed_on_invalid_contracts,
 	engine,
 	{
-		let f32_matrix = oa::Matrix::new_from_f32(&engine, [32], &[0.0; 32])?;
-		let byte_matrix = oa::Matrix::new_from_slice(&engine, [32], &[0_u8; 32])?;
-		let empty = oa::Matrix::new_from_f32(&engine, [0], &[])?;
+		let f32_matrix = oa::Matrix::new_from_f32([32], &[0.0; 32])?;
+		let byte_matrix = oa::Matrix::new_from_slice([32], &[0_u8; 32])?;
+		let empty = oa::Matrix::new_from_f32([0], &[])?;
 
 		assert!(quantize(&empty, Quantization::Q4).is_err());
 		assert!(quantize(&byte_matrix, Quantization::Q4).is_err());
 		assert!(quantize(&byte_matrix, Quantization::Q8).is_err());
 
 		let weight = quantize(
-			&oa::Matrix::new_from_f32(&engine, [2, 32], &[0.0; 64])?,
+			&oa::Matrix::new_from_f32([2, 32], &[0.0; 64])?,
 			Quantization::Q8,
 		)?;
-		let bad_scale = oa::Matrix::new_from_f32(&engine, [3], &[1.0; 3])?;
+		let bad_scale = oa::Matrix::new_from_f32([3], &[1.0; 3])?;
 		assert!(
 			QuantMatrix::from_planes(
 				weight.payload().clone(),
@@ -499,14 +499,14 @@ test_vk!(
 		);
 
 		let rank3_weight = quantize(
-			&oa::Matrix::new_from_f32(&engine, [3, 4, 5], &[0.0; 60])?,
+			&oa::Matrix::new_from_f32([3, 4, 5], &[0.0; 60])?,
 			Quantization::Q8,
 		)?;
-		let rank2_input = oa::Matrix::new_from_f32(&engine, [2, 5], &[0.0; 10])?;
+		let rank2_input = oa::Matrix::new_from_f32([2, 5], &[0.0; 10])?;
 		assert!(mat_mul_nt(&rank2_input, &rank3_weight).is_err());
 
-		let matrix_input = oa::Matrix::new_from_f32(&engine, [2, 32], &[0.0; 64])?;
-		let wrong_k = oa::Matrix::new_from_f32(&engine, [2, 31], &[0.0; 62])?;
+		let matrix_input = oa::Matrix::new_from_f32([2, 32], &[0.0; 64])?;
+		let wrong_k = oa::Matrix::new_from_f32([2, 31], &[0.0; 62])?;
 		assert!(mat_mul_nt(&wrong_k, &weight).is_err());
 		assert!(mat_mul_nt(&matrix_input, &weight).is_ok());
 		Ok(())
@@ -514,23 +514,23 @@ test_vk!(
 );
 
 test_vk!(quantized_mat_mul_rejects_invalid_contracts, engine, {
-	let weight_matrix = oa::Matrix::new_from_f32(&engine, [4, 32], &[0.0; 128])?;
+	let weight_matrix = oa::Matrix::new_from_f32([4, 32], &[0.0; 128])?;
 	let weight = quantize(&weight_matrix, Quantization::Q4)?;
-	let rank1_input = oa::Matrix::new_from_f32(&engine, [32], &[0.0; 32])?;
+	let rank1_input = oa::Matrix::new_from_f32([32], &[0.0; 32])?;
 	assert!(mat_mul_nt(&rank1_input, &weight).is_err());
-	let mismatched = oa::Matrix::new_from_f32(&engine, [2, 31], &[0.0; 62])?;
+	let mismatched = oa::Matrix::new_from_f32([2, 31], &[0.0; 62])?;
 	assert!(mat_mul_nt(&mismatched, &weight).is_err());
-	let valid = oa::Matrix::new_from_f32(&engine, [2, 32], &[0.0; 64])?;
+	let valid = oa::Matrix::new_from_f32([2, 32], &[0.0; 64])?;
 	assert_eq!(mat_mul_nt(&valid, &weight)?.shape(), &[2, 4]);
 	Ok(())
 });
 
 test_vk!(quantized_mat_mul_zero_rows_do_not_dispatch, engine, {
 	let weight = quantize(
-		&oa::Matrix::new_from_f32(&engine, [4, 32], &[1.0; 128])?,
+		&oa::Matrix::new_from_f32([4, 32], &[1.0; 128])?,
 		Quantization::Q8,
 	)?;
-	let input = oa::Matrix::new_from_f32(&engine, [0, 32], &[])?;
+	let input = oa::Matrix::new_from_f32([0, 32], &[])?;
 	let output = mat_mul_nt(&input, &weight)?;
 	assert_eq!(output.shape(), &[0, 4]);
 	assert_eq!(output.num_elements(), 0);
@@ -543,7 +543,7 @@ test_vk!(
 	{
 		let (capture_plan, weight) = engine.capture(|| {
 			quantize(
-				&oa::Matrix::new_from_f32(&engine, [4, 32], &[1.0; 128])?,
+				&oa::Matrix::new_from_f32([4, 32], &[1.0; 128])?,
 				Quantization::Q4,
 			)
 		})?;
@@ -561,7 +561,7 @@ test_vk!(
 		assert!(capture_plan.captured_resources().len() >= 2);
 		engine.submit(&capture_plan)?.wait()?;
 
-		let input = oa::Matrix::new_from_f32(&engine, [2, 32], &[0.5; 64])?;
+		let input = oa::Matrix::new_from_f32([2, 32], &[0.5; 64])?;
 		let (matmul_plan, _) = engine.capture(|| mat_mul_nt(&input, &weight))?;
 		let semantic = matmul_plan.semantic_graph();
 		assert_eq!(semantic.operations().len(), 1);
@@ -578,10 +578,9 @@ test_vk!(
 	engine,
 	{
 		let input_values: Vec<f32> = (0..96).map(|i| (i as f32 * 0.19).sin() * 4.0).collect();
-		let input = oa::Matrix::new_from_f32(&engine, [3, 32], &input_values)?;
+		let input = oa::Matrix::new_from_f32([3, 32], &input_values)?;
 		let weight = quantize(
 			&oa::Matrix::new_from_f32(
-				&engine,
 				[4, 32],
 				&(0..128)
 					.map(|i| (i as f32 * 0.07).cos() * 9.0)

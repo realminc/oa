@@ -274,8 +274,8 @@ impl State {
 		continuing: bool,
 	) -> Result<Self> {
 		rollout.initialize_replay_storage()?;
-		let cursor = Matrix::new_from_slice(engine, [7], &[0_u32, 1, 0, 1, 0, 0, 0])?;
-		let copy_cursor = Matrix::new_from_slice(engine, [2], &[0_u32, 1])?;
+		let cursor = Matrix::new_from_slice_on(engine, [7], &[0_u32, 1, 0, 1, 0, 0, 0])?;
+		let copy_cursor = Matrix::new_from_slice_on(engine, [2], &[0_u32, 1])?;
 		let observation = env.observation().clone();
 		let observation_elements = ppo
 			.observation_shape

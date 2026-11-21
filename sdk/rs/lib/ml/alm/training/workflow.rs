@@ -79,7 +79,7 @@ pub fn tokenize_corpus(
 			)));
 		}
 		let input =
-			Matrix::new_from_slice(engine, [1, frames, tokenizer.config().input_dim], features)?;
+			Matrix::new_from_slice_on(engine, [1, frames, tokenizer.config().input_dim], features)?;
 		let mut levels = tokenizer.tokenize(&input)?;
 		let tokens = levels
 			.pop()

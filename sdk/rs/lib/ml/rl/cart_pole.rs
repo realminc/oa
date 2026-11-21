@@ -129,15 +129,17 @@ impl<'engine> CartPole<'engine> {
 	pub fn new(engine: &'engine Engine, config: CartPoleConfig) -> Result<Self> {
 		validate_config(config)?;
 		let environments = config.environments as usize;
-		let state = Matrix::new_from_f32(engine, [environments, 4], &vec![0.0; environments * 4])?;
+		let state = Matrix::new_from_f32_on(engine, [environments, 4], &vec![0.0; environments * 4])?;
 		let transition_observation =
-			Matrix::new_from_f32(engine, [environments, 4], &vec![0.0; environments * 4])?;
-		let reward = Matrix::new_from_f32(engine, [environments], &vec![0.0; environments])?;
-		let terminated = Matrix::new_from_slice(engine, [environments], &vec![0_u8; environments])?;
-		let truncated = Matrix::new_from_slice(engine, [environments], &vec![0_u8; environments])?;
-		let done = Matrix::new_from_slice(engine, [environments], &vec![0_u8; environments])?;
-		let episode_steps = Matrix::new_from_slice(engine, [environments], &vec![0_u32; environments])?;
-		let episode_index = Matrix::new_from_slice(engine, [environments], &vec![0_u32; environments])?;
+			Matrix::new_from_f32_on(engine, [environments, 4], &vec![0.0; environments * 4])?;
+		let reward = Matrix::new_from_f32_on(engine, [environments], &vec![0.0; environments])?;
+		let terminated = Matrix::new_from_slice_on(engine, [environments], &vec![0_u8; environments])?;
+		let truncated = Matrix::new_from_slice_on(engine, [environments], &vec![0_u8; environments])?;
+		let done = Matrix::new_from_slice_on(engine, [environments], &vec![0_u8; environments])?;
+		let episode_steps =
+			Matrix::new_from_slice_on(engine, [environments], &vec![0_u32; environments])?;
+		let episode_index =
+			Matrix::new_from_slice_on(engine, [environments], &vec![0_u32; environments])?;
 		let spec = EnvironmentSpec::new(
 			EnvironmentSpace::continuous(
 				"observation",

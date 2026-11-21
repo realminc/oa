@@ -9,7 +9,7 @@ test_vk!(
 	host_texture_upload_preserves_unrelated_eager_batch,
 	engine,
 	{
-		let input = oa::Matrix::new_from_f32(&engine, [2], &[3.0, 7.0])?;
+		let input = oa::Matrix::new_from_f32([2], &[3.0, 7.0])?;
 		let pending = oa::matrix::add(&input, &input)?;
 		assert_eq!(
 			pending
@@ -18,7 +18,7 @@ test_vk!(
 				.kind(),
 			ErrorKind::NotReady
 		);
-		let texture = oa::render::texture_from_rgba8(&engine, &[231, 47, 13, 255], 1, 1)?;
+		let texture = oa::render::texture_from_rgba8(&[231, 47, 13, 255], 1, 1)?;
 		assert_eq!(
 			pending
 				.try_read::<f32>()
@@ -45,7 +45,7 @@ test_vk!(
 			255, 0, 0, 255, 0, 255, 0, 128, // row zero
 			0, 0, 255, 64, 255, 255, 255, 0, // row one
 		];
-		let texture = oa::render::texture_from_rgba8(&engine, &rgba, 2, 2)?;
+		let texture = oa::render::texture_from_rgba8(&rgba, 2, 2)?;
 		assert_eq!((texture.width(), texture.height()), (2, 2));
 		assert_eq!(texture.dtype(), oa::DType::U8);
 		assert_eq!(texture.read_rgba8()?, rgba);
@@ -57,7 +57,7 @@ test_vk!(
 			.expect("saved texture PNG must decode")
 			.to_rgba8();
 		assert_eq!(decoded.into_raw(), rgba);
-		let loaded = oa::render::texture_from_file(&engine, &path)?;
+		let loaded = oa::render::texture_from_file(&path)?;
 		assert_eq!((loaded.width(), loaded.height()), (2, 2));
 		assert_eq!(loaded.read_rgba8()?, rgba);
 		std::fs::remove_file(path).expect("temporary texture image removal failed");
@@ -67,10 +67,10 @@ test_vk!(
 
 test_vk!(packed_texture_rejects_invalid_host_ranges, engine, {
 	for error in [
-		oa::render::texture_from_rgba8(&engine, &[], 0, 1)
+		oa::render::texture_from_rgba8(&[], 0, 1)
 			.err()
 			.expect("zero width was accepted"),
-		oa::render::texture_from_rgba8(&engine, &[0; 3], 1, 1)
+		oa::render::texture_from_rgba8(&[0; 3], 1, 1)
 			.err()
 			.expect("short RGBA input was accepted"),
 	] {
@@ -83,7 +83,7 @@ test_vk!(
 	packed_texture_clear_and_whole_surface_blit_are_exact,
 	engine,
 	{
-		let source = oa::render::texture_from_rgba8(&engine, &[1, 2, 3, 4, 5, 6, 7, 8], 2, 1)?;
+		let source = oa::render::texture_from_rgba8(&[1, 2, 3, 4, 5, 6, 7, 8], 2, 1)?;
 		let copy = oa::render::blit(&source)?;
 		assert_eq!(copy.read_rgba8()?, source.read_rgba8()?);
 		// Reusing a Texture across recording generations must not leave an
@@ -126,7 +126,7 @@ test_vk!(
 	engine,
 	{
 		let image = oa::Image::new(
-			oa::Matrix::new_from_slice(&engine, [1, 2, 4], &[9_u8, 8, 7, 6, 5, 4, 3, 2])?,
+			oa::Matrix::new_from_slice([1, 2, 4], &[9_u8, 8, 7, 6, 5, 4, 3, 2])?,
 			oa::ImageLayout::Hwc,
 			oa::ImageFormat::Rgba,
 		)?;
@@ -152,7 +152,7 @@ test_vk!(
 				..Default::default()
 			},
 		)?;
-		let source = oa::render::texture_from_rgba8(&engine, &[1, 2, 3, 4, 5, 6, 7, 8], 2, 1)?;
+		let source = oa::render::texture_from_rgba8(&[1, 2, 3, 4, 5, 6, 7, 8], 2, 1)?;
 		renderer.begin_frame(&source)?;
 		let frame = renderer.submit_frame()?;
 		assert_eq!((frame.width(), frame.height()), (2, 1));
@@ -268,7 +268,6 @@ test_vk!(
 			},
 		)?;
 		let source = oa::render::texture_from_rgba8(
-			&engine,
 			&[
 				255, 0, 0, 255, 0, 255, 0, 255, // row zero
 				0, 0, 255, 255, 255, 255, 255, 255, // row one

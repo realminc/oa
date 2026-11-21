@@ -117,38 +117,38 @@ fn model_oracle(
 		.collect::<Vec<_>>();
 	project(&merged, batch * seq, width, "out_proj", w)
 }
-fn model_forward_gate(engine: &oa::Engine, causal: bool) -> oa::Result<()> {
+fn model_forward_gate(_engine: &oa::Engine, causal: bool) -> oa::Result<()> {
 	use oa::ml::nn::{CausalLinearAttention, LinearAttentionMode};
 	for (batch, seq, width, heads) in [(2, 5, 6, 2), (1, 1, 4, 2), (1, 3, 65, 1)] {
 		let vals = (0..batch * seq * width)
 			.map(|i| ((i * 13 % 23) as f32 - 11.0) / 9.0)
 			.collect::<Vec<_>>();
-		let model = CausalLinearAttention::new_with_seed(engine, width, heads, seq, 947)?;
+		let model = CausalLinearAttention::new_with_seed(width, heads, seq, 947)?;
 		model.set_mode(if causal {
 			LinearAttentionMode::Causal
 		} else {
 			LinearAttentionMode::Bidirectional
 		});
-		let input = oa::Matrix::new_from_f32(engine, [batch * seq, width], &vals)?;
+		let input = oa::Matrix::new_from_f32([batch * seq, width], &vals)?;
 		let expected = model_oracle(&vals, batch, seq, width, heads, causal, &weights(&model)?);
 		assert_close(&model.forward(&input)?.read_f32()?, &expected, 2.0e-4);
 	}
 	Ok(())
 }
-fn model_gradient_gate(engine: &oa::Engine, causal: bool) -> oa::Result<()> {
+fn model_gradient_gate(_engine: &oa::Engine, causal: bool) -> oa::Result<()> {
 	use oa::ml::nn::{CausalLinearAttention, LinearAttentionMode};
 	let (seq, width, heads) = (3, 4, 2);
 	let vals = (0..seq * width)
 		.map(|i| ((i * 7 % 13) as f32 - 6.0) / 5.0)
 		.collect::<Vec<_>>();
-	let model = CausalLinearAttention::new_with_seed(engine, width, heads, seq, 4532)?;
+	let model = CausalLinearAttention::new_with_seed(width, heads, seq, 4532)?;
 	model.set_mode(if causal {
 		LinearAttentionMode::Causal
 	} else {
 		LinearAttentionMode::Bidirectional
 	});
-	let input = oa::Matrix::new_from_f32(engine, [seq, width], &vals)?;
-	let target = oa::Matrix::new_from_f32(engine, [seq, width], &vec![0.0; seq * width])?;
+	let input = oa::Matrix::new_from_f32([seq, width], &vals)?;
+	let target = oa::Matrix::new_from_f32([seq, width], &vec![0.0; seq * width])?;
 	let tape = oa::ml::GradientTape::new();
 	let out = model.forward(&input)?;
 	let loss = oa::ml::loss::mse(&out, &target)?;
@@ -186,7 +186,7 @@ test_vk!(linear_attention_rejects_invalid_construction, engine, {
 
 	// zero model_width
 	assert_eq!(
-		CausalLinearAttention::new_with_seed(&engine, 0, 2, 4, 0)
+		CausalLinearAttention::new_with_seed(0, 2, 4, 0)
 			.err()
 			.expect("zero model_width was accepted")
 			.kind(),
@@ -194,7 +194,7 @@ test_vk!(linear_attention_rejects_invalid_construction, engine, {
 	);
 	// zero num_heads
 	assert_eq!(
-		CausalLinearAttention::new_with_seed(&engine, 8, 0, 4, 0)
+		CausalLinearAttention::new_with_seed(8, 0, 4, 0)
 			.err()
 			.expect("zero num_heads was accepted")
 			.kind(),
@@ -202,7 +202,7 @@ test_vk!(linear_attention_rejects_invalid_construction, engine, {
 	);
 	// zero sequence_length
 	assert_eq!(
-		CausalLinearAttention::new_with_seed(&engine, 8, 2, 0, 0)
+		CausalLinearAttention::new_with_seed(8, 2, 0, 0)
 			.err()
 			.expect("zero sequence_length was accepted")
 			.kind(),
@@ -210,7 +210,7 @@ test_vk!(linear_attention_rejects_invalid_construction, engine, {
 	);
 	// model_width not divisible by num_heads
 	assert_eq!(
-		CausalLinearAttention::new_with_seed(&engine, 6, 4, 4, 0)
+		CausalLinearAttention::new_with_seed(6, 4, 4, 0)
 			.err()
 			.expect("indivisible width/heads was accepted")
 			.kind(),
@@ -222,9 +222,9 @@ test_vk!(linear_attention_rejects_invalid_construction, engine, {
 test_vk!(linear_attention_rejects_wrong_input_shape, engine, {
 	use oa::ml::nn::CausalLinearAttention;
 
-	let attn = CausalLinearAttention::new_with_seed(&engine, 8, 2, 4, 0x4c41)?;
+	let attn = CausalLinearAttention::new_with_seed(8, 2, 4, 0x4c41)?;
 	// Wrong width.
-	let bad_width = oa::Matrix::new_from_f32(&engine, [4, 6], &[0.0; 24])?;
+	let bad_width = oa::Matrix::new_from_f32([4, 6], &[0.0; 24])?;
 	assert_eq!(
 		attn
 			.forward(&bad_width)
@@ -234,7 +234,7 @@ test_vk!(linear_attention_rejects_wrong_input_shape, engine, {
 		oa::ErrorKind::InvalidArgument
 	);
 	// Row count not a multiple of sequence_length.
-	let bad_rows = oa::Matrix::new_from_f32(&engine, [3, 8], &[0.0; 24])?;
+	let bad_rows = oa::Matrix::new_from_f32([3, 8], &[0.0; 24])?;
 	assert_eq!(
 		attn
 			.forward(&bad_rows)
@@ -268,7 +268,7 @@ test_vk!(causal_linear_attention_is_strictly_causal, engine, {
 		.map(|i| ((i * 11 % 23) as f32 - 11.0) / 10.0)
 		.collect();
 
-	let attn = CausalLinearAttention::new_with_seed(&engine, width, 1, seq, 0x4341_5553)?;
+	let attn = CausalLinearAttention::new_with_seed(width, 1, seq, 0x4341_5553)?;
 
 	// Replace key position 3 (the last) with different values and check that
 	// positions 0..2 produce identical output (they cannot see position 3).
@@ -277,8 +277,8 @@ test_vk!(causal_linear_attention_is_strictly_causal, engine, {
 		*item = -*item + 0.5;
 	}
 
-	let input_base = oa::Matrix::new_from_f32(&engine, [seq, width], &base_vals)?;
-	let input_perturbed = oa::Matrix::new_from_f32(&engine, [seq, width], &perturbed)?;
+	let input_base = oa::Matrix::new_from_f32([seq, width], &base_vals)?;
+	let input_perturbed = oa::Matrix::new_from_f32([seq, width], &perturbed)?;
 
 	let out_base = attn.forward(&input_base)?.read_f32()?;
 	let out_perturbed = attn.forward(&input_perturbed)?.read_f32()?;
@@ -331,7 +331,7 @@ test_vk!(
 		use oa::ml::{Module, nn::CausalLinearAttention};
 
 		// Biased: 4 weights + 4 biases = 8 named parameters.
-		let biased = CausalLinearAttention::new_with_seed(&engine, 8, 2, 4, 0x4c41_4f55)?;
+		let biased = CausalLinearAttention::new_with_seed(8, 2, 4, 0x4c41_4f55)?;
 		assert!(biased.has_bias());
 		let named = biased.all_named_parameters()?;
 		assert_eq!(named.len(), 8);
@@ -345,8 +345,7 @@ test_vk!(
 		assert_eq!(named[7].path(), "out_proj.bias");
 
 		// Bias-free: 4 weights only.
-		let no_bias =
-			CausalLinearAttention::new_with_seed_and_bias(&engine, 8, 2, 4, false, 0x4e4f_4249)?;
+		let no_bias = CausalLinearAttention::new_with_seed_and_bias(8, 2, 4, false, 0x4e4f_4249)?;
 		assert!(!no_bias.has_bias());
 		let named = no_bias.all_named_parameters()?;
 		assert_eq!(named.len(), 4);
@@ -363,7 +362,7 @@ test_vk!(
 test_vk!(linear_attention_accessors_and_mode_switch, engine, {
 	use oa::ml::nn::{CausalLinearAttention, LinearAttentionMode};
 
-	let attn = CausalLinearAttention::new_with_seed(&engine, 8, 4, 6, 0x4150_4953)?;
+	let attn = CausalLinearAttention::new_with_seed(8, 4, 6, 0x4150_4953)?;
 	assert_eq!(attn.model_width(), 8);
 	assert_eq!(attn.num_heads(), 4);
 	assert_eq!(attn.sequence_length(), 6);
@@ -391,9 +390,9 @@ test_vk!(linear_attention_accessors_and_mode_switch, engine, {
 test_vk!(multi_head_attention_rejects_linear_backend, engine, {
 	use oa::ml::nn::{AttentionBackend, MultiHeadAttention};
 
-	let attn = MultiHeadAttention::new_with_seed(&engine, 8, 2, 4, 0x4c49_4e45)?;
+	let attn = MultiHeadAttention::new_with_seed(8, 2, 4, 0x4c49_4e45)?;
 	attn.set_backend(AttentionBackend::Linear);
-	let input = oa::Matrix::new_from_f32(&engine, [4, 8], &[0.1_f32; 32])?;
+	let input = oa::Matrix::new_from_f32([4, 8], &[0.1_f32; 32])?;
 	assert_eq!(
 		attn
 			.forward(&input)
@@ -431,9 +430,9 @@ test_vk!(fused_linear_attention_extremes_tails_and_capture, engine, {
 			let v = (0..n)
 				.map(|i| ((i * 11 % 29) as f32 - 14.0) / 7.0)
 				.collect::<Vec<_>>();
-			let q = oa::Matrix::new_from_f32(&engine, [h, s, d], &q)?;
-			let k = oa::Matrix::new_from_f32(&engine, [h, s, d], &k)?;
-			let v = oa::Matrix::new_from_f32(&engine, [h, s, d], &v)?;
+			let q = oa::Matrix::new_from_f32([h, s, d], &q)?;
+			let k = oa::Matrix::new_from_f32([h, s, d], &k)?;
+			let v = oa::Matrix::new_from_f32([h, s, d], &v)?;
 			let expected = oracle(
 				&q.read_f32()?,
 				&k.read_f32()?,
@@ -464,11 +463,11 @@ test_vk!(fused_linear_attention_extremes_tails_and_capture, engine, {
 			}
 		}
 	}
-	let q = oa::Matrix::new_from_f32(&engine, [1, 2, 3], &[0.0; 6])?;
+	let q = oa::Matrix::new_from_f32([1, 2, 3], &[0.0; 6])?;
 	for eps in [0.0, -1.0, f32::NAN, f32::INFINITY] {
 		assert!(causal_linear_attention(&q, &q, &q, eps).is_err());
 	}
-	let too_wide = oa::Matrix::new_from_f32(&engine, [1, 1, 65], &[0.0; 65])?;
+	let too_wide = oa::Matrix::new_from_f32([1, 1, 65], &[0.0; 65])?;
 	assert!(causal_linear_attention(&too_wide, &too_wide, &too_wide, 1e-6).is_err());
 	Ok(())
 });
@@ -507,11 +506,10 @@ test_vk!(
 				.collect::<Vec<_>>();
 			let tables = [q.clone(), k.clone(), v.clone()]
 				.into_iter()
-				.map(|x| Embedding::new_from_matrix(oa::Matrix::new_from_f32(&engine, [h * s, d], &x)?))
+				.map(|x| Embedding::new_from_matrix(oa::Matrix::new_from_f32([h * s, d], &x)?))
 				.collect::<oa::Result<Vec<_>>>()?;
-			let indices =
-				oa::Matrix::new_from_slice(&engine, [h * s], &(0..(h * s) as u32).collect::<Vec<_>>())?;
-			let target_device = oa::Matrix::new_from_f32(&engine, [h, s, d], &target)?;
+			let indices = oa::Matrix::new_from_slice([h * s], &(0..(h * s) as u32).collect::<Vec<_>>())?;
+			let target_device = oa::Matrix::new_from_f32([h, s, d], &target)?;
 			engine.checkpoint()?.wait()?;
 			let (plan, loss) = engine.capture(|| {
 				let tape = oa::ml::GradientTape::new();

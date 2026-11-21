@@ -47,10 +47,9 @@ impl PythonTransformerBlock {
 	/// Accepts `dim`/`heads`/`seq_len` as aliases for
 	/// `model_width`/`num_heads`/`sequence_length`.
 	#[new]
-	#[pyo3(signature = (engine, model_width=None, hidden_width=None, sequence_length=None, num_heads=None, epsilon=1e-5, seed=0, dim=None, heads=None, seq_len=None))]
+	#[pyo3(signature = (model_width=None, hidden_width=None, sequence_length=None, num_heads=None, epsilon=1e-5, seed=0, dim=None, heads=None, seq_len=None, engine=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		engine: &PythonEngine,
 		model_width: Option<usize>,
 		hidden_width: Option<usize>,
 		sequence_length: Option<usize>,
@@ -60,7 +59,9 @@ impl PythonTransformerBlock {
 		dim: Option<usize>,
 		heads: Option<usize>,
 		seq_len: Option<usize>,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
 		let mw = model_width.or(dim).ok_or_else(|| {
 			pyo3::exceptions::PyTypeError::new_err("TransformerBlock requires model_width or dim")
 		})?;
@@ -71,17 +72,16 @@ impl PythonTransformerBlock {
 			pyo3::exceptions::PyTypeError::new_err("TransformerBlock requires sequence_length or seq_len")
 		})?;
 		let hw = hidden_width.unwrap_or(mw * 4);
-		oa::ml::nn::TransformerBlock::new_with_seed(&engine.inner, mw, hw, sl, nh, epsilon, seed)
+		oa::ml::nn::TransformerBlock::new_with_seed_on(&engine, mw, hw, sl, nh, epsilon, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
 
 	/// Construct a block with zero-initialized adaptive conditioning.
 	#[staticmethod]
-	#[pyo3(signature = (engine, model_width, hidden_width, sequence_length, num_heads, condition_dim, epsilon=1e-5, seed=0))]
+	#[pyo3(signature = (model_width, hidden_width, sequence_length, num_heads, condition_dim, epsilon=1e-5, seed=0, engine=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_conditioning(
-		engine: &PythonEngine,
 		model_width: usize,
 		hidden_width: usize,
 		sequence_length: usize,
@@ -89,9 +89,11 @@ impl PythonTransformerBlock {
 		condition_dim: usize,
 		epsilon: f32,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::TransformerBlock::new_with_seed_conditioned(
-			&engine.inner,
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::TransformerBlock::new_with_seed_conditioned_on(
+			&engine,
 			model_width,
 			hidden_width,
 			sequence_length,
@@ -106,10 +108,9 @@ impl PythonTransformerBlock {
 
 	/// Construct a pre-norm attention block with a sparse MoE residual.
 	#[staticmethod]
-	#[pyo3(signature = (engine, model_width, expert_hidden_width, sequence_length, num_heads, num_experts, experts_per_token, epsilon=1e-5, seed=0))]
+	#[pyo3(signature = (model_width, expert_hidden_width, sequence_length, num_heads, num_experts, experts_per_token, epsilon=1e-5, seed=0, engine=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_moe(
-		engine: &PythonEngine,
 		model_width: usize,
 		expert_hidden_width: usize,
 		sequence_length: usize,
@@ -118,9 +119,11 @@ impl PythonTransformerBlock {
 		experts_per_token: usize,
 		epsilon: f32,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::TransformerBlock::new_with_seed_moe(
-			&engine.inner,
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::TransformerBlock::new_with_seed_moe_on(
+			&engine,
 			model_width,
 			expert_hidden_width,
 			sequence_length,
@@ -261,10 +264,9 @@ pub(crate) struct PythonTransformer {
 impl PythonTransformer {
 	/// Construct a deterministic causal language model.
 	#[new]
-	#[pyo3(signature = (engine, vocab_size, context_length, model_width, hidden_width, num_layers, num_heads, epsilon=1e-5, seed=0))]
+	#[pyo3(signature = (vocab_size, context_length, model_width, hidden_width, num_layers, num_heads, epsilon=1e-5, seed=0, engine=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		engine: &PythonEngine,
 		vocab_size: usize,
 		context_length: usize,
 		model_width: usize,
@@ -273,9 +275,11 @@ impl PythonTransformer {
 		num_heads: usize,
 		epsilon: f32,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::Transformer::new_with_seed(
-			&engine.inner,
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::Transformer::new_with_seed_on(
+			&engine,
 			vocab_size,
 			context_length,
 			model_width,
@@ -291,10 +295,9 @@ impl PythonTransformer {
 
 	/// Construct a deterministic causal language model with MoE Transformer blocks.
 	#[staticmethod]
-	#[pyo3(signature = (engine, vocab_size, context_length, model_width, expert_hidden_width, num_layers, num_heads, num_experts, experts_per_token, epsilon=1e-5, seed=0))]
+	#[pyo3(signature = (vocab_size, context_length, model_width, expert_hidden_width, num_layers, num_heads, num_experts, experts_per_token, epsilon=1e-5, seed=0, engine=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_moe(
-		engine: &PythonEngine,
 		vocab_size: usize,
 		context_length: usize,
 		model_width: usize,
@@ -305,9 +308,11 @@ impl PythonTransformer {
 		experts_per_token: usize,
 		epsilon: f32,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::Transformer::new_with_seed_moe(
-			&engine.inner,
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::Transformer::new_with_seed_moe_on(
+			&engine,
 			vocab_size,
 			context_length,
 			model_width,

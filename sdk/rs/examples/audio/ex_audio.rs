@@ -1,17 +1,15 @@
 // OA_DOC_BEGIN: audio-process
 use anyhow::Context;
-use oa::{Engine, Filesystem, Path, audio};
+use oa::{Filesystem, Path, audio};
 
 fn main() -> anyhow::Result<()> {
-	let engine = Engine::new().context("create OA engine")?;
-
 	let audio_path = Path::asset_rel("audio/oaNarration.wav");
 
 	let output = Path::var_rel("example/audio/oaNarrationRoom.wav");
 	Filesystem::create_directories(&output.parent().unwrap())?;
 
-	let source = audio::decode_file(&engine, &audio_path)
-		.with_context(|| format!("decode {}", audio_path.display()))?;
+	let source =
+		audio::decode_file(&audio_path).with_context(|| format!("decode {}", audio_path.display()))?;
 	let mono = audio::to_mono(&source)?;
 	let normalized = audio::normalize(
 		&mono,

@@ -23,7 +23,7 @@ fn presenter_blits_a_native_texture_through_a_real_swapchain() -> oa::Result<()>
 		255, 0, 0, 255, 0, 255, 0, 255, // row zero
 		0, 0, 255, 255, 255, 255, 255, 255, // row one
 	];
-	let texture = oa::render::texture_from_rgba8(&engine, &rgba, 2, 2)?;
+	let texture = oa::render::texture_from_rgba8(&rgba, 2, 2)?;
 	let _suboptimal = presenter.present_texture(&texture)?;
 	presenter.close_swapchain()?;
 	assert!(!presenter.has_swapchain());
@@ -91,7 +91,7 @@ fn presenter_retains_compositor_frames_across_resize_and_ui_close() -> oa::Resul
 	let mut presenter = Presenter::new(&engine, &window)?;
 	assert!(presenter.init_swapchain(&window)?);
 	let mut ui = oa::ui::Ui::init(&engine, 64, 64)?;
-	let source = oa::render::texture_from_rgba8(&engine, &[255_u8; 16], 2, 2)?;
+	let source = oa::render::texture_from_rgba8(&[255_u8; 16], 2, 2)?;
 	for size in [64, 96, 64, 96] {
 		ui.resize(size, size)?;
 		ui.begin_frame(0.0);

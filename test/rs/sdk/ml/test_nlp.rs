@@ -22,16 +22,9 @@ fn train_bpe_model(
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, learning_rate)?;
 	let mut sampler = nlp::BpeSampler::new(nlp::BATCH_SIZE, tokenizer)?;
 	let (initial_input, initial_target) = sampler.next_values()?;
-	let input = oa::Matrix::new_from_slice(
-		engine,
-		[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
-		&initial_input,
-	)?;
-	let target = oa::Matrix::new_from_slice(
-		engine,
-		[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-		&initial_target,
-	)?;
+	let input = oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &initial_input)?;
+	let target =
+		oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &initial_target)?;
 	let mut program = oa::ml::TrainingProgram::capture(engine, &mut optimizer, || {
 		let tape = oa::ml::GradientTape::new();
 		let logits = model.forward(&input)?;
@@ -99,16 +92,9 @@ fn train_byte_model(
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, learning_rate)?;
 	let mut sampler = nlp::ByteSampler::new(nlp::BATCH_SIZE)?;
 	let (initial_input, initial_target) = sampler.next_values()?;
-	let input = oa::Matrix::new_from_slice(
-		engine,
-		[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
-		&initial_input,
-	)?;
-	let target = oa::Matrix::new_from_slice(
-		engine,
-		[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-		&initial_target,
-	)?;
+	let input = oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &initial_input)?;
+	let target =
+		oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &initial_target)?;
 	let mut program = oa::ml::TrainingProgram::capture(engine, &mut optimizer, || {
 		let tape = oa::ml::GradientTape::new();
 		let logits = model.forward(&input)?;
@@ -161,13 +147,13 @@ fn verify_byte_checkpoint<M: Module>(
 	run: &ByteTrainingRun,
 	stem: &str,
 	learning_rate: f32,
-	construct: impl Fn(&oa::Engine) -> oa::Result<M>,
+	construct: impl Fn() -> oa::Result<M>,
 ) -> oa::Result<()> {
 	let checkpoint = std::env::temp_dir().join(format!("oars-{stem}-{}.oam", std::process::id()));
 	oa::ml::save_checkpoint(&checkpoint, model, &run.optimizer)?;
-	let reloaded = construct(engine)?;
+	let reloaded = construct()?;
 	let mut optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, learning_rate)?;
-	oa::ml::load_checkpoint(engine, &checkpoint, &reloaded, &mut optimizer)?;
+	oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut optimizer)?;
 	assert_eq!(
 		nlp::accuracy(&reloaded.forward(&run.input)?, &run.target)?,
 		run.accuracy
@@ -205,16 +191,9 @@ fn train_char_model(
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, learning_rate)?;
 	let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
 	let (initial_input, initial_target) = sampler.next_values()?;
-	let input = oa::Matrix::new_from_slice(
-		engine,
-		[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
-		&initial_input,
-	)?;
-	let target = oa::Matrix::new_from_slice(
-		engine,
-		[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-		&initial_target,
-	)?;
+	let input = oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &initial_input)?;
+	let target =
+		oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &initial_target)?;
 	let mut program = oa::ml::TrainingProgram::capture(engine, &mut optimizer, || {
 		let tape = oa::ml::GradientTape::new();
 		let logits = model.forward(&input)?;
@@ -267,13 +246,13 @@ fn verify_char_checkpoint<M: Module>(
 	run: &CharTrainingRun,
 	stem: &str,
 	learning_rate: f32,
-	construct: impl Fn(&oa::Engine) -> oa::Result<M>,
+	construct: impl Fn() -> oa::Result<M>,
 ) -> oa::Result<()> {
 	let checkpoint = std::env::temp_dir().join(format!("oars-{stem}-{}.oam", std::process::id()));
 	oa::ml::save_checkpoint(&checkpoint, model, &run.optimizer)?;
-	let reloaded = construct(engine)?;
+	let reloaded = construct()?;
 	let mut optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, learning_rate)?;
-	oa::ml::load_checkpoint(engine, &checkpoint, &reloaded, &mut optimizer)?;
+	oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut optimizer)?;
 	assert_eq!(
 		nlp::accuracy(&reloaded.forward(&run.input)?, &run.target)?,
 		run.accuracy
@@ -299,7 +278,7 @@ fn verify_bpe_checkpoint<M: Module>(
 	run: &BpeTrainingRun,
 	stem: &str,
 	learning_rate: f32,
-	construct: impl Fn(&oa::Engine) -> oa::Result<M>,
+	construct: impl Fn() -> oa::Result<M>,
 ) -> oa::Result<()> {
 	let base = std::env::temp_dir().join(format!("oars-{stem}-{}", std::process::id()));
 	let checkpoint = base.with_extension("oam");
@@ -308,9 +287,9 @@ fn verify_bpe_checkpoint<M: Module>(
 	tokenizer.save(&vocabulary)?;
 	let mut reloaded_tokenizer = oa::ml::BpeTokenizer::new(256);
 	reloaded_tokenizer.load(&vocabulary)?;
-	let reloaded = construct(engine)?;
+	let reloaded = construct()?;
 	let mut optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, learning_rate)?;
-	oa::ml::load_checkpoint(engine, &checkpoint, &reloaded, &mut optimizer)?;
+	oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut optimizer)?;
 	assert_eq!(
 		nlp::accuracy(&reloaded.forward(&run.input)?, &run.target)?,
 		run.accuracy
@@ -378,7 +357,7 @@ fn canonical_character_contract_matches_oa_cpp() -> oa::Result<()> {
 }
 
 test_vk!(canonical_char_rnn_has_the_cpp_parameter_contract, engine, {
-	let model = nlp::CharRnn::new(&engine)?;
+	let model = nlp::CharRnn::new()?;
 	assert_eq!(model.num_parameters()?, 8_891);
 	assert_eq!(model.all_parameters()?.len(), 7);
 	assert_eq!(
@@ -398,7 +377,7 @@ test_vk!(canonical_char_rnn_has_the_cpp_parameter_contract, engine, {
 		]
 	);
 	let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
-	let (input, target) = sampler.next(&engine)?;
+	let (input, target) = sampler.next()?;
 	assert_eq!(input.shape(), [64, 16]);
 	assert_eq!(target.shape(), [64, 16]);
 	let input_values = input.read::<u32>()?;
@@ -410,11 +389,11 @@ test_vk!(canonical_char_rnn_has_the_cpp_parameter_contract, engine, {
 });
 
 test_vk!(canonical_char_gru_has_the_cpp_parameter_contract, engine, {
-	let model = nlp::CharGru::new(&engine)?;
+	let model = nlp::CharGru::new()?;
 	assert_eq!(model.num_parameters()?, 21_435);
 	assert_eq!(model.all_parameters()?.len(), 7);
 	let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
-	let (input, target) = sampler.next(&engine)?;
+	let (input, target) = sampler.next()?;
 	assert_eq!(input.dtype(), oa::DType::U32);
 	assert_eq!(target.dtype(), oa::DType::U32);
 	assert_eq!(model.forward(&input)?.shape(), [1024, 27]);
@@ -422,7 +401,7 @@ test_vk!(canonical_char_gru_has_the_cpp_parameter_contract, engine, {
 });
 
 test_vk!(canonical_byte_rnn_has_the_cpp_parameter_contract, engine, {
-	let model = nlp::ByteRnn::new(&engine)?;
+	let model = nlp::ByteRnn::new()?;
 	assert_eq!(model.num_parameters()?, 31_104);
 	assert_eq!(model.all_parameters()?.len(), 7);
 	assert_eq!(
@@ -442,7 +421,7 @@ test_vk!(canonical_byte_rnn_has_the_cpp_parameter_contract, engine, {
 		]
 	);
 	let mut sampler = nlp::ByteSampler::new(nlp::BATCH_SIZE)?;
-	let (input, target) = sampler.next(&engine)?;
+	let (input, target) = sampler.next()?;
 	assert_eq!(input.dtype(), oa::DType::U8);
 	assert_eq!(input.shape(), [64, 16]);
 	assert_eq!(target.dtype(), oa::DType::U32);
@@ -458,7 +437,7 @@ test_vk!(canonical_byte_rnn_has_the_cpp_parameter_contract, engine, {
 });
 
 test_vk!(canonical_byte_gru_has_the_cpp_parameter_contract, engine, {
-	let model = nlp::ByteGru::new(&engine)?;
+	let model = nlp::ByteGru::new()?;
 	assert_eq!(model.num_parameters()?, 43_648);
 	assert_eq!(model.all_parameters()?.len(), 7);
 	// Independent donor PCG32 + uint64 Philox/Box-Muller oracle, seed 20260714.
@@ -514,7 +493,7 @@ test_vk!(canonical_byte_gru_has_the_cpp_parameter_contract, engine, {
 		]
 	);
 	let mut sampler = nlp::ByteSampler::new(nlp::BATCH_SIZE)?;
-	let (input, target) = sampler.next(&engine)?;
+	let (input, target) = sampler.next()?;
 	assert_eq!(input.dtype(), oa::DType::U8);
 	assert_eq!(target.dtype(), oa::DType::U32);
 	assert_eq!(model.forward(&input)?.shape(), [1024, 256]);
@@ -530,7 +509,7 @@ test_vk!(canonical_bpe_rnn_has_the_cpp_parameter_contract, engine, {
 	assert_eq!(tokenizer.decode_text(&corpus_tokens)?, nlp::CORPUS);
 	assert!(corpus_tokens.len() < nlp::CORPUS.len());
 
-	let model = nlp::BpeRnn::new(&engine)?;
+	let model = nlp::BpeRnn::new()?;
 	assert_eq!(model.num_parameters()?, 37_312);
 	assert_eq!(model.all_parameters()?.len(), 7);
 	assert_eq!(
@@ -550,7 +529,7 @@ test_vk!(canonical_bpe_rnn_has_the_cpp_parameter_contract, engine, {
 		]
 	);
 	let mut sampler = nlp::BpeSampler::new(nlp::BATCH_SIZE, &tokenizer)?;
-	let (input, target) = sampler.next(&engine)?;
+	let (input, target) = sampler.next()?;
 	assert_eq!(input.dtype(), oa::DType::U32);
 	assert_eq!(input.shape(), [64, 16]);
 	assert_eq!(target.dtype(), oa::DType::U32);
@@ -563,7 +542,7 @@ test_vk!(canonical_bpe_rnn_has_the_cpp_parameter_contract, engine, {
 test_vk!(canonical_bpe_gru_has_the_cpp_parameter_contract, engine, {
 	let mut tokenizer = oa::ml::BpeTokenizer::new(nlp::BPE_VOCAB_SIZE);
 	tokenizer.train_text(nlp::CORPUS, nlp::BPE_MERGES);
-	let model = nlp::BpeGru::new(&engine)?;
+	let model = nlp::BpeGru::new()?;
 	assert_eq!(model.num_parameters()?, 49_856);
 	assert_eq!(model.all_parameters()?.len(), 7);
 	assert_eq!(
@@ -583,7 +562,7 @@ test_vk!(canonical_bpe_gru_has_the_cpp_parameter_contract, engine, {
 		]
 	);
 	let mut sampler = nlp::BpeSampler::new(nlp::BATCH_SIZE, &tokenizer)?;
-	let (input, target) = sampler.next(&engine)?;
+	let (input, target) = sampler.next()?;
 	assert_eq!(input.dtype(), oa::DType::U32);
 	assert_eq!(target.dtype(), oa::DType::U32);
 	assert_eq!(model.forward(&input)?.shape(), [1024, 320]);
@@ -594,17 +573,17 @@ test_vk!(
 	canonical_byte_and_bpe_transformers_reuse_the_nn_owner,
 	engine,
 	{
-		let byte = nlp::ByteTransformer::new(&engine)?;
+		let byte = nlp::ByteTransformer::new()?;
 		assert_eq!(byte.num_parameters()?, 25_760);
-		let byte_tokens = oa::Matrix::new_from_slice(&engine, [1, 16], b"to be or not to ")?;
+		let byte_tokens = oa::Matrix::new_from_slice([1, 16], b"to be or not to ")?;
 		assert_eq!(byte.forward(&byte_tokens)?.shape(), [16, 256]);
 
-		let bpe = nlp::BpeTransformer::new(&engine)?;
+		let bpe = nlp::BpeTransformer::new()?;
 		assert_eq!(bpe.num_parameters()?, 29_920);
 		let mut tokenizer = oa::ml::BpeTokenizer::new(nlp::BPE_VOCAB_SIZE);
 		tokenizer.train_text(nlp::CORPUS, nlp::BPE_MERGES);
 		let mut sampler = nlp::BpeSampler::new(1, &tokenizer)?;
-		let (bpe_tokens, _) = sampler.next(&engine)?;
+		let (bpe_tokens, _) = sampler.next()?;
 		assert_eq!(bpe.forward(&bpe_tokens)?.shape(), [16, 320]);
 		Ok(())
 	}
@@ -614,17 +593,17 @@ test_vk!(
 	canonical_byte_and_bpe_moe_models_reuse_the_nn_owner,
 	engine,
 	{
-		let byte = nlp::ByteMoeTransformer::new(&engine)?;
+		let byte = nlp::ByteMoeTransformer::new()?;
 		assert_eq!(byte.num_parameters()?, 28_068);
-		let byte_tokens = oa::Matrix::new_from_slice(&engine, [1, 16], b"to be or not to ")?;
+		let byte_tokens = oa::Matrix::new_from_slice([1, 16], b"to be or not to ")?;
 		assert_eq!(byte.forward(&byte_tokens)?.shape(), [16, 256]);
 
-		let bpe = nlp::BpeMoeTransformer::new(&engine)?;
+		let bpe = nlp::BpeMoeTransformer::new()?;
 		assert_eq!(bpe.num_parameters()?, 32_228);
 		let mut tokenizer = oa::ml::BpeTokenizer::new(nlp::BPE_VOCAB_SIZE);
 		tokenizer.train_text(nlp::CORPUS, nlp::BPE_MERGES);
 		let mut sampler = nlp::BpeSampler::new(1, &tokenizer)?;
-		let (bpe_tokens, _) = sampler.next(&engine)?;
+		let (bpe_tokens, _) = sampler.next()?;
 		assert_eq!(bpe.forward(&bpe_tokens)?.shape(), [16, 320]);
 		Ok(())
 	}
@@ -634,24 +613,24 @@ test_vk!(
 	canonical_byte_and_bpe_mamba3_models_reuse_the_nn_owner,
 	engine,
 	{
-		let byte = nlp::ByteMamba3::new(&engine)?;
+		let byte = nlp::ByteMamba3::new()?;
 		assert_eq!(byte.num_parameters()?, 25_800);
-		let byte_tokens = oa::Matrix::new_from_slice(&engine, [1, 16], b"to be or not to ")?;
+		let byte_tokens = oa::Matrix::new_from_slice([1, 16], b"to be or not to ")?;
 		assert_eq!(byte.forward(&byte_tokens)?.shape(), [16, 256]);
 
-		let bpe = nlp::BpeMamba3::new(&engine)?;
+		let bpe = nlp::BpeMamba3::new()?;
 		assert_eq!(bpe.num_parameters()?, 29_960);
 		let mut tokenizer = oa::ml::BpeTokenizer::new(nlp::BPE_VOCAB_SIZE);
 		tokenizer.train_text(nlp::CORPUS, nlp::BPE_MERGES);
 		let mut sampler = nlp::BpeSampler::new(1, &tokenizer)?;
-		let (bpe_tokens, _) = sampler.next(&engine)?;
+		let (bpe_tokens, _) = sampler.next()?;
 		assert_eq!(bpe.forward(&bpe_tokens)?.shape(), [16, 320]);
 		Ok(())
 	}
 );
 
 test_vk!(byte_empyrealm_core_registers_the_hybrid_tree, engine, {
-	let model = nlp::ByteEmpyrealm::new(&engine)?;
+	let model = nlp::ByteEmpyrealm::new()?;
 	assert_eq!(model.num_parameters()?, 73_848);
 	let paths = model
 		.all_named_parameters()?
@@ -682,7 +661,7 @@ test_vk!(byte_empyrealm_core_registers_the_hybrid_tree, engine, {
 	assert!(paths.iter().any(|path| path == "core.tail_norm.weight"));
 	assert_eq!(paths.last().map(String::as_str), Some("head.bias"));
 
-	let tokens = oa::Matrix::new_from_slice(&engine, [1, 16], b"to be or not to ")?;
+	let tokens = oa::Matrix::new_from_slice([1, 16], b"to be or not to ")?;
 	assert_eq!(model.forward(&tokens)?.shape(), [16, 256]);
 	Ok(())
 });
@@ -691,20 +670,13 @@ test_vk!(
 	canonical_byte_rnn_completes_the_cpp_300_step_gate,
 	engine,
 	{
-		let model = nlp::ByteRnn::new(&engine)?;
+		let model = nlp::ByteRnn::new()?;
 		let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 		let mut sampler = nlp::ByteSampler::new(nlp::BATCH_SIZE)?;
 		let (initial_input, initial_target) = sampler.next_values()?;
-		let input = oa::Matrix::new_from_slice(
-			&engine,
-			[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
-			&initial_input,
-		)?;
-		let target = oa::Matrix::new_from_slice(
-			&engine,
-			[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-			&initial_target,
-		)?;
+		let input = oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &initial_input)?;
+		let target =
+			oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &initial_target)?;
 		let mut program = oa::ml::TrainingProgram::capture(&engine, &mut optimizer, || {
 			let tape = oa::ml::GradientTape::new();
 			let logits = model.forward(&input)?;
@@ -750,9 +722,9 @@ test_vk!(
 		assert_eq!(optimizer.step_count(), 300);
 		let checkpoint = std::env::temp_dir().join(format!("oars-byte-rnn-{}.oam", std::process::id()));
 		oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
-		let reloaded = nlp::ByteRnn::new(&engine)?;
+		let reloaded = nlp::ByteRnn::new()?;
 		let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, 0.01)?;
-		oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+		oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut reloaded_optimizer)?;
 		assert_eq!(
 			nlp::accuracy(&reloaded.forward(&input)?, &target)?,
 			accuracy
@@ -776,21 +748,14 @@ test_vk!(
 	canonical_byte_gru_completes_the_cpp_300_step_gate,
 	engine,
 	{
-		let model = nlp::ByteGru::new(&engine)?;
+		let model = nlp::ByteGru::new()?;
 		engine.checkpoint()?.wait()?;
 		let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 		let mut sampler = nlp::ByteSampler::new(nlp::BATCH_SIZE)?;
 		let (initial_input, initial_target) = sampler.next_values()?;
-		let input = oa::Matrix::new_from_slice(
-			&engine,
-			[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
-			&initial_input,
-		)?;
-		let target = oa::Matrix::new_from_slice(
-			&engine,
-			[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-			&initial_target,
-		)?;
+		let input = oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &initial_input)?;
+		let target =
+			oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &initial_target)?;
 		let mut program = oa::ml::TrainingProgram::capture(&engine, &mut optimizer, || {
 			let tape = oa::ml::GradientTape::new();
 			let logits = model.forward(&input)?;
@@ -836,9 +801,9 @@ test_vk!(
 		assert_eq!(optimizer.step_count(), 300);
 		let checkpoint = std::env::temp_dir().join(format!("oars-byte-gru-{}.oam", std::process::id()));
 		oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
-		let reloaded = nlp::ByteGru::new(&engine)?;
+		let reloaded = nlp::ByteGru::new()?;
 		let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, 0.01)?;
-		oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+		oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut reloaded_optimizer)?;
 		assert_eq!(
 			nlp::accuracy(&reloaded.forward(&input)?, &target)?,
 			accuracy
@@ -861,20 +826,13 @@ test_vk!(
 test_vk!(canonical_bpe_rnn_completes_the_cpp_300_step_gate, engine, {
 	let mut tokenizer = oa::ml::BpeTokenizer::new(nlp::BPE_VOCAB_SIZE);
 	tokenizer.train_text(nlp::CORPUS, nlp::BPE_MERGES);
-	let model = nlp::BpeRnn::new(&engine)?;
+	let model = nlp::BpeRnn::new()?;
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 	let mut sampler = nlp::BpeSampler::new(nlp::BATCH_SIZE, &tokenizer)?;
 	let (initial_input, initial_target) = sampler.next_values()?;
-	let input = oa::Matrix::new_from_slice(
-		&engine,
-		[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
-		&initial_input,
-	)?;
-	let target = oa::Matrix::new_from_slice(
-		&engine,
-		[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-		&initial_target,
-	)?;
+	let input = oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &initial_input)?;
+	let target =
+		oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &initial_target)?;
 	let mut program = oa::ml::TrainingProgram::capture(&engine, &mut optimizer, || {
 		let tape = oa::ml::GradientTape::new();
 		let logits = model.forward(&input)?;
@@ -929,9 +887,9 @@ test_vk!(canonical_bpe_rnn_completes_the_cpp_300_step_gate, engine, {
 	let mut reloaded_tokenizer = oa::ml::BpeTokenizer::new(256);
 	reloaded_tokenizer.load(&vocabulary)?;
 	assert_eq!(reloaded_tokenizer.merges(), tokenizer.merges());
-	let reloaded = nlp::BpeRnn::new(&engine)?;
+	let reloaded = nlp::BpeRnn::new()?;
 	let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, 0.01)?;
-	oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+	oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut reloaded_optimizer)?;
 	assert_eq!(
 		nlp::accuracy(&reloaded.forward(&input)?, &target)?,
 		accuracy
@@ -955,7 +913,7 @@ test_vk!(canonical_bpe_rnn_completes_the_cpp_300_step_gate, engine, {
 test_vk!(canonical_bpe_gru_completes_the_cpp_300_step_gate, engine, {
 	let mut tokenizer = oa::ml::BpeTokenizer::new(nlp::BPE_VOCAB_SIZE);
 	tokenizer.train_text(nlp::CORPUS, nlp::BPE_MERGES);
-	let model = nlp::BpeGru::new(&engine)?;
+	let model = nlp::BpeGru::new()?;
 	let run = train_bpe_model(&engine, &model, &tokenizer, 0.01)?;
 	println!(
 		"BPE GRU: initial={:.6} training={:.6} final={:.6} accuracy={:.6} bytes/token={:.6} generated={:?}",
@@ -979,9 +937,9 @@ test_vk!(canonical_bpe_gru_completes_the_cpp_300_step_gate, engine, {
 	tokenizer.save(&vocabulary)?;
 	let mut reloaded_tokenizer = oa::ml::BpeTokenizer::new(256);
 	reloaded_tokenizer.load(&vocabulary)?;
-	let reloaded = nlp::BpeGru::new(&engine)?;
+	let reloaded = nlp::BpeGru::new()?;
 	let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, 0.01)?;
-	oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+	oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut reloaded_optimizer)?;
 	assert_eq!(
 		nlp::accuracy(&reloaded.forward(&run.input)?, &run.target)?,
 		run.accuracy
@@ -1008,7 +966,7 @@ test_vk!(
 	{
 		let mut tokenizer = oa::ml::BpeTokenizer::new(nlp::BPE_VOCAB_SIZE);
 		tokenizer.train_text(nlp::CORPUS, nlp::BPE_MERGES);
-		let model = nlp::BpeTransformer::new(&engine)?;
+		let model = nlp::BpeTransformer::new()?;
 		let run = train_bpe_model(&engine, &model, &tokenizer, 0.01)?;
 		println!(
 			"BPE Transformer: initial={:.6} training={:.6} final={:.6} accuracy={:.6} bytes/token={:.6} generated={:?}",
@@ -1032,9 +990,9 @@ test_vk!(
 		tokenizer.save(&vocabulary)?;
 		let mut reloaded_tokenizer = oa::ml::BpeTokenizer::new(256);
 		reloaded_tokenizer.load(&vocabulary)?;
-		let reloaded = nlp::BpeTransformer::new(&engine)?;
+		let reloaded = nlp::BpeTransformer::new()?;
 		let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, 0.01)?;
-		oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+		oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut reloaded_optimizer)?;
 		assert_eq!(
 			nlp::accuracy(&reloaded.forward(&run.input)?, &run.target)?,
 			run.accuracy
@@ -1060,7 +1018,7 @@ test_vk!(
 	canonical_byte_transformer_completes_the_cpp_300_step_gate,
 	engine,
 	{
-		let model = nlp::ByteTransformer::new(&engine)?;
+		let model = nlp::ByteTransformer::new()?;
 		let run = train_byte_model(&engine, &model, 0.01)?;
 		println!(
 			"Byte Transformer: initial={:.6} training={:.6} final={:.6} accuracy={:.6} generated={:?}",
@@ -1079,9 +1037,9 @@ test_vk!(
 		let checkpoint =
 			std::env::temp_dir().join(format!("oars-byte-transformer-{}.oam", std::process::id()));
 		oa::ml::save_checkpoint(&checkpoint, &model, &run.optimizer)?;
-		let reloaded = nlp::ByteTransformer::new(&engine)?;
+		let reloaded = nlp::ByteTransformer::new()?;
 		let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, 0.01)?;
-		oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+		oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut reloaded_optimizer)?;
 		assert_eq!(
 			nlp::accuracy(&reloaded.forward(&run.input)?, &run.target)?,
 			run.accuracy
@@ -1105,7 +1063,7 @@ test_vk!(
 	canonical_byte_moe_completes_the_cpp_300_step_gate,
 	engine,
 	{
-		let model = nlp::ByteMoeTransformer::new(&engine)?;
+		let model = nlp::ByteMoeTransformer::new()?;
 		let run = train_byte_model(&engine, &model, 0.01)?;
 		println!(
 			"Byte MoE: initial={:.6} training={:.6} final={:.6} accuracy={:.6} generated={:?}",
@@ -1135,7 +1093,7 @@ test_vk!(
 test_vk!(canonical_bpe_moe_completes_the_cpp_300_step_gate, engine, {
 	let mut tokenizer = oa::ml::BpeTokenizer::new(nlp::BPE_VOCAB_SIZE);
 	tokenizer.train_text(nlp::CORPUS, nlp::BPE_MERGES);
-	let model = nlp::BpeMoeTransformer::new(&engine)?;
+	let model = nlp::BpeMoeTransformer::new()?;
 	let run = train_bpe_model(&engine, &model, &tokenizer, 0.01)?;
 	println!(
 		"BPE MoE: initial={:.6} training={:.6} final={:.6} accuracy={:.6} bytes/token={:.6} generated={:?}",
@@ -1167,7 +1125,7 @@ test_vk!(
 	canonical_byte_mamba3_completes_the_cpp_300_step_gate,
 	engine,
 	{
-		let model = nlp::ByteMamba3::new(&engine)?;
+		let model = nlp::ByteMamba3::new()?;
 		let run = train_byte_model(&engine, &model, 0.003)?;
 		println!(
 			"Byte Mamba3: initial={:.6} training={:.6} final={:.6} accuracy={:.6} generated={:?}",
@@ -1200,7 +1158,7 @@ test_vk!(
 	{
 		let mut tokenizer = oa::ml::BpeTokenizer::new(nlp::BPE_VOCAB_SIZE);
 		tokenizer.train_text(nlp::CORPUS, nlp::BPE_MERGES);
-		let model = nlp::BpeMamba3::new(&engine)?;
+		let model = nlp::BpeMamba3::new()?;
 		let run = train_bpe_model(&engine, &model, &tokenizer, 0.003)?;
 		println!(
 			"BPE Mamba3: initial={:.6} training={:.6} final={:.6} accuracy={:.6} bytes/token={:.6} generated={:?}",
@@ -1233,7 +1191,7 @@ test_vk!(
 	canonical_byte_empyrealm_completes_the_cpp_300_step_gate,
 	engine,
 	{
-		let model = nlp::ByteEmpyrealm::new(&engine)?;
+		let model = nlp::ByteEmpyrealm::new()?;
 		let run = train_byte_model(&engine, &model, 0.003)?;
 		println!(
 			"Byte Empyrealm: initial={:.6} training={:.6} final={:.6} accuracy={:.6} generated={:?}",
@@ -1264,7 +1222,7 @@ test_vk!(
 	canonical_char_gru_completes_the_cpp_300_step_gate,
 	engine,
 	{
-		let model = nlp::CharGru::new(&engine)?;
+		let model = nlp::CharGru::new()?;
 		let run = train_char_model(&engine, &model, 0.01)?;
 		println!(
 			"Char GRU: initial={:.6} training={:.6} final={:.6} accuracy={:.6} generated={:?}",
@@ -1284,7 +1242,7 @@ test_vk!(
 	canonical_char_mamba3_has_the_cpp_parameter_contract,
 	engine,
 	{
-		let model = nlp::CharMamba3::new(&engine)?;
+		let model = nlp::CharMamba3::new()?;
 		assert_eq!(model.num_parameters()?, 10_915);
 		assert_eq!(model.all_parameters()?.len(), 10);
 		assert_eq!(
@@ -1307,7 +1265,7 @@ test_vk!(
 			]
 		);
 		let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
-		let (input, target) = sampler.next(&engine)?;
+		let (input, target) = sampler.next()?;
 		assert_eq!(input.shape(), [64, 16]);
 		assert_eq!(target.shape(), [64, 16]);
 		assert_eq!(model.forward(&input)?.shape(), [1024, 27]);
@@ -1319,20 +1277,13 @@ test_vk!(
 	canonical_char_mamba3_completes_the_cpp_300_step_gate,
 	engine,
 	{
-		let model = nlp::CharMamba3::new(&engine)?;
+		let model = nlp::CharMamba3::new()?;
 		let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.003)?;
 		let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
 		let (initial_input, initial_target) = sampler.next_values()?;
-		let input = oa::Matrix::new_from_slice(
-			&engine,
-			[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
-			&initial_input,
-		)?;
-		let target = oa::Matrix::new_from_slice(
-			&engine,
-			[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-			&initial_target,
-		)?;
+		let input = oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &initial_input)?;
+		let target =
+			oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &initial_target)?;
 		let mut program = oa::ml::TrainingProgram::capture(&engine, &mut optimizer, || {
 			let tape = oa::ml::GradientTape::new();
 			let logits = model.forward(&input)?;
@@ -1378,7 +1329,7 @@ test_vk!(
 	canonical_char_rnn_completes_the_cpp_300_step_gate,
 	engine,
 	{
-		let model = nlp::CharRnn::new(&engine)?;
+		let model = nlp::CharRnn::new()?;
 		let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 		let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
 		let mut initial_loss = 0.0_f32;
@@ -1386,7 +1337,7 @@ test_vk!(
 		let mut final_batch = None;
 
 		for step in 0..nlp::TRAINING_STEPS {
-			let (input, target) = sampler.next(&engine)?;
+			let (input, target) = sampler.next()?;
 			optimizer.zero_grad();
 			let tape = oa::ml::GradientTape::new();
 			let logits = model.forward(&input)?;
@@ -1432,7 +1383,7 @@ test_vk!(
 	canonical_char_transformer_has_the_cpp_parameter_contract,
 	engine,
 	{
-		let model = nlp::CharTransformer::new(&engine)?;
+		let model = nlp::CharTransformer::new()?;
 		assert_eq!(model.num_parameters()?, 10_875);
 		assert_eq!(model.all_parameters()?.len(), 22);
 		assert_eq!(
@@ -1467,7 +1418,7 @@ test_vk!(
 			]
 		);
 		let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
-		let (input, _) = sampler.next(&engine)?;
+		let (input, _) = sampler.next()?;
 		let (plan, output) = engine.capture(|| model.forward(&input))?;
 		assert_eq!(output.shape(), [1024, 27]);
 		let diagnostics = plan.diagnostics();
@@ -1508,20 +1459,13 @@ test_vk!(
 	canonical_char_transformer_completes_the_cpp_300_step_gate,
 	engine,
 	{
-		let model = nlp::CharTransformer::new(&engine)?;
+		let model = nlp::CharTransformer::new()?;
 		let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 		let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
 		let (initial_input, initial_target) = sampler.next_values()?;
-		let input = oa::Matrix::new_from_slice(
-			&engine,
-			[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
-			&initial_input,
-		)?;
-		let target = oa::Matrix::new_from_slice(
-			&engine,
-			[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-			&initial_target,
-		)?;
+		let input = oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &initial_input)?;
+		let target =
+			oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &initial_target)?;
 		let mut program = oa::ml::TrainingProgram::capture(&engine, &mut optimizer, || {
 			let tape = oa::ml::GradientTape::new();
 			let logits = model.forward(&input)?;
@@ -1579,9 +1523,9 @@ test_vk!(
 		let checkpoint =
 			std::env::temp_dir().join(format!("oars-char-transformer-{}.oam", std::process::id()));
 		oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
-		let reloaded = nlp::CharTransformer::new(&engine)?;
+		let reloaded = nlp::CharTransformer::new()?;
 		let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, 0.01)?;
-		oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+		oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut reloaded_optimizer)?;
 		let reloaded_accuracy = nlp::accuracy(&reloaded.forward(&input)?, &target)?;
 		let reloaded_generation = nlp::generate_greedy(
 			&engine,
@@ -1601,7 +1545,7 @@ test_vk!(
 	canonical_char_moe_transformer_matches_the_cpp_recipe,
 	engine,
 	{
-		let model = nlp::CharMoeTransformer::new(&engine)?;
+		let model = nlp::CharMoeTransformer::new()?;
 		assert_eq!(model.num_parameters()?, 13_183);
 		let named = model.all_named_parameters()?;
 		assert_eq!(named.len(), 23);
@@ -1618,7 +1562,7 @@ test_vk!(
 		assert_eq!(model.moe().experts_per_token(), 2);
 
 		let mut sampler = nlp::CharSampler::new(2)?;
-		let (input, target) = sampler.next(&engine)?;
+		let (input, target) = sampler.next()?;
 		let target = target.reshape([2 * nlp::CONTEXT_LENGTH])?;
 		let tape = oa::ml::GradientTape::new();
 		let logits = model.forward(&input)?;
@@ -1646,20 +1590,13 @@ test_vk!(
 	canonical_char_moe_transformer_completes_the_cpp_300_step_gate,
 	engine,
 	{
-		let model = nlp::CharMoeTransformer::new(&engine)?;
+		let model = nlp::CharMoeTransformer::new()?;
 		let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, 0.01)?;
 		let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
 		let (initial_input, initial_target) = sampler.next_values()?;
-		let input = oa::Matrix::new_from_slice(
-			&engine,
-			[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
-			&initial_input,
-		)?;
-		let target = oa::Matrix::new_from_slice(
-			&engine,
-			[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-			&initial_target,
-		)?;
+		let input = oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &initial_input)?;
+		let target =
+			oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &initial_target)?;
 		let mut program = oa::ml::TrainingProgram::capture(&engine, &mut optimizer, || {
 			let tape = oa::ml::GradientTape::new();
 			let logits = model.forward(&input)?;
@@ -1718,9 +1655,9 @@ test_vk!(
 			std::process::id()
 		));
 		oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
-		let reloaded = nlp::CharMoeTransformer::new(&engine)?;
+		let reloaded = nlp::CharMoeTransformer::new()?;
 		let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, 0.01)?;
-		oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+		oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut reloaded_optimizer)?;
 		assert_eq!(
 			nlp::accuracy(&reloaded.forward(&input)?, &target)?,
 			accuracy

@@ -50,6 +50,7 @@ fn main() -> Result<()> {
 	let window = SdlWindow::new("OA Renderer · UI Composition", W, H)?;
 	let extensions = window.required_instance_extensions()?;
 	let engine = Engine::builder().instance_extensions(extensions).build()?;
+	Engine::set_default(engine.clone());
 
 	// ── Headless Ui compositor ────────────────────────────────────────────────
 	let mut ui = Ui::init_with_style(&engine, W, H, UiStyle::default())?;
@@ -196,7 +197,7 @@ fn main() -> Result<()> {
 	// ── Sink: convert composed image to a Texture for Viewer display ──────────
 	// render_rgba8 flushes and waits. texture_from_rgba8 re-uploads for blit.
 	let rgba = ui.render_rgba8()?;
-	let tex = texture_from_rgba8(&engine, &rgba, W as usize, H as usize)?;
+	let tex = texture_from_rgba8(&rgba, W as usize, H as usize)?;
 	ui.close()?;
 
 	// Optional: also write to disk for headless CI.

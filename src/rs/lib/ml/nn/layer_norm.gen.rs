@@ -18,13 +18,17 @@ pub struct LayerNorm {
 }
 
 impl LayerNorm {
+	pub fn new(normalized_shape: usize, epsilon: f32) -> Result<Self> {
+		Self::new_on(&Engine::current()?, normalized_shape, epsilon)
+	}
+
 	/// Construct a LayerNorm with unit weight and zero bias.
 	///
 	/// # Errors
 	///
 	/// Returns an error when `normalized_shape` is zero, `epsilon` is not finite
 	/// and positive, or parameter allocation/upload fails.
-	pub fn new(engine: &Engine, normalized_shape: usize, epsilon: f32) -> Result<Self> {
+	pub fn new_on(engine: &Engine, normalized_shape: usize, epsilon: f32) -> Result<Self> {
 		if normalized_shape == 0 {
 			return Err(Error::invalid_argument(
 				"layer norm normalized shape must be nonzero",
@@ -35,8 +39,8 @@ impl LayerNorm {
 				"layer norm epsilon must be finite and positive",
 			));
 		}
-		let weight = Matrix::new_from_f32(engine, [normalized_shape], &vec![1.0; normalized_shape])?;
-		let bias = Matrix::new_from_f32(engine, [normalized_shape], &vec![0.0; normalized_shape])?;
+		let weight = Matrix::new_from_f32_on(engine, [normalized_shape], &vec![1.0; normalized_shape])?;
+		let bias = Matrix::new_from_f32_on(engine, [normalized_shape], &vec![0.0; normalized_shape])?;
 		Self::new_from_matrices(weight, bias, epsilon)
 	}
 

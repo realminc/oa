@@ -8,6 +8,13 @@ pub struct {{time_type}} {
 }
 
 impl {{time_type}} {
+	pub fn new(
+		embedding_dim: usize,
+		max_period: f32,
+		time_scale: f32,
+	) -> Result<Self> {
+		Self::new_on(&Engine::current()?, embedding_dim, max_period, time_scale)	}
+
 	/// Construct the donor sinusoidal time embedding.
 	///
 	/// # Errors
@@ -15,7 +22,7 @@ impl {{time_type}} {
 	/// Returns an error unless `embedding_dim` is positive and even,
 	/// `max_period` is finite and greater than one, and `time_scale` is finite
 	/// and positive.
-	pub fn new(
+	pub fn new_on(
 		engine: &Engine,
 		embedding_dim: usize,
 		max_period: f32,
@@ -37,7 +44,7 @@ impl {{time_type}} {
 		let frequencies = (0..half)
 			.map(|index| time_scale * (-log_period * index as f32 / half as f32).exp())
 			.collect::<Vec<_>>();
-		let frequencies = Matrix::new_from_f32(engine, [1, half], &frequencies)?;
+		let frequencies = Matrix::new_from_f32_on(engine, [1, half], &frequencies)?;
 		let mut registry = ModuleRegistry::new();
 		registry.register_buffer("{{frequency_name}}", frequencies.clone(), false)?;
 		Ok(Self {
@@ -145,13 +152,17 @@ pub struct {{transformer_type}} {
 }
 
 impl {{transformer_type}} {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(config: {{transformer_config_type}}, seed: u64) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, config, seed)	}
+
 	/// Construct a deterministic dense or dropless-MoE flow Transformer.
 	///
 	/// # Errors
 	///
 	/// Returns an error for invalid geometry, expert routing, epsilon, or failed
 	/// child construction and registration.
-	pub fn new_with_seed(engine: &Engine, config: {{transformer_config_type}}, seed: u64) -> Result<Self> {
+	pub fn new_with_seed_on(engine: &Engine, config: {{transformer_config_type}}, seed: u64) -> Result<Self> {
 		validate_config(config)?;
 		let mut registry = ModuleRegistry::new();
 		let mut blocks = Vec::with_capacity(config.num_layers);
@@ -451,13 +462,17 @@ pub struct {{name}} {
 }
 
 impl {{name}} {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(config: {{config_type}}, seed: u64) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, config, seed)	}
+
 	/// Construct a deterministic dense or MoE denoiser.
 	///
 	/// # Errors
 	///
 	/// Returns an error for invalid model/time/dropout geometry or failed child,
 	/// parameter, and buffer construction.
-	pub fn new_with_seed(engine: &Engine, config: {{config_type}}, seed: u64) -> Result<Self> {
+	pub fn new_with_seed_on(engine: &Engine, config: {{config_type}}, seed: u64) -> Result<Self> {
 		if config.input_dim == 0
 			|| config.backbone.model_width == 0
 			|| config.backbone.sequence_length == 0
@@ -484,7 +499,7 @@ impl {{name}} {
 			config.backbone.model_width,
 			seed,
 		)?);
-		let time_embedding = Rc::new({{time_type}}::new(
+		let time_embedding = Rc::new({{time_type}}::new_on(
 			engine,
 			config.backbone.model_width,
 			config.time_max_period,
@@ -500,7 +515,7 @@ impl {{name}} {
 				seed.wrapping_add(1),
 			)?))
 		};
-		let backbone = Rc::new({{transformer_type}}::new_with_seed(
+		let backbone = Rc::new({{transformer_type}}::new_with_seed_on(
 			engine,
 			config.backbone,
 			seed.wrapping_add(2),

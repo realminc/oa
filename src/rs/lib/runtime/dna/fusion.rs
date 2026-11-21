@@ -2592,7 +2592,7 @@ fn fit_segment(
 		return Err(NodeOutcome::SpecializationDeclined);
 	}
 	let fusion_signature = jit_enabled.then(|| {
-		crate::runtime::device::vkcache::jit::signature_key(&candidate.program.canonical_key())
+		crate::runtime::device::logical::vkcache::jit::signature_key(&candidate.program.canonical_key())
 	});
 	let operands = candidate.inputs;
 	let stores = candidate.outputs;

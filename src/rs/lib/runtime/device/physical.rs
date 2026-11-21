@@ -685,7 +685,8 @@ impl DevicePhysical {
 			));
 		}
 		for profile in &requirements.video_decode {
-			if let Err(error) = super::video::query_decode_capabilities(instance, self, *profile) {
+			if let Err(error) = super::logical::video::query_decode_capabilities(instance, self, *profile)
+			{
 				if error.kind() != ErrorKind::MissingCapability {
 					return Err(error);
 				}
@@ -700,7 +701,8 @@ impl DevicePhysical {
 			));
 		}
 		for profile in &requirements.video_encode {
-			if let Err(error) = super::video::query_encode_capabilities(instance, self, *profile) {
+			if let Err(error) = super::logical::video::query_encode_capabilities(instance, self, *profile)
+			{
 				if error.kind() != ErrorKind::MissingCapability {
 					return Err(error);
 				}

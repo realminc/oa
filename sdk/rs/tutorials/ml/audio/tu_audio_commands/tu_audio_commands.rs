@@ -30,7 +30,7 @@ fn arg_usize(flag: &str, default: usize) -> usize {
 /// Chunked held-out evaluation pass: mean accuracy and clip-mean loss over
 /// standardized host features, run eagerly between training steps.
 fn evaluate(
-	engine: &oa::Engine,
+	_engine: &oa::Engine,
 	model: &impl Module,
 	features: &[f32],
 	labels: &[u32],
@@ -44,11 +44,10 @@ fn evaluate(
 	for begin in (0..labels.len()).step_by(chunk_clips) {
 		let end = (begin + chunk_clips).min(labels.len());
 		let input = oa::Matrix::new_from_slice(
-			engine,
 			[end - begin, 1, mel_bands, mel_frames],
 			&features[begin * clip_feature_len..end * clip_feature_len],
 		)?;
-		let target = oa::Matrix::new_from_slice(engine, [end - begin], &labels[begin..end])?;
+		let target = oa::Matrix::new_from_slice([end - begin], &labels[begin..end])?;
 		let logits = model.forward(&input)?;
 		correct += oa::matrix::categorical_accuracy_count(&logits, &target)?.read::<u32>()?[0] as u64;
 		loss_sum +=
@@ -60,11 +59,12 @@ fn evaluate(
 
 fn main() -> oa::Result<()> {
 	let engine = oa::Engine::new()?;
+	oa::Engine::set_default(engine.clone());
 	let dataset_dir =
 		arg_value("--dataset").map_or_else(|| PathBuf::from("sdk/asset/audio/commands"), PathBuf::from);
 	let epochs = arg_usize("--epochs", audio::TRAINING_EPOCHS);
 	let batch = arg_usize("--batch", audio::BATCH_SIZE);
-	let dataset = audio::SpeechCommandsDataset::load(&engine, &dataset_dir)?;
+	let dataset = audio::SpeechCommandsDataset::load(&dataset_dir)?;
 	let clip_count = dataset.clips.len();
 
 	println!("\n╔══════════════════════════════════════════════════════════════════╗");
@@ -108,7 +108,7 @@ fn main() -> oa::Result<()> {
 	let mut mel_frames = 0_usize;
 	let mut train_features_host = Vec::new();
 	for chunk in train_idx.chunks(audio::MEL_CHUNK_CLIPS) {
-		let features = dataset.mel_features(&engine, chunk)?;
+		let features = dataset.mel_features(chunk)?;
 		if mel_bands == 0 {
 			// mel_features guarantees the NCHW rank-four layout.
 			let shape = features.shape();
@@ -117,7 +117,7 @@ fn main() -> oa::Result<()> {
 		train_features_host.extend_from_slice(&features.read_f32()?);
 	}
 	let clip_feature_len = mel_bands * mel_frames;
-	let train_labels_host = dataset.labels(&engine, &train_idx)?.read::<u32>()?;
+	let train_labels_host = dataset.labels(&train_idx)?.read::<u32>()?;
 	// Standardize with training-set statistics — the host-side equivalent of
 	// the TF tutorial's Normalization layer.
 	let (mean, inv_std) = audio::standardization(&train_features_host);
@@ -126,7 +126,7 @@ fn main() -> oa::Result<()> {
 	// eagerly between training steps.
 	let mut test_features_host = Vec::new();
 	for chunk in test_idx.chunks(audio::MEL_CHUNK_CLIPS) {
-		let features = dataset.mel_features(&engine, chunk)?;
+		let features = dataset.mel_features(chunk)?;
 		test_features_host.extend_from_slice(&features.read_f32()?);
 	}
 	audio::standardize(&mut test_features_host, mean, inv_std);
@@ -134,7 +134,7 @@ fn main() -> oa::Result<()> {
 		.iter()
 		.map(|&index| dataset.clips[index].label)
 		.collect();
-	let model = audio::commands_cnn(&engine, mel_bands, mel_frames, audio::COMMAND_LABELS.len())?;
+	let model = audio::commands_cnn(mel_bands, mel_frames, audio::COMMAND_LABELS.len())?;
 	model.train(true);
 	// Complete asynchronous parameter initialization before isolated capture.
 	engine.checkpoint()?.wait()?;
@@ -197,12 +197,10 @@ fn main() -> oa::Result<()> {
 					.min(train_idx.len().saturating_sub(batch));
 				let end = begin + batch.min(train_idx.len());
 				let input = oa::Matrix::new_from_slice(
-					&engine,
 					[end - begin, 1, mel_bands, mel_frames],
 					&train_features_host[begin * clip_feature_len..end * clip_feature_len],
 				)?;
-				let target =
-					oa::Matrix::new_from_slice(&engine, [end - begin], &train_labels_host[begin..end])?;
+				let target = oa::Matrix::new_from_slice([end - begin], &train_labels_host[begin..end])?;
 				Ok((input, target))
 			},
 			|(input, target)| {
@@ -299,10 +297,10 @@ fn main() -> oa::Result<()> {
 
 	let checkpoint = oa::Path::temp().join("oars_commands").with_extension("oam");
 	oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
-	let reloaded = audio::commands_cnn(&engine, mel_bands, mel_frames, audio::COMMAND_LABELS.len())?;
+	let reloaded = audio::commands_cnn(mel_bands, mel_frames, audio::COMMAND_LABELS.len())?;
 	reloaded.eval();
 	let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, learning_rate)?;
-	oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+	oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut reloaded_optimizer)?;
 	assert_eq!(reloaded_optimizer.step_count(), optimizer.step_count());
 	assert_eq!(
 		evaluate(

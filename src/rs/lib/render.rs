@@ -27,6 +27,6 @@ pub use scene::{
 };
 pub(crate) use texture::texture_from_matrix;
 pub use texture::{
-	Texture, blit, clear, save_texture_file, texture_from_file, texture_from_image,
-	texture_from_rgba8,
+	Texture, blit, clear, save_texture_file, texture_from_file, texture_from_file_on,
+	texture_from_image, texture_from_rgba8, texture_from_rgba8_on,
 };

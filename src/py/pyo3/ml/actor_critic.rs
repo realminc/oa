@@ -93,8 +93,12 @@ pub(crate) struct PythonCategoricalActorCritic {
 impl PythonCategoricalActorCritic {
 	/// Construct the checked default categorical actor/critic.
 	#[new]
-	pub fn new(engine: &PythonEngine, config: &PythonCategoricalActorCriticConfig) -> PyResult<Self> {
-		oa::ml::CategoricalActorCritic::new(&engine.inner, config.inner)
+	pub fn new(
+		config: &PythonCategoricalActorCriticConfig,
+		engine: Option<&PythonEngine>,
+	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::CategoricalActorCritic::new_on(&engine, config.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

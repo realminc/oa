@@ -432,7 +432,7 @@ void main(uint3 tid : SV_DispatchThreadID) {{
 		outputs[root / kernel['source']] = body
 	python = (directory / 'binding.rs.in').read_text()
 	operations, registration = [], []
-	stub = banner(schema_hash, '#', 'crypto_ntt.json') + 'from .._native import Engine, Matrix\n\nclass NttConfig:\n    def __init__(self, modulus: int, root: int, length: int, representation: str = "standard") -> None: ...\n    @property\n    def modulus(self) -> int: ...\n    @property\n    def root(self) -> int: ...\n    @property\n    def length(self) -> int: ...\n\nclass NttParameters:\n    @property\n    def config(self) -> NttConfig: ...\n\ndef crypto_ntt_prepare(engine: Engine, config: NttConfig) -> NttParameters: ...\n'
+	stub = banner(schema_hash, '#', 'crypto_ntt.json') + 'from .._native import Engine, Matrix\n\nclass NttConfig:\n    def __init__(self, modulus: int, root: int, length: int, representation: str = "standard") -> None: ...\n    @property\n    def modulus(self) -> int: ...\n    @property\n    def root(self) -> int: ...\n    @property\n    def length(self) -> int: ...\n\nclass NttParameters:\n    @property\n    def config(self) -> NttConfig: ...\n\ndef crypto_ntt_prepare(config: NttConfig, engine: Engine | None = None) -> NttParameters: ...\n'
 	facade = banner(schema_hash, '#', 'crypto_ntt.json') + 'from .._native import NttConfig, NttParameters, crypto_ntt_prepare as ntt_prepare\n'
 	for name in ('forward', 'inverse', 'pointwise_multiply'):
 		arguments = ['left', 'right'] if name == 'pointwise_multiply' else ['input']

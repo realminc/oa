@@ -55,6 +55,10 @@ pub struct SpeechCommandsDataset {
 }
 
 impl SpeechCommandsDataset {
+	pub fn load(dir: &Path) -> Result<Self> {
+		Self::load_on(&Engine::current()?, dir)
+	}
+
 	/// Load and decode every clip under `<dir>/<label>/`.
 	///
 	/// Clips are sorted per label for deterministic ordering, decoded to mono,
@@ -65,7 +69,7 @@ impl SpeechCommandsDataset {
 	///
 	/// Returns an error when a label directory is missing, a clip fails to
 	/// decode, or the dataset is empty.
-	pub fn load(engine: &Engine, dir: &Path) -> Result<Self> {
+	pub fn load_on(engine: &Engine, dir: &Path) -> Result<Self> {
 		let mut clips = Vec::new();
 		for (label, name) in COMMAND_LABELS.iter().enumerate() {
 			let label_dir = dir.join(name);
@@ -84,7 +88,7 @@ impl SpeechCommandsDataset {
 				.collect::<Vec<_>>();
 			files.sort();
 			for path in files {
-				let decoded = audio::decode_file(engine, &path)?;
+				let decoded = audio::decode_file_on(engine, &path)?;
 				let mut mono = decoded.to_mono()?;
 				if mono.sample_rate() != CLIP_SAMPLE_RATE {
 					mono = mono.resample(oa::audio::ResampleConfig {
@@ -110,6 +114,10 @@ impl SpeechCommandsDataset {
 		Ok(Self { clips })
 	}
 
+	pub fn mel_features(&self, indices: &[usize]) -> Result<Matrix> {
+		self.mel_features_on(&Engine::current()?, indices)
+	}
+
 	/// Compute one mel feature for every selected clip in a single dispatch.
 	///
 	/// Clips are packed as planar channels, so one `mel_spectrogram` call
@@ -119,7 +127,7 @@ impl SpeechCommandsDataset {
 	/// # Errors
 	///
 	/// Returns an error when `indices` is empty or feature generation fails.
-	pub fn mel_features(&self, engine: &Engine, indices: &[usize]) -> Result<Matrix> {
+	pub fn mel_features_on(&self, engine: &Engine, indices: &[usize]) -> Result<Matrix> {
 		if indices.is_empty() {
 			return Err(Error::invalid_argument(
 				"mel_features requires at least one clip index",
@@ -158,12 +166,16 @@ impl SpeechCommandsDataset {
 		features.reshape([*batch, 1, *mels, *frames])
 	}
 
+	pub fn labels(&self, indices: &[usize]) -> Result<Matrix> {
+		self.labels_on(&Engine::current()?, indices)
+	}
+
 	/// U32 class targets for the selected clips.
 	///
 	/// # Errors
 	///
 	/// Returns an error when an index is out of range or upload fails.
-	pub fn labels(&self, engine: &Engine, indices: &[usize]) -> Result<Matrix> {
+	pub fn labels_on(&self, engine: &Engine, indices: &[usize]) -> Result<Matrix> {
 		let labels = indices
 			.iter()
 			.map(|&index| {
@@ -174,7 +186,7 @@ impl SpeechCommandsDataset {
 					.ok_or_else(|| Error::invalid_argument(format!("clip index {index} out of range")))
 			})
 			.collect::<Result<Vec<u32>>>()?;
-		Matrix::new_from_slice(engine, [labels.len()], &labels)
+		Matrix::new_from_slice_on(engine, [labels.len()], &labels)
 	}
 }
 
@@ -192,6 +204,19 @@ impl SpeechCommandsDataset {
 ///
 /// Returns an error when dimensions are zero or a layer fails to build.
 pub fn commands_cnn(
+	mel_bands: usize,
+	mel_frames: usize,
+	num_classes: usize,
+) -> Result<nn::Sequential> {
+	commands_cnn_on(&Engine::current()?, mel_bands, mel_frames, num_classes)
+}
+
+/// Construct the commands CNN on an explicit engine.
+///
+/// # Errors
+///
+/// Returns an error when dimensions are zero or a layer fails to build.
+pub fn commands_cnn_on(
 	engine: &Engine,
 	mel_bands: usize,
 	mel_frames: usize,
@@ -210,7 +235,7 @@ pub fn commands_cnn(
 	let mut model = nn::Sequential::new();
 	model.add_named(
 		"conv1",
-		Rc::new(nn::Conv2d::new_with_seed(
+		Rc::new(nn::Conv2d::new_with_seed_on(
 			engine, 1, 8, 3, 1, 1, 1, RNG_SEED,
 		)?),
 	)?;
@@ -218,7 +243,7 @@ pub fn commands_cnn(
 	model.add_named("pool1", Rc::new(nn::MaxPool2d::new(2)?))?;
 	model.add_named(
 		"conv2",
-		Rc::new(nn::Conv2d::new_with_seed(
+		Rc::new(nn::Conv2d::new_with_seed_on(
 			engine,
 			8,
 			16,
@@ -234,7 +259,7 @@ pub fn commands_cnn(
 	model.add_named("flatten", Rc::new(nn::Flatten::new(1, -1)))?;
 	model.add_named(
 		"dense1",
-		Rc::new(nn::Linear::new_with_seed(
+		Rc::new(nn::Linear::new_with_seed_on(
 			engine,
 			flat,
 			64,
@@ -248,7 +273,7 @@ pub fn commands_cnn(
 	)?;
 	model.add_named(
 		"dense2",
-		Rc::new(nn::Linear::new_with_seed(
+		Rc::new(nn::Linear::new_with_seed_on(
 			engine,
 			64,
 			num_classes,

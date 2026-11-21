@@ -15,6 +15,8 @@ mod broadcast;
 mod copy;
 #[path = "matrix/test_elemwise.gen.rs"]
 mod elemwise;
+#[path = "matrix/test_gemm_route.rs"]
+mod gemm_route;
 #[path = "matrix/test_index.rs"]
 mod index;
 #[path = "matrix/test_reduce.gen.rs"]

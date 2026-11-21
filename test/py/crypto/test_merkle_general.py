@@ -49,8 +49,8 @@ def levels_of(leaves, algorithm):
 
 def matrix(engine, rows, algorithm):
 	if algorithm.startswith("poseidon2_"):
-		return oa.Matrix.new_from_u32(engine, [len(rows), 8], [n for row in rows for n in struct.unpack("<8I", row)])
-	return oa.Matrix.new_from_u8(engine, [len(rows), len(rows[0])], list(b"".join(rows)))
+		return oa.Matrix.new_from_u32([len(rows), 8], [n for row in rows for n in struct.unpack("<8I", row)], engine=engine)
+	return oa.Matrix.new_from_u8([len(rows), len(rows[0])], list(b"".join(rows)), engine=engine)
 
 
 def read(matrix_, algorithm):
@@ -77,7 +77,7 @@ class GeneralMerkleVulkanTest(unittest.TestCase):
 				self.assertEqual(read(tree.root, algorithm), levels[-1][0], (algorithm, count))
 				indices = list(range(count)) + [count, 0xFFFFFFFF]
 				selected = matrix(engine, leaves + [leaves[0], leaves[0]], algorithm)
-				index_matrix = oa.Matrix.new_from_u32(engine, [len(indices)], indices)
+				index_matrix = oa.Matrix.new_from_u32([len(indices)], indices, engine=engine)
 				proofs = oa.crypto.merkle_proofs(tree, index_matrix)
 				expected = b""
 				for index in indices:
@@ -98,7 +98,7 @@ class GeneralMerkleVulkanTest(unittest.TestCase):
 					for position in (0, 4, 8, 12, 16, 20):
 						bad = bytearray(expected)
 						bad[position] ^= 1
-						bad_frames = oa.Matrix.new_from_u8(engine, [len(indices), frame_bytes], list(bad))
+						bad_frames = oa.Matrix.new_from_u8([len(indices), frame_bytes], list(bad), engine=engine)
 						result = oa.crypto.merkle_verify(selected, bad_frames, tree.root, algorithm, count)
 						self.assertEqual(result.read_u32()[0], 0, (algorithm, position))
 

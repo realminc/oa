@@ -32,8 +32,8 @@ class BigIntBreadthVulkanTest(unittest.TestCase):
 	def test_selected_device_breadth(self):
 		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		for case in json.loads(FIXTURE.read_text())["cases"]:
-			left = oa.Matrix.new_from_u32(engine, [case["rows"], case["words"]], case["left"])
-			right = oa.Matrix.new_from_u32(engine, [case["rows"], case["words"]], case["right"])
+			left = oa.Matrix.new_from_u32([case["rows"], case["words"]], case["left"], engine=engine)
+			right = oa.Matrix.new_from_u32([case["rows"], case["words"]], case["right"], engine=engine)
 			self.assertEqual(oa.crypto.bigint_multiply_high(left, right).read_u32(), case["results"]["multiply_high"])
 			for name in ("square_wide", "bit_not", "leading_zeros"):
 				self.assertEqual(getattr(oa.crypto, f"bigint_{name}")(left).read_u32(), case["results"][name], name)

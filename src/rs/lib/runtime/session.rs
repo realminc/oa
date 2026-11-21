@@ -15,7 +15,7 @@ use super::{
 };
 
 use super::{
-	device::video::{
+	device::logical::video::{
 		DecodeSession, DecodedPlaneCopy, EncodePlaneCopy, EncodeSession, PreparedDecode,
 		PreparedEncode, RetainedDecode, RetainedEncode,
 	},
@@ -435,7 +435,7 @@ impl ExecutionSession {
 	pub(super) fn record_video_planes(
 		&mut self,
 		device: &Arc<Device>,
-		copy: Arc<super::device::video::DecodedPlaneCopy>,
+		copy: Arc<super::device::logical::video::DecodedPlaneCopy>,
 		planes: &[Matrix],
 	) -> Result<()> {
 		let bindings = planes

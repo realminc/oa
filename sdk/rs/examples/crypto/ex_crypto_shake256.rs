@@ -1,13 +1,11 @@
 // OA_DOC_BEGIN: crypto-shake256
-use oa::{Engine, Matrix, crypto};
+use oa::{Matrix, crypto};
 
 fn main() -> oa::Result<()> {
-	let engine = Engine::new()?;
-
 	// Three 5-byte messages packed into a [3, 5] u8 matrix.
 	let rows: &[&[u8]] = &[b"alpha", b"bravo", b"crypt"];
 	let flat: Vec<u8> = rows.iter().flat_map(|r| r.iter().copied()).collect();
-	let messages = Matrix::new_from_slice::<u8>(&engine, [3, 5], &flat)?;
+	let messages = Matrix::new_from_slice::<u8>([3, 5], &flat)?;
 
 	let digests = crypto::hash::shake256(&messages, 32)?;
 

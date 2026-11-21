@@ -17,13 +17,18 @@ pub struct Embedding {
 }
 
 impl Embedding {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(num_embeddings: usize, embedding_dim: usize, seed: u64) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, num_embeddings, embedding_dim, seed)
+	}
+
 	/// Construct a deterministically initialized embedding table.
 	///
 	/// # Errors
 	///
 	/// Returns an error when either dimension is zero, shape arithmetic overflows,
 	/// or allocation/upload fails.
-	pub fn new_with_seed(
+	pub fn new_with_seed_on(
 		engine: &Engine,
 		num_embeddings: usize,
 		embedding_dim: usize,
@@ -39,7 +44,7 @@ impl Embedding {
 			.ok_or_else(|| Error::invalid_argument("embedding weight size overflows usize"))?;
 		let limit = 1.0_f32 / (embedding_dim as f32).sqrt();
 		let values = random::symmetric_uniform(count, limit, seed);
-		let weight = Matrix::new_from_f32(engine, [num_embeddings, embedding_dim], &values)?;
+		let weight = Matrix::new_from_f32_on(engine, [num_embeddings, embedding_dim], &values)?;
 		Self::new_from_matrix(weight)
 	}
 

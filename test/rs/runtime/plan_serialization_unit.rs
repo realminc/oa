@@ -18,8 +18,8 @@ fn execution_plan_descriptor_roundtrips_and_revalidates() -> crate::Result<()> {
 		Ok(engine) => engine,
 		Err(_) => return Ok(()),
 	};
-	let one = crate::matrix::ones(&engine, [2, 3])?;
-	let two = crate::matrix::full(&engine, [2, 3], 2.0)?;
+	let one = crate::matrix::ones([2, 3])?;
+	let two = crate::matrix::full([2, 3], 2.0)?;
 	let (plan, _output) = engine.capture(|| {
 		let three = crate::matrix::add(&one, &two)?;
 		crate::matrix::add(&three, &three)
@@ -56,8 +56,8 @@ fn execution_plan_descriptor_rejects_malformed_and_foreign_envelopes() -> crate:
 		Ok(engine) => engine,
 		Err(_) => return Ok(()),
 	};
-	let one = crate::matrix::ones(&engine, [2, 3])?;
-	let two = crate::matrix::full(&engine, [2, 3], 2.0)?;
+	let one = crate::matrix::ones([2, 3])?;
+	let two = crate::matrix::full([2, 3], 2.0)?;
 	let (plan, _output) = engine.capture(|| crate::matrix::add(&one, &two))?;
 	let descriptor = plan.serialize_descriptor()?;
 

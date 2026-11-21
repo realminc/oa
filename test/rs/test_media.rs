@@ -96,7 +96,7 @@ test_vk!(
 				"mkv",
 			),
 		] {
-			let audio = oa::audio::decode_memory(&engine, bytes)?;
+			let audio = oa::audio::decode_memory(bytes)?;
 			assert_eq!(audio.channels(), 1, "{extension} channel count");
 			assert_eq!(audio.sample_rate(), 44_100, "{extension} sample rate");
 			assert!(audio.samples() > 40_000, "{extension} sample count");
@@ -260,7 +260,7 @@ test_vk!(
 		}
 		assert!(!packets.is_empty(), "fixture produced no video packets");
 		let decoder = oa::video::VideoDecoder::new(&engine, info)?;
-		let audio = oa::audio::decode_file(&engine, &fixture)?;
+		let audio = oa::audio::decode_file(&fixture)?;
 
 		let video_config = oa::video::VideoMatrixConfig {
 			size: Some((16, 16)),
@@ -288,7 +288,7 @@ test_vk!(
 					(value % 251) as f32 / 1000.0 - 0.125
 				})
 				.collect::<Vec<_>>();
-			oa::Matrix::new_from_f32(&engine, [class_count, features], &values)
+			oa::Matrix::new_from_f32([class_count, features], &values)
 		};
 		let video_weight = make_weight(video_features, 7)?;
 		let audio_weight = make_weight(audio_features, 13)?;

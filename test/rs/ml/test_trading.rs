@@ -78,7 +78,7 @@ test_vk!(
 		assert!(e.restore(&before).is_err());
 		let after = e.snapshot()?;
 		e.restore(&after)?;
-		let action = Matrix::new_from_slice(&engine, [3], &[2_i32, 0, 1])?;
+		let action = Matrix::new_from_slice([3], &[2_i32, 0, 1])?;
 		e.step(&action)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
@@ -115,7 +115,7 @@ test_vk!(
 		e.check_status()?;
 		let initial = e.observation().read_f32()?;
 		let initial_meta = e.metadata().read::<u32>()?;
-		let action = Matrix::new_from_slice(&engine, [3], &[2_i32, 0, 1])?;
+		let action = Matrix::new_from_slice([3], &[2_i32, 0, 1])?;
 		let cancelled = e.step(&action)?;
 		e.cancel()?;
 		assert_eq!(initial, e.observation().read_f32()?);
@@ -183,7 +183,7 @@ test_vk!(
 		e.reset(c.seed)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
-		let action = Matrix::new_from_slice(&engine, [3], &[1_i32; 3])?;
+		let action = Matrix::new_from_slice([3], &[1_i32; 3])?;
 		let step = e.step(&action)?;
 		e.reset_completed()?;
 		let event = e.submit()?;
@@ -194,7 +194,7 @@ test_vk!(
 		assert!(step.next_observation().read_f32()?[2] > 0.0);
 		assert!(step.next_observation().read_f32()?[9] > 0.0); // Preserve the position peak for bootstrap.
 		assert_eq!(e.ledger().read_f32()?[11], 0.0); // Reset state is independent of the saved final observation.
-		let bad = Matrix::new_from_slice(&engine, [3], &[2_i32, 1, 0])?;
+		let bad = Matrix::new_from_slice([3], &[2_i32, 1, 0])?;
 		e.step(&bad)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
@@ -220,7 +220,7 @@ test_vk!(
 		e.reset(c.seed)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
-		let action = Matrix::new_from_slice(&engine, [3], &[2_i32, 0, 1])?;
+		let action = Matrix::new_from_slice([3], &[2_i32, 0, 1])?;
 		let step = e.step(&action)?;
 		e.reset_completed()?;
 		let event = e.submit()?;
@@ -267,7 +267,7 @@ test_vk!(
 		let event = e.submit()?;
 		e.wait(&event)?;
 		assert_eq!(e.observation().shape(), [3, 18]);
-		let action = Matrix::new_from_slice(&engine, [3], &[2_i32, 0, 1])?;
+		let action = Matrix::new_from_slice([3], &[2_i32, 0, 1])?;
 		let first = e.step(&action)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
@@ -335,7 +335,7 @@ test_vk!(
 		e.reset(c.seed)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
-		let hold = Matrix::new_from_slice(&engine, [3], &[2_i32, 0, 1])?;
+		let hold = Matrix::new_from_slice([3], &[2_i32, 0, 1])?;
 		for (index, expected_peak, expected_pnl, expected_reward) in [
 			(0, [0.1, 0.0, 0.0], [0.1, -0.1, 0.0], [0.1, -0.1, 0.0]),
 			(1, [0.1, 0.1, 0.0], [-0.1, 0.1, 0.0], [-0.2, 0.2, 0.0]),
@@ -361,7 +361,7 @@ test_vk!(
 				);
 			}
 		}
-		let reverse = Matrix::new_from_slice(&engine, [3], &[0_i32, 2, 1])?;
+		let reverse = Matrix::new_from_slice([3], &[0_i32, 2, 1])?;
 		let step = e.step(&reverse)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
@@ -468,7 +468,7 @@ test_vk!(
 			(0, 2.0, 988.035, 2.0, 0.965),
 			(1, 0.0, 985.797, 3.0, 1.203),
 		] {
-			let step = env.step(&Matrix::new_from_slice(&engine, [1], &[action])?)?;
+			let step = env.step(&Matrix::new_from_slice([1], &[action])?)?;
 			let event = env.submit()?;
 			env.wait(&event)?;
 			env.check_status()?;
@@ -499,7 +499,7 @@ test_vk!(trading_delayed_target_and_portable_state_resume, engine, {
 	first.reset(c.seed)?;
 	let event = first.submit()?;
 	first.wait(&event)?;
-	first.step(&Matrix::new_from_slice(&engine, [1], &[2_i32])?)?;
+	first.step(&Matrix::new_from_slice([1], &[2_i32])?)?;
 	let event = first.submit()?;
 	first.wait(&event)?;
 	first.check_status()?;
@@ -518,7 +518,7 @@ test_vk!(trading_delayed_target_and_portable_state_resume, engine, {
 	resumed.restore(&decoded)?;
 	for env in [&mut first, &mut resumed] {
 		// A newer flat suggestion cannot retroactively cancel an already pending IOC.
-		env.step(&Matrix::new_from_slice(&engine, [1], &[1_i32])?)?;
+		env.step(&Matrix::new_from_slice([1], &[1_i32])?)?;
 		let event = env.submit()?;
 		env.wait(&event)?;
 		env.check_status()?;
@@ -561,7 +561,7 @@ test_vk!(trading_mark_margin_liquidation_and_commission, engine, {
 	let event = env.submit()?;
 	env.wait(&event)?;
 	for i in 0..3 {
-		let step = env.step(&Matrix::new_from_slice(&engine, [1], &[2_i32])?)?;
+		let step = env.step(&Matrix::new_from_slice([1], &[2_i32])?)?;
 		let event = env.submit()?;
 		env.wait(&event)?;
 		env.check_status()?;
@@ -604,7 +604,7 @@ test_vk!(trading_required_close_cannot_invent_liquidity, engine, {
 	env.reset(c.seed)?;
 	let event = env.submit()?;
 	env.wait(&event)?;
-	env.step(&Matrix::new_from_slice(&engine, [1], &[2_i32])?)?;
+	env.step(&Matrix::new_from_slice([1], &[2_i32])?)?;
 	let event = env.submit()?;
 	env.wait(&event)?;
 	assert!(env.check_status().is_err());
@@ -642,7 +642,7 @@ test_vk!(trading_fractional_lot_partial_close_reaches_flat, engine, {
 		let event = env.submit()?;
 		env.wait(&event)?;
 		for (index, selected) in [action, 1, 1].into_iter().enumerate() {
-			env.step(&Matrix::new_from_slice(&engine, [1], &[selected])?)?;
+			env.step(&Matrix::new_from_slice([1], &[selected])?)?;
 			let event = env.submit()?;
 			env.wait(&event)?;
 			env.check_status()?;
@@ -670,6 +670,32 @@ test_vk!(trading_fractional_lot_partial_close_reaches_flat, engine, {
 			}
 		}
 		env.close()?;
+	}
+	Ok(())
+});
+
+test_vk!(trading_copies_a_packed_market_history_row, engine, {
+	let mut source = data();
+	let width = 4992;
+	source.feature_width = width;
+	source.features = (0..source.market.len() * width).map(|i| i as f32).collect();
+	let mut settings = config();
+	settings.window = 1;
+	let mut env = TradingEnvironment::new(&engine, settings, &[source])?;
+	env.reset(settings.seed)?;
+	let event = env.submit()?;
+	env.wait(&event)?;
+	let rows = env.metadata().read::<u32>()?;
+	let observed = env.observation().read_f32()?;
+	let stride = width + oa::ml::environment::TRADING_ACCOUNT_FEATURES;
+	for lane in 0..settings.environments as usize {
+		let start = rows[4 * lane] as usize * width;
+		assert!(
+			observed[lane * stride..lane * stride + width]
+				.iter()
+				.enumerate()
+				.all(|(i, value)| *value == (start + i) as f32)
+		);
 	}
 	Ok(())
 });

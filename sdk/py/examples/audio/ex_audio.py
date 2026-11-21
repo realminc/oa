@@ -3,14 +3,11 @@ import os
 import sys
 
 import oa
-
-engine = oa.Engine()
-
 # Asset path: OA_ASSET env var or the SDK asset directory by convention.
 asset_root = os.environ.get("OA_ASSET", "asset")
 audio_path = os.path.join(asset_root, "audio/oaNarration.wav")
 
-audio = oa.audio.decode_file(engine, audio_path)
+audio = oa.audio.decode_file(audio_path)
 
 mono = oa.audio.to_mono(audio)
 

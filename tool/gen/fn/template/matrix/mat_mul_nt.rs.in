@@ -64,7 +64,7 @@
 		DType::F32,
 	)?;
 	if let Some((plan, launch)) = launch {
-		if !crate::runtime::record_mat_mul_nt_f16s(
+		if !crate::runtime::record_mat_mul_nt_f16(
 			engine, left, right, &output, &plan, [m, n, k],
 		)? {
 			let buffers = launch.bindings(&[left.storage(), right.storage(), output.storage()])?;

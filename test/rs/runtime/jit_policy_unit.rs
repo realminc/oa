@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime::device::vkcache;
+use crate::runtime::device::logical::vkcache;
 use crate::runtime::dna::tuning::ObservedRoute;
 
 #[test]
@@ -12,7 +12,8 @@ fn unread_timing_pool_does_not_retain_owning_device() -> crate::Result<()> {
 	let engine = crate::Engine::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	let value = crate::matrix::from_f32_on(&engine, [1], &[1.0])?;
+	crate::Engine::set_default(engine.clone());
+	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
 		.buffer()
@@ -44,7 +45,8 @@ fn negative_pipeline_admissions_stay_bounded() -> crate::Result<()> {
 	let engine = crate::Engine::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	let value = crate::matrix::from_f32_on(&engine, [1], &[1.0])?;
+	crate::Engine::set_default(engine.clone());
+	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
 		.buffer()
@@ -143,7 +145,8 @@ fn block_artifacts_restore_from_vkcache() -> crate::Result<()> {
 	let engine = crate::Engine::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	let value = crate::matrix::from_f32_on(&engine, [1], &[1.0])?;
+	crate::Engine::set_default(engine.clone());
+	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
 		.buffer()
@@ -224,7 +227,8 @@ fn block_route_observations_record_tile_dispatches() -> crate::Result<()> {
 	let engine = crate::Engine::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	let value = crate::matrix::from_f32_on(&engine, [1], &[1.0])?;
+	crate::Engine::set_default(engine.clone());
+	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
 		.buffer()
@@ -232,8 +236,8 @@ fn block_route_observations_record_tile_dispatches() -> crate::Result<()> {
 		.device()
 		.clone();
 	drop(value);
-	let left = crate::Matrix::new_from_f32(&engine, [64, 64], &vec![0.25; 64 * 64])?;
-	let right = crate::Matrix::new_from_f32(&engine, [64, 64], &vec![0.5; 64 * 64])?;
+	let left = crate::Matrix::new_from_f32([64, 64], &vec![0.25; 64 * 64])?;
+	let right = crate::Matrix::new_from_f32([64, 64], &vec![0.5; 64 * 64])?;
 	// Each flush rebuilds the graph: admission probes the specialized route
 	// while recordings timestamp it under the block signature.
 	for _ in 0..8 {
@@ -339,7 +343,8 @@ fn audio_mel_normalize_tile_route_matches_incumbent() -> crate::Result<()> {
 	let engine = crate::Engine::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	let value = crate::matrix::from_f32_on(&engine, [1], &[1.0])?;
+	crate::Engine::set_default(engine.clone());
+	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
 		.buffer()
@@ -453,7 +458,8 @@ fn audio_mel_chain_runs_as_one_post_fft_region() -> crate::Result<()> {
 	let engine = crate::Engine::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	let value = crate::matrix::from_f32_on(&engine, [1], &[1.0])?;
+	crate::Engine::set_default(engine.clone());
+	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
 		.buffer()
@@ -538,7 +544,8 @@ fn image_resize_tile_route_matches_incumbent() -> crate::Result<()> {
 	let engine = crate::Engine::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	let value = crate::matrix::from_f32_on(&engine, [1], &[1.0])?;
+	crate::Engine::set_default(engine.clone());
+	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
 		.buffer()
@@ -564,7 +571,7 @@ fn image_resize_tile_route_matches_incumbent() -> crate::Result<()> {
 		.map(|index| ((index * 17 % 31) as f32 - 15.0) * 0.125)
 		.collect::<Vec<_>>();
 	let image = crate::Image::new(
-		crate::Matrix::new_from_f32(&engine, shape, &values)?,
+		crate::Matrix::new_from_f32(shape, &values)?,
 		crate::ImageLayout::Nchw,
 		crate::ImageFormat::Rgb,
 	)?;
@@ -678,7 +685,6 @@ fn image_resize_tile_route_matches_incumbent() -> crate::Result<()> {
 
 	// remap over a fractional/edge map on a shared batch.
 	let map = crate::Matrix::new_from_f32(
-		&engine,
 		[2, 2, 5, 7],
 		&(0..140)
 			.map(|index| (index * 7 % 29) as f32 * 0.25 - 1.5)
@@ -703,9 +709,8 @@ fn image_resize_tile_route_matches_incumbent() -> crate::Result<()> {
 	}
 
 	// Both warp donors — rotation+shear affine and a true perspective.
-	let affine = crate::Matrix::new_from_f32(&engine, [2, 3], &[0.9, -0.2, 1.5, 0.1, 1.1, -0.5])?;
+	let affine = crate::Matrix::new_from_f32([2, 3], &[0.9, -0.2, 1.5, 0.1, 1.1, -0.5])?;
 	let perspective = crate::Matrix::new_from_f32(
-		&engine,
 		[3, 3],
 		&[1.0, 0.1, 0.0, -0.05, 1.0, 0.0, 0.001, 0.0005, 1.0],
 	)?;
@@ -826,8 +831,8 @@ fn image_resize_tile_route_matches_incumbent() -> crate::Result<()> {
 			)?;
 		}
 	}
-	let kernel_x = crate::Matrix::new_from_f32(&engine, [1, 3], &[0.5, 1.0, 0.5])?;
-	let kernel_y = crate::Matrix::new_from_f32(&engine, [3, 1], &[0.25, 0.5, 0.25])?;
+	let kernel_x = crate::Matrix::new_from_f32([1, 3], &[0.5, 1.0, 0.5])?;
+	let kernel_y = crate::Matrix::new_from_f32([3, 1], &[0.25, 0.5, 0.25])?;
 	for border in borders {
 		admit(
 			&mut fresh,
@@ -1032,7 +1037,6 @@ fn image_resize_tile_route_matches_incumbent() -> crate::Result<()> {
 	// The label-indexed palette blend: i32 labels index [K,3] colors;
 	// out-of-range, negative, and alpha-channel pixels pass through.
 	let mask = crate::Matrix::new_from_slice(
-		&engine,
 		[2usize, 5, 7],
 		&(0..70i32)
 			.map(|i| match i % 11 {
@@ -1043,7 +1047,6 @@ fn image_resize_tile_route_matches_incumbent() -> crate::Result<()> {
 			.collect::<Vec<_>>(),
 	)?;
 	let palette = crate::Matrix::new_from_f32(
-		&engine,
 		[4usize, 3],
 		&[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.5, 0.5, 0.5],
 	)?;
@@ -1105,7 +1108,6 @@ fn image_resize_tile_route_matches_incumbent() -> crate::Result<()> {
 			.read_f32()
 	})?;
 	let twist = crate::Matrix::new_from_f32(
-		&engine,
 		[3usize, 4],
 		&[
 			0.0, 1.0, 0.0, 0.25, //
@@ -1119,11 +1121,7 @@ fn image_resize_tile_route_matches_incumbent() -> crate::Result<()> {
 			.read_f32()
 	})?;
 	let right = crate::Image::new(
-		crate::Matrix::new_from_f32(
-			&engine,
-			shape,
-			&values.iter().rev().copied().collect::<Vec<_>>(),
-		)?,
+		crate::Matrix::new_from_f32(shape, &values.iter().rev().copied().collect::<Vec<_>>())?,
 		crate::ImageLayout::Nchw,
 		crate::ImageFormat::Rgb,
 	)?;
@@ -1134,7 +1132,6 @@ fn image_resize_tile_route_matches_incumbent() -> crate::Result<()> {
 	})?;
 	let mask_image = crate::Image::new(
 		crate::Matrix::new_from_f32(
-			&engine,
 			[2usize, 1, 5, 7],
 			&(0..70)
 				.map(|i| ((i * 7) % 13) as f32 / 12.0)
@@ -1161,7 +1158,7 @@ fn image_resize_tile_route_matches_incumbent() -> crate::Result<()> {
 		let coefficients = (0..kh * kw)
 			.map(|index| ((index * 11 % 17) as f32 - 8.0) * 0.0625)
 			.collect::<Vec<_>>();
-		let kernel = crate::Matrix::new_from_f32(&engine, [kh, kw], &coefficients)?;
+		let kernel = crate::Matrix::new_from_f32([kh, kw], &coefficients)?;
 		for border in borders {
 			admit(
 				&mut fresh,
@@ -1191,7 +1188,8 @@ fn video_to_matrix_tile_route_matches_incumbent() -> crate::Result<()> {
 	let engine = crate::Engine::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	let value = crate::matrix::from_f32_on(&engine, [1], &[1.0])?;
+	crate::Engine::set_default(engine.clone());
+	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
 		.buffer()
@@ -1251,7 +1249,6 @@ fn video_to_matrix_tile_route_matches_incumbent() -> crate::Result<()> {
 		.flat_map(|y| (0..cw * 2).map(move |x| ((x * 3 + y * 11 + 40) % 251) as u8))
 		.collect();
 	let nv12 = crate::VideoFrame::upload_planes(
-		&engine,
 		crate::video::VideoPixelFormat::Nv12,
 		vec![fill(w, h, 3), uv],
 		w,
@@ -1266,7 +1263,6 @@ fn video_to_matrix_tile_route_matches_incumbent() -> crate::Result<()> {
 
 	// I420 + crop + letterbox + nearest + luma-only channels.
 	let i420 = crate::VideoFrame::upload_planes(
-		&engine,
 		crate::video::VideoPixelFormat::Yuv420Planar8,
 		vec![fill(w, h, 1), fill(cw, chh, 2), fill(cw, chh, 3)],
 		w,
@@ -1305,7 +1301,6 @@ fn video_to_matrix_tile_route_matches_incumbent() -> crate::Result<()> {
 	let luma10: Vec<u16> = (0..w * h).map(|i| (i * 9 % 1024) as u16).collect();
 	let chroma10: Vec<u16> = (0..cw * 2 * chh).map(|i| (i * 13 % 1024) as u16).collect();
 	let p010 = crate::VideoFrame::upload_planes(
-		&engine,
 		crate::video::VideoPixelFormat::P010,
 		vec![pack10(&luma10), pack10(&chroma10)],
 		w,
@@ -1335,7 +1330,6 @@ fn video_to_matrix_tile_route_matches_incumbent() -> crate::Result<()> {
 	// Batched conversion exercises the z/group dimension (same format
 	// required by the batch contract).
 	let nv12_second = crate::VideoFrame::upload_planes(
-		&engine,
 		crate::video::VideoPixelFormat::Nv12,
 		vec![fill(w, h, 9), fill(w, chh, 5)],
 		w,
@@ -1362,6 +1356,7 @@ fn image_scalar_epilogue_folds_into_the_tile_route() -> crate::Result<()> {
 	let engine = crate::Engine::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
+	crate::Engine::set_default(engine.clone());
 	let _tile = ScopedEnv::set("OA_TILE_IMAGE", std::ffi::OsStr::new("1"));
 
 	let shape = [2_usize, 3, 5, 7];
@@ -1369,7 +1364,7 @@ fn image_scalar_epilogue_folds_into_the_tile_route() -> crate::Result<()> {
 		.map(|index| ((index * 17 % 31) as f32 - 15.0) * 0.125)
 		.collect::<Vec<_>>();
 	let image = crate::Image::new(
-		crate::Matrix::new_from_f32(&engine, shape, &values)?,
+		crate::Matrix::new_from_f32(shape, &values)?,
 		crate::ImageLayout::Nchw,
 		crate::ImageFormat::Rgb,
 	)?;
@@ -1523,18 +1518,18 @@ fn tile_image_audio_families_record_device_medians() -> crate::Result<()> {
 	let engine = crate::Engine::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
+	crate::Engine::set_default(engine.clone());
 
 	let shape = [2_usize, 3, 64, 96];
 	let values = (0..shape.iter().product::<usize>())
 		.map(|index| ((index * 17 % 61) as f32 - 30.0) * 0.03125)
 		.collect::<Vec<_>>();
 	let image = crate::Image::new(
-		crate::Matrix::new_from_f32(&engine, shape, &values)?,
+		crate::Matrix::new_from_f32(shape, &values)?,
 		crate::ImageLayout::Nchw,
 		crate::ImageFormat::Rgb,
 	)?;
 	let kernel = crate::Matrix::new_from_f32(
-		&engine,
 		[5usize, 5],
 		&(0..25)
 			.map(|i| ((i * 7 % 13) as f32 - 6.0) * 0.0625)
@@ -1578,7 +1573,6 @@ fn tile_image_audio_families_record_device_medians() -> crate::Result<()> {
 		.collect();
 	let timing = crate::video::VideoFrameTiming::new(std::time::Duration::from_millis(33), None)?;
 	let nv12 = crate::VideoFrame::upload_planes(
-		&engine,
 		crate::video::VideoPixelFormat::Nv12,
 		vec![fill(vw, vh, 3), uv],
 		vw,
@@ -1601,7 +1595,7 @@ fn tile_image_audio_families_record_device_medians() -> crate::Result<()> {
 		packets.push(packet);
 	}
 	let decoder = crate::video::VideoDecoder::new(&engine, demuxer.info())?;
-	let mm_audio = crate::audio::decode_file(&engine, &fixture)?;
+	let mm_audio = crate::audio::decode_file(&fixture)?;
 	let mm_config = crate::video::VideoMatrixConfig {
 		size: Some((16, 16)),
 		..crate::video::VideoMatrixConfig::default()
@@ -1624,7 +1618,7 @@ fn tile_image_audio_families_record_device_medians() -> crate::Result<()> {
 				(value % 251) as f32 / 1000.0 - 0.125
 			})
 			.collect::<Vec<_>>();
-		crate::Matrix::new_from_f32(&engine, [class_count, features], &values)
+		crate::Matrix::new_from_f32([class_count, features], &values)
 	};
 	let video_weight = make_weight(video_features, 7)?;
 	let audio_weight = make_weight(audio_features, 13)?;

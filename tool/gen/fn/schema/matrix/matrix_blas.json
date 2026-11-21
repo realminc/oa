@@ -317,38 +317,74 @@
 			"dtype": "f16"
 		},
 		{
-			"name": "mat_mul_nt_f16s",
+			"name": "mat_mul_nt_f16",
 			"kind": "mat_mul_nt",
-			"variant": "f16s",
+			"variant": "f16",
 			"stable_id": 706,
-			"kernel_id": "MatrixMatMulNtF16sF32",
-			"kernel_name": "mat_mul_nt_f16s",
-			"source": "src/slang/matrix/blas/mat_mul_nt_f16s.slang",
+			"kernel_id": "MatrixMatMulNtF16",
+			"kernel_name": "mat_mul_nt_f16",
+			"source": "src/slang/matrix/blas/mat_mul_nt_f16.slang",
 			"dispatch_tile_size": [
 				64,
 				64,
 				1
 			],
 			"semantic_operation": "mat_mul_nt",
-			"semantic_operations": ["ml::linear"],
-			"source_stem": "mat_mul_nt_f16s",
+			"semantic_operations": [
+				"ml::linear"
+			],
+			"source_stem": "mat_mul_nt_f16",
 			"dtype": "f16"
 		},
 		{
-			"name": "sum_f16s",
+			"name": "sum_f16",
 			"kind": "sum",
-			"variant": "sum_f16s",
+			"variant": "sum_f16",
 			"stable_id": 707,
-			"kernel_id": "MatrixSumF16sF32",
-			"kernel_name": "sum_f16s",
-			"source": "src/slang/matrix/blas/sum_f16s.slang",
+			"kernel_id": "MatrixSumF16",
+			"kernel_name": "sum_f16",
+			"source": "src/slang/matrix/blas/sum_f16.slang",
 			"dispatch_tile_size": [
 				1,
 				1,
 				1
 			],
 			"semantic_operation": "sum",
-			"source_stem": "sum_f16s",
+			"source_stem": "sum_f16",
+			"dtype": "f16"
+		},
+		{
+			"name": "mat_mul_nt_tiled_wide",
+			"kind": "mat_mul_nt",
+			"variant": "tiled_wide",
+			"stable_id": 708,
+			"kernel_id": "MatrixMatMulNtTiledWideF32",
+			"kernel_name": "mat_mul_nt_tiled_wide",
+			"source": "src/slang/matrix/blas/mat_mul_nt_tiled_wide.slang",
+			"source_stem": "mat_mul_nt_tiled_wide",
+			"dispatch_tile_size": [
+				128,
+				64,
+				1
+			],
+			"semantic_operation": "mat_mul_nt",
+			"dtype": "f32"
+		},
+		{
+			"name": "mat_mul_nt_tiled_wide_f16",
+			"kind": "mat_mul_nt",
+			"variant": "tiled_wide_f16",
+			"stable_id": 709,
+			"kernel_id": "MatrixMatMulNtTiledWideF16",
+			"kernel_name": "mat_mul_nt_tiled_wide_f16",
+			"source": "src/slang/matrix/blas/mat_mul_nt_tiled_wide_f16.slang",
+			"source_stem": "mat_mul_nt_tiled_wide_f16",
+			"dispatch_tile_size": [
+				128,
+				64,
+				1
+			],
+			"semantic_operation": "mat_mul_nt",
 			"dtype": "f16"
 		}
 	]

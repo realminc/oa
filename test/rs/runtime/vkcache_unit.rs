@@ -620,7 +620,7 @@ fn cross_process_writers_preserve_unrelated_sections() {
 		.args([
 			"--exact",
 			concat!(
-				"runtime::device::vkcache::tests::",
+				"runtime::device::logical::vkcache::tests::",
 				"cross_process_writers_preserve_unrelated_sections"
 			),
 			"--test-threads=1",

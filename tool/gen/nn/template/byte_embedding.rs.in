@@ -4,12 +4,16 @@ pub struct {{name}} {
 }
 
 impl {{name}} {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(embedding_dim: usize, seed: u64) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, embedding_dim, seed)	}
+
 	/// Construct a deterministically initialized byte embedding.
 	///
 	/// # Errors
 	///
 	/// Returns an error when `embedding_dim` is zero or initialization fails.
-	pub fn new_with_seed(engine: &Engine, embedding_dim: usize, seed: u64) -> Result<Self> {
+	pub fn new_with_seed_on(engine: &Engine, embedding_dim: usize, seed: u64) -> Result<Self> {
 		Ok(Self {
 			inner: {{constructor}}(engine, {{vocabulary}}, embedding_dim, seed)?,
 		})

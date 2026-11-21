@@ -96,7 +96,7 @@ fn timer_device_commits_measured_submissions() -> crate::Result<()> {
 	// Repeated timer-tagged checkpoints measure each pending batch; the
 	// returned events carry no timing, which belongs to the timer instead.
 	for _ in 0..2 {
-		let one = crate::matrix::ones(&engine, [262_147])?;
+		let one = crate::matrix::ones([262_147])?;
 		let _two = crate::matrix::add(&one, &one)?;
 		let event = engine.checkpoint_with_timer(&mut timer)?;
 		assert_eq!(

@@ -44,7 +44,7 @@ test_vk!(
 			0.0, 0.0, 0.75, 1.0, // blue
 		];
 		let image = Image::new(
-			Matrix::new_from_f32(&engine, [1, 3, 2, 2], &values)?,
+			Matrix::new_from_f32([1, 3, 2, 2], &values)?,
 			ImageLayout::Nchw,
 			ImageFormat::Rgb,
 		)?;
@@ -58,7 +58,7 @@ test_vk!(
 		] {
 			let encoded = oa::image::encode(&image, codec, 95)?;
 			assert!(!encoded.is_empty());
-			let decoded = oa::image::decode_memory(&engine, &encoded, ImageFormat::Rgb)?;
+			let decoded = oa::image::decode_memory(&encoded, ImageFormat::Rgb)?;
 			assert_eq!(decoded.layout(), ImageLayout::Nchw);
 			assert_eq!(decoded.format(), ImageFormat::Rgb);
 			assert_eq!(decoded.as_matrix().shape(), [1, 3, 2, 2]);
@@ -81,7 +81,7 @@ test_vk!(
 
 		let path = temporary_path("png");
 		oa::image::save_file(&path, &image, 90)?;
-		let decoded = oa::image::decode_file(&engine, &path, ImageFormat::Rgba)?;
+		let decoded = oa::image::decode_file(&path, ImageFormat::Rgba)?;
 		assert_eq!(decoded.format(), ImageFormat::Rgba);
 		assert_eq!(decoded.as_matrix().shape(), [1, 4, 2, 2]);
 		assert_eq!(decoded.as_matrix().read_f32()?[12..], [1.0, 1.0, 1.0, 1.0]);

@@ -50,18 +50,19 @@ pub(crate) struct PythonMultiHeadAttention {
 impl PythonMultiHeadAttention {
 	/// Construct four biased projections with causal visibility and automatic backend.
 	#[new]
-	#[pyo3(signature = (engine, model_width, num_heads, sequence_length, dropout_probability = 0.0, bias = true, seed = 0))]
+	#[pyo3(signature = (model_width, num_heads, sequence_length, dropout_probability = 0.0, bias = true, seed = 0, engine=None))]
 	pub fn new(
-		engine: &PythonEngine,
 		model_width: usize,
 		num_heads: usize,
 		sequence_length: usize,
 		dropout_probability: f32,
 		bias: bool,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::MultiHeadAttention::new_with_seed_and_options(
-			&engine.inner,
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::MultiHeadAttention::new_with_seed_and_options_on(
+			&engine,
 			model_width,
 			num_heads,
 			sequence_length,

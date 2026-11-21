@@ -54,9 +54,9 @@ class BigIntModularVulkanTest(unittest.TestCase):
 		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		for case in json.loads(FIXTURE.read_text())["cases"]:
 			shape = [case["rows"], case["words"]]
-			left = oa.Matrix.new_from_u32(engine, shape, case["left"])
-			right = oa.Matrix.new_from_u32(engine, shape, case["right"])
-			modulus = oa.Matrix.new_from_u32(engine, shape, case["modulus"])
+			left = oa.Matrix.new_from_u32(shape, case["left"], engine=engine)
+			right = oa.Matrix.new_from_u32(shape, case["right"], engine=engine)
+			modulus = oa.Matrix.new_from_u32(shape, case["modulus"], engine=engine)
 			for name in UNARY + BINARY:
 				op = getattr(oa.crypto, f"bigint_{name}")
 				output, status = op(left, modulus) if name in UNARY else op(left, right, modulus)

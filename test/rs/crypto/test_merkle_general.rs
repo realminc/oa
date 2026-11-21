@@ -109,7 +109,7 @@ fn make_leaves(count: usize, algorithm: MerkleAlgorithm) -> Vec<Vec<u8>> {
 }
 
 fn leaf_matrix(
-	engine: &oa::Engine,
+	_engine: &oa::Engine,
 	leaves: &[Vec<u8>],
 	algorithm: MerkleAlgorithm,
 ) -> oa::Result<Matrix> {
@@ -124,10 +124,10 @@ fn leaf_matrix(
 					.map(|bytes| u32::from_le_bytes(*bytes))
 			})
 			.collect();
-		Matrix::new_from_slice(engine, [leaves.len(), 8], &words)
+		Matrix::new_from_slice([leaves.len(), 8], &words)
 	} else {
 		let bytes: Vec<u8> = leaves.iter().flatten().copied().collect();
-		Matrix::new_from_slice(engine, [leaves.len(), leaf_bytes(algorithm)], &bytes)
+		Matrix::new_from_slice([leaves.len(), leaf_bytes(algorithm)], &bytes)
 	}
 }
 
@@ -169,7 +169,7 @@ test_vk!(
 				selected.push(leaves[0].clone());
 				selected.push(leaves[0].clone());
 				let selected_matrix = leaf_matrix(&engine, &selected, algorithm)?;
-				let index_matrix = Matrix::new_from_slice(&engine, [indices.len()], &indices)?;
+				let index_matrix = Matrix::new_from_slice([indices.len()], &indices)?;
 				let proofs = merkle::proofs(&tree, &index_matrix)?;
 				let mut expected = Vec::new();
 				for &index in &indices {
@@ -224,7 +224,7 @@ test_vk!(
 					for position in [0_usize, 4, 8, 12, 16, 20] {
 						let mut bad = expected.clone();
 						bad[position] ^= 1;
-						let bad_frames = Matrix::new_from_slice(&engine, [indices.len(), frame_bytes], &bad)?;
+						let bad_frames = Matrix::new_from_slice([indices.len(), frame_bytes], &bad)?;
 						let result = merkle::verify(
 							&selected_matrix,
 							&bad_frames,
@@ -334,7 +334,7 @@ test_vk!(poseidon2_permute_and_framed_sponge_match_oracle, engine, {
 			.iter()
 			.map(|v| v.as_u64().unwrap() as u32)
 			.collect();
-		let input = Matrix::new_from_slice(&engine, [1, values.len()], &values)?;
+		let input = Matrix::new_from_slice([1, values.len()], &values)?;
 		let permute = match case["profile"].as_str().unwrap() {
 			"babybear16" => oa::crypto::hash::poseidon2_babybear16_permute(&input)?,
 			"babybear24" => oa::crypto::hash::poseidon2_babybear24_permute(&input)?,
@@ -352,7 +352,7 @@ test_vk!(poseidon2_permute_and_framed_sponge_match_oracle, engine, {
 			let values: Vec<u32> = (0..length * rows)
 				.map(|i| (i as u32).wrapping_mul(2654435761))
 				.collect();
-			let input = Matrix::new_from_slice(&engine, [rows, length], &values)?;
+			let input = Matrix::new_from_slice([rows, length], &values)?;
 			for output_length in [8_usize, rate + 3] {
 				let mut expected = Vec::new();
 				for r in 0..rows {

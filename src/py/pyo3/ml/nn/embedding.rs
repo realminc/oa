@@ -15,12 +15,13 @@ impl PythonEmbedding {
 	/// Construct a deterministically initialized embedding table.
 	#[new]
 	pub fn new(
-		engine: &PythonEngine,
 		num_embeddings: usize,
 		embedding_dim: usize,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::Embedding::new_with_seed(&engine.inner, num_embeddings, embedding_dim, seed)
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::Embedding::new_with_seed_on(&engine, num_embeddings, embedding_dim, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

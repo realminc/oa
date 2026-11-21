@@ -3,7 +3,7 @@
 mod decode;
 mod encode;
 
-pub use decode::{decode_file, decode_memory};
+pub use decode::{decode_file, decode_file_on, decode_memory, decode_memory_on};
 pub use encode::{encode, save_file, save_rgba_file};
 
 /// Still-image bitstream codec.

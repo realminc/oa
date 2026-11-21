@@ -313,6 +313,13 @@ pub(super) fn save_checkpoint_with_progress(
 	file.save(path)
 }
 
+pub fn load_checkpoint(
+	path: impl AsRef<Path>,
+	model: &dyn Module,
+	optimizer: &mut dyn CheckpointOptimizer,
+) -> Result<()> {
+	load_checkpoint_on(&Engine::current()?, path, model, optimizer)
+}
 /// Load a native OA `.oam` checkpoint into existing matching owners.
 ///
 /// The complete file, section hashes, tensor metadata, module paths, shapes,
@@ -325,7 +332,7 @@ pub(super) fn save_checkpoint_with_progress(
 /// integrity-invalid `.oam` data. Returns another error for a valid file that
 /// does not match the destination model/optimizer, or for allocation/runtime
 /// and filesystem failures.
-pub fn load_checkpoint(
+pub fn load_checkpoint_on(
 	engine: &Engine,
 	path: impl AsRef<Path>,
 	model: &dyn Module,
@@ -526,7 +533,7 @@ fn matrices_from_flat(
 		let end = offset
 			.checked_add(data.num_elements())
 			.ok_or_else(|| Error::resource_exhausted("optimizer state offset overflows usize"))?;
-		matrices.push(Matrix::new_from_f32(
+		matrices.push(Matrix::new_from_f32_on(
 			engine,
 			data.shape().to_vec(),
 			&values[offset..end],
@@ -606,11 +613,11 @@ fn validate_state_u32_contract(tensor: &Tensor, path: &str) -> Result<()> {
 fn matrix_from_tensor(engine: &Engine, tensor: &Tensor) -> Result<Matrix> {
 	let shape = tensor_shape(tensor)?;
 	match tensor_dtype(tensor)? {
-		DType::U8 => Matrix::new_from_slice(engine, shape, &tensor.data),
-		DType::F16 => Matrix::new_from_slice(engine, shape, &decode_f16(&tensor.data)?),
-		DType::F32 => Matrix::new_from_slice(engine, shape, &decode_f32(&tensor.data)?),
-		DType::I32 => Matrix::new_from_slice(engine, shape, &decode_i32(&tensor.data)?),
-		DType::U32 => Matrix::new_from_slice(engine, shape, &decode_u32(&tensor.data)?),
+		DType::U8 => Matrix::new_from_slice_on(engine, shape, &tensor.data),
+		DType::F16 => Matrix::new_from_slice_on(engine, shape, &decode_f16(&tensor.data)?),
+		DType::F32 => Matrix::new_from_slice_on(engine, shape, &decode_f32(&tensor.data)?),
+		DType::I32 => Matrix::new_from_slice_on(engine, shape, &decode_i32(&tensor.data)?),
+		DType::U32 => Matrix::new_from_slice_on(engine, shape, &decode_u32(&tensor.data)?),
 	}
 }
 

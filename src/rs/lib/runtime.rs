@@ -20,8 +20,8 @@ mod timer;
 mod window;
 
 pub use clock_calibration::{ClockCalibration, HostClockDomain};
-pub(crate) use device::commands::{RenderingCommands, SyncCommands};
-pub(crate) use device::dispatch::{
+pub(crate) use device::logical::commands::{RenderingCommands, SyncCommands};
+pub(crate) use device::logical::dispatch::{
 	BufferAccess, BufferBinding, ComputeDispatch, IndirectDispatch, PushConstant,
 };
 pub use device::{DeviceKind, DeviceSummary};
@@ -36,7 +36,7 @@ pub(in crate::runtime) use dna::provider::blas::{
 };
 pub(crate) use dna::provider::blas::{lower_mat_mul_nt, plan_mat_mul_nt, plan_mat_mul_nt_lowered};
 pub(crate) use dna::provider::precision::{
-	record_linear_f16s, record_mat_mul_nt_f16s, record_sum_f16s,
+	record_linear_f16, record_mat_mul_nt_f16, record_sum_f16,
 };
 pub(crate) use engine::{
 	CaptureAttempt, EngineHandle, MlDsaDeviceKey, MlKemDeviceKey, MlKemSharedSecret,
@@ -70,29 +70,31 @@ pub(crate) use window::decoration as window_decoration;
 
 pub(crate) use device::Device;
 pub(in crate::runtime) use device::DevicePhysical;
-pub(in crate::runtime) use device::buffer::Buffer;
-pub(crate) use device::buffer::MeshBuffer;
-pub(in crate::runtime) use device::command::{RecordedCommandBuffer, ReusableCommandBuffer};
 pub(crate) use device::logical::SceneDrawCmd;
-pub(in crate::runtime) use device::retirement::{
+pub(in crate::runtime) use device::logical::buffer::Buffer;
+pub(crate) use device::logical::buffer::MeshBuffer;
+pub(in crate::runtime) use device::logical::command::{
+	RecordedCommandBuffer, ReusableCommandBuffer,
+};
+pub(in crate::runtime) use device::logical::retirement::{
 	DeferredRetirement, RetirementService, RetirementTicket,
 };
-pub(crate) use device::secret_buffer::SecretErasure;
-pub(in crate::runtime) use device::secret_buffer::{SecretBinding, SecretBuffer};
-pub(in crate::runtime) use device::swapchain::PresentationSwapchain;
-pub(in crate::runtime) use device::timestamp::TimestampPair;
-pub(crate) use device::video::NativeDecodedFrame;
-pub(in crate::runtime) use device::video::{DecodeSession, EncodeSession};
+pub(crate) use device::logical::secret_buffer::SecretErasure;
+pub(in crate::runtime) use device::logical::secret_buffer::{SecretBinding, SecretBuffer};
+pub(in crate::runtime) use device::logical::swapchain::PresentationSwapchain;
+pub(in crate::runtime) use device::logical::timestamp::TimestampPair;
+pub(crate) use device::logical::video::NativeDecodedFrame;
+pub(in crate::runtime) use device::logical::video::{DecodeSession, EncodeSession};
 pub(in crate::runtime) use instance::Instance;
 pub use presentation::PresentationSurface;
 
-pub(crate) use device::pipeline::{
+pub(crate) use device::logical::pipeline::{
 	CanvasGridPipeline, FlatColorPipeline, GraphicsPipeline, SurfaceBlendPipeline,
 	SurfaceDescriptorArena, SurfaceDescriptorLayouts, SurfacePipeline, UnlitDescriptorArena,
 	UnlitDescriptorLayouts, UnlitPipeline, decode_spirv_bytes,
 };
 
-pub(crate) use device::image::{NativeRgbaImage, RenderTarget};
+pub(crate) use device::logical::image::{NativeRgbaImage, RenderTarget};
 
 #[cfg(test)]
 #[path = "../../../test/rs/runtime/bounded_add_unit.rs"]

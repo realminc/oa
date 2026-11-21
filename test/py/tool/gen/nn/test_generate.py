@@ -335,7 +335,7 @@ class NnGenerationTests(unittest.TestCase):
 		self.assertIn("self.config.num_codes > 512", text)
 		self.assertIn("!config.ema_epsilon.is_finite()", text)
 		self.assertIn("!(0.0..=1.0).contains(&config.ema_decay)", text)
-		self.assertIn("Rc::new(VectorQuantizer::new_with_seed(", text)
+		self.assertIn("Rc::new(VectorQuantizer::new_with_seed_on(", text)
 		self.assertIn("codebook.engine_handle().same_as(embed_sum.engine_handle())", text)
 
 	def test_malformed_metadata_is_rejected(self):
@@ -697,7 +697,7 @@ class NnGenerationTests(unittest.TestCase):
 		text = text[:text.index("pub enum LinearAttentionMode")]
 		for name in ("q_proj", "k_proj", "v_proj", "out_proj"):
 			self.assertEqual(text.count(f'registry.register_module("{name}"'), 1)
-		self.assertEqual(text.count("Linear::new_with_seed_and_bias("), 4)
+		self.assertEqual(text.count("Linear::new_with_seed_and_bias_on("), 4)
 		for offset in (1, 2, 3, 4):
 			self.assertIn(f"seed.wrapping_add({offset})", text)
 		self.assertIn("AttentionBackend::Auto | AttentionBackend::Standard", text)
@@ -717,7 +717,7 @@ class NnGenerationTests(unittest.TestCase):
 		schema = self.schema("attention")
 		text = GEN.expected_outputs(ROOT, ROOT)[ROOT / "src/rs/lib/ml/nn/attention.gen.rs"]
 		linear = text[text.index("pub enum LinearAttentionMode"):]
-		self.assertEqual(linear.count("Linear::new_with_seed_and_bias("), 4)
+		self.assertEqual(linear.count("Linear::new_with_seed_and_bias_on("), 4)
 		for name in ("q_proj", "k_proj", "v_proj", "out_proj"):
 			self.assertEqual(linear.count(f'registry.register_module("{name}"'), 1)
 		self.assertIn("matrix::causal_linear_attention(&q, &k, &v, 1.0e-6)", linear)
@@ -757,8 +757,8 @@ class NnGenerationTests(unittest.TestCase):
 		text = GEN.expected_outputs(ROOT, ROOT)[ROOT / "src/rs/lib/ml/nn/ffn.gen.rs"]
 		positions = [text.index(f'registry.register_module("{name}"') for name in ("norm", "gate", "up", "down")]
 		self.assertEqual(positions, sorted(positions))
-		self.assertIn("RmsNorm::new(engine, model_width, epsilon)", text)
-		self.assertEqual(text.count("Linear::new_with_seed("), 3)
+		self.assertIn("RmsNorm::new_on(engine, model_width, epsilon)", text)
+		self.assertEqual(text.count("Linear::new_with_seed_on("), 3)
 		self.assertIn("seed.wrapping_add(1)", text)
 		self.assertIn("seed.wrapping_add(2)", text)
 		forward = text[text.index("pub fn forward(&self, input: &Matrix)"):text.index("/// Return the input")]

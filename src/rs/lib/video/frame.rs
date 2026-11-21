@@ -238,7 +238,38 @@ impl VideoFrame {
 	/// Returns an error for a zero extent, a wrong plane count, mismatched
 	/// plane sizes, a bit depth that has no admitted storage, or a storage
 	/// allocation or upload failure.
+	///
+	/// This variant uploads on this thread's default engine. An engine
+	/// initialization failure is returned before the upload starts.
 	pub fn upload_planes(
+		format: VideoPixelFormat,
+		planes: Vec<Vec<u8>>,
+		width: usize,
+		height: usize,
+		timing: VideoFrameTiming,
+		color: VideoColorInfo,
+	) -> Result<Self> {
+		Self::upload_planes_on(
+			&Engine::current()?,
+			format,
+			planes,
+			width,
+			height,
+			timing,
+			color,
+		)
+	}
+
+	/// Upload tightly packed planes to device-resident planar frame storage on
+	/// a particular engine.
+	///
+	/// This is the [`upload_planes`](Self::upload_planes) contract evaluated on
+	/// `engine` instead of this thread's default engine.
+	///
+	/// # Errors
+	///
+	/// Returns the same errors as [`upload_planes`](Self::upload_planes).
+	pub fn upload_planes_on(
 		engine: &Engine,
 		format: VideoPixelFormat,
 		planes: Vec<Vec<u8>>,
@@ -267,7 +298,7 @@ impl VideoFrame {
 					bytes.len()
 				)));
 			}
-			matrices.push(Matrix::new_from_slice(
+			matrices.push(Matrix::new_from_slice_on(
 				engine,
 				[extent.height, extent.width],
 				bytes,
@@ -292,10 +323,24 @@ impl VideoFrame {
 	/// timing and color metadata preserved. Packed images, textures, and
 	/// native decoder frames have no upload route in this checkpoint.
 	///
+	/// Returns an error for an ineligible backing or an upload failure.
+	///
+	/// This variant uploads on this thread's default engine. An engine
+	/// initialization failure is returned before the upload starts.
+	pub fn upload(&self) -> Result<VideoFrame> {
+		self.upload_on(&Engine::current()?)
+	}
+
+	/// Stage a host-planar frame into device-resident planar storage on a
+	/// particular engine.
+	///
+	/// This is the [`upload`](Self::upload) contract evaluated on `engine`
+	/// instead of this thread's default engine.
+	///
 	/// # Errors
 	///
 	/// Returns an error for an ineligible backing or an upload failure.
-	pub fn upload(&self, engine: &Engine) -> Result<VideoFrame> {
+	pub fn upload_on(&self, engine: &Engine) -> Result<VideoFrame> {
 		match &self.backing {
 			VideoFrameBacking::DevicePlanar(_) => Ok(self.clone()),
 			VideoFrameBacking::PlanarYuv420 {
@@ -312,7 +357,7 @@ impl VideoFrame {
 					bytes[luma..luma + chroma].to_vec(),
 					bytes[luma + chroma..].to_vec(),
 				];
-				Self::upload_planes(
+				Self::upload_planes_on(
 					engine,
 					VideoPixelFormat::Yuv420Planar8,
 					planes,

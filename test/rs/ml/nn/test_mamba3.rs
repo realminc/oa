@@ -61,7 +61,7 @@ impl HostInputs {
 		}
 	}
 
-	fn upload(&self, engine: &oa::Engine, config: SsmConfig) -> oa::Result<DeviceInputs> {
+	fn upload(&self, _engine: &oa::Engine, config: SsmConfig) -> oa::Result<DeviceInputs> {
 		let groups = if config.num_groups == 0 {
 			config.num_heads
 		} else {
@@ -69,7 +69,6 @@ impl HostInputs {
 		};
 		Ok(DeviceInputs {
 			c: oa::Matrix::new_from_f32(
-				engine,
 				[
 					config.batch_size,
 					config.sequence_length,
@@ -79,7 +78,6 @@ impl HostInputs {
 				&self.c,
 			)?,
 			b: oa::Matrix::new_from_f32(
-				engine,
 				[
 					config.batch_size,
 					config.sequence_length,
@@ -89,7 +87,6 @@ impl HostInputs {
 				&self.b,
 			)?,
 			x: oa::Matrix::new_from_f32(
-				engine,
 				[
 					config.batch_size,
 					config.sequence_length,
@@ -99,7 +96,6 @@ impl HostInputs {
 				&self.x,
 			)?,
 			z: oa::Matrix::new_from_f32(
-				engine,
 				[
 					config.batch_size,
 					config.sequence_length,
@@ -109,22 +105,18 @@ impl HostInputs {
 				&self.z,
 			)?,
 			adt: oa::Matrix::new_from_f32(
-				engine,
 				[config.batch_size, config.sequence_length, config.num_heads],
 				&self.adt,
 			)?,
 			dt: oa::Matrix::new_from_f32(
-				engine,
 				[config.batch_size, config.sequence_length, config.num_heads],
 				&self.dt,
 			)?,
 			trap: oa::Matrix::new_from_f32(
-				engine,
 				[config.batch_size, config.sequence_length, config.num_heads],
 				&self.trap,
 			)?,
 			angle: oa::Matrix::new_from_f32(
-				engine,
 				[
 					config.batch_size,
 					config.sequence_length,
@@ -132,17 +124,9 @@ impl HostInputs {
 				],
 				&self.angle,
 			)?,
-			c_bias: oa::Matrix::new_from_f32(
-				engine,
-				[config.num_heads, config.state_size],
-				&self.c_bias,
-			)?,
-			b_bias: oa::Matrix::new_from_f32(
-				engine,
-				[config.num_heads, config.state_size],
-				&self.b_bias,
-			)?,
-			d: oa::Matrix::new_from_f32(engine, [config.num_heads], &self.d)?,
+			c_bias: oa::Matrix::new_from_f32([config.num_heads, config.state_size], &self.c_bias)?,
+			b_bias: oa::Matrix::new_from_f32([config.num_heads, config.state_size], &self.b_bias)?,
+			d: oa::Matrix::new_from_f32([config.num_heads], &self.d)?,
 		})
 	}
 
@@ -346,7 +330,6 @@ fn gradcheck_siso(engine: &oa::Engine, config: SsmConfig, tolerance: f32) -> oa:
 	let upstream = HostInputs::deterministic(config).x;
 	let device = host.upload(engine, config)?;
 	let upstream_matrix = oa::Matrix::new_from_f32(
-		engine,
 		[
 			config.batch_size,
 			config.sequence_length,
@@ -485,14 +468,13 @@ impl MimoHostInputs {
 		}
 	}
 
-	fn upload(&self, engine: &oa::Engine, config: SsmConfig) -> oa::Result<MimoDeviceInputs> {
+	fn upload(&self, _engine: &oa::Engine, config: SsmConfig) -> oa::Result<MimoDeviceInputs> {
 		let groups = if config.num_groups == 0 {
 			config.num_heads
 		} else {
 			config.num_groups
 		};
-		let matrix =
-			|shape: Vec<usize>, values: &[f32]| oa::Matrix::new_from_f32(engine, shape, values);
+		let matrix = |shape: Vec<usize>, values: &[f32]| oa::Matrix::new_from_f32(shape, values);
 		Ok(MimoDeviceInputs {
 			c: matrix(
 				vec![
@@ -945,7 +927,6 @@ test_vk!(mamba3_mimo_recurrent_steps_match_full_scan, engine, {
 	let host = MimoHostInputs::deterministic(config);
 	let expected = reference_mimo_forward(&host, config);
 	let mut ssm_state = oa::matrix::full(
-		&engine,
 		[
 			config.batch_size,
 			config.num_heads,
@@ -955,12 +936,10 @@ test_vk!(mamba3_mimo_recurrent_steps_match_full_scan, engine, {
 		0.0,
 	)?;
 	let mut angle_state = oa::matrix::full(
-		&engine,
 		[config.batch_size, config.num_heads, config.num_rope_angles],
 		0.0,
 	)?;
 	let mut k_state = oa::matrix::full(
-		&engine,
 		[
 			config.batch_size,
 			config.num_heads,
@@ -970,7 +949,6 @@ test_vk!(mamba3_mimo_recurrent_steps_match_full_scan, engine, {
 		0.0,
 	)?;
 	let mut v_state = oa::matrix::full(
-		&engine,
 		[
 			config.batch_size,
 			config.num_heads,
@@ -1042,7 +1020,6 @@ test_vk!(
 			.collect::<Vec<_>>();
 		let device = host.upload(&engine, config)?;
 		let upstream_matrix = oa::Matrix::new_from_f32(
-			&engine,
 			[
 				config.batch_size,
 				config.sequence_length,
@@ -1116,7 +1093,6 @@ test_vk!(mamba3_siso_recurrent_steps_match_full_scan, engine, {
 	let host = HostInputs::deterministic(config);
 	let expected = host.upload(&engine, config)?.forward(config)?.read_f32()?;
 	let mut ssm_state = oa::matrix::full(
-		&engine,
 		[
 			config.batch_size,
 			config.num_heads,
@@ -1126,20 +1102,14 @@ test_vk!(mamba3_siso_recurrent_steps_match_full_scan, engine, {
 		0.0,
 	)?;
 	let mut angle_state = oa::matrix::full(
-		&engine,
 		[config.batch_size, config.num_heads, config.num_rope_angles],
 		0.0,
 	)?;
 	let mut k_state = oa::matrix::full(
-		&engine,
 		[config.batch_size, config.num_heads, config.state_size],
 		0.0,
 	)?;
-	let mut v_state = oa::matrix::full(
-		&engine,
-		[config.batch_size, config.num_heads, config.head_dim],
-		0.0,
-	)?;
+	let mut v_state = oa::matrix::full([config.batch_size, config.num_heads, config.head_dim], 0.0)?;
 	let mut actual = vec![0.0; expected.len()];
 	for time in 0..config.sequence_length {
 		let mut step_config = config;
@@ -1201,7 +1171,6 @@ test_vk!(mamba3_siso_grouped_qk_matches_expanded_heads, engine, {
 	);
 
 	let upstream = oa::Matrix::new_from_f32(
-		&engine,
 		[
 			grouped_config.batch_size,
 			grouped_config.sequence_length,
@@ -1271,17 +1240,15 @@ test_vk!(mamba3_siso_tape_routes_the_complete_x_adjoint, engine, {
 	let config = config(1, 3, 2);
 	let host = HostInputs::deterministic(config);
 	let device = host.upload(&engine, config)?;
-	let upstream =
-		oa::Matrix::new_from_f32(&engine, device.x.shape().to_vec(), &vec![1.0; host.x.len()])?;
+	let upstream = oa::Matrix::new_from_f32(device.x.shape().to_vec(), &vec![1.0; host.x.len()])?;
 	let expected = device.backward(&upstream, config)?.x.read_f32()?;
 
 	let rows = config.batch_size * config.sequence_length * config.num_heads;
 	let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-		&engine,
 		[rows, config.head_dim],
 		&host.x,
 	)?)?;
-	let indices = oa::Matrix::new_from_slice(&engine, [rows], &(0..rows as u32).collect::<Vec<_>>())?;
+	let indices = oa::Matrix::new_from_slice([rows], &(0..rows as u32).collect::<Vec<_>>())?;
 	let tape = oa::ml::GradientTape::new();
 	let x = embedding.forward(&indices)?.reshape([
 		config.batch_size,
@@ -1414,20 +1381,20 @@ impl PreprocessValues {
 
 	fn upload(
 		&self,
-		engine: &oa::Engine,
+		_engine: &oa::Engine,
 		rows: usize,
 		config: Mamba3PreprocessConfig,
 	) -> oa::Result<Mamba3PreprocessResult> {
 		let bc_width = config.num_groups * config.mimo_rank * config.state_size;
 		Ok(Mamba3PreprocessResult {
-			x: oa::Matrix::new_from_f32(engine, [rows, config.inner_size], &self.x)?,
-			z: oa::Matrix::new_from_f32(engine, [rows, config.inner_size], &self.z)?,
-			bh: oa::Matrix::new_from_f32(engine, [rows, bc_width], &self.bh)?,
-			ch: oa::Matrix::new_from_f32(engine, [rows, bc_width], &self.ch)?,
-			dt: oa::Matrix::new_from_f32(engine, [rows, config.num_heads], &self.dt)?,
-			adt: oa::Matrix::new_from_f32(engine, [rows, config.num_heads], &self.adt)?,
-			trap: oa::Matrix::new_from_f32(engine, [rows, config.num_heads], &self.trap)?,
-			angle: oa::Matrix::new_from_f32(engine, [rows, config.num_rope_angles], &self.angle)?,
+			x: oa::Matrix::new_from_f32([rows, config.inner_size], &self.x)?,
+			z: oa::Matrix::new_from_f32([rows, config.inner_size], &self.z)?,
+			bh: oa::Matrix::new_from_f32([rows, bc_width], &self.bh)?,
+			ch: oa::Matrix::new_from_f32([rows, bc_width], &self.ch)?,
+			dt: oa::Matrix::new_from_f32([rows, config.num_heads], &self.dt)?,
+			adt: oa::Matrix::new_from_f32([rows, config.num_heads], &self.adt)?,
+			trap: oa::Matrix::new_from_f32([rows, config.num_heads], &self.trap)?,
+			angle: oa::Matrix::new_from_f32([rows, config.num_rope_angles], &self.angle)?,
 		})
 	}
 }
@@ -1554,8 +1521,8 @@ test_vk!(
 			.collect::<Vec<_>>();
 		let mut dt_bias = vec![-0.07, 0.11];
 		let expected = host_preprocess(&projected, &dt_bias, rows, config);
-		let projected_matrix = oa::Matrix::new_from_f32(&engine, [rows, width], &projected)?;
-		let dt_bias_matrix = oa::Matrix::new_from_f32(&engine, [config.num_heads], &dt_bias)?;
+		let projected_matrix = oa::Matrix::new_from_f32([rows, width], &projected)?;
+		let dt_bias_matrix = oa::Matrix::new_from_f32([config.num_heads], &dt_bias)?;
 		let actual = oa::ml::matrix::mamba3_preprocess(&projected_matrix, &dt_bias_matrix, config)?;
 		for (actual, expected) in [
 			(actual.x.read_f32()?, expected.x),
@@ -1642,26 +1609,22 @@ test_vk!(
 		let weights = PreprocessValues::deterministic(rows, config);
 		let weight_matrices = weights.upload(&engine, rows, config)?;
 		let expected = oa::ml::matrix::mamba3_preprocess_backward(
-			&oa::Matrix::new_from_f32(&engine, [rows, width], &projected)?,
-			&oa::Matrix::new_from_f32(&engine, [config.num_heads], &dt_bias)?,
+			&oa::Matrix::new_from_f32([rows, width], &projected)?,
+			&oa::Matrix::new_from_f32([config.num_heads], &dt_bias)?,
 			&weight_matrices,
 			config,
 		)?;
 		let expected_projected = expected.projected.read_f32()?;
 		let expected_dt_bias = expected.dt_bias.read_f32()?;
 
-		let projected_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-			&engine,
-			[rows, width],
-			&projected,
-		)?)?;
+		let projected_parameter =
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([rows, width], &projected)?)?;
 		let dt_bias_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-			&engine,
 			[config.num_heads, 1],
 			&dt_bias,
 		)?)?;
-		let row_indices = oa::Matrix::new_from_slice(&engine, [rows], &[0_u32, 1])?;
-		let head_indices = oa::Matrix::new_from_slice(&engine, [config.num_heads], &[0_u32, 1])?;
+		let row_indices = oa::Matrix::new_from_slice([rows], &[0_u32, 1])?;
+		let head_indices = oa::Matrix::new_from_slice([config.num_heads], &[0_u32, 1])?;
 		let tape = oa::ml::GradientTape::new();
 		let projected_value = projected_parameter.forward(&row_indices)?;
 		let dt_bias_value = dt_bias_parameter
@@ -1719,13 +1682,12 @@ test_vk!(mamba3_preprocess_tape_zero_fills_unused_outputs, engine, {
 	};
 	let width = preprocess_width(config);
 	let projected_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-		&engine,
 		[rows, width],
 		&vec![0.25; rows * width],
 	)?)?;
 	let dt_bias_parameter =
-		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?)?;
-	let index = oa::Matrix::new_from_slice(&engine, [1], &[0_u32])?;
+		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([1, 1], &[0.0])?)?;
+	let index = oa::Matrix::new_from_slice([1], &[0_u32])?;
 	let tape = oa::ml::GradientTape::new();
 	let projected = projected_parameter.forward(&index)?;
 	let dt_bias = dt_bias_parameter.forward(&index)?.reshape([1])?;
@@ -1778,7 +1740,7 @@ test_vk!(
 			a_floor: 0.0001,
 			output_norm: true,
 		};
-		let module = oa::ml::nn::Mamba3::new_with_seed(&engine, config, 37)?;
+		let module = oa::ml::nn::Mamba3::new_with_seed(config, 37)?;
 		assert_eq!(module.inner_size(), 8);
 		assert_eq!(module.num_heads(), 2);
 		assert_eq!(module.num_rope_angles(), 1);
@@ -1800,13 +1762,12 @@ test_vk!(
 			]
 		);
 		let input = oa::Matrix::new_from_f32(
-			&engine,
 			[2, 3, 4],
 			&(0..24)
 				.map(|index| ((index as f32 + 0.3) * 0.41).sin() * 0.4)
 				.collect::<Vec<_>>(),
 		)?;
-		let targets = oa::Matrix::new_from_slice(&engine, [6], &[0_u32, 1, 2, 3, 1, 0])?;
+		let targets = oa::Matrix::new_from_slice([6], &[0_u32, 1, 2, 3, 1, 0])?;
 		let tape = oa::ml::GradientTape::new();
 		let output = module.forward(&input)?;
 		assert_eq!(output.shape(), [2, 3, 4]);
@@ -1850,7 +1811,7 @@ test_vk!(
 			a_floor: 0.0001,
 			output_norm: true,
 		};
-		let module = oa::ml::nn::Mamba3::new_with_seed(&engine, config, 91)?;
+		let module = oa::ml::nn::Mamba3::new_with_seed(config, 91)?;
 		assert_eq!(module.inner_size(), 8);
 		assert_eq!(module.num_heads(), 4);
 		assert_eq!(module.num_rope_angles(), 1);
@@ -1879,9 +1840,8 @@ test_vk!(
 		let input_values = (0..batch * length * config.model_width)
 			.map(|index| ((index as f32 + 0.4) * 0.37).sin() * 0.3)
 			.collect::<Vec<_>>();
-		let input =
-			oa::Matrix::new_from_f32(&engine, [batch, length, config.model_width], &input_values)?;
-		let targets = oa::Matrix::new_from_slice(&engine, [batch * length], &[0_u32, 1, 2, 3, 1, 0])?;
+		let input = oa::Matrix::new_from_f32([batch, length, config.model_width], &input_values)?;
+		let targets = oa::Matrix::new_from_slice([batch * length], &[0_u32, 1, 2, 3, 1, 0])?;
 		let tape = oa::ml::GradientTape::new();
 		let output = module.forward(&input)?;
 		let expected = output.read_f32()?;
@@ -1912,7 +1872,7 @@ test_vk!(
 				let begin = (batch_index * length + time) * config.model_width;
 				token.extend_from_slice(&input_values[begin..begin + config.model_width]);
 			}
-			let token = oa::Matrix::new_from_f32(&engine, [batch, 1, config.model_width], &token)?;
+			let token = oa::Matrix::new_from_f32([batch, 1, config.model_width], &token)?;
 			let values = module.step(&token, &mut state)?.read_f32()?;
 			for batch_index in 0..batch {
 				let source = batch_index * config.model_width;
@@ -1944,14 +1904,13 @@ test_vk!(
 			a_floor: 0.0001,
 			output_norm: true,
 		};
-		let module = oa::ml::nn::Mamba3::new_with_seed(&engine, config, 73)?;
+		let module = oa::ml::nn::Mamba3::new_with_seed(config, 73)?;
 		let batch = 2;
 		let length = 5;
 		let input_values = (0..batch * length * config.model_width)
 			.map(|index| ((index as f32 + 0.7) * 0.31).cos() * 0.3)
 			.collect::<Vec<_>>();
-		let input =
-			oa::Matrix::new_from_f32(&engine, [batch, length, config.model_width], &input_values)?;
+		let input = oa::Matrix::new_from_f32([batch, length, config.model_width], &input_values)?;
 		let expected = module.forward(&input)?.read_f32()?;
 		let mut state = module.new_state(batch)?;
 		assert_eq!(state.batch_size(), batch);
@@ -1964,7 +1923,7 @@ test_vk!(
 			}
 			let output = module
 				.step(
-					&oa::Matrix::new_from_f32(&engine, [batch, 1, config.model_width], &token)?,
+					&oa::Matrix::new_from_f32([batch, 1, config.model_width], &token)?,
 					&mut state,
 				)?
 				.read_f32()?;
@@ -1977,9 +1936,8 @@ test_vk!(
 		}
 		assert_close(&actual, &expected, 2.0e-4);
 
-		let other = oa::ml::nn::Mamba3::new_with_seed(&engine, config, 74)?;
+		let other = oa::ml::nn::Mamba3::new_with_seed(config, 74)?;
 		let token = oa::Matrix::new_from_f32(
-			&engine,
 			[batch, 1, config.model_width],
 			&input_values[..batch * config.model_width],
 		)?;

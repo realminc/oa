@@ -6,8 +6,8 @@ use crate::runtime::graph::executable::QueueFamilies;
 use crate::runtime::{
 	BufferAccess, PushConstant, Storage,
 	device::{
-		command::jit_lab::{ChainContract, PreparedChain},
 		features::ExecutionProfile,
+		logical::command::jit_lab::{ChainContract, PreparedChain},
 	},
 	dna::{
 		compiler::{JitArtifacts, SlangCompiler},
@@ -725,7 +725,7 @@ fn jit_artifacts_persist_across_restarts() -> Result<()> {
 	let bounded = device.physical().profile == ExecutionProfile::Compatibility;
 	let path = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit trusted Slang library");
 	let compiler = SlangCompiler::open(std::path::Path::new(&path))?;
-	let scope = crate::runtime::device::vkcache::VkCacheScope::new(device.physical());
+	let scope = crate::runtime::device::logical::vkcache::VkCacheScope::new(device.physical());
 	let artifact_path = crate::Path::new_from_path_buf(
 		std::env::temp_dir().join(format!("oa-jit-persist-{}.vkcache", std::process::id())),
 	);
@@ -764,7 +764,7 @@ fn jit_artifacts_persist_across_restarts() -> Result<()> {
 	// Checksummed cache metadata is still untrusted: reject binding-count
 	// overflow and unknown section versions before computing push extents.
 	{
-		use crate::runtime::device::vkcache::{self, SectionUpdate, VkCacheFile};
+		use crate::runtime::device::logical::vkcache::{self, SectionUpdate, VkCacheFile};
 		let file = VkCacheFile::open(&artifact_path, &scope)?;
 		let mut records = vkcache::jit::decode_index(
 			&file
@@ -1676,11 +1676,11 @@ fn rejected_prefixes_do_not_consume_jit_artifacts() -> Result<()> {
 	let index = updates
 		.iter()
 		.find(|update| {
-			update.section_type == crate::runtime::device::vkcache::SECTION_JIT_ARTIFACT_INDEX
+			update.section_type == crate::runtime::device::logical::vkcache::SECTION_JIT_ARTIFACT_INDEX
 		})
 		.unwrap();
 	let entries =
-		crate::runtime::device::vkcache::jit::decode_index(index.payload.as_ref().unwrap())?;
+		crate::runtime::device::logical::vkcache::jit::decode_index(index.payload.as_ref().unwrap())?;
 	assert_eq!(
 		entries.len(),
 		2,
@@ -1758,8 +1758,8 @@ fn tile_gemm_route_matches_cpu_oracle() -> Result<()> {
 		let left_values = gemm_values(m * k, 3);
 		let right_values = gemm_values(n * k, 11);
 		let expected = gemm_cpu_oracle(&left_values, &right_values, m, n, k);
-		let left = crate::Matrix::new_from_f32(&engine, [m, k], &left_values)?;
-		let right = crate::Matrix::new_from_f32(&engine, [n, k], &right_values)?;
+		let left = crate::Matrix::new_from_f32([m, k], &left_values)?;
+		let right = crate::Matrix::new_from_f32([n, k], &right_values)?;
 		let output = crate::matrix::mat_mul_nt(&left, &right)?;
 		let actual = output.read_f32()?;
 		for (index, (actual, expected)) in actual.iter().zip(expected.iter()).enumerate() {
@@ -1786,8 +1786,8 @@ fn tile_gemm_route_matches_cpu_oracle() -> Result<()> {
 		let left_values = gemm_values(m * k, 3);
 		let right_values = gemm_values(n * k, 11);
 		let expected = gemm_cpu_oracle(&left_values, &right_values, m, n, k);
-		let left = crate::Matrix::new_from_f32(&engine, [m, k], &left_values)?;
-		let right = crate::Matrix::new_from_f32(&engine, [n, k], &right_values)?;
+		let left = crate::Matrix::new_from_f32([m, k], &left_values)?;
+		let right = crate::Matrix::new_from_f32([n, k], &right_values)?;
 		for _ in 0..12 {
 			let actual = crate::matrix::mat_mul_nt(&left, &right)?.read_f32()?;
 			for (index, (actual, expected)) in actual.iter().zip(expected.iter()).enumerate() {
@@ -1852,7 +1852,7 @@ fn tile_softmax_route_matches_incumbent() -> Result<()> {
 		let values: Vec<f32> = (0..count)
 			.map(|i| ((i * 2654435761usize % 1009) as f32 - 500.0) / 127.0)
 			.collect();
-		let input = crate::Matrix::new_from_f32(&engine, shape.as_slice(), &values)?;
+		let input = crate::Matrix::new_from_f32(shape.as_slice(), &values)?;
 		// Incumbent first — the emitted template repeats the donor's
 		// reduction order, so the oracle is bit-exact.
 		let expected = crate::matrix::softmax(&input, *dim)?.read_f32()?;
@@ -1902,8 +1902,8 @@ fn tile_gemv_route_matches_incumbent() -> Result<()> {
 	for (m, n, k) in [(1usize, 512usize, 512usize), (1, 777, 1024), (1, 520, 513)] {
 		let left_values = gemm_values(m * k, 3);
 		let right_values = gemm_values(n * k, 11);
-		let left = crate::Matrix::new_from_f32(&engine, [m, k], &left_values)?;
-		let right = crate::Matrix::new_from_f32(&engine, [n, k], &right_values)?;
+		let left = crate::Matrix::new_from_f32([m, k], &left_values)?;
+		let right = crate::Matrix::new_from_f32([n, k], &right_values)?;
 		let expected = crate::matrix::mat_mul_nt(&left, &right)?.read_f32()?;
 		tile_route_bit_exact(
 			&device,
@@ -1983,8 +1983,7 @@ fn tile_reduce_norm_routes_match_incumbent() -> Result<()> {
 		(vec![4, 8, 3], 1),
 		(vec![5, 1031], -1),
 	] {
-		let input =
-			crate::Matrix::new_from_f32(&engine, shape.as_slice(), &values(shape.iter().product()))?;
+		let input = crate::Matrix::new_from_f32(shape.as_slice(), &values(shape.iter().product()))?;
 		let expected = crate::matrix::log_softmax(&input, dim)?.read_f32()?;
 		tile_route_bit_exact(
 			&device,
@@ -1995,8 +1994,8 @@ fn tile_reduce_norm_routes_match_incumbent() -> Result<()> {
 		)?;
 	}
 	for (rows, columns) in [(64usize, 32usize), (3, 1031), (1, 1), (8, 300)] {
-		let input = crate::Matrix::new_from_f32(&engine, [rows, columns], &values(rows * columns))?;
-		let weight = crate::Matrix::new_from_f32(&engine, [columns], &values(columns))?;
+		let input = crate::Matrix::new_from_f32([rows, columns], &values(rows * columns))?;
+		let weight = crate::Matrix::new_from_f32([columns], &values(columns))?;
 		// Incumbent pass first; each route then re-runs under its flag.
 		let expected = crate::ml::nn::RmsNorm::new_from_matrix(weight.clone(), 1e-5)?
 			.forward(&input)?
@@ -2012,7 +2011,7 @@ fn tile_reduce_norm_routes_match_incumbent() -> Result<()> {
 			&expected,
 			&format!("rms_norm [{rows},{columns}]"),
 		)?;
-		let bias = crate::Matrix::new_from_f32(&engine, [columns], &values(columns))?;
+		let bias = crate::Matrix::new_from_f32([columns], &values(columns))?;
 		let expected = crate::ml::nn::LayerNorm::new_from_matrices(weight.clone(), bias.clone(), 1e-5)?
 			.forward(&input)?
 			.read_f32()?;
@@ -2065,8 +2064,8 @@ fn tile_softmax_backward_routes_match_incumbent() -> Result<()> {
 		(vec![1, 1], -1),
 	] {
 		let count = shape.iter().product::<usize>();
-		let y = crate::Matrix::new_from_f32(&engine, shape.as_slice(), &values(count))?;
-		let dy = crate::Matrix::new_from_f32(&engine, shape.as_slice(), &values(count))?;
+		let y = crate::Matrix::new_from_f32(shape.as_slice(), &values(count))?;
+		let dy = crate::Matrix::new_from_f32(shape.as_slice(), &values(count))?;
 		let expected = crate::matrix::softmax_backward(&y, &dy, dim)?.read_f32()?;
 		tile_route_bit_exact(
 			&device,
@@ -2120,21 +2119,16 @@ fn tile_linear_routes_match_incumbent() -> Result<()> {
 		(65, 40, 129),
 		(3, 7, 5),
 	] {
-		let input = crate::Matrix::new_from_f32(
-			&engine,
-			[batch, input_features],
-			&values(batch * input_features),
-		)?;
+		let input =
+			crate::Matrix::new_from_f32([batch, input_features], &values(batch * input_features))?;
 		let weight = crate::Matrix::new_from_f32(
-			&engine,
 			[output_features, input_features],
 			&values(output_features * input_features),
 		)?;
-		let bias = crate::Matrix::new_from_f32(&engine, [output_features], &values(output_features))?;
+		let bias = crate::Matrix::new_from_f32([output_features], &values(output_features))?;
 		let layer = crate::ml::nn::Linear::new_from_matrices(weight.clone(), bias.clone())?;
 		let expected_linear = layer.forward(&input)?.read_f32()?;
 		let expected_act = crate::ml::matrix::relu(&crate::Matrix::new_from_f32(
-			&engine,
 			[batch, output_features],
 			&expected_linear,
 		)?)?
@@ -2180,11 +2174,8 @@ fn tile_linear_routes_match_incumbent() -> Result<()> {
 		// Residual family: linear → add (pair) and linear → add → relu
 		// (triple) fuse into MlLinearResidual{Act}F32; all three
 		// materialized outputs must match the incumbent fused kernels.
-		let residual = crate::Matrix::new_from_f32(
-			&engine,
-			[batch, output_features],
-			&values(batch * output_features),
-		)?;
+		let residual =
+			crate::Matrix::new_from_f32([batch, output_features], &values(batch * output_features))?;
 		let fused_residual = || -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
 			let linear = layer.forward(&input)?;
 			let sum = linear.add(&residual)?;
@@ -2229,19 +2220,17 @@ fn tile_linear_routes_match_incumbent() -> Result<()> {
 		// input fuse into the z-dispatched MlLinearTripleF32 node.
 		let layer_b = crate::ml::nn::Linear::new_from_matrices(
 			crate::Matrix::new_from_f32(
-				&engine,
 				[output_features, input_features],
 				&values(output_features * input_features),
 			)?,
-			crate::Matrix::new_from_f32(&engine, [output_features], &values(output_features))?,
+			crate::Matrix::new_from_f32([output_features], &values(output_features))?,
 		)?;
 		let layer_c = crate::ml::nn::Linear::new_from_matrices(
 			crate::Matrix::new_from_f32(
-				&engine,
 				[output_features, input_features],
 				&values(output_features * input_features),
 			)?,
-			crate::Matrix::new_from_f32(&engine, [output_features], &values(output_features))?,
+			crate::Matrix::new_from_f32([output_features], &values(output_features))?,
 		)?;
 		let triple = || -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
 			let a = layer.forward(&input)?;
@@ -2327,17 +2316,16 @@ fn tile_linear_routes_match_incumbent() -> Result<()> {
 		let width1 = input_features / 3;
 		let width2 = input_features - width0 - width1;
 		let parts = [
-			crate::Matrix::new_from_f32(&engine, [batch, width0], &values(batch * width0))?,
-			crate::Matrix::new_from_f32(&engine, [batch, width1], &values(batch * width1))?,
-			crate::Matrix::new_from_f32(&engine, [batch, width2], &values(batch * width2))?,
+			crate::Matrix::new_from_f32([batch, width0], &values(batch * width0))?,
+			crate::Matrix::new_from_f32([batch, width1], &values(batch * width1))?,
+			crate::Matrix::new_from_f32([batch, width2], &values(batch * width2))?,
 		];
 		let concat_layer = crate::ml::nn::Linear::new_from_matrices(
 			crate::Matrix::new_from_f32(
-				&engine,
 				[output_features, input_features],
 				&values(output_features * input_features),
 			)?,
-			crate::Matrix::new_from_f32(&engine, [output_features], &values(output_features))?,
+			crate::Matrix::new_from_f32([output_features], &values(output_features))?,
 		)?;
 		let fused_concat = || -> Result<(Vec<f32>, Vec<f32>)> {
 			let concat = crate::matrix::concat(&parts, 1)?;
@@ -2365,15 +2353,10 @@ fn tile_linear_routes_match_incumbent() -> Result<()> {
 		// the row fits one column tile; all three materialized outputs
 		// (linear, sum, norm) must match the incumbent fused kernel.
 		if output_features <= 64 {
-			let residual = crate::Matrix::new_from_f32(
-				&engine,
-				[batch, output_features],
-				&values(batch * output_features),
-			)?;
-			let norm_weight =
-				crate::Matrix::new_from_f32(&engine, [output_features], &values(output_features))?;
-			let norm_bias =
-				crate::Matrix::new_from_f32(&engine, [output_features], &values(output_features))?;
+			let residual =
+				crate::Matrix::new_from_f32([batch, output_features], &values(batch * output_features))?;
+			let norm_weight = crate::Matrix::new_from_f32([output_features], &values(output_features))?;
+			let norm_bias = crate::Matrix::new_from_f32([output_features], &values(output_features))?;
 			let norm =
 				crate::ml::nn::LayerNorm::new_from_matrices(norm_weight.clone(), norm_bias.clone(), 1e-5)?;
 			let fused_norm = || -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
@@ -2440,7 +2423,7 @@ fn tile_sum_routes_match_incumbent() -> Result<()> {
 	] {
 		let count = shape.iter().product::<usize>();
 		let data = values(count);
-		let x = crate::Matrix::new_from_f32(&engine, shape.as_slice(), &data)?;
+		let x = crate::Matrix::new_from_f32(shape.as_slice(), &data)?;
 		let expected = crate::matrix::sum(&x, dim)?.read_f32()?;
 		tile_route_bit_exact(
 			&device,
@@ -2558,7 +2541,7 @@ fn tile_sum_routes_match_incumbent() -> Result<()> {
 		let shape = [3usize, 1031usize, 2usize];
 		let dim_size = shape[1];
 		let data = values(shape.iter().product());
-		let x = crate::Matrix::new_from_f32(&engine, shape, &data)?;
+		let x = crate::Matrix::new_from_f32(shape, &data)?;
 		let before = device.fusion_census().snapshot();
 		let actual = {
 			let _route = ScopedVar::set("OA_TILE_SUM_AXIS", std::ffi::OsStr::new("1"));
@@ -2621,11 +2604,11 @@ fn tile_dnn_routes_match_incumbent() -> Result<()> {
 			})
 			.collect()
 	};
-	let input = crate::Matrix::new_from_f32(&engine, [1024, 32], &values(1024 * 32))?;
-	let mut projection = |engine: &Engine| -> Result<crate::ml::nn::Linear> {
+	let input = crate::Matrix::new_from_f32([1024, 32], &values(1024 * 32))?;
+	let mut projection = |_engine: &Engine| -> Result<crate::ml::nn::Linear> {
 		crate::ml::nn::Linear::new_from_matrices(
-			crate::Matrix::new_from_f32(engine, [32, 32], &values(32 * 32))?,
-			crate::Matrix::new_from_f32(engine, [32], &values(32))?,
+			crate::Matrix::new_from_f32([32, 32], &values(32 * 32))?,
+			crate::Matrix::new_from_f32([32], &values(32))?,
 		)
 	};
 	let query = projection(&engine)?;
@@ -2668,12 +2651,12 @@ fn tile_dnn_routes_match_incumbent() -> Result<()> {
 	assert_eq!(actual_qkv, expected_qkv, "qkv outputs differ");
 
 	let gate = crate::ml::nn::Linear::new_from_matrices(
-		crate::Matrix::new_from_f32(&engine, [64, 32], &values(64 * 32))?,
-		crate::Matrix::new_from_f32(&engine, [64], &values(64))?,
+		crate::Matrix::new_from_f32([64, 32], &values(64 * 32))?,
+		crate::Matrix::new_from_f32([64], &values(64))?,
 	)?;
 	let up = crate::ml::nn::Linear::new_from_matrices(
-		crate::Matrix::new_from_f32(&engine, [64, 32], &values(64 * 32))?,
-		crate::Matrix::new_from_f32(&engine, [64], &values(64))?,
+		crate::Matrix::new_from_f32([64, 32], &values(64 * 32))?,
+		crate::Matrix::new_from_f32([64], &values(64))?,
 	)?;
 	let gate_up = || -> Result<Vec<f32>> {
 		let (plan, output) = engine.capture(|| {
@@ -2738,15 +2721,13 @@ fn tile_grouped_linear_act_route_matches_incumbent() -> Result<()> {
 		(33, 16, 34, vec![0, 33, 33]),
 	] {
 		let experts = boundaries.len() - 1;
-		let input = crate::Matrix::new_from_f32(&engine, [rows, inner], &values(rows * inner))?;
+		let input = crate::Matrix::new_from_f32([rows, inner], &values(rows * inner))?;
 		let weight = crate::Matrix::new_from_f32(
-			&engine,
 			[experts, outputs, inner],
 			&values(experts * outputs * inner),
 		)?;
-		let bias =
-			crate::Matrix::new_from_f32(&engine, [experts, outputs], &values(experts * outputs))?;
-		let offsets = crate::Matrix::new_from_slice(&engine, [experts + 1], &boundaries)?;
+		let bias = crate::Matrix::new_from_f32([experts, outputs], &values(experts * outputs))?;
+		let offsets = crate::Matrix::new_from_slice([experts + 1], &boundaries)?;
 		let gate_width = outputs / 2;
 		let fused = || -> Result<(Vec<f32>, Vec<f32>)> {
 			let linear = crate::ml::matrix::grouped_linear_m(&input, &weight, &bias, &offsets)?;
@@ -2842,15 +2823,13 @@ fn tile_grouped_data_backward_route_matches_incumbent() -> Result<()> {
 		(33, 16, 34, vec![0, 33, 33]),
 	] {
 		let experts = boundaries.len() - 1;
-		let output_gradient =
-			crate::Matrix::new_from_f32(&engine, [rows, outputs], &values(rows * outputs))?;
-		let input = crate::Matrix::new_from_f32(&engine, [rows, inputs], &values(rows * inputs))?;
+		let output_gradient = crate::Matrix::new_from_f32([rows, outputs], &values(rows * outputs))?;
+		let input = crate::Matrix::new_from_f32([rows, inputs], &values(rows * inputs))?;
 		let weight = crate::Matrix::new_from_f32(
-			&engine,
 			[experts, outputs, inputs],
 			&values(experts * outputs * inputs),
 		)?;
-		let offsets = crate::Matrix::new_from_slice(&engine, [experts + 1], &boundaries)?;
+		let offsets = crate::Matrix::new_from_slice([experts + 1], &boundaries)?;
 		// The `moe.rs` record path verbatim: the split-semantic pair
 		// (data adjoint + parameter adjoint) under one contract. Only the
 		// data adjoint is tile-eligible; the parameter adjoint stays
@@ -3080,15 +3059,14 @@ fn tile_grouped_backward_prologue_route_matches_incumbent() -> Result<()> {
 		(33, 16, 34, vec![0, 33, 33]),
 	] {
 		let experts = boundaries.len() - 1;
-		let saved = crate::Matrix::new_from_f32(&engine, [rows, outputs], &values(rows * outputs))?;
-		let upstream = crate::Matrix::new_from_f32(&engine, [rows, outputs], &values(rows * outputs))?;
-		let input = crate::Matrix::new_from_f32(&engine, [rows, inputs], &values(rows * inputs))?;
+		let saved = crate::Matrix::new_from_f32([rows, outputs], &values(rows * outputs))?;
+		let upstream = crate::Matrix::new_from_f32([rows, outputs], &values(rows * outputs))?;
+		let input = crate::Matrix::new_from_f32([rows, inputs], &values(rows * inputs))?;
 		let weight = crate::Matrix::new_from_f32(
-			&engine,
 			[experts, outputs, inputs],
 			&values(experts * outputs * inputs),
 		)?;
-		let offsets = crate::Matrix::new_from_slice(&engine, [experts + 1], &boundaries)?;
+		let offsets = crate::Matrix::new_from_slice([experts + 1], &boundaries)?;
 		// The production record sequence: a `relu_backward`-shaped
 		// producer materializing `dy`, then the grouped data and
 		// parameter adjoints consuming it. At submit the pair fuses into
@@ -3211,7 +3189,7 @@ fn tile_grouped_backward_prologue_route_matches_incumbent() -> Result<()> {
 		// under its block key proves the fused node itself admitted the
 		// tile route — not merely one of the sibling adjoints.
 		let program = crate::runtime::dna::ir::tile::BlockProgram::grouped_backward_prologue()?;
-		let key = crate::runtime::device::specialization::block_key(
+		let key = crate::runtime::device::logical::specialization::block_key(
 			&program,
 			cfg!(oa_profile = "compatibility"),
 		);
@@ -3301,7 +3279,7 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 			} else {
 				values(rows * experts)
 			};
-			let logits = crate::Matrix::new_from_f32(&engine, [rows, experts], &host)?;
+			let logits = crate::Matrix::new_from_f32([rows, experts], &host)?;
 			type RouterOutputs = (Vec<f32>, Vec<f32>, Vec<i32>, Vec<f32>);
 			let router = || -> Result<RouterOutputs> {
 				let probability = crate::matrix::softmax(&logits, 1)?;
@@ -3382,12 +3360,11 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 		let expert_host: Vec<i32> = (0..tokens * k)
 			.map(|i| ((i * 7 + 1) % experts) as i32)
 			.collect();
-		let expert_indices = crate::Matrix::new_from_slice(&engine, [tokens, k], &expert_host)?;
-		let probabilities =
-			crate::Matrix::new_from_f32(&engine, [tokens, experts], &values(tokens * experts))?;
+		let expert_indices = crate::Matrix::new_from_slice([tokens, k], &expert_host)?;
+		let probabilities = crate::Matrix::new_from_f32([tokens, experts], &values(tokens * experts))?;
 		let plan = crate::matrix::moe_expert_plan(&expert_indices, experts)?;
-		let input = crate::Matrix::new_from_f32(&engine, [tokens, width], &values(tokens * width))?;
-		let gates = crate::Matrix::new_from_f32(&engine, [tokens, k], &values(tokens * k))?;
+		let input = crate::Matrix::new_from_f32([tokens, width], &values(tokens * width))?;
+		let gates = crate::Matrix::new_from_f32([tokens, k], &values(tokens * k))?;
 		let label = format!("moe {tokens}x{experts} k{k} w{width}");
 
 		// route_weights (forward)
@@ -3419,7 +3396,7 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 		)?;
 
 		// combine
-		let packed = crate::Matrix::new_from_f32(&engine, [routes, width], &packed_host)?;
+		let packed = crate::Matrix::new_from_f32([routes, width], &packed_host)?;
 		let combine = || -> Result<Vec<f32>> {
 			crate::ml::matrix::moe_combine(&packed, &gates, &plan.inverse, &plan.packed_slot)
 				.and_then(|m| m.read_f32())
@@ -3435,7 +3412,7 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 
 		// gather_backward: donor record path — [source, inverse, output]
 		// + push [routes, row_width, tokens, routes_per_token].
-		let source = crate::Matrix::new_from_f32(&engine, [routes, width], &values(routes * width))?;
+		let source = crate::Matrix::new_from_f32([routes, width], &values(routes * width))?;
 		let gather_backward = || -> Result<Vec<f32>> {
 			let output = crate::Matrix::allocate(
 				source.engine_handle(),
@@ -3488,8 +3465,7 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 		// combine_backward: donor record path — [output_gradient,
 		// packed, route_gate, inverse, packed_slot, packed_gradient,
 		// gate_gradient] + push [tokens, k, width, routes].
-		let output_gradient =
-			crate::Matrix::new_from_f32(&engine, [tokens, width], &values(tokens * width))?;
+		let output_gradient = crate::Matrix::new_from_f32([tokens, width], &values(tokens * width))?;
 		let combine_backward = || -> Result<(Vec<f32>, Vec<f32>)> {
 			let packed_gradient = crate::Matrix::allocate(
 				output_gradient.engine_handle(),
@@ -3580,8 +3556,8 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 		// route_weights_backward: [output_gradient, probabilities,
 		// expert_indices, route_weights, probability_gradient] +
 		// push [tokens, experts, k].
-		let route_weights = crate::Matrix::new_from_f32(&engine, [tokens, k], &expected_route)?;
-		let og_route = crate::Matrix::new_from_f32(&engine, [tokens, k], &values(tokens * k))?;
+		let route_weights = crate::Matrix::new_from_f32([tokens, k], &expected_route)?;
+		let og_route = crate::Matrix::new_from_f32([tokens, k], &values(tokens * k))?;
 		let rw_backward = || -> Result<Vec<f32>> {
 			let probability_gradient = crate::Matrix::allocate(
 				probabilities.engine_handle(),
@@ -3665,12 +3641,10 @@ fn tile_norm_backward_routes_match_incumbent() -> Result<()> {
 	// input_gradient, weight_contribution]` + `[rows, columns]` push)
 	// followed by the incumbent `sum_axis_pair` parameter reduce.
 	for (rows, columns) in [(4usize, 96usize), (3, 577), (1, 1)] {
-		let normalized =
-			crate::Matrix::new_from_f32(&engine, [rows, columns], &values(rows * columns))?;
-		let inverse_stddev = crate::Matrix::new_from_f32(&engine, [rows], &values(rows))?;
-		let weight = crate::Matrix::new_from_f32(&engine, [columns], &values(columns))?;
-		let output_gradient =
-			crate::Matrix::new_from_f32(&engine, [rows, columns], &values(rows * columns))?;
+		let normalized = crate::Matrix::new_from_f32([rows, columns], &values(rows * columns))?;
+		let inverse_stddev = crate::Matrix::new_from_f32([rows], &values(rows))?;
+		let weight = crate::Matrix::new_from_f32([columns], &values(columns))?;
+		let output_gradient = crate::Matrix::new_from_f32([rows, columns], &values(rows * columns))?;
 		let record = || -> Result<Vec<f32>> {
 			let input_gradient = crate::Matrix::allocate(
 				normalized.engine_handle(),
@@ -3763,10 +3737,9 @@ fn tile_norm_backward_routes_match_incumbent() -> Result<()> {
 	// input_gradient, weight_contribution]` + `[rows, columns,
 	// epsilon]` push, then the incumbent `sum_axis` parameter reduce.
 	for (rows, columns) in [(4usize, 96usize), (3, 577), (1, 1)] {
-		let input = crate::Matrix::new_from_f32(&engine, [rows, columns], &values(rows * columns))?;
-		let weight = crate::Matrix::new_from_f32(&engine, [columns], &values(columns))?;
-		let output_gradient =
-			crate::Matrix::new_from_f32(&engine, [rows, columns], &values(rows * columns))?;
+		let input = crate::Matrix::new_from_f32([rows, columns], &values(rows * columns))?;
+		let weight = crate::Matrix::new_from_f32([columns], &values(columns))?;
+		let output_gradient = crate::Matrix::new_from_f32([rows, columns], &values(rows * columns))?;
 		let epsilon = 1.0e-5f32;
 		let record = || -> Result<Vec<f32>> {
 			let input_gradient = crate::Matrix::allocate(
@@ -3904,7 +3877,7 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 	};
 	let pipeline_admitted =
 		|program: &crate::runtime::dna::ir::tile::BlockProgram, label: &str| -> Result<()> {
-			let key = crate::runtime::device::specialization::block_key(
+			let key = crate::runtime::device::logical::specialization::block_key(
 				program,
 				cfg!(oa_profile = "compatibility"),
 			);
@@ -3937,15 +3910,11 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 	// Member: `MlLinearBackwardF32` standalone — the staged NT GEMM.
 	for (batch, input_features, output_features) in [(64usize, 48usize, 32usize), (33, 20, 34)] {
 		let weight = crate::Matrix::new_from_f32(
-			&engine,
 			[output_features, input_features],
 			&values(output_features * input_features),
 		)?;
-		let output_gradient = crate::Matrix::new_from_f32(
-			&engine,
-			[batch, output_features],
-			&values(batch * output_features),
-		)?;
+		let output_gradient =
+			crate::Matrix::new_from_f32([batch, output_features], &values(batch * output_features))?;
 		let record = || -> Result<Vec<f32>> {
 			let input_gradient = crate::Matrix::allocate(
 				weight.engine_handle(),
@@ -3990,18 +3959,11 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 	// Prologue region: relu_backward producer → linear_backward consumer,
 	// fused into `MlLinearBackwardPrologueF32` which republishes `dy`.
 	for (batch, input_features, output_features) in [(64usize, 48usize, 32usize), (33, 20, 34)] {
-		let saved = crate::Matrix::new_from_f32(
-			&engine,
-			[batch, output_features],
-			&values(batch * output_features),
-		)?;
-		let upstream = crate::Matrix::new_from_f32(
-			&engine,
-			[batch, output_features],
-			&values(batch * output_features),
-		)?;
+		let saved =
+			crate::Matrix::new_from_f32([batch, output_features], &values(batch * output_features))?;
+		let upstream =
+			crate::Matrix::new_from_f32([batch, output_features], &values(batch * output_features))?;
 		let weight = crate::Matrix::new_from_f32(
-			&engine,
 			[output_features, input_features],
 			&values(output_features * input_features),
 		)?;
@@ -4090,20 +4052,13 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 	// Norm region: layer_norm_backward → sum_axis_pair → linear_backward
 	// fuses into `MlLinearBackwardNormF32`; the reduction stays incumbent.
 	for (batch, input_features, output_features) in [(64usize, 48usize, 32usize), (33, 20, 34)] {
-		let normalized = crate::Matrix::new_from_f32(
-			&engine,
-			[batch, output_features],
-			&values(batch * output_features),
-		)?;
-		let inverse_stddev = crate::Matrix::new_from_f32(&engine, [batch], &values(batch))?;
-		let gamma = crate::Matrix::new_from_f32(&engine, [output_features], &values(output_features))?;
-		let upstream = crate::Matrix::new_from_f32(
-			&engine,
-			[batch, output_features],
-			&values(batch * output_features),
-		)?;
+		let normalized =
+			crate::Matrix::new_from_f32([batch, output_features], &values(batch * output_features))?;
+		let inverse_stddev = crate::Matrix::new_from_f32([batch], &values(batch))?;
+		let gamma = crate::Matrix::new_from_f32([output_features], &values(output_features))?;
+		let upstream =
+			crate::Matrix::new_from_f32([batch, output_features], &values(batch * output_features))?;
 		let weight = crate::Matrix::new_from_f32(
-			&engine,
 			[output_features, input_features],
 			&values(output_features * input_features),
 		)?;
@@ -4244,25 +4199,15 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 	// Norm+add region: layer_norm_backward → sum_axis_pair → matrix.add →
 	// linear_backward fuses into `MlLinearBackwardNormAddF32`.
 	for (batch, input_features, output_features) in [(64usize, 48usize, 32usize), (33, 20, 34)] {
-		let normalized = crate::Matrix::new_from_f32(
-			&engine,
-			[batch, output_features],
-			&values(batch * output_features),
-		)?;
-		let inverse_stddev = crate::Matrix::new_from_f32(&engine, [batch], &values(batch))?;
-		let gamma = crate::Matrix::new_from_f32(&engine, [output_features], &values(output_features))?;
-		let upstream = crate::Matrix::new_from_f32(
-			&engine,
-			[batch, output_features],
-			&values(batch * output_features),
-		)?;
-		let addend = crate::Matrix::new_from_f32(
-			&engine,
-			[batch, output_features],
-			&values(batch * output_features),
-		)?;
+		let normalized =
+			crate::Matrix::new_from_f32([batch, output_features], &values(batch * output_features))?;
+		let inverse_stddev = crate::Matrix::new_from_f32([batch], &values(batch))?;
+		let gamma = crate::Matrix::new_from_f32([output_features], &values(output_features))?;
+		let upstream =
+			crate::Matrix::new_from_f32([batch, output_features], &values(batch * output_features))?;
+		let addend =
+			crate::Matrix::new_from_f32([batch, output_features], &values(batch * output_features))?;
 		let weight = crate::Matrix::new_from_f32(
-			&engine,
 			[output_features, input_features],
 			&values(output_features * input_features),
 		)?;
@@ -4439,18 +4384,11 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 	] {
 		// kind 0 reads the left operand as `[B,R,I]`; kind 1 as `[B,I,R]` —
 		// the element count is identical.
-		let left =
-			crate::Matrix::new_from_f32(&engine, [batch, rows, inner], &values(batch * rows * inner))?;
-		let right = crate::Matrix::new_from_f32(
-			&engine,
-			[batch, inner, columns],
-			&values(batch * inner * columns),
-		)?;
-		let weight = crate::Matrix::new_from_f32(
-			&engine,
-			[columns, input_features],
-			&values(columns * input_features),
-		)?;
+		let left = crate::Matrix::new_from_f32([batch, rows, inner], &values(batch * rows * inner))?;
+		let right =
+			crate::Matrix::new_from_f32([batch, inner, columns], &values(batch * inner * columns))?;
+		let weight =
+			crate::Matrix::new_from_f32([columns, input_features], &values(columns * input_features))?;
 		type Outputs = (Vec<f32>, Vec<f32>);
 		let record = || -> Result<Outputs> {
 			let dy = crate::Matrix::allocate(
@@ -4576,7 +4514,7 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 	let portable = |rows: u32| [rows.min(65535), rows.div_ceil(65535), 1];
 
 	for (rows, classes) in [(4usize, 96usize), (3, 577), (1, 1), (5, 300)] {
-		let logits = crate::Matrix::new_from_f32(&engine, [rows, classes], &values(rows * classes))?;
+		let logits = crate::Matrix::new_from_f32([rows, classes], &values(rows * classes))?;
 		let mut target_host = (0..rows)
 			.map(|row| ((row * 37 + 11) % classes) as u32)
 			.collect::<Vec<u32>>();
@@ -4584,7 +4522,7 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 		if rows > 2 {
 			target_host[2] = classes as u32 + 5;
 		}
-		let targets = crate::Matrix::new_from_slice(&engine, [rows], &target_host)?;
+		let targets = crate::Matrix::new_from_slice([rows], &target_host)?;
 
 		// forward: [logits, targets, per_row] + [rows, classes, dtype]
 		// then the incumbent SumScale mean.
@@ -4697,15 +4635,15 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 	// Masked pair: half the rows masked out, valid_count driving the
 	// mean and the adjoint's `inverse_valid_count`.
 	for (rows, classes) in [(4usize, 96usize), (3, 577)] {
-		let logits = crate::Matrix::new_from_f32(&engine, [rows, classes], &values(rows * classes))?;
+		let logits = crate::Matrix::new_from_f32([rows, classes], &values(rows * classes))?;
 		let target_host = (0..rows)
 			.map(|row| ((row * 29 + 7) % classes) as u32)
 			.collect::<Vec<u32>>();
-		let targets = crate::Matrix::new_from_slice(&engine, [rows], &target_host)?;
+		let targets = crate::Matrix::new_from_slice([rows], &target_host)?;
 		let mask_host = (0..rows)
 			.map(|row| if row % 2 == 0 { 1.0f32 } else { 0.0 })
 			.collect::<Vec<f32>>();
-		let mask = crate::Matrix::new_from_f32(&engine, [rows], &mask_host)?;
+		let mask = crate::Matrix::new_from_f32([rows], &mask_host)?;
 		let valid_count = mask_host.iter().filter(|v| **v != 0.0).count();
 
 		let forward = || -> Result<Vec<f32>> {
@@ -4861,16 +4799,12 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 	// trees, then the incumbent sum_axis_pair parameter reduce.
 	for (rows, columns) in [(4usize, 96usize), (3, 577), (1, 1)] {
 		for addends in 2..=3usize {
-			let normalized =
-				crate::Matrix::new_from_f32(&engine, [rows, columns], &values(rows * columns))?;
-			let inverse_stddev = crate::Matrix::new_from_f32(&engine, [rows], &values(rows))?;
-			let weight = crate::Matrix::new_from_f32(&engine, [columns], &values(columns))?;
-			let addend_a =
-				crate::Matrix::new_from_f32(&engine, [rows, columns], &values(rows * columns))?;
-			let addend_b =
-				crate::Matrix::new_from_f32(&engine, [rows, columns], &values(rows * columns))?;
-			let addend_c =
-				crate::Matrix::new_from_f32(&engine, [rows, columns], &values(rows * columns))?;
+			let normalized = crate::Matrix::new_from_f32([rows, columns], &values(rows * columns))?;
+			let inverse_stddev = crate::Matrix::new_from_f32([rows], &values(rows))?;
+			let weight = crate::Matrix::new_from_f32([columns], &values(columns))?;
+			let addend_a = crate::Matrix::new_from_f32([rows, columns], &values(rows * columns))?;
+			let addend_b = crate::Matrix::new_from_f32([rows, columns], &values(rows * columns))?;
+			let addend_c = crate::Matrix::new_from_f32([rows, columns], &values(rows * columns))?;
 			let record = || -> Result<Vec<f32>> {
 				let dy = crate::Matrix::allocate(
 					normalized.engine_handle(),
@@ -5026,10 +4960,10 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 	// keep the sum observable and block the fusion, so the exercise
 	// runs the production autograd path. Two identically-seeded layer
 	// sets keep the incumbent and tile backward runs independent.
-	let tokens = crate::Matrix::new_from_slice(&engine, [4], &[0u32, 2, 1, 3])?;
-	let positions = crate::Matrix::new_from_slice(&engine, [4], &[0u32, 1, 2, 3])?;
+	let tokens = crate::Matrix::new_from_slice([4], &[0u32, 2, 1, 3])?;
+	let positions = crate::Matrix::new_from_slice([4], &[0u32, 1, 2, 3])?;
 	let target_values: Vec<f32> = (0..8).map(|i| ((i * 7 % 9) as f32 - 4.0) / 3.0).collect();
-	let target = crate::Matrix::new_from_f32(&engine, [4, 2], &target_values)?;
+	let target = crate::Matrix::new_from_f32([4, 2], &target_values)?;
 	let layers = || -> Result<(
 		crate::ml::nn::Embedding,
 		crate::ml::nn::Embedding,
@@ -5037,10 +4971,10 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 		crate::ml::nn::Linear,
 	)> {
 		Ok((
-			crate::ml::nn::Embedding::new_with_seed(&engine, 4, 3, 0x7a1)?,
-			crate::ml::nn::Embedding::new_with_seed(&engine, 4, 3, 0x7a2)?,
-			crate::ml::nn::Linear::new_with_seed(&engine, 3, 2, 0x7a3)?,
-			crate::ml::nn::Linear::new_with_seed(&engine, 3, 2, 0x7a4)?,
+			crate::ml::nn::Embedding::new_with_seed(4, 3, 0x7a1)?,
+			crate::ml::nn::Embedding::new_with_seed(4, 3, 0x7a2)?,
+			crate::ml::nn::Linear::new_with_seed(3, 2, 0x7a3)?,
+			crate::ml::nn::Linear::new_with_seed(3, 2, 0x7a4)?,
 		))
 	};
 	let reference = layers()?;
@@ -5098,20 +5032,18 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 				let index_values: Vec<u8> = (0..index_count)
 					.map(|index| (index * 7 % num_embeddings) as u8)
 					.collect();
-				crate::Matrix::new_from_slice(&engine, [index_count], &index_values)?
+				crate::Matrix::new_from_slice([index_count], &index_values)?
 			} else {
 				let index_values: Vec<u32> = (0..index_count)
 					.map(|index| (index * 7 % num_embeddings) as u32)
 					.collect();
-				crate::Matrix::new_from_slice(&engine, [index_count], &index_values)?
+				crate::Matrix::new_from_slice([index_count], &index_values)?
 			};
 			let output_gradient = crate::Matrix::new_from_f32(
-				&engine,
 				[index_count, embedding_dim],
 				&values(index_count * embedding_dim),
 			)?;
 			let table = crate::Matrix::new_from_f32(
-				&engine,
 				[num_embeddings, embedding_dim],
 				&values(num_embeddings * embedding_dim),
 			)?;
@@ -5166,16 +5098,10 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 	// gradient slot across the reduced axis.
 	for (outer_size, dim_size, inner_size) in [(3usize, 5usize, 7usize), (2, 1, 130)] {
 		let input_count = outer_size * dim_size * inner_size;
-		let input = crate::Matrix::new_from_f32(
-			&engine,
-			[outer_size, dim_size, inner_size],
-			&values(input_count),
-		)?;
-		let output_gradient = crate::Matrix::new_from_f32(
-			&engine,
-			[outer_size, inner_size],
-			&values(outer_size * inner_size),
-		)?;
+		let input =
+			crate::Matrix::new_from_f32([outer_size, dim_size, inner_size], &values(input_count))?;
+		let output_gradient =
+			crate::Matrix::new_from_f32([outer_size, inner_size], &values(outer_size * inner_size))?;
 		let record = || -> Result<Vec<f32>> {
 			let input_gradient = crate::Matrix::allocate(
 				input.engine_handle(),
@@ -5261,7 +5187,7 @@ fn tile_max_routes_match_incumbent() -> Result<()> {
 			host[3] = 42.0;
 			host[count - 2] = 42.0;
 		}
-		let input = crate::Matrix::new_from_f32(&engine, [count], &host)?;
+		let input = crate::Matrix::new_from_f32([count], &host)?;
 		tile_route_bit_exact(
 			&device,
 			"OA_TILE_MAX",
@@ -5300,7 +5226,7 @@ fn tile_max_routes_match_incumbent() -> Result<()> {
 		// max_backward: `(value == maximum) ? output_gradient : 0` over
 		// the flat element grid.
 		let maximum = crate::matrix::max(&input, -1)?;
-		let output_gradient = crate::Matrix::new_from_f32(&engine, [1], &values(1))?;
+		let output_gradient = crate::Matrix::new_from_f32([1], &values(1))?;
 		tile_route_bit_exact(
 			&device,
 			"OA_TILE_MAX",
@@ -5314,7 +5240,7 @@ fn tile_max_routes_match_incumbent() -> Result<()> {
 	// accumulate specialized samples under each candidate signature.
 	{
 		use crate::runtime::dna::ir::tile::BlockProgram;
-		let input = crate::Matrix::new_from_f32(&engine, [4096], &values(4096))?;
+		let input = crate::Matrix::new_from_f32([4096], &values(4096))?;
 		let _route = ScopedVar::set("OA_TILE_MAX", std::ffi::OsStr::new("1"));
 		let _wave = ScopedVar::set("OA_TILE_MAX_WAVE", std::ffi::OsStr::new("1"));
 		let _fusion = ScopedVar::set("OA_JIT_FUSION", std::ffi::OsStr::new("1"));
@@ -5379,9 +5305,9 @@ fn tile_gemm_bias_route_matches_incumbent() -> Result<()> {
 		),
 	] {
 		for (m, n, k) in [(64usize, 64usize, 64usize), (33, 70, 47), (128, 96, 32)] {
-			let left = crate::Matrix::new_from_f32(&engine, [m, k], &gemm_values(m * k, 3))?;
-			let right = crate::Matrix::new_from_f32(&engine, [n, k], &gemm_values(n * k, 11))?;
-			let bias = crate::Matrix::new_from_f32(&engine, [n], &gemm_values(n, 7))?;
+			let left = crate::Matrix::new_from_f32([m, k], &gemm_values(m * k, 3))?;
+			let right = crate::Matrix::new_from_f32([n, k], &gemm_values(n * k, 11))?;
+			let bias = crate::Matrix::new_from_f32([n], &gemm_values(n, 7))?;
 			let mut problem = crate::runtime::MatmulProblem::contiguous(m as u32, n as u32, k as u32);
 			problem.epilogue = epilogue;
 			let plan = crate::runtime::plan_mat_mul_nt_problem(
@@ -5600,8 +5526,8 @@ fn mat_mul_nt_strided_routes_match_host_oracle() -> Result<()> {
 			}
 		}
 
-		let a = crate::Matrix::new_from_f32(&engine, [a_len], &a_data)?;
-		let b = crate::Matrix::new_from_f32(&engine, [b_len], &b_data)?;
+		let a = crate::Matrix::new_from_f32([a_len], &a_data)?;
+		let b = crate::Matrix::new_from_f32([b_len], &b_data)?;
 		let output = crate::Matrix::allocate(&engine.handle(), vec![c_len], c_len, crate::DType::F32)?;
 
 		let mut problem =
@@ -5682,8 +5608,8 @@ fn mat_mul_nt_split_k_route_matches_host_oracle() -> Result<()> {
 		.build()?;
 
 	for (m, n, k) in [(64usize, 48usize, 200usize), (33, 19, 97), (16, 16, 4)] {
-		let a = crate::Matrix::new_from_f32(&engine, [m, k], &gemm_values(m * k, 3))?;
-		let b = crate::Matrix::new_from_f32(&engine, [n, k], &gemm_values(n * k, 11))?;
+		let a = crate::Matrix::new_from_f32([m, k], &gemm_values(m * k, 3))?;
+		let b = crate::Matrix::new_from_f32([n, k], &gemm_values(n * k, 11))?;
 		let output = crate::Matrix::allocate(&engine.handle(), vec![m, n], m * n, crate::DType::F32)?;
 		let workspace_elements = m * n * 4;
 		let workspace = crate::Matrix::allocate(
@@ -5795,16 +5721,14 @@ fn tile_conv_1d_im2_col_route_matches_incumbent() -> Result<()> {
 		(1, 1, 300, 2, 3, 1, 1, 1),
 	] {
 		let input = crate::Matrix::new_from_f32(
-			&engine,
 			[batch, channels, length],
 			&values(batch * channels * length),
 		)?;
 		let weight = crate::Matrix::new_from_f32(
-			&engine,
 			[out_channels, channels, kernel],
 			&values(out_channels * channels * kernel),
 		)?;
-		let bias = crate::Matrix::new_from_f32(&engine, [out_channels], &values(out_channels))?;
+		let bias = crate::Matrix::new_from_f32([out_channels], &values(out_channels))?;
 		let expected =
 			crate::ml::matrix::conv_1d(&input, &weight, &bias, stride, padding, dilation)?.read_f32()?;
 		let before = device.fusion_census().snapshot();
@@ -5842,16 +5766,14 @@ fn tile_conv_1d_im2_col_route_matches_incumbent() -> Result<()> {
 		(1, 1, 33, 41, 2, 5, 1, 0, 1),
 	] {
 		let input = crate::Matrix::new_from_f32(
-			&engine,
 			[batch, channels, height, width],
 			&values(batch * channels * height * width),
 		)?;
 		let weight = crate::Matrix::new_from_f32(
-			&engine,
 			[out_channels, channels / groups, kernel, kernel],
 			&values(out_channels * (channels / groups) * kernel * kernel),
 		)?;
-		let bias = crate::Matrix::new_from_f32(&engine, [out_channels], &values(out_channels))?;
+		let bias = crate::Matrix::new_from_f32([out_channels], &values(out_channels))?;
 		let expected =
 			crate::ml::matrix::conv_2d(&input, &weight, &bias, stride, padding, groups)?.read_f32()?;
 		let before = device.fusion_census().snapshot();
@@ -5886,16 +5808,14 @@ fn tile_conv_1d_im2_col_route_matches_incumbent() -> Result<()> {
 		(1, 3, 17, 13, 5, 3, 2, 2, 1),
 	] {
 		let input = crate::Matrix::new_from_f32(
-			&engine,
 			[batch, channels, height, width],
 			&values(batch * channels * height * width),
 		)?;
 		let weight = crate::Matrix::new_from_f32(
-			&engine,
 			[out_channels, channels / groups, kernel, kernel],
 			&values(out_channels * (channels / groups) * kernel * kernel),
 		)?;
-		let bias = crate::Matrix::new_from_f32(&engine, [out_channels], &values(out_channels))?;
+		let bias = crate::Matrix::new_from_f32([out_channels], &values(out_channels))?;
 		let expected = crate::ml::matrix::relu(&crate::ml::matrix::conv_2d(
 			&input, &weight, &bias, stride, padding, groups,
 		)?)?
@@ -5965,7 +5885,6 @@ fn tile_conv_1d_parameter_backward_route_matches_incumbent() -> Result<()> {
 		// length]` layout.
 		let embedding_values = values(64 * length);
 		let indices = crate::Matrix::new_from_slice(
-			&engine,
 			[batch, channels],
 			&(0..batch * channels)
 				.map(|index| (index % 64) as u32)
@@ -5973,19 +5892,17 @@ fn tile_conv_1d_parameter_backward_route_matches_incumbent() -> Result<()> {
 		)?;
 		let output_length = (length + 2 * padding - dilation * (kernel - 1) - 1) / stride + 1;
 		let target = crate::Matrix::new_from_f32(
-			&engine,
 			[batch, out_channels, output_length],
 			&values(batch * out_channels * output_length),
 		)?;
 		let backward = || -> Result<Vec<f32>> {
 			let embedding = crate::ml::nn::Embedding::new_from_matrix(crate::Matrix::new_from_f32(
-				&engine,
 				[64, length],
 				&embedding_values,
 			)?)?;
 			let module = crate::ml::nn::Conv1d::new_from_matrices(
-				crate::Matrix::new_from_f32(&engine, [out_channels, channels, kernel], &weight_values)?,
-				crate::Matrix::new_from_f32(&engine, [out_channels], &bias_values)?,
+				crate::Matrix::new_from_f32([out_channels, channels, kernel], &weight_values)?,
+				crate::Matrix::new_from_f32([out_channels], &bias_values)?,
 				stride,
 				padding,
 				dilation,
@@ -6067,7 +5984,6 @@ fn tile_conv_transpose_1d_route_matches_incumbent() -> Result<()> {
 		// adjoint alongside the shared parameter adjoint.
 		let embedding_values = values(64 * length);
 		let indices = crate::Matrix::new_from_slice(
-			&engine,
 			[batch, channels],
 			&(0..batch * channels)
 				.map(|index| (index % 64) as u32)
@@ -6075,18 +5991,16 @@ fn tile_conv_transpose_1d_route_matches_incumbent() -> Result<()> {
 		)?;
 		let output_length = (length - 1) * stride + kernel - 2 * padding;
 		let target = crate::Matrix::new_from_f32(
-			&engine,
 			[batch, out_channels, output_length],
 			&values(batch * out_channels * output_length),
 		)?;
 		let backward = || -> Result<Vec<f32>> {
 			let embedding = crate::ml::nn::Embedding::new_from_matrix(crate::Matrix::new_from_f32(
-				&engine,
 				[64, length],
 				&embedding_values,
 			)?)?;
 			let module = crate::ml::nn::ConvTranspose1d::new_from_matrix(
-				crate::Matrix::new_from_f32(&engine, [channels, out_channels, kernel], &weight_values)?,
+				crate::Matrix::new_from_f32([channels, out_channels, kernel], &weight_values)?,
 				stride,
 				padding,
 			)?;
@@ -6168,7 +6082,6 @@ fn tile_conv_2d_backward_route_matches_incumbent() -> Result<()> {
 		// dispatches the data adjoint.
 		let embedding_values = values(64 * width);
 		let indices = crate::Matrix::new_from_slice(
-			&engine,
 			[batch, channels, height],
 			&(0..batch * channels * height)
 				.map(|index| (index % 64) as u32)
@@ -6177,23 +6090,20 @@ fn tile_conv_2d_backward_route_matches_incumbent() -> Result<()> {
 		let output_height = (height + 2 * padding - kernel) / stride + 1;
 		let output_width = (width + 2 * padding - kernel) / stride + 1;
 		let target = crate::Matrix::new_from_f32(
-			&engine,
 			[batch, out_channels, output_height, output_width],
 			&values(batch * out_channels * output_height * output_width),
 		)?;
 		let backward = || -> Result<Vec<f32>> {
 			let embedding = crate::ml::nn::Embedding::new_from_matrix(crate::Matrix::new_from_f32(
-				&engine,
 				[64, width],
 				&embedding_values,
 			)?)?;
 			let module = crate::ml::nn::Conv2d::new_from_matrices(
 				crate::Matrix::new_from_f32(
-					&engine,
 					[out_channels, channels_per_group, kernel, kernel],
 					&weight_values,
 				)?,
-				crate::Matrix::new_from_f32(&engine, [out_channels], &bias_values)?,
+				crate::Matrix::new_from_f32([out_channels], &bias_values)?,
 				stride,
 				padding,
 				groups,
@@ -6274,7 +6184,6 @@ fn tile_conv_transpose_2d_route_matches_incumbent() -> Result<()> {
 		// the data adjoint dispatches beside the parameter adjoint.
 		let embedding_values = values(64 * width);
 		let indices = crate::Matrix::new_from_slice(
-			&engine,
 			[batch, channels, height],
 			&(0..batch * channels * height)
 				.map(|index| (index % 64) as u32)
@@ -6283,23 +6192,17 @@ fn tile_conv_transpose_2d_route_matches_incumbent() -> Result<()> {
 		let output_height = (height - 1) * stride + kernel - 2 * padding;
 		let output_width = (width - 1) * stride + kernel - 2 * padding;
 		let target = crate::Matrix::new_from_f32(
-			&engine,
 			[batch, out_channels, output_height, output_width],
 			&values(batch * out_channels * output_height * output_width),
 		)?;
 		let backward = || -> Result<Vec<f32>> {
 			let embedding = crate::ml::nn::Embedding::new_from_matrix(crate::Matrix::new_from_f32(
-				&engine,
 				[64, width],
 				&embedding_values,
 			)?)?;
 			let module = crate::ml::nn::ConvTranspose2d::new_from_matrices(
-				crate::Matrix::new_from_f32(
-					&engine,
-					[channels, out_channels, kernel, kernel],
-					&weight_values,
-				)?,
-				crate::Matrix::new_from_f32(&engine, [out_channels], &bias_values)?,
+				crate::Matrix::new_from_f32([channels, out_channels, kernel, kernel], &weight_values)?,
+				crate::Matrix::new_from_f32([out_channels], &bias_values)?,
 				stride,
 				padding,
 			)?;
@@ -6367,9 +6270,9 @@ fn tile_conv_1d_bias_tail_routes_match_incumbent() -> Result<()> {
 	// semantic intermediate stays observable, so `projected` is never
 	// provably free. Each leg captures the chain, replays it, and reads
 	// the output storage the plan binds.
-	let input = crate::Matrix::new_from_f32(&engine, [2, 3, 40], &values(2 * 3 * 40))?;
-	let weight = crate::Matrix::new_from_f32(&engine, [5, 3, 3], &values(5 * 3 * 3))?;
-	let bias = crate::Matrix::new_from_f32(&engine, [5], &values(5))?;
+	let input = crate::Matrix::new_from_f32([2, 3, 40], &values(2 * 3 * 40))?;
+	let weight = crate::Matrix::new_from_f32([5, 3, 3], &values(5 * 3 * 3))?;
+	let bias = crate::Matrix::new_from_f32([5], &values(5))?;
 	let conv = || crate::ml::matrix::conv_1d(&input, &weight, &bias, 1, 1, 1);
 	let fused_tail =
 		|label: &str, kernel: &str, run: &dyn Fn() -> Result<crate::Matrix>| -> Result<()> {
@@ -6417,14 +6320,14 @@ fn tile_conv_1d_bias_tail_routes_match_incumbent() -> Result<()> {
 		"conv_1d_bias_transpose_relu.f32",
 		&|| crate::ml::matrix::relu(&conv()?),
 	)?;
-	let residual = crate::Matrix::new_from_f32(&engine, [2, 5, 40], &values(2 * 5 * 40))?;
+	let residual = crate::Matrix::new_from_f32([2, 5, 40], &values(2 * 5 * 40))?;
 	fused_tail(
 		"bias_transpose_residual_relu",
 		"conv_1d_bias_transpose_residual_relu.f32",
 		&|| crate::matrix::add(&crate::ml::matrix::relu(&conv()?)?, &residual),
 	)?;
-	let norm_weight = crate::Matrix::new_from_f32(&engine, [5], &values(5))?;
-	let norm_bias = crate::Matrix::new_from_f32(&engine, [5], &values(5))?;
+	let norm_weight = crate::Matrix::new_from_f32([5], &values(5))?;
+	let norm_bias = crate::Matrix::new_from_f32([5], &values(5))?;
 	fused_tail(
 		"bias_transpose_norm",
 		"conv_1d_bias_transpose_norm.f32",
@@ -6477,8 +6380,7 @@ fn tile_pool_routes_match_incumbent() -> Result<()> {
 		(2, 2, 17, 13, 3, 3, 2),
 	] {
 		let input_values = values(batch * channels * height * width);
-		let input =
-			crate::Matrix::new_from_f32(&engine, [batch, channels, height, width], &input_values)?;
+		let input = crate::Matrix::new_from_f32([batch, channels, height, width], &input_values)?;
 		let expected = crate::ml::matrix::avg_pool_2d(&input, kernel, stride, padding)?.read_f32()?;
 		tile_route_bit_exact(
 			&device,
@@ -6497,8 +6399,7 @@ fn tile_pool_routes_match_incumbent() -> Result<()> {
 		(2, 2, 17, 13, 3, 3, 2),
 	] {
 		let input_values = values(batch * channels * height * width);
-		let input =
-			crate::Matrix::new_from_f32(&engine, [batch, channels, height, width], &input_values)?;
+		let input = crate::Matrix::new_from_f32([batch, channels, height, width], &input_values)?;
 		let incumbent = crate::ml::matrix::max_pool_2d(&input, kernel, stride, padding)?;
 		let expected_output = incumbent.output.read_f32()?;
 		let expected_indices = incumbent.indices.read::<u32>()?;
@@ -6542,8 +6443,7 @@ fn tile_pool_routes_match_incumbent() -> Result<()> {
 		(2, 2, 9, 6, 3, 5),
 	] {
 		let input_values = values(batch * channels * height * width);
-		let input =
-			crate::Matrix::new_from_f32(&engine, [batch, channels, height, width], &input_values)?;
+		let input = crate::Matrix::new_from_f32([batch, channels, height, width], &input_values)?;
 		let expected =
 			crate::ml::matrix::adaptive_avg_pool_2d(&input, output_height, output_width)?.read_f32()?;
 		tile_route_bit_exact(
@@ -6565,7 +6465,6 @@ fn tile_pool_routes_match_incumbent() -> Result<()> {
 	] {
 		let embedding_values = values(64 * width);
 		let indices = crate::Matrix::new_from_slice(
-			&engine,
 			[batch, channels, height],
 			&(0..batch * channels * height)
 				.map(|index| (index % 64) as u32)
@@ -6574,13 +6473,11 @@ fn tile_pool_routes_match_incumbent() -> Result<()> {
 		let output_height = (height + 2 * padding - kernel) / stride + 1;
 		let output_width = (width + 2 * padding - kernel) / stride + 1;
 		let target = crate::Matrix::new_from_f32(
-			&engine,
 			[batch, channels, output_height, output_width],
 			&values(batch * channels * output_height * output_width),
 		)?;
 		let backward = |relu: bool| -> Result<Vec<f32>> {
 			let embedding = crate::ml::nn::Embedding::new_from_matrix(crate::Matrix::new_from_f32(
-				&engine,
 				[64, width],
 				&embedding_values,
 			)?)?;
@@ -6637,20 +6534,17 @@ fn tile_pool_routes_match_incumbent() -> Result<()> {
 	] {
 		let embedding_values = values(64 * width);
 		let indices = crate::Matrix::new_from_slice(
-			&engine,
 			[batch, channels, height],
 			&(0..batch * channels * height)
 				.map(|index| (index % 64) as u32)
 				.collect::<Vec<_>>(),
 		)?;
 		let target = crate::Matrix::new_from_f32(
-			&engine,
 			[batch, channels, output_height, output_width],
 			&values(batch * channels * output_height * output_width),
 		)?;
 		let backward = || -> Result<Vec<f32>> {
 			let embedding = crate::ml::nn::Embedding::new_from_matrix(crate::Matrix::new_from_f32(
-				&engine,
 				[64, width],
 				&embedding_values,
 			)?)?;
@@ -6679,7 +6573,6 @@ fn tile_pool_routes_match_incumbent() -> Result<()> {
 	] {
 		let embedding_values = values(64 * width);
 		let indices = crate::Matrix::new_from_slice(
-			&engine,
 			[batch, channels, height],
 			&(0..batch * channels * height)
 				.map(|index| (index % 64) as u32)
@@ -6688,13 +6581,11 @@ fn tile_pool_routes_match_incumbent() -> Result<()> {
 		let output_height = (height + 2 * padding - kernel) / stride + 1;
 		let output_width = (width + 2 * padding - kernel) / stride + 1;
 		let target = crate::Matrix::new_from_f32(
-			&engine,
 			[batch, channels, output_height, output_width],
 			&values(batch * channels * output_height * output_width),
 		)?;
 		let backward = || -> Result<Vec<f32>> {
 			let embedding = crate::ml::nn::Embedding::new_from_matrix(crate::Matrix::new_from_f32(
-				&engine,
 				[64, width],
 				&embedding_values,
 			)?)?;
@@ -6749,7 +6640,6 @@ fn tile_attention_routes_match_incumbent() -> Result<()> {
 	// permutation is real, with an odd head dimension for the tail guard.
 	for (batch, sequence, heads, head_dim) in [(2usize, 5usize, 2usize, 4usize), (1, 7, 4, 3)] {
 		let input = crate::Matrix::new_from_f32(
-			&engine,
 			[batch * sequence, heads * head_dim],
 			&values(batch * sequence * heads * head_dim),
 		)?;
@@ -6765,7 +6655,6 @@ fn tile_attention_routes_match_incumbent() -> Result<()> {
 	// `merge_heads` — the [B*H, S, D] inverse.
 	for (batch, sequence, heads, head_dim) in [(2usize, 5usize, 2usize, 4usize), (1, 7, 4, 3)] {
 		let input = crate::Matrix::new_from_f32(
-			&engine,
 			[batch * heads, sequence, head_dim],
 			&values(batch * heads * sequence * head_dim),
 		)?;
@@ -6789,15 +6678,11 @@ fn tile_attention_routes_match_incumbent() -> Result<()> {
 		(1, 37, 6, true, true, 0.125),
 	] {
 		let count = batch_heads * sequence * head_dim;
-		let query =
-			crate::Matrix::new_from_f32(&engine, [batch_heads, sequence, head_dim], &values(count))?;
-		let key =
-			crate::Matrix::new_from_f32(&engine, [batch_heads, sequence, head_dim], &values(count))?;
-		let value =
-			crate::Matrix::new_from_f32(&engine, [batch_heads, sequence, head_dim], &values(count))?;
+		let query = crate::Matrix::new_from_f32([batch_heads, sequence, head_dim], &values(count))?;
+		let key = crate::Matrix::new_from_f32([batch_heads, sequence, head_dim], &values(count))?;
+		let value = crate::Matrix::new_from_f32([batch_heads, sequence, head_dim], &values(count))?;
 		let mask = masked.then(|| {
 			crate::Matrix::new_from_f32(
-				&engine,
 				[batch_heads * sequence, sequence],
 				&values(batch_heads * sequence * sequence),
 			)
@@ -6826,7 +6711,6 @@ fn tile_attention_routes_match_incumbent() -> Result<()> {
 		(1, 37, 2, 6),
 	] {
 		let input = crate::Matrix::new_from_f32(
-			&engine,
 			[batch * sequence, model_width],
 			&values(batch * sequence * model_width),
 		)?;
@@ -6836,7 +6720,6 @@ fn tile_attention_routes_match_incumbent() -> Result<()> {
 		// under `OA_JIT_FUSION`, then the tile substitution against it.
 		let run = || -> Result<Vec<f32>> {
 			let attention = crate::ml::nn::MultiHeadAttention::new_with_seed(
-				&engine,
 				model_width,
 				heads,
 				sequence,
@@ -6863,12 +6746,9 @@ fn tile_attention_routes_match_incumbent() -> Result<()> {
 	for (batch_heads, sequence, head_dim) in [(2usize, 5usize, 4usize), (1, 9, 3)] {
 		let count = batch_heads * sequence * head_dim;
 		let scale = 1.0 / (head_dim as f32).sqrt();
-		let query =
-			crate::Matrix::new_from_f32(&engine, [batch_heads, sequence, head_dim], &values(count))?;
-		let key =
-			crate::Matrix::new_from_f32(&engine, [batch_heads, sequence, head_dim], &values(count))?;
-		let value =
-			crate::Matrix::new_from_f32(&engine, [batch_heads, sequence, head_dim], &values(count))?;
+		let query = crate::Matrix::new_from_f32([batch_heads, sequence, head_dim], &values(count))?;
+		let key = crate::Matrix::new_from_f32([batch_heads, sequence, head_dim], &values(count))?;
+		let value = crate::Matrix::new_from_f32([batch_heads, sequence, head_dim], &values(count))?;
 		let run = || -> Result<Vec<f32>> {
 			crate::ml::matrix::flash_attention_causal(&query, &key, &value, scale)?.read_f32()
 		};
@@ -6885,16 +6765,12 @@ fn tile_attention_routes_match_incumbent() -> Result<()> {
 	for (sequence, head_dim) in [(4usize, 2usize), (7, 3)] {
 		let count = sequence * head_dim;
 		let scale = 0.7_f32;
-		let target = crate::Matrix::new_from_f32(&engine, [1, sequence, head_dim], &values(count))?;
-		let indices = crate::Matrix::new_from_slice(
-			&engine,
-			[sequence],
-			&(0..sequence as u32).collect::<Vec<_>>(),
-		)?;
+		let target = crate::Matrix::new_from_f32([1, sequence, head_dim], &values(count))?;
+		let indices =
+			crate::Matrix::new_from_slice([sequence], &(0..sequence as u32).collect::<Vec<_>>())?;
 		let run = || -> Result<Vec<f32>> {
 			let make = |salt: usize| -> Result<crate::ml::nn::Embedding> {
 				crate::ml::nn::Embedding::new_from_matrix(crate::Matrix::new_from_f32(
-					&engine,
 					[sequence, head_dim],
 					&gemm_values(count, salt),
 				)?)

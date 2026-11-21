@@ -60,10 +60,10 @@ impl GruLayer {
 			seed.wrapping_add(0x9e37_79b9_7f4a_7c15),
 		)?;
 		let bias_ih = bias
-			.then(|| Matrix::new_from_f32(engine, [gate_size], &vec![0.0; gate_size]))
+			.then(|| Matrix::new_from_f32_on(engine, [gate_size], &vec![0.0; gate_size]))
 			.transpose()?;
 		let bias_hh = bias
-			.then(|| Matrix::new_from_f32(engine, [gate_size], &vec![0.0; gate_size]))
+			.then(|| Matrix::new_from_f32_on(engine, [gate_size], &vec![0.0; gate_size]))
 			.transpose()?;
 		Self::from_values(weight_ih, weight_hh, bias_ih, bias_hh)
 	}
@@ -256,13 +256,23 @@ pub struct GruCell {
 }
 
 impl GruCell {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(
+		input_size: usize,
+		hidden_size: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, input_size, hidden_size, bias, seed)
+	}
+
 	/// Construct a deterministically initialized GRU cell.
 	///
 	/// # Errors
 	///
 	/// Returns an error when dimensions are zero, hidden size exceeds 1024,
 	/// arithmetic overflows, or parameter allocation fails.
-	pub fn new_with_seed(
+	pub fn new_with_seed_on(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
@@ -387,6 +397,24 @@ pub struct Gru {
 }
 
 impl Gru {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(
+		input_size: usize,
+		hidden_size: usize,
+		num_layers: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_on(
+			&Engine::current()?,
+			input_size,
+			hidden_size,
+			num_layers,
+			bias,
+			seed,
+		)
+	}
+
 	/// Construct a deterministically initialized stacked GRU.
 	///
 	/// # Errors
@@ -394,7 +422,7 @@ impl Gru {
 	/// Returns an error when a dimension or layer count is zero, hidden size
 	/// exceeds the 1024-element scan limit, arithmetic overflows, or parameter
 	/// allocation and registration fail.
-	pub fn new_with_seed(
+	pub fn new_with_seed_on(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
@@ -567,7 +595,7 @@ fn xavier_matrix(
 		.checked_add(input_features)
 		.ok_or_else(|| Error::invalid_argument("GRU Xavier extent overflows usize"))?;
 	let limit = (6.0_f32 / denominator as f32).sqrt();
-	Matrix::new_from_f32(
+	Matrix::new_from_f32_on(
 		engine,
 		[output_features, input_features],
 		&random::symmetric_uniform(count, limit, seed),

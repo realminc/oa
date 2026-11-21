@@ -1,11 +1,9 @@
 // OA_DOC_BEGIN: core-matrix-add
-use oa::{Engine, matrix};
+use oa::matrix;
 
 fn main() -> oa::Result<()> {
-	let engine = Engine::new()?;
-
-	let one = matrix::ones(&engine, [2, 3])?;
-	let two = matrix::full(&engine, [2, 3], 2.0)?;
+	let one = matrix::ones([2, 3])?;
+	let two = matrix::full([2, 3], 2.0)?;
 	let result = matrix::add(&one, &two)?;
 
 	let values = result.read_f32()?;

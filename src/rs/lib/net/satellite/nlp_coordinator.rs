@@ -19,7 +19,7 @@ use super::nlp_step::{
 	satellite_nlp_parameter_layout_hash, satellite_start_nlp_gradient,
 };
 use super::session::SatelliteClientSession;
-use crate::ml::{AdamW, GradientTape, Module, load_checkpoint, loss, save_checkpoint};
+use crate::ml::{AdamW, GradientTape, Module, load_checkpoint_on, loss, save_checkpoint};
 use crate::runtime::{ExecutionPlan, ExecutionPlanDiagnostics};
 use crate::{Engine, Error, Matrix, Result};
 
@@ -150,8 +150,8 @@ fn execute_local_gradient(
 	optimizer.zero_grad();
 	let (plan, (loss_matrix, gradient_matrices)) =
 		engine.capture(|| {
-			let input = Matrix::new_from_slice(engine, [batch_count, CONTEXT_LENGTH], inputs)?;
-			let target = Matrix::new_from_slice(engine, [inputs.len()], targets)?;
+			let input = Matrix::new_from_slice_on(engine, [batch_count, CONTEXT_LENGTH], inputs)?;
+			let target = Matrix::new_from_slice_on(engine, [inputs.len()], targets)?;
 			let tape = GradientTape::new();
 			let logits = model.forward(&input)?;
 			let step_loss = loss::cross_entropy(&logits, &target)?;
@@ -213,7 +213,7 @@ fn apply_gradient(
 					"satellite NLP coordinator: reduced gradient is truncated",
 				));
 			}
-			let matrix = Matrix::new_from_slice(
+			let matrix = Matrix::new_from_slice_on(
 				engine,
 				data.shape().to_vec(),
 				&gradient[offset..offset + count],
@@ -243,8 +243,8 @@ fn execute_standalone_step(
 ) -> Result<(f32, ExecutionPlanDiagnostics)> {
 	optimizer.zero_grad();
 	let (plan, loss_matrix) = engine.capture(|| {
-		let input = Matrix::new_from_slice(engine, [BATCH_SIZE, CONTEXT_LENGTH], &batch.inputs)?;
-		let target = Matrix::new_from_slice(engine, [batch.targets.len()], &batch.targets)?;
+		let input = Matrix::new_from_slice_on(engine, [BATCH_SIZE, CONTEXT_LENGTH], &batch.inputs)?;
+		let target = Matrix::new_from_slice_on(engine, [batch.targets.len()], &batch.targets)?;
 		let tape = GradientTape::new();
 		let logits = model.forward(&input)?;
 		let step_loss = loss::cross_entropy(&logits, &target)?;
@@ -308,7 +308,7 @@ fn evaluate_accuracy(
 	model: &crate::ml::nn::Transformer,
 	batch: &SatelliteNlpBatch,
 ) -> Result<f32> {
-	let inputs = Matrix::new_from_slice(engine, [BATCH_SIZE, CONTEXT_LENGTH], &batch.inputs)?;
+	let inputs = Matrix::new_from_slice_on(engine, [BATCH_SIZE, CONTEXT_LENGTH], &batch.inputs)?;
 	let logits = model.forward(&inputs)?;
 	checkpoint_and_wait(engine)?;
 	let host = logits.read_f32()?;
@@ -410,7 +410,7 @@ fn finalize_report(
 	save_checkpoint(&config.checkpoint_path, model, optimizer)?;
 	let reloaded = satellite_byte_transformer(engine)?;
 	let mut reloaded_optimizer = AdamW::new(reloaded.all_parameters()?, NLP_LEARNING_RATE)?;
-	load_checkpoint(
+	load_checkpoint_on(
 		engine,
 		&config.checkpoint_path,
 		&reloaded,

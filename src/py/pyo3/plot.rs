@@ -326,29 +326,28 @@ impl PythonFigure {
 		}
 	}
 
-	fn save_to(&self, engine: &PythonEngine, path: &str) -> PyResult<()> {
+	fn save_to(&self, path: &str, engine: Option<&PythonEngine>) -> PyResult<()> {
+		let engine = PythonEngine::resolve(engine)?;
 		self
 			.inner
 			.borrow()
-			.save_to(&engine.inner, path)
+			.save_to_on(&engine, path)
 			.map_err(python_error)
 	}
 
-	fn render(&self, engine: &PythonEngine) -> PyResult<PythonImage> {
+	fn render(&self, engine: Option<&PythonEngine>) -> PyResult<PythonImage> {
+		let engine = PythonEngine::resolve(engine)?;
 		self
 			.inner
 			.borrow()
-			.render(&engine.inner)
+			.render_on(&engine)
 			.map(PythonImage::wrap)
 			.map_err(python_error)
 	}
 
-	fn show(&self, engine: &PythonEngine) -> PyResult<()> {
-		self
-			.inner
-			.borrow()
-			.show(&engine.inner)
-			.map_err(python_error)
+	fn show(&self, engine: Option<&PythonEngine>) -> PyResult<()> {
+		let engine = PythonEngine::resolve(engine)?;
+		self.inner.borrow().show_on(&engine).map_err(python_error)
 	}
 }
 
@@ -633,12 +632,13 @@ impl PythonFigureView {
 	}
 
 	/// Present the view in a blocking `Viewer` live-mode window.
-	#[pyo3(signature = (engine, config=None))]
+	#[pyo3(signature = (config=None, engine=None))]
 	fn show(
 		&self,
-		engine: &PythonEngine,
 		config: Option<PyRef<'_, crate::viewer::PythonViewerConfig>>,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<()> {
+		let engine = PythonEngine::resolve(engine)?;
 		let cfg = config.map_or_else(
 			|| oa::ViewerConfig {
 				mode: oa::ViewerMode::Live,
@@ -652,7 +652,7 @@ impl PythonFigureView {
 		let mut view = self.inner.borrow_mut();
 		let mut viewer = oa::Viewer::new(cfg);
 		viewer.set_live_source(&mut *view);
-		viewer.run(&engine.inner).map_err(python_error)
+		viewer.run(&engine).map_err(python_error)
 	}
 }
 

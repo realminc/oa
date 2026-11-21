@@ -198,8 +198,13 @@ pub(crate) struct PythonMamba3 {
 impl PythonMamba3 {
 	/// Construct a deterministically initialized Mamba-3 block.
 	#[new]
-	pub fn new(engine: &PythonEngine, config: &PythonMamba3Config, seed: u64) -> PyResult<Self> {
-		oa::ml::nn::Mamba3::new_with_seed(&engine.inner, config.inner, seed)
+	pub fn new(
+		config: &PythonMamba3Config,
+		seed: u64,
+		engine: Option<&PythonEngine>,
+	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::Mamba3::new_with_seed_on(&engine, config.inner, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

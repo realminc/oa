@@ -45,7 +45,7 @@ test_vk!(
 		for case in fixture()["cases"].as_array().unwrap() {
 			let length = usize::try_from(case["length"].as_u64().unwrap()).unwrap();
 			let bytes = flatten(&case["messages"]);
-			let input = Matrix::new_from_slice(&engine, [3, length], &bytes)?;
+			let input = Matrix::new_from_slice([3, length], &bytes)?;
 			for (name, op, digest_bytes) in HASHES {
 				let output = op(&input)?;
 				assert_eq!(output.dtype(), oa::DType::U8);
@@ -65,9 +65,9 @@ test_vk!(
 	fixed_digest_batch_contracts_reject_invalid_inputs,
 	engine,
 	{
-		let wrong_dtype = Matrix::new_from_f32(&engine, [1, 3], &[0.0; 3])?;
-		let rank_one = Matrix::new_from_slice(&engine, [3], b"abc")?;
-		let empty_batch = Matrix::new_from_slice(&engine, [0, 3], &[] as &[u8])?;
+		let wrong_dtype = Matrix::new_from_f32([1, 3], &[0.0; 3])?;
+		let rank_one = Matrix::new_from_slice([3], b"abc")?;
+		let empty_batch = Matrix::new_from_slice([0, 3], &[] as &[u8])?;
 		for (_, op, _) in HASHES {
 			for input in [&wrong_dtype, &rank_one, &empty_batch] {
 				assert_eq!(
@@ -86,11 +86,7 @@ test_vk!(
 	{
 		let fixture = fixture();
 		let chains = fixture["chains"].as_array().unwrap();
-		let input = Matrix::new_from_slice(
-			&engine,
-			[3, 3],
-			&unhex(chains[0]["messages"].as_str().unwrap()),
-		)?;
+		let input = Matrix::new_from_slice([3, 3], &unhex(chains[0]["messages"].as_str().unwrap()))?;
 		let (mut plan, output) = engine.capture(|| {
 			let digest = hash::sha256(&input)?;
 			hash::sha3_256(&digest)
@@ -105,7 +101,7 @@ test_vk!(
 		for (index, chain) in chains.iter().enumerate() {
 			if index != 0 {
 				let replacement =
-					Matrix::new_from_slice(&engine, [3, 3], &unhex(chain["messages"].as_str().unwrap()))?;
+					Matrix::new_from_slice([3, 3], &unhex(chain["messages"].as_str().unwrap()))?;
 				plan.bind_matrix_input(&input, &replacement)?;
 			}
 			let first = engine.submit(&plan)?;
@@ -129,7 +125,7 @@ test_vk!(
 		for case in fixture()["merkle_cases"].as_array().unwrap() {
 			let rows = case["leaves"].as_array().unwrap().len();
 			let bytes = flatten(&case["leaves"]);
-			let input = Matrix::new_from_slice(&engine, [rows, 32], &bytes)?;
+			let input = Matrix::new_from_slice([rows, 32], &bytes)?;
 			let (plan, root) = engine.capture(|| hash::merkle_root(&input))?;
 			assert_eq!(plan.semantic_graph().operations().len(), 1);
 			assert_eq!(
@@ -159,7 +155,7 @@ test_vk!(
 		for repetitions in [11, 21] {
 			let bytes = row_bytes.repeat(repetitions);
 			let rows = 3 * repetitions;
-			let input = Matrix::new_from_slice(&engine, [rows, 3], &bytes)?;
+			let input = Matrix::new_from_slice([rows, 3], &bytes)?;
 			for (name, op, digest_bytes) in HASHES {
 				let expected = flatten(&case["digests"][name]).repeat(repetitions);
 				let output = op(&input)?;

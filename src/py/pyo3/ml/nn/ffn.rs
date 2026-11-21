@@ -16,22 +16,23 @@ impl PythonFfn {
 	///
 	/// Accepts `dim`/`hidden_dim` as aliases for `model_width`/`hidden_width`.
 	#[new]
-	#[pyo3(signature = (engine, model_width=None, hidden_width=None, epsilon = 1e-5, seed = 0, dim=None, hidden_dim=None))]
+	#[pyo3(signature = (model_width=None, hidden_width=None, epsilon = 1e-5, seed = 0, dim=None, hidden_dim=None, engine=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		engine: &PythonEngine,
 		model_width: Option<usize>,
 		hidden_width: Option<usize>,
 		epsilon: f32,
 		seed: u64,
 		dim: Option<usize>,
 		hidden_dim: Option<usize>,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
 		let mw = model_width
 			.or(dim)
 			.ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("Ffn requires model_width or dim"))?;
 		let hw = hidden_width.or(hidden_dim).unwrap_or(mw * 4);
-		oa::ml::nn::Ffn::new_with_seed(&engine.inner, mw, hw, epsilon, seed)
+		oa::ml::nn::Ffn::new_with_seed_on(&engine, mw, hw, epsilon, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

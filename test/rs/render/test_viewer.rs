@@ -39,7 +39,7 @@ fn figure_show_opens_image_viewer_and_closes() -> Result<(), Box<dyn std::error:
 		..Default::default()
 	});
 	figure.ax(0, 0).plot(&[5.0, 2.0, 1.0], Default::default());
-	run_until_quit(|| figure.show(&engine))
+	run_until_quit(|| figure.show_on(&engine))
 }
 
 #[test]

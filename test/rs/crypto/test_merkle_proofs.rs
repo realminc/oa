@@ -31,16 +31,16 @@ test_vk!(
 	{
 		for case in fixture()["cases"].as_array().unwrap() {
 			let count = case["leaves"].as_array().unwrap().len();
-			let leaves = Matrix::new_from_slice(&engine, [count, 32], &flatten(&case["leaves"]))?;
-			let selected = Matrix::new_from_slice(&engine, [5, 32], &flatten(&case["selected_leaves"]))?;
+			let leaves = Matrix::new_from_slice([count, 32], &flatten(&case["leaves"]))?;
+			let selected = Matrix::new_from_slice([5, 32], &flatten(&case["selected_leaves"]))?;
 			let indices = case["indices"]
 				.as_array()
 				.unwrap()
 				.iter()
 				.map(|i| u32::try_from(i.as_u64().unwrap()).unwrap())
 				.collect::<Vec<_>>();
-			let indices = Matrix::new_from_slice(&engine, [5], &indices)?;
-			let root = Matrix::new_from_slice(&engine, [1, 32], &unhex(case["root"].as_str().unwrap()))?;
+			let indices = Matrix::new_from_slice([5], &indices)?;
+			let root = Matrix::new_from_slice([1, 32], &unhex(case["root"].as_str().unwrap()))?;
 			let (plan, (proofs, valid)) = engine.capture(|| {
 				let proofs = hash::merkle_proofs(&leaves, &indices)?;
 				let valid =
@@ -75,17 +75,17 @@ test_vk!(
 		let source = flatten(&case["frames"]);
 		let frame_bytes = source.len() / 5;
 		let leaves_bytes = flatten(&case["selected_leaves"]);
-		let leaves = Matrix::new_from_slice(&engine, [5, 32], &leaves_bytes)?;
+		let leaves = Matrix::new_from_slice([5, 32], &leaves_bytes)?;
 		let root_bytes = unhex(case["root"].as_str().unwrap());
-		let root = Matrix::new_from_slice(&engine, [1, 32], &root_bytes)?;
+		let root = Matrix::new_from_slice([1, 32], &root_bytes)?;
 		for offset in [0, 4, 8, 12, 16, frame_bytes - 1] {
 			let mut bytes = source.clone();
 			bytes[offset] ^= 0x80;
-			let proof = Matrix::new_from_slice(&engine, [5, frame_bytes], &bytes)?;
+			let proof = Matrix::new_from_slice([5, frame_bytes], &bytes)?;
 			let flags = hash::verify_merkle_proofs(&leaves, &proof, &root, 5)?.read::<u32>()?;
 			assert_eq!(flags, [0, 1, 1, 0, 0], "tampered byte {offset}");
 		}
-		let proof = Matrix::new_from_slice(&engine, [5, frame_bytes], &source)?;
+		let proof = Matrix::new_from_slice([5, frame_bytes], &source)?;
 		// Same-depth cardinalities must still match trusted tree metadata.
 		assert_eq!(
 			hash::verify_merkle_proofs(&leaves, &proof, &root, 6)?.read::<u32>()?,
@@ -93,14 +93,14 @@ test_vk!(
 		);
 		let mut changed = leaves_bytes.clone();
 		changed[0] ^= 1;
-		let changed = Matrix::new_from_slice(&engine, [5, 32], &changed)?;
+		let changed = Matrix::new_from_slice([5, 32], &changed)?;
 		assert_eq!(
 			hash::verify_merkle_proofs(&changed, &proof, &root, 5)?.read::<u32>()?,
 			[0, 1, 1, 0, 0]
 		);
 		let mut changed_root = root_bytes.repeat(5);
 		changed_root[0] ^= 1;
-		let changed_root = Matrix::new_from_slice(&engine, [5, 32], &changed_root)?;
+		let changed_root = Matrix::new_from_slice([5, 32], &changed_root)?;
 		assert_eq!(
 			hash::verify_merkle_proofs(&leaves, &proof, &changed_root, 5)?.read::<u32>()?,
 			[0, 1, 1, 0, 0]
@@ -113,18 +113,18 @@ test_vk!(
 	merkle_proof_empty_selections_and_invalid_metadata,
 	engine,
 	{
-		let leaves = Matrix::new_from_slice(&engine, [1, 32], &[1_u8; 32])?;
-		let empty_indices = Matrix::new_from_slice(&engine, [0], &[] as &[u32])?;
+		let leaves = Matrix::new_from_slice([1, 32], &[1_u8; 32])?;
+		let empty_indices = Matrix::new_from_slice([0], &[] as &[u32])?;
 		let frames = hash::merkle_proofs(&leaves, &empty_indices)?;
 		assert_eq!(frames.shape(), [0, 16]);
 		assert!(frames.try_read::<u8>()?.is_empty());
-		let empty_leaves = Matrix::new_from_slice(&engine, [0, 32], &[] as &[u8])?;
+		let empty_leaves = Matrix::new_from_slice([0, 32], &[] as &[u8])?;
 		assert!(
 			hash::verify_merkle_proofs(&empty_leaves, &frames, &leaves, 1)?
 				.try_read::<u32>()?
 				.is_empty()
 		);
-		let wrong_indices = Matrix::new_from_slice(&engine, [1], &[0_u8])?;
+		let wrong_indices = Matrix::new_from_slice([1], &[0_u8])?;
 		assert_eq!(
 			hash::merkle_proofs(&leaves, &wrong_indices)
 				.err()
@@ -132,7 +132,7 @@ test_vk!(
 				.kind(),
 			oa::ErrorKind::InvalidArgument
 		);
-		let wrong_frame = Matrix::new_from_slice(&engine, [1, 17], &[0_u8; 17])?;
+		let wrong_frame = Matrix::new_from_slice([1, 17], &[0_u8; 17])?;
 		assert_eq!(
 			hash::verify_merkle_proofs(&leaves, &wrong_frame, &leaves, 1)
 				.err()
@@ -152,10 +152,10 @@ test_vk!(
 		let fixture = fixture();
 		let case = &fixture["cases"][3];
 		let leaves_bytes = flatten(&case["leaves"]);
-		let leaves = Matrix::new_from_slice(&engine, [5, 32], &leaves_bytes)?;
-		let indices = Matrix::new_from_slice(&engine, [33], &[0_u32; 33])?;
-		let selected = Matrix::new_from_slice(&engine, [33, 32], &leaves_bytes[..32].repeat(33))?;
-		let root = Matrix::new_from_slice(&engine, [1, 32], &unhex(case["root"].as_str().unwrap()))?;
+		let leaves = Matrix::new_from_slice([5, 32], &leaves_bytes)?;
+		let indices = Matrix::new_from_slice([33], &[0_u32; 33])?;
+		let selected = Matrix::new_from_slice([33, 32], &leaves_bytes[..32].repeat(33))?;
+		let root = Matrix::new_from_slice([1, 32], &unhex(case["root"].as_str().unwrap()))?;
 		let (mut plan, valid) = engine.capture(|| {
 			let frames = hash::merkle_proofs(&leaves, &indices)?;
 			hash::verify_merkle_proofs(&selected, &frames, &root, 5)
@@ -164,7 +164,7 @@ test_vk!(
 		assert_eq!(valid.read::<u32>()?, [1; 33]);
 		let mut replacements = [0_u32; 33];
 		replacements[32] = 5;
-		let replacement = Matrix::new_from_slice(&engine, [33], &replacements)?;
+		let replacement = Matrix::new_from_slice([33], &replacements)?;
 		plan.bind_matrix_input(&indices, &replacement)?;
 		engine.submit(&plan)?.wait()?;
 		let mut expected = [1_u32; 33];
@@ -187,10 +187,7 @@ test_vk!(
 				.chunks(32)
 				.map(|chunk| oa::crypto::Hash::new_from_bytes(chunk).unwrap())
 				.collect();
-			(
-				Matrix::new_from_slice(&engine, [count, 32], &bytes).unwrap(),
-				hashes,
-			)
+			(Matrix::new_from_slice([count, 32], &bytes).unwrap(), hashes)
 		};
 		let algorithm = MerkleAlgorithm::Shake256;
 		let (leaves, hashes) = make_leaves(64);

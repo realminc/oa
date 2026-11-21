@@ -23,6 +23,7 @@ fn main() -> anyhow::Result<()> {
 		.devices(DeviceSelection::Index(options.device))
 		.build()
 		.context("create the OA Vulkan engine")?;
+	Engine::set_default(engine.clone());
 	let yuv420 = VideoChromaSubsampling::Yuv420;
 	for (name, profile) in [
 		(

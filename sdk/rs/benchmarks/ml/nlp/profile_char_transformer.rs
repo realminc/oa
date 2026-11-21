@@ -77,9 +77,9 @@ fn profile_linear(
 	input_features: usize,
 	output_features: usize,
 ) -> oa::Result<Duration> {
-	let input = oa::matrix::full(engine, [batch, input_features], 0.125)?;
-	let target = oa::Matrix::new_from_slice(engine, [batch], &vec![0_u32; batch])?;
-	let linear = oa::ml::nn::Linear::new_with_seed(engine, input_features, output_features, 1)?;
+	let input = oa::matrix::full([batch, input_features], 0.125)?;
+	let target = oa::Matrix::new_from_slice([batch], &vec![0_u32; batch])?;
+	let linear = oa::ml::nn::Linear::new_with_seed(input_features, output_features, 1)?;
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let logits = linear.forward(&input)?;
@@ -91,9 +91,9 @@ fn profile_linear(
 }
 
 fn profile_layer_norm(engine: &oa::Engine, rows: usize, columns: usize) -> oa::Result<Duration> {
-	let input = oa::matrix::full(engine, [rows, columns], 0.125)?;
-	let target = oa::Matrix::new_from_slice(engine, [rows], &vec![0_u32; rows])?;
-	let layer_norm = oa::ml::nn::LayerNorm::new(engine, columns, 1.0e-5)?;
+	let input = oa::matrix::full([rows, columns], 0.125)?;
+	let target = oa::Matrix::new_from_slice([rows], &vec![0_u32; rows])?;
+	let layer_norm = oa::ml::nn::LayerNorm::new(columns, 1.0e-5)?;
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let logits = layer_norm.forward(&input)?;
@@ -112,10 +112,10 @@ fn profile_attention(
 	heads: usize,
 ) -> oa::Result<Duration> {
 	let rows = batch * sequence;
-	let query = oa::matrix::full(engine, [rows, width], 0.125)?;
-	let key = oa::matrix::full(engine, [rows, width], -0.25)?;
-	let value = oa::matrix::full(engine, [rows, width], 0.375)?;
-	let target = oa::Matrix::new_from_slice(engine, [rows], &vec![0_u32; rows])?;
+	let query = oa::matrix::full([rows, width], 0.125)?;
+	let key = oa::matrix::full([rows, width], -0.25)?;
+	let value = oa::matrix::full([rows, width], 0.375)?;
+	let target = oa::Matrix::new_from_slice([rows], &vec![0_u32; rows])?;
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let logits =
@@ -135,10 +135,10 @@ fn profile_sdpa_provider(
 	flash: bool,
 ) -> oa::Result<Duration> {
 	let shape = [batch_heads, sequence, head_dim];
-	let query = oa::matrix::full(engine, shape, 0.125)?;
-	let key = oa::matrix::full(engine, shape, -0.25)?;
-	let value = oa::matrix::full(engine, shape, 0.375)?;
-	let target = oa::matrix::full(engine, shape, 0.0)?;
+	let query = oa::matrix::full(shape, 0.125)?;
+	let key = oa::matrix::full(shape, -0.25)?;
+	let value = oa::matrix::full(shape, 0.375)?;
+	let target = oa::matrix::full(shape, 0.0)?;
 	let scale = 1.0 / (head_dim as f32).sqrt();
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
@@ -162,9 +162,9 @@ fn profile_sdpa_forward_provider(
 	flash: bool,
 ) -> oa::Result<Duration> {
 	let shape = [batch_heads, sequence, head_dim];
-	let query = oa::matrix::full(engine, shape, 0.125)?;
-	let key = oa::matrix::full(engine, shape, -0.25)?;
-	let value = oa::matrix::full(engine, shape, 0.375)?;
+	let query = oa::matrix::full(shape, 0.125)?;
+	let key = oa::matrix::full(shape, -0.25)?;
+	let value = oa::matrix::full(shape, 0.375)?;
 	let scale = 1.0 / (head_dim as f32).sqrt();
 	let (plan, _) = engine.capture(|| {
 		if flash {
@@ -178,9 +178,10 @@ fn profile_sdpa_forward_provider(
 
 fn main() -> oa::Result<()> {
 	let engine = oa::Engine::new()?;
-	let model = nlp::CharTransformer::new(&engine)?;
+	oa::Engine::set_default(engine.clone());
+	let model = nlp::CharTransformer::new()?;
 	let mut sampler = nlp::CharSampler::new(nlp::BATCH_SIZE)?;
-	let (input, target) = sampler.next(&engine)?;
+	let (input, target) = sampler.next()?;
 	let target = target.reshape([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH])?;
 
 	// backward accumulates into `Parameter::gradient` when one exists, so

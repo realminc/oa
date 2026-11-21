@@ -24,7 +24,7 @@ pub struct Tutorial<'text> {
 
 pub fn run<M: Module>(
 	tutorial: Tutorial<'_>,
-	construct: impl Fn(&oa::Engine) -> oa::Result<M>,
+	construct: impl Fn() -> oa::Result<M>,
 ) -> oa::Result<()> {
 	let Tutorial {
 		title,
@@ -56,12 +56,13 @@ pub fn run<M: Module>(
 		cli.config().steps
 	};
 	let engine = oa::Engine::new()?;
+	oa::Engine::set_default(engine.clone());
 	let mut tokenizer = BpeTokenizer::new(nlp::BPE_VOCAB_SIZE);
 	tokenizer.train_text(nlp::CORPUS, nlp::BPE_MERGES);
 	let corpus_tokens = tokenizer.encode_text(nlp::CORPUS);
 	assert_eq!(tokenizer.decode_text(&corpus_tokens)?, nlp::CORPUS);
 	let bytes_per_token = nlp::CORPUS.len() as f64 / corpus_tokens.len() as f64;
-	let model = construct(&engine)?;
+	let model = construct()?;
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, learning_rate)?;
 	let mut sampler = nlp::BpeSampler::new(nlp::BATCH_SIZE, &tokenizer)?;
 
@@ -127,16 +128,8 @@ pub fn run<M: Module>(
 				last_input.clone_from(&input_values);
 				last_target.clone_from(&target_values);
 				Ok((
-					oa::Matrix::new_from_slice(
-						&engine,
-						[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
-						&input_values,
-					)?,
-					oa::Matrix::new_from_slice(
-						&engine,
-						[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-						&target_values,
-					)?,
+					oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &input_values)?,
+					oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &target_values)?,
 				))
 			},
 			|(input, target)| {
@@ -161,13 +154,8 @@ pub fn run<M: Module>(
 	let result = training.finish()?;
 	let final_training_loss = result.last_loss().unwrap_or_default();
 
-	let input =
-		oa::Matrix::new_from_slice(&engine, [nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &last_input)?;
-	let target = oa::Matrix::new_from_slice(
-		&engine,
-		[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-		&last_target,
-	)?;
+	let input = oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &last_input)?;
+	let target = oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &last_target)?;
 	let logits = model.forward(&input)?;
 	let accuracy = nlp::accuracy(&logits, &target)?;
 	let evaluation_loss = oa::ml::loss::cross_entropy(&logits, &target)?.read_f32()?[0];
@@ -209,13 +197,7 @@ pub fn run<M: Module>(
 
 	let plot_path = cli.config().plot.as_str();
 	if !plot_path.is_empty() {
-		write_loss_curve(
-			&engine,
-			&loss_curve,
-			title,
-			tokenizer.vocab_size(),
-			plot_path,
-		)?;
+		write_loss_curve(&loss_curve, title, tokenizer.vocab_size(), plot_path)?;
 		println!("plot: {plot_path}");
 	}
 
@@ -236,9 +218,9 @@ pub fn run<M: Module>(
 	tokenizer.save(&vocabulary)?;
 	let mut reloaded_tokenizer = BpeTokenizer::new(256);
 	reloaded_tokenizer.load(&vocabulary)?;
-	let reloaded = construct(&engine)?;
+	let reloaded = construct()?;
 	let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, learning_rate)?;
-	oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+	oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut reloaded_optimizer)?;
 	assert_eq!(reloaded_optimizer.step_count(), optimizer.step_count());
 	assert_eq!(
 		nlp::accuracy(&reloaded.forward(&input)?, &target)?,
@@ -265,7 +247,6 @@ pub fn run<M: Module>(
 /// Render the recorded loss curve through `oa::plot` — the same headless GPU
 /// composition `tu_viewer_video` uses for its poster asset.
 fn write_loss_curve(
-	engine: &oa::Engine,
 	loss_curve: &[f32],
 	title: &str,
 	vocab_size: usize,
@@ -314,5 +295,5 @@ fn write_loss_curve(
 			..Default::default()
 		},
 	);
-	fig.save_to(engine, path)
+	fig.save_to(path)
 }

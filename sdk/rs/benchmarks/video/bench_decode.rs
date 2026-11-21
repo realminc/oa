@@ -19,6 +19,7 @@ fn main() -> anyhow::Result<()> {
 		.devices(DeviceSelection::Index(options.device))
 		.build()
 		.context("create the OA Vulkan engine")?;
+	Engine::set_default(engine.clone());
 	for clip in &options.clips {
 		bench_clip(&engine, clip, &options)?;
 	}

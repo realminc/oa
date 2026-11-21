@@ -34,11 +34,11 @@ test_vk!(
 	engine,
 	{
 		for (rows, experts, k) in [(1, 1, 1), (3, 7, 2), (2, 8, 8), (2, 256, 3)] {
-			let logits = Matrix::new_from_f32(&engine, [rows, experts], &vec![0.0; rows * experts])?;
+			let logits = Matrix::new_from_f32([rows, experts], &vec![0.0; rows * experts])?;
 			let bias_values = (0..experts)
 				.map(|i| if i.is_multiple_of(2) { 1.0 } else { -1.0 })
 				.collect::<Vec<_>>();
-			let bias = Matrix::new_from_f32(&engine, [1, experts], &bias_values)?;
+			let bias = Matrix::new_from_f32([1, experts], &bias_values)?;
 			for biased in [false, true] {
 				let probability = matrix::softmax(&logits, 1)?;
 				let reference_probability = probability.read_f32()?;
@@ -75,8 +75,7 @@ test_vk!(
 					}
 				}
 				if !biased {
-					let replacement =
-						Matrix::new_from_f32(&engine, [rows, experts], &vec![2.0; rows * experts])?;
+					let replacement = Matrix::new_from_f32([rows, experts], &vec![2.0; rows * experts])?;
 					plan.bind_matrix_input(&logits, &replacement)?;
 					engine.submit(&plan)?.wait()?;
 					close(&probability.read_f32()?, &reference_probability, 1e-7);
@@ -92,7 +91,7 @@ test_vk!(
 	rl_fusion_router_keeps_unqualified_route_counts_on_source,
 	engine,
 	{
-		let logits = Matrix::new_from_f32(&engine, [1, 33], &values(33, 0))?;
+		let logits = Matrix::new_from_f32([1, 33], &values(33, 0))?;
 		let (plan, mask) = engine.capture(|| {
 			let _p = matrix::softmax(&logits, 1)?;
 			let top = matrix::top_k(&logits, 33, 1)?;
@@ -110,10 +109,10 @@ test_vk!(
 	engine,
 	{
 		for hidden in [7, 65] {
-			let input = Matrix::new_from_f32(&engine, [3, 5], &values(15, 1))?;
-			let reference = oa::ml::nn::Linear::new_with_seed(&engine, 5, 2 * hidden, 0x984)?;
-			let candidate = oa::ml::nn::Linear::new_with_seed(&engine, 5, 2 * hidden, 0x984)?;
-			let target = Matrix::new_from_f32(&engine, [3, hidden], &vec![0.2; 3 * hidden])?;
+			let input = Matrix::new_from_f32([3, 5], &values(15, 1))?;
+			let reference = oa::ml::nn::Linear::new_with_seed(5, 2 * hidden, 0x984)?;
+			let candidate = oa::ml::nn::Linear::new_with_seed(5, 2 * hidden, 0x984)?;
+			let target = Matrix::new_from_f32([3, hidden], &vec![0.2; 3 * hidden])?;
 			let tape = GradientTape::new();
 			let raw = reference.forward(&input)?;
 			let expected_raw = raw.read_f32()?;
@@ -154,18 +153,13 @@ test_vk!(
 		let inner = 5;
 		let hidden = 19;
 		let experts = 3;
-		let input = Matrix::new_from_f32(&engine, [rows, inner], &values(rows * inner, 1))?;
+		let input = Matrix::new_from_f32([rows, inner], &values(rows * inner, 1))?;
 		let weight = Matrix::new_from_f32(
-			&engine,
 			[experts, 2 * hidden, inner],
 			&values(experts * 2 * hidden * inner, 2),
 		)?;
-		let bias = Matrix::new_from_f32(
-			&engine,
-			[experts, 2 * hidden],
-			&values(experts * 2 * hidden, 3),
-		)?;
-		let offsets = Matrix::new_from_slice(&engine, [experts + 1], &[0_u32, 3, 3, 70])?;
+		let bias = Matrix::new_from_f32([experts, 2 * hidden], &values(experts * 2 * hidden, 3))?;
+		let offsets = Matrix::new_from_slice([experts + 1], &[0_u32, 3, 3, 70])?;
 		let raw = oa::ml::matrix::grouped_linear_m(&input, &weight, &bias, &offsets)?;
 		let expected_raw = raw.read_f32()?;
 		let expected = oa::ml::matrix::silu_mul(&raw, hidden)?.read_f32()?;
@@ -190,12 +184,12 @@ test_vk!(
 	{
 		for parts in [2, 3] {
 			let inputs = (0..parts)
-				.map(|i| Matrix::new_from_f32(&engine, [3, i + 1], &values(3 * (i + 1), i)))
+				.map(|i| Matrix::new_from_f32([3, i + 1], &values(3 * (i + 1), i)))
 				.collect::<Result<Vec<_>>>()?;
 			let width = (1..=parts).sum::<usize>();
-			let reference = oa::ml::nn::Linear::new_with_seed(&engine, width, 67, 0x23)?;
-			let candidate = oa::ml::nn::Linear::new_with_seed(&engine, width, 67, 0x23)?;
-			let target = Matrix::new_from_f32(&engine, [3, 67], &vec![0.0; 201])?;
+			let reference = oa::ml::nn::Linear::new_with_seed(width, 67, 0x23)?;
+			let candidate = oa::ml::nn::Linear::new_with_seed(width, 67, 0x23)?;
+			let target = Matrix::new_from_f32([3, 67], &vec![0.0; 201])?;
 			let tape = GradientTape::new();
 			let combined = matrix::concat(&inputs, 1)?;
 			let expected_combined = combined.read_f32()?;
@@ -275,9 +269,9 @@ test_vk!(
 			let qv = values(count, 1);
 			let kv = values(count, 2);
 			let vv = values(count, 3);
-			let q = Matrix::new_from_f32(&engine, [batch * sequence, heads * dim], &qv)?;
-			let k = Matrix::new_from_f32(&engine, [batch * sequence, heads * dim], &kv)?;
-			let v = Matrix::new_from_f32(&engine, [batch * sequence, heads * dim], &vv)?;
+			let q = Matrix::new_from_f32([batch * sequence, heads * dim], &qv)?;
+			let k = Matrix::new_from_f32([batch * sequence, heads * dim], &kv)?;
+			let v = Matrix::new_from_f32([batch * sequence, heads * dim], &vv)?;
 			let expected = attention_reference(&qv, &kv, &vv, batch, sequence, heads, dim);
 			let (plan, (sq, sk, sv, context, output)) = engine.capture(|| {
 				let sq = oa::ml::matrix::split_heads(&q, batch, sequence, heads)?;
@@ -335,9 +329,9 @@ test_vk!(
 			let qv = values(count, 1);
 			let kv = values(count, 2);
 			let vv = values(count, 3);
-			let q = Matrix::new_from_f32(&engine, [batch * sequence, dim], &qv)?;
-			let k = Matrix::new_from_f32(&engine, [batch * sequence, dim], &kv)?;
-			let v = Matrix::new_from_f32(&engine, [batch * sequence, dim], &vv)?;
+			let q = Matrix::new_from_f32([batch * sequence, dim], &qv)?;
+			let k = Matrix::new_from_f32([batch * sequence, dim], &kv)?;
+			let v = Matrix::new_from_f32([batch * sequence, dim], &vv)?;
 			let expected = attention_reference(&qv, &kv, &vv, batch, sequence, heads, dim);
 			let (plan, output) = engine.capture(|| {
 				oa::ml::matrix::scaled_dot_product_attention_causal(&q, &k, &v, sequence, heads)
@@ -359,9 +353,9 @@ test_vk!(
 	rl_fusion_tape_supports_broadcast_and_typed_gather_leaves,
 	engine,
 	{
-		let input = Matrix::new_from_f32(&engine, [3, 7], &values(21, 1))?;
-		let column = Matrix::new_from_f32(&engine, [3, 1], &[1.0, 2.0, 3.0])?;
-		let row = Matrix::new_from_f32(&engine, [1, 7], &[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7])?;
+		let input = Matrix::new_from_f32([3, 7], &values(21, 1))?;
+		let column = Matrix::new_from_f32([3, 1], &[1.0, 2.0, 3.0])?;
+		let row = Matrix::new_from_f32([1, 7], &[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7])?;
 		let a = matrix::mul(&input, &column)?;
 		let ea = a.read_f32()?;
 		let b = matrix::add(&a, &row)?;
@@ -380,9 +374,9 @@ test_vk!(
 		close(&c.read_f32()?, &ec, 1e-5);
 		for dtype in 0..3 {
 			let indices = match dtype {
-				0 => Matrix::new_from_slice(&engine, [3], &[2_u8, 0, 9])?,
-				1 => Matrix::new_from_slice(&engine, [3], &[2_u32, 0, 9])?,
-				_ => Matrix::new_from_slice(&engine, [3], &[2_i32, 0, -1])?,
+				0 => Matrix::new_from_slice([3], &[2_u8, 0, 9])?,
+				1 => Matrix::new_from_slice([3], &[2_u32, 0, 9])?,
+				_ => Matrix::new_from_slice([3], &[2_i32, 0, -1])?,
 			};
 			let gathered = matrix::gather(&input, &indices)?;
 			let expected = gathered.read_f32()?;
@@ -405,10 +399,10 @@ test_vk!(
 	rl_fusion_tape_activation_adjoint_preserves_parameter_gradients,
 	engine,
 	{
-		let input = Matrix::new_from_f32(&engine, [3, 5], &values(15, 7))?;
-		let target = Matrix::new_from_f32(&engine, [3, 7], &[0.0; 21])?;
-		let reference = oa::ml::nn::Linear::new_with_seed(&engine, 5, 7, 19)?;
-		let candidate = oa::ml::nn::Linear::new_with_seed(&engine, 5, 7, 19)?;
+		let input = Matrix::new_from_f32([3, 5], &values(15, 7))?;
+		let target = Matrix::new_from_f32([3, 7], &[0.0; 21])?;
+		let reference = oa::ml::nn::Linear::new_with_seed(5, 7, 19)?;
+		let candidate = oa::ml::nn::Linear::new_with_seed(5, 7, 19)?;
 		let tape = GradientTape::new();
 		let raw = reference.forward(&input)?;
 		raw.read_f32()?;
@@ -443,8 +437,8 @@ test_vk!(
 // Timings exclude capture/preparation.
 test_vk!(rl_fusion_benchmark_static_workloads, engine, {
 	let mut plans = Vec::new();
-	let logits = Matrix::new_from_f32(&engine, [64, 8], &values(512, 1))?;
-	let bias = Matrix::new_from_f32(&engine, [1, 8], &values(8, 2))?;
+	let logits = Matrix::new_from_f32([64, 8], &values(512, 1))?;
+	let bias = Matrix::new_from_f32([1, 8], &values(8, 2))?;
 	let (router, _) = engine.capture(|| {
 		let p = matrix::softmax(&logits, 1)?;
 		let s = matrix::add(&logits, &bias)?;
@@ -453,18 +447,18 @@ test_vk!(rl_fusion_benchmark_static_workloads, engine, {
 		Ok((p, t, m))
 	})?;
 	plans.push(("router64x8k2", router));
-	let input = Matrix::new_from_f32(&engine, [64, 64], &values(4096, 3))?;
-	let linear = oa::ml::nn::Linear::new_with_seed(&engine, 64, 128, 0x24)?;
+	let input = Matrix::new_from_f32([64, 64], &values(4096, 3))?;
+	let linear = oa::ml::nn::Linear::new_with_seed(64, 128, 0x24)?;
 	let (gated, _) = engine.capture(|| oa::ml::matrix::silu_mul(&linear.forward(&input)?, 64))?;
 	plans.push(("gate64x64x64", gated));
-	let odd_linear = oa::ml::nn::Linear::new_with_seed(&engine, 64, 130, 0x24)?;
+	let odd_linear = oa::ml::nn::Linear::new_with_seed(64, 130, 0x24)?;
 	let (odd_gate, _) =
 		engine.capture(|| oa::ml::matrix::silu_mul(&odd_linear.forward(&input)?, 65))?;
 	plans.push(("gate64x64x65", odd_gate));
-	let grouped_input = Matrix::new_from_f32(&engine, [70, 16], &values(70 * 16, 1))?;
-	let grouped_weight = Matrix::new_from_f32(&engine, [3, 64, 16], &values(3 * 64 * 16, 2))?;
-	let grouped_bias = Matrix::new_from_f32(&engine, [3, 64], &values(3 * 64, 3))?;
-	let grouped_offsets = Matrix::new_from_slice(&engine, [4], &[0_u32, 3, 17, 70])?;
+	let grouped_input = Matrix::new_from_f32([70, 16], &values(70 * 16, 1))?;
+	let grouped_weight = Matrix::new_from_f32([3, 64, 16], &values(3 * 64 * 16, 2))?;
+	let grouped_bias = Matrix::new_from_f32([3, 64], &values(3 * 64, 3))?;
+	let grouped_offsets = Matrix::new_from_slice([4], &[0_u32, 3, 17, 70])?;
 	let (grouped_gate, _) = engine.capture(|| {
 		oa::ml::matrix::silu_mul(
 			&oa::ml::matrix::grouped_linear_m(
@@ -477,31 +471,31 @@ test_vk!(rl_fusion_benchmark_static_workloads, engine, {
 		)
 	})?;
 	plans.push(("grouped_gate70x16x32", grouped_gate));
-	let query = Matrix::new_from_f32(&engine, [64 * 16, 64], &values(64 * 16 * 64, 1))?;
-	let key = Matrix::new_from_f32(&engine, [64 * 16, 64], &values(64 * 16 * 64, 2))?;
-	let value = Matrix::new_from_f32(&engine, [64 * 16, 64], &values(64 * 16 * 64, 3))?;
+	let query = Matrix::new_from_f32([64 * 16, 64], &values(64 * 16 * 64, 1))?;
+	let key = Matrix::new_from_f32([64 * 16, 64], &values(64 * 16 * 64, 2))?;
+	let value = Matrix::new_from_f32([64 * 16, 64], &values(64 * 16 * 64, 3))?;
 	let (attention, _) = engine
 		.capture(|| oa::ml::matrix::scaled_dot_product_attention_causal(&query, &key, &value, 16, 2))?;
 	plans.push(("sdpa64x16h2d32", attention));
-	let long_query = Matrix::new_from_f32(&engine, [16 * 128, 32], &values(16 * 128 * 32, 1))?;
-	let long_key = Matrix::new_from_f32(&engine, [16 * 128, 32], &values(16 * 128 * 32, 2))?;
-	let long_value = Matrix::new_from_f32(&engine, [16 * 128, 32], &values(16 * 128 * 32, 3))?;
+	let long_query = Matrix::new_from_f32([16 * 128, 32], &values(16 * 128 * 32, 1))?;
+	let long_key = Matrix::new_from_f32([16 * 128, 32], &values(16 * 128 * 32, 2))?;
+	let long_value = Matrix::new_from_f32([16 * 128, 32], &values(16 * 128 * 32, 3))?;
 	let (long_attention, _) = engine.capture(|| {
 		oa::ml::matrix::scaled_dot_product_attention_causal(&long_query, &long_key, &long_value, 128, 2)
 	})?;
 	plans.push(("sdpa16x128h2d16", long_attention));
 	let parts = [
-		Matrix::new_from_f32(&engine, [64, 3], &values(192, 1))?,
-		Matrix::new_from_f32(&engine, [64, 1], &values(64, 2))?,
-		Matrix::new_from_f32(&engine, [64, 12], &values(768, 3))?,
+		Matrix::new_from_f32([64, 3], &values(192, 1))?,
+		Matrix::new_from_f32([64, 1], &values(64, 2))?,
+		Matrix::new_from_f32([64, 12], &values(768, 3))?,
 	];
-	let joint = oa::ml::nn::Linear::new_with_seed(&engine, 16, 64, 0x25)?;
+	let joint = oa::ml::nn::Linear::new_with_seed(16, 64, 0x25)?;
 	let (head, _) =
 		engine.capture(|| oa::ml::matrix::gelu(&joint.forward(&matrix::concat(&parts, 1)?)?))?;
 	plans.push(("head64x16x64", head));
-	let a = Matrix::new_from_f32(&engine, [128, 8], &values(1024, 4))?;
-	let row = Matrix::new_from_f32(&engine, [1, 8], &[1.0; 8])?;
-	let col = Matrix::new_from_f32(&engine, [128, 1], &vec![0.5; 128])?;
+	let a = Matrix::new_from_f32([128, 8], &values(1024, 4))?;
+	let row = Matrix::new_from_f32([1, 8], &[1.0; 8])?;
+	let col = Matrix::new_from_f32([128, 1], &vec![0.5; 128])?;
 	let (broadcast, _) =
 		engine.capture(|| matrix::reciprocal(&matrix::add(&matrix::mul(&a, &col)?, &row)?))?;
 	plans.push(("broadcast128x8", broadcast));
@@ -532,8 +526,8 @@ test_vk!(
 		let inputs = [-1.1_f32, 0.3, 0.8, -0.2, -0.7, 0.9, 0.4, 0.5, -0.6];
 		let initial = [0.4_f32, -0.3, 0.8, 0.12];
 		let targets = [0.2_f32, -0.1, 0.4];
-		let input = Matrix::new_from_f32(&engine, [3, 3], &inputs)?;
-		let target = Matrix::new_from_f32(&engine, [3, 1], &targets)?;
+		let input = Matrix::new_from_f32([3, 3], &inputs)?;
+		let target = Matrix::new_from_f32([3, 1], &targets)?;
 		for kind in 0..9 {
 			let host = |x: f32| match kind {
 				0 => x.max(0.0),
@@ -578,8 +572,8 @@ test_vk!(
 				expected.push((loss(&plus) - loss(&minus)) / 0.004);
 			}
 			let linear = oa::ml::nn::Linear::new_from_matrices(
-				Matrix::new_from_f32(&engine, [1, 3], &initial[..3])?,
-				Matrix::new_from_f32(&engine, [1], &initial[3..])?,
+				Matrix::new_from_f32([1, 3], &initial[..3])?,
+				Matrix::new_from_f32([1], &initial[3..])?,
 			)?;
 			let (plan, ()) = engine.capture(|| {
 				let tape = GradientTape::new();
@@ -609,19 +603,19 @@ test_vk!(
 );
 
 test_vk!(rl_fusion_typed_gather_reverse_matches_host_rows, engine, {
-	let input = Matrix::new_from_f32(&engine, [3, 1], &[1.0, 2.0, 3.0])?;
+	let input = Matrix::new_from_f32([3, 1], &[1.0, 2.0, 3.0])?;
 	let weights = values(7, 1);
 	let biases = values(7, 2);
-	let target = Matrix::new_from_f32(&engine, [3, 7], &[0.0; 21])?;
+	let target = Matrix::new_from_f32([3, 7], &[0.0; 21])?;
 	for dtype in 0..3 {
 		let indices = match dtype {
-			0 => Matrix::new_from_slice(&engine, [3], &[2_u8, 0, 2])?,
-			1 => Matrix::new_from_slice(&engine, [3], &[2_u32, 0, 2])?,
-			_ => Matrix::new_from_slice(&engine, [3], &[2_i32, 0, 2])?,
+			0 => Matrix::new_from_slice([3], &[2_u8, 0, 2])?,
+			1 => Matrix::new_from_slice([3], &[2_u32, 0, 2])?,
+			_ => Matrix::new_from_slice([3], &[2_i32, 0, 2])?,
 		};
 		let linear = oa::ml::nn::Linear::new_from_matrices(
-			Matrix::new_from_f32(&engine, [7, 1], &weights)?,
-			Matrix::new_from_f32(&engine, [7], &biases)?,
+			Matrix::new_from_f32([7, 1], &weights)?,
+			Matrix::new_from_f32([7], &biases)?,
 		)?;
 		let (plan, ()) = engine.capture(|| {
 			let tape = GradientTape::new();

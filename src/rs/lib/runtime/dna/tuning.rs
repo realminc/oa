@@ -1,6 +1,6 @@
 //! Measured specialization routing: sample windows, hysteresis and probe cadence.
 //! Donor: device/jit.rs; policy constants, observations and selection unchanged.
-use crate::runtime::device::vkcache::jit::{self, RouteObservationRecord};
+use crate::runtime::device::logical::vkcache::jit::{self, RouteObservationRecord};
 use std::collections::VecDeque;
 
 /// Timing samples kept per route; the median of the live window wins over

@@ -195,13 +195,17 @@ impl HumanMl3dDataset {
 			.map(|clip| clip.text_features.as_slice())
 	}
 
+	pub fn get_item(&self, index: usize) -> Result<Matrix> {
+		self.get_item_on(&Engine::current()?, index)
+	}
+
 	/// Upload one standardized clip as `[frames, feature_dim]`.
-	pub fn get_item(&self, engine: &Engine, index: usize) -> Result<Matrix> {
+	pub fn get_item_on(&self, engine: &Engine, index: usize) -> Result<Matrix> {
 		let clip = self
 			.clips
 			.get(index)
 			.ok_or_else(|| Error::out_of_range("HumanML3D clip index is out of range"))?;
-		Matrix::new_from_f32(engine, [clip.frames, self.feature_dim], &clip.features)
+		Matrix::new_from_f32_on(engine, [clip.frames, self.feature_dim], &clip.features)
 	}
 
 	/// De-standardize `[frames, feature_dim]` values in place.

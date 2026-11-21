@@ -47,6 +47,7 @@ fn main() -> Result<()> {
 	// ── Engine bring-up — headless (pure compute) ─────────────────────────────
 	// No surface, no VK_KHR_swapchain.  Any GPU admitted by the driver works.
 	let engine = Engine::builder().build()?;
+	Engine::set_default(engine.clone());
 
 	eprintln!(
 		"tu_viewer_image_headless: {} → {}",
@@ -55,7 +56,7 @@ fn main() -> Result<()> {
 	);
 
 	// ── Producer: decode packed pixels and upload directly as a Texture ─────
-	let tex = texture_from_file(&engine, &in_path)?;
+	let tex = texture_from_file(&in_path)?;
 
 	// ── Sink: save to file (readback + encode + write) ────────────────────────
 	save_texture_file(&tex, &out_path, 90)?;

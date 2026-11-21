@@ -16,13 +16,33 @@ use super::detect_codec;
 /// Returns an error for an empty path, filesystem failure, unsupported or
 /// malformed media, unsupported requested format, checked-size overflow, or
 /// device allocation/upload failure.
-pub fn decode_file(engine: &Engine, path: impl AsRef<Path>, format: ImageFormat) -> Result<Image> {
+///
+/// This variant decodes on this thread's default engine. An engine
+/// initialization failure is returned before decoding starts.
+pub fn decode_file(path: impl AsRef<Path>, format: ImageFormat) -> Result<Image> {
+	let path = path.as_ref();
+	decode_file_on(&Engine::current()?, path, format)
+}
+/// Decode a JPEG, PNG, WebP, BMP, or TGA file and upload normalized planar FP32
+/// pixels on a particular engine.
+///
+/// This is the [`decode_file`] contract evaluated on `engine` instead of this
+/// thread's default engine.
+///
+/// # Errors
+///
+/// Returns the same errors as [`decode_file`].
+pub fn decode_file_on(
+	engine: &Engine,
+	path: impl AsRef<Path>,
+	format: ImageFormat,
+) -> Result<Image> {
 	let path = path.as_ref();
 	if path.as_os_str().is_empty() {
 		return Err(Error::invalid_argument("image::decode_file path is empty"));
 	}
 	let encoded = fs::read(path).map_err(|source| Error::io("image file read", source))?;
-	decode_memory(engine, &encoded, format)
+	decode_memory_on(engine, &encoded, format)
 }
 
 /// Decode JPEG, PNG, WebP, BMP, or TGA bytes and upload normalized planar FP32 pixels.
@@ -35,7 +55,22 @@ pub fn decode_file(engine: &Engine, path: impl AsRef<Path>, format: ImageFormat)
 /// Returns an error for empty, unsupported, or malformed media, unsupported
 /// requested format, checked-size overflow, or device allocation/upload
 /// failure.
-pub fn decode_memory(engine: &Engine, encoded: &[u8], format: ImageFormat) -> Result<Image> {
+///
+/// This variant decodes on this thread's default engine. An engine
+/// initialization failure is returned before decoding starts.
+pub fn decode_memory(encoded: &[u8], format: ImageFormat) -> Result<Image> {
+	decode_memory_on(&Engine::current()?, encoded, format)
+}
+
+/// Decode JPEG, PNG, WebP, BMP, or TGA bytes and upload normalized planar FP32
+/// pixels on a particular engine.
+///
+/// # Errors
+///
+/// Returns an error for empty, unsupported, or malformed media, unsupported
+/// requested format, checked-size overflow, or device allocation/upload
+/// failure.
+pub fn decode_memory_on(engine: &Engine, encoded: &[u8], format: ImageFormat) -> Result<Image> {
 	if encoded.is_empty() {
 		return Err(Error::invalid_argument(
 			"image::decode_memory input buffer is empty",
@@ -104,6 +139,6 @@ fn upload_packed(
 			planar[channel * pixels + pixel] = f32::from(packed[pixel * channels + channel]) / 255.0;
 		}
 	}
-	let matrix = Matrix::new_from_slice(engine, [1, channels, height, width], &planar)?;
+	let matrix = Matrix::new_from_slice_on(engine, [1, channels, height, width], &planar)?;
 	Image::new(matrix, ImageLayout::Nchw, format)
 }

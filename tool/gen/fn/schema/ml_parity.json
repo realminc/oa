@@ -284,7 +284,7 @@
 				],
 				"returns": "MultiHeadAttention",
 				"visibility": "pub",
-				"target": "crate::ml::nn::MultiHeadAttention::new_with_seed"
+				"target": "crate::ml::nn::MultiHeadAttention::new_with_seed_on"
 			}
 		},
 		{
@@ -318,7 +318,7 @@
 				],
 				"returns": "MultiHeadAttention",
 				"visibility": "pub",
-				"target": "crate::ml::nn::MultiHeadAttention::new_with_seed_and_bias"
+				"target": "crate::ml::nn::MultiHeadAttention::new_with_seed_and_bias_on"
 			}
 		},
 		{
@@ -356,7 +356,7 @@
 				],
 				"returns": "MultiHeadAttention",
 				"visibility": "pub",
-				"target": "crate::ml::nn::MultiHeadAttention::new_with_seed_and_options"
+				"target": "crate::ml::nn::MultiHeadAttention::new_with_seed_and_options_on"
 			}
 		},
 		{
@@ -597,7 +597,7 @@
 				],
 				"returns": "CausalLinearAttention",
 				"visibility": "pub",
-				"target": "crate::ml::nn::CausalLinearAttention::new_with_seed"
+				"target": "crate::ml::nn::CausalLinearAttention::new_with_seed_on"
 			}
 		},
 		{
@@ -631,7 +631,7 @@
 				],
 				"returns": "CausalLinearAttention",
 				"visibility": "pub",
-				"target": "crate::ml::nn::CausalLinearAttention::new_with_seed_and_bias"
+				"target": "crate::ml::nn::CausalLinearAttention::new_with_seed_and_bias_on"
 			}
 		},
 		{
@@ -665,7 +665,7 @@
 				],
 				"returns": "CausalLinearAttention",
 				"visibility": "pub",
-				"target": "crate::ml::nn::CausalLinearAttention::new_with_seed_and_options"
+				"target": "crate::ml::nn::CausalLinearAttention::new_with_seed_and_options_on"
 			}
 		},
 		{
@@ -783,7 +783,7 @@
 				],
 				"returns": "BatchNorm2d",
 				"visibility": "pub",
-				"target": "crate::ml::nn::BatchNorm2d::new"
+				"target": "crate::ml::nn::BatchNorm2d::new_on"
 			}
 		},
 		{
@@ -809,7 +809,7 @@
 				],
 				"returns": "BatchNorm2d",
 				"visibility": "pub",
-				"target": "crate::ml::nn::BatchNorm2d::new_with_options"
+				"target": "crate::ml::nn::BatchNorm2d::new_with_options_on"
 			}
 		},
 		{
@@ -958,7 +958,7 @@
 				],
 				"returns": "ByteEmbedding",
 				"visibility": "pub",
-				"target": "crate::ml::nn::ByteEmbedding::new_with_seed"
+				"target": "crate::ml::nn::ByteEmbedding::new_with_seed_on"
 			}
 		},
 		{
@@ -1027,7 +1027,7 @@
 				],
 				"returns": "ByteHead",
 				"visibility": "pub",
-				"target": "crate::ml::nn::ByteHead::new_with_seed"
+				"target": "crate::ml::nn::ByteHead::new_with_seed_on"
 			}
 		},
 		{
@@ -1117,7 +1117,7 @@
 				],
 				"returns": "Conv1d",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Conv1d::new_with_seed"
+				"target": "crate::ml::nn::Conv1d::new_with_seed_on"
 			}
 		},
 		{
@@ -1248,7 +1248,7 @@
 				],
 				"returns": "ConvTranspose1d",
 				"visibility": "pub",
-				"target": "crate::ml::nn::ConvTranspose1d::new_with_seed"
+				"target": "crate::ml::nn::ConvTranspose1d::new_with_seed_on"
 			}
 		},
 		{
@@ -1356,7 +1356,7 @@
 				],
 				"returns": "ConvTranspose2d",
 				"visibility": "pub",
-				"target": "crate::ml::nn::ConvTranspose2d::new_with_seed"
+				"target": "crate::ml::nn::ConvTranspose2d::new_with_seed_on"
 			}
 		},
 		{
@@ -1487,7 +1487,7 @@
 				],
 				"returns": "Conv2d",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Conv2d::new_with_seed"
+				"target": "crate::ml::nn::Conv2d::new_with_seed_on"
 			}
 		},
 		{
@@ -1656,7 +1656,7 @@
 				],
 				"returns": "Embedding",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Embedding::new_with_seed"
+				"target": "crate::ml::nn::Embedding::new_with_seed_on"
 			}
 		},
 		{
@@ -1744,7 +1744,7 @@
 				],
 				"returns": "Empyrealm",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Empyrealm::new_with_seed"
+				"target": "crate::ml::nn::Empyrealm::new_with_seed_on"
 			}
 		},
 		{
@@ -1902,7 +1902,7 @@
 				],
 				"returns": "Ffn",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Ffn::new_with_seed"
+				"target": "crate::ml::nn::Ffn::new_with_seed_on"
 			}
 		},
 		{
@@ -1946,7 +1946,7 @@
 				],
 				"returns": "FlowTimeEmbedding",
 				"visibility": "pub",
-				"target": "crate::ml::nn::FlowTimeEmbedding::new"
+				"target": "crate::ml::nn::FlowTimeEmbedding::new_on"
 			}
 		},
 		{
@@ -1986,7 +1986,7 @@
 				],
 				"returns": "FlowTransformer",
 				"visibility": "pub",
-				"target": "crate::ml::nn::FlowTransformer::new_with_seed"
+				"target": "crate::ml::nn::FlowTransformer::new_with_seed_on"
 			}
 		},
 		{
@@ -2156,7 +2156,7 @@
 				],
 				"returns": "FlowDenoiser",
 				"visibility": "pub",
-				"target": "crate::ml::nn::FlowDenoiser::new_with_seed"
+				"target": "crate::ml::nn::FlowDenoiser::new_with_seed_on"
 			}
 		},
 		{
@@ -2313,7 +2313,7 @@
 				],
 				"returns": "GruCell",
 				"visibility": "pub",
-				"target": "crate::ml::nn::GruCell::new_with_seed"
+				"target": "crate::ml::nn::GruCell::new_with_seed_on"
 			}
 		},
 		{
@@ -2460,7 +2460,7 @@
 				],
 				"returns": "Gru",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Gru::new_with_seed"
+				"target": "crate::ml::nn::Gru::new_with_seed_on"
 			}
 		},
 		{
@@ -2607,7 +2607,7 @@
 				],
 				"returns": "LayerNorm",
 				"visibility": "pub",
-				"target": "crate::ml::nn::LayerNorm::new"
+				"target": "crate::ml::nn::LayerNorm::new_on"
 			}
 		},
 		{
@@ -2754,7 +2754,7 @@
 				],
 				"returns": "Linear",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Linear::new_with_seed"
+				"target": "crate::ml::nn::Linear::new_with_seed_on"
 			}
 		},
 		{
@@ -2784,7 +2784,7 @@
 				],
 				"returns": "Linear",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Linear::new_with_seed_and_bias"
+				"target": "crate::ml::nn::Linear::new_with_seed_and_bias_on"
 			}
 		},
 		{
@@ -2916,7 +2916,7 @@
 				],
 				"returns": "Mamba3",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Mamba3::new_with_seed"
+				"target": "crate::ml::nn::Mamba3::new_with_seed_on"
 			}
 		},
 		{
@@ -3057,7 +3057,7 @@
 				],
 				"returns": "Moe",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Moe::new_with_seed"
+				"target": "crate::ml::nn::Moe::new_with_seed_on"
 			}
 		},
 		{
@@ -3099,7 +3099,7 @@
 				],
 				"returns": "Moe",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Moe::new_with_seed_and_shared_experts"
+				"target": "crate::ml::nn::Moe::new_with_seed_and_shared_experts_on"
 			}
 		},
 		{
@@ -3642,7 +3642,7 @@
 				],
 				"returns": "RmsNorm",
 				"visibility": "pub",
-				"target": "crate::ml::nn::RmsNorm::new"
+				"target": "crate::ml::nn::RmsNorm::new_on"
 			}
 		},
 		{
@@ -3738,7 +3738,7 @@
 				],
 				"returns": "RnnCell",
 				"visibility": "pub",
-				"target": "crate::ml::nn::RnnCell::new_with_seed"
+				"target": "crate::ml::nn::RnnCell::new_with_seed_on"
 			}
 		},
 		{
@@ -3881,7 +3881,7 @@
 				],
 				"returns": "Rnn",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Rnn::new_with_seed"
+				"target": "crate::ml::nn::Rnn::new_with_seed_on"
 			}
 		},
 		{
@@ -3915,7 +3915,7 @@
 				],
 				"returns": "Rnn",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Rnn::new_with_seed_and_bias"
+				"target": "crate::ml::nn::Rnn::new_with_seed_and_bias_on"
 			}
 		},
 		{
@@ -4234,7 +4234,7 @@
 				],
 				"returns": "Swiglu",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Swiglu::new_with_seed"
+				"target": "crate::ml::nn::Swiglu::new_with_seed_on"
 			}
 		},
 		{
@@ -4305,7 +4305,7 @@
 				],
 				"returns": "TransformerBlock",
 				"visibility": "pub",
-				"target": "crate::ml::nn::TransformerBlock::new_with_seed"
+				"target": "crate::ml::nn::TransformerBlock::new_with_seed_on"
 			}
 		},
 		{
@@ -4347,7 +4347,7 @@
 				],
 				"returns": "TransformerBlock",
 				"visibility": "pub",
-				"target": "crate::ml::nn::TransformerBlock::new_with_seed_conditioned"
+				"target": "crate::ml::nn::TransformerBlock::new_with_seed_conditioned_on"
 			}
 		},
 		{
@@ -4393,7 +4393,7 @@
 				],
 				"returns": "TransformerBlock",
 				"visibility": "pub",
-				"target": "crate::ml::nn::TransformerBlock::new_with_seed_moe"
+				"target": "crate::ml::nn::TransformerBlock::new_with_seed_moe_on"
 			}
 		},
 		{
@@ -4443,7 +4443,7 @@
 				],
 				"returns": "TransformerBlock",
 				"visibility": "pub",
-				"target": "crate::ml::nn::TransformerBlock::new_with_seed_moe_conditioned"
+				"target": "crate::ml::nn::TransformerBlock::new_with_seed_moe_conditioned_on"
 			}
 		},
 		{
@@ -4689,7 +4689,7 @@
 				],
 				"returns": "Transformer",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Transformer::new_with_seed"
+				"target": "crate::ml::nn::Transformer::new_with_seed_on"
 			}
 		},
 		{
@@ -4743,7 +4743,7 @@
 				],
 				"returns": "Transformer",
 				"visibility": "pub",
-				"target": "crate::ml::nn::Transformer::new_with_seed_moe"
+				"target": "crate::ml::nn::Transformer::new_with_seed_moe_on"
 			}
 		},
 		{
@@ -4918,7 +4918,7 @@
 				],
 				"returns": "VectorQuantizer",
 				"visibility": "pub",
-				"target": "crate::ml::nn::VectorQuantizer::new_with_seed"
+				"target": "crate::ml::nn::VectorQuantizer::new_with_seed_on"
 			}
 		},
 		{
@@ -4936,7 +4936,7 @@
 				],
 				"returns": "VectorQuantizer",
 				"visibility": "pub",
-				"target": "crate::ml::nn::VectorQuantizer::new"
+				"target": "crate::ml::nn::VectorQuantizer::new_on"
 			}
 		},
 		{
@@ -5068,7 +5068,7 @@
 				],
 				"returns": "ResidualVectorQuantizer",
 				"visibility": "pub",
-				"target": "crate::ml::nn::ResidualVectorQuantizer::new_with_seed"
+				"target": "crate::ml::nn::ResidualVectorQuantizer::new_with_seed_on"
 			}
 		},
 		{
@@ -5090,7 +5090,7 @@
 				],
 				"returns": "ResidualVectorQuantizer",
 				"visibility": "pub",
-				"target": "crate::ml::nn::ResidualVectorQuantizer::new"
+				"target": "crate::ml::nn::ResidualVectorQuantizer::new_on"
 			}
 		},
 		{

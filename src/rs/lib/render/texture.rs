@@ -195,7 +195,20 @@ impl Texture {
 ///
 /// Returns an error for zero or overflowing dimensions, a mismatched byte
 /// count, exhausted semantic identity, or device allocation/upload failure.
-pub fn texture_from_rgba8(
+///
+/// This variant uploads on this thread's default engine. An engine
+/// initialization failure is returned before the upload starts.
+pub fn texture_from_rgba8(rgba: &[u8], width: usize, height: usize) -> Result<Texture> {
+	texture_from_rgba8_on(&Engine::current()?, rgba, width, height)
+}
+
+/// Upload one exact packed row-major RGBA8 host image as a Texture on a
+/// particular engine.
+///
+/// # Errors
+///
+/// Returns the same errors as [`texture_from_rgba8`].
+pub fn texture_from_rgba8_on(
 	engine: &Engine,
 	rgba: &[u8],
 	width: usize,
@@ -215,7 +228,7 @@ pub fn texture_from_rgba8(
 			"render::texture_from_rgba8 requires exactly width * height * 4 bytes",
 		));
 	}
-	let data = Matrix::new_from_slice(engine, [height, width, 4], rgba)?;
+	let data = Matrix::new_from_slice_on(engine, [height, width, 4], rgba)?;
 	texture_from_matrix(data, width, height)
 }
 
@@ -255,7 +268,20 @@ pub fn texture_from_image(image: &Image) -> Result<Texture> {
 ///
 /// Returns an error for inaccessible, unsupported or malformed media, or failed
 /// checked texture allocation/upload.
-pub fn texture_from_file(engine: &Engine, path: impl AsRef<Path>) -> Result<Texture> {
+///
+/// This variant uploads on this thread's default engine. An engine
+/// initialization failure is returned before decoding starts.
+pub fn texture_from_file(path: impl AsRef<Path>) -> Result<Texture> {
+	let path = path.as_ref();
+	texture_from_file_on(&Engine::current()?, path)
+}
+/// Decode a still-image file directly into a packed RGBA8 Texture on a
+/// particular engine.
+///
+/// # Errors
+///
+/// Returns the same errors as [`texture_from_file`].
+pub fn texture_from_file_on(engine: &Engine, path: impl AsRef<Path>) -> Result<Texture> {
 	let decoded = image_codec::ImageReader::open(path)
 		.map_err(|source| Error::io("texture image file open", source))?
 		.with_guessed_format()
@@ -263,7 +289,7 @@ pub fn texture_from_file(engine: &Engine, path: impl AsRef<Path>) -> Result<Text
 		.decode()
 		.map_err(|source| Error::backend_failure("image", "texture decode", source))?
 		.to_rgba8();
-	texture_from_rgba8(
+	texture_from_rgba8_on(
 		engine,
 		decoded.as_raw(),
 		decoded.width() as usize,

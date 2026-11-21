@@ -98,16 +98,16 @@ fn kernel_census(plan: &oa::ExecutionPlan, name: &str) -> String {
 
 fn main() -> oa::Result<()> {
 	let engine = oa::Engine::new()?;
+	oa::Engine::set_default(engine.clone());
 	let tokens = env_usize("OA_MOE_PROFILE_TOKENS", 4096);
-	let model = oa::ml::nn::Moe::new_with_seed(&engine, 64, 128, 4, 1, 1e-5, 0x0a11_ce55)?;
+	let model = oa::ml::nn::Moe::new_with_seed(64, 128, 4, 1, 1e-5, 0x0a11_ce55)?;
 	let input = oa::Matrix::new_from_f32(
-		&engine,
 		[tokens, 64],
 		&(0..tokens * 64)
 			.map(|i| ((i * 37 % 23) as f32 - 11.0) * 0.05)
 			.collect::<Vec<f32>>(),
 	)?;
-	let target = oa::Matrix::new_from_f32(&engine, [tokens, 64], &vec![0.0; tokens * 64])?;
+	let target = oa::Matrix::new_from_f32([tokens, 64], &vec![0.0; tokens * 64])?;
 
 	// backward accumulates into `Parameter::gradient` when one exists, so
 	// every captured plan must see cleared gradients to record the same

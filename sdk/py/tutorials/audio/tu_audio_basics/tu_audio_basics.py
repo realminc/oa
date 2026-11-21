@@ -7,16 +7,13 @@ Mirrors sdk/cpp/tutorials/core/tuCoreEngine.cpp — basic Audio DSP.
 import os
 
 import oa
-
-engine = oa.Engine()
-
 asset_root = os.environ.get("OA_ASSET", "asset")
 asset = os.path.join(asset_root, "audio/oaNarration.flac")
 output_root = os.environ.get("OA_VAR", "var")
 output = os.path.join(output_root, "tutorial/audio/oaNarrationNormalized.wav")
 os.makedirs(os.path.dirname(output), exist_ok=True)
 
-audio = oa.audio.decode_file(engine, asset)
+audio = oa.audio.decode_file(asset)
 clean = oa.audio.normalize(audio, -3.0)
 oa.audio.save_wav_f32(output, clean)
 

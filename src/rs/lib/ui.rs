@@ -1992,7 +1992,7 @@ impl<'engine> Ui<'engine> {
 				"UI line width must be finite and positive",
 			));
 		}
-		let matrix = crate::Matrix::new_from_f32(self.engine, [values.len()], values)?;
+		let matrix = crate::Matrix::new_from_f32_on(self.engine, [values.len()], values)?;
 		let descriptor = matrix
 			.engine_handle()
 			.storage_descriptor_index(matrix.storage())?;
@@ -2057,7 +2057,7 @@ impl<'engine> Ui<'engine> {
 		let mut packed: Vec<f32> = Vec::with_capacity(y_lo.len() * 2);
 		packed.extend_from_slice(y_lo);
 		packed.extend_from_slice(y_hi);
-		let matrix = crate::Matrix::new_from_f32(self.engine, [packed.len()], &packed)?;
+		let matrix = crate::Matrix::new_from_f32_on(self.engine, [packed.len()], &packed)?;
 		let descriptor = matrix
 			.engine_handle()
 			.storage_descriptor_index(matrix.storage())?;
@@ -2158,7 +2158,7 @@ impl<'engine> Ui<'engine> {
 				),
 			);
 		}
-		let matrix = crate::Matrix::new_from_f32(self.engine, [values.len()], values)?;
+		let matrix = crate::Matrix::new_from_f32_on(self.engine, [values.len()], values)?;
 		let descriptor = matrix
 			.engine_handle()
 			.storage_descriptor_index(matrix.storage())?;
@@ -5149,7 +5149,7 @@ impl<'engine> Ui<'engine> {
 		let mut packed: Vec<f32> = Vec::with_capacity(x.len() * 2);
 		packed.extend_from_slice(x);
 		packed.extend_from_slice(y);
-		let matrix = crate::Matrix::new_from_f32(self.engine, [packed.len()], &packed)?;
+		let matrix = crate::Matrix::new_from_f32_on(self.engine, [packed.len()], &packed)?;
 		let descriptor = matrix
 			.engine_handle()
 			.storage_descriptor_index(matrix.storage())?;

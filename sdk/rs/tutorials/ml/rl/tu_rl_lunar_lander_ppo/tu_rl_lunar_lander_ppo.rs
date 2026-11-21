@@ -43,15 +43,13 @@ fn print_evaluation(label: &str, value: &LunarFirstEpisodeEvaluation) {
 
 fn main() -> oa::Result<()> {
 	let engine = oa::Engine::new()?;
-	let model = CategoricalActorCritic::new(
-		&engine,
-		CategoricalActorCriticConfig {
-			observation_size: LUNAR_OBSERVATION_SIZE,
-			action_count: 8,
-			hidden_size: HIDDEN_SIZE,
-			seed: TRAINING_SEED,
-		},
-	)?;
+	oa::Engine::set_default(engine.clone());
+	let model = CategoricalActorCritic::new(CategoricalActorCriticConfig {
+		observation_size: LUNAR_OBSERVATION_SIZE,
+		action_count: 8,
+		hidden_size: HIDDEN_SIZE,
+		seed: TRAINING_SEED,
+	})?;
 	let mut optimizer = AdamW::new_with_hyperparameters(
 		model.all_parameters()?,
 		LEARNING_RATE,
@@ -153,15 +151,12 @@ fn main() -> oa::Result<()> {
 
 	let checkpoint = std::env::temp_dir().join("oars_lunar_lander_3d_flat_ppo.oam");
 	oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
-	let restored_model = CategoricalActorCritic::new(
-		&engine,
-		CategoricalActorCriticConfig {
-			observation_size: LUNAR_OBSERVATION_SIZE,
-			action_count: 8,
-			hidden_size: HIDDEN_SIZE,
-			seed: TRAINING_SEED,
-		},
-	)?;
+	let restored_model = CategoricalActorCritic::new(CategoricalActorCriticConfig {
+		observation_size: LUNAR_OBSERVATION_SIZE,
+		action_count: 8,
+		hidden_size: HIDDEN_SIZE,
+		seed: TRAINING_SEED,
+	})?;
 	let mut restored_optimizer = AdamW::new_with_hyperparameters(
 		restored_model.all_parameters()?,
 		LEARNING_RATE,
@@ -170,12 +165,7 @@ fn main() -> oa::Result<()> {
 		1.0e-8,
 		0.0,
 	)?;
-	oa::ml::load_checkpoint(
-		&engine,
-		&checkpoint,
-		&restored_model,
-		&mut restored_optimizer,
-	)?;
+	oa::ml::load_checkpoint(&checkpoint, &restored_model, &mut restored_optimizer)?;
 	let restored = evaluate_first_episodes(&engine, &restored_model, evaluation_config)?;
 	std::fs::remove_file(&checkpoint).expect("remove completed Lunar checkpoint");
 

@@ -67,19 +67,20 @@ pub(crate) struct PythonMoe {
 impl PythonMoe {
 	/// Construct a deterministically initialized sparse MoE.
 	#[new]
-	#[pyo3(signature = (engine, model_width, hidden_width, num_experts, experts_per_token, epsilon = 1e-5, seed = 0))]
+	#[pyo3(signature = (model_width, hidden_width, num_experts, experts_per_token, epsilon = 1e-5, seed = 0, engine=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		engine: &PythonEngine,
 		model_width: usize,
 		hidden_width: usize,
 		num_experts: usize,
 		experts_per_token: usize,
 		epsilon: f32,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::Moe::new_with_seed(
-			&engine.inner,
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::Moe::new_with_seed_on(
+			&engine,
 			model_width,
 			hidden_width,
 			num_experts,
@@ -93,10 +94,9 @@ impl PythonMoe {
 
 	/// Construct with always-on shared SwiGLU experts alongside the routed set.
 	#[staticmethod]
-	#[pyo3(signature = (engine, model_width, hidden_width, num_experts, experts_per_token, num_shared_experts, epsilon = 1e-5, seed = 0))]
+	#[pyo3(signature = (model_width, hidden_width, num_experts, experts_per_token, num_shared_experts, epsilon = 1e-5, seed = 0, engine=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_shared_experts(
-		engine: &PythonEngine,
 		model_width: usize,
 		hidden_width: usize,
 		num_experts: usize,
@@ -104,9 +104,11 @@ impl PythonMoe {
 		num_shared_experts: usize,
 		epsilon: f32,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::Moe::new_with_seed_and_shared_experts(
-			&engine.inner,
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::Moe::new_with_seed_and_shared_experts_on(
+			&engine,
 			model_width,
 			hidden_width,
 			num_experts,

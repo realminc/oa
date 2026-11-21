@@ -1,4 +1,4 @@
-use super::Device;
+use super::super::Device;
 
 impl Device {
 	pub(in crate::runtime) fn initialized_pipeline_count(&self) -> usize {

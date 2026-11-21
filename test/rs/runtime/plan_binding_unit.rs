@@ -13,8 +13,8 @@ fn binding_contract_describes_inputs_and_outputs() -> crate::Result<()> {
 		Ok(engine) => engine,
 		Err(_) => return Ok(()),
 	};
-	let one = crate::matrix::ones(&engine, [2, 3])?;
-	let two = crate::matrix::full(&engine, [2, 3], 2.0)?;
+	let one = crate::matrix::ones([2, 3])?;
+	let two = crate::matrix::full([2, 3], 2.0)?;
 	let (plan, _output) = engine.capture(|| {
 		let three = crate::matrix::add(&one, &two)?;
 		crate::matrix::add(&three, &three)
@@ -55,7 +55,7 @@ fn binding_contract_describes_inputs_and_outputs() -> crate::Result<()> {
 			.kind(),
 		crate::ErrorKind::InvalidArgument
 	);
-	let wide = crate::matrix::ones(&engine, [2, 4])?;
+	let wide = crate::matrix::ones([2, 4])?;
 	assert_eq!(
 		plan
 			.validate_specialization_inputs(&[wide.clone(), two.clone()])
@@ -63,7 +63,7 @@ fn binding_contract_describes_inputs_and_outputs() -> crate::Result<()> {
 			.kind(),
 		crate::ErrorKind::FailedPrecondition
 	);
-	let integers = crate::Matrix::new_from_slice(&engine, [2, 3], &[0_i32; 6])?;
+	let integers = crate::Matrix::new_from_slice([2, 3], &[0_i32; 6])?;
 	assert_eq!(
 		plan
 			.validate_specialization_inputs(&[integers.clone(), two.clone()])

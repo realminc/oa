@@ -18,7 +18,7 @@
 				"mode_type": "AttentionMode",
 				"linear_name": "CausalLinearAttention",
 				"linear_mode_type": "LinearAttentionMode",
-				"projection_constructor": "Linear::new_with_seed_and_bias",
+				"projection_constructor": "Linear::new_with_seed_and_bias_on",
 				"split_operation": "split_heads",
 				"merge_operation": "merge_heads",
 				"score_operation": "bmm_nt",

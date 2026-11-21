@@ -8,7 +8,8 @@ use crate::{
 #[ignore = "requires a hardware Vulkan compute device"]
 fn split_recording_requires_an_earlier_exhaustive_producer() -> Result<()> {
 	let engine = Engine::new()?;
-	let source = Matrix::new_from_slice(&engine, [1, 32], &[0_u8; 32])?;
+	Engine::set_default(engine.clone());
+	let source = Matrix::new_from_slice([1, 32], &[0_u8; 32])?;
 	let intermediate = Matrix::allocate_output(source.engine_handle(), vec![1, 32], 32, DType::U8)?;
 	let writes = [BufferBinding::write(intermediate.storage())];
 	let reads = [BufferBinding::read(intermediate.storage())];

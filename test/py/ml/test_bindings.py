@@ -578,7 +578,7 @@ class CheckpointManagerTest(unittest.TestCase):
 			metric_name="loss",
 			lower_is_better=True,
 		)
-		mgr = oa.ml.CheckpointManager(self.engine, cfg)
+		mgr = oa.ml.CheckpointManager( cfg, engine=self.engine)
 		self.assertIn("TestModel", mgr.model_directory())
 		self.assertIn("TestModel", mgr.master_path())
 		self.assertIn("TestModel", mgr.incremental_directory())
@@ -593,7 +593,7 @@ class CheckpointManagerTest(unittest.TestCase):
 			metric_name="loss",
 			lower_is_better=True,
 		)
-		mgr = oa.ml.CheckpointManager(self.engine, cfg)
+		mgr = oa.ml.CheckpointManager( cfg, engine=self.engine)
 		self.assertTrue(mgr.is_better(0.5))
 		self.assertTrue(mgr.is_better(-100.0))
 
@@ -604,13 +604,13 @@ class CheckpointManagerTest(unittest.TestCase):
 			metric_name="accuracy",
 			lower_is_better=False,
 		)
-		mgr = oa.ml.CheckpointManager(self.engine, cfg)
+		mgr = oa.ml.CheckpointManager( cfg, engine=self.engine)
 		self.assertTrue(mgr.is_better(0.9))
 
 	def test_rejects_path_traversal_in_model_name(self) -> None:
 		cfg = oa.ml.CheckpointManagerConfig(model_name="../escape")
 		with self.assertRaises(Exception):
-			oa.ml.CheckpointManager(self.engine, cfg)
+			oa.ml.CheckpointManager( cfg, engine=self.engine)
 
 
 class TrainingCompilationStageTest(unittest.TestCase):
@@ -683,14 +683,14 @@ class TrainingProgramTest(unittest.TestCase):
 	def setUp(self) -> None:
 		self.engine = oa.Engine()
 		# Build a minimal 1-layer linear model + AdamW for capture.
-		self.linear = oa.ml.Linear(self.engine, in_features=4, out_features=1, seed=0)
+		self.linear = oa.ml.Linear( in_features=4, out_features=1, seed=0, engine=self.engine)
 		params = self.linear.all_parameters()
 		self.optimizer = oa.ml.AdamW(params, learning_rate=1e-3)
 
 	def _step_fn(self) -> "oa.Matrix":
 		"""One forward + backward step; returns a scalar F32 loss."""
-		x = oa.Matrix.new_from_f32(self.engine, [1, 4], [1.0, 2.0, 3.0, 4.0])
-		target = oa.Matrix.new_from_f32(self.engine, [1, 1], [0.0])
+		x = oa.Matrix.new_from_f32( [1, 4], [1.0, 2.0, 3.0, 4.0], engine=self.engine)
+		target = oa.Matrix.new_from_f32( [1, 1], [0.0], engine=self.engine)
 		with oa.ml.GradientTape() as tape:
 			pred = self.linear(x)
 			loss = oa.ml.loss.mse(pred, target)
@@ -698,16 +698,12 @@ class TrainingProgramTest(unittest.TestCase):
 		return loss
 
 	def test_capture_produces_correct_stage_count(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(
-			self.engine, self.optimizer, self._step_fn
-		)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
 		stages = prog.compilation_stages()
 		self.assertEqual(len(stages), 11)
 
 	def test_stage_records_have_valid_types(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(
-			self.engine, self.optimizer, self._step_fn
-		)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
 		for record in prog.compilation_stages():
 			self.assertIsInstance(record, oa.ml.TrainingCompilationStageRecord)
 			self.assertIsInstance(record.stage, oa.ml.TrainingCompilationStage)
@@ -716,9 +712,7 @@ class TrainingProgramTest(unittest.TestCase):
 			self.assertGreaterEqual(record.output_count, 0)
 
 	def test_stage_tokens_cover_all_11_stages(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(
-			self.engine, self.optimizer, self._step_fn
-		)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
 		tokens = {r.stage.token() for r in prog.compilation_stages()}
 		expected = {
 			"semantic_validation", "replay_safety", "decomposition",
@@ -729,30 +723,22 @@ class TrainingProgramTest(unittest.TestCase):
 		self.assertEqual(tokens, expected)
 
 	def test_replay_count_starts_at_zero(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(
-			self.engine, self.optimizer, self._step_fn
-		)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
 		self.assertEqual(prog.replay_count(), 0)
 
 	def test_replay_and_wait_returns_finite_loss(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(
-			self.engine, self.optimizer, self._step_fn
-		)
-		loss = prog.replay_and_wait(self.engine, self.optimizer)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
+		loss = prog.replay_and_wait(self.optimizer, engine=self.engine)
 		self.assertIsInstance(loss, float)
 		self.assertTrue(math.isfinite(loss))
 		self.assertEqual(prog.replay_count(), 1)
 
 	def test_repr_includes_class_name(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(
-			self.engine, self.optimizer, self._step_fn
-		)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
 		self.assertIn("TrainingProgram", repr(prog))
 
 	def test_loss_matrix_is_scalar_f32(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(
-			self.engine, self.optimizer, self._step_fn
-		)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
 		loss_mat = prog.loss()
 		self.assertIsInstance(loss_mat, oa.Matrix)
 		self.assertEqual(loss_mat.dtype, "f32")
@@ -842,9 +828,9 @@ class FlowMatchBatchTest(unittest.TestCase):
 
 	def test_linear_match_returns_flow_match_batch(self) -> None:
 		# Minimal 1-D batch: clean and noise are [2, 4], time is [2]
-		clean = oa.Matrix.new_from_f32(self.engine, [2, 4], [0.0] * 8)
-		noise = oa.Matrix.new_from_f32(self.engine, [2, 4], [1.0] * 8)
-		time = oa.Matrix.new_from_f32(self.engine, [2], [0.5, 0.25])
+		clean = oa.Matrix.new_from_f32( [2, 4], [0.0] * 8, engine=self.engine)
+		noise = oa.Matrix.new_from_f32( [2, 4], [1.0] * 8, engine=self.engine)
+		time = oa.Matrix.new_from_f32( [2], [0.5, 0.25], engine=self.engine)
 		batch = oa.ml.flow_linear_match(clean, noise, time)
 		self.assertIsInstance(batch, oa.ml.FlowMatchBatch)
 		self.assertEqual(repr(batch), "FlowMatchBatch")
@@ -856,16 +842,16 @@ class FlowMatchBatchTest(unittest.TestCase):
 		self.assertEqual(velocity.shape, [2, 4])
 
 	def test_euler_step_returns_matrix_with_matching_shape(self) -> None:
-		state = oa.Matrix.new_from_f32(self.engine, [2, 4], [0.5] * 8)
-		velocity = oa.Matrix.new_from_f32(self.engine, [2, 4], [1.0] * 8)
+		state = oa.Matrix.new_from_f32( [2, 4], [0.5] * 8, engine=self.engine)
+		velocity = oa.Matrix.new_from_f32( [2, 4], [1.0] * 8, engine=self.engine)
 		result = oa.ml.flow_euler_step(state, velocity, delta_time=0.1)
 		self.assertIsInstance(result, oa.Matrix)
 		self.assertEqual(result.shape, [2, 4])
 
 	def test_masked_mse_returns_scalar_loss(self) -> None:
-		pred = oa.Matrix.new_from_f32(self.engine, [2, 4], [0.0] * 8)
-		target = oa.Matrix.new_from_f32(self.engine, [2, 4], [1.0] * 8)
-		mask = oa.Matrix.new_from_f32(self.engine, [2, 4], [1.0] * 8)
+		pred = oa.Matrix.new_from_f32( [2, 4], [0.0] * 8, engine=self.engine)
+		target = oa.Matrix.new_from_f32( [2, 4], [1.0] * 8, engine=self.engine)
+		mask = oa.Matrix.new_from_f32( [2, 4], [1.0] * 8, engine=self.engine)
 		loss = oa.ml.flow_masked_mse(pred, target, mask)
 		self.assertIsInstance(loss, oa.Matrix)
 
@@ -1179,7 +1165,7 @@ class TrainerMetricsFromGpuTest(unittest.TestCase):
 		model_cfg = oa.ml.CategoricalActorCriticConfig(
 			observation_size=4, action_count=2, hidden_size=16, seed=0
 		)
-		model = oa.ml.CategoricalActorCritic(self.engine, model_cfg)
+		model = oa.ml.CategoricalActorCritic( model_cfg, engine=self.engine)
 		params = model.all_parameters()
 		opt = oa.ml.AdamW(params, learning_rate=1e-3)
 		return model, opt
@@ -1190,7 +1176,7 @@ class TrainerMetricsFromGpuTest(unittest.TestCase):
 			rollouts=1, horizon=4, environments=1,
 			update_epochs=1, observation_shape=[4], seed=0,
 		)
-		trainer = oa.ml.PpoTrainer(self.engine, model, opt, trainer_cfg)
+		trainer = oa.ml.PpoTrainer( model, opt, trainer_cfg, engine=self.engine)
 		m = trainer.metrics()
 		self.assertIsInstance(m, oa.ml.PpoTrainerMetrics)
 		self.assertIn("PpoTrainerMetrics", repr(m))
@@ -1202,18 +1188,16 @@ class TrainerMetricsFromGpuTest(unittest.TestCase):
 		online_cfg = oa.ml.CategoricalActorCriticConfig(
 			observation_size=4, action_count=2, hidden_size=16, seed=0
 		)
-		online = oa.ml.CategoricalActorCritic(self.engine, online_cfg)
-		target = oa.ml.CategoricalActorCritic(self.engine, online_cfg)
+		online = oa.ml.CategoricalActorCritic( online_cfg, engine=self.engine)
+		target = oa.ml.CategoricalActorCritic( online_cfg, engine=self.engine)
 		params = online.all_parameters()
 		opt = oa.ml.AdamW(params, learning_rate=1e-3)
 		replay = oa.ml.ReplayBuffer(
-			self.engine,
-			oa.ml.ReplayConfig(capacity=100, observation_shape=[4], action_dtype="i32"),
-		)
+			oa.ml.ReplayConfig(capacity=100, observation_shape=[4], action_dtype="i32"), engine=self.engine)
 		trainer_cfg = oa.ml.DqnTrainerConfig(
 			updates=1, batch_size=4, observation_shape=[4], seed=0
 		)
-		trainer = oa.ml.DqnTrainer(self.engine, online, target, opt, replay, trainer_cfg)
+		trainer = oa.ml.DqnTrainer( online, target, opt, replay, trainer_cfg, engine=self.engine)
 		m = trainer.metrics()
 		self.assertIsInstance(m, oa.ml.DqnTrainerMetrics)
 		self.assertIn("DqnTrainerMetrics", repr(m))
@@ -1244,7 +1228,7 @@ class OptimizerConstructorsTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
 		cls.engine = oa.Engine()
-		cls.linear = oa.ml.Linear(cls.engine, in_features=4, out_features=2, seed=1)
+		cls.linear = oa.ml.Linear( in_features=4, out_features=2, seed=1, engine=cls.engine)
 		cls.params = cls.linear.all_parameters()
 
 	def test_sgd_constructs_and_round_trips_lr(self) -> None:
@@ -1431,7 +1415,7 @@ class ReplayBufferTest(unittest.TestCase):
 		cfg = oa.ml.ReplayConfig(
 			capacity=capacity, observation_shape=[4], action_shape=[1], action_dtype="i32"
 		)
-		return oa.ml.ReplayBuffer(self.engine, cfg)
+		return oa.ml.ReplayBuffer( cfg, engine=self.engine)
 
 	def _make_transition(self):
 		e = self.engine
@@ -1516,7 +1500,7 @@ class RolloutBufferTest(unittest.TestCase):
 
 	def _make_buffer(self):
 		cfg = oa.ml.RolloutConfig(time=4, environments=1, observation_shape=[4])
-		return oa.ml.RolloutBuffer(self.engine, cfg)
+		return oa.ml.RolloutBuffer( cfg, engine=self.engine)
 
 	def _make_transition(self):
 		e = self.engine
@@ -1906,7 +1890,7 @@ class CheckpointFunctionsTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
 		cls.engine = oa.Engine()
-		cls.linear = oa.ml.Linear(cls.engine, in_features=4, out_features=2, seed=0)
+		cls.linear = oa.ml.Linear( in_features=4, out_features=2, seed=0, engine=cls.engine)
 		cls.optimizer = oa.ml.AdamW(cls.linear.all_parameters(), learning_rate=1e-3)
 
 	def test_save_and_load_checkpoint_roundtrip(self) -> None:
@@ -1918,9 +1902,9 @@ class CheckpointFunctionsTest(unittest.TestCase):
 			oa.ml.save_checkpoint(path, self.linear.all_parameters(), self.optimizer)
 			self.assertTrue(os.path.exists(path))
 			# Load into a fresh model/optimizer with the same shape.
-			linear2 = oa.ml.Linear(self.engine, in_features=4, out_features=2, seed=99)
+			linear2 = oa.ml.Linear( in_features=4, out_features=2, seed=99, engine=self.engine)
 			opt2 = oa.ml.AdamW(linear2.all_parameters(), learning_rate=1e-3)
-			oa.ml.load_checkpoint(self.engine, path, linear2.all_parameters(), opt2)
+			oa.ml.load_checkpoint( path, linear2.all_parameters(), opt2, engine=self.engine)
 		finally:
 			try:
 				os.unlink(path)
@@ -2058,20 +2042,20 @@ class BpeNlpPresetsSmoke(unittest.TestCase):
 		cls.engine = oa.Engine()
 
 	def test_bpe_rnn_constructs(self) -> None:
-		model = oa.ml.BpeRnn(self.engine)
+		model = oa.ml.BpeRnn(engine=self.engine)
 		self.assertIn("BpeRnn", repr(model))
 		self.assertGreater(len(model.all_parameters()), 0)
 
 	def test_bpe_gru_constructs(self) -> None:
-		model = oa.ml.BpeGru(self.engine)
+		model = oa.ml.BpeGru(engine=self.engine)
 		self.assertIn("BpeGru", repr(model))
 
 	def test_bpe_transformer_constructs(self) -> None:
-		model = oa.ml.BpeTransformer(self.engine)
+		model = oa.ml.BpeTransformer(engine=self.engine)
 		self.assertIn("BpeTransformer", repr(model))
 
 	def test_byte_empyrealm_constructs(self) -> None:
-		model = oa.ml.ByteEmpyrealm(self.engine)
+		model = oa.ml.ByteEmpyrealm(engine=self.engine)
 		self.assertIn("ByteEmpyrealm", repr(model))
 
 

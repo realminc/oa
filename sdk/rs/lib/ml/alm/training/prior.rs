@@ -303,13 +303,13 @@ pub fn train_prior_with_validation(
 			config.window_len,
 			special,
 		)?;
-		let input_ids = Matrix::new_from_slice(
+		let input_ids = Matrix::new_from_slice_on(
 			engine,
 			[config.batch_size, config.window_len],
 			&batch.input_ids,
 		)?;
-		let target_ids = Matrix::new_from_slice(engine, [batch_tokens], &batch.target_ids)?;
-		let loss_mask = Matrix::new_from_slice(engine, [batch_tokens], &batch.loss_mask)?;
+		let target_ids = Matrix::new_from_slice_on(engine, [batch_tokens], &batch.target_ids)?;
+		let loss_mask = Matrix::new_from_slice_on(engine, [batch_tokens], &batch.loss_mask)?;
 		let text_features = conditioning
 			.map(|source| {
 				gather_text_features(
@@ -472,5 +472,5 @@ fn gather_text_features(
 		batch[row * source.feature_dim..(row + 1) * source.feature_dim]
 			.copy_from_slice(&features[start..start + source.feature_dim]);
 	}
-	Matrix::new_from_slice(engine, [batch_size, source.feature_dim], &batch)
+	Matrix::new_from_slice_on(engine, [batch_size, source.feature_dim], &batch)
 }

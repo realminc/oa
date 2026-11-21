@@ -209,15 +209,19 @@ impl AlmPrior {
 	///
 	/// Returns an error for inconsistent vocabulary, dimensions, routing policy,
 	/// generation policy, failed allocation, or child registration.
-	pub fn new_with_seed(engine: &Engine, config: AlmPriorConfig, seed: u64) -> Result<Self> {
+	pub fn new_with_seed(config: AlmPriorConfig, seed: u64) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, config, seed)
+	}
+
+	pub fn new_with_seed_on(engine: &Engine, config: AlmPriorConfig, seed: u64) -> Result<Self> {
 		validate_config(config)?;
-		let token_embedding = Rc::new(Embedding::new_with_seed(
+		let token_embedding = Rc::new(Embedding::new_with_seed_on(
 			engine,
 			config.vocab_size,
 			config.model_width,
 			seed,
 		)?);
-		let position_embedding = Rc::new(Embedding::new_with_seed(
+		let position_embedding = Rc::new(Embedding::new_with_seed_on(
 			engine,
 			config.max_sequence_length,
 			config.model_width,
@@ -226,7 +230,7 @@ impl AlmPrior {
 		let text_projection = if config.text_feature_dim == 0 {
 			None
 		} else {
-			Some(Rc::new(Linear::new_with_seed(
+			Some(Rc::new(Linear::new_with_seed_on(
 				engine,
 				config.text_feature_dim,
 				config.model_width,
@@ -243,7 +247,7 @@ impl AlmPrior {
 				.wrapping_add(3)
 				.wrapping_add((index as u64).wrapping_mul(8));
 			let block = if config.uses_moe(index) {
-				let block = Rc::new(TransformerBlock::new_with_seed_moe(
+				let block = Rc::new(TransformerBlock::new_with_seed_moe_on(
 					engine,
 					config.model_width,
 					config.hidden_width,
@@ -262,7 +266,7 @@ impl AlmPrior {
 				moe.set_router_z_loss_beta(config.moe_router_z_loss_beta);
 				block
 			} else {
-				Rc::new(TransformerBlock::new_with_seed(
+				Rc::new(TransformerBlock::new_with_seed_on(
 					engine,
 					config.model_width,
 					config.hidden_width,
@@ -275,12 +279,12 @@ impl AlmPrior {
 			registry.register_module(format!("layer{index}"), block.clone())?;
 			layers.push(block);
 		}
-		let final_norm = Rc::new(RmsNorm::new(
+		let final_norm = Rc::new(RmsNorm::new_on(
 			engine,
 			config.model_width,
 			NORMALIZATION_EPSILON,
 		)?);
-		let output_head = Rc::new(Linear::new_with_seed_and_bias(
+		let output_head = Rc::new(Linear::new_with_seed_and_bias_on(
 			engine,
 			config.model_width,
 			config.vocab_size,
@@ -304,13 +308,17 @@ impl AlmPrior {
 		})
 	}
 
+	pub fn new(config: AlmPriorConfig) -> Result<Self> {
+		Self::new_on(&Engine::current()?, config)
+	}
+
 	/// Construct a prior with deterministic seed zero.
 	///
 	/// # Errors
 	///
 	/// Returns the same errors as [`Self::new_with_seed`].
-	pub fn new(engine: &Engine, config: AlmPriorConfig) -> Result<Self> {
-		Self::new_with_seed(engine, config, 0)
+	pub fn new_on(engine: &Engine, config: AlmPriorConfig) -> Result<Self> {
+		Self::new_with_seed_on(engine, config, 0)
 	}
 
 	/// Evaluate unconditional `[batch, time, vocab]` next-token logits.

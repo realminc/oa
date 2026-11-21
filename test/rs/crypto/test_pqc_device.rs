@@ -34,8 +34,8 @@ test_vk_slow!(
 			let public = key.public_key().clone();
 			let message_bytes = b"OA public device-key integration";
 			let context_bytes = b"ctx";
-			let message = Matrix::new_from_slice(&engine, [message_bytes.len()], message_bytes)?;
-			let context = Matrix::new_from_slice(&engine, [context_bytes.len()], context_bytes)?;
+			let message = Matrix::new_from_slice([message_bytes.len()], message_bytes)?;
+			let context = Matrix::new_from_slice([context_bytes.len()], context_bytes)?;
 			let first = device::mldsa_sign(&key, &message, &context, device::SigningMode::Deterministic)?;
 			let second =
 				device::mldsa_sign(&key, &message, &context, device::SigningMode::Deterministic)?;
@@ -82,7 +82,6 @@ test_vk_slow!(
 			let encapsulated = device::mlkem_encapsulate(key.public_key(), parameter)?;
 			let decapsulated = device::mlkem_decapsulate(&key, &encapsulated.ciphertext)?;
 			let malformed = Matrix::new_from_slice(
-				&engine,
 				[parameter.ciphertext_size()],
 				&vec![0_u8; parameter.ciphertext_size()],
 			)?;
@@ -112,12 +111,12 @@ test_vk_slow!(
 			engine.capture(|| device::mlkem_keygen(&engine, device::MlKemParameters::MlKem512));
 		assert!(matches!(result, Err(ref error) if error.kind() == oa::ErrorKind::FailedPrecondition));
 		let key = device::mldsa_keygen(&engine, MlDsaParameters::MlDsa44)?;
-		let message = Matrix::new_from_slice(&engine, [1], &[1_u8])?;
-		let oversized_context = Matrix::new_from_slice(&engine, [256], &[0_u8; 256])?;
+		let message = Matrix::new_from_slice([1], &[1_u8])?;
+		let oversized_context = Matrix::new_from_slice([256], &[0_u8; 256])?;
 		assert!(
 			matches!(device::mldsa_sign(&key, &message, &oversized_context, device::SigningMode::Randomized), Err(ref error) if error.kind() == oa::ErrorKind::InvalidArgument)
 		);
-		let wrong_digest = Matrix::new_from_slice(&engine, [31], &[0_u8; 31])?;
+		let wrong_digest = Matrix::new_from_slice([31], &[0_u8; 31])?;
 		assert!(
 			device::mldsa_sign_prehashed(
 				&key,
@@ -186,10 +185,10 @@ test_vk_slow!(
 			let key = device::mlkem_import_key(&engine, parameter, &mut dk)?;
 			let public = key.public_key().read::<u8>()?;
 			assert_eq!(public, expected_ek);
-			let ct = Matrix::new_from_slice(&engine, [ciphertext.len()], &ciphertext)?;
+			let ct = Matrix::new_from_slice([ciphertext.len()], &ciphertext)?;
 			let decapsulated = device::mlkem_decapsulate(&key, &ct)?;
 			let info_bytes = b"OA keyed derivation context";
-			let info = Matrix::new_from_slice(&engine, [info_bytes.len()], info_bytes)?;
+			let info = Matrix::new_from_slice([info_bytes.len()], info_bytes)?;
 			let derivation = device::mlkem_shared_derive(&decapsulated.shared_secret, &info, 64)?;
 			let derived = derivation.derived.read::<u8>()?;
 			let mut oracle = Vec::with_capacity(shared.len() + info_bytes.len());
@@ -225,13 +224,13 @@ test_vk_slow!(
 				1952 => MlDsaParameters::MlDsa65,
 				_ => MlDsaParameters::MlDsa87,
 			};
-			let public = Matrix::new_from_slice(&engine, [pk.len()], &pk)?;
+			let public = Matrix::new_from_slice([pk.len()], &pk)?;
 			let key = device::mldsa_import_key(&engine, parameter, &mut sk, &public)?;
 			assert_eq!(key.public_key().read::<u8>()?, pk);
 			let message_bytes = b"OA imported-key signing";
 			let context_bytes = b"import-ctx";
-			let message = Matrix::new_from_slice(&engine, [message_bytes.len()], message_bytes)?;
-			let context = Matrix::new_from_slice(&engine, [context_bytes.len()], context_bytes)?;
+			let message = Matrix::new_from_slice([message_bytes.len()], message_bytes)?;
+			let context = Matrix::new_from_slice([context_bytes.len()], context_bytes)?;
 			let signed =
 				device::mldsa_sign(&key, &message, &context, device::SigningMode::Deterministic)?;
 			assert_eq!(signed.status.read::<u32>()?, [1]);

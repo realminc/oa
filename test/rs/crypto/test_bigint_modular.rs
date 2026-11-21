@@ -36,9 +36,9 @@ test_vk!(bigint_modular_oracles_and_multi_output_replay, engine, {
 	for case in fixture()["cases"].as_array().unwrap() {
 		let width = usize::try_from(case["words"].as_u64().unwrap()).unwrap();
 		let rows = usize::try_from(case["rows"].as_u64().unwrap()).unwrap();
-		let left = Matrix::new_from_slice(&engine, [rows, width], &words(&case["left"]))?;
-		let right = Matrix::new_from_slice(&engine, [rows, width], &words(&case["right"]))?;
-		let modulus = Matrix::new_from_slice(&engine, [rows, width], &words(&case["modulus"]))?;
+		let left = Matrix::new_from_slice([rows, width], &words(&case["left"]))?;
+		let right = Matrix::new_from_slice([rows, width], &words(&case["right"]))?;
+		let modulus = Matrix::new_from_slice([rows, width], &words(&case["modulus"]))?;
 		let (plan, outputs) = engine.capture(|| {
 			let mut outputs = Vec::new();
 			for (name, op) in UNARY {
@@ -89,9 +89,9 @@ test_vk!(
 	engine,
 	{
 		let values = (1_u32..=33).collect::<Vec<_>>();
-		let left = Matrix::new_from_slice(&engine, [33, 1], &values)?;
-		let right = Matrix::new_from_slice(&engine, [33, 1], &[7_u32; 33])?;
-		let modulus = Matrix::new_from_slice(&engine, [1, 1], &[97_u32])?;
+		let left = Matrix::new_from_slice([33, 1], &values)?;
+		let right = Matrix::new_from_slice([33, 1], &[7_u32; 33])?;
+		let modulus = Matrix::new_from_slice([1, 1], &[97_u32])?;
 		let (mut plan, (output, status)) = engine.capture(|| {
 			let (a, _) = bigint::to_montgomery(&left, &modulus)?;
 			let (b, _) = bigint::to_montgomery(&right, &modulus)?;
@@ -101,7 +101,7 @@ test_vk!(
 		assert_eq!(plan.semantic_graph().operations().len(), 4);
 		for prime in [97_u32, 101] {
 			if prime != 97 {
-				let replacement = Matrix::new_from_slice(&engine, [1, 1], &[prime])?;
+				let replacement = Matrix::new_from_slice([1, 1], &[prime])?;
 				plan.bind_matrix_input(&modulus, &replacement)?;
 			}
 			engine.submit(&plan)?.wait()?;
@@ -111,7 +111,7 @@ test_vk!(
 			);
 			assert_eq!(status.read::<u32>()?, vec![1; 33]);
 		}
-		let even = Matrix::new_from_slice(&engine, [1, 1], &[96_u32])?;
+		let even = Matrix::new_from_slice([1, 1], &[96_u32])?;
 		plan.bind_matrix_input(&modulus, &even)?;
 		engine.submit(&plan)?.wait()?;
 		assert_eq!(output.read::<u32>()?, vec![0; 33]);
@@ -121,12 +121,12 @@ test_vk!(
 );
 
 test_vk!(bigint_modular_metadata_and_empty_batches, engine, {
-	let left = Matrix::new_from_slice(&engine, [2, 2], &[1_u32; 4])?;
-	let valid = Matrix::new_from_slice(&engine, [1, 2], &[97_u32, 0])?;
-	let wrong_dtype = Matrix::new_from_f32(&engine, [1, 2], &[97.0, 0.0])?;
-	let rank_one = Matrix::new_from_slice(&engine, [2], &[97_u32, 0])?;
-	let wrong_width = Matrix::new_from_slice(&engine, [1, 1], &[97_u32])?;
-	let wrong_rows = Matrix::new_from_slice(&engine, [3, 2], &[97_u32; 6])?;
+	let left = Matrix::new_from_slice([2, 2], &[1_u32; 4])?;
+	let valid = Matrix::new_from_slice([1, 2], &[97_u32, 0])?;
+	let wrong_dtype = Matrix::new_from_f32([1, 2], &[97.0, 0.0])?;
+	let rank_one = Matrix::new_from_slice([2], &[97_u32, 0])?;
+	let wrong_width = Matrix::new_from_slice([1, 1], &[97_u32])?;
+	let wrong_rows = Matrix::new_from_slice([3, 2], &[97_u32; 6])?;
 	for modulus in [&wrong_dtype, &rank_one, &wrong_width, &wrong_rows] {
 		for (_, op) in UNARY {
 			assert_eq!(
@@ -141,7 +141,7 @@ test_vk!(bigint_modular_metadata_and_empty_batches, engine, {
 			);
 		}
 	}
-	let empty = Matrix::new_from_slice(&engine, [0, 2], &[] as &[u32])?;
+	let empty = Matrix::new_from_slice([0, 2], &[] as &[u32])?;
 	for (_, op) in UNARY {
 		let (output, status) = op(&empty, &valid)?;
 		assert!(output.try_read::<u32>()?.is_empty());

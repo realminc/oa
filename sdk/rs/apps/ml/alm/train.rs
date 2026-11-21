@@ -486,15 +486,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 			}
 		};
 	let engine = oa::Engine::new()?;
+	oa::Engine::set_default(engine.clone());
 	let native_text = if use_text {
-		let model = Rc::new(ClipText::load_model(&engine, &clip_model)?);
+		let model = Rc::new(ClipText::load_model(&clip_model)?);
 		let merges = std::fs::read(&clip_merges)?;
 		Some((model, merges))
 	} else {
 		None
 	};
 	let tokenizer = Rc::new(AlmTokenizer::new_with_seed(
-		&engine,
 		AlmTokenizerConfig {
 			input_dim: dataset.feature_dim(),
 			width: cfg.tokenizer_width,
@@ -538,7 +538,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 	};
 	prior_config.sync_vocab(cfg.num_codes)?;
 	let prior = Rc::new(AlmPrior::new_with_seed(
-		&engine,
 		prior_config,
 		cfg.seed.wrapping_add(1),
 	)?);

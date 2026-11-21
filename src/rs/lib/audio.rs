@@ -23,7 +23,7 @@ pub(crate) use audio::validate_sample_buffer;
 pub use audio::{Audio, AudioChannelLayout};
 pub use capture::{AudioCapture, AudioCaptureChunk};
 pub use codec::wav::{encode_interleaved_wav_f32, encode_wav_f32, save_wav_f32};
-pub use decoder::{decode_file, decode_memory};
+pub use decoder::{decode_file, decode_file_on, decode_memory, decode_memory_on};
 pub use encoder::{AudioCodec, AudioEncodeProfile, AudioEncoder, EncodedAudioPacket};
 pub use player::AudioPlayer;
 pub use signal::{

@@ -73,7 +73,7 @@ class Poseidon2VulkanTest(unittest.TestCase):
 		profiles = {p["name"]: p for p in json.loads(SCHEMA.read_text())["poseidon2_profiles"]}
 		for case in json.loads(FIXTURE.read_text())["cases"]:
 			name, values = case["profile"], case["input"]
-			input_ = oa.Matrix.new_from_u32(engine, [1, len(values)], values)
+			input_ = oa.Matrix.new_from_u32([1, len(values)], values, engine=engine)
 			self.assertEqual(getattr(oa.crypto, f"hash_poseidon2_{name}_permute")(input_).read_u32(), case["output"])
 		for name, profile in profiles.items():
 			function = getattr(oa.crypto, f"hash_poseidon2_{name}")
@@ -81,7 +81,7 @@ class Poseidon2VulkanTest(unittest.TestCase):
 			for length in (0, 1, rate - 1, rate, rate + 1, 2 * rate):
 				rows = 33 if length == rate + 1 else 1
 				values = [(i * 2654435761) & 0xFFFFFFFF for i in range(length * rows)]
-				input_ = oa.Matrix.new_from_u32(engine, [rows, length], values)
+				input_ = oa.Matrix.new_from_u32([rows, length], values, engine=engine)
 				for output_length in (8, rate + 3):
 					expected = sum((sponge(values[r * length:(r + 1) * length], profile, output_length) for r in range(rows)), [])
 					self.assertEqual(function(input_, output_length).read_u32(), expected, (name, length, output_length))

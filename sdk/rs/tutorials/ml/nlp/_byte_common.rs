@@ -23,7 +23,7 @@ pub struct Tutorial<'text> {
 
 pub fn run<M: Module>(
 	tutorial: Tutorial<'_>,
-	construct: impl Fn(&oa::Engine) -> oa::Result<M>,
+	construct: impl Fn() -> oa::Result<M>,
 ) -> oa::Result<()> {
 	let Tutorial {
 		title,
@@ -56,7 +56,8 @@ pub fn run<M: Module>(
 		cli.config().steps
 	};
 	let engine = oa::Engine::new()?;
-	let model = construct(&engine)?;
+	oa::Engine::set_default(engine.clone());
+	let model = construct()?;
 	// Complete asynchronous parameter initialization before isolated capture.
 	engine.checkpoint()?.wait()?;
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, learning_rate)?;
@@ -112,16 +113,8 @@ pub fn run<M: Module>(
 				last_input.clone_from(&input_values);
 				last_target.clone_from(&target_values);
 				Ok((
-					oa::Matrix::new_from_slice(
-						&engine,
-						[nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH],
-						&input_values,
-					)?,
-					oa::Matrix::new_from_slice(
-						&engine,
-						[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-						&target_values,
-					)?,
+					oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &input_values)?,
+					oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &target_values)?,
 				))
 			},
 			|(input, target)| {
@@ -147,13 +140,8 @@ pub fn run<M: Module>(
 	let result = training.finish()?;
 	let final_training_loss = result.last_loss().unwrap_or_default();
 
-	let input =
-		oa::Matrix::new_from_slice(&engine, [nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &last_input)?;
-	let target = oa::Matrix::new_from_slice(
-		&engine,
-		[nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH],
-		&last_target,
-	)?;
+	let input = oa::Matrix::new_from_slice([nlp::BATCH_SIZE, nlp::CONTEXT_LENGTH], &last_input)?;
+	let target = oa::Matrix::new_from_slice([nlp::BATCH_SIZE * nlp::CONTEXT_LENGTH], &last_target)?;
 	let logits = model.forward(&input)?;
 	let accuracy = nlp::accuracy(&logits, &target)?;
 	let evaluation_loss = oa::ml::loss::cross_entropy(&logits, &target)?.read_f32()?[0];
@@ -189,21 +177,15 @@ pub fn run<M: Module>(
 
 	let plot_path = cli.config().plot.as_str();
 	if !plot_path.is_empty() {
-		write_loss_curve(
-			&engine,
-			&loss_curve,
-			title,
-			oa::ml::byte::VOCAB_SIZE,
-			plot_path,
-		)?;
+		write_loss_curve(&loss_curve, title, oa::ml::byte::VOCAB_SIZE, plot_path)?;
 		println!("plot: {plot_path}");
 	}
 
 	let checkpoint = oa::Path::temp().join(format!("{checkpoint_stem}-{}.oam", std::process::id()));
 	oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
-	let reloaded = construct(&engine)?;
+	let reloaded = construct()?;
 	let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, learning_rate)?;
-	oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+	oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut reloaded_optimizer)?;
 	assert_eq!(reloaded_optimizer.step_count(), optimizer.step_count());
 	assert_eq!(
 		nlp::accuracy(&reloaded.forward(&input)?, &target)?,
@@ -239,7 +221,6 @@ pub fn run<M: Module>(
 /// Render the recorded loss curve through `oa::plot` — the same headless GPU
 /// composition `tu_viewer_video` uses for its poster asset.
 fn write_loss_curve(
-	engine: &oa::Engine,
 	loss_curve: &[f32],
 	title: &str,
 	vocab_size: usize,
@@ -288,5 +269,5 @@ fn write_loss_curve(
 			..Default::default()
 		},
 	);
-	fig.save_to(engine, path)
+	fig.save_to(path)
 }

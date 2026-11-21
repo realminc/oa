@@ -92,6 +92,10 @@ pub struct AlmTokenizer {
 }
 
 impl AlmTokenizer {
+	pub fn new(config: AlmTokenizerConfig) -> Result<Self> {
+		Self::new_on(&Engine::current()?, config)
+	}
+
 	/// Construct the tokenizer with the donor's deterministic `0xC0FFEE`
 	/// continuous Glorot stream.
 	///
@@ -99,8 +103,8 @@ impl AlmTokenizer {
 	///
 	/// Returns an error for invalid geometry or quantizer policy, arithmetic
 	/// overflow, failed allocation/upload, or module-registration failure.
-	pub fn new(engine: &Engine, config: AlmTokenizerConfig) -> Result<Self> {
-		Self::new_with_seed(engine, config, DEFAULT_INITIALIZER_SEED)
+	pub fn new_on(engine: &Engine, config: AlmTokenizerConfig) -> Result<Self> {
+		Self::new_with_seed_on(engine, config, DEFAULT_INITIALIZER_SEED)
 	}
 
 	/// Construct the tokenizer with an explicit deterministic initializer seed.
@@ -111,7 +115,11 @@ impl AlmTokenizer {
 	/// # Errors
 	///
 	/// Returns the same errors as [`Self::new`].
-	pub fn new_with_seed(engine: &Engine, config: AlmTokenizerConfig, seed: u64) -> Result<Self> {
+	pub fn new_with_seed(config: AlmTokenizerConfig, seed: u64) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, config, seed)
+	}
+
+	pub fn new_with_seed_on(engine: &Engine, config: AlmTokenizerConfig, seed: u64) -> Result<Self> {
 		validate_config(config)?;
 		let downsample_factor = 1_usize
 			.checked_shl(
@@ -158,7 +166,7 @@ impl AlmTokenizer {
 			dead_threshold: config.dead_threshold,
 			normalize_codes: true,
 		};
-		let rvq = Rc::new(ResidualVectorQuantizer::new_with_seed(
+		let rvq = Rc::new(ResidualVectorQuantizer::new_with_seed_on(
 			engine, vq_config, 1, rng,
 		)?);
 		registry.register_module("rvq", rvq.clone())?;
@@ -212,19 +220,27 @@ impl AlmTokenizer {
 			.ok_or_else(|| Error::invalid_argument("ALM decoder norm count overflows usize"))?;
 		let mut enc_norms = Vec::with_capacity(encoder_norm_count);
 		for index in 0..encoder_norm_count {
-			let norm = Rc::new(LayerNorm::new(engine, config.width, NORMALIZATION_EPSILON)?);
+			let norm = Rc::new(LayerNorm::new_on(
+				engine,
+				config.width,
+				NORMALIZATION_EPSILON,
+			)?);
 			registry.register_module(format!("enc_ln{index}"), norm.clone())?;
 			enc_norms.push(norm);
 		}
 		let mut dec_norms = Vec::with_capacity(decoder_norm_count);
 		for index in 0..decoder_norm_count {
-			let norm = Rc::new(LayerNorm::new(engine, config.width, NORMALIZATION_EPSILON)?);
+			let norm = Rc::new(LayerNorm::new_on(
+				engine,
+				config.width,
+				NORMALIZATION_EPSILON,
+			)?);
 			registry.register_module(format!("dec_ln{index}"), norm.clone())?;
 			dec_norms.push(norm);
 		}
 		registry.register_buffer(
 			"latent_rms_weight",
-			matrix::ones(engine, [config.code_dim])?,
+			matrix::ones_on(engine, [config.code_dim])?,
 			false,
 		)?;
 		let latent_rms_weight = registry
@@ -479,12 +495,12 @@ fn make_conv(
 	rng: &mut u64,
 ) -> Result<Rc<Conv1d>> {
 	let values = glorot_values(input_channels, output_channels, kernel_size, rng)?;
-	let weight = Matrix::new_from_f32(
+	let weight = Matrix::new_from_f32_on(
 		engine,
 		[output_channels, input_channels, kernel_size],
 		&values,
 	)?;
-	let bias = Matrix::new_from_f32(engine, [output_channels], &vec![0.0; output_channels])?;
+	let bias = Matrix::new_from_f32_on(engine, [output_channels], &vec![0.0; output_channels])?;
 	Ok(Rc::new(Conv1d::new_from_matrices(
 		weight, bias, stride, padding, dilation,
 	)?))
@@ -500,7 +516,7 @@ fn make_conv_transpose(
 	rng: &mut u64,
 ) -> Result<Rc<ConvTranspose1d>> {
 	let values = glorot_values(output_channels, input_channels, kernel_size, rng)?;
-	let weight = Matrix::new_from_f32(
+	let weight = Matrix::new_from_f32_on(
 		engine,
 		[input_channels, output_channels, kernel_size],
 		&values,

@@ -2,13 +2,10 @@
 import os
 
 import oa
-
-engine = oa.Engine()
-
 asset_root = os.environ.get("OA_ASSET", "asset")
 path = os.path.join(asset_root, "image/visionTestPattern320x180.jpg")
 
-image = oa.image.decode_file(engine, path, "jpeg")
+image = oa.image.decode_file(path, "jpeg")
 small = oa.image.resize(image, 160, 90)
 adjusted = oa.image.brightness_contrast(small, 0.05, 1.1)
 

@@ -16,14 +16,15 @@ pub(crate) struct PythonFlowTimeEmbedding {
 impl PythonFlowTimeEmbedding {
 	/// Construct the donor sinusoidal time embedding.
 	#[new]
-	#[pyo3(signature = (engine, embedding_dim, max_period = 10_000.0, time_scale = 1_000.0))]
+	#[pyo3(signature = (embedding_dim, max_period = 10_000.0, time_scale = 1_000.0, engine=None))]
 	pub fn new(
-		engine: &PythonEngine,
 		embedding_dim: usize,
 		max_period: f32,
 		time_scale: f32,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::FlowTimeEmbedding::new(&engine.inner, embedding_dim, max_period, time_scale)
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::FlowTimeEmbedding::new_on(&engine, embedding_dim, max_period, time_scale)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -181,11 +182,12 @@ impl PythonFlowTransformer {
 	/// Construct a deterministic dense or dropless-MoE flow Transformer.
 	#[new]
 	pub fn new(
-		engine: &PythonEngine,
 		config: &PythonFlowTransformerConfig,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::FlowTransformer::new_with_seed(&engine.inner, config.inner, seed)
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::FlowTransformer::new_with_seed_on(&engine, config.inner, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -377,11 +379,12 @@ impl PythonFlowDenoiser {
 	/// Construct a deterministic dense or MoE denoiser.
 	#[new]
 	pub fn new(
-		engine: &PythonEngine,
 		config: &PythonFlowDenoiserConfig,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::FlowDenoiser::new_with_seed(&engine.inner, config.inner, seed)
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::FlowDenoiser::new_with_seed_on(&engine, config.inner, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

@@ -1757,7 +1757,7 @@ impl ExecutionPlan {
 
 	pub(super) fn precompile(&self, device: &Arc<Device>) -> Result<()> {
 		if self.graph.has_video() {
-			let mut commands = super::device::command::RecordedBatch::new(device);
+			let mut commands = super::device::logical::command::RecordedBatch::new(device);
 			for range in self.submission_ranges(device)? {
 				commands.push(device.record_fresh_graph_range(&self.graph, range, false)?);
 			}

@@ -131,7 +131,22 @@ impl ImagePlanes {
 	///
 	/// Returns an error for an unreadable, unsupported, or malformed file,
 	/// checked-size overflow, or device upload failure.
-	pub fn load_file(engine: &Engine, path: impl AsRef<Path>) -> Result<Self> {
+	///
+	/// This variant loads on this thread's default engine. An engine
+	/// initialization failure is returned before decoding starts.
+	pub fn load_file(path: impl AsRef<Path>) -> Result<Self> {
+		let path = path.as_ref();
+		Self::load_file_on(&Engine::current()?, path)
+	}
+	/// Load an image file into device-uploaded planes on a particular engine.
+	///
+	/// This is the [`load_file`](Self::load_file) contract evaluated on
+	/// `engine` instead of this thread's default engine.
+	///
+	/// # Errors
+	///
+	/// Returns the same errors as [`load_file`](Self::load_file).
+	pub fn load_file_on(engine: &Engine, path: impl AsRef<Path>) -> Result<Self> {
 		let path = path.as_ref();
 		if path.as_os_str().is_empty() {
 			return Err(Error::invalid_argument(
@@ -181,7 +196,7 @@ impl ImagePlanes {
 			.collect::<Vec<_>>();
 		let spans = plane_bytes.iter().map(Vec::as_slice).collect::<Vec<_>>();
 		let dtypes = vec![dtype; channels];
-		Self::from_planes(
+		Self::from_planes_on(
 			engine,
 			&spans,
 			&dtypes,
@@ -200,7 +215,27 @@ impl ImagePlanes {
 	/// Returns an error for a channel count outside 1–4, a planes/dtypes
 	/// length mismatch, non-positive or overflowing dimensions, a plane byte
 	/// size that does not match its dtype, or device upload failure.
+	///
+	/// This variant uploads on this thread's default engine. An engine
+	/// initialization failure is returned before the upload starts.
 	pub fn from_planes(
+		planes: &[&[u8]],
+		dtypes: &[ImageDtype],
+		width: i32,
+		height: i32,
+	) -> Result<Self> {
+		Self::from_planes_on(&Engine::current()?, planes, dtypes, width, height)
+	}
+
+	/// Upload caller-provided planes on a particular engine.
+	///
+	/// This is the [`from_planes`](Self::from_planes) contract evaluated on
+	/// `engine` instead of this thread's default engine.
+	///
+	/// # Errors
+	///
+	/// Returns the same errors as [`from_planes`](Self::from_planes).
+	pub fn from_planes_on(
 		engine: &Engine,
 		planes: &[&[u8]],
 		dtypes: &[ImageDtype],
@@ -236,7 +271,7 @@ impl ImagePlanes {
 					"ImagePlanes::from_planes plane {index} byte size does not match dimensions and dtype",
 				)));
 			}
-			uploaded.push(Matrix::new_from_slice(engine, [expected], plane)?);
+			uploaded.push(Matrix::new_from_slice_on(engine, [expected], plane)?);
 		}
 		Ok(Self {
 			engine: engine.handle(),

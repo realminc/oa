@@ -13,9 +13,9 @@ fn extension_add_computes() -> Result<()> {
 	assert_eq!(kernel.binding_count(), 3);
 	assert_eq!(kernel.push_words(), 1);
 
-	let a = Matrix::new_from_f32(&engine, [2, 2], &[1.0, 2.0, 3.0, 4.0])?;
-	let b = Matrix::new_from_f32(&engine, [2, 2], &[10.0, 20.0, 30.0, 40.0])?;
-	let out = Matrix::new_from_f32(&engine, [2, 2], &[0.0; 4])?;
+	let a = Matrix::new_from_f32([2, 2], &[1.0, 2.0, 3.0, 4.0])?;
+	let b = Matrix::new_from_f32([2, 2], &[10.0, 20.0, 30.0, 40.0])?;
+	let out = Matrix::new_from_f32([2, 2], &[0.0; 4])?;
 	engine.dispatch_kernel(
 		&kernel,
 		&[

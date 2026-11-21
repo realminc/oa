@@ -1,13 +1,11 @@
 // OA_DOC_BEGIN: vision-image
 use anyhow::Context;
-use oa::{Engine, ImageFormat, Path, image};
+use oa::{ImageFormat, Path, image};
 
 fn main() -> anyhow::Result<()> {
-	let engine = Engine::new().context("create OA engine")?;
-
 	let path = Path::asset_rel("image/visionTestPattern320x180.jpg");
 
-	let img = image::decode_file(&engine, &path, ImageFormat::Rgb)
+	let img = image::decode_file(&path, ImageFormat::Rgb)
 		.with_context(|| format!("decode {}", path.display()))?;
 	let small = image::resize(&img, 160, 90, image::InterpolationMode::Bilinear)?;
 	let adjusted = image::brightness_contrast(&small, 0.05, 1.1)?;

@@ -13,8 +13,7 @@ fn live_canvas_preserves_navigation_and_uses_shared_image_channels() -> Result<(
 	let mut media = MediaState::open(&engine, &config, None)?;
 	let mut nav = Navigation::new();
 	nav.set_viewport_size(320.0, 240.0)?;
-	let texture =
-		crate::render::texture_from_rgba8(&engine, &[231, 47, 13, 255].repeat(17 * 11), 17, 11)?;
+	let texture = crate::render::texture_from_rgba8(&[231, 47, 13, 255].repeat(17 * 11), 17, 11)?;
 	media.update_live_texture(Some(&texture), &mut nav)?;
 	assert_eq!(media.content_size(), Some((17, 11)));
 	assert!((nav.zoom() - 320.0 / 17.0).abs() < 0.001);
@@ -22,8 +21,7 @@ fn live_canvas_preserves_navigation_and_uses_shared_image_channels() -> Result<(
 	nav.keyboard_zoom_in();
 	nav.update(1000.0);
 	let navigation = (nav.pan_x(), nav.pan_y(), nav.zoom());
-	let replacement =
-		crate::render::texture_from_rgba8(&engine, &[231, 47, 13, 255].repeat(17 * 11), 17, 11)?;
+	let replacement = crate::render::texture_from_rgba8(&[231, 47, 13, 255].repeat(17 * 11), 17, 11)?;
 	media.update_live_texture(Some(&replacement), &mut nav)?;
 	assert_eq!(
 		(nav.pan_x(), nav.pan_y(), nav.zoom()),
@@ -38,8 +36,7 @@ fn live_canvas_preserves_navigation_and_uses_shared_image_channels() -> Result<(
 		},
 		&config,
 	)?;
-	let resized =
-		crate::render::texture_from_rgba8(&engine, &[231, 47, 13, 255].repeat(23 * 13), 23, 13)?;
+	let resized = crate::render::texture_from_rgba8(&[231, 47, 13, 255].repeat(23 * 13), 23, 13)?;
 	media.update_live_texture(Some(&resized), &mut nav)?;
 	assert_eq!(media.content_size(), Some((23, 13)));
 	assert!((nav.zoom() - 320.0 / 23.0).abs() < 0.001);

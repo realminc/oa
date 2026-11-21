@@ -161,12 +161,8 @@ impl PreparedChain {
 			// were checked. Invocation i owns only output[i], tails exit before I/O.
 			// All resources and the pipeline are retained by the recorded command.
 			unsafe {
-				device.raw().cmd_bind_pipeline(
-					command,
-					vk::PipelineBindPoint::COMPUTE,
-					self.pipeline.raw(),
-				)?;
-				device.raw().cmd_bind_descriptor_sets(
+				device.cmd_bind_pipeline(command, vk::PipelineBindPoint::COMPUTE, self.pipeline.raw())?;
+				device.cmd_bind_descriptor_sets(
 					command,
 					vk::PipelineBindPoint::COMPUTE,
 					self.pipeline.layout(),
@@ -174,18 +170,16 @@ impl PreparedChain {
 					&[set],
 					&[],
 				)?;
-				device.raw().cmd_push_constants(
+				device.cmd_push_constants(
 					command,
 					self.pipeline.layout(),
 					vk::ShaderStageFlagBits::COMPUTE_BIT,
 					0,
 					&push,
 				)?;
-				device
-					.raw()
-					.cmd_dispatch(command, self.count.div_ceil(256).max(1), 1, 1)?;
+				device.cmd_dispatch(command, self.count.div_ceil(256).max(1), 1, 1)?;
 			}
-			record_host_visibility(device.raw(), device.sync_commands(), command, true, false)
+			record_host_visibility(device, command, true, false)
 		};
 		if let Err(error) = encode() {
 			pool.free_handle(device.raw(), command);

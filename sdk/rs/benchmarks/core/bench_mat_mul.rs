@@ -21,8 +21,9 @@ fn main() -> anyhow::Result<()> {
 		.devices(DeviceSelection::Index(options.device))
 		.build()
 		.context("create the OA Vulkan engine")?;
-	let left = matrix::full(&engine, [options.m, options.k], 0.25)?;
-	let right = matrix::full(&engine, [options.n, options.k], 0.5)?;
+	Engine::set_default(engine.clone());
+	let left = matrix::full([options.m, options.k], 0.25)?;
+	let right = matrix::full([options.n, options.k], 0.5)?;
 	let (plan, output) = engine.capture(|| matrix::mat_mul_nt(&left, &right))?;
 
 	engine.submit(&plan)?.wait()?;

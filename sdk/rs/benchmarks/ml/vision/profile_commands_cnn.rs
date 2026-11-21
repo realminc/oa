@@ -60,11 +60,11 @@ fn kernel_census(plan: &oa::ExecutionPlan, name: &str) -> String {
 
 fn main() -> oa::Result<()> {
 	let engine = oa::Engine::new()?;
+	oa::Engine::set_default(engine.clone());
 	// The speech-commands classifier shape: `[batch, 1, mels, frames]`
 	// NCHW mel features through two `Conv2d → ReLU → MaxPool` blocks.
-	let model = sdk::ml::audio::commands_cnn(&engine, 40, 63, 8)?;
+	let model = sdk::ml::audio::commands_cnn(40, 63, 8)?;
 	let input = oa::Matrix::new_from_f32(
-		&engine,
 		[8, 1, 40, 63],
 		&vec![0.05; 8 * 40 * 63]
 			.iter()
@@ -72,7 +72,7 @@ fn main() -> oa::Result<()> {
 			.map(|(i, v)| v * ((i * 37 % 23) as f32 - 11.0))
 			.collect::<Vec<f32>>(),
 	)?;
-	let target = oa::Matrix::new_from_slice(&engine, [8], &[0_u32, 1, 2, 3, 4, 5, 6, 7])?;
+	let target = oa::Matrix::new_from_slice([8], &[0_u32, 1, 2, 3, 4, 5, 6, 7])?;
 
 	// backward accumulates into `Parameter::gradient` when one exists, so
 	// every captured plan must see cleared gradients to record the same

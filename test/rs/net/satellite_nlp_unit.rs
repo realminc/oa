@@ -166,8 +166,8 @@ fn run_local_oracle(
 		let parameters_ref = model.all_parameters()?;
 		let mut optimizer = AdamW::new(parameters_ref.clone(), 0.01)?;
 		optimizer.zero_grad();
-		let input = Matrix::new_from_slice(engine, [batch_count, CONTEXT_LENGTH], inputs)?;
-		let target = Matrix::new_from_slice(engine, [inputs.len()], targets)?;
+		let input = Matrix::new_from_slice([batch_count, CONTEXT_LENGTH], inputs)?;
+		let target = Matrix::new_from_slice([inputs.len()], targets)?;
 		let tape = GradientTape::new();
 		let logits = model.forward(&input)?;
 		let step_loss = loss::cross_entropy(&logits, &target)?;
@@ -254,8 +254,8 @@ fn run_local_gradient(
 		let layout_hash = parameter_layout_hash(&named);
 		load_parameters(engine, &named, parameters)?;
 		let parameters_ref = model.all_parameters()?;
-		let input = Matrix::new_from_slice(engine, [batch_count, CONTEXT_LENGTH], inputs)?;
-		let target = Matrix::new_from_slice(engine, [inputs.len()], targets)?;
+		let input = Matrix::new_from_slice([batch_count, CONTEXT_LENGTH], inputs)?;
+		let target = Matrix::new_from_slice([inputs.len()], targets)?;
 		let tape = GradientTape::new();
 		let logits = model.forward(&input)?;
 		let step_loss = loss::cross_entropy(&logits, &target)?;
@@ -311,7 +311,6 @@ fn apply_authoritative_gradient(
 				));
 			}
 			let gradient = Matrix::new_from_slice(
-				engine,
 				data.shape().to_vec(),
 				&gradient_values[offset..offset + count],
 			)?;

@@ -219,16 +219,21 @@ impl CharSampler {
 		})
 	}
 
+	#[allow(clippy::should_implement_trait)]
+	pub fn next(&mut self) -> Result<(Matrix, Matrix)> {
+		self.next_on(&Engine::current()?)
+	}
+
 	/// Upload the next `[batch, 16]` input and shifted-target pair.
 	///
 	/// # Errors
 	///
 	/// Returns an error when shape arithmetic or Matrix upload fails.
-	pub fn next(&mut self, engine: &Engine) -> Result<(Matrix, Matrix)> {
+	pub fn next_on(&mut self, engine: &Engine) -> Result<(Matrix, Matrix)> {
 		let (input, target) = self.next_values()?;
 		Ok((
-			Matrix::new_from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &input)?,
-			Matrix::new_from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &target)?,
+			Matrix::new_from_slice_on(engine, [self.batch_size, CONTEXT_LENGTH], &input)?,
+			Matrix::new_from_slice_on(engine, [self.batch_size, CONTEXT_LENGTH], &target)?,
 		))
 	}
 
@@ -287,16 +292,21 @@ impl ByteSampler {
 		})
 	}
 
+	#[allow(clippy::should_implement_trait)]
+	pub fn next(&mut self) -> Result<(Matrix, Matrix)> {
+		self.next_on(&Engine::current()?)
+	}
+
 	/// Upload the next packed-U8 input and U32 shifted-target pair.
 	///
 	/// # Errors
 	///
 	/// Returns an error when shape arithmetic or Matrix upload fails.
-	pub fn next(&mut self, engine: &Engine) -> Result<(Matrix, Matrix)> {
+	pub fn next_on(&mut self, engine: &Engine) -> Result<(Matrix, Matrix)> {
 		let (input, target) = self.next_values()?;
 		Ok((
-			Matrix::new_from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &input)?,
-			Matrix::new_from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &target)?,
+			Matrix::new_from_slice_on(engine, [self.batch_size, CONTEXT_LENGTH], &input)?,
+			Matrix::new_from_slice_on(engine, [self.batch_size, CONTEXT_LENGTH], &target)?,
 		))
 	}
 
@@ -363,16 +373,21 @@ impl<'tokenizer> BpeSampler<'tokenizer> {
 		})
 	}
 
+	#[allow(clippy::should_implement_trait)]
+	pub fn next(&mut self) -> Result<(Matrix, Matrix)> {
+		self.next_on(&Engine::current()?)
+	}
+
 	/// Produce and upload the next U32 BPE input/target pair.
 	///
 	/// # Errors
 	///
 	/// Returns an error when host preparation or Matrix upload fails.
-	pub fn next(&mut self, engine: &Engine) -> Result<(Matrix, Matrix)> {
+	pub fn next_on(&mut self, engine: &Engine) -> Result<(Matrix, Matrix)> {
 		let (input, target) = self.next_values()?;
 		Ok((
-			Matrix::new_from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &input)?,
-			Matrix::new_from_slice(engine, [self.batch_size, CONTEXT_LENGTH], &target)?,
+			Matrix::new_from_slice_on(engine, [self.batch_size, CONTEXT_LENGTH], &input)?,
+			Matrix::new_from_slice_on(engine, [self.batch_size, CONTEXT_LENGTH], &target)?,
 		))
 	}
 
@@ -450,26 +465,30 @@ pub struct CharRnn {
 }
 
 impl CharRnn {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the canonical deterministic 8,891-parameter model.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter allocation or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::new_with_seed(
+	pub fn new_on(engine: &Engine) -> Result<Self> {
+		let embedding = Rc::new(nn::Embedding::new_with_seed_on(
 			engine,
 			CHAR_VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
-		let recurrent = Rc::new(nn::Rnn::new_with_seed(
+		let recurrent = Rc::new(nn::Rnn::new_with_seed_on(
 			engine,
 			MODEL_WIDTH,
 			HIDDEN_WIDTH,
 			1,
 			RNG_SEED.wrapping_add(1),
 		)?);
-		let head = Rc::new(nn::Linear::new_with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed_on(
 			engine,
 			HIDDEN_WIDTH,
 			CHAR_VOCAB_SIZE,
@@ -532,25 +551,29 @@ pub struct ByteRnn {
 }
 
 impl ByteRnn {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the deterministic donor-shaped 31,104-parameter model.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter allocation or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::ByteEmbedding::new_with_seed(
+	pub fn new_on(engine: &Engine) -> Result<Self> {
+		let embedding = Rc::new(nn::ByteEmbedding::new_with_seed_on(
 			engine,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
-		let recurrent = Rc::new(nn::Rnn::new_with_seed(
+		let recurrent = Rc::new(nn::Rnn::new_with_seed_on(
 			engine,
 			MODEL_WIDTH,
 			HIDDEN_WIDTH,
 			1,
 			RNG_SEED.wrapping_add(1),
 		)?);
-		let head = Rc::new(nn::ByteHead::new_with_seed(
+		let head = Rc::new(nn::ByteHead::new_with_seed_on(
 			engine,
 			HIDDEN_WIDTH,
 			RNG_SEED.wrapping_add(2),
@@ -612,19 +635,23 @@ pub struct ByteGru {
 }
 
 impl ByteGru {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the deterministic donor-shaped 43,648-parameter model.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter allocation or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
+	pub fn new_on(engine: &Engine) -> Result<Self> {
 		// Donor: sdk/cpp/tutorials/ml/nlp/tuNlpByteGruAg.cpp, FnMatrixAlloc.cpp,
 		// and core/std/random.h. The seeded PCG32 stream resolves six Philox
 		// seeds: default embedding, replacement embedding, W_ih, W_hh,
 		// default head, replacement head. Preserve draws 2/3/4/6 without
 		// allocating the two immediately discarded constructor weights.
 		let embedding_shape =
-			oa::matrix::full(engine, vec![oa::ml::byte::VOCAB_SIZE, MODEL_WIDTH], 0.0)?;
+			oa::matrix::full_on(engine, vec![oa::ml::byte::VOCAB_SIZE, MODEL_WIDTH], 0.0)?;
 		let embedding = Rc::new(nn::ByteEmbedding::new_from_matrix(
 			oa::matrix::philox_normal(
 				&embedding_shape,
@@ -634,7 +661,7 @@ impl ByteGru {
 			)?,
 		)?);
 		let initialize_uniform = |rows: usize, columns: usize, low, high, seed| {
-			let shape = oa::matrix::full(engine, vec![rows, columns], 0.0)?;
+			let shape = oa::matrix::full_on(engine, vec![rows, columns], 0.0)?;
 			oa::matrix::philox_uniform(&shape, low, high, seed)
 		};
 		let input_bound = (1.0 / MODEL_WIDTH as f32).sqrt();
@@ -654,8 +681,8 @@ impl ByteGru {
 				hidden_bound,
 				0x77f9_df6a_7a00_98a1,
 			)?,
-			Matrix::new_from_f32(engine, [3 * HIDDEN_WIDTH], &[0.0; 3 * HIDDEN_WIDTH])?,
-			Matrix::new_from_f32(engine, [3 * HIDDEN_WIDTH], &[0.0; 3 * HIDDEN_WIDTH])?,
+			Matrix::new_from_f32_on(engine, [3 * HIDDEN_WIDTH], &[0.0; 3 * HIDDEN_WIDTH])?,
+			Matrix::new_from_f32_on(engine, [3 * HIDDEN_WIDTH], &[0.0; 3 * HIDDEN_WIDTH])?,
 		)?);
 		let head = Rc::new(nn::Linear::new_from_matrices(
 			initialize_uniform(
@@ -665,7 +692,7 @@ impl ByteGru {
 				1.0,
 				0x534c_3909_12d0_e37e,
 			)?,
-			Matrix::new_from_f32(
+			Matrix::new_from_f32_on(
 				engine,
 				[oa::ml::byte::VOCAB_SIZE],
 				&[0.0; oa::ml::byte::VOCAB_SIZE],
@@ -728,19 +755,23 @@ pub struct CharGru {
 }
 
 impl CharGru {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the deterministic donor-shaped 21,435-parameter model.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter allocation or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::new_with_seed(
+	pub fn new_on(engine: &Engine) -> Result<Self> {
+		let embedding = Rc::new(nn::Embedding::new_with_seed_on(
 			engine,
 			CHAR_VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
-		let recurrent = Rc::new(nn::Gru::new_with_seed(
+		let recurrent = Rc::new(nn::Gru::new_with_seed_on(
 			engine,
 			MODEL_WIDTH,
 			HIDDEN_WIDTH,
@@ -748,7 +779,7 @@ impl CharGru {
 			true,
 			RNG_SEED.wrapping_add(1),
 		)?);
-		let head = Rc::new(nn::Linear::new_with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed_on(
 			engine,
 			HIDDEN_WIDTH,
 			CHAR_VOCAB_SIZE,
@@ -811,26 +842,30 @@ pub struct BpeRnn {
 }
 
 impl BpeRnn {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the deterministic donor-shaped 37,312-parameter model.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter allocation or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::new_with_seed(
+	pub fn new_on(engine: &Engine) -> Result<Self> {
+		let embedding = Rc::new(nn::Embedding::new_with_seed_on(
 			engine,
 			BPE_VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
-		let recurrent = Rc::new(nn::Rnn::new_with_seed(
+		let recurrent = Rc::new(nn::Rnn::new_with_seed_on(
 			engine,
 			MODEL_WIDTH,
 			HIDDEN_WIDTH,
 			1,
 			RNG_SEED.wrapping_add(1),
 		)?);
-		let head = Rc::new(nn::Linear::new_with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed_on(
 			engine,
 			HIDDEN_WIDTH,
 			BPE_VOCAB_SIZE,
@@ -893,19 +928,23 @@ pub struct BpeGru {
 }
 
 impl BpeGru {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the deterministic donor-shaped 49,856-parameter model.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter allocation or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::new_with_seed(
+	pub fn new_on(engine: &Engine) -> Result<Self> {
+		let embedding = Rc::new(nn::Embedding::new_with_seed_on(
 			engine,
 			BPE_VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
-		let recurrent = Rc::new(nn::Gru::new_with_seed(
+		let recurrent = Rc::new(nn::Gru::new_with_seed_on(
 			engine,
 			MODEL_WIDTH,
 			HIDDEN_WIDTH,
@@ -913,7 +952,7 @@ impl BpeGru {
 			true,
 			RNG_SEED.wrapping_add(1),
 		)?);
-		let head = Rc::new(nn::Linear::new_with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed_on(
 			engine,
 			HIDDEN_WIDTH,
 			BPE_VOCAB_SIZE,
@@ -973,14 +1012,18 @@ pub struct ByteTransformer {
 }
 
 impl ByteTransformer {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the deterministic donor one-block, one-head byte model.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter construction or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
+	pub fn new_on(engine: &Engine) -> Result<Self> {
 		Ok(Self {
-			inner: nn::Transformer::new_with_seed(
+			inner: nn::Transformer::new_with_seed_on(
 				engine,
 				oa::ml::byte::VOCAB_SIZE,
 				CONTEXT_LENGTH,
@@ -1020,14 +1063,18 @@ pub struct BpeTransformer {
 }
 
 impl BpeTransformer {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the deterministic donor one-block, one-head BPE model.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter construction or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
+	pub fn new_on(engine: &Engine) -> Result<Self> {
 		Ok(Self {
-			inner: nn::Transformer::new_with_seed(
+			inner: nn::Transformer::new_with_seed_on(
 				engine,
 				BPE_VOCAB_SIZE,
 				CONTEXT_LENGTH,
@@ -1072,14 +1119,18 @@ pub struct ByteMoeTransformer {
 }
 
 impl ByteMoeTransformer {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the donor one-block, one-head byte MoE recipe.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter construction or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
+	pub fn new_on(engine: &Engine) -> Result<Self> {
 		Ok(Self {
-			inner: nn::Transformer::new_with_seed_moe(
+			inner: nn::Transformer::new_with_seed_moe_on(
 				engine,
 				oa::ml::byte::VOCAB_SIZE,
 				CONTEXT_LENGTH,
@@ -1121,14 +1172,18 @@ pub struct BpeMoeTransformer {
 }
 
 impl BpeMoeTransformer {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the donor one-block, one-head BPE MoE recipe.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter construction or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
+	pub fn new_on(engine: &Engine) -> Result<Self> {
 		Ok(Self {
-			inner: nn::Transformer::new_with_seed_moe(
+			inner: nn::Transformer::new_with_seed_moe_on(
 				engine,
 				BPE_VOCAB_SIZE,
 				CONTEXT_LENGTH,
@@ -1170,7 +1225,7 @@ impl Module for BpeMoeTransformer {
 }
 
 fn canonical_mamba3(engine: &Engine, seed: u64) -> Result<nn::Mamba3> {
-	nn::Mamba3::new_with_seed(
+	nn::Mamba3::new_with_seed_on(
 		engine,
 		nn::Mamba3Config {
 			model_width: MODEL_WIDTH,
@@ -1199,20 +1254,24 @@ pub struct ByteMamba3 {
 }
 
 impl ByteMamba3 {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the donor `32/state=32/expand=2/head=16` byte recipe.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter construction or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::new_with_seed(
+	pub fn new_on(engine: &Engine) -> Result<Self> {
+		let embedding = Rc::new(nn::Embedding::new_with_seed_on(
 			engine,
 			oa::ml::byte::VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
 		let mamba = Rc::new(canonical_mamba3(engine, RNG_SEED.wrapping_add(1))?);
-		let head = Rc::new(nn::Linear::new_with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed_on(
 			engine,
 			MODEL_WIDTH,
 			oa::ml::byte::VOCAB_SIZE,
@@ -1282,13 +1341,17 @@ pub struct ByteEmpyrealm {
 }
 
 impl ByteEmpyrealm {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the deterministic hybrid fidelity model.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter construction or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
-		let core = Rc::new(nn::Empyrealm::new_with_seed(
+	pub fn new_on(engine: &Engine) -> Result<Self> {
+		let core = Rc::new(nn::Empyrealm::new_with_seed_on(
 			engine,
 			oa::ml::byte::VOCAB_SIZE,
 			nn::EmpyrealmConfig {
@@ -1317,7 +1380,7 @@ impl ByteEmpyrealm {
 			},
 			RNG_SEED,
 		)?);
-		let head = Rc::new(nn::Linear::new_with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed_on(
 			engine,
 			MODEL_WIDTH,
 			oa::ml::byte::VOCAB_SIZE,
@@ -1365,20 +1428,24 @@ pub struct BpeMamba3 {
 }
 
 impl BpeMamba3 {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the donor `32/state=32/expand=2/head=16` BPE recipe.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter construction or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::new_with_seed(
+	pub fn new_on(engine: &Engine) -> Result<Self> {
+		let embedding = Rc::new(nn::Embedding::new_with_seed_on(
 			engine,
 			BPE_VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
 		let mamba = Rc::new(canonical_mamba3(engine, RNG_SEED.wrapping_add(1))?);
-		let head = Rc::new(nn::Linear::new_with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed_on(
 			engine,
 			MODEL_WIDTH,
 			BPE_VOCAB_SIZE,
@@ -1442,13 +1509,17 @@ pub struct CharTransformer {
 }
 
 impl CharTransformer {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the exact one-block, one-head OA C++ tutorial architecture.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter construction or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
-		let inner = nn::Transformer::new_with_seed(
+	pub fn new_on(engine: &Engine) -> Result<Self> {
+		let inner = nn::Transformer::new_with_seed_on(
 			engine,
 			CHAR_VOCAB_SIZE,
 			CONTEXT_LENGTH,
@@ -1488,13 +1559,17 @@ pub struct CharMoeTransformer {
 }
 
 impl CharMoeTransformer {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the donor one-block, one-head MoE Transformer recipe.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter construction or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
-		let inner = nn::Transformer::new_with_seed_moe(
+	pub fn new_on(engine: &Engine) -> Result<Self> {
+		let inner = nn::Transformer::new_with_seed_moe_on(
 			engine,
 			CHAR_VOCAB_SIZE,
 			CONTEXT_LENGTH,
@@ -1548,20 +1623,24 @@ pub struct CharMamba3 {
 }
 
 impl CharMamba3 {
+	pub fn new() -> Result<Self> {
+		Self::new_on(&Engine::current()?)
+	}
+
 	/// Construct the donor `32/state=32/expand=2/head=16` SISO recipe.
 	///
 	/// # Errors
 	///
 	/// Returns an error when parameter construction or registration fails.
-	pub fn new(engine: &Engine) -> Result<Self> {
-		let embedding = Rc::new(nn::Embedding::new_with_seed(
+	pub fn new_on(engine: &Engine) -> Result<Self> {
+		let embedding = Rc::new(nn::Embedding::new_with_seed_on(
 			engine,
 			CHAR_VOCAB_SIZE,
 			MODEL_WIDTH,
 			RNG_SEED,
 		)?);
 		let mamba = Rc::new(canonical_mamba3(engine, RNG_SEED.wrapping_add(1))?);
-		let head = Rc::new(nn::Linear::new_with_seed(
+		let head = Rc::new(nn::Linear::new_with_seed_on(
 			engine,
 			MODEL_WIDTH,
 			CHAR_VOCAB_SIZE,
@@ -1676,7 +1755,7 @@ pub fn generate_greedy(
 	let mut logit_row = filled - 1;
 	let mut output = prompt.to_owned();
 	for _ in 0..count {
-		let input = Matrix::new_from_slice(engine, [1, CONTEXT_LENGTH], &context)?;
+		let input = Matrix::new_from_slice_on(engine, [1, CONTEXT_LENGTH], &context)?;
 		let logits = model.forward(&input)?;
 		if logits.shape() != [CONTEXT_LENGTH, CHAR_VOCAB_SIZE] {
 			return Err(Error::failed_precondition(
@@ -1728,7 +1807,7 @@ pub fn generate_bytes_greedy(
 	let mut logit_row = filled - 1;
 	let mut output = prompt.to_vec();
 	for _ in 0..count {
-		let input = Matrix::new_from_slice(engine, [1, CONTEXT_LENGTH], &context)?;
+		let input = Matrix::new_from_slice_on(engine, [1, CONTEXT_LENGTH], &context)?;
 		let logits = model.forward(&input)?;
 		if logits.shape() != [CONTEXT_LENGTH, oa::ml::byte::VOCAB_SIZE] {
 			return Err(Error::failed_precondition(
@@ -1785,7 +1864,7 @@ pub fn generate_bpe_greedy(
 		if generated_bytes >= byte_count {
 			break;
 		}
-		let input = Matrix::new_from_slice(engine, [1, CONTEXT_LENGTH], &context)?;
+		let input = Matrix::new_from_slice_on(engine, [1, CONTEXT_LENGTH], &context)?;
 		let logits = model.forward(&input)?;
 		if logits.shape() != [CONTEXT_LENGTH, tokenizer.vocab_size()] {
 			return Err(Error::failed_precondition(

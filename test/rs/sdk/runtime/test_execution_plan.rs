@@ -33,9 +33,8 @@ test_vk!(alm_tokenizer_plan_keeps_its_conv_tail_fusions, engine, {
 		ema_epsilon: 1e-5,
 		dead_threshold: 2.0,
 	};
-	let model = sdk::ml::alm::AlmTokenizer::new(&engine, config)?;
+	let model = sdk::ml::alm::AlmTokenizer::new(config)?;
 	let input = oa::Matrix::new_from_f32(
-		&engine,
 		[2, 32, 16],
 		&vec![0.05; 2 * 32 * 16]
 			.iter()
@@ -43,7 +42,7 @@ test_vk!(alm_tokenizer_plan_keeps_its_conv_tail_fusions, engine, {
 			.map(|(i, v)| v * ((i * 37 % 23) as f32 - 11.0))
 			.collect::<Vec<f32>>(),
 	)?;
-	let target = oa::Matrix::new_from_f32(&engine, [2, 32, 16], &vec![0.0; 2 * 32 * 16])?;
+	let target = oa::Matrix::new_from_f32([2, 32, 16], &vec![0.0; 2 * 32 * 16])?;
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let reconstruction = model.forward(&input)?;
@@ -77,9 +76,8 @@ test_vk!(commands_cnn_plan_keeps_its_conv_and_pool_fusions, engine, {
 	// jit_fusion_census.md (23 nodes vs 27 unfused): each Conv2d block
 	// applies ReLU at the conv store and folds the ReLU mask into the pool
 	// adjoint.
-	let model = sdk::ml::audio::commands_cnn(&engine, 40, 62, 8)?;
+	let model = sdk::ml::audio::commands_cnn(40, 62, 8)?;
 	let input = oa::Matrix::new_from_f32(
-		&engine,
 		[4, 1, 40, 62],
 		&vec![0.05; 4 * 40 * 62]
 			.iter()
@@ -87,7 +85,7 @@ test_vk!(commands_cnn_plan_keeps_its_conv_and_pool_fusions, engine, {
 			.map(|(i, v)| v * ((i * 37 % 23) as f32 - 11.0))
 			.collect::<Vec<f32>>(),
 	)?;
-	let target = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 2, 1, 3])?;
+	let target = oa::Matrix::new_from_slice([4], &[0_u32, 2, 1, 3])?;
 	let (plan, _) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let logits = model.forward(&input)?;

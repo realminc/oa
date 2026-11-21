@@ -41,11 +41,11 @@ test_vk!(
 	empyrealm_hybrid_schedule_interleaves_attention_blocks,
 	engine,
 	{
-		let model = oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, config(4), 0x454d_5059)?;
+		let model = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x454d_5059)?;
 		assert_eq!(model.layer_count(), 4);
 		assert_eq!(model.attention_indices(), vec![3]);
 
-		let dense = oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, config(2), 0x454d_5059)?;
+		let dense = oa::ml::nn::Empyrealm::new_with_seed(7, config(2), 0x454d_5059)?;
 		assert_eq!(dense.layer_count(), 4);
 		assert_eq!(dense.attention_indices(), vec![1, 3]);
 		Ok(())
@@ -58,12 +58,12 @@ test_vk!(
 	{
 		let mut pure = config(0);
 		pure.sequence_length = 4;
-		let model = oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, pure, 0x454d_5059)?;
+		let model = oa::ml::nn::Empyrealm::new_with_seed(7, pure, 0x454d_5059)?;
 		assert_eq!(model.layer_count(), 4);
 		assert!(model.attention_indices().is_empty());
 
 		// Without attention blocks the packed sequence length is not fixed.
-		let tokens = oa::Matrix::new_from_slice(&engine, [2, 3], &[0_u32, 1, 2, 3, 4, 5])?;
+		let tokens = oa::Matrix::new_from_slice([2, 3], &[0_u32, 1, 2, 3, 4, 5])?;
 		let output = model.forward(&tokens)?;
 		assert_eq!(output.shape(), [2, 3, 8]);
 		Ok(())
@@ -80,7 +80,7 @@ test_vk!(empyrealm_rejects_invalid_configuration, engine, {
 		invalid.sequence_length = sequence_length;
 		invalid.mamba.model_width = model_width;
 		assert_eq!(
-			oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, invalid, 1)
+			oa::ml::nn::Empyrealm::new_with_seed(7, invalid, 1)
 				.err()
 				.expect("invalid Empyrealm configuration was accepted")
 				.kind(),
@@ -91,7 +91,7 @@ test_vk!(empyrealm_rejects_invalid_configuration, engine, {
 		let mut invalid = config(4);
 		invalid.epsilon = epsilon;
 		assert_eq!(
-			oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, invalid, 1)
+			oa::ml::nn::Empyrealm::new_with_seed(7, invalid, 1)
 				.err()
 				.expect("invalid Empyrealm epsilon was accepted")
 				.kind(),
@@ -102,7 +102,7 @@ test_vk!(empyrealm_rejects_invalid_configuration, engine, {
 		let mut invalid = config(4);
 		invalid.attention_heads = heads;
 		assert_eq!(
-			oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, invalid, 1)
+			oa::ml::nn::Empyrealm::new_with_seed(7, invalid, 1)
 				.err()
 				.expect("invalid Empyrealm head count was accepted")
 				.kind(),
@@ -114,7 +114,7 @@ test_vk!(empyrealm_rejects_invalid_configuration, engine, {
 		invalid.moe_experts = experts;
 		invalid.moe_experts_per_token = per_token;
 		assert_eq!(
-			oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, invalid, 1)
+			oa::ml::nn::Empyrealm::new_with_seed(7, invalid, 1)
 				.err()
 				.expect("invalid Empyrealm MoE routing was accepted")
 				.kind(),
@@ -128,9 +128,9 @@ test_vk!(
 	empyrealm_forward_is_deterministic_and_shape_checked,
 	engine,
 	{
-		let first = oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, config(4), 0x454d_5059)?;
-		let second = oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, config(4), 0x454d_5059)?;
-		let tokens = oa::Matrix::new_from_slice(&engine, [2, 4], &[0_u32, 1, 2, 3, 4, 5, 6, 0])?;
+		let first = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x454d_5059)?;
+		let second = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x454d_5059)?;
+		let tokens = oa::Matrix::new_from_slice([2, 4], &[0_u32, 1, 2, 3, 4, 5, 6, 0])?;
 		let output = first.forward(&tokens)?;
 		assert_eq!(output.shape(), [2, 4, 8]);
 		assert_eq!(
@@ -139,7 +139,7 @@ test_vk!(
 			"identical seeds must produce identical Empyrealm outputs"
 		);
 
-		let wrong_width = oa::Matrix::new_from_f32(&engine, [2, 4, 4], &[0.0; 32])?;
+		let wrong_width = oa::Matrix::new_from_f32([2, 4, 4], &[0.0; 32])?;
 		assert_eq!(
 			first
 				.forward_embedded(&wrong_width)
@@ -148,7 +148,7 @@ test_vk!(
 				.kind(),
 			oa::ErrorKind::InvalidArgument
 		);
-		let wrong_length = oa::Matrix::new_from_f32(&engine, [2, 3, 8], &[0.0; 48])?;
+		let wrong_length = oa::Matrix::new_from_f32([2, 3, 8], &[0.0; 48])?;
 		assert_eq!(
 			first
 				.forward_embedded(&wrong_length)
@@ -162,7 +162,7 @@ test_vk!(
 );
 
 test_vk!(empyrealm_registers_one_stable_parameter_tree, engine, {
-	let model = oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, config(4), 0x454d_5059)?;
+	let model = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x454d_5059)?;
 	let named = model.all_named_parameters()?;
 	let paths = named
 		.iter()
@@ -185,20 +185,16 @@ test_vk!(empyrealm_registers_one_stable_parameter_tree, engine, {
 });
 
 test_vk!(empyrealm_decode_steps_match_the_full_scan, engine, {
-	let model = oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, config(4), 0x454d_5059)?;
+	let model = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x454d_5059)?;
 	let token_values = [0_u32, 1, 2, 3, 4, 5, 6, 0];
-	let tokens = oa::Matrix::new_from_slice(&engine, [2, 4], &token_values)?;
+	let tokens = oa::Matrix::new_from_slice([2, 4], &token_values)?;
 	let scan = model.forward(&tokens)?.read_f32()?;
 
 	let mut state = model.new_state(2)?;
 	assert_eq!(state.batch_size(), 2);
 	assert_eq!(state.layer_count(), 4);
 	for time in 0..4 {
-		let column = oa::Matrix::new_from_slice(
-			&engine,
-			[2, 1],
-			&[token_values[time], token_values[4 + time]],
-		)?;
+		let column = oa::Matrix::new_from_slice([2, 1], &[token_values[time], token_values[4 + time]])?;
 		let stepped = model.step(&column, &mut state)?.read_f32()?;
 		let mut expected = Vec::with_capacity(16);
 		for batch in 0..2 {
@@ -213,9 +209,9 @@ test_vk!(
 	empyrealm_decode_state_enforces_ownership_batch_and_tape,
 	engine,
 	{
-		let model = oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, config(4), 0x454d_5059)?;
-		let other = oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, config(4), 0x5448_4552)?;
-		let column = oa::Matrix::new_from_slice(&engine, [2, 1], &[1_u32, 2])?;
+		let model = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x454d_5059)?;
+		let other = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x5448_4552)?;
+		let column = oa::Matrix::new_from_slice([2, 1], &[1_u32, 2])?;
 
 		assert_eq!(
 			model
@@ -237,7 +233,7 @@ test_vk!(
 		);
 
 		let mut state = model.new_state(2)?;
-		let wrong_batch = oa::Matrix::new_from_slice(&engine, [1, 1], &[1_u32])?;
+		let wrong_batch = oa::Matrix::new_from_slice([1, 1], &[1_u32])?;
 		assert_eq!(
 			model
 				.step(&wrong_batch, &mut state)
@@ -247,7 +243,7 @@ test_vk!(
 			oa::ErrorKind::InvalidArgument
 		);
 
-		let wrong_shape = oa::Matrix::new_from_f32(&engine, [2, 2, 8], &[0.0; 32])?;
+		let wrong_shape = oa::Matrix::new_from_f32([2, 2, 8], &[0.0; 32])?;
 		assert_eq!(
 			model
 				.step_embedded(&wrong_shape, &mut state)
@@ -275,9 +271,9 @@ test_vk!(empyrealm_moe_tail_constructs_and_forwards, engine, {
 	let mut routed = config(4);
 	routed.moe_experts = 2;
 	routed.moe_experts_per_token = 1;
-	let model = oa::ml::nn::Empyrealm::new_with_seed(&engine, 7, routed, 0x4d4f_4521)?;
+	let model = oa::ml::nn::Empyrealm::new_with_seed(7, routed, 0x4d4f_4521)?;
 	assert_eq!(model.attention_indices(), vec![3]);
-	let tokens = oa::Matrix::new_from_slice(&engine, [1, 4], &[0_u32, 1, 2, 3])?;
+	let tokens = oa::Matrix::new_from_slice([1, 4], &[0_u32, 1, 2, 3])?;
 	let output = model.forward(&tokens)?;
 	assert_eq!(output.shape(), [1, 4, 8]);
 	assert!(

@@ -1,8 +1,8 @@
 use oa::ml::Module;
 
 test_vk!(captures_and_replays_an_immutable_plan, engine, {
-	let one = oa::matrix::ones(&engine, [2, 3])?;
-	let two = oa::matrix::full(&engine, [2, 3], 2.0)?;
+	let one = oa::matrix::ones([2, 3])?;
+	let two = oa::matrix::full([2, 3], 2.0)?;
 	let (plan, six) = engine.capture(|| {
 		let three = oa::matrix::add(&one, &two)?;
 		oa::matrix::add(&three, &three)
@@ -124,8 +124,8 @@ test_vk!(captures_and_replays_an_immutable_plan, engine, {
 });
 
 test_vk!(fused_chain_materializes_observed_intermediates, engine, {
-	let one = oa::matrix::ones(&engine, [4])?;
-	let two = oa::matrix::full(&engine, [4], 2.0)?;
+	let one = oa::matrix::ones([4])?;
+	let two = oa::matrix::full([4], 2.0)?;
 	let (plan, (three, six)) = engine.capture(|| {
 		let three = oa::matrix::add(&one, &two)?;
 		let six = oa::matrix::add(&three, &three)?;
@@ -143,9 +143,8 @@ test_vk!(fused_chain_materializes_observed_intermediates, engine, {
 });
 
 test_vk!(epilogue_fuses_linear_residual_pair, engine, {
-	let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
+	let input = oa::Matrix::new_from_f32([2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
 	let weight = oa::Matrix::new_from_f32(
-		&engine,
 		[4, 3],
 		&[
 			0.5, -1.0, 2.0, //
@@ -154,12 +153,8 @@ test_vk!(epilogue_fuses_linear_residual_pair, engine, {
 			1.75, -0.75, 0.25,
 		],
 	)?;
-	let bias = oa::Matrix::new_from_f32(&engine, [4], &[0.5, -1.0, 2.0, -0.25])?;
-	let residual = oa::Matrix::new_from_f32(
-		&engine,
-		[2, 4],
-		&[1.0, 0.0, -1.0, 2.0, -0.5, 1.5, 0.25, -2.0],
-	)?;
+	let bias = oa::Matrix::new_from_f32([4], &[0.5, -1.0, 2.0, -0.25])?;
+	let residual = oa::Matrix::new_from_f32([2, 4], &[1.0, 0.0, -1.0, 2.0, -0.5, 1.5, 0.25, -2.0])?;
 	let linear = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 	let reference = {
 		let pre_activation = linear.forward(&input)?;
@@ -184,9 +179,8 @@ test_vk!(epilogue_fuses_linear_residual_pair, engine, {
 });
 
 test_vk!(epilogue_fuses_linear_residual_activation_triple, engine, {
-	let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
+	let input = oa::Matrix::new_from_f32([2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
 	let weight = oa::Matrix::new_from_f32(
-		&engine,
 		[4, 3],
 		&[
 			0.5, -1.0, 2.0, //
@@ -195,12 +189,8 @@ test_vk!(epilogue_fuses_linear_residual_activation_triple, engine, {
 			1.75, -0.75, 0.25,
 		],
 	)?;
-	let bias = oa::Matrix::new_from_f32(&engine, [4], &[0.5, -1.0, 2.0, -0.25])?;
-	let residual = oa::Matrix::new_from_f32(
-		&engine,
-		[2, 4],
-		&[1.0, 0.0, -1.0, 2.0, -0.5, 1.5, 0.25, -2.0],
-	)?;
+	let bias = oa::Matrix::new_from_f32([4], &[0.5, -1.0, 2.0, -0.25])?;
+	let residual = oa::Matrix::new_from_f32([2, 4], &[1.0, 0.0, -1.0, 2.0, -0.5, 1.5, 0.25, -2.0])?;
 	let linear = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 	let reference = {
 		let pre_activation = linear.forward(&input)?;
@@ -227,9 +217,8 @@ test_vk!(epilogue_fuses_linear_residual_activation_triple, engine, {
 });
 
 test_vk!(epilogue_fuses_linear_activation_pair, engine, {
-	let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
+	let input = oa::Matrix::new_from_f32([2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
 	let weight = oa::Matrix::new_from_f32(
-		&engine,
 		[4, 3],
 		&[
 			0.5, -1.0, 2.0, //
@@ -238,7 +227,7 @@ test_vk!(epilogue_fuses_linear_activation_pair, engine, {
 			1.75, -0.75, 0.25,
 		],
 	)?;
-	let bias = oa::Matrix::new_from_f32(&engine, [4], &[0.5, -1.0, 2.0, -0.25])?;
+	let bias = oa::Matrix::new_from_f32([4], &[0.5, -1.0, 2.0, -0.25])?;
 	let linear = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 	let reference = {
 		let pre_activation = linear.forward(&input)?;
@@ -274,17 +263,17 @@ test_vk!(epilogue_fuses_linear_backward_prologue_pair, engine, {
 		oa::ml::matrix::relu,
 		oa::ml::matrix::silu,
 	] {
-		let input = oa::Matrix::new_from_f32(&engine, [3, 4], &input_values)?;
-		let target = oa::Matrix::new_from_f32(&engine, [3, 7], &target_values)?;
+		let input = oa::Matrix::new_from_f32([3, 4], &input_values)?;
+		let target = oa::Matrix::new_from_f32([3, 7], &target_values)?;
 		// linear_up → linear_fused → act → linear_out → mse. In backward the
 		// act adjoint feeds linear_fused's data adjoint, fusing into
 		// linear_backward_prologue; its dX output feeds linear_up's backward, so
 		// upstream parameter gradients cover both fused outputs transitively.
 		let layers = |seed_offset: u64| -> oa::Result<Vec<_>> {
 			Ok(vec![
-				oa::ml::nn::Linear::new_with_seed(&engine, 4, 5, 0x984 + seed_offset)?,
-				oa::ml::nn::Linear::new_with_seed(&engine, 5, 6, 0x985 + seed_offset)?,
-				oa::ml::nn::Linear::new_with_seed(&engine, 6, 7, 0x986 + seed_offset)?,
+				oa::ml::nn::Linear::new_with_seed(4, 5, 0x984 + seed_offset)?,
+				oa::ml::nn::Linear::new_with_seed(5, 6, 0x985 + seed_offset)?,
+				oa::ml::nn::Linear::new_with_seed(6, 7, 0x986 + seed_offset)?,
 			])
 		};
 		let reference = layers(0)?;
@@ -349,13 +338,13 @@ test_vk!(epilogue_fuses_linear_backward_silu_mul_pair, engine, {
 	let target_values: Vec<f32> = (0..21)
 		.map(|i| ((i * 11 % 13) as f32 - 6.0) / 8.0)
 		.collect();
-	let input = oa::Matrix::new_from_f32(&engine, [3, 4], &input_values)?;
-	let target = oa::Matrix::new_from_f32(&engine, [3, 7], &target_values)?;
+	let input = oa::Matrix::new_from_f32([3, 4], &input_values)?;
+	let target = oa::Matrix::new_from_f32([3, 7], &target_values)?;
 	let layers = || -> oa::Result<Vec<_>> {
 		Ok(vec![
-			oa::ml::nn::Linear::new_with_seed(&engine, 4, 5, 0x984)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 12, 0x985)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 6, 7, 0x986)?,
+			oa::ml::nn::Linear::new_with_seed(4, 5, 0x984)?,
+			oa::ml::nn::Linear::new_with_seed(5, 12, 0x985)?,
+			oa::ml::nn::Linear::new_with_seed(6, 7, 0x986)?,
 		])
 	};
 	let reference = layers()?;
@@ -418,13 +407,13 @@ test_vk!(epilogue_fuses_linear_backward_add_pair, engine, {
 	let target_values: Vec<f32> = (0..18)
 		.map(|i| ((i * 11 % 13) as f32 - 6.0) / 8.0)
 		.collect();
-	let input = oa::Matrix::new_from_f32(&engine, [3, 4], &input_values)?;
-	let target = oa::Matrix::new_from_f32(&engine, [3, 6], &target_values)?;
+	let input = oa::Matrix::new_from_f32([3, 4], &input_values)?;
+	let target = oa::Matrix::new_from_f32([3, 6], &target_values)?;
 	let layers = || -> oa::Result<Vec<_>> {
 		Ok(vec![
-			oa::ml::nn::Linear::new_with_seed(&engine, 4, 5, 0x991)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 6, 0x992)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 6, 0x993)?,
+			oa::ml::nn::Linear::new_with_seed(4, 5, 0x991)?,
+			oa::ml::nn::Linear::new_with_seed(5, 6, 0x992)?,
+			oa::ml::nn::Linear::new_with_seed(5, 6, 0x993)?,
 		])
 	};
 	let reference = layers()?;
@@ -486,12 +475,12 @@ test_vk!(epilogue_fuses_linear_backward_scalar_mul_pair, engine, {
 	let input_values: Vec<f32> = (0..12)
 		.map(|i| ((i * 13 % 19) as f32 - 9.0) / 7.0)
 		.collect();
-	let input = oa::Matrix::new_from_f32(&engine, [3, 4], &input_values)?;
-	let target = oa::Matrix::new_from_slice(&engine, [3], &[1_u32, 3, 4])?;
+	let input = oa::Matrix::new_from_f32([3, 4], &input_values)?;
+	let target = oa::Matrix::new_from_slice([3], &[1_u32, 3, 4])?;
 	let layers = || -> oa::Result<Vec<_>> {
 		Ok(vec![
-			oa::ml::nn::Linear::new_with_seed(&engine, 4, 5, 0x994)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 6, 0x995)?,
+			oa::ml::nn::Linear::new_with_seed(4, 5, 0x994)?,
+			oa::ml::nn::Linear::new_with_seed(5, 6, 0x995)?,
 		])
 	};
 	let reference = layers()?;
@@ -555,17 +544,17 @@ test_vk!(epilogue_fuses_linear_backward_norm_pair, engine, {
 	let target_values: Vec<f32> = (0..18)
 		.map(|i| ((i * 11 % 13) as f32 - 6.0) / 8.0)
 		.collect();
-	let input = oa::Matrix::new_from_f32(&engine, [3, 4], &input_values)?;
-	let target = oa::Matrix::new_from_f32(&engine, [3, 6], &target_values)?;
+	let input = oa::Matrix::new_from_f32([3, 4], &input_values)?;
+	let target = oa::Matrix::new_from_f32([3, 6], &target_values)?;
 	let layers = || -> oa::Result<(
 		oa::ml::nn::Linear,
 		oa::ml::nn::LayerNorm,
 		oa::ml::nn::Linear,
 	)> {
 		Ok((
-			oa::ml::nn::Linear::new_with_seed(&engine, 4, 5, 0x996)?,
-			oa::ml::nn::LayerNorm::new(&engine, 5, 1e-5)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 6, 0x997)?,
+			oa::ml::nn::Linear::new_with_seed(4, 5, 0x996)?,
+			oa::ml::nn::LayerNorm::new(5, 1e-5)?,
+			oa::ml::nn::Linear::new_with_seed(5, 6, 0x997)?,
 		))
 	};
 	let reference = layers()?;
@@ -646,15 +635,15 @@ test_vk!(epilogue_fuses_linear_backward_bmm_chain_pair, engine, {
 	let target_values: Vec<f32> = (0..512)
 		.map(|i| ((i * 11 % 23) as f32 - 11.0) / 9.0)
 		.collect();
-	let input = oa::Matrix::new_from_f32(&engine, [32, 16], &input_values)?;
-	let target = oa::Matrix::new_from_f32(&engine, [32, 16], &target_values)?;
+	let input = oa::Matrix::new_from_f32([32, 16], &input_values)?;
+	let target = oa::Matrix::new_from_f32([32, 16], &target_values)?;
 	let layers = || -> oa::Result<Vec<oa::ml::nn::Linear>> {
 		Ok(vec![
-			oa::ml::nn::Linear::new_with_seed(&engine, 16, 16, 0x9a1)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 16, 16, 0x9a2)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 16, 16, 0x9a3)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 16, 16, 0x9a4)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 16, 16, 0x9a5)?,
+			oa::ml::nn::Linear::new_with_seed(16, 16, 0x9a1)?,
+			oa::ml::nn::Linear::new_with_seed(16, 16, 0x9a2)?,
+			oa::ml::nn::Linear::new_with_seed(16, 16, 0x9a3)?,
+			oa::ml::nn::Linear::new_with_seed(16, 16, 0x9a4)?,
+			oa::ml::nn::Linear::new_with_seed(16, 16, 0x9a5)?,
 		])
 	};
 	let forward = |layers: &[oa::ml::nn::Linear]| -> oa::Result<oa::Matrix> {
@@ -735,15 +724,15 @@ test_vk!(epilogue_fuses_linear_backward_bmm_chain_tails, engine, {
 	let target_values: Vec<f32> = (0..600)
 		.map(|i| ((i * 11 % 23) as f32 - 11.0) / 9.0)
 		.collect();
-	let input = oa::Matrix::new_from_f32(&engine, [30, 20], &input_values)?;
-	let target = oa::Matrix::new_from_f32(&engine, [30, 20], &target_values)?;
+	let input = oa::Matrix::new_from_f32([30, 20], &input_values)?;
+	let target = oa::Matrix::new_from_f32([30, 20], &target_values)?;
 	let layers = || -> oa::Result<Vec<oa::ml::nn::Linear>> {
 		Ok(vec![
-			oa::ml::nn::Linear::new_with_seed(&engine, 20, 20, 0x9b1)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 20, 20, 0x9b2)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 20, 20, 0x9b3)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 20, 20, 0x9b4)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 20, 20, 0x9b5)?,
+			oa::ml::nn::Linear::new_with_seed(20, 20, 0x9b1)?,
+			oa::ml::nn::Linear::new_with_seed(20, 20, 0x9b2)?,
+			oa::ml::nn::Linear::new_with_seed(20, 20, 0x9b3)?,
+			oa::ml::nn::Linear::new_with_seed(20, 20, 0x9b4)?,
+			oa::ml::nn::Linear::new_with_seed(20, 20, 0x9b5)?,
 		])
 	};
 	let forward = |layers: &[oa::ml::nn::Linear]| -> oa::Result<oa::Matrix> {
@@ -826,8 +815,8 @@ test_vk!(epilogue_fuses_linear_backward_norm_add_pair, engine, {
 	let target_values: Vec<f32> = (0..28)
 		.map(|i| ((i * 11 % 13) as f32 - 6.0) / 8.0)
 		.collect();
-	let input = oa::Matrix::new_from_f32(&engine, [4, 5], &input_values)?;
-	let target = oa::Matrix::new_from_f32(&engine, [4, 7], &target_values)?;
+	let input = oa::Matrix::new_from_f32([4, 5], &input_values)?;
+	let target = oa::Matrix::new_from_f32([4, 7], &target_values)?;
 	let layers = || -> oa::Result<(
 		oa::ml::nn::Linear,
 		oa::ml::nn::LayerNorm,
@@ -835,10 +824,10 @@ test_vk!(epilogue_fuses_linear_backward_norm_add_pair, engine, {
 		oa::ml::nn::Linear,
 	)> {
 		Ok((
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 5, 0x9c1)?,
-			oa::ml::nn::LayerNorm::new(&engine, 5, 1e-5)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 7, 0x9c2)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 7, 0x9c3)?,
+			oa::ml::nn::Linear::new_with_seed(5, 5, 0x9c1)?,
+			oa::ml::nn::LayerNorm::new(5, 1e-5)?,
+			oa::ml::nn::Linear::new_with_seed(5, 7, 0x9c2)?,
+			oa::ml::nn::Linear::new_with_seed(5, 7, 0x9c3)?,
 		))
 	};
 	let reference = layers()?;
@@ -937,8 +926,8 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_chain, engine, {
 	let target_values: Vec<f32> = (0..28)
 		.map(|i| ((i * 11 % 13) as f32 - 6.0) / 8.0)
 		.collect();
-	let input = oa::Matrix::new_from_f32(&engine, [4, 5], &input_values)?;
-	let target = oa::Matrix::new_from_f32(&engine, [4, 7], &target_values)?;
+	let input = oa::Matrix::new_from_f32([4, 5], &input_values)?;
+	let target = oa::Matrix::new_from_f32([4, 7], &target_values)?;
 	let layers = || -> oa::Result<(
 		oa::ml::nn::LayerNorm,
 		oa::ml::nn::Linear,
@@ -946,10 +935,10 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_chain, engine, {
 		oa::ml::nn::Linear,
 	)> {
 		Ok((
-			oa::ml::nn::LayerNorm::new(&engine, 5, 1e-5)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 7, 0x9d1)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 7, 0x9d2)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 7, 0x9d3)?,
+			oa::ml::nn::LayerNorm::new(5, 1e-5)?,
+			oa::ml::nn::Linear::new_with_seed(5, 7, 0x9d1)?,
+			oa::ml::nn::Linear::new_with_seed(5, 7, 0x9d2)?,
+			oa::ml::nn::Linear::new_with_seed(5, 7, 0x9d3)?,
 		))
 	};
 	let reference = layers()?;
@@ -1059,17 +1048,17 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_pair, engine, {
 	let target_values: Vec<f32> = (0..28)
 		.map(|i| ((i * 11 % 13) as f32 - 6.0) / 8.0)
 		.collect();
-	let input = oa::Matrix::new_from_f32(&engine, [4, 5], &input_values)?;
-	let target = oa::Matrix::new_from_f32(&engine, [4, 7], &target_values)?;
+	let input = oa::Matrix::new_from_f32([4, 5], &input_values)?;
+	let target = oa::Matrix::new_from_f32([4, 7], &target_values)?;
 	let layers = || -> oa::Result<(
 		oa::ml::nn::LayerNorm,
 		oa::ml::nn::Linear,
 		oa::ml::nn::Linear,
 	)> {
 		Ok((
-			oa::ml::nn::LayerNorm::new(&engine, 5, 1e-5)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 7, 0x9e1)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 7, 0x9e2)?,
+			oa::ml::nn::LayerNorm::new(5, 1e-5)?,
+			oa::ml::nn::Linear::new_with_seed(5, 7, 0x9e1)?,
+			oa::ml::nn::Linear::new_with_seed(5, 7, 0x9e2)?,
 		))
 	};
 	let reference = layers()?;
@@ -1165,11 +1154,10 @@ fn grouped_backward_prologue_oracle(
 		.collect();
 	let down_bias: Vec<f32> = (0..experts * output).map(|i| pseudo(i, 5) * 0.1).collect();
 	let target_values: Vec<f32> = (0..rows * output).map(|i| pseudo(i, 6)).collect();
-	let target = oa::Matrix::new_from_f32(engine, [rows, output], &target_values)?;
-	let offsets = oa::Matrix::new_from_slice(engine, [offsets_values.len()], offsets_values)?;
-	let expert_ids =
-		oa::Matrix::new_from_slice(engine, [experts], &(0..experts as u32).collect::<Vec<_>>())?;
-	let input = oa::Matrix::new_from_f32(engine, [rows, width], &input_values)?;
+	let target = oa::Matrix::new_from_f32([rows, output], &target_values)?;
+	let offsets = oa::Matrix::new_from_slice([offsets_values.len()], offsets_values)?;
+	let expert_ids = oa::Matrix::new_from_slice([experts], &(0..experts as u32).collect::<Vec<_>>())?;
+	let input = oa::Matrix::new_from_f32([rows, width], &input_values)?;
 	let build = || -> oa::Result<(
 		oa::ml::nn::Embedding,
 		oa::ml::nn::Embedding,
@@ -1177,24 +1165,16 @@ fn grouped_backward_prologue_oracle(
 		oa::ml::nn::Embedding,
 	)> {
 		Ok((
-			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-				engine,
-				[experts, 2 * hidden * width],
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([experts, 2 * hidden * width],
 				&gate_up_weight,
 			)?)?,
-			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-				engine,
-				[experts, 2 * hidden],
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([experts, 2 * hidden],
 				&gate_up_bias,
 			)?)?,
-			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-				engine,
-				[experts, output * hidden],
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([experts, output * hidden],
 				&down_weight,
 			)?)?,
-			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-				engine,
-				[experts, output],
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([experts, output],
 				&down_bias,
 			)?)?,
 		))
@@ -1336,21 +1316,19 @@ test_vk!(epilogue_fuses_residual_layer_norm_pair, engine, {
 	// [512, 4]: the elementwise add launches eight workgroups while the fused
 	// kernel needs one per row — a mismatched dispatch leaves 504 rows unwritten.
 	let input_a = oa::Matrix::new_from_f32(
-		&engine,
 		[512, 4],
 		&(0..2048)
 			.map(|index| (index % 97) as f32 * 0.05 - 2.0)
 			.collect::<Vec<_>>(),
 	)?;
 	let input_b = oa::Matrix::new_from_f32(
-		&engine,
 		[512, 4],
 		&(0..2048)
 			.map(|index| (index % 53) as f32 * -0.04 + 1.0)
 			.collect::<Vec<_>>(),
 	)?;
-	let weight = oa::Matrix::new_from_f32(&engine, [4], &[1.0, -0.5, 2.0, 0.75])?;
-	let bias = oa::Matrix::new_from_f32(&engine, [4], &[0.25, -1.0, 0.5, -0.125])?;
+	let weight = oa::Matrix::new_from_f32([4], &[1.0, -0.5, 2.0, 0.75])?;
+	let bias = oa::Matrix::new_from_f32([4], &[0.25, -1.0, 0.5, -0.125])?;
 	let norm = oa::ml::nn::LayerNorm::new_from_matrices(weight, bias, 1.0e-5)?;
 	let reference = {
 		let summed = oa::matrix::add(&input_a, &input_b)?;
@@ -1386,18 +1364,18 @@ test_vk!(epilogue_fuses_linear_residual_norm_chain, engine, {
 		.map(|i| ((i * 11 % 13) as f32 - 6.0) / 5.0)
 		.collect();
 	let target_values: Vec<f32> = (0..24).map(|i| ((i * 7 % 11) as f32 - 5.0) / 4.0).collect();
-	let input = oa::Matrix::new_from_f32(&engine, [6, 5], &input_values)?;
-	let residual = oa::Matrix::new_from_f32(&engine, [6, 7], &residual_values)?;
-	let target = oa::Matrix::new_from_f32(&engine, [6, 4], &target_values)?;
+	let input = oa::Matrix::new_from_f32([6, 5], &input_values)?;
+	let residual = oa::Matrix::new_from_f32([6, 7], &residual_values)?;
+	let target = oa::Matrix::new_from_f32([6, 4], &target_values)?;
 	let layers = || -> oa::Result<(
 		oa::ml::nn::Linear,
 		oa::ml::nn::LayerNorm,
 		oa::ml::nn::Linear,
 	)> {
 		Ok((
-			oa::ml::nn::Linear::new_with_seed(&engine, 5, 7, 0x8a1)?,
-			oa::ml::nn::LayerNorm::new(&engine, 7, 1e-5)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 7, 4, 0x8a2)?,
+			oa::ml::nn::Linear::new_with_seed(5, 7, 0x8a1)?,
+			oa::ml::nn::LayerNorm::new(7, 1e-5)?,
+			oa::ml::nn::Linear::new_with_seed(7, 4, 0x8a2)?,
 		))
 	};
 	let reference = layers()?;
@@ -1481,11 +1459,10 @@ test_vk!(epilogue_fuses_linear_residual_norm_chain, engine, {
 });
 
 test_vk!(epilogue_fuses_shared_input_linear_triple, engine, {
-	let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
+	let input = oa::Matrix::new_from_f32([2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
 	let weights: Vec<oa::Matrix> = (0..3)
 		.map(|index| {
 			oa::Matrix::new_from_f32(
-				&engine,
 				[4, 3],
 				&[
 					0.5 + index as f32,
@@ -1505,7 +1482,7 @@ test_vk!(epilogue_fuses_shared_input_linear_triple, engine, {
 		})
 		.collect::<oa::Result<_>>()?;
 	let biases: Vec<oa::Matrix> = (0..3)
-		.map(|index| oa::Matrix::new_from_f32(&engine, [4], &[0.5, -1.0 + index as f32, 2.0, -0.25]))
+		.map(|index| oa::Matrix::new_from_f32([4], &[0.5, -1.0 + index as f32, 2.0, -0.25]))
 		.collect::<oa::Result<_>>()?;
 	let projections: Vec<oa::ml::nn::Linear> = weights
 		.into_iter()
@@ -1541,10 +1518,9 @@ test_vk!(epilogue_fuses_shared_input_linear_triple, engine, {
 });
 
 test_vk!(epilogue_fuses_embedding_pair_sum, engine, {
-	let tokens = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 2, 1, 3])?;
-	let positions = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 1, 2, 3])?;
+	let tokens = oa::Matrix::new_from_slice([4], &[0_u32, 2, 1, 3])?;
+	let positions = oa::Matrix::new_from_slice([4], &[0_u32, 1, 2, 3])?;
 	let token_table = oa::Matrix::new_from_f32(
-		&engine,
 		[4, 3],
 		&[
 			0.5, -1.0, 2.0, //
@@ -1554,7 +1530,6 @@ test_vk!(epilogue_fuses_embedding_pair_sum, engine, {
 		],
 	)?;
 	let position_table = oa::Matrix::new_from_f32(
-		&engine,
 		[4, 3],
 		&[
 			1.0, 0.0, -1.0, //
@@ -1593,10 +1568,10 @@ test_vk!(epilogue_fuses_embedding_pair_norm_chain, engine, {
 	// [embedding, embedding, add, layer_norm] head that opens the
 	// transformer fuses into one embedding_pair_norm dispatch instead
 	// of the embedding_pair kernel plus a separate layer_norm.
-	let tokens = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 2, 1, 3])?;
-	let positions = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 1, 2, 3])?;
+	let tokens = oa::Matrix::new_from_slice([4], &[0_u32, 2, 1, 3])?;
+	let positions = oa::Matrix::new_from_slice([4], &[0_u32, 1, 2, 3])?;
 	let target_values: Vec<f32> = (0..8).map(|i| ((i * 7 % 9) as f32 - 4.0) / 3.0).collect();
-	let target = oa::Matrix::new_from_f32(&engine, [4, 2], &target_values)?;
+	let target = oa::Matrix::new_from_f32([4, 2], &target_values)?;
 	let layers = || -> oa::Result<(
 		oa::ml::nn::Embedding,
 		oa::ml::nn::Embedding,
@@ -1604,10 +1579,10 @@ test_vk!(epilogue_fuses_embedding_pair_norm_chain, engine, {
 		oa::ml::nn::Linear,
 	)> {
 		Ok((
-			oa::ml::nn::Embedding::new_with_seed(&engine, 4, 3, 0x6f1)?,
-			oa::ml::nn::Embedding::new_with_seed(&engine, 4, 3, 0x6f2)?,
-			oa::ml::nn::LayerNorm::new(&engine, 3, 1e-5)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 3, 2, 0x6f3)?,
+			oa::ml::nn::Embedding::new_with_seed(4, 3, 0x6f1)?,
+			oa::ml::nn::Embedding::new_with_seed(4, 3, 0x6f2)?,
+			oa::ml::nn::LayerNorm::new(3, 1e-5)?,
+			oa::ml::nn::Linear::new_with_seed(3, 2, 0x6f3)?,
 		))
 	};
 	let reference = layers()?;
@@ -1692,10 +1667,10 @@ test_vk!(epilogue_fuses_embedding_backward_sum_pair, engine, {
 	// add is absorbed and its buffer never materializes — a partial
 	// fuse is impossible, matching the real transformer head where the
 	// token and position table adjoints share the same combined dY.
-	let tokens = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 2, 1, 3])?;
-	let positions = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 1, 2, 3])?;
+	let tokens = oa::Matrix::new_from_slice([4], &[0_u32, 2, 1, 3])?;
+	let positions = oa::Matrix::new_from_slice([4], &[0_u32, 1, 2, 3])?;
 	let target_values: Vec<f32> = (0..8).map(|i| ((i * 7 % 9) as f32 - 4.0) / 3.0).collect();
-	let target = oa::Matrix::new_from_f32(&engine, [4, 2], &target_values)?;
+	let target = oa::Matrix::new_from_f32([4, 2], &target_values)?;
 	let layers = || -> oa::Result<(
 		oa::ml::nn::Embedding,
 		oa::ml::nn::Embedding,
@@ -1703,10 +1678,10 @@ test_vk!(epilogue_fuses_embedding_backward_sum_pair, engine, {
 		oa::ml::nn::Linear,
 	)> {
 		Ok((
-			oa::ml::nn::Embedding::new_with_seed(&engine, 4, 3, 0x7a1)?,
-			oa::ml::nn::Embedding::new_with_seed(&engine, 4, 3, 0x7a2)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 3, 2, 0x7a3)?,
-			oa::ml::nn::Linear::new_with_seed(&engine, 3, 2, 0x7a4)?,
+			oa::ml::nn::Embedding::new_with_seed(4, 3, 0x7a1)?,
+			oa::ml::nn::Embedding::new_with_seed(4, 3, 0x7a2)?,
+			oa::ml::nn::Linear::new_with_seed(3, 2, 0x7a3)?,
+			oa::ml::nn::Linear::new_with_seed(3, 2, 0x7a4)?,
 		))
 	};
 	let reference = layers()?;
@@ -1805,7 +1780,6 @@ test_vk!(epilogue_fuses_conv_1d_bias_transpose_pair, engine, {
 	// buffer stays raw and the biased [B, C, T] output is written in
 	// one pass — bit-identical to the unfused pair.
 	let input = oa::Matrix::new_from_f32(
-		&engine,
 		[2, 3, 12],
 		&vec![0.0; 2 * 3 * 12]
 			.iter()
@@ -1813,11 +1787,11 @@ test_vk!(epilogue_fuses_conv_1d_bias_transpose_pair, engine, {
 			.map(|(i, _)| ((i * 29 % 17) as f32 - 8.0) / 7.0)
 			.collect::<Vec<f32>>(),
 	)?;
-	let target = oa::Matrix::new_from_f32(&engine, [2, 4, 12], &vec![0.0; 2 * 4 * 12])?;
+	let target = oa::Matrix::new_from_f32([2, 4, 12], &vec![0.0; 2 * 4 * 12])?;
 	let layers = || -> oa::Result<(oa::ml::nn::Conv1d, oa::ml::nn::Conv1d)> {
 		Ok((
-			oa::ml::nn::Conv1d::new_with_seed(&engine, 3, 5, 3, 1, 1, 1, 0x5c1)?,
-			oa::ml::nn::Conv1d::new_with_seed(&engine, 5, 4, 3, 1, 1, 1, 0x5c2)?,
+			oa::ml::nn::Conv1d::new_with_seed(3, 5, 3, 1, 1, 1, 0x5c1)?,
+			oa::ml::nn::Conv1d::new_with_seed(5, 4, 3, 1, 1, 1, 0x5c2)?,
 		))
 	};
 	let reference = layers()?;
@@ -1908,7 +1882,6 @@ test_vk!(
 		// same tile pass — the standalone matrix.add must disappear while
 		// the activated intermediate stays bit-identical.
 		let input = oa::Matrix::new_from_f32(
-			&engine,
 			[2, 3, 12],
 			&vec![0.0; 2 * 3 * 12]
 				.iter()
@@ -1917,7 +1890,6 @@ test_vk!(
 				.collect::<Vec<f32>>(),
 		)?;
 		let residual = oa::Matrix::new_from_f32(
-			&engine,
 			[2, 5, 12],
 			&vec![0.0; 2 * 5 * 12]
 				.iter()
@@ -1925,11 +1897,11 @@ test_vk!(
 				.map(|(i, _)| ((i * 23 % 13) as f32 - 6.0) / 9.0)
 				.collect::<Vec<f32>>(),
 		)?;
-		let target = oa::Matrix::new_from_f32(&engine, [2, 4, 12], &vec![0.0; 2 * 4 * 12])?;
+		let target = oa::Matrix::new_from_f32([2, 4, 12], &vec![0.0; 2 * 4 * 12])?;
 		let layers = || -> oa::Result<(oa::ml::nn::Conv1d, oa::ml::nn::Conv1d)> {
 			Ok((
-				oa::ml::nn::Conv1d::new_with_seed(&engine, 3, 5, 3, 1, 1, 1, 0x8c1)?,
-				oa::ml::nn::Conv1d::new_with_seed(&engine, 5, 4, 3, 1, 1, 1, 0x8c2)?,
+				oa::ml::nn::Conv1d::new_with_seed(3, 5, 3, 1, 1, 1, 0x8c1)?,
+				oa::ml::nn::Conv1d::new_with_seed(5, 4, 3, 1, 1, 1, 0x8c2)?,
 			))
 		};
 		let reference = layers()?;
@@ -2005,7 +1977,6 @@ test_vk!(epilogue_fuses_conv_1d_bias_transpose_norm_relu, engine, {
 	// republishes the biased conv output because the backward adjoint
 	// consumes it as saved state.
 	let input = oa::Matrix::new_from_f32(
-		&engine,
 		[2, 3, 11],
 		&vec![0.0; 2 * 3 * 11]
 			.iter()
@@ -2013,13 +1984,13 @@ test_vk!(epilogue_fuses_conv_1d_bias_transpose_norm_relu, engine, {
 			.map(|(i, _)| ((i * 31 % 19) as f32 - 9.0) / 8.0)
 			.collect::<Vec<f32>>(),
 	)?;
-	let target = oa::Matrix::new_from_f32(&engine, [2, 5, 11], &vec![0.0; 2 * 5 * 11])?;
+	let target = oa::Matrix::new_from_f32([2, 5, 11], &vec![0.0; 2 * 5 * 11])?;
 	let layers =
 		|| -> oa::Result<(oa::ml::nn::Conv1d, oa::ml::nn::LayerNorm, oa::ml::nn::Conv1d)> {
 			Ok((
-				oa::ml::nn::Conv1d::new_with_seed(&engine, 3, 5, 3, 1, 1, 1, 0x6d1)?,
-				oa::ml::nn::LayerNorm::new(&engine, 5, 1e-5)?,
-				oa::ml::nn::Conv1d::new_with_seed(&engine, 5, 5, 3, 1, 1, 1, 0x6d2)?,
+				oa::ml::nn::Conv1d::new_with_seed(3, 5, 3, 1, 1, 1, 0x6d1)?,
+				oa::ml::nn::LayerNorm::new(5, 1e-5)?,
+				oa::ml::nn::Conv1d::new_with_seed(5, 5, 3, 1, 1, 1, 0x6d2)?,
 			))
 		};
 	let reference = layers()?;
@@ -2104,7 +2075,6 @@ test_vk!(epilogue_fuses_conv_1d_bias_copy, engine, {
 	// biased copy of the projected buffer, so the fused kernel drops
 	// both transposes and writes the final layout directly.
 	let input = oa::Matrix::new_from_f32(
-		&engine,
 		[2, 3, 9],
 		&vec![0.0; 2 * 3 * 9]
 			.iter()
@@ -2112,9 +2082,9 @@ test_vk!(epilogue_fuses_conv_1d_bias_copy, engine, {
 			.map(|(i, _)| ((i * 23 % 13) as f32 - 6.0) / 5.0)
 			.collect::<Vec<f32>>(),
 	)?;
-	let target = oa::Matrix::new_from_f32(&engine, [2, 9, 4], &vec![0.0; 2 * 9 * 4])?;
+	let target = oa::Matrix::new_from_f32([2, 9, 4], &vec![0.0; 2 * 9 * 4])?;
 	let layers = || -> oa::Result<oa::ml::nn::Conv1d> {
-		oa::ml::nn::Conv1d::new_with_seed(&engine, 3, 4, 3, 1, 1, 1, 0x7d1)
+		oa::ml::nn::Conv1d::new_with_seed(3, 4, 3, 1, 1, 1, 0x7d1)
 	};
 	let reference = layers()?;
 	let candidate = layers()?;
@@ -2182,7 +2152,6 @@ test_vk!(
 		// backward mask applies at the pool adjoint's store. Neither the raw
 		// conv output nor the unmasked pool gradient is materialized.
 		let input = oa::Matrix::new_from_f32(
-			&engine,
 			[2, 3, 8, 9],
 			&vec![0.0; 2 * 3 * 8 * 9]
 				.iter()
@@ -2190,9 +2159,9 @@ test_vk!(
 				.map(|(i, _)| ((i * 31 % 19) as f32 - 9.0) / 8.0)
 				.collect::<Vec<f32>>(),
 		)?;
-		let target = oa::Matrix::new_from_f32(&engine, [2, 4, 4, 4], &vec![0.0; 2 * 4 * 4 * 4])?;
+		let target = oa::Matrix::new_from_f32([2, 4, 4, 4], &vec![0.0; 2 * 4 * 4 * 4])?;
 		let layers = || -> oa::Result<oa::ml::nn::Conv2d> {
-			oa::ml::nn::Conv2d::new_with_seed(&engine, 3, 4, 3, 1, 1, 1, 0x8c1)
+			oa::ml::nn::Conv2d::new_with_seed(3, 4, 3, 1, 1, 1, 0x8c1)
 		};
 		let reference = layers()?;
 		let candidate = layers()?;
@@ -2264,11 +2233,11 @@ test_vk!(
 				.map(|i| ((i * 29 % modulus) as f32 - (modulus / 2) as f32) / scale)
 				.collect()
 		};
-		let input_1d = oa::Matrix::new_from_f32(&engine, [2, 3, 10], &ramp(60, 17, 7.0))?;
-		let residual = oa::Matrix::new_from_f32(&engine, [2, 4, 10], &ramp(80, 13, 9.0))?;
-		let input_2d = oa::Matrix::new_from_f32(&engine, [2, 3, 6, 7], &ramp(252, 19, 8.0))?;
-		let conv_1d = oa::ml::nn::Conv1d::new_with_seed(&engine, 3, 4, 3, 1, 1, 1, 0xa11)?;
-		let conv_2d = oa::ml::nn::Conv2d::new_with_seed(&engine, 3, 4, 3, 1, 1, 1, 0xa12)?;
+		let input_1d = oa::Matrix::new_from_f32([2, 3, 10], &ramp(60, 17, 7.0))?;
+		let residual = oa::Matrix::new_from_f32([2, 4, 10], &ramp(80, 13, 9.0))?;
+		let input_2d = oa::Matrix::new_from_f32([2, 3, 6, 7], &ramp(252, 19, 8.0))?;
+		let conv_1d = oa::ml::nn::Conv1d::new_with_seed(3, 4, 3, 1, 1, 1, 0xa11)?;
+		let conv_2d = oa::ml::nn::Conv2d::new_with_seed(3, 4, 3, 1, 1, 1, 0xa12)?;
 		type Case<'a> = (&'a str, Box<dyn Fn() -> oa::Result<Vec<oa::Matrix>> + 'a>);
 		let cases: Vec<Case> = vec![
 			(
@@ -2334,7 +2303,7 @@ test_vk!(
 );
 
 test_vk!(epilogue_fuses_sum_axis_scale_pair, engine, {
-	let input = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
+	let input = oa::Matrix::new_from_f32([2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
 	let reference = {
 		let summed = oa::matrix::sum(&input, 1)?;
 		oa::matrix::scale(&summed, 0.25)?.read_f32()?
@@ -2358,7 +2327,7 @@ test_vk!(epilogue_fuses_sum_axis_scale_pair, engine, {
 });
 
 test_vk!(capture_preserves_metadata_view_provenance, engine, {
-	let source = oa::matrix::ones(&engine, [2, 3])?;
+	let source = oa::matrix::ones([2, 3])?;
 	let view = source.reshape([3, 2])?;
 	let (plan, output) = engine.capture(|| oa::matrix::scale(&view, 2.0))?;
 
@@ -2388,8 +2357,8 @@ test_vk!(
 	{
 		use std::time::Duration;
 
-		let one = oa::matrix::ones(&engine, [262_147])?;
-		let two = oa::matrix::full(&engine, [262_147], 2.0)?;
+		let one = oa::matrix::ones([262_147])?;
+		let two = oa::matrix::full([262_147], 2.0)?;
 		let (plan, output) = engine.capture(|| {
 			let three = oa::matrix::add(&one, &two)?;
 			oa::matrix::add(&three, &three)
@@ -2413,7 +2382,7 @@ test_vk!(
 
 		let surviving_event = {
 			let engine = oa::Engine::new()?;
-			let input = oa::matrix::ones(&engine, [262_147])?;
+			let input = oa::matrix::ones([262_147])?;
 			let (plan, _output) = engine.capture(|| oa::matrix::add(&input, &input))?;
 			engine.submit_timed(&plan)?
 		};
@@ -2428,8 +2397,8 @@ test_vk!(
 	{
 		use std::panic::{AssertUnwindSafe, catch_unwind};
 
-		let one = oa::matrix::ones(&engine, [2])?;
-		let two = oa::matrix::full(&engine, [2], 2.0)?;
+		let one = oa::matrix::ones([2])?;
+		let two = oa::matrix::full([2], 2.0)?;
 		let pending = oa::matrix::add(&one, &two)?;
 
 		let dirty = engine.capture(|| Ok(()));
@@ -2448,7 +2417,7 @@ test_vk!(
 			oa::ErrorKind::FailedPrecondition
 		);
 
-		let mismatched = oa::matrix::ones(&engine, [3])?;
+		let mismatched = oa::matrix::ones([3])?;
 		let mut escaped = None;
 		let failed = engine.capture(|| {
 			escaped = Some(oa::matrix::add(&one, &two)?);
@@ -2485,7 +2454,7 @@ test_vk!(
 );
 
 test_vk!(rejects_foreign_plan_without_poisoning_its_origin, origin, {
-	let input = oa::matrix::ones(&origin, [3])?;
+	let input = oa::matrix::ones_on(&origin, [3])?;
 	let (plan, output) = origin.capture(|| oa::matrix::add(&input, &input))?;
 	let foreign = oa::Engine::new()?;
 
@@ -2497,8 +2466,8 @@ test_vk!(rejects_foreign_plan_without_poisoning_its_origin, origin, {
 });
 
 test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
-	let one = oa::matrix::ones(&engine, [2, 3])?;
-	let two = oa::matrix::full(&engine, [2, 3], 2.0)?;
+	let one = oa::matrix::ones([2, 3])?;
+	let two = oa::matrix::full([2, 3], 2.0)?;
 	let (mut plan, output) = engine.capture(|| {
 		let three = oa::matrix::add(&one, &two)?;
 		oa::matrix::add(&three, &one)
@@ -2536,8 +2505,8 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 	assert_eq!(initial.command_cache_hit_count(), 0);
 	assert_eq!(initial.submission_count(), 0);
 	assert_eq!(initial.fallback_count(), 0);
-	let duplicate_one = oa::matrix::ones(&engine, [2, 3])?;
-	let duplicate_two = oa::matrix::full(&engine, [2, 3], 2.0)?;
+	let duplicate_one = oa::matrix::ones([2, 3])?;
+	let duplicate_two = oa::matrix::full([2, 3], 2.0)?;
 	let (equivalent_plan, _equivalent_output) = engine.capture(|| {
 		let three = oa::matrix::add(&duplicate_one, &duplicate_two)?;
 		oa::matrix::add(&three, &duplicate_one)
@@ -2555,7 +2524,7 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 	assert_eq!(reused.command_cache_hit_count(), 1);
 	assert_eq!(reused.submission_count(), 2);
 
-	let four = oa::matrix::full(&engine, [2, 3], 4.0)?;
+	let four = oa::matrix::full([2, 3], 4.0)?;
 	#[cfg(oa_profile = "core")]
 	{
 		// Core tapes bake descriptor-array operand indices into push words;
@@ -2610,10 +2579,10 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 });
 
 test_vk!(dnn_analysis_recognizes_a_schema_owned_qkv_region, engine, {
-	let activation = oa::matrix::ones(&engine, [2, 3])?;
-	let q_weight = oa::matrix::ones(&engine, [4, 3])?;
-	let k_weight = oa::matrix::full(&engine, [4, 3], 2.0)?;
-	let v_weight = oa::matrix::full(&engine, [4, 3], 3.0)?;
+	let activation = oa::matrix::ones([2, 3])?;
+	let q_weight = oa::matrix::ones([4, 3])?;
+	let k_weight = oa::matrix::full([4, 3], 2.0)?;
+	let v_weight = oa::matrix::full([4, 3], 3.0)?;
 	let (plan, output) = engine.capture(|| {
 		let _query = oa::matrix::mat_mul_nt(&activation, &q_weight)?;
 		let _key = oa::matrix::mat_mul_nt(&activation, &k_weight)?;
@@ -2642,18 +2611,18 @@ test_vk!(
 	dnn_lowering_fuses_the_donor_qualified_qkv_projection,
 	engine,
 	{
-		let input = oa::matrix::ones(&engine, [1024, 32])?;
+		let input = oa::matrix::ones([1024, 32])?;
 		let query = oa::ml::nn::Linear::new_from_matrices(
-			oa::matrix::ones(&engine, [32, 32])?,
-			oa::matrix::full(&engine, [32], 0.5)?,
+			oa::matrix::ones([32, 32])?,
+			oa::matrix::full([32], 0.5)?,
 		)?;
 		let key = oa::ml::nn::Linear::new_from_matrices(
-			oa::matrix::full(&engine, [32, 32], 2.0)?,
-			oa::matrix::full(&engine, [32], 1.0)?,
+			oa::matrix::full([32, 32], 2.0)?,
+			oa::matrix::full([32], 1.0)?,
 		)?;
 		let value = oa::ml::nn::Linear::new_from_matrices(
-			oa::matrix::full(&engine, [32, 32], 3.0)?,
-			oa::matrix::full(&engine, [32], 1.5)?,
+			oa::matrix::full([32, 32], 3.0)?,
+			oa::matrix::full([32], 1.5)?,
 		)?;
 		let capture = || {
 			engine.capture(|| {
@@ -2722,14 +2691,14 @@ test_vk!(
 	dnn_lowering_fuses_the_donor_qualified_gate_up_swiglu,
 	engine,
 	{
-		let input = oa::matrix::ones(&engine, [1024, 32])?;
+		let input = oa::matrix::ones([1024, 32])?;
 		let gate = oa::ml::nn::Linear::new_from_matrices(
-			oa::matrix::full(&engine, [64, 32], 0.01)?,
-			oa::matrix::full(&engine, [64], 0.1)?,
+			oa::matrix::full([64, 32], 0.01)?,
+			oa::matrix::full([64], 0.1)?,
 		)?;
 		let up = oa::ml::nn::Linear::new_from_matrices(
-			oa::matrix::full(&engine, [64, 32], 0.02)?,
-			oa::matrix::full(&engine, [64], 0.2)?,
+			oa::matrix::full([64, 32], 0.02)?,
+			oa::matrix::full([64], 0.2)?,
 		)?;
 		let (plan, output) = engine.capture(|| {
 			let gate_output = gate.forward(&input)?;
@@ -2765,14 +2734,14 @@ test_vk!(
 	dnn_gate_up_retains_source_nodes_when_an_intermediate_escapes,
 	engine,
 	{
-		let input = oa::matrix::ones(&engine, [1024, 32])?;
+		let input = oa::matrix::ones([1024, 32])?;
 		let gate = oa::ml::nn::Linear::new_from_matrices(
-			oa::matrix::full(&engine, [64, 32], 0.01)?,
-			oa::matrix::full(&engine, [64], 0.1)?,
+			oa::matrix::full([64, 32], 0.01)?,
+			oa::matrix::full([64], 0.1)?,
 		)?;
 		let up = oa::ml::nn::Linear::new_from_matrices(
-			oa::matrix::full(&engine, [64, 32], 0.02)?,
-			oa::matrix::full(&engine, [64], 0.2)?,
+			oa::matrix::full([64, 32], 0.02)?,
+			oa::matrix::full([64], 0.2)?,
 		)?;
 		let (plan, (_escaped, output)) = engine.capture(|| {
 			let gate_output = gate.forward(&input)?;
@@ -2795,12 +2764,12 @@ test_vk!(
 	rejects_invalid_matrix_input_rebinding_without_mutating_the_plan,
 	engine,
 	{
-		let one = oa::matrix::ones(&engine, [2, 3])?;
-		let two = oa::matrix::full(&engine, [2, 3], 2.0)?;
+		let one = oa::matrix::ones([2, 3])?;
+		let two = oa::matrix::full([2, 3], 2.0)?;
 		let (mut plan, output) = engine.capture(|| oa::matrix::add(&one, &two))?;
 		let graph_id = plan.diagnostics().graph_id();
 
-		let wrong_shape = oa::matrix::ones(&engine, [3, 2])?;
+		let wrong_shape = oa::matrix::ones([3, 2])?;
 		assert_eq!(
 			plan
 				.bind_matrix_input(&one, &wrong_shape)
@@ -2812,7 +2781,7 @@ test_vk!(
 			plan.bind_matrix_input(&one, &two).unwrap_err().kind(),
 			oa::ErrorKind::InvalidArgument
 		);
-		let replacement_output = oa::matrix::ones(&engine, [2, 3])?;
+		let replacement_output = oa::matrix::ones([2, 3])?;
 		assert_eq!(
 			plan
 				.bind_matrix_input(&output, &replacement_output)
@@ -2820,7 +2789,7 @@ test_vk!(
 				.kind(),
 			oa::ErrorKind::InvalidArgument
 		);
-		let unrelated = oa::matrix::ones(&engine, [2, 3])?;
+		let unrelated = oa::matrix::ones([2, 3])?;
 		assert_eq!(
 			plan
 				.bind_matrix_input(&unrelated, &unrelated)
@@ -2829,7 +2798,7 @@ test_vk!(
 			oa::ErrorKind::InvalidArgument
 		);
 		let foreign = oa::Engine::new()?;
-		let foreign_input = oa::matrix::ones(&foreign, [2, 3])?;
+		let foreign_input = oa::matrix::ones_on(&foreign, [2, 3])?;
 		assert_eq!(
 			plan
 				.bind_matrix_input(&one, &foreign_input)
@@ -2852,7 +2821,7 @@ test_vk!(
 	timed_replay_reuses_graph_command_and_retains_independent_queries,
 	engine,
 	{
-		let x = oa::matrix::ones(&engine, [17])?;
+		let x = oa::matrix::ones([17])?;
 		let (plan, y) = engine.capture(|| oa::matrix::scale(&x, 3.))?;
 		let first = engine.submit_timed(&plan)?;
 		let second = engine.submit_timed(&plan)?;
@@ -2873,7 +2842,7 @@ test_vk!(
 	dnn_filtered_storage_root_keeps_view_on_source_path,
 	engine,
 	{
-		let scalar = oa::Matrix::new_from_f32(&engine, [], &[3.0])?;
+		let scalar = oa::Matrix::new_from_f32([], &[3.0])?;
 		let (plan, output) = engine.capture(|| {
 			let view = oa::matrix::reshape(&scalar, [1])?;
 			oa::matrix::add_scalar(&view, 2.0)
@@ -2891,7 +2860,6 @@ test_vk!(
 	{
 		let rgb = oa::Image::new(
 			oa::Matrix::new_from_f32(
-				&engine,
 				[1, 3, 2, 4],
 				&[
 					1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, //
@@ -2940,7 +2908,6 @@ test_vk!(
 
 test_vk!(dnn_lowering_fuses_linear_bias_epilogue, engine, {
 	let a = oa::Matrix::new_from_f32(
-		&engine,
 		[4, 8],
 		&[
 			1.0, -2.0, 0.5, 3.0, -1.5, 2.0, 0.25, 4.0, //
@@ -2950,7 +2917,6 @@ test_vk!(dnn_lowering_fuses_linear_bias_epilogue, engine, {
 		],
 	)?;
 	let b = oa::Matrix::new_from_f32(
-		&engine,
 		[6, 8],
 		&[
 			0.5, -1.0, 2.0, 1.0, -0.5, 3.0, -2.0, 1.5, //
@@ -2961,7 +2927,7 @@ test_vk!(dnn_lowering_fuses_linear_bias_epilogue, engine, {
 			0.75, -2.75, -0.5, 3.25, -3.75, 1.25, -1.0, 0.5,
 		],
 	)?;
-	let bias = oa::Matrix::new_from_f32(&engine, [6], &[0.5, -1.0, 2.0, -0.25, 1.5, -3.0])?;
+	let bias = oa::Matrix::new_from_f32([6], &[0.5, -1.0, 2.0, -0.25, 1.5, -3.0])?;
 	let reference = oa::matrix::bias_add(&oa::matrix::mat_mul_nt(&a, &b)?, &bias)?.read_f32()?;
 	let (plan, output) = engine.capture(|| {
 		let product = oa::matrix::mat_mul_nt(&a, &b)?;
@@ -2990,7 +2956,6 @@ test_vk!(
 	engine,
 	{
 		let a = oa::Matrix::new_from_f32(
-			&engine,
 			[4, 8],
 			&[
 				1.0, -2.0, 0.5, 3.0, -1.5, 2.0, 0.25, 4.0, //
@@ -3000,7 +2965,6 @@ test_vk!(
 			],
 		)?;
 		let b = oa::Matrix::new_from_f32(
-			&engine,
 			[6, 8],
 			&[
 				0.5, -1.0, 2.0, 1.0, -0.5, 3.0, -2.0, 1.5, //
@@ -3011,7 +2975,7 @@ test_vk!(
 				0.75, -2.75, -0.5, 3.25, -3.75, 1.25, -1.0, 0.5,
 			],
 		)?;
-		let bias = oa::Matrix::new_from_f32(&engine, [6], &[0.5, -1.0, 2.0, -0.25, 1.5, -3.0])?;
+		let bias = oa::Matrix::new_from_f32([6], &[0.5, -1.0, 2.0, -0.25, 1.5, -3.0])?;
 		for (activate, kernel) in [
 			(
 				oa::ml::matrix::relu as fn(&oa::Matrix) -> oa::Result<oa::Matrix>,
@@ -3107,7 +3071,7 @@ fn submission_budget_splits_a_long_plan_and_preserves_outputs() -> oa::Result<()
 		.unwrap_or_else(|poisoned| poisoned.into_inner());
 	let _budget = ScopedVar::set("OA_SUBMISSION_BUDGET_MS", "1");
 	let engine = budget_engine()?;
-	let zero = oa::matrix::full(&engine, [4, 4], 0.0)?;
+	let zero = oa::matrix::full([4, 4], 0.0)?;
 	let (plan, output) = engine.capture(|| {
 		let mut acc = oa::matrix::mat_mul_nt(&zero, &zero)?;
 		for index in 0..200 {
@@ -3136,7 +3100,7 @@ fn submission_budget_declines_a_single_over_budget_node() -> oa::Result<()> {
 		.unwrap_or_else(|poisoned| poisoned.into_inner());
 	let _budget = ScopedVar::set("OA_SUBMISSION_BUDGET_MS", "0");
 	let engine = budget_engine()?;
-	let one = oa::matrix::ones(&engine, [2, 3])?;
+	let one = oa::matrix::ones([2, 3])?;
 	for (plan, _output) in [
 		engine.capture(|| oa::matrix::add(&one, &one))?,
 		engine.capture(|| one.copy())?,
@@ -3151,13 +3115,9 @@ fn submission_budget_declines_a_single_over_budget_node() -> oa::Result<()> {
 }
 
 test_vk!(indirect_dispatch_reports_the_recorded_dependency, engine, {
-	let input = oa::Matrix::new_from_f32(&engine, [4, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])?;
-	let mask = oa::Matrix::new_from_f32(&engine, [4], &[1.0, 0.0, 1.0, 0.0])?;
-	let base = oa::Matrix::new_from_f32(
-		&engine,
-		[4, 2],
-		&[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
-	)?;
+	let input = oa::Matrix::new_from_f32([4, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])?;
+	let mask = oa::Matrix::new_from_f32([4], &[1.0, 0.0, 1.0, 0.0])?;
+	let base = oa::Matrix::new_from_f32([4, 2], &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0])?;
 	let (plan, (output, args_copy)) = engine.capture(|| {
 		let packed = oa::matrix::compact_rows(&input, &mask)?;
 		// The preceding shader-storage read only exposes the writer to that
@@ -3216,8 +3176,8 @@ test_vk!(
 	captured_buffer_copy_replays_between_compute_dispatches,
 	engine,
 	{
-		let left = oa::Matrix::new_from_f32(&engine, [3], &[2.0, -4.0, 8.0])?;
-		let right = oa::Matrix::new_from_f32(&engine, [3], &[1.0, 3.0, -2.0])?;
+		let left = oa::Matrix::new_from_f32([3], &[2.0, -4.0, 8.0])?;
+		let right = oa::Matrix::new_from_f32([3], &[1.0, 3.0, -2.0])?;
 		let (plan, (copy, output)) = engine.capture(|| {
 			let sum = oa::matrix::add(&left, &right)?;
 			let copy = sum.copy()?;
@@ -3291,9 +3251,8 @@ test_vk!(
 	buffer_copy_only_plan_rebinds_its_source_and_refreshes_mapping,
 	engine,
 	{
-		let source = oa::Matrix::new_from_f32(&engine, [3], &[1.0, -0.0, 3.0])?;
-		let replacement =
-			oa::Matrix::new_from_f32(&engine, [3], &[f32::from_bits(0x7fc0_1234), 5.0, 6.0])?;
+		let source = oa::Matrix::new_from_f32([3], &[1.0, -0.0, 3.0])?;
+		let replacement = oa::Matrix::new_from_f32([3], &[f32::from_bits(0x7fc0_1234), 5.0, 6.0])?;
 		let (mut plan, copy) = engine.capture(|| source.copy())?;
 		let report: serde_json::Value =
 			serde_json::from_str(&plan.debug_report_json("copy only")).expect("valid copy graph report");

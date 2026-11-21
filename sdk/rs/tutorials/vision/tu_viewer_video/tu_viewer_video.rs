@@ -74,6 +74,7 @@ fn main() -> Result<()> {
 /// the decoded YUV planes to an RGBA texture on-device, and write a PNG.
 fn write_poster(input: &str, output: &str, frame: u64) -> Result<()> {
 	let engine = Engine::new()?;
+	Engine::set_default(engine.clone());
 	let mut player = VideoPlayer::new_native(
 		&engine,
 		std::path::Path::new(input),

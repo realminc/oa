@@ -15,7 +15,7 @@ use super::{
 	SceneDrawCmd, SecretBinding, SecretBuffer, SecretErasure, SemanticDispatch, Storage,
 	SurfaceBlendPipeline, SurfaceDescriptorArena, SurfaceDescriptorLayouts, SurfacePipeline, Timer,
 	UnlitDescriptorArena, UnlitDescriptorLayouts, UnlitPipeline,
-	device::command::RecordedBatch,
+	device::logical::command::RecordedBatch,
 	log::{LogSelection, Logger},
 	session::{ExecutionSession, RecordedDecodeStep, RecordedEncodeStep},
 };
@@ -144,6 +144,7 @@ impl EngineBuilder {
 /// The current one-device recorder is thread-affine. `Engine` intentionally
 /// remains neither `Send` nor `Sync` until concurrent queue scheduling and
 /// submission synchronization are implemented and verified.
+#[derive(Clone)]
 pub struct Engine {
 	// Restore thread-local selection before closing the logger and releasing the
 	// execution handle. Rust drops fields in declaration order.
@@ -414,7 +415,9 @@ impl VideoDecoderBackend {
 
 	fn record_coded_picture(
 		&mut self,
-		prepare: impl FnOnce(&mut DecodeSession) -> Result<(super::device::video::PreparedDecode, u32)>,
+		prepare: impl FnOnce(
+			&mut DecodeSession,
+		) -> Result<(super::device::logical::video::PreparedDecode, u32)>,
 	) -> Result<u32> {
 		let (picture, slot) = prepare(self.session_mut()?)?;
 		self.append_decode_step(RecordedDecodeStep::Picture(picture))?;
@@ -544,7 +547,7 @@ impl VideoDecoderBackend {
 				"video canvas requires a unified graphics and compute queue",
 			));
 		}
-		let crate::runtime::device::video::NativeCanvasTransfer {
+		let crate::runtime::device::logical::video::NativeCanvasTransfer {
 			commands,
 			planes,
 			layout,
@@ -803,7 +806,7 @@ impl VideoDecoderBackend {
 		full_range: bool,
 	) -> Result<(crate::runtime::Storage, u32, u32)> {
 		let device = self.queue_device()?;
-		let crate::runtime::device::video::NativePresentation {
+		let crate::runtime::device::logical::video::NativePresentation {
 			commands,
 			rgba,
 			extent,
@@ -1500,6 +1503,38 @@ impl Engine {
 		})
 	}
 
+	/// Install `engine` as this thread's default compute engine.
+	///
+	/// Replaces any engine previously stored by [`Engine::init_default`] or an
+	/// earlier `set_default` call. The previous default is dropped after the
+	/// new engine is installed.
+	pub fn set_default(engine: Engine) {
+		DEFAULT_ENGINE.with(|slot| {
+			*slot.borrow_mut() = Some(engine);
+		});
+	}
+
+	/// Return this thread's default compute engine.
+	///
+	/// Initialization is lazy on first use and the returned handle clones the
+	/// installed engine, so it remains valid if the default is later replaced.
+	///
+	/// # Errors
+	///
+	/// Returns the same backend or device-selection error as [`Engine::new`].
+	pub fn current() -> Result<Self> {
+		Self::init_default()?;
+		DEFAULT_ENGINE.with(|slot| {
+			Ok(
+				slot
+					.borrow()
+					.as_ref()
+					.expect("default engine initialized above")
+					.clone(),
+			)
+		})
+	}
+
 	/// Access this thread's lazily initialized default compute engine.
 	///
 	/// # Errors
@@ -1690,14 +1725,15 @@ impl Engine {
 		// evidence worth surfacing while it is preserved for a later writer.
 		// Either way the empty cache fails closed to structural routing — never
 		// to a partially accepted record.
-		let vkcache_scope = super::device::vkcache::VkCacheScope::new(device.physical());
+		let vkcache_scope = super::device::logical::vkcache::VkCacheScope::new(device.physical());
 		let vkcache_path = vkcache_scope.path();
 		let mut matmul_route_section_corrupt = false;
 		let mut matmul_route_cache = super::dna::provider::blas::MatmulRouteCache::new();
 		if vkcache_path.is_file() {
-			match super::device::vkcache::VkCacheFile::open(&vkcache_path, &vkcache_scope) {
+			match super::device::logical::vkcache::VkCacheFile::open(&vkcache_path, &vkcache_scope) {
 				Ok(file) => {
-					if let Some(section) = file.section(super::device::vkcache::SECTION_GEMM_MEASURED_ROUTES)
+					if let Some(section) =
+						file.section(super::device::logical::vkcache::SECTION_GEMM_MEASURED_ROUTES)
 					{
 						match super::dna::provider::blas::MatmulRouteCache::from_bytes(&section.bytes) {
 							Ok(cache) => matmul_route_cache = cache,
@@ -1987,7 +2023,7 @@ impl Drop for Engine {
 		// qualified state — a borrow, query or I/O failure never fails engine
 		// destruction and never replaces committed observations.
 		let snapshot = self.handle.state.try_borrow().ok().map(|state| {
-			let scope = super::device::vkcache::VkCacheScope::new(state.device.physical());
+			let scope = super::device::logical::vkcache::VkCacheScope::new(state.device.physical());
 			let driver = state.device.pipeline_cache_data();
 			let jit = state.device.jit_section_updates();
 			let (vendor_id, device_id, driver_id, driver_version) = scope.device_route_scope();
@@ -2010,23 +2046,23 @@ impl Drop for Engine {
 		};
 		let mut updates = Vec::with_capacity(2);
 		if let Some(blob) = driver {
-			updates.push(super::device::vkcache::SectionUpdate::replace(
-				super::device::vkcache::SECTION_DRIVER_PIPELINE_CACHE,
+			updates.push(super::device::logical::vkcache::SectionUpdate::replace(
+				super::device::logical::vkcache::SECTION_DRIVER_PIPELINE_CACHE,
 				1,
 				blob,
 			));
 		}
 		match gemm {
 			Some(Some(payload)) => {
-				updates.push(super::device::vkcache::SectionUpdate::replace(
-					super::device::vkcache::SECTION_GEMM_MEASURED_ROUTES,
+				updates.push(super::device::logical::vkcache::SectionUpdate::replace(
+					super::device::logical::vkcache::SECTION_GEMM_MEASURED_ROUTES,
 					1,
 					payload,
 				));
 			}
 			Some(None) => {
-				updates.push(super::device::vkcache::SectionUpdate::remove(
-					super::device::vkcache::SECTION_GEMM_MEASURED_ROUTES,
+				updates.push(super::device::logical::vkcache::SectionUpdate::remove(
+					super::device::logical::vkcache::SECTION_GEMM_MEASURED_ROUTES,
 				));
 			}
 			None => {}
@@ -2036,11 +2072,12 @@ impl Drop for Engine {
 			return;
 		}
 		let path = scope.path();
-		if super::device::vkcache::update(&path, &scope, &updates).is_ok() {
+		if super::device::logical::vkcache::update(&path, &scope, &updates).is_ok() {
 			// The scoped artifact committed; the legacy raw driver blob has
 			// been imported or superseded and is never written again.
-			let _ =
-				crate::Filesystem::remove_file(&super::device::pipeline::legacy_pipeline_cache_path());
+			let _ = crate::Filesystem::remove_file(
+				&super::device::logical::pipeline::legacy_pipeline_cache_path(),
+			);
 		}
 	}
 }
@@ -2195,7 +2232,7 @@ impl EngineHandle {
 					depth: 1,
 				});
 			unsafe {
-				state.device.raw().cmd_copy_buffer_to_image(
+				state.device.cmd_copy_buffer_to_image(
 					command,
 					buffer,
 					handle,
@@ -2377,7 +2414,7 @@ impl EngineHandle {
 					.set_level_count(1)
 					.set_layer_count(1),
 			);
-		let view = match unsafe { device.raw().create_image_view(&view_info, None) } {
+		let view = match unsafe { device.create_image_view(&view_info, None) } {
 			Ok(view) => view,
 			Err(source) => {
 				unsafe {
@@ -2408,7 +2445,7 @@ impl EngineHandle {
 			if let Some(pos) = entries.iter().position(|e| e.image == raw_image) {
 				let mut entry = entries.swap_remove(pos);
 				unsafe {
-					let _ = state.device.raw().destroy_image_view(entry.view, None);
+					let _ = state.device.destroy_image_view(entry.view, None);
 					let _ = state
 						.device
 						.allocator()
@@ -2480,7 +2517,7 @@ impl EngineHandle {
 						.set_image_memory_barriers(std::slice::from_ref(&to_copy))
 						.map_err(Error::from)?),
 				)?;
-				device.raw().cmd_copy_image_to_buffer(
+				device.cmd_copy_image_to_buffer(
 					command_buffer,
 					image,
 					vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
@@ -3152,7 +3189,7 @@ impl EngineHandle {
 			// SAFETY: both public buffers are live, disjoint, equally sized and
 			// carry transfer usage; the barrier above already orders the copy.
 			unsafe {
-				device.raw().cmd_copy_buffer(
+				device.cmd_copy_buffer(
 					command,
 					public_key.raw(),
 					public.raw(),

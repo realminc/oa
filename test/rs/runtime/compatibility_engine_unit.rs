@@ -17,12 +17,8 @@ fn bounded_engine_records_eager_and_reusable_graphs() -> crate::Result<()> {
 		}
 		Err(error) => return Err(error),
 	};
-	let left = crate::matrix::from_f32_on(
-		&engine,
-		[17],
-		&(0..17).map(|i| i as f32).collect::<Vec<_>>(),
-	)?;
-	let right = crate::matrix::full(&engine, [17], 2.0)?;
+	let left = crate::matrix::from_f32([17], &(0..17).map(|i| i as f32).collect::<Vec<_>>())?;
+	let right = crate::matrix::full([17], 2.0)?;
 	let first = crate::matrix::add(&left, &right)?;
 	let second = crate::matrix::add(&first, &right)?;
 	if engine.device_info().api_version().starts_with("1.2.") {

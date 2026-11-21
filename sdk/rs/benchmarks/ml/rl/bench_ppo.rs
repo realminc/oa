@@ -147,15 +147,13 @@ fn main() -> oa::Result<()> {
 
 	let process_started = Instant::now();
 	let engine = oa::Engine::new()?;
-	let model = CategoricalActorCritic::new(
-		&engine,
-		CategoricalActorCriticConfig {
-			observation_size: 4,
-			action_count: 2,
-			hidden_size: hidden,
-			seed: TRAINING_SEED,
-		},
-	)?;
+	oa::Engine::set_default(engine.clone());
+	let model = CategoricalActorCritic::new(CategoricalActorCriticConfig {
+		observation_size: 4,
+		action_count: 2,
+		hidden_size: hidden,
+		seed: TRAINING_SEED,
+	})?;
 	let mut optimizer = AdamW::new_with_hyperparameters(
 		model.all_parameters()?,
 		LEARNING_RATE,

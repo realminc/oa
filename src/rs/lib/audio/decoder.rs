@@ -30,7 +30,23 @@ use super::{Audio, AudioChannelLayout, codec::ac3, demux, validate_sample_buffer
 /// Returns an error for an empty path, file I/O failure, unsupported or malformed
 /// media, changing stream parameters, empty decoded audio, checked-size overflow,
 /// or device allocation/upload failure.
-pub fn decode_file(engine: &Engine, path: impl AsRef<Path>) -> Result<Audio> {
+///
+/// This variant decodes on this thread's default engine. An engine
+/// initialization failure is returned before decoding starts.
+pub fn decode_file(path: impl AsRef<Path>) -> Result<Audio> {
+	let path = path.as_ref();
+	decode_file_on(&Engine::current()?, path)
+}
+/// Decode one supported file and upload planar FP32 samples on a particular
+/// engine.
+///
+/// This is the [`decode_file`] contract evaluated on `engine` instead of this
+/// thread's default engine.
+///
+/// # Errors
+///
+/// Returns the same errors as [`decode_file`].
+pub fn decode_file_on(engine: &Engine, path: impl AsRef<Path>) -> Result<Audio> {
 	let path = path.as_ref();
 	if path.as_os_str().is_empty() {
 		return Err(Error::invalid_argument("audio::decode_file path is empty"));
@@ -41,14 +57,27 @@ pub fn decode_file(engine: &Engine, path: impl AsRef<Path>) -> Result<Audio> {
 	)
 }
 
-/// Decode one supported in-memory media stream and upload planar FP32 samples.
+/// Decode one supported in-memory media stream and upload planar FP32 samples
+/// on this thread's default engine.
+///
+/// # Errors
+///
+/// Returns an error when the default engine cannot be initialized or for
+/// empty, unsupported, malformed, or parameter-changing media, empty decoded
+/// audio, checked-size overflow, or device allocation/upload failure.
+pub fn decode_memory(encoded: &[u8]) -> Result<Audio> {
+	decode_memory_on(&Engine::current()?, encoded)
+}
+
+/// Decode one supported in-memory media stream and upload planar FP32 samples
+/// on a particular engine.
 ///
 /// # Errors
 ///
 /// Returns an error for empty, unsupported, malformed, or parameter-changing
 /// media, empty decoded audio, checked-size overflow, or device
 /// allocation/upload failure.
-pub fn decode_memory(engine: &Engine, encoded: &[u8]) -> Result<Audio> {
+pub fn decode_memory_on(engine: &Engine, encoded: &[u8]) -> Result<Audio> {
 	if encoded.is_empty() {
 		return Err(Error::invalid_argument(
 			"audio::decode_memory input buffer is empty",

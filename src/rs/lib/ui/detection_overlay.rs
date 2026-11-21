@@ -97,8 +97,8 @@ impl DetectionOverlay {
 		let mut slots = Vec::with_capacity(RING_SIZE);
 		for _ in 0..RING_SIZE {
 			slots.push(OverlaySlot {
-				detections: DetectionBuffer::create_host_upload(engine, config.max_detections)?,
-				glyphs: GlyphBuffer::create_host_upload(engine, config.max_glyphs)?,
+				detections: DetectionBuffer::create_host_upload_on(engine, config.max_detections)?,
+				glyphs: GlyphBuffer::create_host_upload_on(engine, config.max_glyphs)?,
 			});
 		}
 		Ok(Self {

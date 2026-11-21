@@ -6,7 +6,7 @@ use oa::ml::{RolloutBuffer, RolloutConfig, RolloutTransition};
 	reason = "the oracle fixture names every donor transition field at each time step"
 )]
 fn transition(
-	engine: &oa::Engine,
+	_engine: &oa::Engine,
 	observation: &[f32; 4],
 	action: &[i32; 2],
 	reward: &[f32; 2],
@@ -17,14 +17,14 @@ fn transition(
 	truncated: &[u8; 2],
 ) -> oa::Result<RolloutTransition> {
 	Ok(RolloutTransition::new(
-		oa::Matrix::new_from_f32(engine, [2, 2], observation)?,
-		oa::Matrix::new_from_slice(engine, [2], action)?,
-		oa::Matrix::new_from_f32(engine, [2], reward)?,
-		oa::Matrix::new_from_f32(engine, [2], value)?,
-		oa::Matrix::new_from_f32(engine, [2], next_value)?,
-		oa::Matrix::new_from_f32(engine, [2], log_probability)?,
-		oa::Matrix::new_from_slice(engine, [2], terminated)?,
-		oa::Matrix::new_from_slice(engine, [2], truncated)?,
+		oa::Matrix::new_from_f32([2, 2], observation)?,
+		oa::Matrix::new_from_slice([2], action)?,
+		oa::Matrix::new_from_f32([2], reward)?,
+		oa::Matrix::new_from_f32([2], value)?,
+		oa::Matrix::new_from_f32([2], next_value)?,
+		oa::Matrix::new_from_f32([2], log_probability)?,
+		oa::Matrix::new_from_slice([2], terminated)?,
+		oa::Matrix::new_from_slice([2], truncated)?,
 	))
 }
 
@@ -311,14 +311,14 @@ test_vk!(
 			},
 		)?;
 		let invalid = RolloutTransition::new(
-			oa::Matrix::new_from_f32(&engine, [2, 3], &[0.0; 6])?,
-			oa::Matrix::new_from_slice(&engine, [2], &[0_i32; 2])?,
-			oa::Matrix::new_from_f32(&engine, [2], &[0.0; 2])?,
-			oa::Matrix::new_from_f32(&engine, [2], &[0.0; 2])?,
-			oa::Matrix::new_from_f32(&engine, [2], &[0.0; 2])?,
-			oa::Matrix::new_from_f32(&engine, [2], &[0.0; 2])?,
-			oa::Matrix::new_from_slice(&engine, [2], &[0_u8; 2])?,
-			oa::Matrix::new_from_slice(&engine, [2], &[0_u8; 2])?,
+			oa::Matrix::new_from_f32([2, 3], &[0.0; 6])?,
+			oa::Matrix::new_from_slice([2], &[0_i32; 2])?,
+			oa::Matrix::new_from_f32([2], &[0.0; 2])?,
+			oa::Matrix::new_from_f32([2], &[0.0; 2])?,
+			oa::Matrix::new_from_f32([2], &[0.0; 2])?,
+			oa::Matrix::new_from_f32([2], &[0.0; 2])?,
+			oa::Matrix::new_from_slice([2], &[0_u8; 2])?,
+			oa::Matrix::new_from_slice([2], &[0_u8; 2])?,
 		);
 		assert_eq!(
 			rollout

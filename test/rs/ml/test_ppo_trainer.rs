@@ -3,16 +3,13 @@ use oa::ml::{
 	training::{PpoTrainer, PpoTrainerConfig, RolloutTrainingPhase},
 };
 
-fn model(engine: &oa::Engine, seed: u64) -> oa::Result<CategoricalActorCritic> {
-	CategoricalActorCritic::new(
-		engine,
-		CategoricalActorCriticConfig {
-			observation_size: 2,
-			action_count: 2,
-			hidden_size: 8,
-			seed,
-		},
-	)
+fn model(_engine: &oa::Engine, seed: u64) -> oa::Result<CategoricalActorCritic> {
+	CategoricalActorCritic::new(CategoricalActorCriticConfig {
+		observation_size: 2,
+		action_count: 2,
+		hidden_size: 8,
+		seed,
+	})
 }
 
 fn config(seed: u64) -> PpoTrainerConfig {
@@ -27,14 +24,14 @@ fn config(seed: u64) -> PpoTrainerConfig {
 	}
 }
 
-fn collect_one(engine: &oa::Engine, trainer: &mut PpoTrainer<'_, '_>) -> oa::Result<()> {
+fn collect_one(_engine: &oa::Engine, trainer: &mut PpoTrainer<'_, '_>) -> oa::Result<()> {
 	trainer.begin_collection()?;
 	for _ in 0..trainer.config().horizon {
-		let observation = oa::Matrix::new_from_f32(engine, [2, 2], &[0.1, -0.2, 0.3, 0.4])?;
-		let next_observation = oa::Matrix::new_from_f32(engine, [2, 2], &[0.2, -0.1, 0.4, 0.5])?;
-		let reward = oa::Matrix::new_from_f32(engine, [2], &[1.0, 0.5])?;
-		let terminated = oa::Matrix::new_from_slice(engine, [2], &[0_u8, 0])?;
-		let truncated = oa::Matrix::new_from_slice(engine, [2], &[0_u8, 0])?;
+		let observation = oa::Matrix::new_from_f32([2, 2], &[0.1, -0.2, 0.3, 0.4])?;
+		let next_observation = oa::Matrix::new_from_f32([2, 2], &[0.2, -0.1, 0.4, 0.5])?;
+		let reward = oa::Matrix::new_from_f32([2], &[1.0, 0.5])?;
+		let terminated = oa::Matrix::new_from_slice([2], &[0_u8, 0])?;
+		let truncated = oa::Matrix::new_from_slice([2], &[0_u8, 0])?;
 		let policy = trainer.act(&observation)?;
 		assert_eq!(policy.action.shape(), [2]);
 		assert_eq!(policy.value.shape(), [2]);
@@ -95,7 +92,7 @@ test_vk!(
 		let result: oa::Result<()> = engine
 			.capture(|| {
 				collect_one(&engine, &mut trainer)?;
-				let integer = oa::Matrix::new_from_slice(&engine, [1], &[1_i32])?;
+				let integer = oa::Matrix::new_from_slice([1], &[1_i32])?;
 				oa::matrix::add(trainer.batch().reward(), &integer).map(|_| ())
 			})
 			.map(|_| ());
@@ -370,8 +367,10 @@ test_vk!(
 					return Err(oa::Error::callback("batch-sum critic requires rank two"));
 				};
 				let row_sums = oa::matrix::reshape(&oa::matrix::sum(x, 1)?, [1, batch])?;
-				let total =
-					oa::matrix::mat_mul_nt(&oa::matrix::ones(self.engine, [batch, batch])?, &row_sums)?;
+				let total = oa::matrix::mat_mul_nt(
+					&oa::matrix::ones_on(self.engine, [batch, batch])?,
+					&row_sums,
+				)?;
 				Ok(ActorCriticOutput {
 					logits: self.inner.evaluate(x)?.logits,
 					value: oa::matrix::reshape(&total, [batch])?,
@@ -383,10 +382,10 @@ test_vk!(
 			let mut successors = Vec::new();
 			for step in 0..trainer.config().horizon {
 				let scale = (step + 1) as f32;
-				let observation = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.1, -0.2, 0.3, 0.4])?;
-				let next = oa::Matrix::new_from_f32(&engine, [2, 2], &[scale, 0.5, -0.25, scale])?;
-				let reward = oa::Matrix::new_from_f32(&engine, [2], &[1.0, 0.5])?;
-				let done = oa::Matrix::new_from_slice(&engine, [2], &[0_u8, 0])?;
+				let observation = oa::Matrix::new_from_f32([2, 2], &[0.1, -0.2, 0.3, 0.4])?;
+				let next = oa::Matrix::new_from_f32([2, 2], &[scale, 0.5, -0.25, scale])?;
+				let reward = oa::Matrix::new_from_f32([2], &[1.0, 0.5])?;
+				let done = oa::Matrix::new_from_slice([2], &[0_u8, 0])?;
 				let policy = trainer.act(&observation)?;
 				trainer.observe(&observation, &next, &reward, &done, &done, &policy)?;
 				successors.push(next);
@@ -570,15 +569,12 @@ test_vk!(
 		};
 		let mut outcomes = Vec::new();
 		for compiled in [false, true] {
-			let model = CategoricalActorCritic::new(
-				&engine,
-				CategoricalActorCriticConfig {
-					observation_size: 20,
-					action_count: 3,
-					hidden_size: 8,
-					seed: 77,
-				},
-			)?;
+			let model = CategoricalActorCritic::new(CategoricalActorCriticConfig {
+				observation_size: 20,
+				action_count: 3,
+				hidden_size: 8,
+				seed: 77,
+			})?;
 			let mut optimizer = AdamW::new(model.all_parameters()?, 0.001)?;
 			let mut update = PpoUpdateProgram::default();
 			let mut collection = TradingRolloutProgram::default();
@@ -759,12 +755,12 @@ test_vk!(
 		}
 		let width = 2 + TRADING_ACCOUNT_FEATURES;
 		let policy = Rc::new(Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [3, width], &vec![0.0; 3 * width])?,
-			oa::Matrix::new_from_f32(&engine, [3], &[0.0, 0.0, 50.0])?,
+			oa::Matrix::new_from_f32([3, width], &vec![0.0; 3 * width])?,
+			oa::Matrix::new_from_f32([3], &[0.0, 0.0, 50.0])?,
 		)?);
 		let value = Rc::new(Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [1, width], &vec![0.0; width])?,
-			oa::Matrix::new_from_f32(&engine, [1], &[2.0])?,
+			oa::Matrix::new_from_f32([1, width], &vec![0.0; width])?,
+			oa::Matrix::new_from_f32([1], &[2.0])?,
 		)?);
 		let mut registry = ModuleRegistry::new();
 		registry.register_module("policy", policy.clone())?;

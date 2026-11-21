@@ -47,7 +47,7 @@ fn compute_pipelines_are_created_once_on_first_use() -> crate::Result<()> {
 		.build()?;
 	let device = engine.handle().state.borrow().device.clone();
 	assert_eq!(device.initialized_pipeline_count(), 0);
-	let a = matrix::from_f32_on(&engine, [1, 3], &[1.0, 2.0, 4.0])?;
+	let a = matrix::from_f32([1, 3], &[1.0, 2.0, 4.0])?;
 	assert_eq!(device.initialized_pipeline_count(), 0);
 	// Submit-time fusion probes its candidate kernels on the first
 	// submission, so the primed count covers the epilogue/fusion probes and
@@ -91,7 +91,7 @@ impl super::EngineHandle {
 	/// saves best-effort; an explicit save keeps a qualification result
 	/// durable even if the process does not reach a clean drop.
 	pub(in crate::runtime) fn save_matmul_route_cache(&self) -> crate::Result<()> {
-		use crate::runtime::device::vkcache;
+		use crate::runtime::device::logical::vkcache;
 		let (scope, payload) = {
 			let state = self.state.borrow();
 			let scope = vkcache::VkCacheScope::new(state.device.physical());

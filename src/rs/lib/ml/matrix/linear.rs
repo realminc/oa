@@ -66,7 +66,7 @@ pub(in crate::ml) fn linear(input: &Matrix, weight: &Matrix, bias: &Matrix) -> R
 		let contract = KernelId::MlLinearF32
 			.semantic_contract()
 			.ok_or_else(|| Error::internal("MlLinearF32 cannot own one semantic ML operation"))?;
-		if crate::runtime::record_linear_f16s(
+		if crate::runtime::record_linear_f16(
 			input.engine_handle(),
 			input,
 			weight,

@@ -14,14 +14,15 @@ pub(crate) struct PythonBatchNorm2d {
 impl PythonBatchNorm2d {
 	/// Construct with epsilon `1e-5` and momentum `0.1`, or explicit options.
 	#[new]
-	#[pyo3(signature = (engine, num_features, epsilon = 1e-5, momentum = 0.1))]
+	#[pyo3(signature = (num_features, epsilon = 1e-5, momentum = 0.1, engine=None))]
 	pub fn new(
-		engine: &PythonEngine,
 		num_features: usize,
 		epsilon: f32,
 		momentum: f32,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::BatchNorm2d::new_with_options(&engine.inner, num_features, epsilon, momentum)
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::BatchNorm2d::new_with_options_on(&engine, num_features, epsilon, momentum)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

@@ -26,6 +26,7 @@ macro_rules! test_vk {
 				Err(_) => panic!("OA_TEST_DEVICE_INDEX must be Unicode"),
 			};
 			let $engine = oa::Engine::builder().devices(selection).build()?;
+			oa::Engine::set_default($engine.clone());
 			$body
 		}
 	};
@@ -69,6 +70,7 @@ macro_rules! test_vk_slow {
 				Err(_) => panic!("OA_TEST_DEVICE_INDEX must be Unicode"),
 			};
 			let $engine = oa::Engine::builder().devices(selection).build()?;
+			oa::Engine::set_default($engine.clone());
 			$body
 		}
 	};

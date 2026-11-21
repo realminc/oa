@@ -99,8 +99,8 @@ impl JitArtifacts {
 	/// vice versa, so both are produced or neither is.
 	pub(in crate::runtime) fn section_updates(
 		&self,
-	) -> Result<Vec<crate::runtime::device::vkcache::SectionUpdate>> {
-		use crate::runtime::device::vkcache::{SectionUpdate, jit};
+	) -> Result<Vec<crate::runtime::device::logical::vkcache::SectionUpdate>> {
+		use crate::runtime::device::logical::vkcache::{SectionUpdate, jit};
 		if self.chains.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -128,12 +128,12 @@ impl JitArtifacts {
 		}
 		Ok(vec![
 			SectionUpdate::replace(
-				crate::runtime::device::vkcache::SECTION_JIT_ARTIFACT_INDEX,
+				crate::runtime::device::logical::vkcache::SECTION_JIT_ARTIFACT_INDEX,
 				1,
 				jit::encode_index(&index)?,
 			),
 			SectionUpdate::replace(
-				crate::runtime::device::vkcache::SECTION_JIT_SPIRV_ARTIFACTS,
+				crate::runtime::device::logical::vkcache::SECTION_JIT_SPIRV_ARTIFACTS,
 				1,
 				jit::encode_spirv(&spirv)?,
 			),
@@ -149,21 +149,23 @@ impl JitArtifacts {
 	/// discard unrelated artifacts.
 	pub(in crate::runtime) fn restore(
 		path: &crate::Path,
-		scope: &crate::runtime::device::vkcache::VkCacheScope,
+		scope: &crate::runtime::device::logical::vkcache::VkCacheScope,
 	) -> Result<Self> {
-		use crate::runtime::device::vkcache::{VkCacheFile, jit};
+		use crate::runtime::device::logical::vkcache::{VkCacheFile, jit};
 		let mut restored = Self::new();
 		let Ok(file) = VkCacheFile::open(path, scope) else {
 			return Ok(restored);
 		};
-		let index = match file.section(crate::runtime::device::vkcache::SECTION_JIT_ARTIFACT_INDEX) {
-			Some(section) if section.version == 1 => jit::decode_index(&section.bytes)?,
-			_ => return Ok(restored),
-		};
-		let table = match file.section(crate::runtime::device::vkcache::SECTION_JIT_SPIRV_ARTIFACTS) {
-			Some(section) if section.version == 1 => jit::decode_spirv(&section.bytes)?,
-			_ => return Ok(restored),
-		};
+		let index =
+			match file.section(crate::runtime::device::logical::vkcache::SECTION_JIT_ARTIFACT_INDEX) {
+				Some(section) if section.version == 1 => jit::decode_index(&section.bytes)?,
+				_ => return Ok(restored),
+			};
+		let table =
+			match file.section(crate::runtime::device::logical::vkcache::SECTION_JIT_SPIRV_ARTIFACTS) {
+				Some(section) if section.version == 1 => jit::decode_spirv(&section.bytes)?,
+				_ => return Ok(restored),
+			};
 		let table: BTreeMap<u64, Vec<u32>> = table
 			.into_iter()
 			.map(|record| (record.artifact_id, record.words))

@@ -58,7 +58,7 @@ const HIDDEN_WIDTH: usize = 64;
 /// Identical configuration to the SDK tutorial `ByteTransformer`; the fixture
 /// builds it from public NN blocks so the satellite surface stays lib-owned.
 pub(crate) fn satellite_byte_transformer(engine: &Engine) -> Result<crate::ml::nn::Transformer> {
-	crate::ml::nn::Transformer::new_with_seed(
+	crate::ml::nn::Transformer::new_with_seed_on(
 		engine,
 		crate::ml::byte::VOCAB_SIZE,
 		CONTEXT_LENGTH,
@@ -91,7 +91,7 @@ pub(crate) fn satellite_generate_bytes_greedy(
 	let mut logit_row = filled - 1;
 	let mut output = prompt.to_vec();
 	for _ in 0..count {
-		let input = Matrix::new_from_slice(engine, [1, CONTEXT_LENGTH], &context)?;
+		let input = Matrix::new_from_slice_on(engine, [1, CONTEXT_LENGTH], &context)?;
 		let logits = model.forward(&input)?;
 		if logits.shape() != [CONTEXT_LENGTH, crate::ml::byte::VOCAB_SIZE] {
 			return Err(Error::failed_precondition(
@@ -389,7 +389,7 @@ pub(crate) fn load_parameters(
 			));
 		}
 		let loaded =
-			Matrix::new_from_slice(engine, data.shape().to_vec(), &flat[offset..offset + count])
+			Matrix::new_from_slice_on(engine, data.shape().to_vec(), &flat[offset..offset + count])
 				.map_err(|_| Error::internal("satellite NLP step: parameter upload failed"))?;
 		parameter.set_requires_grad(true);
 		parameter.replace_data(loaded)?;
@@ -677,12 +677,13 @@ fn execute_batch(
 		if let Some(optimizer) = &optimizer {
 			optimizer.zero_grad();
 		}
-		let inputs = Matrix::new_from_slice(
+		let inputs = Matrix::new_from_slice_on(
 			engine,
 			[batch_count as usize, CONTEXT_LENGTH],
 			&input_values,
 		)?;
-		let targets = Matrix::new_from_slice(engine, [predicted_positions as usize], &target_values)?;
+		let targets =
+			Matrix::new_from_slice_on(engine, [predicted_positions as usize], &target_values)?;
 		let tape = GradientTape::new();
 		let logits = model.forward(&inputs)?;
 		let batch_loss = loss::cross_entropy(&logits, &targets)?;

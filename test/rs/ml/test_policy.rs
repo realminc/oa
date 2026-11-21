@@ -81,9 +81,9 @@ test_vk!(
 		let logits_host = [1.0_f32, 2.0, -1.0, 0.5, 0.5, 0.5];
 		let action_host = [1_i32, 0];
 		let value_host = [0.25_f32, -0.75];
-		let logits = oa::Matrix::new_from_f32(&engine, [2, 3], &logits_host)?;
-		let action = oa::Matrix::new_from_slice(&engine, [2], &action_host)?;
-		let value = oa::Matrix::new_from_f32(&engine, [2], &value_host)?;
+		let logits = oa::Matrix::new_from_f32([2, 3], &logits_host)?;
+		let action = oa::Matrix::new_from_slice([2], &action_host)?;
+		let value = oa::Matrix::new_from_f32([2], &value_host)?;
 		let (plan, result) =
 			engine.capture(|| oa::ml::policy::evaluate_categorical(&logits, &action, &value))?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
@@ -117,11 +117,10 @@ test_vk!(
 	engine,
 	{
 		let logits = oa::Matrix::new_from_f32(
-			&engine,
 			[4, 3],
 			&[2.0, 1.0, 0.0, 0.0, 1.0, 2.0, 1.0, 1.0, 1.0, -1.0, 3.0, 0.5],
 		)?;
-		let value = oa::Matrix::new_from_f32(&engine, [4], &[0.0, 1.0, 2.0, 3.0])?;
+		let value = oa::Matrix::new_from_f32([4], &[0.0, 1.0, 2.0, 3.0])?;
 		let first = oa::ml::policy::sample_categorical(&logits, &value, 918_273)?;
 		let second = oa::ml::policy::sample_categorical(&logits, &value, 918_273)?;
 		let first_action = first.action.read::<i32>()?;
@@ -139,14 +138,11 @@ test_vk!(
 
 test_vk!(categorical_policy_entropy_adjoint_matches_cpu, engine, {
 	let logits_host = [1.0_f32, 2.0, -1.0];
-	let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-		&engine,
-		[1, 3],
-		&logits_host,
-	)?)?;
-	let row = oa::Matrix::new_from_slice(&engine, [1], &[0_u32])?;
-	let action = oa::Matrix::new_from_slice(&engine, [1], &[1_i32])?;
-	let value = oa::Matrix::new_from_f32(&engine, [1], &[0.0])?;
+	let embedding =
+		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([1, 3], &logits_host)?)?;
+	let row = oa::Matrix::new_from_slice([1], &[0_u32])?;
+	let action = oa::Matrix::new_from_slice([1], &[1_i32])?;
+	let value = oa::Matrix::new_from_f32([1], &[0.0])?;
 	let tape = oa::ml::GradientTape::new();
 	let logits = embedding.forward(&row)?;
 	let result = oa::ml::policy::evaluate_categorical(&logits, &action, &value)?;
@@ -186,9 +182,9 @@ test_vk!(categorical_policy_entropy_adjoint_matches_cpu, engine, {
 });
 
 test_vk!(categorical_policy_rejects_invalid_shapes, engine, {
-	let logits = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 2.0, 3.0, 4.0])?;
-	let short_action = oa::Matrix::new_from_slice(&engine, [1], &[0_i32])?;
-	let short_value = oa::Matrix::new_from_f32(&engine, [1], &[0.0])?;
+	let logits = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, 3.0, 4.0])?;
+	let short_action = oa::Matrix::new_from_slice([1], &[0_i32])?;
+	let short_value = oa::Matrix::new_from_f32([1], &[0.0])?;
 	assert!(oa::ml::policy::evaluate_categorical(&logits, &short_action, &short_value).is_err());
 	assert!(oa::ml::policy::sample_categorical(&logits, &short_value, 7).is_err());
 	Ok(())
@@ -202,10 +198,10 @@ test_vk!(
 		let log_stddev_host = [-0.7_f32, 0.2, -30.0, 3.0];
 		let raw_action_host = [0.3_f32, -1.1, 0.8, -0.2];
 		let value_host = [0.25_f32, -0.5];
-		let mean = oa::Matrix::new_from_f32(&engine, [2, 2], &mean_host)?;
-		let log_stddev = oa::Matrix::new_from_f32(&engine, [2, 2], &log_stddev_host)?;
-		let raw_action = oa::Matrix::new_from_f32(&engine, [2, 2], &raw_action_host)?;
-		let value = oa::Matrix::new_from_f32(&engine, [2], &value_host)?;
+		let mean = oa::Matrix::new_from_f32([2, 2], &mean_host)?;
+		let log_stddev = oa::Matrix::new_from_f32([2, 2], &log_stddev_host)?;
+		let raw_action = oa::Matrix::new_from_f32([2, 2], &raw_action_host)?;
+		let value = oa::Matrix::new_from_f32([2], &value_host)?;
 		let (plan, result) = engine.capture(|| {
 			oa::ml::policy::evaluate_tanh_normal(
 				&mean,
@@ -253,9 +249,9 @@ test_vk!(
 	tanh_normal_sampling_is_seeded_and_self_consistent,
 	engine,
 	{
-		let mean = oa::Matrix::new_from_f32(&engine, [3, 2], &[0.1, -0.2, 0.4, 0.7, -0.5, 0.3])?;
-		let log_stddev = oa::Matrix::new_from_f32(&engine, [3, 2], &[-0.5, 0.1, -1.0, 0.3, 0.0, -0.2])?;
-		let value = oa::Matrix::new_from_f32(&engine, [3], &[1.0, 2.0, 3.0])?;
+		let mean = oa::Matrix::new_from_f32([3, 2], &[0.1, -0.2, 0.4, 0.7, -0.5, 0.3])?;
+		let log_stddev = oa::Matrix::new_from_f32([3, 2], &[-0.5, 0.1, -1.0, 0.3, 0.0, -0.2])?;
+		let value = oa::Matrix::new_from_f32([3], &[1.0, 2.0, 3.0])?;
 		let (plan, first) = engine.capture(|| {
 			oa::ml::policy::sample_tanh_normal(&mean, &log_stddev, &value, -1.5, 2.5, 918_273, 1.0e-6)
 		})?;
@@ -298,14 +294,13 @@ test_vk!(
 	engine,
 	{
 		let log_stddev = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-			&engine,
 			[1, 4],
 			&[-30.0, -20.0, 2.0, 3.0],
 		)?)?;
-		let row = oa::Matrix::new_from_slice(&engine, [1], &[0_u32])?;
-		let mean = oa::Matrix::new_from_f32(&engine, [1, 4], &[0.0; 4])?;
-		let raw_action = oa::Matrix::new_from_f32(&engine, [1, 4], &[0.1, -0.2, 0.3, -0.4])?;
-		let value = oa::Matrix::new_from_f32(&engine, [1], &[0.0])?;
+		let row = oa::Matrix::new_from_slice([1], &[0_u32])?;
+		let mean = oa::Matrix::new_from_f32([1, 4], &[0.0; 4])?;
+		let raw_action = oa::Matrix::new_from_f32([1, 4], &[0.1, -0.2, 0.3, -0.4])?;
+		let value = oa::Matrix::new_from_f32([1], &[0.0])?;
 		let tape = oa::ml::GradientTape::new();
 		let log_stddev_value = log_stddev.forward(&row)?;
 		let result = oa::ml::policy::evaluate_tanh_normal(
@@ -330,10 +325,10 @@ test_vk!(
 );
 
 test_vk!(tanh_normal_policy_rejects_invalid_contracts, engine, {
-	let mean = oa::Matrix::new_from_f32(&engine, [1, 2], &[0.0, 0.0])?;
-	let log_stddev = oa::Matrix::new_from_f32(&engine, [1, 2], &[0.0, 0.0])?;
-	let raw_action = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
-	let value = oa::Matrix::new_from_f32(&engine, [1], &[0.0])?;
+	let mean = oa::Matrix::new_from_f32([1, 2], &[0.0, 0.0])?;
+	let log_stddev = oa::Matrix::new_from_f32([1, 2], &[0.0, 0.0])?;
+	let raw_action = oa::Matrix::new_from_f32([1, 1], &[0.0])?;
+	let value = oa::Matrix::new_from_f32([1], &[0.0])?;
 	assert!(
 		oa::ml::policy::evaluate_tanh_normal(
 			&mean,
@@ -356,18 +351,14 @@ test_vk!(
 	tanh_normal_sampling_reparameterization_has_exact_adjoint,
 	engine,
 	{
-		let mean = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-			&engine,
-			[1, 3],
-			&[0.2, -0.3, 0.7],
-		)?)?;
+		let mean =
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([1, 3], &[0.2, -0.3, 0.7])?)?;
 		let log_stddev = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-			&engine,
 			[1, 3],
 			&[-0.5, 0.1, -1.0],
 		)?)?;
-		let row = oa::Matrix::new_from_slice(&engine, [1], &[0_u32])?;
-		let value = oa::Matrix::new_from_f32(&engine, [1], &[0.0])?;
+		let row = oa::Matrix::new_from_slice([1], &[0_u32])?;
+		let value = oa::Matrix::new_from_f32([1], &[0.0])?;
 		let tape = oa::ml::GradientTape::new();
 		let mean_value = mean.forward(&row)?;
 		let log_stddev_value = log_stddev.forward(&row)?;

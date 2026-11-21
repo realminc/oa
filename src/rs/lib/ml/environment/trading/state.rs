@@ -56,7 +56,7 @@ impl TradingState {
 		let mut sizes = [0; 4];
 		for (i, n) in sizes.iter_mut().enumerate() {
 			*n = usize::try_from(word(48 + i * 8)).map_err(|_| bad())?;
-			if *n > 50_000_000 {
+			if *n > super::TRADING_ELEMENT_BUDGET {
 				return Err(bad());
 			}
 		}

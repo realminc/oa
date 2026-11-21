@@ -17,6 +17,10 @@ pub const TRADING_ACCOUNT_FEATURES: usize = 16;
 /// Analytical ledger ABI v4, including entry/peak, pending IOC state, margins
 /// and resting maker-leg state with maker fill/fallback counters.
 pub const TRADING_LEDGER_WIDTH: usize = 26;
+/// Maximum elements in any uploaded trading table or observation product.
+/// Sized for window-span episodes over packed multi-symbol rows (~1.4 GiB of
+/// F32 state at the bound); consumers should reject larger corpora the same way.
+pub const TRADING_ELEMENT_BUDGET: usize = 128_000_000;
 
 mod execution;
 mod state;
@@ -223,10 +227,10 @@ impl<'engine> TradingEnvironment<'engine> {
 		let capacity = capacity.max(rows);
 		if capacity
 			.checked_mul(width.max(market_width))
-			.is_none_or(|n| n > 50_000_000)
+			.is_none_or(|n| n > TRADING_ELEMENT_BUDGET)
 		{
 			return Err(Error::resource_exhausted(
-				"trading row capacity exceeds 50M elements",
+				"trading row capacity exceeds the 128M-element budget",
 			));
 		}
 		market.resize(capacity * market_width, 0.);
@@ -238,10 +242,10 @@ impl<'engine> TradingEnvironment<'engine> {
 			.ok_or_else(|| Error::invalid_argument("trading observation overflow"))?;
 		if lanes
 			.checked_mul(observation_width)
-			.is_none_or(|n| n > 50_000_000)
+			.is_none_or(|n| n > TRADING_ELEMENT_BUDGET)
 		{
 			return Err(Error::resource_exhausted(
-				"trading observation exceeds 50M elements",
+				"trading observation exceeds the 128M-element budget",
 			));
 		}
 
@@ -263,18 +267,22 @@ impl<'engine> TradingEnvironment<'engine> {
 			execution: EnvironmentExecution::new(engine),
 			config,
 			spec,
-			market: Matrix::new_from_f32(engine, [market.len() / market_width, market_width], &market)?,
-			features: Matrix::new_from_f32(engine, [features.len() / width, width], &features)?,
-			bounds: Matrix::new_from_slice(engine, [lanes, 2], &bounds)?,
-			rules: Matrix::new_from_f32(engine, [lanes, RULE_WIDTH], &rules)?,
-			ledger: Matrix::new_from_f32(
+			market: Matrix::new_from_f32_on(
+				engine,
+				[market.len() / market_width, market_width],
+				&market,
+			)?,
+			features: Matrix::new_from_f32_on(engine, [features.len() / width, width], &features)?,
+			bounds: Matrix::new_from_slice_on(engine, [lanes, 2], &bounds)?,
+			rules: Matrix::new_from_f32_on(engine, [lanes, RULE_WIDTH], &rules)?,
+			ledger: Matrix::new_from_f32_on(
 				engine,
 				[lanes, TRADING_LEDGER_WIDTH],
 				&vec![0.0; lanes * TRADING_LEDGER_WIDTH],
 			)?,
-			meta: Matrix::new_from_slice(engine, [lanes, 4], &vec![0_u32; lanes * 4])?,
-			done: Matrix::new_from_slice(engine, [lanes], &vec![0_u8; lanes])?,
-			observation: Matrix::new_from_f32(
+			meta: Matrix::new_from_slice_on(engine, [lanes, 4], &vec![0_u32; lanes * 4])?,
+			done: Matrix::new_from_slice_on(engine, [lanes], &vec![0_u8; lanes])?,
+			observation: Matrix::new_from_f32_on(
 				engine,
 				[lanes, observation_width],
 				&vec![0.0; lanes * observation_width],
@@ -575,8 +583,8 @@ impl<'engine> TradingEnvironment<'engine> {
 			DType::F32,
 		)?;
 		let reward = Matrix::allocate(self.market.engine_handle(), vec![lanes], lanes, DType::F32)?;
-		let terminated = Matrix::new_from_slice(self.engine, [lanes], &vec![0_u8; lanes])?;
-		let truncated = Matrix::new_from_slice(self.engine, [lanes], &vec![0_u8; lanes])?;
+		let terminated = Matrix::new_from_slice_on(self.engine, [lanes], &vec![0_u8; lanes])?;
+		let truncated = Matrix::new_from_slice_on(self.engine, [lanes], &vec![0_u8; lanes])?;
 		let mut buffers = vec![
 			BufferBinding::read(self.market.storage()),
 			BufferBinding::read(self.features.storage()),
@@ -756,7 +764,9 @@ fn trading_tables(config: TradingConfig, series: &[TradingSeries]) -> Result<Tra
 		));
 	}
 	let width = series[0].feature_width;
-	if width == 0 || width > 1024 {
+	// A row can already contain a packed history. Upload and observation
+	// products are checked against TRADING_ELEMENT_BUDGET before indexing.
+	if width == 0 {
 		return Err(Error::invalid_argument("invalid trading feature width"));
 	}
 	let market_width = if series.iter().any(|s| !s.books.is_empty()) {
@@ -827,10 +837,10 @@ fn trading_tables(config: TradingConfig, series: &[TradingSeries]) -> Result<Tra
 			.ok_or_else(|| Error::invalid_argument("trading row extent overflow"))?;
 		if end
 			.checked_mul(width.max(market_width))
-			.is_none_or(|x| x > 50_000_000)
+			.is_none_or(|x| x > TRADING_ELEMENT_BUDGET)
 		{
 			return Err(Error::resource_exhausted(
-				"trading upload exceeds 50M-element budget",
+				"trading upload exceeds the 128M-element budget",
 			));
 		}
 		segments.push([

@@ -431,8 +431,8 @@ fn benchmark_candidate(
 		validation_data(n as usize, 13, 7, 6, 0.02)
 	};
 	let (Ok(a), Ok(b)) = (
-		crate::matrix::from_f32_on(engine, [m as usize, k as usize], &a_data),
-		crate::matrix::from_f32_on(engine, [n as usize, k as usize], &b_data),
+		crate::matrix::from_f32([m as usize, k as usize], &a_data),
+		crate::matrix::from_f32([n as usize, k as usize], &b_data),
 	) else {
 		return INVALID_MEASUREMENT_MS;
 	};
@@ -447,7 +447,7 @@ fn benchmark_candidate(
 	let bias = if bias_data.is_empty() {
 		None
 	} else {
-		match crate::matrix::from_f32_on(engine, [n as usize], &bias_data) {
+		match crate::matrix::from_f32([n as usize], &bias_data) {
 			Ok(bias) => Some(bias),
 			Err(_) => return INVALID_MEASUREMENT_MS,
 		}
@@ -589,16 +589,12 @@ fn validate_candidate(
 	} else {
 		validation_data(n as usize, 13, 7, 6, 0.02)
 	};
-	let a = crate::matrix::from_f32_on(engine, [m as usize, k as usize], &a_data)?;
-	let b = crate::matrix::from_f32_on(engine, [n as usize, k as usize], &b_data)?;
+	let a = crate::matrix::from_f32([m as usize, k as usize], &a_data)?;
+	let b = crate::matrix::from_f32([n as usize, k as usize], &b_data)?;
 	let bias = if bias_data.is_empty() {
 		None
 	} else {
-		Some(crate::matrix::from_f32_on(
-			engine,
-			[n as usize],
-			&bias_data,
-		)?)
+		Some(crate::matrix::from_f32([n as usize], &bias_data)?)
 	};
 	let output = crate::Matrix::allocate(
 		&engine.handle(),

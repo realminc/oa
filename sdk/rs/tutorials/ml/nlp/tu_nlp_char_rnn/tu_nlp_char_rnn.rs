@@ -45,7 +45,8 @@ fn main() -> oa::Result<()> {
 	};
 
 	let engine = oa::Engine::new()?;
-	let model = nlp::CharRnn::new(&engine)?;
+	oa::Engine::set_default(engine.clone());
+	let model = nlp::CharRnn::new()?;
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, lr)?;
 	let mut sampler = nlp::CharSampler::new(batch)?;
 
@@ -109,8 +110,8 @@ fn main() -> oa::Result<()> {
 				last_input.clone_from(&input_values);
 				last_target.clone_from(&target_values);
 				Ok((
-					oa::Matrix::new_from_slice(&engine, [batch, nlp::CONTEXT_LENGTH], &input_values)?,
-					oa::Matrix::new_from_slice(&engine, [batch * nlp::CONTEXT_LENGTH], &target_values)?,
+					oa::Matrix::new_from_slice([batch, nlp::CONTEXT_LENGTH], &input_values)?,
+					oa::Matrix::new_from_slice([batch * nlp::CONTEXT_LENGTH], &target_values)?,
 				))
 			},
 			|(input, target)| {
@@ -136,8 +137,8 @@ fn main() -> oa::Result<()> {
 	let training_result = training.finish()?;
 	let final_loss = training_result.last_loss().unwrap_or_default();
 
-	let input = oa::Matrix::new_from_slice(&engine, [batch, nlp::CONTEXT_LENGTH], &last_input)?;
-	let target = oa::Matrix::new_from_slice(&engine, [batch * nlp::CONTEXT_LENGTH], &last_target)?;
+	let input = oa::Matrix::new_from_slice([batch, nlp::CONTEXT_LENGTH], &last_input)?;
+	let target = oa::Matrix::new_from_slice([batch * nlp::CONTEXT_LENGTH], &last_target)?;
 	let accuracy = nlp::accuracy(&model.forward(&input)?, &target)?;
 	let generated = nlp::generate_greedy(
 		&engine,
@@ -173,7 +174,7 @@ fn main() -> oa::Result<()> {
 
 	let plot_path = cli.config().plot.as_str();
 	if !plot_path.is_empty() {
-		write_loss_curve(&engine, &loss_curve, plot_path)?;
+		write_loss_curve(&loss_curve, plot_path)?;
 		println!("plot: {plot_path}");
 	}
 
@@ -186,9 +187,9 @@ fn main() -> oa::Result<()> {
 
 	let checkpoint = oa::Path::temp().join("oars_char_rnn.oam");
 	oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
-	let reloaded = nlp::CharRnn::new(&engine)?;
+	let reloaded = nlp::CharRnn::new()?;
 	let mut reloaded_optimizer = oa::ml::AdamW::new(reloaded.all_parameters()?, lr)?;
-	oa::ml::load_checkpoint(&engine, &checkpoint, &reloaded, &mut reloaded_optimizer)?;
+	oa::ml::load_checkpoint(&checkpoint, &reloaded, &mut reloaded_optimizer)?;
 	assert_eq!(reloaded_optimizer.step_count(), optimizer.step_count());
 	assert_eq!(
 		nlp::accuracy(&reloaded.forward(&input)?, &target)?,
@@ -212,7 +213,7 @@ fn main() -> oa::Result<()> {
 
 /// Render the recorded loss curve through `oa::plot` — the same headless GPU
 /// composition `tu_viewer_video` uses for its poster asset.
-fn write_loss_curve(engine: &oa::Engine, loss_curve: &[f32], path: &str) -> oa::Result<()> {
+fn write_loss_curve(loss_curve: &[f32], path: &str) -> oa::Result<()> {
 	let mut fig = Figure::new(FigureConfig {
 		title: "Char RNN training".to_owned(),
 		width: 960,
@@ -256,5 +257,5 @@ fn write_loss_curve(engine: &oa::Engine, loss_curve: &[f32], path: &str) -> oa::
 			..Default::default()
 		},
 	);
-	fig.save_to(engine, path)
+	fig.save_to(path)
 }

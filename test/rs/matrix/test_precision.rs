@@ -122,7 +122,7 @@ test_vk!(fp16_matrix_storage_round_trips_exact_bits, engine, {
 		.iter()
 		.map(|value| oa::F16::from_f32(*value))
 		.collect();
-	let matrix = oa::Matrix::new_from_slice(&engine, [8], &storage)?;
+	let matrix = oa::Matrix::new_from_slice([8], &storage)?;
 	assert_eq!(matrix.dtype(), oa::DType::F16);
 	let readback = matrix.read::<oa::F16>()?;
 	for (index, (written, read)) in storage.iter().zip(&readback).enumerate() {
@@ -157,8 +157,8 @@ test_vk!(fp16_storage_gemm_matches_narrowed_f32_oracle, engine, {
 			n,
 			k,
 		);
-		let left = oa::Matrix::new_from_f32(&engine, [m, k], &left_values)?;
-		let right = oa::Matrix::new_from_f32(&engine, [n, k], &right_values)?;
+		let left = oa::Matrix::new_from_f32([m, k], &left_values)?;
+		let right = oa::Matrix::new_from_f32([n, k], &right_values)?;
 		let (plan, output) = engine.capture(|| oa::matrix::mat_mul_nt(&left, &right))?;
 		let kernels = kernel_names(&plan, "mat_mul_nt");
 		assert_eq!(
@@ -166,9 +166,9 @@ test_vk!(fp16_storage_gemm_matches_narrowed_f32_oracle, engine, {
 			vec![
 				"matrix.cast_f32_f16.f16",
 				"matrix.cast_f32_f16.f16",
-				"matrix.mat_mul_nt_f16s.f16",
+				"matrix.mat_mul_nt_f16.f16",
 			],
-			"FP16 mode must record the cast+cast+f16s lowering for {m}x{n}x{k}"
+			"FP16 mode must record the cast+cast+f16 lowering for {m}x{n}x{k}"
 		);
 		engine.submit(&plan)?.wait()?;
 		assert_eq!(output.dtype(), oa::DType::F32);
@@ -179,7 +179,93 @@ test_vk!(fp16_storage_gemm_matches_narrowed_f32_oracle, engine, {
 			&output.read_f32()?,
 			&expected,
 			1.0e-2,
-			&format!("f16s gemm {m}x{n}x{k}"),
+			&format!("f16 gemm {m}x{n}x{k}"),
+		);
+	}
+	Ok(())
+});
+
+test_vk!(
+	fp16_storage_wide_gemm_matches_narrowed_f32_oracle,
+	engine,
+	{
+		let _mode = PrecisionMode::set("FP16");
+		// At least 64 tiles of the 128x64 grid admits the wide F16-storage
+		// variant; the shape mix still crosses M/N tails and an odd K that
+		// forces the scalar (unaligned) load path.
+		for (m, n, k) in [
+			(1030_usize, 770_usize, 193_usize),
+			(1024, 1024, 512),
+			(512, 1024, 64),
+			(1025, 1023, 16),
+		] {
+			let left_values = values(m * k, 3);
+			let right_values = values(n * k, 11);
+			let expected = cpu_mat_mul_nt(
+				&f16_rounded(&left_values),
+				&f16_rounded(&right_values),
+				m,
+				n,
+				k,
+			);
+			let left = oa::Matrix::new_from_f32([m, k], &left_values)?;
+			let right = oa::Matrix::new_from_f32([n, k], &right_values)?;
+			let (plan, output) = engine.capture(|| oa::matrix::mat_mul_nt(&left, &right))?;
+			let kernels = kernel_names(&plan, "mat_mul_nt");
+			assert!(
+				kernels.contains(&"matrix.mat_mul_nt_tiled_wide_f16.f16".to_owned()),
+				"FP16 mode must record the tiled_wide_f16 kernel for {m}x{n}x{k}, 				found {kernels:?}"
+			);
+			engine.submit(&plan)?.wait()?;
+			assert_eq!(output.dtype(), oa::DType::F32);
+			assert_close(
+				&output.read_f32()?,
+				&expected,
+				1.0e-2,
+				&format!("f16 tiled wide gemm {m}x{n}x{k}"),
+			);
+		}
+		Ok(())
+	}
+);
+
+test_vk!(fp16_storage_small_gemm_keeps_f16_route, engine, {
+	let _mode = PrecisionMode::set("FP16");
+	// Below the 64-tile occupancy preference the established f16 variant
+	// stays selected; the wide kernel must not take small problems.
+	for (m, n, k) in [
+		(64_usize, 64_usize, 16_usize),
+		(512, 512, 64),
+		(1024, 32, 64),
+	] {
+		let left_values = values(m * k, 3);
+		let right_values = values(n * k, 11);
+		let expected = cpu_mat_mul_nt(
+			&f16_rounded(&left_values),
+			&f16_rounded(&right_values),
+			m,
+			n,
+			k,
+		);
+		let left = oa::Matrix::new_from_f32([m, k], &left_values)?;
+		let right = oa::Matrix::new_from_f32([n, k], &right_values)?;
+		let (plan, output) = engine.capture(|| oa::matrix::mat_mul_nt(&left, &right))?;
+		let kernels = kernel_names(&plan, "mat_mul_nt");
+		assert_eq!(
+			kernels,
+			vec![
+				"matrix.cast_f32_f16.f16",
+				"matrix.cast_f32_f16.f16",
+				"matrix.mat_mul_nt_f16.f16",
+			],
+			"m={m} n={n} must keep the f16 route, found {kernels:?}"
+		);
+		engine.submit(&plan)?.wait()?;
+		assert_close(
+			&output.read_f32()?,
+			&expected,
+			1.0e-2,
+			&format!("f16 small gemm {m}x{n}x{k}"),
 		);
 	}
 	Ok(())
@@ -190,20 +276,20 @@ test_vk!(fp16_storage_sum_matches_narrowed_f32_oracle, engine, {
 	for length in [1_usize, 7, 256, 4097, 131_072] {
 		let input_values = values(length, 5);
 		let expected: f32 = f16_rounded(&input_values).iter().sum();
-		let input = oa::Matrix::new_from_f32(&engine, [length], &input_values)?;
+		let input = oa::Matrix::new_from_f32([length], &input_values)?;
 		let (plan, output) = engine.capture(|| oa::matrix::sum(&input, -1))?;
 		let kernels = kernel_names(&plan, "sum");
 		assert_eq!(
 			kernels,
-			vec!["matrix.cast_f32_f16.f16", "matrix.sum_f16s.f16"],
-			"FP16 mode must record the cast+sum_f16s lowering for {length} elements"
+			vec!["matrix.cast_f32_f16.f16", "matrix.sum_f16.f16"],
+			"FP16 mode must record the cast+sum_f16 lowering for {length} elements"
 		);
 		engine.submit(&plan)?.wait()?;
 		let actual = output.read_f32()?;
 		assert_eq!(actual.len(), 1);
 		// The CPU oracle sums left-to-right while the kernel folds 256 lanes
 		// then tree-reduces; 131k elements of [-2, 2] stay under 1e-2.
-		assert_close(&actual, &[expected], 1.0e-2, &format!("f16s sum {length}"));
+		assert_close(&actual, &[expected], 1.0e-2, &format!("f16 sum {length}"));
 	}
 	Ok(())
 });
@@ -214,8 +300,8 @@ test_vk!(f32_default_route_records_f32_kernels, engine, {
 	let _mode = PrecisionMode::remove();
 	let left_values = values(8 * 5, 3);
 	let right_values = values(7 * 5, 11);
-	let left = oa::Matrix::new_from_f32(&engine, [8, 5], &left_values)?;
-	let right = oa::Matrix::new_from_f32(&engine, [7, 5], &right_values)?;
+	let left = oa::Matrix::new_from_f32([8, 5], &left_values)?;
+	let right = oa::Matrix::new_from_f32([7, 5], &right_values)?;
 	let (plan, _output) = engine.capture(|| oa::matrix::mat_mul_nt(&left, &right))?;
 	let kernels = kernel_names(&plan, "mat_mul_nt");
 	assert!(
@@ -250,10 +336,9 @@ test_vk!(fp16_storage_linear_matches_narrowed_f32_oracle, engine, {
 		for (index, value) in expected.iter_mut().enumerate() {
 			*value += bias_values[index % output_features];
 		}
-		let input = oa::Matrix::new_from_f32(&engine, [batch, input_features], &input_values)?;
-		let weight =
-			oa::Matrix::new_from_f32(&engine, [output_features, input_features], &weight_values)?;
-		let bias = oa::Matrix::new_from_f32(&engine, [output_features], &bias_values)?;
+		let input = oa::Matrix::new_from_f32([batch, input_features], &input_values)?;
+		let weight = oa::Matrix::new_from_f32([output_features, input_features], &weight_values)?;
+		let bias = oa::Matrix::new_from_f32([output_features], &bias_values)?;
 		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
 		let (plan, output) = engine.capture(|| layer.forward(&input))?;
 		let kernels = kernel_names(&plan, "linear");
@@ -262,10 +347,10 @@ test_vk!(fp16_storage_linear_matches_narrowed_f32_oracle, engine, {
 			vec![
 				"matrix.cast_f32_f16.f16",
 				"matrix.cast_f32_f16.f16",
-				"matrix.mat_mul_nt_f16s.f16",
+				"matrix.mat_mul_nt_f16.f16",
 				"matrix.bias_add_broadcast.f32",
 			],
-			"FP16 mode must record the cast+cast+f16s+bias lowering for {batch}x{input_features}x{output_features}"
+			"FP16 mode must record the cast+cast+f16+bias lowering for {batch}x{input_features}x{output_features}"
 		);
 		engine.submit(&plan)?.wait()?;
 		assert_eq!(output.dtype(), oa::DType::F32);
@@ -273,7 +358,7 @@ test_vk!(fp16_storage_linear_matches_narrowed_f32_oracle, engine, {
 			&output.read_f32()?,
 			&expected,
 			1.0e-2,
-			&format!("f16s linear {batch}x{input_features}x{output_features}"),
+			&format!("f16 linear {batch}x{input_features}x{output_features}"),
 		);
 	}
 	Ok(())

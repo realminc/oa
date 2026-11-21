@@ -24,8 +24,8 @@ fn main() -> oa::Result<()> {
 	// Domain operations record into the engine's private eager session.  No
 	// public graph or context object is required.  The matrix values are
 	// returned immediately as semantic handles.
-	let a = matrix::ones(&engine, [64, 128])?;
-	let b = matrix::full(&engine, [64, 128], 2.0_f32)?;
+	let a = matrix::ones([64, 128])?;
+	let b = matrix::full([64, 128], 2.0_f32)?;
 	let output = matrix::add(&a, &b)?;
 
 	// `engine.checkpoint()` submits all pending eager work and returns an

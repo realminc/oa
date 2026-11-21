@@ -20,7 +20,7 @@ pub enum ChannelMode {
 
 /// Load and GPU-upload a texture from a file path.
 pub fn load_texture(engine: &Engine, path: &str) -> Result<Texture> {
-	crate::render::texture_from_file(engine, path)
+	crate::render::texture_from_file_on(engine, path)
 }
 
 /// Draw the image or its channel view into the viewport.

@@ -159,7 +159,7 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 					count,
 					DType::F32,
 				)?,
-				cursor: Matrix::new_from_slice(engine, [2], &[0_u32, 1])?,
+				cursor: Matrix::new_from_slice_on(engine, [2], &[0_u32, 1])?,
 			})
 		} else {
 			None
@@ -719,7 +719,7 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 			}
 		}
 		if minibatch < batch {
-			let total_loss = Matrix::new_from_f32(self.engine, [], &[metrics[0] as f32])?;
+			let total_loss = Matrix::new_from_f32_on(self.engine, [], &[metrics[0] as f32])?;
 			self
 				.training
 				.complete_update_with_device_prefix(&total_loss, device_prefix)?;

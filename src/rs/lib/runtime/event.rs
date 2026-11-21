@@ -6,7 +6,7 @@ use crate::Result;
 
 use super::{
 	Device, RetirementTicket, TimestampPair,
-	device::video::{DecodeStatus, EncodeReceipt},
+	device::logical::video::{DecodeStatus, EncodeReceipt},
 };
 
 /// Exact completion point for work submitted to an OA engine.

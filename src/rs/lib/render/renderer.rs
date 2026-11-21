@@ -33,7 +33,7 @@ use crate::{
 use super::{
 	Camera, MeshData, Scene, Texture, blit,
 	scene::compile_scene_packets,
-	texture::{RenderTargetLease, texture_from_render_target, texture_from_rgba8},
+	texture::{RenderTargetLease, texture_from_render_target, texture_from_rgba8_on},
 };
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -643,7 +643,7 @@ impl<'engine> Renderer<'engine> {
 			(None, None, None, None, None, None, None, None, None, None)
 		};
 		let white_texture = mesh_enabled
-			.then(|| texture_from_rgba8(engine, &[255, 255, 255, 255], 1, 1))
+			.then(|| texture_from_rgba8_on(engine, &[255, 255, 255, 255], 1, 1))
 			.transpose()?;
 
 		let vertex_cap = config.max_vertex_count as usize * VERTEX_STRIDE;

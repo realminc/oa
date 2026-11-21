@@ -13,7 +13,7 @@
 		DType::F32,
 	)?;
 	if dim == -1
-		&& crate::runtime::record_sum_f16s(
+		&& crate::runtime::record_sum_f16(
 			input.engine_handle(),
 			input,
 			&output,

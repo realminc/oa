@@ -4,12 +4,16 @@ pub struct {{name}} {
 }
 
 impl {{name}} {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(input_features: usize, seed: u64) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, input_features, seed)	}
+
 	/// Construct a deterministically initialized byte head.
 	///
 	/// # Errors
 	///
 	/// Returns an error when `input_features` is zero or initialization fails.
-	pub fn new_with_seed(engine: &Engine, input_features: usize, seed: u64) -> Result<Self> {
+	pub fn new_with_seed_on(engine: &Engine, input_features: usize, seed: u64) -> Result<Self> {
 		Ok(Self {
 			inner: {{constructor}}(engine, input_features, {{vocabulary}}, seed)?,
 		})

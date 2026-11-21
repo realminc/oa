@@ -17,19 +17,20 @@ impl PythonRmsNorm {
 	/// Accepts `features` as an alias for `dimension`.  The `seed` keyword
 	/// is accepted for API compatibility but ignored.
 	#[new]
-	#[pyo3(signature = (engine, dimension=None, epsilon=1e-5, features=None, seed=None))]
+	#[pyo3(signature = (dimension=None, epsilon=1e-5, features=None, seed=None, engine=None))]
 	pub fn new(
-		engine: &PythonEngine,
 		dimension: Option<usize>,
 		epsilon: f32,
 		features: Option<usize>,
 		seed: Option<u64>,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
 		let _ = seed;
 		let dim = dimension.or(features).ok_or_else(|| {
 			pyo3::exceptions::PyTypeError::new_err("RmsNorm requires dimension or features")
 		})?;
-		oa::ml::nn::RmsNorm::new(&engine.inner, dim, epsilon)
+		oa::ml::nn::RmsNorm::new_on(&engine, dim, epsilon)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

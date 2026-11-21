@@ -17,7 +17,7 @@ pub(super) use provider::dnn::{DnnPlan, DnnPolicy};
 /// Keep a staged plane copy and its buffer-only consumers on the same run.
 pub(super) fn schedule_video_plane_returns(nodes: &mut [super::graph::executable::GraphNode]) {
 	use super::{
-		device::video::PlaneCopyPhase,
+		device::logical::video::PlaneCopyPhase,
 		graph::executable::{GraphNode, VideoPlaneNode},
 	};
 

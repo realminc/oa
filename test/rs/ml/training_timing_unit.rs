@@ -29,7 +29,7 @@ fn composed_device_prefix_reaches_snapshot_and_callbacks() -> Result<()> {
 	)?;
 	training.add_callback(&mut observed);
 	assert!(training.begin_step()?);
-	let input = Matrix::new_from_f32(&engine, [], &[1.0])?;
+	let input = Matrix::new_from_f32([], &[1.0])?;
 	let loss = crate::matrix::add_scalar(&input, 0.25)?;
 	let prefix = Duration::from_secs(1);
 	training.complete_step_with_device_prefix(&loss, prefix)?;

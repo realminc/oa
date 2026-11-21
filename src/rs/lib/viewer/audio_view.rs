@@ -30,7 +30,7 @@ pub fn analyze(
 			"invalid Viewer audio analysis configuration",
 		));
 	}
-	let decoded = crate::audio::decode_file(engine, path)?;
+	let decoded = crate::audio::decode_file_on(engine, path)?;
 	let samples = u32::try_from(decoded.samples())
 		.map_err(|_| Error::out_of_range("Viewer audio sample count exceeds u32"))?;
 	if samples == 0 {

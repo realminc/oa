@@ -64,13 +64,22 @@ pub struct VectorQuantizer {
 }
 
 impl VectorQuantizer {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(config: VectorQuantizerConfig, seed: u64) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, config, seed)
+	}
+
 	/// Construct a deterministically initialized quantizer.
 	///
 	/// # Errors
 	///
 	/// Returns an error for an invalid configuration, shape overflow, or failed
 	/// state allocation/upload.
-	pub fn new_with_seed(engine: &Engine, config: VectorQuantizerConfig, seed: u64) -> Result<Self> {
+	pub fn new_with_seed_on(
+		engine: &Engine,
+		config: VectorQuantizerConfig,
+		seed: u64,
+	) -> Result<Self> {
 		validate_config(config)?;
 		let count = config
 			.num_codes
@@ -82,11 +91,15 @@ impl VectorQuantizer {
 			.ok_or_else(|| Error::invalid_argument("VQ Glorot extent overflows usize"))?;
 		let limit = (6.0_f32 / denominator as f32).sqrt();
 		let values = random::symmetric_uniform(count, limit, seed);
-		let codebook = Matrix::new_from_f32(engine, [config.num_codes, config.code_dim], &values)?;
-		let embed_sum = Matrix::new_from_f32(engine, [config.num_codes, config.code_dim], &values)?;
+		let codebook = Matrix::new_from_f32_on(engine, [config.num_codes, config.code_dim], &values)?;
+		let embed_sum = Matrix::new_from_f32_on(engine, [config.num_codes, config.code_dim], &values)?;
 		let cluster_size =
-			Matrix::new_from_f32(engine, [config.num_codes], &vec![1.0; config.num_codes])?;
+			Matrix::new_from_f32_on(engine, [config.num_codes], &vec![1.0; config.num_codes])?;
 		Self::from_state(config, codebook, embed_sum, cluster_size)
+	}
+
+	pub fn new(config: VectorQuantizerConfig) -> Result<Self> {
+		Self::new_on(&Engine::current()?, config)
 	}
 
 	/// Construct a quantizer using deterministic seed zero.
@@ -94,8 +107,8 @@ impl VectorQuantizer {
 	/// # Errors
 	///
 	/// Returns the same errors as [`Self::new_with_seed`].
-	pub fn new(engine: &Engine, config: VectorQuantizerConfig) -> Result<Self> {
-		Self::new_with_seed(engine, config, 0)
+	pub fn new_on(engine: &Engine, config: VectorQuantizerConfig) -> Result<Self> {
+		Self::new_with_seed_on(engine, config, 0)
 	}
 
 	fn from_state(
@@ -298,13 +311,22 @@ pub struct ResidualVectorQuantizer {
 }
 
 impl ResidualVectorQuantizer {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(
+		config: VectorQuantizerConfig,
+		num_levels: usize,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, config, num_levels, seed)
+	}
+
 	/// Construct `num_levels` deterministically initialized quantizers.
 	///
 	/// # Errors
 	///
 	/// Returns an error when the level count or configuration is invalid, child
 	/// state allocation fails, or module registration fails.
-	pub fn new_with_seed(
+	pub fn new_with_seed_on(
 		engine: &Engine,
 		config: VectorQuantizerConfig,
 		num_levels: usize,
@@ -318,7 +340,7 @@ impl ResidualVectorQuantizer {
 		let mut registry = ModuleRegistry::new();
 		let mut levels = Vec::with_capacity(num_levels);
 		for level in 0..num_levels {
-			let quantizer = Rc::new(VectorQuantizer::new_with_seed(
+			let quantizer = Rc::new(VectorQuantizer::new_with_seed_on(
 				engine,
 				config,
 				seed.wrapping_add(level as u64),
@@ -333,13 +355,17 @@ impl ResidualVectorQuantizer {
 		})
 	}
 
+	pub fn new(config: VectorQuantizerConfig, num_levels: usize) -> Result<Self> {
+		Self::new_on(&Engine::current()?, config, num_levels)
+	}
+
 	/// Construct a residual quantizer using deterministic seed zero.
 	///
 	/// # Errors
 	///
 	/// Returns the same errors as [`Self::new_with_seed`].
-	pub fn new(engine: &Engine, config: VectorQuantizerConfig, num_levels: usize) -> Result<Self> {
-		Self::new_with_seed(engine, config, num_levels, 0)
+	pub fn new_on(engine: &Engine, config: VectorQuantizerConfig, num_levels: usize) -> Result<Self> {
+		Self::new_with_seed_on(engine, config, num_levels, 0)
 	}
 
 	/// Quantize successive residuals and apply one straight-through estimator.

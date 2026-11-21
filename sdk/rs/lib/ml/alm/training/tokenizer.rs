@@ -178,7 +178,7 @@ pub fn train_tokenizer_with_validation<T: AsRef<[f32]>>(
 				config.batch_size,
 				config.sequence_len,
 			)?;
-			let input = Matrix::new_from_slice(
+			let input = Matrix::new_from_slice_on(
 				engine,
 				[
 					config.batch_size,
@@ -318,7 +318,7 @@ pub fn train_tokenizer_with_validation<T: AsRef<[f32]>>(
 			config.sequence_len,
 		)?;
 		debug_assert_eq!(values.len(), batch_values);
-		let input = Matrix::new_from_slice(
+		let input = Matrix::new_from_slice_on(
 			engine,
 			[
 				config.batch_size,

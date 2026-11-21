@@ -874,7 +874,6 @@ fn retained_native_planes_replay(profile: &str, pixel_format: &str) -> oa::Resul
 		);
 		let luma_bytes = frame.width() * frame.height() * 2;
 		oa::VideoFrame::upload_planes(
-			&engine,
 			VideoPixelFormat::P010,
 			vec![
 				independent[..luma_bytes].to_vec(),
@@ -893,7 +892,7 @@ fn retained_native_planes_replay(profile: &str, pixel_format: &str) -> oa::Resul
 			frame.timing(),
 			frame.color_info(),
 		)?
-		.upload(&engine)?
+		.upload()?
 	};
 	let reference = reference_frame.to_matrix(&config)?.read_f32()?;
 
@@ -1098,7 +1097,6 @@ fn recorded_video_replay(engine: &Engine, profile: &str) -> oa::Result<()> {
 			vec![bytes[..luma_bytes].to_vec(), uv.0.to_vec(), uv.1.to_vec()]
 		};
 		let reference = oa::VideoFrame::upload_planes(
-			engine,
 			format,
 			planes,
 			info.width() as usize,

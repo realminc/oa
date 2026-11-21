@@ -9,18 +9,16 @@ struct CheckpointVq {
 
 impl CheckpointVq {
 	fn new(
-		engine: &oa::Engine,
+		_engine: &oa::Engine,
 		config: oa::ml::nn::VectorQuantizerConfig,
 		seed: u64,
 	) -> oa::Result<Self> {
 		let encoder = Rc::new(oa::ml::nn::Linear::new_with_seed(
-			engine,
 			config.code_dim,
 			config.code_dim,
 			seed,
 		)?);
 		let quantizer = Rc::new(oa::ml::nn::VectorQuantizer::new_with_seed(
-			engine,
 			config,
 			seed.wrapping_add(1),
 		)?);
@@ -71,9 +69,8 @@ test_vk!(
 	engine,
 	{
 		let config = small_config();
-		let quantizer = oa::ml::nn::VectorQuantizer::new_with_seed(&engine, config, 7)?;
+		let quantizer = oa::ml::nn::VectorQuantizer::new_with_seed(config, 7)?;
 		quantizer.seed(&oa::Matrix::new_from_f32(
-			&engine,
 			[4, 2],
 			&[0.0, 0.0, 2.0, 0.0, 0.0, 2.0, 0.25, 0.25],
 		)?)?;
@@ -82,7 +79,7 @@ test_vk!(
 			[2.0, 0.0, 0.0, 2.0, 0.25, 0.25]
 		);
 		let latent_values = [1.8_f32, 0.1, 0.2, 1.7, 0.1, 0.2, 1.0, 1.0];
-		let latent = oa::Matrix::new_from_f32(&engine, [4, 2], &latent_values)?;
+		let latent = oa::Matrix::new_from_f32([4, 2], &latent_values)?;
 		let result = quantizer.quantize(&latent)?;
 		assert!(result.commitment_loss.shape().is_empty());
 		assert_eq!(result.indices.read::<i32>()?, [0, 1, 2, 2]);
@@ -116,19 +113,16 @@ test_vk!(
 		assert!(buffers.iter().all(|buffer| buffer.persistent()));
 		let codebook = quantizer.codebook().read_f32()?;
 		assert_close(&codebook, &[1.9, 0.05, 0.1, 1.85, 0.45, 0.48333332], 1.0e-6);
-		let decoded = quantizer.lookup(&oa::Matrix::new_from_slice(&engine, [3], &[2_i32, 0, 1])?)?;
+		let decoded = quantizer.lookup(&oa::Matrix::new_from_slice([3], &[2_i32, 0, 1])?)?;
 		assert_close(
 			&decoded.read_f32()?,
 			&[0.45, 0.48333332, 1.9, 0.05, 0.1, 1.85],
 			1.0e-6,
 		);
 
-		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-			&engine,
-			[4, 2],
-			&latent_values,
-		)?)?;
-		let row_ids = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 1, 2, 3])?;
+		let embedding =
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([4, 2], &latent_values)?)?;
+		let row_ids = oa::Matrix::new_from_slice([4], &[0_u32, 1, 2, 3])?;
 		let tape = oa::ml::GradientTape::new();
 		let encoded = embedding.forward(&row_ids)?;
 		let quantized = quantizer.quantize(&encoded)?.quantized;
@@ -156,8 +150,8 @@ test_vk!(
 			dead_threshold: 0.0,
 			normalize_codes: false,
 		};
-		let quantizer = oa::ml::nn::ResidualVectorQuantizer::new_with_seed(&engine, config, 2, 11)?;
-		let latent = oa::Matrix::new_from_f32(&engine, [3, 2], &[3.0, 0.0, 0.0, 3.0, 2.0, 2.0])?;
+		let quantizer = oa::ml::nn::ResidualVectorQuantizer::new_with_seed(config, 2, 11)?;
+		let latent = oa::Matrix::new_from_f32([3, 2], &[3.0, 0.0, 0.0, 3.0, 2.0, 2.0])?;
 		quantizer.seed(&latent)?;
 		let result = quantizer.quantize(&latent)?;
 		assert_eq!(result.indices.len(), 2);
@@ -177,16 +171,16 @@ test_vk!(
 	engine,
 	{
 		let tie = oa::ml::matrix::vq_assign(
-			&oa::Matrix::new_from_f32(&engine, [1, 2], &[1.0, 0.0])?,
-			&oa::Matrix::new_from_f32(&engine, [2, 2], &[0.0, 0.0, 2.0, 0.0])?,
+			&oa::Matrix::new_from_f32([1, 2], &[1.0, 0.0])?,
+			&oa::Matrix::new_from_f32([2, 2], &[0.0, 0.0, 2.0, 0.0])?,
 		)?;
 		assert_eq!(tie.indices.read::<i32>()?, [0]);
 
 		let latent_values = [1.0_f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
-		let latent = oa::Matrix::new_from_f32(&engine, [4, 2], &latent_values)?;
-		let indices = oa::Matrix::new_from_slice(&engine, [4], &[0_i32; 4])?;
-		let zeros = oa::Matrix::new_from_f32(&engine, [3, 2], &[0.0; 6])?;
-		let counts = oa::Matrix::new_from_f32(&engine, [3], &[0.0; 3])?;
+		let latent = oa::Matrix::new_from_f32([4, 2], &latent_values)?;
+		let indices = oa::Matrix::new_from_slice([4], &[0_i32; 4])?;
+		let zeros = oa::Matrix::new_from_f32([3, 2], &[0.0; 6])?;
+		let counts = oa::Matrix::new_from_f32([3], &[0.0; 3])?;
 		let state = oa::ml::matrix::vq_ema_update(
 			&latent, &indices, &zeros, &counts, &zeros, 0.9, 1.0e-5, 1.0, 7, false,
 		)?;
@@ -206,11 +200,11 @@ test_vk!(
 		}
 
 		let normalized = oa::ml::matrix::vq_ema_update(
-			&oa::Matrix::new_from_f32(&engine, [2, 2], &[3.0, 4.0, 5.0, 12.0])?,
-			&oa::Matrix::new_from_slice(&engine, [2], &[0_i32, 1])?,
-			&oa::Matrix::new_from_f32(&engine, [2, 2], &[3.0, 4.0, 5.0, 12.0])?,
-			&oa::Matrix::new_from_f32(&engine, [2], &[1.0, 1.0])?,
-			&oa::Matrix::new_from_f32(&engine, [2, 2], &[3.0, 4.0, 5.0, 12.0])?,
+			&oa::Matrix::new_from_f32([2, 2], &[3.0, 4.0, 5.0, 12.0])?,
+			&oa::Matrix::new_from_slice([2], &[0_i32, 1])?,
+			&oa::Matrix::new_from_f32([2, 2], &[3.0, 4.0, 5.0, 12.0])?,
+			&oa::Matrix::new_from_f32([2], &[1.0, 1.0])?,
+			&oa::Matrix::new_from_f32([2, 2], &[3.0, 4.0, 5.0, 12.0])?,
 			0.5,
 			1.0e-5,
 			0.0,
@@ -241,7 +235,6 @@ test_vk!(
 		};
 		let source = CheckpointVq::new(&engine, config, 41)?;
 		let latent = oa::Matrix::new_from_f32(
-			&engine,
 			[6, 2],
 			&[
 				1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
@@ -273,7 +266,7 @@ test_vk!(
 
 		let destination = CheckpointVq::new(&engine, config, 99)?;
 		let mut destination_optimizer = oa::ml::AdamW::new(destination.all_parameters()?, 0.25)?;
-		oa::ml::load_checkpoint(&engine, &path, &destination, &mut destination_optimizer)?;
+		oa::ml::load_checkpoint(&path, &destination, &mut destination_optimizer)?;
 		assert_eq!(destination.quantizer.ema_step(), 2);
 		assert_eq!(
 			destination.quantizer.codebook().read_f32()?,

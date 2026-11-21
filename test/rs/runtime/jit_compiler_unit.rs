@@ -158,9 +158,9 @@ impl super::JitArtifacts {
 	pub(in crate::runtime) fn persist(
 		&self,
 		path: &crate::Path,
-		scope: &crate::runtime::device::vkcache::VkCacheScope,
+		scope: &crate::runtime::device::logical::vkcache::VkCacheScope,
 	) -> Result<()> {
-		crate::runtime::device::vkcache::update(path, scope, &self.section_updates()?)
+		crate::runtime::device::logical::vkcache::update(path, scope, &self.section_updates()?)
 	}
 }
 

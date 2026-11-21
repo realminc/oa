@@ -268,7 +268,7 @@ impl Dataset for DsOhlcv<'_> {
 				values.push(value);
 			}
 		}
-		Matrix::new_from_slice(self.engine, vec![input.len(), 5], &values)
+		Matrix::new_from_slice_on(self.engine, vec![input.len(), 5], &values)
 	}
 
 	fn get_sample(&self, index: i64) -> Result<Sample> {
@@ -287,7 +287,7 @@ impl Dataset for DsOhlcv<'_> {
 			labels.push(value);
 		}
 		let x = self.get_item(index)?;
-		let y = Matrix::new_from_slice(self.engine, vec![future.len()], &labels)?;
+		let y = Matrix::new_from_slice_on(self.engine, vec![future.len()], &labels)?;
 		Ok(Sample::new_with_label(x, y))
 	}
 }

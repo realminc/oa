@@ -197,13 +197,21 @@ pub struct {{name}} {
 }
 
 impl {{name}} {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(
+		vocab_size: usize,
+		config: {{config_type}},
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, vocab_size, config, seed)	}
+
 	/// Construct a deterministic token embedding and hybrid mixer stack.
 	///
 	/// # Errors
 	///
 	/// Returns an error for invalid schedule/width/routing configuration or
 	/// when a child module cannot be constructed or registered.
-	pub fn new_with_seed(
+	pub fn new_with_seed_on(
 		engine: &Engine,
 		vocab_size: usize,
 		config: {{config_type}},

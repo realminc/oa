@@ -18,7 +18,7 @@
 				],
 				"returns": "Audio",
 				"visibility": "pub",
-				"target": "crate::audio::decode_memory"
+				"target": "crate::audio::decode_memory_on"
 			}
 		},
 		{
@@ -76,7 +76,7 @@
 				],
 				"returns": "Image",
 				"visibility": "pub",
-				"target": "crate::image::decode_memory"
+				"target": "crate::image::decode_memory_on"
 			}
 		},
 		{
@@ -146,7 +146,7 @@
 				],
 				"returns": "Audio",
 				"visibility": "pub",
-				"target": "crate::audio::decode_file",
+				"target": "crate::audio::decode_file_on",
 				"parity": [
 					[
 						"engine",
@@ -206,7 +206,7 @@
 				],
 				"returns": "Image",
 				"visibility": "pub",
-				"target": "crate::image::decode_file",
+				"target": "crate::image::decode_file_on",
 				"parity": [
 					[
 						"engine",

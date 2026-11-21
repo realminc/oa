@@ -425,8 +425,9 @@ pub(crate) struct PythonVideoDecoder {
 impl PythonVideoDecoder {
 	/// Create a hardware decoder for the given container info.
 	#[new]
-	pub fn new(engine: &PythonEngine, info: &PythonVideoContainerInfo) -> PyResult<Self> {
-		oa::VideoDecoder::new(&engine.inner, info.inner)
+	pub fn new(info: &PythonVideoContainerInfo, engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		oa::VideoDecoder::new(&engine, info.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -587,14 +588,15 @@ pub(crate) struct PythonVideoPlayer {
 impl PythonVideoPlayer {
 	/// Open a local MP4 file for playback.
 	#[new]
-	#[pyo3(signature = (engine, path, config=None))]
+	#[pyo3(signature = (path, config=None, engine=None))]
 	pub fn new(
-		engine: &PythonEngine,
 		path: &str,
 		config: Option<&PythonVideoPlayerConfig>,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
 		let cfg = config.map_or_else(oa::video::VideoPlayerConfig::default, |c| c.inner);
-		oa::VideoPlayer::open(&engine.inner, path, cfg)
+		oa::VideoPlayer::open(&engine, path, cfg)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -2123,8 +2125,9 @@ pub(crate) struct PythonVideoEncoder {
 impl PythonVideoEncoder {
 	/// Create a session admitted by exact capability preflight.
 	#[new]
-	pub fn new(engine: &PythonEngine, config: &PythonVideoEncodeConfig) -> PyResult<Self> {
-		oa::video::VideoEncoder::new(&engine.inner, config.inner)
+	pub fn new(config: &PythonVideoEncodeConfig, engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		oa::video::VideoEncoder::new(&engine, config.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -2246,8 +2249,9 @@ pub(crate) struct PythonVideoRecorder {
 impl PythonVideoRecorder {
 	/// Open the output container and create the admitted encode session.
 	#[new]
-	pub fn new(engine: &PythonEngine, config: &PythonVideoRecorderConfig) -> PyResult<Self> {
-		oa::video::VideoRecorder::new(&engine.inner, config.inner.clone())
+	pub fn new(config: &PythonVideoRecorderConfig, engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		oa::video::VideoRecorder::new(&engine, config.inner.clone())
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -2320,8 +2324,11 @@ impl PythonVideoRecorder {
 
 /// Query the selected device's video queue and codec admission summary.
 #[pyfunction]
-pub fn query_device_capabilities(engine: &PythonEngine) -> PyResult<PythonVideoDeviceCapabilities> {
-	oa::video::query_device_capabilities(&engine.inner)
+pub fn query_device_capabilities(
+	engine: Option<&PythonEngine>,
+) -> PyResult<PythonVideoDeviceCapabilities> {
+	let engine = PythonEngine::resolve(engine)?;
+	oa::video::query_device_capabilities(&engine)
 		.map(|inner| PythonVideoDeviceCapabilities { inner })
 		.map_err(python_error)
 }
@@ -2329,10 +2336,11 @@ pub fn query_device_capabilities(engine: &PythonEngine) -> PyResult<PythonVideoD
 /// Query the selected device's exact limits for one decoder profile.
 #[pyfunction]
 pub fn query_decode_capabilities(
-	engine: &PythonEngine,
 	profile: &PythonVideoDecodeProfile,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<PythonVideoDecodeCapabilities> {
-	oa::video::query_decode_capabilities(&engine.inner, profile.inner)
+	let engine = PythonEngine::resolve(engine)?;
+	oa::video::query_decode_capabilities(&engine, profile.inner)
 		.map(|inner| PythonVideoDecodeCapabilities { inner })
 		.map_err(python_error)
 }
@@ -2340,10 +2348,11 @@ pub fn query_decode_capabilities(
 /// Enumerate decoded-output and DPB image formats for one exact profile.
 #[pyfunction]
 pub fn query_decode_formats(
-	engine: &PythonEngine,
 	profile: &PythonVideoDecodeProfile,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<PythonVideoDecodeFormats> {
-	oa::video::query_decode_formats(&engine.inner, profile.inner)
+	let engine = PythonEngine::resolve(engine)?;
+	oa::video::query_decode_formats(&engine, profile.inner)
 		.map(|inner| PythonVideoDecodeFormats { inner })
 		.map_err(python_error)
 }
@@ -2351,10 +2360,11 @@ pub fn query_decode_formats(
 /// Query exact H.264 or H.265 encoder limits without creating a session.
 #[pyfunction]
 pub fn query_encode_capabilities(
-	engine: &PythonEngine,
 	profile: &PythonVideoEncodeProfile,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<PythonVideoEncodeCapabilities> {
-	oa::video::query_encode_capabilities(&engine.inner, profile.inner)
+	let engine = PythonEngine::resolve(engine)?;
+	oa::video::query_encode_capabilities(&engine, profile.inner)
 		.map(|inner| PythonVideoEncodeCapabilities { inner })
 		.map_err(python_error)
 }
@@ -2362,10 +2372,11 @@ pub fn query_encode_capabilities(
 /// Enumerate encode-input and DPB formats for one exact profile.
 #[pyfunction]
 pub fn query_encode_formats(
-	engine: &PythonEngine,
 	profile: &PythonVideoEncodeProfile,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<PythonVideoEncodeFormats> {
-	oa::video::query_encode_formats(&engine.inner, profile.inner)
+	let engine = PythonEngine::resolve(engine)?;
+	oa::video::query_encode_formats(&engine, profile.inner)
 		.map(|inner| PythonVideoEncodeFormats { inner })
 		.map_err(python_error)
 }

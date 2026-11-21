@@ -118,7 +118,7 @@ impl Audio {
 				"audio layout {layout:?} requires {expected} channels; received {channel_count}"
 			)));
 		}
-		let data = Matrix::new_from_f32(engine, [channel_count, samples_per_channel], samples)?;
+		let data = Matrix::new_from_f32_on(engine, [channel_count, samples_per_channel], samples)?;
 		Self::new(data, sample_rate, layout)
 	}
 

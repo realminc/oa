@@ -27,8 +27,8 @@ class NttVulkanTest(unittest.TestCase):
 				for representation in ("standard", "montgomery"):
 					factor = pow(2, 64, prime) if representation == "montgomery" else 1
 					config = oa.crypto.NttConfig(prime, root, length, representation)
-					parameters = oa.crypto.ntt_prepare(engine, config)
-					input_ = oa.Matrix.new_from_u32(engine, [3, length, 2], pairs([v * factor % prime for v in values]))
+					parameters = oa.crypto.ntt_prepare(config, engine=engine)
+					input_ = oa.Matrix.new_from_u32([3, length, 2], pairs([v * factor % prime for v in values]), engine=engine)
 					transformed = oa.crypto.ntt_forward(input_, parameters)
 					self.assertEqual(integers(transformed.read_u32()), [v * factor % prime for v in expected])
 					restored = oa.crypto.ntt_inverse(transformed, parameters)
@@ -42,8 +42,8 @@ class NttVulkanTest(unittest.TestCase):
 		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		prime, length = 2013265921, 16384
 		config = oa.crypto.NttConfig(prime, pow(31, (prime - 1) // length, prime), length)
-		parameters = oa.crypto.ntt_prepare(engine, config)
+		parameters = oa.crypto.ntt_prepare(config, engine=engine)
 		values = [(i * i + 3 * i + 1) % prime for i in range(length)]
-		input_ = oa.Matrix.new_from_u32(engine, [1, length, 2], pairs(values))
+		input_ = oa.Matrix.new_from_u32([1, length, 2], pairs(values), engine=engine)
 		transformed = oa.crypto.ntt_forward(input_, parameters)
 		self.assertEqual(integers(oa.crypto.ntt_inverse(transformed, parameters).read_u32()), values)

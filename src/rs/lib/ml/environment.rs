@@ -8,8 +8,8 @@ mod trading;
 pub use super::types::TradingConfig;
 pub use compiled::CompiledEnvironment;
 pub use trading::{
-	TRADING_ACCOUNT_FEATURES, TRADING_LEDGER_WIDTH, TradingBook, TradingEnvironment,
-	TradingExecution, TradingMarginTier, TradingSeries, TradingState,
+	TRADING_ACCOUNT_FEATURES, TRADING_ELEMENT_BUDGET, TRADING_LEDGER_WIDTH, TradingBook,
+	TradingEnvironment, TradingExecution, TradingMarginTier, TradingSeries, TradingState,
 };
 
 pub use session::{Environment, EnvironmentExecution};

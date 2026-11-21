@@ -29,7 +29,7 @@ mod weights;
 
 pub use actor_critic::{ActorCritic, ActorCriticOutput, CategoricalActorCritic};
 pub use autograd::GradientTape;
-pub use checkpoint::{CheckpointManager, load_checkpoint, save_checkpoint};
+pub use checkpoint::{CheckpointManager, load_checkpoint, load_checkpoint_on, save_checkpoint};
 pub use checkpoint::{
 	DenseArtifactTensor, ModuleArtifact, ModuleArtifactMetadata, save_dense_artifact,
 	save_module_artifact,

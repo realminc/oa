@@ -44,7 +44,7 @@ on the qualified device; this is not a cross-device bitwise guarantee.
 | `RNN` (Elman) | 32 → 64 hidden | sequential context |
 | `Linear` | 64 → 27 | next-character logits |
 
-8,891 parameters total. `nlp::CharRnn::new(&engine)` owns the parameters
+8,891 parameters total. `nlp::CharRnn::new()` owns the parameters
 as device `Matrix` values; `model.forward(&input)` returns logits for all
 16 positions of all 64 sequences in the batch.
 
@@ -58,8 +58,8 @@ assert!(training.step(
     || {
         let (input_values, target_values) = sampler.next_values()?;
         Ok((
-            oa::Matrix::new_from_slice(&engine, [batch, nlp::CONTEXT_LENGTH], &input_values)?,
-            oa::Matrix::new_from_slice(&engine, [batch * nlp::CONTEXT_LENGTH], &target_values)?,
+            oa::Matrix::new_from_slice([batch, nlp::CONTEXT_LENGTH], &input_values)?,
+            oa::Matrix::new_from_slice([batch * nlp::CONTEXT_LENGTH], &target_values)?,
         ))
     },
     |(input, target)| {

@@ -42,7 +42,7 @@ test_vk!(
 		let before = engine.fusion_stats();
 		assert_eq!(before, engine.fusion_stats(), "an idle query must not fuse");
 		let elements = 1024;
-		let input = Matrix::new_from_f32(&engine, [1, elements], &values(elements))?;
+		let input = Matrix::new_from_f32([1, elements], &values(elements))?;
 		let chain = matrix::exp(&matrix::scale(&matrix::add(&input, &input)?, 0.25)?)?;
 		let expected = values(elements)
 			.iter()
@@ -77,7 +77,7 @@ test_vk!(
 
 test_vk!(fusion_stats_attribute_a_lone_elementwise_node, engine, {
 	let elements = 512;
-	let input = Matrix::new_from_f32(&engine, [1, elements], &values(elements))?;
+	let input = Matrix::new_from_f32([1, elements], &values(elements))?;
 	input.read_f32()?;
 	let before = engine.fusion_stats();
 	let output = matrix::exp(&input)?;
@@ -95,7 +95,7 @@ test_vk!(fusion_stats_attribute_a_lone_elementwise_node, engine, {
 
 test_vk!(fusion_stats_do_not_change_on_plan_replay, engine, {
 	let elements = 1024;
-	let input = Matrix::new_from_f32(&engine, [1, elements], &values(elements))?;
+	let input = Matrix::new_from_f32([1, elements], &values(elements))?;
 	input.read_f32()?;
 	let (plan, output) =
 		engine.capture(|| matrix::exp(&matrix::scale(&matrix::add(&input, &input)?, 0.5)?))?;

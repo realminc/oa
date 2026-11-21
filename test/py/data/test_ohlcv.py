@@ -70,7 +70,7 @@ class OhlcvBindingTest(unittest.TestCase):
 		value.set_f32("close", [10.0 + row * 0.1 for row in range(6)])
 		windows = oa.OhlcvWindows(value, oa.UnixTimeUnit.Nanoseconds, 2, 2)
 		engine = oa.Engine(logging=oa.LogOptions().console_output(False))
-		dataset = oa.DsOhlcv(engine, windows)
+		dataset = oa.DsOhlcv(windows, engine=engine)
 		del engine, windows, value
 		gc.collect()
 		self.assertEqual(len(dataset), 3)

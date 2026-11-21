@@ -26,7 +26,7 @@ test_vk!(
 	{
 		let values = (0..12).map(|value| value as f32).collect::<Vec<_>>();
 		let image = Image::new(
-			Matrix::new_from_f32(&engine, [1, 1, 3, 4], &values)?,
+			Matrix::new_from_f32([1, 1, 3, 4], &values)?,
 			ImageLayout::Nchw,
 			ImageFormat::Gray,
 		)?;
@@ -68,7 +68,7 @@ test_vk!(
 	{
 		let source = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
 		let image = Image::new(
-			Matrix::new_from_f32(&engine, [1, 2, 3], &source)?,
+			Matrix::new_from_f32([1, 2, 3], &source)?,
 			ImageLayout::Chw,
 			ImageFormat::Gray,
 		)?;
@@ -94,15 +94,11 @@ test_vk!(
 	{
 		let source = (0..9).map(|value| value as f32).collect::<Vec<_>>();
 		let image = Image::new(
-			Matrix::new_from_f32(&engine, [1, 1, 3, 3], &source)?,
+			Matrix::new_from_f32([1, 1, 3, 3], &source)?,
 			ImageLayout::Nchw,
 			ImageFormat::Gray,
 		)?;
-		let map = Matrix::new_from_f32(
-			&engine,
-			[1, 2, 2, 2],
-			&[0.0, 1.0, 2.0, 1.0, 0.0, 1.0, 2.0, 0.0],
-		)?;
+		let map = Matrix::new_from_f32([1, 2, 2, 2], &[0.0, 1.0, 2.0, 1.0, 0.0, 1.0, 2.0, 0.0])?;
 		assert_eq!(
 			oa::image::remap(
 				&image,
@@ -115,7 +111,7 @@ test_vk!(
 			.read_f32()?,
 			[0.0, 4.0, 8.0, 1.0]
 		);
-		let affine = Matrix::new_from_f32(&engine, [2, 3], &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0])?;
+		let affine = Matrix::new_from_f32([2, 3], &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0])?;
 		assert_eq!(
 			oa::image::warp_affine(
 				&image,
@@ -130,11 +126,7 @@ test_vk!(
 			.read_f32()?,
 			source
 		);
-		let perspective = Matrix::new_from_f32(
-			&engine,
-			[3, 3],
-			&[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
-		)?;
+		let perspective = Matrix::new_from_f32([3, 3], &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0])?;
 		let (plan, warped) = engine.capture(|| {
 			oa::image::warp_perspective(
 				&image,
@@ -170,12 +162,12 @@ test_vk!(
 	engine,
 	{
 		let image = Image::new(
-			Matrix::new_from_f32(&engine, [1, 1, 2, 2], &[0.0; 4])?,
+			Matrix::new_from_f32([1, 1, 2, 2], &[0.0; 4])?,
 			ImageLayout::Nchw,
 			ImageFormat::Gray,
 		)?;
-		let bad_map = Matrix::new_from_f32(&engine, [1, 3, 2, 2], &[0.0; 12])?;
-		let bad_affine = Matrix::new_from_f32(&engine, [3, 2], &[0.0; 6])?;
+		let bad_map = Matrix::new_from_f32([1, 3, 2, 2], &[0.0; 12])?;
+		let bad_affine = Matrix::new_from_f32([3, 2], &[0.0; 6])?;
 		for error in [
 			oa::image::crop(&image, 2, 0, 1, 1)
 				.err()
@@ -284,7 +276,7 @@ test_vk!(
 			.map(|index| ((index * 17 % 31) as f32 - 15.0) * 0.125)
 			.collect::<Vec<_>>();
 		let image = Image::new(
-			Matrix::new_from_f32(&engine, shape, &values)?,
+			Matrix::new_from_f32(shape, &values)?,
 			ImageLayout::Nchw,
 			ImageFormat::Rgb,
 		)?;
@@ -340,7 +332,7 @@ test_vk!(
 	{
 		let values = (0..12).map(|value| value as f32 * 0.25).collect::<Vec<_>>();
 		let image = Image::new(
-			Matrix::new_from_f32(&engine, [1, 3, 4], &values)?,
+			Matrix::new_from_f32([1, 3, 4], &values)?,
 			ImageLayout::Chw,
 			ImageFormat::Gray,
 		)?;
@@ -395,22 +387,22 @@ test_vk!(
 	engine,
 	{
 		let chw_i32 = Image::new(
-			Matrix::new_from_slice(&engine, [1, 2, 2], &[0_i32; 4])?,
+			Matrix::new_from_slice([1, 2, 2], &[0_i32; 4])?,
 			ImageLayout::Chw,
 			ImageFormat::Gray,
 		)?;
 		let nhwc = Image::new(
-			Matrix::new_from_f32(&engine, [1, 2, 2, 1], &[0.0; 4])?,
+			Matrix::new_from_f32([1, 2, 2, 1], &[0.0; 4])?,
 			ImageLayout::Nhwc,
 			ImageFormat::Gray,
 		)?;
 		let empty = Image::new(
-			Matrix::new_from_f32(&engine, [1, 1, 0, 2], &[])?,
+			Matrix::new_from_f32([1, 1, 0, 2], &[])?,
 			ImageLayout::Nchw,
 			ImageFormat::Gray,
 		)?;
 		let valid = Image::new(
-			Matrix::new_from_f32(&engine, [1, 2, 2], &[0.0; 4])?,
+			Matrix::new_from_f32([1, 2, 2], &[0.0; 4])?,
 			ImageLayout::Chw,
 			ImageFormat::Gray,
 		)?;

@@ -11,14 +11,14 @@ def _make_rgb_image(engine: oa.Engine, width: int = 4, height: int = 4) -> oa.Im
 	r = [float(i) / n for i in range(n)]
 	g = [float(n - i) / n for i in range(n)]
 	b = [0.5] * n
-	m = oa.Matrix.new_from_f32(engine, [1, 3, height, width], r + g + b)
+	m = oa.Matrix.new_from_f32([1, 3, height, width], r + g + b, engine=engine)
 	return oa.Image.new_from_matrix(m, "nchw", "rgb")
 
 
 def _make_gray_image(engine: oa.Engine, width: int = 4, height: int = 4) -> oa.Image:
 	n = width * height
 	vals = [float(i) / n for i in range(n)]
-	m = oa.Matrix.new_from_f32(engine, [1, 1, height, width], vals)
+	m = oa.Matrix.new_from_f32([1, 1, height, width], vals, engine=engine)
 	return oa.Image.new_from_matrix(m, "nchw", "gray")
 
 
@@ -259,7 +259,7 @@ class ImageFilterTest(unittest.TestCase):
 
 	def test_convolve_2d_identity_kernel(self) -> None:
 		# A [1,1] identity kernel leaves the image unchanged
-		kernel = oa.Matrix.new_from_f32(self.engine, [1, 1], [1.0])
+		kernel = oa.Matrix.new_from_f32( [1, 1], [1.0], engine=self.engine)
 		result = oa.image.convolve_2d(self.img, kernel, "constant", 0.0)
 		orig = self.img.as_matrix().read_f32()
 		res = result.as_matrix().read_f32()
@@ -267,8 +267,8 @@ class ImageFilterTest(unittest.TestCase):
 			self.assertAlmostEqual(o, r, places=5)
 
 	def test_separable_convolve_2d_identity(self) -> None:
-		kx = oa.Matrix.new_from_f32(self.engine, [1], [1.0])
-		ky = oa.Matrix.new_from_f32(self.engine, [1], [1.0])
+		kx = oa.Matrix.new_from_f32( [1], [1.0], engine=self.engine)
+		ky = oa.Matrix.new_from_f32( [1], [1.0], engine=self.engine)
 		result = oa.image.separable_convolve_2d(self.img, kx, ky)
 		orig = self.img.as_matrix().read_f32()
 		res = result.as_matrix().read_f32()

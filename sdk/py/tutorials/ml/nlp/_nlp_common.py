@@ -89,8 +89,8 @@ def _train(
 			nonlocal last_input, last_target
 			last_input, last_target = sampler.next_values()
 			return (
-				new_input(engine, [batch, nlp.CONTEXT_LENGTH], last_input),
-				oa.Matrix.new_from_u32(engine, [batch * nlp.CONTEXT_LENGTH], last_target),
+				new_input([batch, nlp.CONTEXT_LENGTH], last_input),
+				oa.Matrix.new_from_u32([batch * nlp.CONTEXT_LENGTH], last_target),
 			)
 
 		def record(prepared):
@@ -124,7 +124,7 @@ def _open_metrics(log_dir_leaf: str) -> oa.LogMetrics:
 
 def _eval_input(engine: oa.Engine, dtype: str, batch: int, values: list) -> oa.Matrix:
 	new_input = oa.Matrix.new_from_u8 if dtype == "u8" else oa.Matrix.new_from_u32
-	return new_input(engine, [batch, nlp.CONTEXT_LENGTH], values)
+	return new_input([batch, nlp.CONTEXT_LENGTH], values)
 
 
 # ── Byte workload (mirrors _byte_common.rs) ───────────────────────────────────
@@ -158,6 +158,7 @@ def run_byte(tutorial: Tutorial, construct) -> None:
 	steps = args.steps if args.steps > 0 else _steps()
 	batch = _batch()
 	engine = oa.Engine()
+	oa.Engine.set_default(engine=engine)
 	model = construct(engine)
 	# Complete asynchronous parameter initialization before isolated capture.
 	engine.checkpoint().wait()
@@ -177,7 +178,6 @@ def run_byte(tutorial: Tutorial, construct) -> None:
 	progress = oa.ml.ProgressBar()
 	summary_callback = oa.ml.TrainingSummary()
 	training = oa.ml.ItTraining(
-		engine,
 		optimizer,
 		oa.ml.ItTrainingConfig(
 			total_steps=steps,
@@ -188,8 +188,7 @@ def run_byte(tutorial: Tutorial, construct) -> None:
 			source_units_per_sample=nlp.CONTEXT_LENGTH,
 			timer_name=tutorial.timer_name,
 			enable_gpu_timing=True,
-		),
-	)
+		), engine=engine)
 	training.add_metric(loss_metric)
 	training.add_callback(progress)
 	training.add_callback(summary_callback)
@@ -205,12 +204,12 @@ def run_byte(tutorial: Tutorial, construct) -> None:
 	final_training_loss = result.last_loss or 0.0
 
 	input_matrix = _eval_input(engine, "u8", batch, last_input)
-	target = oa.Matrix.new_from_u32(engine, [batch * nlp.CONTEXT_LENGTH], last_target)
+	target = oa.Matrix.new_from_u32([batch * nlp.CONTEXT_LENGTH], last_target)
 	logits = model.forward(input_matrix)
 	accuracy = nlp.accuracy(logits, target)
 	evaluation_loss = oa.ml.loss.cross_entropy(logits, target).read_f32()[0]
 	generated = nlp.generate_bytes_greedy(
-		engine, model, nlp.GENERATION_PROMPT.encode(), _generation_units()
+		model, nlp.GENERATION_PROMPT.encode(), _generation_units()
 	).decode("utf-8", errors="replace")
 
 	print("\nEvaluation:")
@@ -239,14 +238,12 @@ def run_byte(tutorial: Tutorial, construct) -> None:
 	reloaded_optimizer = oa.ml.AdamW(
 		reloaded.all_parameters(), learning_rate=tutorial.learning_rate
 	)
-	oa.ml.load_checkpoint(
-		engine, str(checkpoint), reloaded.all_parameters(), reloaded_optimizer
-	)
+	oa.ml.load_checkpoint( str(checkpoint), reloaded.all_parameters(), reloaded_optimizer, engine=engine)
 	assert reloaded_optimizer.step_count == optimizer.step_count
 	assert nlp.accuracy(reloaded.forward(input_matrix), target) == accuracy
 	assert (
 		nlp.generate_bytes_greedy(
-			engine, reloaded, nlp.GENERATION_PROMPT.encode(), _generation_units()
+			reloaded, nlp.GENERATION_PROMPT.encode(), _generation_units()
 		).decode("utf-8", errors="replace")
 		== generated
 	)
@@ -290,6 +287,7 @@ def run_bpe(tutorial: Tutorial, construct) -> None:
 	steps = args.steps if args.steps > 0 else _steps()
 	batch = _batch()
 	engine = oa.Engine()
+	oa.Engine.set_default(engine=engine)
 	tokenizer = oa.ml.BpeTokenizer(nlp.BPE_VOCAB_SIZE)
 	tokenizer.train_text(nlp.CORPUS, nlp.BPE_MERGES)
 	corpus_tokens = tokenizer.encode_text(nlp.CORPUS)
@@ -324,7 +322,6 @@ def run_bpe(tutorial: Tutorial, construct) -> None:
 	progress = oa.ml.ProgressBar()
 	summary_callback = oa.ml.TrainingSummary()
 	training = oa.ml.ItTraining(
-		engine,
 		optimizer,
 		oa.ml.ItTrainingConfig(
 			total_steps=steps,
@@ -334,8 +331,7 @@ def run_bpe(tutorial: Tutorial, construct) -> None:
 			source_unit="byte",
 			timer_name=tutorial.timer_name,
 			enable_gpu_timing=True,
-		),
-	)
+		), engine=engine)
 	training.add_metric(loss_metric)
 	training.add_callback(progress)
 	training.add_callback(summary_callback)
@@ -357,13 +353,13 @@ def run_bpe(tutorial: Tutorial, construct) -> None:
 	final_training_loss = result.last_loss or 0.0
 
 	input_matrix = _eval_input(engine, "u32", batch, last_input)
-	target = oa.Matrix.new_from_u32(engine, [batch * nlp.CONTEXT_LENGTH], last_target)
+	target = oa.Matrix.new_from_u32([batch * nlp.CONTEXT_LENGTH], last_target)
 	logits = model.forward(input_matrix)
 	accuracy = nlp.accuracy(logits, target)
 	evaluation_loss = oa.ml.loss.cross_entropy(logits, target).read_f32()[0]
 	bytes_per_token_last = sampler.last_batch_bytes_per_token()
 	generated = nlp.generate_bpe_greedy(
-		engine, model, tokenizer, nlp.GENERATION_PROMPT.encode(), _generation_units()
+		model, tokenizer, nlp.GENERATION_PROMPT.encode(), _generation_units()
 	).decode("utf-8", errors="replace")
 
 	print("\nEvaluation:")
@@ -411,15 +407,12 @@ def run_bpe(tutorial: Tutorial, construct) -> None:
 	reloaded_optimizer = oa.ml.AdamW(
 		reloaded.all_parameters(), learning_rate=tutorial.learning_rate
 	)
-	oa.ml.load_checkpoint(
-		engine, str(checkpoint), reloaded.all_parameters(), reloaded_optimizer
-	)
+	oa.ml.load_checkpoint( str(checkpoint), reloaded.all_parameters(), reloaded_optimizer, engine=engine)
 	assert reloaded_optimizer.step_count == optimizer.step_count
 	assert nlp.accuracy(reloaded.forward(input_matrix), target) == accuracy
 	assert (
 		nlp.generate_bpe_greedy(
-			engine,
-			reloaded,
+						reloaded,
 			reloaded_tokenizer,
 			nlp.GENERATION_PROMPT.encode(),
 			_generation_units(),
@@ -485,6 +478,8 @@ def run_char(tutorial: CharTutorial, construct) -> None:
 	lr = args.lr if args.lr > 0.0 else tutorial.default_lr
 
 	engine = oa.Engine()
+
+	oa.Engine.set_default(engine=engine)
 	model = construct(engine)
 	optimizer = oa.ml.AdamW(model.all_parameters(), learning_rate=lr)
 	sampler = nlp.CharSampler(batch)
@@ -508,7 +503,6 @@ def run_char(tutorial: CharTutorial, construct) -> None:
 	progress = oa.ml.ProgressBar()
 	summary_callback = oa.ml.TrainingSummary()
 	training = oa.ml.ItTraining(
-		engine,
 		optimizer,
 		oa.ml.ItTrainingConfig(
 			total_steps=steps,
@@ -517,8 +511,7 @@ def run_char(tutorial: CharTutorial, construct) -> None:
 			sequence_unit=tutorial.sequence_unit,
 			timer_name=tutorial.timer_name,
 			enable_gpu_timing=True,
-		),
-	)
+		), engine=engine)
 	training.add_metric(loss_metric)
 	training.add_callback(progress)
 	training.add_callback(summary_callback)
@@ -541,7 +534,7 @@ def run_char(tutorial: CharTutorial, construct) -> None:
 	final_loss = result.last_loss or 0.0
 
 	input_matrix = _eval_input(engine, "u32", batch, last_input)
-	target = oa.Matrix.new_from_u32(engine, [batch * nlp.CONTEXT_LENGTH], last_target)
+	target = oa.Matrix.new_from_u32([batch * nlp.CONTEXT_LENGTH], last_target)
 	logits = model.forward(input_matrix)
 	accuracy = nlp.accuracy(logits, target)
 	evaluation_loss = (
@@ -550,7 +543,7 @@ def run_char(tutorial: CharTutorial, construct) -> None:
 		else 0.0
 	)
 	generated = nlp.generate_greedy(
-		engine, model, nlp.GENERATION_PROMPT, _generation_units()
+		model, nlp.GENERATION_PROMPT, _generation_units()
 	)
 
 	print("\nEvaluation:")
@@ -604,13 +597,11 @@ def run_char(tutorial: CharTutorial, construct) -> None:
 	oa.ml.save_checkpoint(str(checkpoint), params, optimizer)
 	reloaded = construct(engine)
 	reloaded_optimizer = oa.ml.AdamW(reloaded.all_parameters(), learning_rate=lr)
-	oa.ml.load_checkpoint(
-		engine, str(checkpoint), reloaded.all_parameters(), reloaded_optimizer
-	)
+	oa.ml.load_checkpoint( str(checkpoint), reloaded.all_parameters(), reloaded_optimizer, engine=engine)
 	assert reloaded_optimizer.step_count == optimizer.step_count
 	assert nlp.accuracy(reloaded.forward(input_matrix), target) == accuracy
 	assert (
-		nlp.generate_greedy(engine, reloaded, nlp.GENERATION_PROMPT, _generation_units())
+		nlp.generate_greedy(reloaded, nlp.GENERATION_PROMPT, _generation_units())
 		== generated
 	)
 	oa.Filesystem.remove_file(checkpoint)
@@ -645,4 +636,4 @@ def _write_loss_curve(
 		[baseline, baseline],
 		oa.plot.LineStyle(color=(0.565, 0.565, 0.565, 1.0), label=f"ln({vocab_size}) baseline"),
 	)
-	fig.save_to(engine, path)
+	fig.save_to(path)

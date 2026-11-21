@@ -34,11 +34,9 @@ def _evaluate(engine, model, features, labels, mel_bands, mel_frames, chunk):
 	for begin in range(0, len(labels), chunk):
 		end = min(begin + chunk, len(labels))
 		input_matrix = oa.Matrix.new_from_f32(
-			engine,
 			[end - begin, 1, mel_bands, mel_frames],
-			features[begin * clip_feature_len : end * clip_feature_len],
-		)
-		target = oa.Matrix.new_from_u32(engine, [end - begin], labels[begin:end])
+			features[begin * clip_feature_len : end * clip_feature_len], engine=engine)
+		target = oa.Matrix.new_from_u32([end - begin], labels[begin:end])
 		logits = model.forward(input_matrix)
 		correct += oa.matrix.categorical_accuracy_count(logits, target).read_u32()[0]
 		loss_sum += oa.ml.loss.cross_entropy(logits, target).read_f32()[0] * (end - begin)
@@ -66,7 +64,9 @@ def main() -> None:
 	batch = args.batch if args.batch > 0 else audio.AUDIO_BATCH_SIZE
 
 	engine = oa.Engine()
-	dataset = audio.SpeechCommandsDataset(engine, args.dataset)
+
+	oa.Engine.set_default(engine=engine)
+	dataset = audio.SpeechCommandsDataset(args.dataset)
 	clip_count = len(dataset)
 
 	print()
@@ -102,13 +102,13 @@ def main() -> None:
 	train_features_host = []
 	chunk = audio.AUDIO_MEL_CHUNK_CLIPS
 	for begin in range(0, len(train_idx), chunk):
-		features = dataset.mel_features(engine, train_idx[begin : begin + chunk])
+		features = dataset.mel_features(train_idx[begin : begin + chunk])
 		if mel_bands == 0:
 			# mel_features guarantees the NCHW rank-four layout.
 			_, _, mel_bands, mel_frames = features.shape
 		train_features_host.extend(features.read_f32())
 	clip_feature_len = mel_bands * mel_frames
-	train_labels_host = dataset.labels(engine, train_idx).read_u32()
+	train_labels_host = dataset.labels(train_idx).read_u32()
 	# Standardize with training-set statistics — the host-side equivalent of
 	# the TF tutorial's Normalization layer.
 	count = len(train_features_host)
@@ -120,12 +120,12 @@ def main() -> None:
 	# runs eagerly between training steps.
 	test_features_host = []
 	for begin in range(0, len(test_idx), chunk):
-		features = dataset.mel_features(engine, test_idx[begin : begin + chunk])
+		features = dataset.mel_features(test_idx[begin : begin + chunk])
 		test_features_host.extend(features.read_f32())
 	test_features_host = [(v - mean) * inv_std for v in test_features_host]
-	test_labels_host = dataset.labels(engine, test_idx).read_u32()
+	test_labels_host = dataset.labels(test_idx).read_u32()
 	num_classes = len(audio.AUDIO_COMMAND_LABELS)
-	model = audio.commands_cnn(engine, mel_bands, mel_frames, num_classes)
+	model = audio.commands_cnn(mel_bands, mel_frames, num_classes)
 	model.train()
 	# Complete asynchronous parameter initialization before isolated capture.
 	engine.checkpoint().wait()
@@ -150,7 +150,6 @@ def main() -> None:
 	progress = oa.ml.ProgressBar()
 	summary_callback = oa.ml.TrainingSummary()
 	training = oa.ml.ItTraining(
-		engine,
 		optimizer,
 		oa.ml.ItTrainingConfig(
 			total_steps=steps,
@@ -159,8 +158,7 @@ def main() -> None:
 			source_unit="clip",
 			timer_name="commands_training_step",
 			enable_gpu_timing=True,
-		),
-	)
+		), engine=engine)
 	training.add_metric(loss_metric)
 	training.add_callback(progress)
 	training.add_callback(summary_callback)
@@ -187,11 +185,11 @@ def main() -> None:
 			end = begin + min(batch, len(train_idx))
 			return (
 				oa.Matrix.new_from_f32(
-					engine,
 					[end - begin, 1, mel_bands, mel_frames],
 					train_features_host[begin * clip_feature_len : end * clip_feature_len],
+					engine=engine,
 				),
-				oa.Matrix.new_from_u32(engine, [end - begin], train_labels_host[begin:end]),
+				oa.Matrix.new_from_u32([end - begin], train_labels_host[begin:end]),
 			)
 
 		def record(prepared):
@@ -280,14 +278,12 @@ def main() -> None:
 
 	checkpoint = oa.Path.temp().join("oars_commands").with_extension("oam")
 	oa.ml.save_checkpoint(str(checkpoint), model.all_parameters(), optimizer)
-	reloaded = audio.commands_cnn(engine, mel_bands, mel_frames, num_classes)
+	reloaded = audio.commands_cnn(mel_bands, mel_frames, num_classes)
 	reloaded.eval()
 	reloaded_optimizer = oa.ml.AdamW(
 		reloaded.all_parameters(), learning_rate=learning_rate
 	)
-	oa.ml.load_checkpoint(
-		engine, str(checkpoint), reloaded.all_parameters(), reloaded_optimizer
-	)
+	oa.ml.load_checkpoint( str(checkpoint), reloaded.all_parameters(), reloaded_optimizer, engine=engine)
 	assert reloaded_optimizer.step_count == optimizer.step_count
 	assert (
 		_evaluate(

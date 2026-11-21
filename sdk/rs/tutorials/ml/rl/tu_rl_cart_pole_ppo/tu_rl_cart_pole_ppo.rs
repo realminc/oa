@@ -86,15 +86,13 @@ fn collect(environment: &mut CartPole<'_>, trainer: &mut PpoTrainer<'_, '_>) -> 
 
 fn main() -> oa::Result<()> {
 	let engine = oa::Engine::new()?;
-	let model = CategoricalActorCritic::new(
-		&engine,
-		CategoricalActorCriticConfig {
-			observation_size: 4,
-			action_count: 2,
-			hidden_size: 64,
-			seed: TRAINING_SEED,
-		},
-	)?;
+	oa::Engine::set_default(engine.clone());
+	let model = CategoricalActorCritic::new(CategoricalActorCriticConfig {
+		observation_size: 4,
+		action_count: 2,
+		hidden_size: 64,
+		seed: TRAINING_SEED,
+	})?;
 	let mut optimizer = AdamW::new_with_hyperparameters(
 		model.all_parameters()?,
 		LEARNING_RATE,
@@ -169,15 +167,12 @@ fn main() -> oa::Result<()> {
 	let after = evaluate(&engine, &model, EVALUATION_SEED)?;
 	let checkpoint = std::env::temp_dir().join("oars_cart_pole_ppo.oam");
 	oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;
-	let restored_model = CategoricalActorCritic::new(
-		&engine,
-		CategoricalActorCriticConfig {
-			observation_size: 4,
-			action_count: 2,
-			hidden_size: 64,
-			seed: TRAINING_SEED,
-		},
-	)?;
+	let restored_model = CategoricalActorCritic::new(CategoricalActorCriticConfig {
+		observation_size: 4,
+		action_count: 2,
+		hidden_size: 64,
+		seed: TRAINING_SEED,
+	})?;
 	let mut restored_optimizer = AdamW::new_with_hyperparameters(
 		restored_model.all_parameters()?,
 		LEARNING_RATE,
@@ -186,12 +181,7 @@ fn main() -> oa::Result<()> {
 		1.0e-8,
 		0.0,
 	)?;
-	oa::ml::load_checkpoint(
-		&engine,
-		&checkpoint,
-		&restored_model,
-		&mut restored_optimizer,
-	)?;
+	oa::ml::load_checkpoint(&checkpoint, &restored_model, &mut restored_optimizer)?;
 	let restored = evaluate(&engine, &restored_model, EVALUATION_SEED)?;
 	std::fs::remove_file(&checkpoint).expect("remove completed CartPole checkpoint");
 

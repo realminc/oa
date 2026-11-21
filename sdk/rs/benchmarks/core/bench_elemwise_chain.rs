@@ -18,9 +18,10 @@ fn main() -> anyhow::Result<()> {
 		.devices(DeviceSelection::Index(options.device))
 		.build()
 		.context("create the OA Vulkan engine")?;
-	let x = matrix::full(&engine, [options.elements], 0.25)?;
-	let y = matrix::full(&engine, [options.elements], 0.5)?;
-	let z = matrix::full(&engine, [options.elements], 0.75)?;
+	Engine::set_default(engine.clone());
+	let x = matrix::full([options.elements], 0.25)?;
+	let y = matrix::full([options.elements], 0.5)?;
+	let z = matrix::full([options.elements], 0.75)?;
 	let (plan, output) = engine.capture(|| {
 		let mut value = matrix::mul(&x, &y)?;
 		for _ in 1..options.chain {

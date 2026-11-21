@@ -5,7 +5,7 @@ use crate::{Engine, matrix};
 #[ignore = "requires a timestamp-capable Vulkan compute device"]
 fn timed_chunk_span_retains_first_query_and_final_completion() -> Result<()> {
 	let engine = Engine::new()?;
-	let zero = matrix::full(&engine, [16, 16], 0.0)?;
+	let zero = matrix::full([16, 16], 0.0)?;
 	let (plan, _output) = engine.capture(|| matrix::mat_mul_nt(&zero, &zero))?;
 	let first = engine.submit_timed(&plan)?;
 	let mut last = engine.submit_timed(&plan)?;

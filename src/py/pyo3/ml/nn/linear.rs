@@ -17,24 +17,25 @@ impl PythonLinear {
 	/// Accepts `in_features`/`out_features` as aliases for
 	/// `input_features`/`output_features`.
 	#[new]
-	#[pyo3(signature = (engine, input_features=None, output_features=None, seed=0, bias=true, in_features=None, out_features=None))]
+	#[pyo3(signature = (input_features=None, output_features=None, seed=0, bias=true, in_features=None, out_features=None, engine=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		engine: &PythonEngine,
 		input_features: Option<usize>,
 		output_features: Option<usize>,
 		seed: u64,
 		bias: bool,
 		in_features: Option<usize>,
 		out_features: Option<usize>,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
 		let in_f = input_features.or(in_features).ok_or_else(|| {
 			pyo3::exceptions::PyTypeError::new_err("Linear requires in_features or input_features")
 		})?;
 		let out_f = output_features.or(out_features).ok_or_else(|| {
 			pyo3::exceptions::PyTypeError::new_err("Linear requires out_features or output_features")
 		})?;
-		oa::ml::nn::Linear::new_with_seed_and_bias(&engine.inner, in_f, out_f, bias, seed)
+		oa::ml::nn::Linear::new_with_seed_and_bias_on(&engine, in_f, out_f, bias, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

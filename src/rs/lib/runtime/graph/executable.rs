@@ -14,7 +14,7 @@ use crate::runtime::{
 	},
 };
 
-use crate::runtime::device::video::{
+use crate::runtime::device::logical::video::{
 	DecodedPlaneCopy, EncodePlaneCopy, PlaneCopyPhase, RetainedDecode, RetainedEncode,
 };
 

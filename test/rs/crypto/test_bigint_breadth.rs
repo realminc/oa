@@ -27,8 +27,8 @@ test_vk!(bigint_breadth_matches_integer_oracles_and_replay, engine, {
 		let rows = usize::try_from(case["rows"].as_u64().unwrap()).unwrap();
 		let left_words = words(&case["left"]);
 		let right_words = words(&case["right"]);
-		let left = Matrix::new_from_slice(&engine, [rows, width], &left_words)?;
-		let right = Matrix::new_from_slice(&engine, [rows, width], &right_words)?;
+		let left = Matrix::new_from_slice([rows, width], &left_words)?;
+		let right = Matrix::new_from_slice([rows, width], &right_words)?;
 		let (plan, outputs) = engine.capture(|| {
 			let mut outputs = vec![(
 				bigint::multiply_high(&left, &right)?,
@@ -73,7 +73,7 @@ test_vk!(
 	{
 		let values = (0_u32..33).collect::<Vec<_>>();
 		let replacement_values = values.iter().map(|v| !v).collect::<Vec<_>>();
-		let input = Matrix::new_from_slice(&engine, [33, 1], &values)?;
+		let input = Matrix::new_from_slice([33, 1], &values)?;
 		let (mut plan, (restored, zeros)) = engine.capture(|| {
 			let complement = bigint::bit_not(&input)?;
 			let restored = bigint::bit_not(&complement)?;
@@ -88,7 +88,7 @@ test_vk!(
 			zeros.read::<u32>()?,
 			values.iter().map(|v| v.leading_zeros()).collect::<Vec<_>>()
 		);
-		let replacement = Matrix::new_from_slice(&engine, [33, 1], &replacement_values)?;
+		let replacement = Matrix::new_from_slice([33, 1], &replacement_values)?;
 		plan.bind_matrix_input(&input, &replacement)?;
 		for _ in 0..2 {
 			engine.submit(&plan)?.wait()?;
@@ -109,7 +109,7 @@ test_vk!(
 	bigint_breadth_rejects_invalid_metadata_and_accepts_empty,
 	engine,
 	{
-		let empty = Matrix::new_from_slice(&engine, [0, 2], &[] as &[u32])?;
+		let empty = Matrix::new_from_slice([0, 2], &[] as &[u32])?;
 		assert!(
 			bigint::multiply_high(&empty, &empty)?
 				.try_read::<u32>()?
@@ -118,11 +118,11 @@ test_vk!(
 		for (_, op) in UNARY {
 			assert!(op(&empty)?.try_read::<u32>()?.is_empty());
 		}
-		let valid = Matrix::new_from_slice(&engine, [1, 2], &[1_u32, 2])?;
-		let wrong_dtype = Matrix::new_from_f32(&engine, [1, 2], &[1.0, 2.0])?;
-		let rank_one = Matrix::new_from_slice(&engine, [2], &[1_u32, 2])?;
-		let zero_width = Matrix::new_from_slice(&engine, [1, 0], &[] as &[u32])?;
-		let too_wide = Matrix::new_from_slice(&engine, [1, 129], &[0_u32; 129])?;
+		let valid = Matrix::new_from_slice([1, 2], &[1_u32, 2])?;
+		let wrong_dtype = Matrix::new_from_f32([1, 2], &[1.0, 2.0])?;
+		let rank_one = Matrix::new_from_slice([2], &[1_u32, 2])?;
+		let zero_width = Matrix::new_from_slice([1, 0], &[] as &[u32])?;
+		let too_wide = Matrix::new_from_slice([1, 129], &[0_u32; 129])?;
 		for input in [&wrong_dtype, &rank_one, &zero_width, &too_wide] {
 			for (_, op) in UNARY {
 				assert_eq!(
@@ -139,7 +139,7 @@ test_vk!(
 				oa::ErrorKind::InvalidArgument
 			);
 		}
-		let wrong_shape = Matrix::new_from_slice(&engine, [2, 1], &[1_u32, 2])?;
+		let wrong_shape = Matrix::new_from_slice([2, 1], &[1_u32, 2])?;
 		assert_eq!(
 			bigint::multiply_high(&valid, &wrong_shape)
 				.err()

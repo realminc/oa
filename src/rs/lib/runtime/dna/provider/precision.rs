@@ -39,11 +39,11 @@ fn forced_precision() -> GemmPrecision {
 }
 
 /// Record the FP16-storage lowering of one `mat_mul_nt` plan: two F32→F16
-/// storage casts into private workspaces plus the FP16-storage tiled GEMM.
+/// storage casts into private workspaces plus the selected FP16-storage GEMM.
 ///
-/// Returns `Ok(false)` for plans that did not select the F16s variant so the
+/// Returns `Ok(false)` for plans that did not select an F16s variant so the
 /// caller records its ordinary single-dispatch route instead.
-pub(crate) fn record_mat_mul_nt_f16s(
+pub(crate) fn record_mat_mul_nt_f16(
 	engine: &EngineHandle,
 	left: &Matrix,
 	right: &Matrix,
@@ -52,21 +52,22 @@ pub(crate) fn record_mat_mul_nt_f16s(
 	dims: [u32; 3],
 ) -> Result<bool> {
 	let [m, n, k] = dims;
-	if plan.kernel != GemmKernel::F16sF32 {
-		return Ok(false);
-	}
+	let gemm_kernel = match plan.kernel {
+		GemmKernel::F16F32 | GemmKernel::TiledWideF16F32 => plan.kernel_id,
+		_ => return Ok(false),
+	};
 	engine.require_kernel(KernelId::MatrixCastF32F16)?;
-	engine.require_kernel(KernelId::MatrixMatMulNtF16sF32)?;
+	engine.require_kernel(gemm_kernel)?;
 	let left_count = usize::try_from(u64::from(m) * u64::from(k))
-		.map_err(|_| Error::invalid_argument("mat_mul_nt f16s left workspace exceeds usize"))?;
+		.map_err(|_| Error::invalid_argument("mat_mul_nt f16 left workspace exceeds usize"))?;
 	let right_count = usize::try_from(u64::from(n) * u64::from(k))
-		.map_err(|_| Error::invalid_argument("mat_mul_nt f16s right workspace exceeds usize"))?;
+		.map_err(|_| Error::invalid_argument("mat_mul_nt f16 right workspace exceeds usize"))?;
 	let cast_a_count = m
 		.checked_mul(k)
-		.ok_or_else(|| Error::invalid_argument("mat_mul_nt f16s left cast count exceeds u32"))?;
+		.ok_or_else(|| Error::invalid_argument("mat_mul_nt f16 left cast count exceeds u32"))?;
 	let cast_b_count = n
 		.checked_mul(k)
-		.ok_or_else(|| Error::invalid_argument("mat_mul_nt f16s right cast count exceeds u32"))?;
+		.ok_or_else(|| Error::invalid_argument("mat_mul_nt f16 right cast count exceeds u32"))?;
 	let left_f16 = Matrix::allocate_output(engine, vec![left_count], left_count, crate::DType::F16)?;
 	let right_f16 =
 		Matrix::allocate_output(engine, vec![right_count], right_count, crate::DType::F16)?;
@@ -106,7 +107,7 @@ pub(crate) fn record_mat_mul_nt_f16s(
 			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MatrixMatMulNtF16sF32,
+			kernel: gemm_kernel,
 			buffers: &gemm_buffers,
 			push_constants: &gemm_push,
 			workgroups: plan.grid,
@@ -131,7 +132,7 @@ pub(crate) fn record_mat_mul_nt_f16s(
 /// cast into a private workspace plus the FP16-storage single-workgroup
 /// reduction. Returns `Ok(false)` when the F16 math mode is not requested or
 /// not admitted, so the caller records the ordinary F32 route.
-pub(crate) fn record_sum_f16s(
+pub(crate) fn record_sum_f16(
 	engine: &EngineHandle,
 	input: &Matrix,
 	output: &Matrix,
@@ -142,7 +143,7 @@ pub(crate) fn record_sum_f16s(
 		return Ok(false);
 	}
 	engine.require_kernel(KernelId::MatrixCastF32F16)?;
-	engine.require_kernel(KernelId::MatrixSumF16sF32)?;
+	engine.require_kernel(KernelId::MatrixSumF16)?;
 	let input_f16 = Matrix::allocate_output(
 		engine,
 		vec![element_count as usize],
@@ -167,7 +168,7 @@ pub(crate) fn record_sum_f16s(
 			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MatrixSumF16sF32,
+			kernel: KernelId::MatrixSumF16,
 			buffers: &sum_buffers,
 			push_constants: &cast_push,
 			workgroups: [1, 1, 1],
@@ -198,7 +199,7 @@ pub(crate) fn record_sum_f16s(
 ///
 /// Returns `Ok(false)` when the FP16 math mode is not admitted so the caller
 /// records the incumbent fused `MlLinearF32` dispatch.
-pub(crate) fn record_linear_f16s(
+pub(crate) fn record_linear_f16(
 	engine: &EngineHandle,
 	input: &Matrix,
 	weight: &Matrix,
@@ -212,14 +213,14 @@ pub(crate) fn record_linear_f16s(
 	}
 	let [batch, input_features, output_features] = dims;
 	engine.require_kernel(KernelId::MatrixCastF32F16)?;
-	engine.require_kernel(KernelId::MatrixMatMulNtF16sF32)?;
+	engine.require_kernel(KernelId::MatrixMatMulNtF16)?;
 	engine.require_kernel(KernelId::MatrixBiasAddBroadcastF32)?;
 	let input_count = usize::try_from(u64::from(batch) * u64::from(input_features))
-		.map_err(|_| Error::invalid_argument("linear f16s input workspace exceeds usize"))?;
+		.map_err(|_| Error::invalid_argument("linear f16 input workspace exceeds usize"))?;
 	let weight_count = usize::try_from(u64::from(output_features) * u64::from(input_features))
-		.map_err(|_| Error::invalid_argument("linear f16s weight workspace exceeds usize"))?;
+		.map_err(|_| Error::invalid_argument("linear f16 weight workspace exceeds usize"))?;
 	let output_count = usize::try_from(u64::from(batch) * u64::from(output_features))
-		.map_err(|_| Error::invalid_argument("linear f16s workspace exceeds usize"))?;
+		.map_err(|_| Error::invalid_argument("linear f16 workspace exceeds usize"))?;
 	let input_f16 =
 		Matrix::allocate_output(engine, vec![input_count], input_count, crate::DType::F16)?;
 	let weight_f16 =
@@ -228,14 +229,14 @@ pub(crate) fn record_linear_f16s(
 		Matrix::allocate_output(engine, vec![output_count], output_count, crate::DType::F32)?;
 	let cast_a_count = batch
 		.checked_mul(input_features)
-		.ok_or_else(|| Error::invalid_argument("linear f16s input cast count exceeds u32"))?;
+		.ok_or_else(|| Error::invalid_argument("linear f16 input cast count exceeds u32"))?;
 	let cast_b_count = output_features
 		.checked_mul(input_features)
-		.ok_or_else(|| Error::invalid_argument("linear f16s weight cast count exceeds u32"))?;
+		.ok_or_else(|| Error::invalid_argument("linear f16 weight cast count exceeds u32"))?;
 	let gemm_grid = [batch.div_ceil(64), output_features.div_ceil(64), 1];
 	let element_count = batch
 		.checked_mul(output_features)
-		.ok_or_else(|| Error::invalid_argument("linear f16s output count exceeds u32"))?;
+		.ok_or_else(|| Error::invalid_argument("linear f16 output count exceeds u32"))?;
 	// Row-broadcast bias tail over [batch, out] + [out]: the right operand's
 	// row stride is zero and column stride is one.
 	let broadcast_push: [PushConstant; 26] = std::array::from_fn(|index| {
@@ -287,7 +288,7 @@ pub(crate) fn record_linear_f16s(
 			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MatrixMatMulNtF16sF32,
+			kernel: KernelId::MatrixMatMulNtF16,
 			buffers: &gemm_buffers,
 			push_constants: &[
 				PushConstant::U32(batch),

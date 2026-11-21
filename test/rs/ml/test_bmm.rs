@@ -122,8 +122,8 @@ test_vk!(bmm_family_matches_generic_and_tiled_host_oracles, engine, {
 				inner,
 				columns,
 			);
-			let left = oa::Matrix::new_from_f32(&engine, left_shape, &left_values)?;
-			let right = oa::Matrix::new_from_f32(&engine, right_shape, &right_values)?;
+			let left = oa::Matrix::new_from_f32(left_shape, &left_values)?;
+			let right = oa::Matrix::new_from_f32(right_shape, &right_values)?;
 			let (plan, output) = engine.capture(|| layout.apply(&left, &right))?;
 
 			assert_eq!(output.shape(), [batch, rows, columns]);
@@ -146,26 +146,20 @@ test_vk!(bmm_family_matches_generic_and_tiled_host_oracles, engine, {
 });
 
 fn loss_and_gradients(
-	engine: &oa::Engine,
+	_engine: &oa::Engine,
 	layout: Layout,
 	left_value: f32,
 	right_value: f32,
 	backward: bool,
 ) -> oa::Result<(f32, [f32; 2])> {
-	let left = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-		engine,
-		[1, 1],
-		&[left_value],
-	)?)?;
-	let right = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-		engine,
-		[1, 1],
-		&[right_value],
-	)?)?;
-	let indices = oa::Matrix::new_from_slice(engine, [1, 1], &[0_u32])?;
+	let left =
+		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([1, 1], &[left_value])?)?;
+	let right =
+		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([1, 1], &[right_value])?)?;
+	let indices = oa::Matrix::new_from_slice([1, 1], &[0_u32])?;
 	let tape = oa::ml::GradientTape::new();
 	let output = layout.apply(&left.forward(&indices)?, &right.forward(&indices)?)?;
-	let target = oa::Matrix::new_from_f32(engine, [1, 1, 1], &[0.35])?;
+	let target = oa::Matrix::new_from_f32([1, 1, 1], &[0.35])?;
 	let loss = oa::ml::loss::mse(&output, &target)?;
 	if backward {
 		tape.backward(&loss)?;
@@ -214,12 +208,12 @@ test_vk!(bmm_family_reverse_matches_finite_differences, engine, {
 });
 
 test_vk!(bmm_family_rejects_invalid_contracts, engine, {
-	let valid_left = oa::Matrix::new_from_f32(&engine, [2, 3, 4], &[0.0; 24])?;
-	let valid_right = oa::Matrix::new_from_f32(&engine, [2, 4, 5], &[0.0; 40])?;
-	let rank_two = oa::Matrix::new_from_f32(&engine, [3, 4], &[0.0; 12])?;
-	let wrong_batch = oa::Matrix::new_from_f32(&engine, [1, 4, 5], &[0.0; 20])?;
-	let wrong_inner = oa::Matrix::new_from_f32(&engine, [2, 6, 5], &[0.0; 60])?;
-	let wrong_dtype = oa::Matrix::new_from_slice(&engine, [2, 4, 5], &[0_i32; 40])?;
+	let valid_left = oa::Matrix::new_from_f32([2, 3, 4], &[0.0; 24])?;
+	let valid_right = oa::Matrix::new_from_f32([2, 4, 5], &[0.0; 40])?;
+	let rank_two = oa::Matrix::new_from_f32([3, 4], &[0.0; 12])?;
+	let wrong_batch = oa::Matrix::new_from_f32([1, 4, 5], &[0.0; 20])?;
+	let wrong_inner = oa::Matrix::new_from_f32([2, 6, 5], &[0.0; 60])?;
+	let wrong_dtype = oa::Matrix::new_from_slice([2, 4, 5], &[0_i32; 40])?;
 
 	for error in [
 		oa::ml::matrix::bmm(&rank_two, &valid_right)

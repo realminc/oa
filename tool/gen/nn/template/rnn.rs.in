@@ -48,12 +48,12 @@ impl RnnLayer {
 			.ok_or_else(|| Error::invalid_argument("RNN Xavier extent overflows usize"))?;
 		let input_limit = (6.0_f32 / xavier_extent as f32).sqrt();
 		let hidden_limit = (3.0_f32 / hidden_size as f32).sqrt();
-		let weight_ih = Matrix::new_from_f32(
+		let weight_ih = Matrix::new_from_f32_on(
 			engine,
 			[hidden_size, input_size],
 			&{{initializer}}(weight_ih_count, input_limit, seed),
 		)?;
-		let weight_hh = Matrix::new_from_f32(
+		let weight_hh = Matrix::new_from_f32_on(
 			engine,
 			[hidden_size, hidden_size],
 			&{{initializer}}(
@@ -63,10 +63,10 @@ impl RnnLayer {
 			),
 		)?;
 		let bias_ih = bias
-			.then(|| Matrix::new_from_f32(engine, [hidden_size], &vec![0.0; hidden_size]))
+			.then(|| Matrix::new_from_f32_on(engine, [hidden_size], &vec![0.0; hidden_size]))
 			.transpose()?;
 		let bias_hh = bias
-			.then(|| Matrix::new_from_f32(engine, [hidden_size], &vec![0.0; hidden_size]))
+			.then(|| Matrix::new_from_f32_on(engine, [hidden_size], &vec![0.0; hidden_size]))
 			.transpose()?;
 		Self::from_values(weight_ih, weight_hh, bias_ih, bias_hh)
 	}
@@ -255,13 +255,22 @@ pub struct {{cell_type}} {
 }
 
 impl {{cell_type}} {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(
+		input_size: usize,
+		hidden_size: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, input_size, hidden_size, bias, seed)	}
+
 	/// Construct a deterministically initialized RNN cell.
 	///
 	/// # Errors
 	///
 	/// Returns an error when dimensions are zero, hidden size exceeds 1024,
 	/// arithmetic overflows, or parameter allocation fails.
-	pub fn new_with_seed(
+	pub fn new_with_seed_on(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
@@ -386,6 +395,15 @@ pub struct {{name}} {
 }
 
 impl {{name}} {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(
+		input_size: usize,
+		hidden_size: usize,
+		num_layers: usize,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, input_size, hidden_size, num_layers, seed)	}
+
 	/// Construct a deterministically initialized stacked RNN with biases.
 	///
 	/// # Errors
@@ -393,15 +411,25 @@ impl {{name}} {
 	/// Returns an error when a dimension or layer count is zero, hidden size
 	/// exceeds the 1024-element scan limit, arithmetic overflows, or parameter
 	/// allocation and registration fail.
-	pub fn new_with_seed(
+	pub fn new_with_seed_on(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,
 		num_layers: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_bias(engine, input_size, hidden_size, num_layers, true, seed)
+		Self::new_with_seed_and_bias_on(engine, input_size, hidden_size, num_layers, true, seed)
 	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed_and_bias(
+		input_size: usize,
+		hidden_size: usize,
+		num_layers: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_bias_on(&Engine::current()?, input_size, hidden_size, num_layers, bias, seed)	}
 
 	/// Construct a deterministically initialized stacked RNN with optional biases.
 	///
@@ -410,7 +438,7 @@ impl {{name}} {
 	/// Returns an error when a dimension or layer count is zero, hidden size
 	/// exceeds the 1024-element scan limit, arithmetic overflows, or parameter
 	/// allocation and registration fail.
-	pub fn new_with_seed_and_bias(
+	pub fn new_with_seed_and_bias_on(
 		engine: &Engine,
 		input_size: usize,
 		hidden_size: usize,

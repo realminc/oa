@@ -185,13 +185,14 @@ pub(crate) struct PythonVectorQuantizer {
 impl PythonVectorQuantizer {
 	/// Construct a deterministically initialized quantizer.
 	#[new]
-	#[pyo3(signature = (engine, config, seed = 0))]
+	#[pyo3(signature = (config, seed = 0, engine=None))]
 	pub fn new(
-		engine: &PythonEngine,
 		config: &PythonVectorQuantizerConfig,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::VectorQuantizer::new_with_seed(&engine.inner, config.inner, seed)
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::VectorQuantizer::new_with_seed_on(&engine, config.inner, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -268,21 +269,17 @@ pub(crate) struct PythonResidualVectorQuantizer {
 impl PythonResidualVectorQuantizer {
 	/// Construct `num_levels` deterministically initialized quantizers.
 	#[new]
-	#[pyo3(signature = (engine, config, num_levels, seed = 0))]
+	#[pyo3(signature = (config, num_levels, seed = 0, engine=None))]
 	pub fn new(
-		engine: &PythonEngine,
 		config: &PythonVectorQuantizerConfig,
 		num_levels: usize,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::ResidualVectorQuantizer::new_with_seed(
-			&engine.inner,
-			config.inner,
-			num_levels,
-			seed,
-		)
-		.map(|inner| Self { inner })
-		.map_err(python_error)
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::ResidualVectorQuantizer::new_with_seed_on(&engine, config.inner, num_levels, seed)
+			.map(|inner| Self { inner })
+			.map_err(python_error)
 	}
 
 	/// Quantize successive residuals and apply one straight-through estimator.

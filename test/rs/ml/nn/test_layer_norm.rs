@@ -139,9 +139,9 @@ test_vk!(
 		let weight_values = [0.75_f32, -1.25, 0.5];
 		let bias_values = [0.1_f32, -0.2, 0.3];
 		let expected = cpu_layer_norm(&input_values, &weight_values, &bias_values, 3, EPSILON);
-		let input = oa::Matrix::new_from_f32(&engine, [2, 2, 3], &input_values)?;
-		let weight = oa::Matrix::new_from_f32(&engine, [3], &weight_values)?;
-		let bias = oa::Matrix::new_from_f32(&engine, [3], &bias_values)?;
+		let input = oa::Matrix::new_from_f32([2, 2, 3], &input_values)?;
+		let weight = oa::Matrix::new_from_f32([3], &weight_values)?;
+		let bias = oa::Matrix::new_from_f32([3], &bias_values)?;
 		let layer = oa::ml::nn::LayerNorm::new_from_matrices(weight, bias, EPSILON)?;
 		let output = layer.forward(&input)?;
 
@@ -160,8 +160,8 @@ test_vk!(
 
 		let offset_values = [10_000.25_f32, 9_999.5, 10_001.25];
 		let offset_expected = cpu_layer_norm(&offset_values, &[1.0; 3], &[0.0; 3], 3, EPSILON);
-		let offset_input = oa::Matrix::new_from_f32(&engine, [1, 3], &offset_values)?;
-		let stable_layer = oa::ml::nn::LayerNorm::new(&engine, 3, EPSILON)?;
+		let offset_input = oa::Matrix::new_from_f32([1, 3], &offset_values)?;
+		let stable_layer = oa::ml::nn::LayerNorm::new(3, EPSILON)?;
 		assert_close(
 			&stable_layer.forward(&offset_input)?.read_f32()?,
 			&offset_expected,
@@ -213,21 +213,20 @@ test_vk!(layer_norm_backward_matches_finite_differences, engine, {
 	});
 
 	let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-		&engine,
 		[VOCABULARY, FEATURES],
 		&embedding_values,
 	)?)?;
 	let norm = oa::ml::nn::LayerNorm::new_from_matrices(
-		oa::Matrix::new_from_f32(&engine, [FEATURES], &norm_weight_values)?,
-		oa::Matrix::new_from_f32(&engine, [FEATURES], &norm_bias_values)?,
+		oa::Matrix::new_from_f32([FEATURES], &norm_weight_values)?,
+		oa::Matrix::new_from_f32([FEATURES], &norm_bias_values)?,
 		EPSILON,
 	)?;
 	let linear = oa::ml::nn::Linear::new_from_matrices(
-		oa::Matrix::new_from_f32(&engine, [CLASSES, FEATURES], &linear_weight_values)?,
-		oa::Matrix::new_from_f32(&engine, [CLASSES], &linear_bias_values)?,
+		oa::Matrix::new_from_f32([CLASSES, FEATURES], &linear_weight_values)?,
+		oa::Matrix::new_from_f32([CLASSES], &linear_bias_values)?,
 	)?;
-	let indices = oa::Matrix::new_from_slice(&engine, [2, 2], &indices_values)?;
-	let targets = oa::Matrix::new_from_slice(&engine, [4], &target_values)?;
+	let indices = oa::Matrix::new_from_slice([2, 2], &indices_values)?;
+	let targets = oa::Matrix::new_from_slice([4], &target_values)?;
 
 	let (plan, ()) = engine.capture(|| {
 		let tape = oa::ml::GradientTape::new();
@@ -321,9 +320,9 @@ test_vk!(layer_norm_backward_matches_finite_differences, engine, {
 
 test_vk!(layer_norm_rejects_invalid_contracts, engine, {
 	for result in [
-		oa::ml::nn::LayerNorm::new(&engine, 0, EPSILON),
-		oa::ml::nn::LayerNorm::new(&engine, 3, 0.0),
-		oa::ml::nn::LayerNorm::new(&engine, 3, f32::NAN),
+		oa::ml::nn::LayerNorm::new(0, EPSILON),
+		oa::ml::nn::LayerNorm::new(3, 0.0),
+		oa::ml::nn::LayerNorm::new(3, f32::NAN),
 	] {
 		assert_eq!(
 			result
@@ -334,10 +333,10 @@ test_vk!(layer_norm_rejects_invalid_contracts, engine, {
 		);
 	}
 
-	let layer = oa::ml::nn::LayerNorm::new(&engine, 3, EPSILON)?;
-	let wrong_width = oa::Matrix::new_from_f32(&engine, [2, 2], &[0.0; 4])?;
-	let integer = oa::Matrix::new_from_slice(&engine, [2, 3], &[0_i32; 6])?;
-	let empty = oa::Matrix::new_from_f32(&engine, [0, 3], &[])?;
+	let layer = oa::ml::nn::LayerNorm::new(3, EPSILON)?;
+	let wrong_width = oa::Matrix::new_from_f32([2, 2], &[0.0; 4])?;
+	let integer = oa::Matrix::new_from_slice([2, 3], &[0_i32; 6])?;
+	let empty = oa::Matrix::new_from_f32([0, 3], &[])?;
 	for input in [&wrong_width, &integer, &empty] {
 		assert_eq!(
 			layer

@@ -116,14 +116,9 @@ struct MnistClassifier {
 }
 
 impl MnistClassifier {
-	fn new(engine: &Engine) -> oa::Result<Self> {
-		let fc1 = Rc::new(oa::ml::nn::Linear::new_with_seed(engine, 784, 128, 1)?);
-		let fc2 = Rc::new(oa::ml::nn::Linear::new_with_seed(
-			engine,
-			128,
-			NUM_CLASSES,
-			2,
-		)?);
+	fn new() -> oa::Result<Self> {
+		let fc1 = Rc::new(oa::ml::nn::Linear::new_with_seed(784, 128, 1)?);
+		let fc2 = Rc::new(oa::ml::nn::Linear::new_with_seed(128, NUM_CLASSES, 2)?);
 		let relu = oa::ml::nn::Relu::new();
 		let mut registry = ModuleRegistry::new();
 		registry.register_module("fc1", fc1.clone() as Rc<dyn Module>)?;
@@ -171,6 +166,7 @@ fn train_and_predict_grid(
 	data_dir: &Path,
 	train_steps: u64,
 ) -> anyhow::Result<Vec<GridCell>> {
+	Engine::set_default(engine.clone());
 	// Load raw test data (pixel bytes needed for textures).
 	let test_raw = load_mnist_idx(data_dir, "t10k-images-idx3-ubyte", "t10k-labels-idx1-ubyte")
 		.ok_or_else(|| {
@@ -200,7 +196,7 @@ fn train_and_predict_grid(
 	);
 
 	// Build model + optimizer.
-	let model = MnistClassifier::new(engine)?;
+	let model = MnistClassifier::new()?;
 	let params = model.all_parameters()?;
 	let mut optimizer = oa::ml::AdamW::new(params, 0.001)?;
 
@@ -244,8 +240,8 @@ fn train_and_predict_grid(
 				}
 				y_u32[bi] = train_raw.labels[si] as u32;
 			}
-			let x = Matrix::new_from_slice(engine, [BATCH, 784], &x_f32)?;
-			let y = Matrix::new_from_slice(engine, [BATCH], &y_u32)?;
+			let x = Matrix::new_from_slice([BATCH, 784], &x_f32)?;
+			let y = Matrix::new_from_slice([BATCH], &y_u32)?;
 			Ok((x, y))
 		},
 		|(x, y)| {
@@ -266,7 +262,7 @@ fn train_and_predict_grid(
 	for (i, pixel) in test_raw.images[..GRID_N * 784].iter().enumerate() {
 		x_f32[i] = *pixel as f32 / 255.0;
 	}
-	let x_test = Matrix::new_from_slice(engine, [GRID_N, 784], &x_f32)?;
+	let x_test = Matrix::new_from_slice([GRID_N, 784], &x_f32)?;
 	let logits = model.forward(&x_test)?;
 	let probs = oa::matrix::softmax(&logits, -1)?;
 	let host_probs = probs.read_f32()?;
@@ -293,7 +289,7 @@ fn train_and_predict_grid(
 			rgba[p * 4 + 2] = g;
 			rgba[p * 4 + 3] = 255;
 		}
-		let tile = oa::render::texture_from_rgba8(engine, &rgba, 28, 28)?;
+		let tile = oa::render::texture_from_rgba8(&rgba, 28, 28)?;
 
 		cells.push(GridCell {
 			tile,
@@ -455,6 +451,7 @@ fn main() -> anyhow::Result<()> {
 	// ── save mode: compute-only engine, no swapchain ─────────────────────────
 	if let Some(ref path) = save_path {
 		let engine = Engine::new()?;
+		Engine::set_default(engine.clone());
 		let cells = train_and_predict_grid(&engine, &data_dir, train_steps)?;
 		let mut fig = Figure::new(FigureConfig {
 			rows: GRID_ROWS as i32,
@@ -467,7 +464,7 @@ fn main() -> anyhow::Result<()> {
 			..Default::default()
 		});
 		populate_figure(&mut fig, &cells);
-		fig.save_to(&engine, path)?;
+		fig.save_to(path)?;
 		println!("Saved: {path}");
 		return Ok(());
 	}
@@ -492,6 +489,7 @@ fn main() -> anyhow::Result<()> {
 		.required_instance_extensions()
 		.map_err(|e| anyhow::anyhow!("SDL extensions: {e}"))?;
 	let engine = Engine::builder().instance_extensions(extensions).build()?;
+	Engine::set_default(engine.clone());
 	viewer.run(&engine)?;
 	Ok(())
 }

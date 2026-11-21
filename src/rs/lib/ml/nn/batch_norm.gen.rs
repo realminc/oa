@@ -21,13 +21,22 @@ pub struct BatchNorm2d {
 }
 
 impl BatchNorm2d {
+	pub fn new(num_features: usize) -> Result<Self> {
+		Self::new_on(&Engine::current()?, num_features)
+	}
+
 	/// Construct BatchNorm2d with epsilon `1e-5` and momentum `0.1`.
 	///
 	/// # Errors
 	///
 	/// Returns an error when `num_features` is zero or state allocation fails.
-	pub fn new(engine: &Engine, num_features: usize) -> Result<Self> {
-		Self::new_with_options(engine, num_features, 1e-5, 0.1)
+	pub fn new_on(engine: &Engine, num_features: usize) -> Result<Self> {
+		Self::new_with_options_on(engine, num_features, 1e-5, 0.1)
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_options(num_features: usize, epsilon: f32, momentum: f32) -> Result<Self> {
+		Self::new_with_options_on(&Engine::current()?, num_features, epsilon, momentum)
 	}
 
 	/// Construct BatchNorm2d with explicit numerical and running-state options.
@@ -37,7 +46,7 @@ impl BatchNorm2d {
 	/// Returns an error when `num_features` is zero, epsilon is not finite and
 	/// positive, momentum is not finite and in `[0, 1]`, or state allocation
 	/// fails.
-	pub fn new_with_options(
+	pub fn new_with_options_on(
 		engine: &Engine,
 		num_features: usize,
 		epsilon: f32,
@@ -48,10 +57,11 @@ impl BatchNorm2d {
 				"BatchNorm2d feature count must be nonzero",
 			));
 		}
-		let weight = Matrix::new_from_f32(engine, [num_features], &vec![1.0; num_features])?;
-		let bias = Matrix::new_from_f32(engine, [num_features], &vec![0.0; num_features])?;
-		let running_mean = Matrix::new_from_f32(engine, [num_features], &vec![0.0; num_features])?;
-		let running_variance = Matrix::new_from_f32(engine, [num_features], &vec![1.0; num_features])?;
+		let weight = Matrix::new_from_f32_on(engine, [num_features], &vec![1.0; num_features])?;
+		let bias = Matrix::new_from_f32_on(engine, [num_features], &vec![0.0; num_features])?;
+		let running_mean = Matrix::new_from_f32_on(engine, [num_features], &vec![0.0; num_features])?;
+		let running_variance =
+			Matrix::new_from_f32_on(engine, [num_features], &vec![1.0; num_features])?;
 		Self::new_from_matrices(
 			weight,
 			bias,

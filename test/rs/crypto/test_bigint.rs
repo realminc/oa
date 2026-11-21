@@ -32,8 +32,8 @@ test_vk!(bigint_batch_matches_integer_oracles_and_replay, engine, {
 		let rows = usize::try_from(case["rows"].as_u64().unwrap()).unwrap();
 		let left_words = words(&case["left"]);
 		let right_words = words(&case["right"]);
-		let left = Matrix::new_from_slice(&engine, [rows, width], &left_words)?;
-		let right = Matrix::new_from_slice(&engine, [rows, width], &right_words)?;
+		let left = Matrix::new_from_slice([rows, width], &left_words)?;
+		let right = Matrix::new_from_slice([rows, width], &right_words)?;
 		let (plan, outputs) = engine.capture(|| {
 			let mut outputs = Vec::new();
 			for (name, op) in BINARY {
@@ -82,8 +82,8 @@ test_vk!(bigint_chain_rebinds_and_crosses_workgroup_tail, engine, {
 		.map(|i| i.wrapping_mul(0xFEDCBA98))
 		.collect::<Vec<_>>();
 	let second = first.iter().map(|v| !v).collect::<Vec<_>>();
-	let left = Matrix::new_from_slice(&engine, [33, 1], &first)?;
-	let right = Matrix::new_from_slice(&engine, [33, 1], &[u32::MAX; 33])?;
+	let left = Matrix::new_from_slice([33, 1], &first)?;
+	let right = Matrix::new_from_slice([33, 1], &[u32::MAX; 33])?;
 	let (mut plan, output) = engine.capture(|| {
 		let sum = bigint::add(&left, &right)?;
 		bigint::subtract(&sum, &right)
@@ -93,7 +93,7 @@ test_vk!(bigint_chain_rebinds_and_crosses_workgroup_tail, engine, {
 	assert_eq!(plan.semantic_graph().operations().len(), 2);
 	engine.submit(&plan)?.wait()?;
 	assert_eq!(output.read::<u32>()?, first);
-	let replacement = Matrix::new_from_slice(&engine, [33, 1], &second)?;
+	let replacement = Matrix::new_from_slice([33, 1], &second)?;
 	plan.bind_matrix_input(&left, &replacement)?;
 	for _ in 0..2 {
 		engine.submit(&plan)?.wait()?;
@@ -103,7 +103,7 @@ test_vk!(bigint_chain_rebinds_and_crosses_workgroup_tail, engine, {
 });
 
 test_vk!(bigint_contracts_and_ready_empty_batches, engine, {
-	let empty = Matrix::new_from_slice(&engine, [0, 2], &[] as &[u32])?;
+	let empty = Matrix::new_from_slice([0, 2], &[] as &[u32])?;
 	for (_, op) in BINARY {
 		let output = op(&empty, &empty)?;
 		assert!(output.try_read::<u32>()?.is_empty());
@@ -118,12 +118,12 @@ test_vk!(bigint_contracts_and_ready_empty_batches, engine, {
 	] {
 		assert!(output.try_read::<u32>()?.is_empty());
 	}
-	let valid = Matrix::new_from_slice(&engine, [1, 2], &[1_u32, 2])?;
-	let wrong_dtype = Matrix::new_from_f32(&engine, [1, 2], &[1.0, 2.0])?;
-	let rank_one = Matrix::new_from_slice(&engine, [2], &[1_u32, 2])?;
-	let wrong_shape = Matrix::new_from_slice(&engine, [2, 1], &[1_u32, 2])?;
-	let zero_width = Matrix::new_from_slice(&engine, [1, 0], &[] as &[u32])?;
-	let too_wide = Matrix::new_from_slice(&engine, [1, 129], &[0_u32; 129])?;
+	let valid = Matrix::new_from_slice([1, 2], &[1_u32, 2])?;
+	let wrong_dtype = Matrix::new_from_f32([1, 2], &[1.0, 2.0])?;
+	let rank_one = Matrix::new_from_slice([2], &[1_u32, 2])?;
+	let wrong_shape = Matrix::new_from_slice([2, 1], &[1_u32, 2])?;
+	let zero_width = Matrix::new_from_slice([1, 0], &[] as &[u32])?;
+	let too_wide = Matrix::new_from_slice([1, 129], &[0_u32; 129])?;
 	for input in [
 		&wrong_dtype,
 		&rank_one,

@@ -65,7 +65,6 @@ test_vk!(
 		};
 		for range in [VideoColorRange::Full, VideoColorRange::Limited] {
 			let frame = oa::VideoFrame::upload_planes(
-				&engine,
 				VideoPixelFormat::P010,
 				vec![pack(&luma), pack(&chroma)],
 				3,
@@ -379,13 +378,12 @@ fn assert_close(actual: &[f32], expected: &[f64], context: &str) {
 // ── Vulkan contract tests ────────────────────────────────────────────────
 
 fn upload_i420(
-	engine: &oa::Engine,
+	_engine: &oa::Engine,
 	width: usize,
 	height: usize,
 	color: VideoColorInfo,
 ) -> oa::Result<oa::VideoFrame> {
 	oa::VideoFrame::upload_planes(
-		engine,
 		VideoPixelFormat::Yuv420Planar8,
 		i420_planes(width, height),
 		width,
@@ -465,7 +463,6 @@ test_vk!(to_matrix_bt709_limited_i420_matches_oracle, engine, {
 
 test_vk!(to_matrix_bt601_full_nv12_matches_oracle, engine, {
 	let frame = oa::VideoFrame::upload_planes(
-		&engine,
 		VideoPixelFormat::Nv12,
 		nv12_planes(10, 6),
 		10,
@@ -1127,7 +1124,6 @@ test_vk!(overlay_mask_stencils_fill_at_plane_resolution, engine, {
 		}
 	}
 	let mask = oa::VideoFrame::upload_planes(
-		&engine,
 		VideoPixelFormat::Yuv420Planar8,
 		mask_planes,
 		8,
@@ -1177,7 +1173,6 @@ test_vk!(composite_blends_each_component_with_rounding, engine, {
 		.map(|plane| plane.iter().map(|v| v.wrapping_add(97)).collect())
 		.collect();
 	let front = oa::VideoFrame::upload_planes(
-		&engine,
 		VideoPixelFormat::Yuv420Planar8,
 		front_planes.clone(),
 		8,
@@ -1299,7 +1294,6 @@ test_vk!(convert_range_expands_packs_and_copies, engine, {
 
 test_vk!(convert_range_covers_nv12_chroma_pair, engine, {
 	let frame = oa::VideoFrame::upload_planes(
-		&engine,
 		VideoPixelFormat::Nv12,
 		nv12_planes(8, 8),
 		8,

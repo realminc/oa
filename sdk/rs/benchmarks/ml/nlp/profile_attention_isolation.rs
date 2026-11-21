@@ -61,13 +61,13 @@ fn capture(
 	let shape = [batch_heads, sequence, head_dim];
 	let rows = batch_heads * sequence;
 	let scale = 1.0 / (head_dim as f32).sqrt();
-	let query = oa::matrix::full(engine, shape, 0.125)?;
-	let key = oa::matrix::full(engine, shape, -0.25)?;
-	let value = oa::matrix::full(engine, shape, 0.375)?;
+	let query = oa::matrix::full(shape, 0.125)?;
+	let key = oa::matrix::full(shape, -0.25)?;
+	let value = oa::matrix::full(shape, 0.375)?;
 	let packed_query = query.reshape([rows, head_dim])?;
 	let packed_key = key.reshape([rows, head_dim])?;
 	let packed_value = value.reshape([rows, head_dim])?;
-	let target = oa::matrix::full(engine, shape, 0.0)?;
+	let target = oa::matrix::full(shape, 0.0)?;
 	let (plan, _) = engine.capture(|| {
 		let forward = |query: &oa::Matrix, key: &oa::Matrix, value: &oa::Matrix| match route {
 			Route::Standard => {
@@ -136,6 +136,7 @@ fn compare(
 
 fn main() -> oa::Result<()> {
 	let engine = oa::Engine::new()?;
+	oa::Engine::set_default(engine.clone());
 	// The fused seven-node region only forms while the opt-in fusion
 	// route is enabled; hold it for the whole suite so the causal
 	// comparisons measure kernel substitution, not region formation.

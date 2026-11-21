@@ -1243,8 +1243,8 @@ impl<'a> SatelliteServerSession<'a> {
 									));
 								};
 								let captured = engine.capture(|| {
-									let a = Matrix::new_from_slice(engine, shape.clone(), &a_values)?;
-									let b = Matrix::new_from_slice(engine, shape, &b_values)?;
+									let a = Matrix::new_from_slice_on(engine, shape.clone(), &a_values)?;
+									let b = Matrix::new_from_slice_on(engine, shape, &b_values)?;
 									crate::matrix::add(&a, &b)
 								});
 								let Ok((plan, output_matrix)) = captured else {

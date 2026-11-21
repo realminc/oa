@@ -14,21 +14,17 @@ class AudioConstructorTest(unittest.TestCase):
 	def _stereo(self) -> oa.Audio:
 		# 4 stereo samples (channels first / planar): L=[0.1, 0.2, 0.3, 0.4] R=[0.5, 0.6, 0.7, 0.8]
 		return oa.Audio.new_from_planar_f32(
-			self.engine,
 			[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
 			channels=2,
 			sample_rate=8000,
-			layout="stereo",
-		)
+			layout="stereo", engine=self.engine)
 
 	def _mono(self) -> oa.Audio:
 		return oa.Audio.new_from_planar_f32(
-			self.engine,
 			[0.0, 0.25, 0.5, 0.75, 1.0, 0.75, 0.5, 0.25],
 			channels=1,
 			sample_rate=8000,
-			layout="mono",
-		)
+			layout="mono", engine=self.engine)
 
 	def test_from_planar_f32_properties(self) -> None:
 		a = self._stereo()
@@ -57,12 +53,10 @@ class AudioDspTest(unittest.TestCase):
 	def setUpClass(cls) -> None:
 		cls.engine = oa.Engine()
 		cls.mono = oa.Audio.new_from_planar_f32(
-			cls.engine,
 			[0.0, 0.1, 0.2, 0.3, 0.4, 0.3, 0.2, 0.1],
 			channels=1,
 			sample_rate=8000,
-			layout="mono",
-		)
+			layout="mono", engine=cls.engine)
 
 	def test_gain_increases_amplitude(self) -> None:
 		boosted = oa.audio.gain(self.mono, gain_db=6.0)
@@ -100,24 +94,20 @@ class AudioDspTest(unittest.TestCase):
 
 	def test_mix_combines_two_signals(self) -> None:
 		other = oa.Audio.new_from_planar_f32(
-			self.engine,
 			[0.1] * 8,
 			channels=1,
 			sample_rate=8000,
-			layout="mono",
-		)
+			layout="mono", engine=self.engine)
 		result = oa.audio.mix(self.mono, other, gain_left=1.0, gain_right=1.0)
 		self.assertIsInstance(result, oa.Audio)
 		self.assertEqual(result.samples, 8)
 
 	def test_normalize_peak_does_not_increase_beyond_target(self) -> None:
 		loud = oa.Audio.new_from_planar_f32(
-			self.engine,
 			[0.01] * 8,
 			channels=1,
 			sample_rate=8000,
-			layout="mono",
-		)
+			layout="mono", engine=self.engine)
 		result = oa.audio.normalize(loud, target_db=-3.0, mode="peak")
 		self.assertIsInstance(result, oa.Audio)
 
@@ -129,9 +119,7 @@ class AudioFeatureTest(unittest.TestCase):
 		# 512 samples of a 440 Hz tone at 8000 Hz sample rate
 		import math as _math
 		samples = [_math.sin(2 * _math.pi * 440 * i / 8000) for i in range(512)]
-		cls.tone = oa.Audio.new_from_planar_f32(
-			cls.engine, samples, channels=1, sample_rate=8000, layout="mono"
-		)
+		cls.tone = oa.Audio.new_from_planar_f32( samples, channels=1, sample_rate=8000, layout="mono", engine=cls.engine)
 
 	def test_amplitude_to_db_shape(self) -> None:
 		result = oa.audio.amplitude_to_db(self.tone, floor_db=-80.0)
@@ -175,12 +163,10 @@ class AudioBiquadTest(unittest.TestCase):
 	def setUpClass(cls) -> None:
 		cls.engine = oa.Engine()
 		cls.mono = oa.Audio.new_from_planar_f32(
-			cls.engine,
 			[0.0, 1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0],
 			channels=1,
 			sample_rate=8000,
-			layout="mono",
-		)
+			layout="mono", engine=cls.engine)
 
 	def test_biquad_passthrough_identity(self) -> None:
 		# identity: b0=1 b1=0 b2=0 a1=0 a2=0
@@ -227,12 +213,10 @@ class AudioCodecTest(unittest.TestCase):
 
 	def test_encode_wav_f32_roundtrip_length(self) -> None:
 		audio = oa.Audio.new_from_planar_f32(
-			self.engine,
 			[0.0, 0.5, 1.0, 0.5, 0.0],
 			channels=1,
 			sample_rate=8000,
-			layout="mono",
-		)
+			layout="mono", engine=self.engine)
 		encoded = oa.audio.encode_wav_f32(audio)
 		self.assertIsInstance(encoded, bytes)
 		self.assertTrue(encoded[:4] == b"RIFF")

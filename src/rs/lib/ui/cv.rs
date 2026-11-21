@@ -13,10 +13,10 @@
 //! frame.w = 1280;
 //! frame.h = 720;
 //! frame.add_bboxes(detections, &CvBboxesConfig { show_labels: true, ..Default::default() });
-//! let annotated = frame.render(&engine)?;
+//! let annotated = frame.render_on(&engine)?;
 //! ```
 
-use crate::render::{Texture, texture_from_rgba8};
+use crate::render::{Texture, texture_from_rgba8_on};
 pub use crate::ui::type_gen::CvBboxesConfig;
 use crate::{Color, Engine, Error, Result};
 
@@ -99,14 +99,22 @@ impl<'a> CvFrame<'a> {
 		self.overlays.clear();
 	}
 
+	pub fn render(&self) -> Result<Texture> {
+		self.render_on(&Engine::current()?)
+	}
+
 	/// Composite overlays over the borrowed base and upload the result.
 	///
 	/// # Errors
 	///
 	/// Returns an error for a non-positive extent, an undersized or
 	/// unreadable base, or an invalid overlay config or box.
-	pub fn render(&self, engine: &Engine) -> Result<Texture> {
-		self.render_with_rgba(engine, &[])
+	pub fn render_on(&self, engine: &Engine) -> Result<Texture> {
+		self.render_with_rgba_on(engine, &[])
+	}
+
+	pub fn render_with_rgba(&self, base_rgba: &[u8]) -> Result<Texture> {
+		self.render_with_rgba_on(&Engine::current()?, base_rgba)
 	}
 
 	/// Composite overlays over explicit host RGBA8 pixels (or the borrowed
@@ -116,7 +124,7 @@ impl<'a> CvFrame<'a> {
 	///
 	/// Returns an error for a non-positive extent, an undersized base, or an
 	/// invalid overlay config or box.
-	pub fn render_with_rgba(&self, engine: &Engine, base_rgba: &[u8]) -> Result<Texture> {
+	pub fn render_with_rgba_on(&self, engine: &Engine, base_rgba: &[u8]) -> Result<Texture> {
 		render_frame(self, engine, base_rgba)
 	}
 }
@@ -520,5 +528,5 @@ fn render_frame(frame: &CvFrame<'_>, engine: &Engine, base_rgba: &[u8]) -> Resul
 		}
 	}
 
-	texture_from_rgba8(engine, &pixels, w as usize, h as usize)
+	texture_from_rgba8_on(engine, &pixels, w as usize, h as usize)
 }

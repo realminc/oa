@@ -65,16 +65,17 @@ impl PythonAudio {
 #[pymethods]
 impl PythonAudio {
 	#[staticmethod]
-	#[pyo3(signature = (engine, samples, channels, sample_rate, layout="unknown"))]
+	#[pyo3(signature = (samples, channels, sample_rate, layout="unknown", engine=None))]
 	fn new_from_planar_f32(
-		engine: &PythonEngine,
 		samples: Vec<f32>,
 		channels: usize,
 		sample_rate: u32,
 		layout: &str,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
 		oa::Audio::new_from_planar_f32(
-			&engine.inner,
+			&engine,
 			&samples,
 			channels,
 			sample_rate,
@@ -125,18 +126,23 @@ impl PythonAudio {
 }
 
 #[pyfunction]
-pub(crate) fn audio_decode_file(engine: &PythonEngine, path: &str) -> PyResult<PythonAudio> {
-	oa::audio::decode_file(&engine.inner, path)
+pub(crate) fn audio_decode_file(
+	path: &str,
+	engine: Option<&PythonEngine>,
+) -> PyResult<PythonAudio> {
+	let engine = PythonEngine::resolve(engine)?;
+	oa::audio::decode_file_on(&engine, path)
 		.map(PythonAudio::wrap)
 		.map_err(python_error)
 }
 
 #[pyfunction]
 pub(crate) fn audio_decode_memory(
-	engine: &PythonEngine,
 	encoded: Vec<u8>,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<PythonAudio> {
-	oa::audio::decode_memory(&engine.inner, &encoded)
+	let engine = PythonEngine::resolve(engine)?;
+	oa::audio::decode_memory_on(&engine, &encoded)
 		.map(PythonAudio::wrap)
 		.map_err(python_error)
 }

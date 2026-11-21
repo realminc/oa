@@ -54,9 +54,9 @@ test_vk!(
 			hidden_size: 4,
 			seed: 0x1234_5678,
 		};
-		let model = CategoricalActorCritic::new(&engine, config)?;
+		let model = CategoricalActorCritic::new(config)?;
 		let input_values = [1.0, -2.0, 0.5, -0.25, 0.75, 2.0];
-		let input = oa::Matrix::new_from_f32(&engine, [2, 3], &input_values)?;
+		let input = oa::Matrix::new_from_f32([2, 3], &input_values)?;
 		let output = model.evaluate(&input)?;
 		assert_eq!(output.logits.shape(), [2, 2]);
 		assert_eq!(output.value.shape(), [2]);
@@ -150,34 +150,28 @@ test_vk!(
 	engine,
 	{
 		assert!(
-			CategoricalActorCritic::new(
-				&engine,
-				CategoricalActorCriticConfig {
-					observation_size: 3,
-					action_count: 1,
-					hidden_size: 4,
-					seed: 1,
-				},
-			)
-			.is_err()
-		);
-		let model = CategoricalActorCritic::new(
-			&engine,
-			CategoricalActorCriticConfig {
+			CategoricalActorCritic::new(CategoricalActorCriticConfig {
 				observation_size: 3,
-				action_count: 2,
+				action_count: 1,
 				hidden_size: 4,
 				seed: 1,
-			},
-		)?;
+			},)
+			.is_err()
+		);
+		let model = CategoricalActorCritic::new(CategoricalActorCriticConfig {
+			observation_size: 3,
+			action_count: 2,
+			hidden_size: 4,
+			seed: 1,
+		})?;
 		assert!(
 			model
-				.evaluate(&oa::Matrix::new_from_f32(&engine, [2, 2], &[0.0; 4])?)
+				.evaluate(&oa::Matrix::new_from_f32([2, 2], &[0.0; 4])?)
 				.is_err()
 		);
 		assert!(
 			model
-				.evaluate(&oa::Matrix::new_from_slice(&engine, [2, 3], &[0_i32; 6])?)
+				.evaluate(&oa::Matrix::new_from_slice([2, 3], &[0_i32; 6])?)
 				.is_err()
 		);
 		Ok(())

@@ -1109,9 +1109,9 @@ fn secret_mldsa_hash_message_rejects_invalid_inputs() -> Result<()> {
 	let engine = secret_test_engine()?;
 	let handle = engine.handle();
 	let (key, key_seed) = handle.generate_mldsa_key(44, Entropy::test_from_bytes(&[0x42; 32])?)?;
-	let message = Matrix::new_from_slice(&engine, [4], &[0_u8; 4])?;
-	let context = Matrix::new_from_slice(&engine, [4], &[0_u8; 4])?;
-	let oversized = Matrix::new_from_slice(&engine, [256], &[0_u8; 256])?;
+	let message = Matrix::new_from_slice([4], &[0_u8; 4])?;
+	let context = Matrix::new_from_slice([4], &[0_u8; 4])?;
+	let oversized = Matrix::new_from_slice([256], &[0_u8; 256])?;
 	let before = handle.state.borrow().next_epoch;
 	for algorithm in [0, 13, u32::MAX] {
 		assert!(matches!(handle.pqc_mldsa_sign(&key, &message, &context,
@@ -1128,7 +1128,7 @@ fn secret_mldsa_hash_message_rejects_invalid_inputs() -> Result<()> {
 		Err(error) if error.kind() == crate::ErrorKind::FailedPrecondition)
 	);
 	let foreign = secret_test_engine()?;
-	let foreign_input = Matrix::new_from_slice(&foreign, [4], &[0_u8; 4])?;
+	let foreign_input = Matrix::new_from_slice_on(&foreign, [4], &[0_u8; 4])?;
 	for (message, context) in [(&foreign_input, &context), (&message, &foreign_input)] {
 		assert!(
 			matches!(handle.pqc_mldsa_sign(&key, message, context, Some(12),
@@ -1238,8 +1238,8 @@ fn secret_mldsa_hash_message_all_parameters() -> Result<()> {
 		let (key, key_seed) =
 			handle.generate_mldsa_key(parameter, Entropy::test_from_bytes(&[0x42; 32])?)?;
 		let public = key.public.clone();
-		let input = Matrix::new_from_slice(&engine, [message.len()], message)?;
-		let context_matrix = Matrix::new_from_slice(&engine, [context.len()], context)?;
+		let input = Matrix::new_from_slice([message.len()], message)?;
+		let context_matrix = Matrix::new_from_slice([context.len()], context)?;
 		let (signature, status, entropy_erasure) = handle.pqc_mldsa_sign(
 			&key,
 			&input,
@@ -1419,11 +1419,11 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 		};
 		bytes.extend_from_slice(payload);
 		let payload_length = u32::try_from(payload.len()).expect("payload length");
-		let inputs = Matrix::new_from_slice(&engine, [bytes.len()], &bytes)?;
-		let offsets = Matrix::new_from_slice(&engine, [1], &[offset])?;
-		let lengths = Matrix::new_from_slice(&engine, [1], &[payload_length])?;
-		let signatures = Matrix::new_from_slice(&engine, [sig.len()], &sig)?;
-		let keys = Matrix::new_from_slice(&engine, [pk.len()], &pk)?;
+		let inputs = Matrix::new_from_slice([bytes.len()], &bytes)?;
+		let offsets = Matrix::new_from_slice([1], &[offset])?;
+		let lengths = Matrix::new_from_slice([1], &[payload_length])?;
+		let signatures = Matrix::new_from_slice([sig.len()], &sig)?;
+		let keys = Matrix::new_from_slice([pk.len()], &pk)?;
 		let ctx = 1..1 + context.len();
 		let (mut plan, result) = engine.capture(|| {
 			verify(
@@ -1454,7 +1454,7 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 			assert_eq!(result.read::<u32>()?, [1], "{name} NIST SHAKE-256");
 		}
 		bytes[offset as usize] ^= 1;
-		let changed = Matrix::new_from_slice(&engine, [bytes.len()], &bytes)?;
+		let changed = Matrix::new_from_slice([bytes.len()], &bytes)?;
 		plan.bind_matrix_input(&inputs, &changed)?;
 		drop(changed);
 		engine.submit(&plan)?.wait()?;
@@ -1481,8 +1481,8 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 			[u32::MAX, payload_length],
 			[offset, u32::MAX],
 		] {
-			let offsets = Matrix::new_from_slice(&engine, [1], &row[..1])?;
-			let lengths = Matrix::new_from_slice(&engine, [1], &row[1..])?;
+			let offsets = Matrix::new_from_slice([1], &row[..1])?;
+			let lengths = Matrix::new_from_slice([1], &row[1..])?;
 			assert_eq!(
 				verify(
 					parameters,
@@ -1517,8 +1517,8 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 			[0],
 			"prehash signature must reject pure framing"
 		);
-		let empty = Matrix::new_from_slice(&engine, [0], &[] as &[u8])?;
-		let empty_rows = Matrix::new_from_slice(&engine, [0], &[] as &[u32])?;
+		let empty = Matrix::new_from_slice([0], &[] as &[u8])?;
+		let empty_rows = Matrix::new_from_slice([0], &[] as &[u32])?;
 		assert_eq!(
 			verify(
 				parameters,
@@ -1543,7 +1543,7 @@ fn mldsa_hash_verifier_nist_capture(hash_message: bool) -> Result<()> {
 			);
 		}
 		let foreign = secret_test_engine()?;
-		let foreign_offsets = Matrix::new_from_slice(&foreign, [1], &[offset])?;
+		let foreign_offsets = Matrix::new_from_slice_on(&foreign, [1], &[offset])?;
 		assert!(
 			matches!(verify(parameters, 12, &inputs, &foreign_offsets, &lengths, &signatures, &keys, ctx), Err(error) if error.kind() == crate::ErrorKind::InvalidArgument)
 		);
@@ -1568,7 +1568,7 @@ fn secret_mlkem_consumer_cache_rejects_alias_extent_and_foreign_storage() -> Res
 	let ciphertext = Buffer::host_visible_storage(&device, 768)?;
 	let status = Buffer::host_visible_storage(&device, 4)?;
 	let before = handle.state.borrow().next_epoch;
-	crate::runtime::device::pqc::tests::assert_mlkem_cache_preflight(
+	crate::runtime::device::logical::pqc::tests::assert_mlkem_cache_preflight(
 		&device,
 		[&seed, &shared, &private, &foreign_secret],
 		[&public, &ciphertext, &status],

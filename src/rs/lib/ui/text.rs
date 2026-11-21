@@ -294,7 +294,11 @@ impl GlyphBuffer {
 	///
 	/// Returns an error when `capacity` is zero, the capacity byte extent
 	/// overflows, or allocation fails.
-	pub fn create_host_upload(engine: &crate::Engine, capacity: u32) -> Result<Self> {
+	pub fn create_host_upload(capacity: u32) -> Result<Self> {
+		Self::create_host_upload_on(&crate::Engine::current()?, capacity)
+	}
+
+	pub fn create_host_upload_on(engine: &crate::Engine, capacity: u32) -> Result<Self> {
 		if capacity == 0 {
 			return Err(Error::invalid_argument(
 				"oa::ui::GlyphBuffer::create_host_upload: capacity must be non-zero",
@@ -308,7 +312,7 @@ impl GlyphBuffer {
 					"oa::ui::GlyphBuffer::create_host_upload: capacity byte extent overflows usize",
 				)
 			})?;
-		let storage = crate::Matrix::new_from_slice(engine, [byte_len], &vec![0_u8; byte_len])?;
+		let storage = crate::Matrix::new_from_slice_on(engine, [byte_len], &vec![0_u8; byte_len])?;
 		Ok(Self {
 			engine: engine.handle(),
 			storage,

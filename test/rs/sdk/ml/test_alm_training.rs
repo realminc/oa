@@ -124,7 +124,7 @@ test_vk!(
 			..AlmPriorConfig::default()
 		};
 		model_config.sync_vocab(4)?;
-		let prior = AlmPrior::new_with_seed(&engine, model_config, 7)?;
+		let prior = AlmPrior::new_with_seed(model_config, 7)?;
 		let report = train_prior(
 			&engine,
 			&prior,
@@ -161,7 +161,6 @@ test_vk!(
 			training::{TokenizerTrainingConfig, train_tokenizer},
 		};
 		let tokenizer = AlmTokenizer::new_with_seed(
-			&engine,
 			AlmTokenizerConfig {
 				input_dim: 3,
 				width: 4,
@@ -266,7 +265,7 @@ test_vk!(
 			show_progress: false,
 			checkpoint: Some(checkpoint.clone()),
 		};
-		let uninterrupted = AlmTokenizer::new_with_seed(&engine, model_config, 29)?;
+		let uninterrupted = AlmTokenizer::new_with_seed(model_config, 29)?;
 		let uninterrupted_report =
 			train_tokenizer(&engine, &uninterrupted, &clips, training_config.clone())?;
 		assert_eq!(uninterrupted_report.steps, 4);
@@ -282,7 +281,7 @@ test_vk!(
 				std::fs::remove_file(path).expect("remove later synthetic checkpoint");
 			}
 		}
-		let resumed = AlmTokenizer::new_with_seed(&engine, model_config, 991)?;
+		let resumed = AlmTokenizer::new_with_seed(model_config, 991)?;
 		let mut resumed_config = training_config;
 		resumed_config
 			.checkpoint
@@ -410,7 +409,7 @@ test_vk!(
 			show_progress: false,
 			checkpoint: Some(checkpoint),
 		};
-		let uninterrupted = AlmPrior::new_with_seed(&engine, model_config, 41)?;
+		let uninterrupted = AlmPrior::new_with_seed(model_config, 41)?;
 		let uninterrupted_report = train_prior(
 			&engine,
 			&uninterrupted,
@@ -430,7 +429,7 @@ test_vk!(
 				std::fs::remove_file(path).expect("remove later synthetic checkpoint");
 			}
 		}
-		let resumed = AlmPrior::new_with_seed(&engine, model_config, 999)?;
+		let resumed = AlmPrior::new_with_seed(model_config, 999)?;
 		let mut resumed_config = training_config;
 		resumed_config
 			.checkpoint
@@ -513,7 +512,6 @@ test_vk!(
 		std::fs::write(directory.join("train.txt"), "first\nsecond\n").expect("write split fixture");
 		let dataset = HumanMl3dDataset::open_cmp(&directory, "train", 0)?;
 		let tokenizer = Rc::new(AlmTokenizer::new_with_seed(
-			&engine,
 			AlmTokenizerConfig {
 				input_dim: 263,
 				width: 4,
@@ -538,7 +536,7 @@ test_vk!(
 			..AlmPriorConfig::default()
 		};
 		prior_config.sync_vocab(2)?;
-		let prior = Rc::new(AlmPrior::new_with_seed(&engine, prior_config, 18)?);
+		let prior = Rc::new(AlmPrior::new_with_seed(prior_config, 18)?);
 		let report = train_alm_with_validation(
 			&engine,
 			&dataset,
@@ -644,7 +642,7 @@ test_vk!(
 		assert!((0.0..=1.0).contains(&prior_validation.eos_accuracy));
 		let path = directory.join("Alm.oam");
 		report.model.save_bundle(&path)?;
-		let restored = Alm::load_bundle(&engine, &path)?;
+		let restored = Alm::load_bundle(&path)?;
 		assert_eq!(restored.config(), report.model.config());
 		std::fs::remove_dir_all(directory).expect("remove ALM fixture");
 		Ok(())
@@ -705,10 +703,9 @@ test_vk!(
 		let dataset = HumanMl3dDataset::open_cmp(&directory, "train", 0)?;
 		assert_eq!(dataset.text_feature_dim(), 0);
 
-		let clip = Rc::new(ClipText::load_model(&engine, model_path)?);
+		let clip = Rc::new(ClipText::load_model(model_path)?);
 		let merges = std::fs::read(merges_path).expect("read configured CLIP merges");
 		let tokenizer = Rc::new(AlmTokenizer::new_with_seed(
-			&engine,
 			AlmTokenizerConfig {
 				input_dim: 263,
 				width: 4,
@@ -734,7 +731,7 @@ test_vk!(
 			..AlmPriorConfig::default()
 		};
 		prior_config.sync_vocab(2)?;
-		let prior = Rc::new(AlmPrior::new_with_seed(&engine, prior_config, 43)?);
+		let prior = Rc::new(AlmPrior::new_with_seed(prior_config, 43)?);
 		let report = train_alm_with_native_text(
 			&engine,
 			&dataset,

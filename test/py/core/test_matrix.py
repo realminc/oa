@@ -12,8 +12,8 @@ class MatrixBindingTest(unittest.TestCase):
 
 	def test_three_line_facade_executes_on_the_native_engine(self) -> None:
 		engine = oa.Engine()
-		one = oa.matrix.ones(engine, [2, 3])
-		two = oa.matrix.full(engine, [2, 3], 2.0)
+		one = oa.matrix.ones([2, 3], engine=engine)
+		two = oa.matrix.full([2, 3], 2.0, engine=engine)
 		total = oa.matrix.add(one, two)
 		self.assertEqual(total.shape, [2, 3])
 		self.assertEqual(total.dtype, "f32")
@@ -24,18 +24,18 @@ class MatrixBindingTest(unittest.TestCase):
 
 	def test_mat_mul_nt_matches_the_public_layout_contract(self) -> None:
 		engine = oa.Engine()
-		left = oa.Matrix.new_from_f32(engine, [2, 3], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
-		right = oa.matrix.ones(engine, [4, 3])
+		left = oa.Matrix.new_from_f32([2, 3], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], engine=engine)
+		right = oa.matrix.ones([4, 3], engine=engine)
 		output = oa.matrix.mat_mul_nt(left, right)
 		self.assertEqual(output.shape, [2, 4])
 		self.assertEqual(output.to_list(), [6.0] * 4 + [15.0] * 4)
 
 	def test_typed_constructors_and_reshape_preserve_value_contracts(self) -> None:
 		engine = oa.Engine()
-		f32 = oa.Matrix.new_from_f32(engine, [2, 2], [1.0, -2.0, 3.5, 0.0])
-		i32 = oa.Matrix.new_from_i32(engine, [2], [-3, 7])
-		u32 = oa.Matrix.new_from_u32(engine, [2], [0, 9])
-		u8 = oa.Matrix.new_from_u8(engine, [3], [0, 127, 255])
+		f32 = oa.Matrix.new_from_f32([2, 2], [1.0, -2.0, 3.5, 0.0], engine=engine)
+		i32 = oa.Matrix.new_from_i32([2], [-3, 7], engine=engine)
+		u32 = oa.Matrix.new_from_u32([2], [0, 9], engine=engine)
+		u8 = oa.Matrix.new_from_u8([3], [0, 127, 255], engine=engine)
 
 		self.assertEqual((f32.dtype, f32.num_elements, f32.to_list()), ("f32", 4, [1.0, -2.0, 3.5, 0.0]))
 		self.assertEqual((i32.dtype, i32.read_i32()), ("i32", [-3, 7]))

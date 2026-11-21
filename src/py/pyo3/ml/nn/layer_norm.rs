@@ -18,13 +18,14 @@ impl PythonLayerNorm {
 	/// `[n]`.  The `seed` keyword is accepted for API compatibility but ignored
 	/// (LayerNorm initializes deterministically to unit weight / zero bias).
 	#[new]
-	#[pyo3(signature = (engine, normalized_shape=None, epsilon=1e-5, seed=None))]
+	#[pyo3(signature = (normalized_shape=None, epsilon=1e-5, seed=None, engine=None))]
 	pub fn new(
-		engine: &PythonEngine,
 		normalized_shape: Option<pyo3::Bound<'_, pyo3::PyAny>>,
 		epsilon: f32,
 		seed: Option<u64>,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
 		let _ = seed;
 		let shape: usize = match normalized_shape {
 			None => {
@@ -49,7 +50,7 @@ impl PythonLayerNorm {
 				}
 			}
 		};
-		oa::ml::nn::LayerNorm::new(&engine.inner, shape, epsilon)
+		oa::ml::nn::LayerNorm::new_on(&engine, shape, epsilon)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

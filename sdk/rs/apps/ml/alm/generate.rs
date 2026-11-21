@@ -118,7 +118,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 	};
 
 	let engine = oa::Engine::new()?;
-	let model = Alm::load_bundle(&engine, &model_path)?;
+	oa::Engine::set_default(engine.clone());
+	let model = Alm::load_bundle(&model_path)?;
 	let conditioned = model.config().prior.text_feature_dim > 0;
 	let load_count = if conditioned && prompt_opt.is_none() {
 		cfg.conditioning_clip + 1
@@ -209,7 +210,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn caption_feature(
-	engine: &oa::Engine,
+	_engine: &oa::Engine,
 	model: &Alm,
 	dataset: &HumanMl3dDataset,
 	cfg: &AlmGenerateConfig,
@@ -240,7 +241,6 @@ fn caption_feature(
 	}
 	let start = cfg.caption_index * width;
 	Ok(oa::Matrix::new_from_f32(
-		engine,
 		[1, width],
 		&features[start..start + width],
 	)?)

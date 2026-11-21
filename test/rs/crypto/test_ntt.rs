@@ -98,7 +98,7 @@ test_vk!(ntt_forward_matches_host_oracle_and_roundtrips, engine, {
 			.flatten()
 			.flat_map(|value| [*value as u32, 0_u32])
 			.collect();
-		let pair = oa::Matrix::new_from_slice(&engine, [2, length, 2], &pair_words)?;
+		let pair = oa::Matrix::new_from_slice([2, length, 2], &pair_words)?;
 		let transformed = ntt::forward(&pair, &parameters)?;
 		let recovered = ntt::inverse(&transformed, &parameters)?;
 		let device: Vec<u32> = transformed.read()?;
@@ -132,7 +132,7 @@ test_vk!(ntt_scalar_storage_matches_pair_transform, engine, {
 		.map(|i| ((i * 41 + 5) as u64 * 999_331 + 3) % modulus)
 		.collect();
 	let scalar_words: Vec<u32> = row.iter().map(|v| *v as u32).collect();
-	let scalar = oa::Matrix::new_from_slice(&engine, [1, length], &scalar_words)?;
+	let scalar = oa::Matrix::new_from_slice([1, length], &scalar_words)?;
 	let transformed = ntt::forward(&scalar, &parameters)?;
 	let restored = ntt::inverse(&transformed, &parameters)?;
 	let device: Vec<u32> = transformed.read()?;
@@ -146,7 +146,7 @@ test_vk!(ntt_scalar_storage_matches_pair_transform, engine, {
 	assert_eq!(restored.read::<u32>()?, scalar_words);
 	// Scalar and paired storage compute the same transform.
 	let pair_words: Vec<u32> = row.iter().flat_map(|v| [*v as u32, 0_u32]).collect();
-	let pair = oa::Matrix::new_from_slice(&engine, [1, length, 2], &pair_words)?;
+	let pair = oa::Matrix::new_from_slice([1, length, 2], &pair_words)?;
 	let pair_transformed = ntt::forward(&pair, &parameters)?.read::<u32>()?;
 	for i in 0..length {
 		assert_eq!(
@@ -171,7 +171,7 @@ test_vk!(
 			.map(|i| ((i * 13 + 11) as u64 * 8_191 + 1) % modulus)
 			.collect();
 		let pair_words: Vec<u32> = row.iter().flat_map(|v| [*v as u32, 0_u32]).collect();
-		let pair = oa::Matrix::new_from_slice(&engine, [1, length, 2], &pair_words)?;
+		let pair = oa::Matrix::new_from_slice([1, length, 2], &pair_words)?;
 		let transformed = ntt::forward(&pair, &parameters)?;
 		let restored = ntt::inverse(&transformed, &parameters)?;
 		assert_eq!(restored.read::<u32>()?, pair_words);

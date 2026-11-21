@@ -39,10 +39,11 @@ impl PythonCharSampler {
 	}
 
 	/// Upload the next `[batch, 16]` U32 input and shifted-target pair.
-	pub fn next(&mut self, engine: &PythonEngine) -> PyResult<(PythonMatrix, PythonMatrix)> {
+	pub fn next(&mut self, engine: Option<&PythonEngine>) -> PyResult<(PythonMatrix, PythonMatrix)> {
+		let engine = PythonEngine::resolve(engine)?;
 		self
 			.inner
-			.next(&engine.inner)
+			.next_on(&engine)
 			.map(|(a, b)| (PythonMatrix::wrap(a), PythonMatrix::wrap(b)))
 			.map_err(python_error)
 	}
@@ -76,10 +77,11 @@ impl PythonByteSampler {
 	}
 
 	/// Upload the next packed-U8 input and U32 shifted-target pair.
-	pub fn next(&mut self, engine: &PythonEngine) -> PyResult<(PythonMatrix, PythonMatrix)> {
+	pub fn next(&mut self, engine: Option<&PythonEngine>) -> PyResult<(PythonMatrix, PythonMatrix)> {
+		let engine = PythonEngine::resolve(engine)?;
 		self
 			.inner
-			.next(&engine.inner)
+			.next_on(&engine)
 			.map(|(a, b)| (PythonMatrix::wrap(a), PythonMatrix::wrap(b)))
 			.map_err(python_error)
 	}
@@ -138,10 +140,11 @@ impl PythonBpeSampler {
 	}
 
 	/// Produce and upload the next U32 BPE input/target pair.
-	pub fn next(&mut self, engine: &PythonEngine) -> PyResult<(PythonMatrix, PythonMatrix)> {
+	pub fn next(&mut self, engine: Option<&PythonEngine>) -> PyResult<(PythonMatrix, PythonMatrix)> {
+		let engine = PythonEngine::resolve(engine)?;
 		self
 			.inner
-			.next(&engine.inner)
+			.next_on(&engine)
 			.map(|(a, b)| (PythonMatrix::wrap(a), PythonMatrix::wrap(b)))
 			.map_err(python_error)
 	}
@@ -185,8 +188,9 @@ pub(crate) struct PythonCharRnn {
 impl PythonCharRnn {
 	/// Construct the canonical deterministic 8,891-parameter model.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::CharRnn::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::CharRnn::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -221,8 +225,9 @@ pub(crate) struct PythonCharGru {
 impl PythonCharGru {
 	/// Construct the deterministic 21,435-parameter model.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::CharGru::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::CharGru::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -257,8 +262,9 @@ pub(crate) struct PythonCharTransformer {
 impl PythonCharTransformer {
 	/// Construct the exact one-block one-head OA C++ tutorial architecture.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::CharTransformer::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::CharTransformer::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -293,8 +299,9 @@ pub(crate) struct PythonCharMoeTransformer {
 impl PythonCharMoeTransformer {
 	/// Construct the donor one-block one-head MoE Transformer recipe.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::CharMoeTransformer::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::CharMoeTransformer::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -329,8 +336,9 @@ pub(crate) struct PythonCharMamba3 {
 impl PythonCharMamba3 {
 	/// Construct the donor `32/state=32/expand=2/head=16` SISO recipe.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::CharMamba3::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::CharMamba3::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -365,8 +373,9 @@ pub(crate) struct PythonByteRnn {
 impl PythonByteRnn {
 	/// Construct the deterministic donor-shaped 31,104-parameter model.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::ByteRnn::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::ByteRnn::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -401,8 +410,9 @@ pub(crate) struct PythonByteGru {
 impl PythonByteGru {
 	/// Construct the deterministic donor-shaped 43,648-parameter model.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::ByteGru::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::ByteGru::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -437,8 +447,9 @@ pub(crate) struct PythonByteTransformer {
 impl PythonByteTransformer {
 	/// Construct the deterministic donor one-block one-head byte model.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::ByteTransformer::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::ByteTransformer::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -473,8 +484,9 @@ pub(crate) struct PythonByteMoeTransformer {
 impl PythonByteMoeTransformer {
 	/// Construct the donor one-block one-head byte MoE recipe.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::ByteMoeTransformer::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::ByteMoeTransformer::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -509,8 +521,9 @@ pub(crate) struct PythonByteMamba3 {
 impl PythonByteMamba3 {
 	/// Construct the donor `32/state=32/expand=2/head=16` byte recipe.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::ByteMamba3::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::ByteMamba3::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -545,8 +558,9 @@ pub(crate) struct PythonByteEmpyrealm {
 impl PythonByteEmpyrealm {
 	/// Construct the deterministic donor fidelity model.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::ByteEmpyrealm::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::ByteEmpyrealm::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -581,8 +595,9 @@ pub(crate) struct PythonBpeRnn {
 impl PythonBpeRnn {
 	/// Construct the deterministic donor-shaped 37,312-parameter model.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::BpeRnn::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::BpeRnn::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -617,8 +632,9 @@ pub(crate) struct PythonBpeGru {
 impl PythonBpeGru {
 	/// Construct the deterministic donor-shaped 49,856-parameter model.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::BpeGru::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::BpeGru::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -653,8 +669,9 @@ pub(crate) struct PythonBpeTransformer {
 impl PythonBpeTransformer {
 	/// Construct the deterministic donor one-block one-head BPE model.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::BpeTransformer::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::BpeTransformer::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -689,8 +706,9 @@ pub(crate) struct PythonBpeMoeTransformer {
 impl PythonBpeMoeTransformer {
 	/// Construct the donor one-block one-head BPE MoE recipe.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::BpeMoeTransformer::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::BpeMoeTransformer::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -725,8 +743,9 @@ pub(crate) struct PythonBpeMamba3 {
 impl PythonBpeMamba3 {
 	/// Construct the donor `32/state=32/expand=2/head=16` BPE recipe.
 	#[new]
-	pub fn new(engine: &PythonEngine) -> PyResult<Self> {
-		sdk::ml::nlp::BpeMamba3::new(&engine.inner)
+	pub fn new(engine: Option<&PythonEngine>) -> PyResult<Self> {
+		let engine = PythonEngine::resolve(engine)?;
+		sdk::ml::nlp::BpeMamba3::new_on(&engine)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -757,16 +776,17 @@ impl PythonBpeMamba3 {
 /// `CharMoeTransformer`, or `CharMamba3`.
 #[pyfunction]
 pub(crate) fn ml_nlp_generate_greedy(
-	engine: &PythonEngine,
 	model: &Bound<'_, PyAny>,
 	prompt: &str,
 	count: usize,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<String> {
+	let engine = PythonEngine::resolve(engine)?;
 	// generate_greedy takes &impl Module (Sized), so dispatch per concrete type.
 	macro_rules! try_char_gen {
 		($($ty:ty),+ $(,)?) => {
 			$(if let Ok(m) = model.extract::<PyRef<$ty>>() {
-				return sdk::ml::nlp::generate_greedy(&engine.inner, &m.inner, prompt, count)
+				return sdk::ml::nlp::generate_greedy(&engine, &m.inner, prompt, count)
 					.map_err(python_error);
 			})+
 		};
@@ -789,15 +809,16 @@ pub(crate) fn ml_nlp_generate_greedy(
 /// `ByteMoeTransformer`, `ByteMamba3`, or `ByteEmpyrealm`.
 #[pyfunction]
 pub(crate) fn ml_nlp_generate_bytes_greedy(
-	engine: &PythonEngine,
 	model: &Bound<'_, PyAny>,
 	prompt: Vec<u8>,
 	count: usize,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<Vec<u8>> {
+	let engine = PythonEngine::resolve(engine)?;
 	macro_rules! try_byte_gen {
 		($($ty:ty),+ $(,)?) => {
 			$(if let Ok(m) = model.extract::<PyRef<$ty>>() {
-				return sdk::ml::nlp::generate_bytes_greedy(&engine.inner, &m.inner, &prompt, count)
+				return sdk::ml::nlp::generate_bytes_greedy(&engine, &m.inner, &prompt, count)
 					.map_err(python_error);
 			})+
 		};
@@ -822,17 +843,18 @@ pub(crate) fn ml_nlp_generate_bytes_greedy(
 /// `BpeMoeTransformer`, or `BpeMamba3`.
 #[pyfunction]
 pub(crate) fn ml_nlp_generate_bpe_greedy(
-	engine: &PythonEngine,
 	model: &Bound<'_, PyAny>,
 	tokenizer: &super::tokenizer::PythonBpeTokenizer,
 	prompt: Vec<u8>,
 	byte_count: usize,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<Vec<u8>> {
+	let engine = PythonEngine::resolve(engine)?;
 	macro_rules! try_bpe_gen {
 		($($ty:ty),+ $(,)?) => {
 			$(if let Ok(m) = model.extract::<PyRef<$ty>>() {
 				return sdk::ml::nlp::generate_bpe_greedy(
-					&engine.inner, &m.inner, &tokenizer.inner, &prompt, byte_count,
+					&engine, &m.inner, &tokenizer.inner, &prompt, byte_count,
 				).map_err(python_error);
 			})+
 		};

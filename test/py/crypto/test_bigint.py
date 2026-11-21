@@ -44,8 +44,8 @@ class BigIntVulkanTest(unittest.TestCase):
 		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		for case in json.loads(FIXTURE.read_text())["cases"]:
 			shape = [case["rows"], case["words"]]
-			left = oa.Matrix.new_from_u32(engine, shape, case["left"])
-			right = oa.Matrix.new_from_u32(engine, shape, case["right"])
+			left = oa.Matrix.new_from_u32(shape, case["left"], engine=engine)
+			right = oa.Matrix.new_from_u32(shape, case["right"], engine=engine)
 			for name in ("add", "subtract", "multiply_low", "multiply_wide", "bit_and", "bit_or", "bit_xor", "compare"):
 				op = getattr(oa.crypto, f"bigint_{name}")
 				self.assertEqual(op(left, right).read_u32(), case["results"][name], name)

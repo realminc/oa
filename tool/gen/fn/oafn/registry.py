@@ -431,9 +431,9 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 	for candidate in blas.get("candidate_kernels", []):
 		buffer_counts[candidate["kernel_id"]] = (
 			3
-			if candidate["variant"] in {"naive", "gemv", "strided", "strided_tiled", "split_k", "f16s"}
+			if candidate["variant"] in {"naive", "gemv", "strided", "strided_tiled", "split_k", "f16"}
 			else 2
-			if candidate["variant"] in {"split_k_reduce", "cast_f32_f16", "cast_f16_f32", "sum_f16s"}
+			if candidate["variant"] in {"split_k_reduce", "cast_f32_f16", "cast_f16_f32", "sum_f16"}
 			else 4
 		)
 	for schema in [reduce, rng, index, ml, audio, cryptography, cryptography_pqc, image, vision]:

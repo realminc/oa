@@ -61,14 +61,15 @@ pub(crate) fn ml_save_checkpoint(
 /// The parameter list and optimizer type must exactly match what was saved.
 #[pyfunction]
 pub(crate) fn ml_load_checkpoint(
-	engine: &PythonEngine,
 	path: &str,
 	params: Vec<PyRef<'_, PythonParameter>>,
 	optimizer: &Bound<'_, PyAny>,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<()> {
+	let engine = PythonEngine::resolve(engine)?;
 	let rust_params: Vec<ml::Parameter> = params.iter().map(|p| p.inner.clone()).collect();
 	let model = ParamListModule::from_params(rust_params).map_err(python_error)?;
-	dispatch_load(&engine.inner, path, &model, optimizer)
+	dispatch_load(&engine, path, &model, optimizer)
 }
 
 fn dispatch_save(
@@ -100,16 +101,16 @@ fn dispatch_load(
 	optimizer: &Bound<'_, PyAny>,
 ) -> PyResult<()> {
 	if let Ok(mut opt) = optimizer.extract::<PyRefMut<PythonSgd>>() {
-		return ml::load_checkpoint(engine, path, model, &mut opt.inner).map_err(python_error);
+		return ml::load_checkpoint_on(engine, path, model, &mut opt.inner).map_err(python_error);
 	}
 	if let Ok(mut opt) = optimizer.extract::<PyRefMut<PythonAdam>>() {
-		return ml::load_checkpoint(engine, path, model, &mut opt.inner).map_err(python_error);
+		return ml::load_checkpoint_on(engine, path, model, &mut opt.inner).map_err(python_error);
 	}
 	if let Ok(mut opt) = optimizer.extract::<PyRefMut<PythonAdamW>>() {
-		return ml::load_checkpoint(engine, path, model, &mut opt.inner).map_err(python_error);
+		return ml::load_checkpoint_on(engine, path, model, &mut opt.inner).map_err(python_error);
 	}
 	if let Ok(mut opt) = optimizer.extract::<PyRefMut<PythonMuon>>() {
-		return ml::load_checkpoint(engine, path, model, &mut opt.inner).map_err(python_error);
+		return ml::load_checkpoint_on(engine, path, model, &mut opt.inner).map_err(python_error);
 	}
 	Err(pyo3::exceptions::PyTypeError::new_err(
 		"optimizer must be one of Sgd, Adam, AdamW, or Muon",

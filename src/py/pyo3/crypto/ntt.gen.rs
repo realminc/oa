@@ -59,10 +59,11 @@ impl PythonNttParameters {
 
 #[pyfunction]
 fn crypto_ntt_prepare(
-	engine: &PythonEngine,
 	config: &PythonNttConfig,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<PythonNttParameters> {
-	let inner = oa::crypto::ntt::prepare(&engine.inner, &config.inner).map_err(python_error)?;
+	let engine = PythonEngine::resolve(engine)?;
+	let inner = oa::crypto::ntt::prepare(&engine, &config.inner).map_err(python_error)?;
 	Ok(PythonNttParameters { inner })
 }
 

@@ -9,7 +9,7 @@ use crate::{Error, Result, runtime::SdlWindow};
 
 use super::{
 	Device,
-	device::swapchain::{PresentationSwapchain, SwapchainConfig},
+	device::logical::swapchain::{PresentationSwapchain, SwapchainConfig},
 };
 pub use crate::runtime::types::PresentationCapabilities;
 

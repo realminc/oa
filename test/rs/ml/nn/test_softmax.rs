@@ -79,16 +79,13 @@ test_vk!(softmax_module_and_adjoint_match_donor_contract, engine, {
 	let weight_values = [0.4_f32, -0.3, 0.7, -0.6, 0.9, 0.2];
 	let bias_values = [0.1_f32, -0.2];
 	let targets = [0_u32, 1, 0, 1];
-	let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-		&engine,
-		[4, 3],
-		&input_values,
-	)?)?;
-	let indices = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 1, 2, 3])?;
-	let target_matrix = oa::Matrix::new_from_slice(&engine, [4], &targets)?;
+	let embedding =
+		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([4, 3], &input_values)?)?;
+	let indices = oa::Matrix::new_from_slice([4], &[0_u32, 1, 2, 3])?;
+	let target_matrix = oa::Matrix::new_from_slice([4], &targets)?;
 	let linear = oa::ml::nn::Linear::new_from_matrices(
-		oa::Matrix::new_from_f32(&engine, [2, 3], &weight_values)?,
-		oa::Matrix::new_from_f32(&engine, [2], &bias_values)?,
+		oa::Matrix::new_from_f32([2, 3], &weight_values)?,
+		oa::Matrix::new_from_f32([2], &bias_values)?,
 	)?;
 	let softmax = oa::ml::nn::Softmax::new(-1);
 	assert_eq!(softmax.dim(), -1);
@@ -136,13 +133,10 @@ test_vk!(
 		let target_values = [
 			-0.5_f32, -1.5, -0.9, -1.0, -0.8, -1.7, -2.1, -1.0, -0.6, -0.4, -2.0, -1.3,
 		];
-		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-			&engine,
-			[4, 3],
-			&input_values,
-		)?)?;
-		let indices = oa::Matrix::new_from_slice(&engine, [4], &[0_u32, 1, 2, 3])?;
-		let target = oa::Matrix::new_from_f32(&engine, [4, 3], &target_values)?;
+		let embedding =
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([4, 3], &input_values)?)?;
+		let indices = oa::Matrix::new_from_slice([4], &[0_u32, 1, 2, 3])?;
+		let target = oa::Matrix::new_from_f32([4, 3], &target_values)?;
 		let log_softmax = oa::ml::nn::LogSoftmax::new(-1);
 		assert_eq!(log_softmax.dim(), -1);
 		assert!(log_softmax.parameters().is_empty());

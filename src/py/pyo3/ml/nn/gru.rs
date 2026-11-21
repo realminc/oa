@@ -16,15 +16,16 @@ pub(crate) struct PythonGruCell {
 impl PythonGruCell {
 	/// Construct a deterministically initialized GRU cell.
 	#[new]
-	#[pyo3(signature = (engine, input_size, hidden_size, bias=true, seed=0))]
+	#[pyo3(signature = (input_size, hidden_size, bias=true, seed=0, engine=None))]
 	pub fn new(
-		engine: &PythonEngine,
 		input_size: usize,
 		hidden_size: usize,
 		bias: bool,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::GruCell::new_with_seed(&engine.inner, input_size, hidden_size, bias, seed)
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::GruCell::new_with_seed_on(&engine, input_size, hidden_size, bias, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -101,25 +102,19 @@ pub(crate) struct PythonGru {
 impl PythonGru {
 	/// Construct a deterministically initialized stacked GRU.
 	#[new]
-	#[pyo3(signature = (engine, input_size, hidden_size, num_layers=1, bias=true, seed=0))]
+	#[pyo3(signature = (input_size, hidden_size, num_layers=1, bias=true, seed=0, engine=None))]
 	pub fn new(
-		engine: &PythonEngine,
 		input_size: usize,
 		hidden_size: usize,
 		num_layers: usize,
 		bias: bool,
 		seed: u64,
+		engine: Option<&PythonEngine>,
 	) -> PyResult<Self> {
-		oa::ml::nn::Gru::new_with_seed(
-			&engine.inner,
-			input_size,
-			hidden_size,
-			num_layers,
-			bias,
-			seed,
-		)
-		.map(|inner| Self { inner })
-		.map_err(python_error)
+		let engine = PythonEngine::resolve(engine)?;
+		oa::ml::nn::Gru::new_with_seed_on(&engine, input_size, hidden_size, num_layers, bias, seed)
+			.map(|inner| Self { inner })
+			.map_err(python_error)
 	}
 
 	/// Evaluate the complete `[B, S, I]` sequence.

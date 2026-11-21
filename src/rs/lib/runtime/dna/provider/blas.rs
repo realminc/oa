@@ -19,6 +19,14 @@
 //!   measurements is test-gated, so production caches are read-only.
 //! - `OA_DISABLE_GEMM_ROUTE_CACHE` is honored; `OA_GEMM_FORCE_FP32`,
 //!   `OA_FORCE_COOPVEC`, and `OA_GEMM_AUTOTUNE` are not ported.
+//! - Preference thresholds derive from the queried device contract and the
+//!   candidate's reflected schedule (shared-memory footprint, workgroup
+//!   invocations), not vendor/device tables: an admitted candidate's
+//!   legality is capability-gated and its ranking is measured. That keeps
+//!   routing vendor-agnostic by construction — new hardware runs every
+//!   legal candidate correctly on day one, and per-device speed is
+//!   resolved by the route cache or re-qualification rather than a
+//!   product-name lookup.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -106,7 +114,9 @@ pub(in crate::runtime) enum GemmKernel {
 	SmallMF32 = 14,
 	StridedTiledF32 = 15,
 	SplitKF32 = 16,
-	F16sF32 = 17,
+	F16F32 = 17,
+	TiledWideF32 = 18,
+	TiledWideF16F32 = 19,
 }
 
 /// Dispatch path shape.
@@ -889,6 +899,31 @@ const VARIANTS: &[MatmulVariant] = &[
 		reduction_workgroup_invocations: 0,
 	},
 	MatmulVariant {
+		id: matmul_variant_id_from_name("GemmTiledWide"),
+		name: "GemmTiledWide",
+		kernel_id: KernelId::MatrixMatMulNtTiledWideF32,
+		kernel: GemmKernel::TiledWideF32,
+		path: GemmPath::Standard,
+		epilogue: GemmEpilogue::None,
+		a_precision: StoragePrecision::F32,
+		b_precision: StoragePrecision::F32,
+		output_precision: StoragePrecision::F32,
+		accumulator_precision: StoragePrecision::F32,
+		tile_k: 16,
+		requires_aligned: false,
+		requires_transposed_b: true,
+		supports_bias: false,
+		supports_activation: false,
+		dual_output: false,
+		required_caps_mask: CAP_TILED_F32,
+		supports_arbitrary_layout: false,
+		supports_batch: false,
+		max_m: 0,
+		split_k: 1,
+		reduction_kernel_id: None,
+		reduction_workgroup_invocations: 0,
+	},
+	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmNaive"),
 		name: "GemmNaive",
 		kernel_id: KernelId::MatrixMatMulNtNaiveF32,
@@ -1119,10 +1154,35 @@ const VARIANTS: &[MatmulVariant] = &[
 	// physical kernel contract. Legal only under the F16 math mode on a
 	// device with enabled storageBuffer16BitAccess + shaderFloat16.
 	MatmulVariant {
-		id: matmul_variant_id_from_name("GemmF16s"),
-		name: "GemmF16s",
-		kernel_id: KernelId::MatrixMatMulNtF16sF32,
-		kernel: GemmKernel::F16sF32,
+		id: matmul_variant_id_from_name("GemmF16"),
+		name: "GemmF16",
+		kernel_id: KernelId::MatrixMatMulNtF16,
+		kernel: GemmKernel::F16F32,
+		path: GemmPath::Standard,
+		epilogue: GemmEpilogue::None,
+		a_precision: StoragePrecision::F16,
+		b_precision: StoragePrecision::F16,
+		output_precision: StoragePrecision::F32,
+		accumulator_precision: StoragePrecision::F32,
+		tile_k: 16,
+		requires_aligned: false,
+		requires_transposed_b: true,
+		supports_bias: false,
+		supports_activation: false,
+		dual_output: false,
+		required_caps_mask: CAP_F16_STORAGE,
+		supports_arbitrary_layout: false,
+		supports_batch: false,
+		max_m: 0,
+		split_k: 1,
+		reduction_kernel_id: None,
+		reduction_workgroup_invocations: 0,
+	},
+	MatmulVariant {
+		id: matmul_variant_id_from_name("GemmTiledWideF16"),
+		name: "GemmTiledWideF16",
+		kernel_id: KernelId::MatrixMatMulNtTiledWideF16,
+		kernel: GemmKernel::TiledWideF16F32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::None,
 		a_precision: StoragePrecision::F16,
@@ -1461,7 +1521,12 @@ pub(in crate::runtime) fn lower_mat_mul_nt_plan(
 		push_count: 0,
 	};
 	match plan.kernel {
-		GemmKernel::TiledF32 | GemmKernel::Naive | GemmKernel::SmallMF32 | GemmKernel::F16sF32 => {
+		GemmKernel::TiledF32
+		| GemmKernel::TiledWideF32
+		| GemmKernel::Naive
+		| GemmKernel::SmallMF32
+		| GemmKernel::TiledWideF16F32
+		| GemmKernel::F16F32 => {
 			let constants = [
 				PushConstant::U32(problem.m),
 				PushConstant::U32(problem.n),
@@ -1765,7 +1830,12 @@ fn variant_legal(
 		return Some(MatmulRejection::RequiresAligned);
 	}
 	match variant.kernel {
-		GemmKernel::TiledF32 | GemmKernel::Naive | GemmKernel::SmallMF32 | GemmKernel::F16sF32 => {
+		GemmKernel::TiledF32
+		| GemmKernel::TiledWideF32
+		| GemmKernel::Naive
+		| GemmKernel::SmallMF32
+		| GemmKernel::TiledWideF16F32
+		| GemmKernel::F16F32 => {
 			if problem.batch_count == 1 {
 				None
 			} else {
@@ -1921,6 +1991,49 @@ fn plan_for_variant(
 	}
 }
 
+/// Measured preference crossover for the 128x64 wide tile on the integrated
+/// reference class (Iris Xe GT2, 2026-11-24: 32 tiles regressed, 64 won).
+/// Not a universal constant — the floor below scales it by the device's
+/// shared-memory capacity instead of keying on a device name.
+const WIDE_TILE_REFERENCE_TILES: u64 = 64;
+
+/// Structural preference for the 128x64 wide tile: it pays only when the
+/// output grid carries enough workgroups to keep the device occupied. The
+/// floor derives from the queried contract — shared memory is the resource
+/// that bounds resident wide workgroups per scheduling unit, so a device
+/// whose `max_compute_shared_memory_size` admits more resident wide
+/// workgroups needs a proportionally larger grid before the wider tile
+/// beats the narrower schedule. The integrated reference class admits one
+/// resident wide workgroup per unit (48 KiB limit, ~30 KiB tile) and keeps
+/// the measured 64-tile crossover; a large-SLM discrete part derives a
+/// higher floor from its own limits. Scheduling-unit count is not
+/// Vulkan-queryable, so the unit multiplier folds into the reference
+/// calibration; the measured route cache remains the final arbiter on
+/// non-reference devices.
+fn prefer_wide_tile(
+	problem: &MatmulProblem,
+	contract: &MatmulDeviceContract,
+	variant: &MatmulVariant,
+) -> bool {
+	if problem.m < 128 || problem.n < 64 {
+		return false;
+	}
+	let tile_shared_bytes = u64::from(variant.shared_memory_bytes().unwrap_or(u32::MAX));
+	let resident_workgroups =
+		(u64::from(contract.max_compute_shared_memory_bytes) / tile_shared_bytes.max(1)).max(1);
+	let floor = WIDE_TILE_REFERENCE_TILES * resident_workgroups;
+	let tiles_m = problem.m.div_ceil(128) as u64;
+	let tiles_n = problem.n.div_ceil(64) as u64;
+	tiles_m * tiles_n >= floor
+}
+
+/// The registered variant row for a wide-tile kernel family, when present.
+fn wide_variant(kernel: GemmKernel) -> Option<&'static MatmulVariant> {
+	all_variants()
+		.iter()
+		.find(|variant| variant.kernel == kernel)
+}
+
 fn classify_selection(plan: &MatmulPlan, problem: &MatmulProblem) -> KernelSelectionKind {
 	let requested = resolve_precision(problem);
 	if (requested == GemmPrecision::Bf16 || requested == GemmPrecision::F16)
@@ -2016,8 +2129,27 @@ pub(in crate::runtime) fn plan(
 		&& problem.is_canonical()
 		&& problem.batch_count == 1
 	{
+		let wide_first = wide_variant(GemmKernel::TiledWideF16F32)
+			.is_some_and(|variant| prefer_wide_tile(problem, contract, variant));
 		for variant in all_variants() {
-			if variant.kernel == GemmKernel::F16sF32 && legal(variant) {
+			if legal(variant)
+				&& (variant.kernel
+					== if wide_first {
+						GemmKernel::TiledWideF16F32
+					} else {
+						GemmKernel::F16F32
+					}) {
+				return Ok(finish(variant));
+			}
+		}
+		for variant in all_variants() {
+			if legal(variant)
+				&& (variant.kernel
+					== if wide_first {
+						GemmKernel::F16F32
+					} else {
+						GemmKernel::TiledWideF16F32
+					}) {
 				return Ok(finish(variant));
 			}
 		}
@@ -2074,9 +2206,25 @@ pub(in crate::runtime) fn plan(
 		}
 	}
 	let fallback_families = if prefer_naive {
-		[GemmKernel::Naive, GemmKernel::TiledF32]
+		vec![
+			GemmKernel::Naive,
+			GemmKernel::TiledWideF32,
+			GemmKernel::TiledF32,
+		]
+	} else if wide_variant(GemmKernel::TiledWideF32)
+		.is_some_and(|variant| prefer_wide_tile(problem, contract, variant))
+	{
+		vec![
+			GemmKernel::TiledWideF32,
+			GemmKernel::TiledF32,
+			GemmKernel::Naive,
+		]
 	} else {
-		[GemmKernel::TiledF32, GemmKernel::Naive]
+		vec![
+			GemmKernel::TiledF32,
+			GemmKernel::TiledWideF32,
+			GemmKernel::Naive,
+		]
 	};
 	for family in fallback_families {
 		for variant in all_variants() {

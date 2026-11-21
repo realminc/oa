@@ -102,7 +102,7 @@ test_vk!(
 	packed_video_frame_retains_image_storage_and_metadata,
 	engine,
 	{
-		let matrix = Matrix::new_from_f32(&engine, [2, 4, 4], &[0.25; 32])?;
+		let matrix = Matrix::new_from_f32([2, 4, 4], &[0.25; 32])?;
 		let image = Image::new(matrix, ImageLayout::Hwc, ImageFormat::Rgba)?;
 		let timing = VideoFrameTiming::new_from_microseconds(1_000_000, 33_333);
 		let color = VideoColorInfo::new(VideoColorMatrix::Bt709, VideoColorRange::Full);
@@ -130,7 +130,7 @@ test_vk!(
 );
 
 test_vk!(video_frame_rejects_batches_and_empty_extents, engine, {
-	let batch = Matrix::new_from_f32(&engine, [2, 3, 1, 1], &[0.0; 6])?;
+	let batch = Matrix::new_from_f32([2, 3, 1, 1], &[0.0; 6])?;
 	let batch = Image::new(batch, ImageLayout::Nchw, ImageFormat::Rgb)?;
 	let Err(error) = VideoFrame::new_from_image(
 		batch,
@@ -141,7 +141,7 @@ test_vk!(video_frame_rejects_batches_and_empty_extents, engine, {
 	};
 	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
 
-	let empty = Matrix::new_from_f32(&engine, [0, 1, 3], &[])?;
+	let empty = Matrix::new_from_f32([0, 1, 3], &[])?;
 	let empty = Image::new(empty, ImageLayout::Hwc, ImageFormat::Rgb)?;
 	let Err(error) = VideoFrame::new_from_image(
 		empty,
@@ -159,7 +159,7 @@ test_vk!(
 	engine,
 	{
 		let rgba = (0_u8..32).collect::<Vec<_>>();
-		let texture = texture_from_rgba8(&engine, &rgba, 4, 2)?;
+		let texture = texture_from_rgba8(&rgba, 4, 2)?;
 		let timing = VideoFrameTiming::new_from_microseconds(123, 33);
 		let color = VideoColorInfo::new(VideoColorMatrix::Bt709, VideoColorRange::Full);
 		let frame = oa::video::from_texture(&texture, timing, color)?;

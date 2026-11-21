@@ -722,8 +722,8 @@ fn upload_teacher_batch(
 		actions.push(sample.action);
 	}
 	Ok((
-		Matrix::new_from_f32(engine, [order.len(), LUNAR_OBSERVATION_SIZE], &observations)?,
-		Matrix::new_from_slice(engine, [order.len()], &actions)?,
+		Matrix::new_from_f32_on(engine, [order.len(), LUNAR_OBSERVATION_SIZE], &observations)?,
+		Matrix::new_from_slice_on(engine, [order.len()], &actions)?,
 	))
 }
 

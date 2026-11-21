@@ -360,7 +360,7 @@ pub fn sum(input: &Matrix, dim: i32) -> Result<Matrix> {
 		DType::F32,
 	)?;
 	if dim == -1
-		&& crate::runtime::record_sum_f16s(input.engine_handle(), input, &output, axis.dim_size, dim)?
+		&& crate::runtime::record_sum_f16(input.engine_handle(), input, &output, axis.dim_size, dim)?
 	{
 		autograd::record_sum(input, &output, dim)?;
 		return Ok(output);

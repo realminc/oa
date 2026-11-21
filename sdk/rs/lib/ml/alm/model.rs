@@ -48,18 +48,30 @@ impl Alm {
 	///
 	/// Returns an error unless the tokenizer and prior vocabulary contracts agree,
 	/// or when either child or the ownership tree cannot be constructed.
-	pub fn new_with_seed(engine: &Engine, config: AlmConfig, seed: u64) -> Result<Self> {
-		let tokenizer = Rc::new(AlmTokenizer::new_with_seed(engine, config.tokenizer, seed)?);
-		let prior = Rc::new(AlmPrior::new_with_seed(
+	pub fn new_with_seed(config: AlmConfig, seed: u64) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, config, seed)
+	}
+
+	pub fn new_with_seed_on(engine: &Engine, config: AlmConfig, seed: u64) -> Result<Self> {
+		let tokenizer = Rc::new(AlmTokenizer::new_with_seed_on(
+			engine,
+			config.tokenizer,
+			seed,
+		)?);
+		let prior = Rc::new(AlmPrior::new_with_seed_on(
 			engine,
 			config.prior,
 			seed.wrapping_add(1),
 		)?);
 		let clip_text = config
 			.clip_text
-			.map(|clip| ClipText::new_with_seed(engine, clip, seed.wrapping_add(2)).map(Rc::new))
+			.map(|clip| ClipText::new_with_seed_on(engine, clip, seed.wrapping_add(2)).map(Rc::new))
 			.transpose()?;
 		Self::from_parts_impl(tokenizer, prior, clip_text, None, None)
+	}
+
+	pub fn new(config: AlmConfig) -> Result<Self> {
+		Self::new_on(&Engine::current()?, config)
 	}
 
 	/// Construct the complete ALM with deterministic seed zero.
@@ -67,8 +79,8 @@ impl Alm {
 	/// # Errors
 	///
 	/// Returns the same errors as [`Self::new_with_seed`].
-	pub fn new(engine: &Engine, config: AlmConfig) -> Result<Self> {
-		Self::new_with_seed(engine, config, 0)
+	pub fn new_on(engine: &Engine, config: AlmConfig) -> Result<Self> {
+		Self::new_with_seed_on(engine, config, 0)
 	}
 
 	/// Adopt independently constructed tokenizer and prior children.
@@ -448,6 +460,10 @@ impl Alm {
 		)
 	}
 
+	pub fn load_bundle(path: impl AsRef<Path>) -> Result<Self> {
+		Self::load_bundle_on(&Engine::current()?, path)
+	}
+
 	/// Load a C++/Rust `OaAlmAg` v3 product bundle.
 	///
 	/// The file and packed architecture payload are validated before construction;
@@ -458,7 +474,7 @@ impl Alm {
 	/// Returns `CheckpointCorrupt` for an unsupported or inconsistent artifact,
 	/// and another error for invalid architecture, allocation, upload, or runtime
 	/// failure.
-	pub fn load_bundle(engine: &Engine, path: impl AsRef<Path>) -> Result<Self> {
+	pub fn load_bundle_on(engine: &Engine, path: impl AsRef<Path>) -> Result<Self> {
 		let artifact = ModuleArtifact::load(path.as_ref())?;
 		let metadata = artifact.metadata();
 		if metadata.architecture != "OaAlmAg"
@@ -479,12 +495,12 @@ impl Alm {
 			));
 		}
 
-		let tokenizer = Rc::new(AlmTokenizer::new(engine, decoded.config.tokenizer)?);
-		let prior = Rc::new(AlmPrior::new(engine, decoded.config.prior)?);
+		let tokenizer = Rc::new(AlmTokenizer::new_on(engine, decoded.config.tokenizer)?);
+		let prior = Rc::new(AlmPrior::new_on(engine, decoded.config.prior)?);
 		let model = if decoded.merge_bytes == 0 {
 			Self::from_parts_impl(tokenizer, prior, None, decoded.text_encoder, None)?
 		} else {
-			let clip = Rc::new(ClipText::new(engine, ClipTextConfig::default())?);
+			let clip = Rc::new(ClipText::new_on(engine, ClipTextConfig::default())?);
 			let placeholder = vec![0_u8; decoded.merge_bytes];
 			Self::from_parts_impl(
 				tokenizer,

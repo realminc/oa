@@ -5,11 +5,8 @@ Mirrors sdk/rs/tutorials/core/tu_core_mat_mul_intro/tu_core_mat_mul_intro.rs —
 """
 
 import oa
-
-engine = oa.Engine()
-
-a = oa.Matrix.new_from_f32(engine, [2, 3], [-2.0, -1.0, 0.0, 1.0, 2.0, 3.0])
-b = oa.matrix.ones(engine, [2, 3])
+a = oa.Matrix.new_from_f32([2, 3], [-2.0, -1.0, 0.0, 1.0, 2.0, 3.0])
+b = oa.matrix.ones([2, 3])
 
 # Element-wise arithmetic via the stateless module API.
 operator_result = oa.matrix.clamp_min(
@@ -44,8 +41,8 @@ assert values_b == values_a
 print(operator_result.shape, values_a)
 
 # MatMul: C = A @ B^T  (FP32 [M,K] × [N,K] -> [M,N])
-one = oa.matrix.ones(engine, [2, 3])
-two = oa.matrix.full(engine, [2, 3], 2.0)
+one = oa.matrix.ones([2, 3])
+two = oa.matrix.full([2, 3], 2.0)
 product = oa.matrix.mat_mul_nt(one, two)
 prod_vals = product.read_f32()
 

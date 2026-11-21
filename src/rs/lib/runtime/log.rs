@@ -261,6 +261,7 @@ struct LogInner {
 	state: Mutex<LogState>,
 }
 
+#[derive(Clone)]
 pub(crate) struct Logger {
 	inner: Arc<LogInner>,
 }
@@ -465,6 +466,7 @@ thread_local! {
 	static CURRENT_LOG: RefCell<Weak<LogInner>> = const { RefCell::new(Weak::new()) };
 }
 
+#[derive(Clone)]
 pub(crate) struct LogSelection {
 	selected: Weak<LogInner>,
 	previous: Weak<LogInner>,

@@ -84,6 +84,15 @@ impl {{cache_type}} {
 }
 
 impl {{name}} {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, model_width, num_heads, sequence_length, seed)	}
+
 	/// Construct four biased projections with causal visibility and automatic
 	/// backend policy.
 	///
@@ -91,14 +100,14 @@ impl {{name}} {
 	///
 	/// Returns an error unless dimensions are positive and `model_width` is
 	/// divisible by `num_heads`, or child construction/registration fails.
-	pub fn new_with_seed(
+	pub fn new_with_seed_on(
 		engine: &Engine,
 		model_width: usize,
 		num_heads: usize,
 		sequence_length: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_options(
+		Self::new_with_seed_and_options_on(
 			engine,
 			model_width,
 			num_heads,
@@ -109,13 +118,23 @@ impl {{name}} {
 		)
 	}
 
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed_and_bias(
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_bias_on(&Engine::current()?, model_width, num_heads, sequence_length, bias, seed)	}
+
 	/// Construct four projections with explicit optional bias.
 	///
 	/// # Errors
 	///
 	/// Returns an error unless dimensions are positive and `model_width` is
 	/// divisible by `num_heads`, or child construction/registration fails.
-	pub fn new_with_seed_and_bias(
+	pub fn new_with_seed_and_bias_on(
 		engine: &Engine,
 		model_width: usize,
 		num_heads: usize,
@@ -123,7 +142,7 @@ impl {{name}} {
 		bias: bool,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_options(
+		Self::new_with_seed_and_options_on(
 			engine,
 			model_width,
 			num_heads,
@@ -146,6 +165,17 @@ impl {{name}} {
 	/// finite and in `[0, 1)`, or child construction/registration fails.
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_seed_and_options(
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		dropout_probability: f32,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_options_on(&Engine::current()?, model_width, num_heads, sequence_length, dropout_probability, bias, seed)	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed_and_options_on(
 		engine: &Engine,
 		model_width: usize,
 		num_heads: usize,
@@ -605,21 +635,40 @@ pub struct {{linear_name}} {
 }
 
 impl {{linear_name}} {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, model_width, num_heads, sequence_length, seed)	}
+
 	/// Construct four biased projections with causal visibility.
 	///
 	/// # Errors
 	///
 	/// Returns an error unless dimensions are positive, `model_width` is
 	/// divisible by `num_heads`, or child construction/registration fails.
-	pub fn new_with_seed(
+	pub fn new_with_seed_on(
 		engine: &Engine,
 		model_width: usize,
 		num_heads: usize,
 		sequence_length: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_options(engine, model_width, num_heads, sequence_length, true, seed)
+		Self::new_with_seed_and_options_on(engine, model_width, num_heads, sequence_length, true, seed)
 	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed_and_bias(
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_bias_on(&Engine::current()?, model_width, num_heads, sequence_length, bias, seed)	}
 
 	/// Construct four projections with explicit optional bias.
 	///
@@ -627,7 +676,7 @@ impl {{linear_name}} {
 	///
 	/// Returns an error unless dimensions are positive, `model_width` is
 	/// divisible by `num_heads`, or child construction/registration fails.
-	pub fn new_with_seed_and_bias(
+	pub fn new_with_seed_and_bias_on(
 		engine: &Engine,
 		model_width: usize,
 		num_heads: usize,
@@ -635,8 +684,18 @@ impl {{linear_name}} {
 		bias: bool,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_options(engine, model_width, num_heads, sequence_length, bias, seed)
+		Self::new_with_seed_and_options_on(engine, model_width, num_heads, sequence_length, bias, seed)
 	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed_and_options(
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_options_on(&Engine::current()?, model_width, num_heads, sequence_length, bias, seed)	}
 
 	/// Construct with explicit bias policy; initial mode is
 	/// [`{{linear_mode_type}}::Causal`].
@@ -645,7 +704,7 @@ impl {{linear_name}} {
 	///
 	/// Returns an error unless dimensions are positive, `model_width` is
 	/// divisible by `num_heads`, or child construction/registration fails.
-	pub fn new_with_seed_and_options(
+	pub fn new_with_seed_and_options_on(
 		engine: &Engine,
 		model_width: usize,
 		num_heads: usize,

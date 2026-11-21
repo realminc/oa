@@ -249,7 +249,7 @@ impl<'engine, 'hooks> SacTrainer<'engine, 'hooks> {
 			.map_err(|_| Error::resource_exhausted("SAC actor width exceeds i64"))?;
 		let mean = matrix::slice(&output, 1, 0, split)?;
 		let log_stddev = matrix::slice(&output, 1, split, end)?;
-		let value = matrix::full(self.engine, [self.config.batch_size], 0.0)?;
+		let value = matrix::full_on(self.engine, [self.config.batch_size], 0.0)?;
 		policy::sample_tanh_normal(
 			&mean,
 			&log_stddev,

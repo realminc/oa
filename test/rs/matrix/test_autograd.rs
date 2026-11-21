@@ -37,10 +37,10 @@ test_vk!(matrix_unary_adjoints_match_analytic_oracles, engine, {
 		"clamp_max",
 	] {
 		let layer = oa::ml::nn::Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [3, 1], &[0.0; 3])?,
-			oa::Matrix::new_from_f32(&engine, [3], &values)?,
+			oa::Matrix::new_from_f32([3, 1], &[0.0; 3])?,
+			oa::Matrix::new_from_f32([3], &values)?,
 		)?;
-		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let input = oa::Matrix::new_from_f32([1, 1], &[0.0])?;
 		let tape = oa::ml::GradientTape::new();
 		let value = layer.forward(&input)?;
 		let output = match operation {
@@ -90,15 +90,15 @@ test_vk!(
 	{
 		for operation in ["add", "sub", "mul", "div"] {
 			let left = oa::ml::nn::Linear::new_from_matrices(
-				oa::Matrix::new_from_f32(&engine, [1, 1], &[1.0])?,
-				oa::Matrix::new_from_f32(&engine, [1], &[0.0])?,
+				oa::Matrix::new_from_f32([1, 1], &[1.0])?,
+				oa::Matrix::new_from_f32([1], &[0.0])?,
 			)?;
 			let right = oa::ml::nn::Linear::new_from_matrices(
-				oa::Matrix::new_from_f32(&engine, [3, 1], &[0.0; 3])?,
-				oa::Matrix::new_from_f32(&engine, [3], &[1.0, 2.0, 4.0])?,
+				oa::Matrix::new_from_f32([3, 1], &[0.0; 3])?,
+				oa::Matrix::new_from_f32([3], &[1.0, 2.0, 4.0])?,
 			)?;
-			let left_input = oa::Matrix::new_from_f32(&engine, [2, 1], &[2.0, 3.0])?;
-			let right_input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+			let left_input = oa::Matrix::new_from_f32([2, 1], &[2.0, 3.0])?;
+			let right_input = oa::Matrix::new_from_f32([1, 1], &[0.0])?;
 			let tape = oa::ml::GradientTape::new();
 			let a = left.forward(&left_input)?;
 			let b = right.forward(&right_input)?;
@@ -114,10 +114,10 @@ test_vk!(
 			assert_adjoint(&right.bias().expect("test bias"), &right_expected)?;
 		}
 		let layer = oa::ml::nn::Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [3, 1], &[0.0; 3])?,
-			oa::Matrix::new_from_f32(&engine, [3], &[-1.0, 0.0, 2.0])?,
+			oa::Matrix::new_from_f32([3, 1], &[0.0; 3])?,
+			oa::Matrix::new_from_f32([3], &[-1.0, 0.0, 2.0])?,
 		)?;
-		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let input = oa::Matrix::new_from_f32([1, 1], &[0.0])?;
 		let tape = oa::ml::GradientTape::new();
 		let value = layer.forward(&input)?;
 		let square = oa::matrix::mul(&value, &value)?;
@@ -134,10 +134,10 @@ test_vk!(
 	engine,
 	{
 		let layer = oa::ml::nn::Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [3, 1], &[0.0; 3])?,
-			oa::Matrix::new_from_f32(&engine, [3], &[-1.0, 0.0, 2.0])?,
+			oa::Matrix::new_from_f32([3, 1], &[0.0; 3])?,
+			oa::Matrix::new_from_f32([3], &[-1.0, 0.0, 2.0])?,
 		)?;
-		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let input = oa::Matrix::new_from_f32([1, 1], &[0.0])?;
 		let tape = oa::ml::GradientTape::new();
 		let value = layer.forward(&input)?;
 		let output = oa::matrix::mean(&value, -1)?.reshape([])?;
@@ -152,10 +152,10 @@ test_vk!(
 	engine,
 	{
 		let layer = oa::ml::nn::Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [3, 1], &[0.0; 3])?,
-			oa::Matrix::new_from_f32(&engine, [3], &[-1.0, 0.0, 2.0])?,
+			oa::Matrix::new_from_f32([3, 1], &[0.0; 3])?,
+			oa::Matrix::new_from_f32([3], &[-1.0, 0.0, 2.0])?,
 		)?;
-		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let input = oa::Matrix::new_from_f32([1, 1], &[0.0])?;
 		let tape = oa::ml::GradientTape::new();
 		let value = layer.forward(&input)?;
 		let output = oa::matrix::max(&value, -1)?.reshape([])?;
@@ -170,10 +170,10 @@ test_vk!(
 	engine,
 	{
 		let layer = oa::ml::nn::Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [6, 1], &[0.0; 6])?,
-			oa::Matrix::new_from_f32(&engine, [6], &[1.0; 6])?,
+			oa::Matrix::new_from_f32([6, 1], &[0.0; 6])?,
+			oa::Matrix::new_from_f32([6], &[1.0; 6])?,
 		)?;
-		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let input = oa::Matrix::new_from_f32([1, 1], &[0.0])?;
 		let tape = oa::ml::GradientTape::new();
 		let value = layer.forward(&input)?.reshape([2, 3])?;
 		let output = oa::matrix::causal_mask(&value)?;
@@ -191,10 +191,10 @@ test_vk!(
 	engine,
 	{
 		let layer = oa::ml::nn::Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [6, 1], &[0.0; 6])?,
-			oa::Matrix::new_from_f32(&engine, [6], &[1.0; 6])?,
+			oa::Matrix::new_from_f32([6, 1], &[0.0; 6])?,
+			oa::Matrix::new_from_f32([6], &[1.0; 6])?,
 		)?;
-		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
+		let input = oa::Matrix::new_from_f32([1, 1], &[0.0])?;
 		let tape = oa::ml::GradientTape::new();
 		let value = layer.forward(&input)?.reshape([2, 3])?;
 		let parts = oa::matrix::split(&value, &[1, 2], 1)?;
@@ -212,12 +212,12 @@ test_vk!(
 	engine,
 	{
 		let layer = oa::ml::nn::Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [3, 2], &[1.0, 4.0, 2.0, 5.0, 3.0, 6.0])?,
-			oa::Matrix::new_from_f32(&engine, [3], &[0.0; 3])?,
+			oa::Matrix::new_from_f32([3, 2], &[1.0, 4.0, 2.0, 5.0, 3.0, 6.0])?,
+			oa::Matrix::new_from_f32([3], &[0.0; 3])?,
 		)?;
-		let input = oa::Matrix::new_from_f32(&engine, [2, 2], &[1.0, 0.0, 0.0, 1.0])?;
-		let right = oa::Matrix::new_from_f32(&engine, [2, 3], &[1.0, -1.0, 2.0, 0.5, 2.0, 1.0])?;
-		let empty = oa::Matrix::new_from_f32(&engine, [0, 2], &[])?;
+		let input = oa::Matrix::new_from_f32([2, 2], &[1.0, 0.0, 0.0, 1.0])?;
+		let right = oa::Matrix::new_from_f32([2, 3], &[1.0, -1.0, 2.0, 0.5, 2.0, 1.0])?;
+		let empty = oa::Matrix::new_from_f32([0, 2], &[])?;
 		let tape = oa::ml::GradientTape::new();
 		let left = layer.forward(&input)?;
 		let product = oa::matrix::mat_mul_nt(&left, &right)?;
@@ -236,11 +236,11 @@ test_vk!(
 	engine,
 	{
 		let layer = oa::ml::nn::Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [8, 1], &[0.0; 8])?,
-			oa::Matrix::new_from_f32(&engine, [8], &[1.0; 8])?,
+			oa::Matrix::new_from_f32([8, 1], &[0.0; 8])?,
+			oa::Matrix::new_from_f32([8], &[1.0; 8])?,
 		)?;
-		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
-		let mask = oa::Matrix::new_from_f32(&engine, [4], &[1.0, 0.0, 1.0, 1.0])?;
+		let input = oa::Matrix::new_from_f32([1, 1], &[0.0])?;
+		let mask = oa::Matrix::new_from_f32([4], &[1.0, 0.0, 1.0, 1.0])?;
 		let tape = oa::ml::GradientTape::new();
 		let value = layer.forward(&input)?.reshape([4, 2])?;
 		let packed = oa::matrix::compact_rows(&value, &mask)?;
@@ -258,19 +258,16 @@ test_vk!(
 	engine,
 	{
 		let base_layer = oa::ml::nn::Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [8, 1], &[0.0; 8])?,
-			oa::Matrix::new_from_f32(&engine, [8], &[0.0; 8])?,
+			oa::Matrix::new_from_f32([8, 1], &[0.0; 8])?,
+			oa::Matrix::new_from_f32([8], &[0.0; 8])?,
 		)?;
 		let source_layer = oa::ml::nn::Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [8, 1], &[0.0; 8])?,
-			oa::Matrix::new_from_f32(&engine, [8], &[0.0; 8])?,
+			oa::Matrix::new_from_f32([8, 1], &[0.0; 8])?,
+			oa::Matrix::new_from_f32([8], &[0.0; 8])?,
 		)?;
-		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
-		let mask = oa::Matrix::new_from_f32(&engine, [4], &[1.0, 0.0, 1.0, 0.0])?;
-		let keys = oa::matrix::compact_rows(
-			&oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0; 8])?,
-			&mask,
-		)?;
+		let input = oa::Matrix::new_from_f32([1, 1], &[0.0])?;
+		let mask = oa::Matrix::new_from_f32([4], &[1.0, 0.0, 1.0, 0.0])?;
+		let keys = oa::matrix::compact_rows(&oa::Matrix::new_from_f32([4, 2], &[0.0; 8])?, &mask)?;
 		let tape = oa::ml::GradientTape::new();
 		let base = base_layer.forward(&input)?.reshape([4, 2])?;
 		let source = source_layer.forward(&input)?.reshape([4, 2])?;
@@ -290,19 +287,16 @@ test_vk!(
 	engine,
 	{
 		let base_layer = oa::ml::nn::Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [8, 1], &[0.0; 8])?,
-			oa::Matrix::new_from_f32(&engine, [8], &[0.0; 8])?,
+			oa::Matrix::new_from_f32([8, 1], &[0.0; 8])?,
+			oa::Matrix::new_from_f32([8], &[0.0; 8])?,
 		)?;
 		let source_layer = oa::ml::nn::Linear::new_from_matrices(
-			oa::Matrix::new_from_f32(&engine, [8, 1], &[0.0; 8])?,
-			oa::Matrix::new_from_f32(&engine, [8], &[0.0; 8])?,
+			oa::Matrix::new_from_f32([8, 1], &[0.0; 8])?,
+			oa::Matrix::new_from_f32([8], &[0.0; 8])?,
 		)?;
-		let input = oa::Matrix::new_from_f32(&engine, [1, 1], &[0.0])?;
-		let mask = oa::Matrix::new_from_f32(&engine, [4], &[1.0, 0.0, 1.0, 0.0])?;
-		let keys = oa::matrix::compact_rows(
-			&oa::Matrix::new_from_f32(&engine, [4, 2], &[0.0; 8])?,
-			&mask,
-		)?;
+		let input = oa::Matrix::new_from_f32([1, 1], &[0.0])?;
+		let mask = oa::Matrix::new_from_f32([4], &[1.0, 0.0, 1.0, 0.0])?;
+		let keys = oa::matrix::compact_rows(&oa::Matrix::new_from_f32([4, 2], &[0.0; 8])?, &mask)?;
 		let tape = oa::ml::GradientTape::new();
 		let base = base_layer.forward(&input)?.reshape([4, 2])?;
 		let source = source_layer.forward(&input)?.reshape([4, 2])?;

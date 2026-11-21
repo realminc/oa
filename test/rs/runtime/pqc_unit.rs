@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime::device::secret_buffer::SecretBuffer;
+use crate::runtime::device::logical::secret_buffer::SecretBuffer;
 
 pub(in crate::runtime) fn assert_mlkem_cache_preflight(
 	device: &Arc<Device>,

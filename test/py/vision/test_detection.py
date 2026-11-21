@@ -35,8 +35,8 @@ class VisionBoxIouTest(unittest.TestCase):
 	def test_box_iou_matches_pairwise_oracle(self) -> None:
 		boxes_a = [0.5, 0.5, 1.0, 1.0, 0.0, 0.0, 2.0, 2.0]
 		boxes_b = [0.5, 0.5, 1.0, 1.0, 1.0, 0.5, 1.0, 1.0]
-		left = oa.Matrix.new_from_f32(self.engine, [2, 4], boxes_a)
-		right = oa.Matrix.new_from_f32(self.engine, [2, 4], boxes_b)
+		left = oa.Matrix.new_from_f32( [2, 4], boxes_a, engine=self.engine)
+		right = oa.Matrix.new_from_f32( [2, 4], boxes_b, engine=self.engine)
 		output = oa.vision.box_iou(left, right)
 		self.assertEqual(output.shape, [2, 2])
 		self.assertEqual(output.dtype, "f32")
@@ -45,7 +45,7 @@ class VisionBoxIouTest(unittest.TestCase):
 			self.assertAlmostEqual(actual, exp, places=5)
 
 	def test_box_iou_result_type(self) -> None:
-		m = oa.Matrix.new_from_f32(self.engine, [1, 4], [0.5, 0.5, 1.0, 1.0])
+		m = oa.Matrix.new_from_f32( [1, 4], [0.5, 0.5, 1.0, 1.0], engine=self.engine)
 		result = oa.vision.box_iou(m, m)
 		self.assertIsInstance(result, oa.Matrix)
 
@@ -57,7 +57,6 @@ class VisionNmsTest(unittest.TestCase):
 
 	def test_nms_class_aware_score_ranked(self) -> None:
 		boxes = oa.Matrix.new_from_f32(
-			self.engine,
 			[5, 4],
 			[
 				0.50, 0.50, 0.40, 0.40,
@@ -65,10 +64,9 @@ class VisionNmsTest(unittest.TestCase):
 				0.50, 0.50, 0.40, 0.40,
 				0.10, 0.10, 0.10, 0.10,
 				0.90, 0.90, 0.10, 0.10,
-			],
-		)
-		scores = oa.Matrix.new_from_f32(self.engine, [5], [0.90, 0.80, 0.85, 0.70, 0.70])
-		classes = oa.Matrix.new_from_i32(self.engine, [5], [0, 0, 1, 0, 0])
+			], engine=self.engine)
+		scores = oa.Matrix.new_from_f32( [5], [0.90, 0.80, 0.85, 0.70, 0.70], engine=self.engine)
+		classes = oa.Matrix.new_from_i32( [5], [0, 0, 1, 0, 0], engine=self.engine)
 		result = oa.vision.nms(boxes, scores, classes, iou_threshold=0.5, max_detections=5)
 		self.assertIsInstance(result, oa.vision.NmsResult)
 		self.assertIsInstance(result.indices, oa.Matrix)
@@ -81,7 +79,6 @@ class VisionNmsTest(unittest.TestCase):
 
 	def test_nms_class_agnostic(self) -> None:
 		boxes = oa.Matrix.new_from_f32(
-			self.engine,
 			[5, 4],
 			[
 				0.50, 0.50, 0.40, 0.40,
@@ -89,10 +86,9 @@ class VisionNmsTest(unittest.TestCase):
 				0.50, 0.50, 0.40, 0.40,
 				0.10, 0.10, 0.10, 0.10,
 				0.90, 0.90, 0.10, 0.10,
-			],
-		)
-		scores = oa.Matrix.new_from_f32(self.engine, [5], [0.90, 0.80, 0.85, 0.70, 0.70])
-		classes = oa.Matrix.new_from_i32(self.engine, [5], [0, 0, 1, 0, 0])
+			], engine=self.engine)
+		scores = oa.Matrix.new_from_f32( [5], [0.90, 0.80, 0.85, 0.70, 0.70], engine=self.engine)
+		classes = oa.Matrix.new_from_i32( [5], [0, 0, 1, 0, 0], engine=self.engine)
 		result = oa.vision.nms(
 			boxes, scores, classes, iou_threshold=0.5, max_detections=3, class_agnostic=True
 		)
@@ -106,15 +102,15 @@ class VisionConfusionAndMaskTest(unittest.TestCase):
 		cls.engine = oa.Engine()
 
 	def test_confusion_matrix_matches_oracle(self) -> None:
-		predicted = oa.Matrix.new_from_i32(self.engine, [7], [0, 1, 2, 1, -1, 3, 2])
-		target = oa.Matrix.new_from_i32(self.engine, [7], [0, 2, 2, 1, 0, 0, 7])
+		predicted = oa.Matrix.new_from_i32( [7], [0, 1, 2, 1, -1, 3, 2], engine=self.engine)
+		target = oa.Matrix.new_from_i32( [7], [0, 2, 2, 1, 0, 0, 7], engine=self.engine)
 		confusion = oa.vision.confusion_matrix(predicted, target, 3)
 		self.assertEqual(confusion.shape, [3, 3])
 		self.assertEqual(confusion.read_u32(), [1, 0, 0, 0, 1, 0, 0, 1, 1])
 
 	def test_binary_mask_counts_matches_oracle(self) -> None:
-		predicted = oa.Matrix.new_from_u8(self.engine, [7], [1, 1, 0, 0, 3, 0, 1])
-		target = oa.Matrix.new_from_u8(self.engine, [7], [1, 0, 1, 0, 1, 0, 0])
+		predicted = oa.Matrix.new_from_u8( [7], [1, 1, 0, 0, 3, 0, 1], engine=self.engine)
+		target = oa.Matrix.new_from_u8( [7], [1, 0, 1, 0, 1, 0, 0], engine=self.engine)
 		counts = oa.vision.binary_mask_counts(predicted, target)
 		self.assertEqual(counts.read_u32(), [2, 2, 1, 2])
 
@@ -126,26 +122,22 @@ class VisionEvaluateTest(unittest.TestCase):
 
 	def test_evaluate_returns_detection_metrics_result(self) -> None:
 		predicted_boxes = oa.Matrix.new_from_f32(
-			self.engine,
 			[4, 4],
 			[
 				0.20, 0.20, 0.20, 0.20,
 				0.20, 0.20, 0.20, 0.20,
 				0.50, 0.50, 0.20, 0.20,
 				0.80, 0.80, 0.20, 0.20,
-			],
-		)
-		predicted_scores = oa.Matrix.new_from_f32(self.engine, [4], [0.90, 0.80, 0.70, 0.60])
-		predicted_classes = oa.Matrix.new_from_i32(self.engine, [4], [0, 0, 1, 0])
-		predicted_images = oa.Matrix.new_from_i32(self.engine, [4], [0, 0, 0, 1])
+			], engine=self.engine)
+		predicted_scores = oa.Matrix.new_from_f32( [4], [0.90, 0.80, 0.70, 0.60], engine=self.engine)
+		predicted_classes = oa.Matrix.new_from_i32( [4], [0, 0, 1, 0], engine=self.engine)
+		predicted_images = oa.Matrix.new_from_i32( [4], [0, 0, 0, 1], engine=self.engine)
 		target_boxes = oa.Matrix.new_from_f32(
-			self.engine,
 			[3, 4],
-			[0.20, 0.20, 0.20, 0.20, 0.80, 0.80, 0.20, 0.20, 0.50, 0.50, 0.20, 0.20],
-		)
-		target_classes = oa.Matrix.new_from_i32(self.engine, [3], [0, 0, 1])
-		target_images = oa.Matrix.new_from_i32(self.engine, [3], [0, 1, 0])
-		thresholds = oa.Matrix.new_from_f32(self.engine, [2], [0.50, 0.75])
+			[0.20, 0.20, 0.20, 0.20, 0.80, 0.80, 0.20, 0.20, 0.50, 0.50, 0.20, 0.20], engine=self.engine)
+		target_classes = oa.Matrix.new_from_i32( [3], [0, 0, 1], engine=self.engine)
+		target_images = oa.Matrix.new_from_i32( [3], [0, 1, 0], engine=self.engine)
+		thresholds = oa.Matrix.new_from_f32( [2], [0.50, 0.75], engine=self.engine)
 		result = oa.vision.evaluate(
 			predicted_boxes,
 			predicted_scores,
@@ -168,8 +160,8 @@ class VisionEvaluateTest(unittest.TestCase):
 		self.assertAlmostEqual(result.mean_average_precision.read_f32()[0], 0.917_491_7, places=4)
 
 	def test_evaluate_segmentation_returns_segmentation_metrics_result(self) -> None:
-		predicted = oa.Matrix.new_from_i32(self.engine, [2, 3], [0, 1, 2, 1, 8, 0])
-		target = oa.Matrix.new_from_i32(self.engine, [2, 3], [0, 2, 2, 1, 0, -1])
+		predicted = oa.Matrix.new_from_i32( [2, 3], [0, 1, 2, 1, 8, 0], engine=self.engine)
+		target = oa.Matrix.new_from_i32( [2, 3], [0, 2, 2, 1, 0, -1], engine=self.engine)
 		result = oa.vision.evaluate_segmentation(predicted, target, 3)
 		self.assertIsInstance(result, oa.vision.SegmentationMetricsResult)
 		self.assertIsInstance(result.confusion, oa.Matrix)

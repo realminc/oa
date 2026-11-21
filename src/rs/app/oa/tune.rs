@@ -51,8 +51,8 @@ pub fn run(device: usize, samples: u32, shapes: &str) -> Result<(), Box<dyn Erro
 		geometries.push((*m, *n, *k));
 	}
 	for (m, n, k) in &geometries {
-		let left = Matrix::new_from_f32(&engine, [*m, *k], &fill(m * k, 3))?;
-		let right = Matrix::new_from_f32(&engine, [*n, *k], &fill(n * k, 11))?;
+		let left = Matrix::new_from_f32_on(&engine, [*m, *k], &fill(m * k, 3))?;
+		let right = Matrix::new_from_f32_on(&engine, [*n, *k], &fill(n * k, 11))?;
 		for _ in 0..samples {
 			let _ = oa::matrix::mat_mul_nt(&left, &right)?;
 		}

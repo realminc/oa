@@ -114,25 +114,34 @@ pub(crate) fn ml_metric_accuracy(logits: &PythonMatrix, labels: &PythonMatrix) -
 }
 
 #[pyfunction]
-pub(crate) fn ml_byte_encode(engine: &PythonEngine, bytes: Vec<u8>) -> PyResult<PythonMatrix> {
-	oa::ml::byte::encode(&engine.inner, &bytes)
+pub(crate) fn ml_byte_encode(
+	bytes: Vec<u8>,
+	engine: Option<&PythonEngine>,
+) -> PyResult<PythonMatrix> {
+	let engine = PythonEngine::resolve(engine)?;
+	oa::ml::byte::encode_on(&engine, &bytes)
 		.map(PythonMatrix::wrap)
 		.map_err(python_error)
 }
 
 #[pyfunction]
 pub(crate) fn ml_byte_encode_batched(
-	engine: &PythonEngine,
 	bytes: Vec<u8>,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<PythonMatrix> {
-	oa::ml::byte::encode_batched(&engine.inner, &bytes)
+	let engine = PythonEngine::resolve(engine)?;
+	oa::ml::byte::encode_batched_on(&engine, &bytes)
 		.map(PythonMatrix::wrap)
 		.map_err(python_error)
 }
 
 #[pyfunction]
-pub(crate) fn ml_byte_encode_text(engine: &PythonEngine, text: &str) -> PyResult<PythonMatrix> {
-	oa::ml::byte::encode_text(&engine.inner, text)
+pub(crate) fn ml_byte_encode_text(
+	text: &str,
+	engine: Option<&PythonEngine>,
+) -> PyResult<PythonMatrix> {
+	let engine = PythonEngine::resolve(engine)?;
+	oa::ml::byte::encode_text_on(&engine, text)
 		.map(PythonMatrix::wrap)
 		.map_err(python_error)
 }

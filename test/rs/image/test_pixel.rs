@@ -13,7 +13,7 @@ test_vk!(
 	{
 		let samples: Vec<f32> = (0..273).map(|i| (i % 31 - 15) as f32 / 16.0).collect();
 		let input = Image::new(
-			Matrix::new_from_f32(&engine, [1, 1, 13, 21], &samples)?,
+			Matrix::new_from_f32([1, 1, 13, 21], &samples)?,
 			ImageLayout::Nchw,
 			ImageFormat::Gray,
 		)?;
@@ -43,7 +43,7 @@ test_vk!(
 	{
 		let values = [-1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 2.0];
 		let image = Image::new(
-			Matrix::new_from_f32(&engine, [1, 1, 1, values.len()], &values)?,
+			Matrix::new_from_f32([1, 1, 1, values.len()], &values)?,
 			ImageLayout::Nchw,
 			ImageFormat::Gray,
 		)?;
@@ -116,7 +116,7 @@ test_vk!(
 
 test_vk!(pointwise_pixel_family_rejects_invalid_parameters, engine, {
 	let image = Image::new(
-		Matrix::new_from_f32(&engine, [1, 1, 1], &[0.5])?,
+		Matrix::new_from_f32([1, 1, 1], &[0.5])?,
 		ImageLayout::Chw,
 		ImageFormat::Gray,
 	)?;
@@ -149,7 +149,7 @@ test_vk!(
 			0.0, 0.0, 0.5, 0.25, // blue
 		];
 		let rgb = Image::new(
-			Matrix::new_from_f32(&engine, [1, 3, 2, 2], &rgb_values)?,
+			Matrix::new_from_f32([1, 3, 2, 2], &rgb_values)?,
 			ImageLayout::Nchw,
 			ImageFormat::Rgb,
 		)?;
@@ -162,7 +162,7 @@ test_vk!(
 		}
 
 		let zeros = Image::new(
-			Matrix::new_from_f32(&engine, [1, 3, 2, 2], &[0.0; 12])?,
+			Matrix::new_from_f32([1, 3, 2, 2], &[0.0; 12])?,
 			ImageLayout::Nchw,
 			ImageFormat::Rgb,
 		)?;
@@ -173,7 +173,7 @@ test_vk!(
 			rgb_values.map(|value| value * 0.75)
 		);
 		let mask = Image::new(
-			Matrix::new_from_f32(&engine, [1, 1, 2, 2], &[0.0, 0.25, 0.75, 1.0])?,
+			Matrix::new_from_f32([1, 1, 2, 2], &[0.0, 0.25, 0.75, 1.0])?,
 			ImageLayout::Nchw,
 			ImageFormat::Gray,
 		)?;
@@ -196,7 +196,6 @@ test_vk!(
 			]
 		);
 		let transform = Matrix::new_from_f32(
-			&engine,
 			[3, 4],
 			&[0.0, 1.0, 0.0, 0.1, 0.0, 0.0, 1.0, 0.2, 1.0, 0.0, 0.0, 0.3],
 		)?;
@@ -218,7 +217,6 @@ test_vk!(
 	{
 		let image = Image::new(
 			Matrix::new_from_f32(
-				&engine,
 				[3, 1, 3],
 				&[1.0, 2.0, 3.0, 10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
 			)?,
@@ -257,7 +255,7 @@ test_vk!(
 
 test_vk!(normalize_matches_per_channel_oracle, engine, {
 	let image = Image::new(
-		Matrix::new_from_f32(&engine, [3, 1, 2], &[1.0, 3.0, 10.0, 14.0, -2.0, 4.0])?,
+		Matrix::new_from_f32([3, 1, 2], &[1.0, 3.0, 10.0, 14.0, -2.0, 4.0])?,
 		ImageLayout::Chw,
 		ImageFormat::Rgb,
 	)?;
@@ -282,7 +280,6 @@ test_vk!(
 	{
 		let rgb = Image::new(
 			Matrix::new_from_f32(
-				&engine,
 				[1, 3, 2, 2],
 				&[
 					1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0, 100.0, 200.0, 300.0, 400.0,
@@ -314,8 +311,8 @@ test_vk!(
 				0.0, 1.0, 2.0, 3.0, 4.0, 9.0, 14.0, 19.0, 24.0, 49.0, 74.0, 99.0
 			]
 		);
-		let mask = Matrix::new_from_slice(&engine, [1, 2, 2], &[0_i32, 1, -1, 3])?;
-		let palette = Matrix::new_from_f32(&engine, [2, 3], &[0.0, 1.0, 0.0, 1.0, 0.0, 1.0])?;
+		let mask = Matrix::new_from_slice([1, 2, 2], &[0_i32, 1, -1, 3])?;
+		let palette = Matrix::new_from_f32([2, 3], &[0.0, 1.0, 0.0, 1.0, 0.0, 1.0])?;
 		let overlay = oa::image::segmentation_overlay(&rgb, &mask, &palette, 0.5)?;
 		assert_eq!(
 			overlay.as_matrix().read_f32()?,

@@ -166,22 +166,24 @@ impl PythonImage {
 
 #[pyfunction]
 fn image_decode_file(
-	engine: &PythonEngine,
 	path: &str,
 	format_name: &str,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<PythonImage> {
-	oa::image::decode_file(&engine.inner, path, format(format_name)?)
+	let engine = PythonEngine::resolve(engine)?;
+	oa::image::decode_file_on(&engine, path, format(format_name)?)
 		.map(PythonImage::wrap)
 		.map_err(python_error)
 }
 
 #[pyfunction]
 fn image_decode_memory(
-	engine: &PythonEngine,
 	encoded: Vec<u8>,
 	format_name: &str,
+	engine: Option<&PythonEngine>,
 ) -> PyResult<PythonImage> {
-	oa::image::decode_memory(&engine.inner, &encoded, format(format_name)?)
+	let engine = PythonEngine::resolve(engine)?;
+	oa::image::decode_memory_on(&engine, &encoded, format(format_name)?)
 		.map(PythonImage::wrap)
 		.map_err(python_error)
 }

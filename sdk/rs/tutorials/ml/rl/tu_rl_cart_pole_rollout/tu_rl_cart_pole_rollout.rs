@@ -9,6 +9,7 @@ const SEED: u64 = 20_260_716;
 
 fn main() -> oa::Result<()> {
 	let engine = oa::Engine::new()?;
+	oa::Engine::set_default(engine.clone());
 	let mut environment = CartPole::new(
 		&engine,
 		CartPoleConfig {
@@ -26,12 +27,9 @@ fn main() -> oa::Result<()> {
 			observation_shape: vec![4],
 		},
 	)?;
-	let policy_weight = oa::Matrix::new_from_f32(
-		&engine,
-		[2, 4],
-		&[0.0, -0.1, -4.0, -1.0, 0.0, 0.1, 4.0, 1.0],
-	)?;
-	let value = oa::Matrix::new_from_f32(&engine, [ENVIRONMENTS], &[0.0; ENVIRONMENTS])?;
+	let policy_weight =
+		oa::Matrix::new_from_f32([2, 4], &[0.0, -0.1, -4.0, -1.0, 0.0, 0.1, 4.0, 1.0])?;
+	let value = oa::Matrix::new_from_f32([ENVIRONMENTS], &[0.0; ENVIRONMENTS])?;
 
 	println!("\nOA reinforcement learning — vectorized GPU CartPole rollout");
 	println!(
