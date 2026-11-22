@@ -1,0 +1,123 @@
+//! Stateless per-element image transformations.
+
+use crate::{
+	DType, Error, Image, ImageFormat, ImageLayout, Matrix, OpAttribute, Result,
+	runtime::{
+		BufferBinding, ComputeDispatch, ImageSemanticDispatch, ImageSemanticInput, KernelId,
+		PushConstant,
+	},
+};
+
+{{items}}
+
+
+fn validate_matching_images(a: &Image, b: &Image, operation: &str) -> Result<()> {
+	image_extent(a, operation)?;
+	if a.as_matrix().shape() != b.as_matrix().shape()
+		|| a.dtype() != b.dtype()
+		|| a.layout() != b.layout()
+		|| a.format() != b.format()
+		|| !a.engine_handle().same_as(b.engine_handle())
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} images must have identical shape, dtype, layout, format, and engine"
+		)));
+	}
+	Ok(())
+}
+
+fn image_extent(input: &Image, operation: &str) -> Result<(u32, u32, u32, u32)> {
+	if input.dtype() != DType::F32 || !matches!(input.layout(), ImageLayout::Nchw | ImageLayout::Chw)
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires an FP32 NCHW or CHW image"
+		)));
+	}
+	let extent = (
+		u32::try_from(input.batch_size()),
+		u32::try_from(input.channels()),
+		u32::try_from(input.height()),
+		u32::try_from(input.width()),
+	);
+	let (batch, channels, height, width) = match extent {
+		(Ok(batch), Ok(channels), Ok(height), Ok(width)) => (batch, channels, height, width),
+		_ => {
+			return Err(Error::out_of_range(format!(
+				"{operation} extent exceeds u32"
+			)));
+		}
+	};
+	if batch == 0 || channels == 0 || height == 0 || width == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a nonempty image"
+		)));
+	}
+	Ok((batch, channels, height, width))
+}
+
+fn allocate(
+	input: &Image,
+	shape: Vec<usize>,
+	format: ImageFormat,
+	operation: &str,
+) -> Result<Image> {
+	let elements = shape.iter().copied().try_fold(1_usize, |count, extent| {
+		count
+			.checked_mul(extent)
+			.ok_or_else(|| Error::out_of_range(format!("{operation} output size exceeds usize")))
+	})?;
+	u32::try_from(elements)
+		.map_err(|_| Error::out_of_range(format!("{operation} output size exceeds u32")))?;
+	let matrix = Matrix::allocate(input.engine_handle(), shape, elements, DType::F32)?;
+	Image::new(matrix, input.layout(), format)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finite(values: &[f32], operation: &str) -> Result<()> {
+	if values.iter().all(|value| value.is_finite()) {
+		Ok(())
+	} else {
+		Err(Error::invalid_argument(format!(
+			"{operation} parameters must be finite"
+		)))
+	}
+}
+
+fn float(name: &str, value: f32) -> OpAttribute {
+	OpAttribute::Float {
+		name: name.into(),
+		value: f64::from(value),
+	}
+}
+
+fn unsigned(name: &str, value: u32) -> OpAttribute {
+	OpAttribute::UnsignedInteger {
+		name: name.into(),
+		value: u64::from(value),
+	}
+}
+
+fn unsigned64(name: &str, value: u64) -> OpAttribute {
+	OpAttribute::UnsignedInteger {
+		name: name.into(),
+		value,
+	}
+}
+
+fn enumeration(name: &str, value: &str) -> OpAttribute {
+	OpAttribute::Enum {
+		name: name.into(),
+		value: value.into(),
+	}
+}
+
+const fn image_format_token(format: ImageFormat) -> &'static str {
+	match format {
+		ImageFormat::Gray => "gray",
+		ImageFormat::GrayAlpha => "gray_alpha",
+		ImageFormat::Rgb => "rgb",
+		ImageFormat::Rgba => "rgba",
+		ImageFormat::Bgr => "bgr",
+		ImageFormat::Bgra => "bgra",
+	}
+}

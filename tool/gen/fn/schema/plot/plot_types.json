@@ -1,0 +1,87 @@
+{
+	"schema_version": 1,
+	"domain": "plot",
+	"family": "plot_types",
+	"imports": [
+		"use super::Theme;",
+		"use crate::Color;"
+	],
+	"types": [
+		{
+			"class": "config",
+			"name": "FigureConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "title",
+					"type": "String",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "rows",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "cols",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "width",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "height",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "h_spacing",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Horizontal spacing between axes cells in pixels."
+				},
+				{
+					"name": "v_spacing",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Vertical spacing between axes cells in pixels."
+				},
+				{
+					"name": "padding",
+					"type": "i32",
+					"visibility": "pub",
+					"doc": "Outer padding around the entire grid."
+				},
+				{
+					"name": "theme",
+					"type": "Theme",
+					"visibility": "pub",
+					"doc": "Color theme (Dark or Light).  Donor: `oa::plot::Theme`."
+				},
+				{
+					"name": "background",
+					"type": "Color",
+					"visibility": "pub",
+					"doc": "Override background color.  Alpha-zero uses the theme background."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

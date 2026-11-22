@@ -1,0 +1,45 @@
+/// {{doc}}
+pub struct {{name}} {
+	dim: i32,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct a {{name}} over `dim`, where `-1` selects the last dimension.
+	pub const fn new(dim: i32) -> Self {
+		Self {
+			dim,
+			registry: ModuleRegistry::new(),
+		}
+	}
+
+	/// Return the selected dimension.
+	pub const fn dim(&self) -> i32 {
+		self.dim
+	}
+
+	/// Apply {{name}} without submitting or waiting.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{operation}}(input, self.dim)
+	}
+}
+
+impl Default for {{name}} {
+	fn default() -> Self {
+		Self::new({{default_dim}})
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

@@ -1,0 +1,104 @@
+{
+	"schema_version": 1,
+	"domain": "core",
+	"family": "core_types",
+	"imports": [
+		"use super::Path;"
+	],
+	"types": [
+		{
+			"class": "config",
+			"name": "CheckpointConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "dir",
+					"type": "Path",
+					"visibility": "pub",
+					"doc": "Directory that receives checkpoint files."
+				},
+				{
+					"name": "name",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Base filename stem for checkpoint files."
+				},
+				{
+					"name": "env",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Environment tag appended to checkpoint paths (e.g. `\"dev\"`, `\"prod\"`)."
+				},
+				{
+					"name": "save_best",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Save the best-validation-loss checkpoint automatically."
+				},
+				{
+					"name": "save_last",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Save the latest checkpoint at every epoch boundary."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "LogConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"PartialEq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "dir",
+					"type": "Path",
+					"visibility": "pub",
+					"doc": "Directory for log files and `events.jsonl` metrics."
+				},
+				{
+					"name": "level",
+					"type": "String",
+					"visibility": "pub",
+					"doc": "Minimum level string (`\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, `\"error\"`)."
+				},
+				{
+					"name": "console",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Write records to stderr."
+				},
+				{
+					"name": "file",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Write records to a file inside `dir`."
+				},
+				{
+					"name": "metrics",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": "Write scalar metrics to `{dir}/events.jsonl`."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

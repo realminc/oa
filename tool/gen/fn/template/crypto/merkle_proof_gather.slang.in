@@ -1,0 +1,59 @@
+// OA donor: source/cpp/lib/oa/crypto/hash.cpp, getMerkleProof.
+// Adaptation: selected device indices, checked wire metadata and exclusive rows.
+import attributes;
+struct PushConstants {
+{{fields}}
+};
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+[kernel_name("{{name}}")]
+[domain("cryptography")]
+[variant("generic")]
+[dtype("{{dtype}}")]
+[status("experimental")]
+[shader("compute")]
+[numthreads({{workgroup}})]
+void main(uint3 dispatch_thread_id : SV_DispatchThreadID) {
+	uint row = dispatch_thread_id.x;
+	if (row >= push.count) return;
+	uint source_extent, indices_extent, output_extent;
+	storage_buffers[push.level_index].GetDimensions(source_extent);
+	storage_buffers[push.indices_index].GetDimensions(indices_extent);
+	storage_buffers[push.output_index].GetDimensions(output_extent);
+	if (push.leaf_count == 0u || push.depth > {{max_depth}}u
+		|| push.frame_bytes != {{header_bytes}}u + push.depth * {{hash_bytes}}u
+		|| push.count > indices_extent / 4u || push.count > output_extent / push.frame_bytes
+		|| push.source_count > source_extent / {{hash_bytes}}u) return;
+	uint expected_count = push.leaf_count;
+	uint expected_depth = 0u;
+	[loop]
+	while (expected_count > 1u) {
+		expected_count = expected_count / 2u + (expected_count & 1u);
+		++expected_depth;
+	}
+	if (push.depth != expected_depth || (push.depth == 0u ? push.level != 0u : push.level >= push.depth)) return;
+	expected_count = push.leaf_count;
+	[loop]
+	for (uint level = 0u; level < push.level; ++level)
+		expected_count = expected_count / 2u + (expected_count & 1u);
+	if (expected_count != push.source_count) return;
+	uint index = storage_buffers[push.indices_index].Load(row * 4u);
+	bool valid = index < push.leaf_count;
+	uint base = row * push.frame_bytes;
+	if (push.level == 0u) {
+		storage_buffers[push.output_index].Store<uint>(base, {{version}}u);
+		storage_buffers[push.output_index].Store<uint>(base + 4u, push.leaf_count);
+		storage_buffers[push.output_index].Store<uint>(base + 8u, index);
+		storage_buffers[push.output_index].Store<uint>(base + 12u, valid ? 1u : 0u);
+	}
+	if (push.depth == 0u) return;
+	uint node = index >> push.level;
+	uint sibling = min(node ^ 1u, push.source_count - 1u);
+	uint output_base = base + {{header_bytes}}u + push.level * {{hash_bytes}}u;
+	[loop]
+	for (uint word = 0u; word < {{hash_bytes}}u / 4u; ++word) {
+		uint value = 0u;
+		if (valid) value = storage_buffers[push.level_index].Load(sibling * {{hash_bytes}}u + word * 4u);
+		storage_buffers[push.output_index].Store<uint>(output_base + word * 4u, value);
+	}
+}

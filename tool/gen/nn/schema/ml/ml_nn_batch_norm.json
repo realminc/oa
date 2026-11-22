@@ -1,0 +1,28 @@
+{
+	"version": 1,
+	"family": "batch_norm",
+	"imports": [
+		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, NamedBuffer, Parameter, autograd, matrix};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "BatchNorm2d",
+			"doc": "Trainable FP32 BatchNorm over channels of NCHW matrices.",
+			"template": "batch_norm",
+			"values": {
+				"operation": "matrix::batch_norm_2d_forward",
+				"running_update_operation": "matrix::batch_norm_2d_running_update",
+				"inference_operation": "matrix::batch_norm_2d_with_stats_forward",
+				"autograd_operation": "autograd::record_batch_norm_2d",
+				"weight_name": "weight",
+				"bias_name": "bias",
+				"running_mean_name": "running_mean",
+				"running_variance_name": "running_variance"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/batchnorm2d/batchNorm2d.cpp",
+			"adaptation": "Preserved existing Rust persistent state handles, functional running updates, parameter versions and mode-sensitive adjoints; donor running_var is registered as running_variance in Rust"
+		}
+	]
+}

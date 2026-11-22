@@ -1,0 +1,23 @@
+{
+	"version": 1,
+	"family": "embedding",
+	"imports": [
+		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, Parameter, autograd, matrix, random};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Embedding",
+			"doc": "Trainable FP32 lookup table indexed by an arbitrary-shape U8, U32, or I32 matrix.",
+			"template": "embedding",
+			"values": {
+				"operation": "matrix::embedding",
+				"autograd_operation": "autograd::record_embedding",
+				"weight_name": "weight"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/embedding/embedding.cpp",
+			"adaptation": "Preserve existing Rust initialization, parameter versions and autograd; adapt donor structure to ModuleRegistry ownership"
+		}
+	]
+}

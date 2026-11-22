@@ -1,0 +1,82 @@
+// OA adjoint recipes mechanically extracted from the admitted Rust reverse traversal.
+// Donor source and adaptation: see README.md. No shader or numerical formula changes.
+
+// @operation ppo_clipped_policy
+let Self { new_log_probability, old_log_probability, advantage, clip_epsilon, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let gradient = matrix::mul(
+	&loss::ppo_clipped_policy_backward(
+		new_log_probability,
+		old_log_probability,
+		advantage,
+		*clip_epsilon,
+	)?,
+	&output_gradient,
+)?;
+accumulate_value_gradient(gradients, new_log_probability.value_id(), gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation cross_entropy
+let Self { logits, targets, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let gradient = matrix::mul(
+	&loss::cross_entropy_backward(logits, targets)?,
+	&output_gradient,
+)?;
+accumulate_value_gradient(gradients, logits.value_id(), gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation masked_cross_entropy
+let Self { logits, targets, mask, valid_count, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let gradient = matrix::mul(
+	&loss::cross_entropy_masked_backward(logits, targets, mask, *valid_count)?,
+	&output_gradient,
+)?;
+accumulate_value_gradient(gradients, logits.value_id(), gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation smooth_l1
+let Self { prediction, target, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let gradient = matrix::mul(
+	&loss::smooth_l1_backward(prediction, target)?,
+	&output_gradient,
+)?;
+accumulate_value_gradient(gradients, prediction.value_id(), gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation mse
+let Self { prediction, target, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let gradient = matrix::mul(&loss::mse_backward(prediction, target)?, &output_gradient)?;
+accumulate_value_gradient(gradients, prediction.value_id(), gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation l1
+let Self { prediction, target, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let gradient = matrix::mul(&loss::l1_backward(prediction, target)?, &output_gradient)?;
+accumulate_value_gradient(gradients, prediction.value_id(), gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation bce
+let Self { prediction, target, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let gradient = matrix::mul(&loss::bce_backward(prediction, target)?, &output_gradient)?;
+accumulate_value_gradient(gradients, prediction.value_id(), gradient)?;
+Ok(BackwardStatus::Recorded)

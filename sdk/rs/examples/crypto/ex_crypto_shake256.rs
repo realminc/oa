@@ -1,0 +1,27 @@
+// OA_DOC_BEGIN: crypto-shake256
+use oa::{Matrix, crypto};
+
+fn main() -> oa::Result<()> {
+	// Three 5-byte messages packed into a [3, 5] u8 matrix.
+	let rows: &[&[u8]] = &[b"alpha", b"bravo", b"crypt"];
+	let flat: Vec<u8> = rows.iter().flat_map(|r| r.iter().copied()).collect();
+	let messages = Matrix::new_from_slice::<u8>([3, 5], &flat)?;
+
+	let digests = crypto::hash::shake256(&messages, 32)?;
+
+	// Verify GPU digests match the independent CPU reference.
+	let gpu = digests.read::<u8>()?;
+	let cpu: Vec<u8> = rows
+		.iter()
+		.flat_map(|row| {
+			let mut digest = [0u8; 32];
+			crypto::shake256(row, &mut digest);
+			digest
+		})
+		.collect();
+	assert_eq!(gpu, cpu);
+
+	println!("3 GPU SHAKE-256 digests match the CPU oracle");
+	Ok(())
+}
+// OA_DOC_END: crypto-shake256

@@ -1,0 +1,24 @@
+{
+	"version": 1,
+	"family": "linear",
+	"imports": [
+		"use crate::{Engine, Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, Parameter, autograd, matrix, random};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Linear",
+			"doc": "Trainable FP32 affine projection using `[output, input]` weight layout.",
+			"template": "linear",
+			"values": {
+				"operation": "matrix::linear",
+				"autograd_operation": "autograd::record_linear",
+				"weight_name": "weight",
+				"bias_name": "bias"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/linear/linear.cpp",
+			"adaptation": "Preserve existing Rust initialization, parameter versions and autograd; adapt donor structure to ModuleRegistry ownership"
+		}
+	]
+}

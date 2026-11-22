@@ -1,0 +1,10 @@
+# rustc compiles Rust with LLVM. Native dependencies use Clang by default;
+# explicit toolchain environment settings still support cross-compilation.
+[env]
+CC = "clang"
+CXX = "clang++"
+AR = "llvm-ar"
+
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))']
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]

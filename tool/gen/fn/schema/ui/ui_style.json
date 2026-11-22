@@ -1,0 +1,103 @@
+{
+	"schema_version": 1,
+	"domain": "ui",
+	"family": "ui_style",
+	"color_tokens": [
+		"background",
+		"surface",
+		"surface_hover",
+		"surface_active",
+		"accent",
+		"accent_hover",
+		"text",
+		"text_secondary",
+		"text_disabled",
+		"border",
+		"border_strong",
+		"plot_background",
+		"plot_surface",
+		"plot_grid",
+		"plot_border"
+	],
+	"metric_tokens": [
+		"corner_radius",
+		"padding",
+		"font_size"
+	],
+	"data_palette": [
+		[0.24, 0.65, 1.00, 1.0],
+		[1.00, 0.47, 0.35, 1.0],
+		[0.35, 0.82, 0.54, 1.0],
+		[0.75, 0.45, 1.00, 1.0],
+		[1.00, 0.80, 0.22, 1.0],
+		[0.30, 0.87, 0.89, 1.0]
+	],
+	"presets": [
+		{
+			"name": "realm_dark",
+			"doc": "Realm dark theme — mirrors the donor default.",
+			"values": {
+				"background": [0.082, 0.082, 0.090, 1.0],
+				"surface": [0.141, 0.141, 0.161, 1.0],
+				"surface_hover": [0.133, 0.133, 0.133, 1.0],
+				"surface_active": [0.188, 0.188, 0.188, 1.0],
+				"accent": [0.388, 0.400, 0.945, 1.0],
+				"accent_hover": [0.506, 0.549, 0.973, 1.0],
+				"text": [0.961, 0.961, 0.961, 1.0],
+				"text_secondary": [0.600, 0.600, 0.620, 1.0],
+				"text_disabled": [0.400, 0.400, 0.400, 1.0],
+				"border": [0.250, 0.250, 0.280, 1.0],
+				"border_strong": [1.0, 1.0, 1.0, 0.15],
+				"plot_background": "0x0A0A0AFF",
+				"plot_surface": "0x202020FF",
+				"plot_grid": "0x3F3F3FA6",
+				"plot_border": "0x585858FF",
+				"corner_radius": 4.0,
+				"padding": 8.0,
+				"font_size": 14.0
+			}
+		},
+		{
+			"name": "realm_light",
+			"extends": "realm_dark",
+			"doc": "Realm light theme — the peer resolution of the same token schema. Gray surfaces and text follow the Carbon-style light ramp adapted to Realm neutrals; the accent keeps the Realm indigo family deepened for light-surface contrast.",
+			"values": {
+				"background": [0.957, 0.957, 0.957, 1.0],
+				"surface": [1.0, 1.0, 1.0, 1.0],
+				"surface_hover": [0.910, 0.910, 0.910, 1.0],
+				"surface_active": [0.820, 0.820, 0.820, 1.0],
+				"accent": [0.243, 0.275, 0.800, 1.0],
+				"accent_hover": [0.345, 0.380, 0.900, 1.0],
+				"text": [0.086, 0.086, 0.086, 1.0],
+				"text_secondary": [0.322, 0.322, 0.322, 1.0],
+				"text_disabled": [0.631, 0.631, 0.631, 1.0],
+				"border": [0.878, 0.878, 0.878, 1.0],
+				"border_strong": [0.0, 0.0, 0.0, 0.15],
+				"plot_background": [0.95, 0.96, 0.97, 1.0],
+				"plot_surface": [0.89, 0.91, 0.94, 1.0],
+				"plot_grid": [0.78, 0.80, 0.84, 1.0],
+				"plot_border": [0.60, 0.63, 0.68, 1.0]
+			}
+		},
+		{
+			"name": "viewer_dark",
+			"extends": "realm_dark",
+			"doc": "Donor media viewer palette (oa::UiStyle::viewerDark) resolved over the Realm dark token set.",
+			"values": {
+				"background": "0x181818FF",
+				"surface": "0x303030E8",
+				"surface_hover": "0x424242F0",
+				"surface_active": "0x505050F5",
+				"border": "0xFFFFFF20",
+				"border_strong": "0xFFFFFF38",
+				"text": "0xFFFFFFFF",
+				"text_secondary": "0xE6E6E6FF",
+				"text_disabled": "0x777777FF",
+				"accent": "0xF5F5F5FF",
+				"accent_hover": "0xFFFFFFFF",
+				"corner_radius": 15.0,
+				"font_size": 15.0
+			}
+		}
+	]
+}

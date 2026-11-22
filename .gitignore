@@ -1,0 +1,11 @@
+.bob/
+
+/target
+/build
+/bin
+/var
+__pycache__/
+*.py[cod]
+.venv/
+src/py/oa/*.so
+/sdk/var

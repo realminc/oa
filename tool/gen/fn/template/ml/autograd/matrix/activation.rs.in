@@ -1,0 +1,83 @@
+// OA adjoint recipes mechanically extracted from the admitted Rust reverse traversal.
+// Donor source and adaptation: see README.md. No shader or numerical formula changes.
+
+// @operation gelu
+let Self { input, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = ml_matrix::gelu_backward(input, &output_gradient)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation silu
+let Self { input, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = ml_matrix::silu_backward(input, &output_gradient)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation relu
+let Self { input, output, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = ml_matrix::relu_backward(output, &output_gradient)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation tanh
+let Self { input, output, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = ml_matrix::tanh_backward(output, &output_gradient)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation sigmoid
+let Self { input, output, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = ml_matrix::sigmoid_backward(output, &output_gradient)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation leaky_relu
+let Self { input, alpha, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = ml_matrix::leaky_relu_backward(input, &output_gradient, *alpha)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation elu
+let Self { input, output, alpha, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = ml_matrix::elu_backward(output, &output_gradient, *alpha)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation mish
+let Self { input, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = ml_matrix::mish_backward(input, &output_gradient)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation softplus
+let Self { input, output, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = ml_matrix::softplus_backward(output, &output_gradient)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)

@@ -1,0 +1,32 @@
+{
+	"version": 1,
+	"family": "rnn",
+	"imports": [
+		"use std::rc::Rc;",
+		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, Parameter, autograd, matrix, random};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Rnn",
+			"doc": "Stacked batch-first Elman recurrent network using whole-sequence GPU scans.",
+			"template": "rnn",
+			"values": {
+				"cell_type": "RnnCell",
+				"initializer": "random::symmetric_uniform",
+				"projection_operation": "matrix::linear",
+				"projection_autograd_operation": "autograd::record_linear",
+				"scan_operation": "matrix::rnn_scan_parameterized",
+				"cell_operation": "matrix::rnn_cell_parameterized",
+				"input_weight_name": "weight_ih",
+				"hidden_weight_name": "weight_hh",
+				"input_bias_name": "bias_ih",
+				"hidden_bias_name": "bias_hh",
+				"layer_prefix": "layer"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/rnn/rnn.cpp",
+			"adaptation": "Complete donor hoisted input projection, whole-sequence scan and explicit-state cell composition; Rust retains checked FP32 geometry, deterministic seeded host initialization, versioned parameter adjoints and optional unregistered zero biases; donor environment-selected timestep fallback and sequence streaming conveniences remain outside this existing Rust module"
+		}
+	]
+}

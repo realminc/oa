@@ -1,0 +1,144 @@
+[package]
+name = "oarust"
+version = "0.15.1"
+edition = "2024"
+rust-version = "1.98"
+autotests = false
+description = "GPU-first semantic computing engine written in Rust"
+repository = "https://github.com/realminc/oa"
+license = "BUSL-1.1"
+readme = "README.md"
+include = [
+  "/Cargo.toml", "/Cargo.lock", "/build.rs", "/rustfmt.toml", "/rust-toolchain.toml",
+  "/README.md", "/LICENSE", "/NOTICE.md", "/CHANGELOG.md", "/RELEASE_NOTES.md",
+  "/.oa-public-snapshot", "/src/rs/lib/**", "/src/slang/**",
+  "/src/font/**",
+  "/test/rs/matrix/*.gen.rs", "/tool/gen/**", "/test/rs/**/*_unit.rs",
+  "/test/fixtures/crypto/mldsa/keyGen-*.json", "/test/fixtures/crypto/mldsa/capture-shake256.json",
+  "/test/fixtures/crypto/mlkem/keyGen-*.json",
+  "/test/fixtures/crypto/mlkem/encapDecap-*.json",
+  "/test/fixtures/crypto/mlkem/engine-roundtrip.json",
+  "!**/__pycache__/**", "!**/*.pyc",
+]
+
+[workspace]
+members = ["sdk", "src/py"]
+default-members = ["."]
+resolver = "3"
+
+[lib]
+name = "oa"
+path = "src/rs/lib/lib.rs"
+
+[[bin]]
+name = "oa"
+path = "src/rs/app/oa/main.rs"
+
+[[test]]
+name = "shader_build"
+path = "test/rs/test_shader_build.rs"
+
+[[test]]
+name = "core"
+path = "test/rs/test_core.rs"
+
+[[test]]
+name = "runtime"
+path = "test/rs/test_runtime.rs"
+
+[[test]]
+name = "matrix"
+path = "test/rs/test_matrix.rs"
+
+[[test]]
+name = "ml"
+path = "test/rs/test_ml.rs"
+
+[[test]]
+name = "audio"
+path = "test/rs/test_audio.rs"
+
+[[test]]
+name = "image"
+path = "test/rs/test_image.rs"
+
+[[test]]
+name = "vision"
+path = "test/rs/test_vision.rs"
+
+[[test]]
+name = "crypto"
+path = "test/rs/test_crypto.rs"
+
+[[test]]
+name = "video"
+path = "test/rs/test_video.rs"
+
+[[test]]
+name = "media"
+path = "test/rs/test_media.rs"
+
+[[test]]
+name = "net"
+path = "test/rs/test_net.rs"
+
+[[test]]
+name = "anim"
+path = "test/rs/test_anim.rs"
+
+[[test]]
+name = "data"
+path = "test/rs/test_data.rs"
+
+[[test]]
+name = "render"
+path = "test/rs/test_render.rs"
+
+[features]
+default = ["bundled-sdl"]
+bundled-sdl = ["sdl3/build-from-source-static"]
+
+[dependencies]
+vkrust = { version = "0.13.2", features = ["allocator"] }
+sdl3 = { version = "0.20", features = ["use-pkg-config"] }
+
+bitflags = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+smallvec = "1"
+serde_json = "1"
+unicode-normalization = "0.1"
+unicode-general-category = "1"
+cpal = { version = "0.18.2", default-features = false }
+rtrb = "0.4"
+symphonia = { version = "0.6", default-features = false, features = [
+	"aac",
+	"flac",
+	"isomp4",
+	"mkv",
+	"mp3",
+	"pcm",
+	"vorbis",
+	"wav",
+] }
+image-codec = { package = "image", version = "0.25.10", default-features = false, features = ["bmp", "hdr", "jpeg", "png", "tga", "webp"] }
+webp-codec = { package = "webp", version = "0.3.1", default-features = false }
+libc = "0.2"
+getrandom = "0.4.3"
+memmap2 = "0.9"
+ml-dsa = { version = "0.1.1", default-features = false, features = ["alloc", "getrandom", "zeroize"] }
+socket2 = "0.5.10"
+rustybuzz = "0.20.1"
+libloading = "0.8.9"
+
+[build-dependencies]
+serde_json = "1"
+
+[dev-dependencies]
+anyhow = "1"
+serde_json = "1"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+pipewire = "0.10.1"

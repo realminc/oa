@@ -1,0 +1,149 @@
+// Numerical adjoints mechanically extracted from the admitted recipes.
+
+// @operation copy
+// @fields input,output_id
+/// Compute the copy adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn copy_backward(output_gradient: Matrix) -> Result<Matrix> {
+Ok(output_gradient)
+}
+
+// @operation add
+// @fields left,right,output_id
+/// Compute the add adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn add_backward(left: &Matrix, right: &Matrix, output_gradient: &Matrix) -> Result<(Matrix, Matrix)> {
+let left_gradient = sum_to_shape(output_gradient, left.shape())?;
+let right_gradient = sum_to_shape(output_gradient, right.shape())?;
+Ok((left_gradient, right_gradient))
+}
+
+// @operation mul
+// @fields left,right,output_id
+/// Compute the mul adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn mul_backward(left: &Matrix, right: &Matrix, output_gradient: &Matrix) -> Result<(Matrix, Matrix)> {
+let left_gradient = matrix::mul(output_gradient, right)?;
+	let right_gradient = matrix::mul(output_gradient, left)?;
+let left_gradient = sum_to_shape(&left_gradient, left.shape())?;
+let right_gradient = sum_to_shape(&right_gradient, right.shape())?;
+Ok((left_gradient, right_gradient))
+}
+
+// @operation div
+// @fields left,right,output_id
+/// Compute the div adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn div_backward(left: &Matrix, right: &Matrix, output_gradient: &Matrix) -> Result<(Matrix, Matrix)> {
+let left_gradient = matrix::div(output_gradient, right)?;
+	let denominator = matrix::mul(right, right)?;
+	let right_gradient = matrix::scale(
+		&matrix::div(&matrix::mul(output_gradient, left)?, &denominator)?,
+		-1.0,
+	)?;
+let left_gradient = sum_to_shape(&left_gradient, left.shape())?;
+let right_gradient = sum_to_shape(&right_gradient, right.shape())?;
+Ok((left_gradient, right_gradient))
+}
+
+// @operation scale
+// @fields input,output_id,scalar
+/// Compute the scale adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn scale_backward(output_gradient: &Matrix, scalar: f32) -> Result<Matrix> {
+matrix::scale(output_gradient, scalar)
+}
+
+// @operation reciprocal
+// @fields input,output,output_id
+/// Compute the reciprocal adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn reciprocal_backward(output: &Matrix, output_gradient: &Matrix) -> Result<Matrix> {
+let output_squared = matrix::mul(output, output)?;
+	let input_gradient = matrix::scale(&matrix::mul(output_gradient, &output_squared)?, -1.0)?;
+Ok(input_gradient)
+}
+
+// @operation exp
+// @fields input,output,output_id
+/// Compute the exp adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn exp_backward(output: &Matrix, output_gradient: &Matrix) -> Result<Matrix> {
+let input_gradient = matrix::mul(output_gradient, output)?;
+Ok(input_gradient)
+}
+
+// @operation log
+// @fields input,output_id
+/// Compute the log adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn log_backward(input: &Matrix, output_gradient: &Matrix) -> Result<Matrix> {
+let input_gradient = matrix::div(output_gradient, input)?;
+Ok(input_gradient)
+}
+
+// @operation abs
+// @fields input,output_id
+/// Compute the abs adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn abs_backward(input: &Matrix, output_gradient: &Matrix) -> Result<Matrix> {
+let positive = matrix::equal(&matrix::clamp_max(input, 0.0)?, 0.0)?;
+	let negative = matrix::equal(&matrix::clamp_min(input, 0.0)?, 0.0)?;
+	let sign = matrix::sub(&positive, &negative)?;
+	let input_gradient = matrix::mul(output_gradient, &sign)?;
+Ok(input_gradient)
+}
+
+// @operation sqrt
+// @fields input,output,output_id
+/// Compute the sqrt adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn sqrt_backward(output: &Matrix, output_gradient: &Matrix) -> Result<Matrix> {
+let input_gradient = matrix::div(output_gradient, &matrix::scale(output, 2.0)?)?;
+Ok(input_gradient)
+}
+
+// @operation clamp_max
+// @fields input,output_id,maximum
+/// Compute the clamp_max adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn clamp_max_backward(input: &Matrix, output_gradient: &Matrix, maximum: f32) -> Result<Matrix> {
+let difference = matrix::sub_scalar(input, maximum)?;
+	let mask = matrix::equal(&matrix::clamp_min(&difference, 0.0)?, 0.0)?;
+	let input_gradient = matrix::mul(output_gradient, &mask)?;
+Ok(input_gradient)
+}
+
+// @operation clamp_min
+// @fields input,output_id,minimum
+/// Compute the clamp_min adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn clamp_min_backward(input: &Matrix, output_gradient: &Matrix, minimum: f32) -> Result<Matrix> {
+let difference = matrix::sub_scalar(input, minimum)?;
+	let mask = matrix::equal(&matrix::clamp_max(&difference, 0.0)?, 0.0)?;
+	let input_gradient = matrix::mul(output_gradient, &mask)?;
+Ok(input_gradient)
+}
+
+// @operation sub
+// @fields left,right,output_id
+/// Compute the sub adjoint using the admitted device operations.
+///
+/// This numerical provider does not inspect or mutate a gradient tape.
+pub(crate) fn sub_backward(left: &Matrix, right: &Matrix, output_gradient: &Matrix) -> Result<(Matrix, Matrix)> {
+let left_gradient = sum_to_shape(output_gradient, left.shape())?;
+let right_gradient = sum_to_shape(&matrix::scale(output_gradient, -1.0)?, right.shape())?;
+Ok((left_gradient, right_gradient))
+}

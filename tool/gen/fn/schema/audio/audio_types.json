@@ -1,0 +1,83 @@
+{
+	"schema_version": 1,
+	"domain": "audio",
+	"family": "audio_types",
+	"imports": [
+		"use std::path::PathBuf;"
+	],
+	"types": [
+		{
+			"class": "config",
+			"name": "AudioCaptureConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "sample_rate",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "channel_count",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "ring_milliseconds",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "AudioPlayerConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "uri",
+					"type": "PathBuf",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "loop_playback",
+					"type": "bool",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "ring_milliseconds",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

@@ -1,0 +1,42 @@
+{
+	"version": 1,
+	"family": "empyrealm",
+	"imports": [
+		"use std::rc::Rc;",
+		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use super::{AttentionCache, Embedding, Ffn, Mamba3, Mamba3Config, Mamba3State, Moe, MultiHeadAttention, RmsNorm};",
+		"use crate::ml::{autograd, Module, ModuleRegistry};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Empyrealm",
+			"doc": "OA's embedding-plus-hybrid-Mamba core with one canonical Rust execution path.",
+			"template": "empyrealm",
+			"values": {
+				"config_type": "EmpyrealmConfig",
+				"state_type": "EmpyrealmState",
+				"layer_state_type": "EmpyrealmLayerState",
+				"mixer_type": "EmpyrealmMixer",
+				"ffn_type": "EmpyrealmFfn",
+				"block_type": "EmpyrealmBlock",
+				"embedding_constructor": "Embedding::new_with_seed_on",
+				"mamba_constructor": "Mamba3::new_with_seed_on",
+				"attention_constructor": "MultiHeadAttention::new_with_seed_on",
+				"norm_constructor": "RmsNorm::new_on",
+				"ffn_constructor": "Ffn::new_with_seed_on",
+				"moe_constructor": "Moe::new_with_seed_on",
+				"add_operation": "crate::matrix::add",
+				"recording_active_operation": "autograd::recording_active",
+				"embedding_name": "embed",
+				"norm_name": "norm",
+				"mixer_name": "mixer",
+				"ffn_name": "ffn",
+				"block_prefix": "block_",
+				"tail_norm_name": "tail_norm"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/empyrealm/empyrealmCore.cpp",
+			"adaptation": "Complete Rust hybrid composition diverging from the donor's renamed Mamba-3 copies: embedding plus an interleaved Mamba-3/causal-attention block stack (Nemotron-style), pre-normalized residual mixers, dense or routed-expert SwiGLU feed-forward tails and a final RMSNorm; preserves seeded child construction, the embed/block_*/tail-norm checkpoint tree, checked U8/U32 token and FP32 embedded shapes, and extends the caller-owned decode state across per-block Mamba3State and AttentionCache slots; renames public EmpyrealmCore to Empyrealm"
+		}
+	]
+}

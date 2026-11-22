@@ -1,0 +1,41 @@
+{
+	"version": 1,
+	"family": "pool",
+	"imports": [
+		"use crate::{Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, matrix};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "AvgPool2d",
+			"doc": "Parameterless two-dimensional average-pooling module for NCHW matrices.",
+			"template": "avg_pool_2d",
+			"values": {
+				"operation": "matrix::avg_pool_2d"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/avgpool2d/avgPool2d.cpp",
+			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry; Matrix provider owns dispatch and adjoints"
+		},
+		{
+			"name": "MaxPool2d",
+			"doc": "Parameterless two-dimensional max-pooling module for NCHW matrices.",
+			"template": "max_pool_2d",
+			"values": {
+				"operation": "matrix::max_pool_2d"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/maxpool2d/maxPool2d.cpp",
+			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry; Matrix provider owns dispatch and adjoints"
+		},
+		{
+			"name": "AdaptiveAvgPool2d",
+			"doc": "Parameterless adaptive average-pooling module for NCHW matrices.",
+			"template": "adaptive_avg_pool_2d",
+			"values": {
+				"operation": "matrix::adaptive_avg_pool_2d"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/adaptiveavgpool2d/adaptiveAvgPool2d.cpp",
+			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry; Matrix provider owns dispatch and adjoints; preserves documented true rectangular adaptive-bin correction to donor square-window approximation"
+		}
+	]
+}

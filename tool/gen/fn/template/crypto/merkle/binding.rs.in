@@ -1,0 +1,52 @@
+use pyo3::prelude::*;
+use crate::{error::python_error, matrix::PythonMatrix};
+
+fn algorithm(name: &str) -> PyResult<oa::crypto::merkle::MerkleAlgorithm> {
+	match name {
+{{algorithms}}
+		_ => Err(pyo3::exceptions::PyValueError::new_err("unknown Merkle hash algorithm")),
+	}
+}
+
+#[pyclass(name = "DeviceMerkleTree", unsendable)]
+struct PythonDeviceMerkleTree { inner: oa::crypto::merkle::DeviceMerkleTree }
+
+#[pymethods]
+impl PythonDeviceMerkleTree {
+	#[getter]
+	fn root(&self) -> PythonMatrix { PythonMatrix::wrap(self.inner.root().clone()) }
+	#[getter]
+	fn leaf_count(&self) -> u32 { self.inner.leaf_count() }
+	#[getter]
+	fn algorithm(&self) -> &'static str { self.inner.algorithm().name() }
+}
+
+#[pyfunction]
+fn crypto_merkle_build(leaves: &PythonMatrix, hash: &str) -> PyResult<PythonDeviceMerkleTree> {
+	let inner = oa::crypto::merkle::build(&leaves.inner, algorithm(hash)?).map_err(python_error)?;
+	Ok(PythonDeviceMerkleTree { inner })
+}
+
+#[pyfunction]
+fn crypto_merkle_subtree_roots(leaves: &PythonMatrix, hash: &str, subtree_leaves: usize) -> PyResult<PythonMatrix> {
+	oa::crypto::merkle::subtree_roots(&leaves.inner, algorithm(hash)?, subtree_leaves).map(PythonMatrix::wrap).map_err(python_error)
+}
+
+#[pyfunction]
+fn crypto_merkle_proofs(tree: &PythonDeviceMerkleTree, indices: &PythonMatrix) -> PyResult<PythonMatrix> {
+	oa::crypto::merkle::proofs(&tree.inner, &indices.inner).map(PythonMatrix::wrap).map_err(python_error)
+}
+
+#[pyfunction]
+fn crypto_merkle_verify(leaves: &PythonMatrix, frames: &PythonMatrix, roots: &PythonMatrix, hash: &str, leaf_count: u32) -> PyResult<PythonMatrix> {
+	oa::crypto::merkle::verify(&leaves.inner, &frames.inner, &roots.inner, algorithm(hash)?, leaf_count).map(PythonMatrix::wrap).map_err(python_error)
+}
+
+pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+	module.add_class::<PythonDeviceMerkleTree>()?;
+	module.add_function(wrap_pyfunction!(crypto_merkle_build, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_merkle_subtree_roots, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_merkle_proofs, module)?)?;
+	module.add_function(wrap_pyfunction!(crypto_merkle_verify, module)?)?;
+	Ok(())
+}

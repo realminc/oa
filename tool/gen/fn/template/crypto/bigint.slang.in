@@ -1,0 +1,27 @@
+// No OA C++ BigInt donor exists. Arithmetic helpers are independently tested.
+// One invocation owns every output limb/status of a complete batch row.
+// This public-data baseline has no secret-placement or constant-time contract.
+import attributes;
+{{imports}}
+
+struct PushConstants {
+{{fields}}
+};
+[[vk::push_constant]] PushConstants push;
+[[vk::binding(0, 0)]] RWByteAddressBuffer storage_buffers[];
+
+[kernel_name("{{name}}")]
+[domain("cryptography")]
+[variant("generic")]
+[dtype("u32")]
+[status("experimental")]
+[shader("compute")]
+[numthreads({{workgroup}})]
+void main(uint3 tid : SV_DispatchThreadID) {
+	uint row = tid.x;
+	if (row >= push.count || push.words == 0u || push.words > 128u) return;
+	uint input_row_bytes = push.words * 4u;
+{{bounds}}
+	uint input_base = row * input_row_bytes;
+{{body}}
+}

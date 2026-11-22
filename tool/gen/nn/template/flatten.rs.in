@@ -1,0 +1,81 @@
+/// {{doc}}
+///
+/// Negative dimensions are resolved from the end at call time. The donor
+/// default `({{start_dim}}, {{end_dim}})` preserves a leading batch dimension.
+pub struct {{name}} {
+	start_dim: isize,
+	end_dim: isize,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct a flatten module with PyTorch-style dimension indexing.
+	pub const fn new(start_dim: isize, end_dim: isize) -> Self {
+		Self {
+			start_dim,
+			end_dim,
+			registry: ModuleRegistry::new(),
+		}
+	}
+
+	/// Return the configured inclusive start dimension.
+	pub const fn start_dim(&self) -> isize {
+		self.start_dim
+	}
+
+	/// Return the configured inclusive end dimension.
+	pub const fn end_dim(&self) -> isize {
+		self.end_dim
+	}
+
+	/// Return a differentiable zero-copy flattened Matrix view.
+	///
+	/// Inputs of rank zero or one and positive start dimensions beyond the input
+	/// rank preserve the donor identity behavior.
+	///
+	/// # Errors
+	///
+	/// Returns an error when either resolved dimension is outside the input rank,
+	/// the resolved range is reversed, or the flattened extent overflows.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		let rank = input.shape().len();
+		if rank <= 1 || self.start_dim >= 0 && self.start_dim as usize >= rank {
+			return Ok(input.clone());
+		}
+		let start = resolve_dim(self.start_dim, rank, "start")?;
+		let end = resolve_dim(self.end_dim, rank, "end")?;
+		if start > end {
+			return Err(Error::invalid_argument(format!(
+				"{{name}} start dimension {start} exceeds end dimension {end}"
+			)));
+		}
+		let flattened = input.shape()[start..=end]
+			.iter()
+			.try_fold(1_usize, |extent, dimension| {
+				extent
+					.checked_mul(*dimension)
+					.ok_or_else(|| Error::resource_exhausted("{{name}} extent overflows usize"))
+			})?;
+		let mut shape = Vec::with_capacity(rank - (end - start));
+		shape.extend_from_slice(&input.shape()[..start]);
+		shape.push(flattened);
+		shape.extend_from_slice(&input.shape()[end + 1..]);
+		input.reshape(shape)
+	}
+}
+
+impl Default for {{name}} {
+	fn default() -> Self {
+		Self::new({{start_dim}}, {{end_dim}})
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

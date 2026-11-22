@@ -1,0 +1,1 @@
+"""Profiling recorder contract tests."""

@@ -1,0 +1,33 @@
+{
+	"version": 1,
+	"family": "softmax",
+	"imports": [
+		"use crate::{Matrix, Result, matrix};",
+		"use super::super::{Module, ModuleRegistry};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Softmax",
+			"doc": "Parameterless axis-aware Softmax module.",
+			"template": "softmax",
+			"values": {
+				"operation": "matrix::softmax",
+				"default_dim": -1
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/softmax/softmax.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "LogSoftmax",
+			"doc": "Parameterless axis-aware LogSoftmax module.",
+			"template": "softmax",
+			"values": {
+				"operation": "matrix::log_softmax",
+				"default_dim": -1
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/softmax/softmax.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		}
+	]
+}

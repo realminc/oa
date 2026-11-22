@@ -1,0 +1,108 @@
+{
+	"schema_version": 1,
+	"domain": "vision",
+	"family": "vision_types",
+	"imports": [
+		"use super::screen_capture::{ScreenCaptureCursor, ScreenCaptureTarget};"
+	],
+	"types": [
+		{
+			"class": "config",
+			"name": "CameraCaptureConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "device_index",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "width",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "height",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "fps",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "config",
+			"name": "ScreenCaptureConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Copy",
+				"Debug",
+				"PartialEq",
+				"Eq"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "target",
+					"type": "ScreenCaptureTarget",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "cursor",
+					"type": "ScreenCaptureCursor",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "preferred_width",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "preferred_height",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "preferred_fps",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				},
+				{
+					"name": "ring_frames",
+					"type": "u32",
+					"visibility": "pub",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

@@ -1,0 +1,45 @@
+{
+	"version": 1,
+	"family": "mamba3",
+	"imports": [
+		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, Parameter, autograd, matrix, random};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Mamba3",
+			"doc": "Parameter-owning Mamba-3 selective state-space block.",
+			"template": "mamba3",
+			"values": {
+				"config_type": "Mamba3Config",
+				"state_type": "Mamba3State",
+				"initializer": "random::symmetric_uniform",
+				"dt_initializer": "random::unit_uniform",
+				"projection_operation": "matrix::linear",
+				"projection_autograd_operation": "autograd::record_linear",
+				"parameter_leaf_operation": "autograd::record_parameter_leaf",
+				"recording_active_operation": "autograd::recording_active",
+				"preprocess_operation": "matrix::mamba3_preprocess",
+				"siso_operation": "matrix::mamba3_siso",
+				"mimo_operation": "matrix::mamba3_mimo",
+				"siso_step_operation": "matrix::mamba3_siso_step",
+				"mimo_step_operation": "matrix::mamba3_mimo_step",
+				"norm_operation": "matrix::rms_norm_gated",
+				"norm_forward_operation": "matrix::rms_norm_gated_forward",
+				"input_weight_name": "in_proj",
+				"dt_bias_name": "dt_bias",
+				"b_bias_name": "B_bias",
+				"c_bias_name": "C_bias",
+				"mimo_x_name": "mimo_x",
+				"mimo_z_name": "mimo_z",
+				"mimo_o_name": "mimo_o",
+				"skip_name": "D",
+				"output_weight_name": "out_proj",
+				"norm_weight_name": "norm_weight"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/mamba3/mamba3.cpp",
+			"adaptation": "Complete donor FP32 SISO/MIMO composition with checked Rust geometry, deterministic host initialization and stable exp_m1 inverse softplus, versioned parameter adjoints and explicit caller-owned four-buffer inference cache; rank selects SISO/MIMO and existing operation providers retain all shader and graph ownership"
+		}
+	]
+}

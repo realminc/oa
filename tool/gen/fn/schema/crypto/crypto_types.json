@@ -1,0 +1,50 @@
+{
+	"schema_version": 1,
+	"domain": "crypto",
+	"family": "crypto_types",
+	"imports": [
+		"use super::ntt::NttRepresentation;"
+	],
+	"types": [
+		{
+			"class": "config",
+			"name": "NttConfig",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [
+				"Clone",
+				"Debug"
+			],
+			"doc": "",
+			"fields": [
+				{
+					"name": "modulus",
+					"type": "u64",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "root",
+					"type": "u64",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "length",
+					"type": "usize",
+					"visibility": "pub(super)",
+					"doc": ""
+				},
+				{
+					"name": "representation",
+					"type": "NttRepresentation",
+					"visibility": "pub(super)",
+					"doc": ""
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		}
+	]
+}

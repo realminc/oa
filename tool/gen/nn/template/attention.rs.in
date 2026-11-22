@@ -1,0 +1,1018 @@
+/// Execution policy for scaled dot-product attention.
+///
+/// `Auto` selects only a route proven by device-specific performance evidence.
+/// It currently preserves the compositional [`{{backend_type}}::Standard`]
+/// provider on every device.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum {{backend_type}} {
+	/// Use the internally proven provider policy.
+	#[default]
+	Auto,
+	/// Use BMM-NT, scaled/masked Softmax, and BMM.
+	Standard,
+	/// Explicitly request the fused causal Flash provider.
+	Flash,
+	/// Katharopoulos kernel-trick linear attention with bounded scan state,
+	/// independent of sequence length.  Bidirectional uses a single global KV
+	/// accumulation; causal uses a per-position lower-triangular KV scan.
+	Linear,
+}
+
+/// Token-visibility contract for self-attention.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum {{mode_type}} {
+	/// A query may observe only itself and preceding tokens.
+	#[default]
+	Causal,
+	/// Every query may observe every token in its sequence.
+	Bidirectional,
+}
+
+/// {{doc}}
+pub struct {{name}} {
+	model_width: usize,
+	num_heads: usize,
+	sequence_length: Cell<usize>,
+	query_projection: Rc<Linear>,
+	key_projection: Rc<Linear>,
+	value_projection: Rc<Linear>,
+	output_projection: Rc<Linear>,
+	dropout_probability: f32,
+	dropout_seed: u64,
+	backend: Cell<{{backend_type}}>,
+	mode: Cell<{{mode_type}}>,
+	last_backend: Cell<{{backend_type}}>,
+	mask_cache: RefCell<Vec<AttentionMask>>,
+	registry: ModuleRegistry,
+}
+
+struct AttentionMask {
+	batch: usize,
+	sequence_length: usize,
+	causal: bool,
+	value: Matrix,
+}
+
+/// Caller-owned incremental-decode key/value cache for `{{name}}`.
+///
+/// Each [`{{name}}::step`] call appends one `[B*H, 1, D/H]` key/value pair and
+/// attends over every cached position. The cache binds to the constructing
+/// module instance; presenting it to another attention module fails closed.
+pub struct {{cache_type}} {
+	owner_id: u64,
+	batch_size: usize,
+	keys: Option<Matrix>,
+	values: Option<Matrix>,
+	position: usize,
+}
+
+impl {{cache_type}} {
+	/// Return the fixed batch size accepted by this cache.
+	pub const fn batch_size(&self) -> usize {
+		self.batch_size
+	}
+
+	/// Return the number of cached positions.
+	pub const fn len(&self) -> usize {
+		self.position
+	}
+
+	/// Return whether no positions are cached.
+	pub const fn is_empty(&self) -> bool {
+		self.position == 0
+	}
+}
+
+impl {{name}} {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, model_width, num_heads, sequence_length, seed)	}
+
+	/// Construct four biased projections with causal visibility and automatic
+	/// backend policy.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless dimensions are positive and `model_width` is
+	/// divisible by `num_heads`, or child construction/registration fails.
+	pub fn new_with_seed_on(
+		engine: &Engine,
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_options_on(
+			engine,
+			model_width,
+			num_heads,
+			sequence_length,
+			0.0,
+			true,
+			seed,
+		)
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed_and_bias(
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_bias_on(&Engine::current()?, model_width, num_heads, sequence_length, bias, seed)	}
+
+	/// Construct four projections with explicit optional bias.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless dimensions are positive and `model_width` is
+	/// divisible by `num_heads`, or child construction/registration fails.
+	pub fn new_with_seed_and_bias_on(
+		engine: &Engine,
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_options_on(
+			engine,
+			model_width,
+			num_heads,
+			sequence_length,
+			0.0,
+			bias,
+			seed,
+		)
+	}
+
+	/// Construct attention with explicit dropout and projection-bias policy.
+	///
+	/// Dropout is applied to attention probabilities only while the module is in
+	/// training mode. Its Philox stream is derived from `seed` and advances on
+	/// captured-program replay through the ordinary Matrix Dropout contract.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless dimensions are valid, `dropout_probability` is
+	/// finite and in `[0, 1)`, or child construction/registration fails.
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed_and_options(
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		dropout_probability: f32,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_options_on(&Engine::current()?, model_width, num_heads, sequence_length, dropout_probability, bias, seed)	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed_and_options_on(
+		engine: &Engine,
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		dropout_probability: f32,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		if model_width == 0
+			|| num_heads == 0
+			|| sequence_length == 0
+			|| !model_width.is_multiple_of(num_heads)
+		{
+			return Err(Error::invalid_argument(
+				"attention requires positive D/H/S and D divisible by H",
+			));
+		}
+		if !dropout_probability.is_finite() || !(0.0..1.0).contains(&dropout_probability) {
+			return Err(Error::invalid_argument(
+				"attention dropout probability must be finite and in [0, 1)",
+			));
+		}
+		let query_projection = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			model_width,
+			bias,
+			seed,
+		)?);
+		let key_projection = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			model_width,
+			bias,
+			seed.wrapping_add(1),
+		)?);
+		let value_projection = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			model_width,
+			bias,
+			seed.wrapping_add(2),
+		)?);
+		let output_projection = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			model_width,
+			bias,
+			seed.wrapping_add(3),
+		)?);
+		let mut registry = ModuleRegistry::new();
+		registry.register_module("{{query_name}}", query_projection.clone())?;
+		registry.register_module("{{key_name}}", key_projection.clone())?;
+		registry.register_module("{{value_name}}", value_projection.clone())?;
+		registry.register_module("{{output_name}}", output_projection.clone())?;
+		Ok(Self {
+			model_width,
+			num_heads,
+			sequence_length: Cell::new(sequence_length),
+			query_projection,
+			key_projection,
+			value_projection,
+			output_projection,
+			dropout_probability,
+			dropout_seed: seed.wrapping_add(4),
+			backend: Cell::new({{backend_type}}::Auto),
+			mode: Cell::new({{mode_type}}::Causal),
+			last_backend: Cell::new({{backend_type}}::Standard),
+			mask_cache: RefCell::new(Vec::new()),
+			registry,
+		})
+	}
+
+	fn geometry(&self, input: &Matrix) -> Result<usize> {
+		let sequence_length = self.sequence_length.get();
+		let [rows, width] = input.shape() else {
+			return Err(Error::invalid_argument(
+				"{{name}} expects F32 [B*S, D] input",
+			));
+		};
+		if input.dtype() != DType::F32
+			|| *width != self.model_width
+			|| *rows == 0
+			|| !rows.is_multiple_of(sequence_length)
+		{
+			return Err(Error::invalid_argument(format!(
+				"{{name}} expects nonempty F32 [B*S, {}] with S={}; found {:?} {}",
+				self.model_width,
+				sequence_length,
+				input.shape(),
+				input.dtype().token(),
+			)));
+		}
+		Ok(rows / sequence_length)
+	}
+
+	fn project(&self, input: &Matrix) -> Result<(Matrix, Matrix, Matrix)> {
+		Ok((
+			self.query_projection.forward(input)?,
+			self.key_projection.forward(input)?,
+			self.value_projection.forward(input)?,
+		))
+	}
+
+	fn forward_standard(
+		&self,
+		input: &Matrix,
+		additive_mask: Option<&Matrix>,
+		causal: bool,
+	) -> Result<Matrix> {
+		let batch = self.geometry(input)?;
+		let sequence_length = self.sequence_length.get();
+		let (query, key, value) = self.project(input)?;
+		let query = {{split_operation}}(&query, batch, sequence_length, self.num_heads)?;
+		let key = {{split_operation}}(&key, batch, sequence_length, self.num_heads)?;
+		let value = {{split_operation}}(&value, batch, sequence_length, self.num_heads)?;
+		let scale = 1.0 / ((self.model_width / self.num_heads) as f32).sqrt();
+		let context = if self.is_training() && self.dropout_probability > 0.0 {
+			let batch_heads = batch
+				.checked_mul(self.num_heads)
+				.ok_or_else(|| Error::invalid_argument("attention batch by head count overflows usize"))?;
+			let score_rows = batch_heads
+				.checked_mul(sequence_length)
+				.ok_or_else(|| Error::invalid_argument("attention score rows overflow usize"))?;
+			let scores = {{score_operation}}(&query, &key)?.reshape([score_rows, sequence_length])?;
+			let owned_mask;
+			let mask = if let Some(mask) = additive_mask {
+				mask
+			} else {
+				owned_mask = self.cached_mask(input, batch, causal)?;
+				&owned_mask
+			};
+			let probability = {{softmax_operation}}(&scores, mask, scale)?;
+			let probability =
+				{{dropout_operation}}(&probability, self.dropout_probability, self.dropout_seed)?;
+			{{context_operation}}(
+				&probability.reshape([batch_heads, sequence_length, sequence_length])?,
+				&value,
+			)?
+		} else {
+			{{standard_operation}}(&query, &key, &value, additive_mask, scale, causal)?
+		};
+		let context = {{merge_operation}}(&context, batch, sequence_length, self.num_heads)?;
+		let output = self.output_projection.forward(&context)?;
+		self.last_backend.set({{backend_type}}::Standard);
+		Ok(output)
+	}
+
+	fn cached_mask(&self, input: &Matrix, batch: usize, causal: bool) -> Result<Matrix> {
+		let sequence_length = self.sequence_length.get();
+		if let Some(mask) = self.mask_cache.borrow().iter().find(|mask| {
+			mask.batch == batch && mask.sequence_length == sequence_length && mask.causal == causal
+		}) {
+			return Ok(mask.value.clone());
+		}
+		let batch_heads = batch
+			.checked_mul(self.num_heads)
+			.ok_or_else(|| Error::invalid_argument("attention batch by head count overflows usize"))?;
+		let score_rows = batch_heads
+			.checked_mul(sequence_length)
+			.ok_or_else(|| Error::invalid_argument("attention score rows overflow usize"))?;
+		let count = score_rows
+			.checked_mul(sequence_length)
+			.ok_or_else(|| Error::invalid_argument("attention score size overflows usize"))?;
+		let mut values = vec![0.0_f32; count];
+		if causal {
+			for row in 0..score_rows {
+				let query = row % sequence_length;
+				for key in query + 1..sequence_length {
+					values[row * sequence_length + key] = -1.0e9;
+				}
+			}
+		}
+		let mask = Matrix::allocate(
+			input.engine_handle(),
+			vec![score_rows, sequence_length],
+			count,
+			DType::F32,
+		)?;
+		mask.write_values(&values)?;
+		self.mask_cache.borrow_mut().push(AttentionMask {
+			batch,
+			sequence_length,
+			causal,
+			value: mask.clone(),
+		});
+		Ok(mask)
+	}
+
+	fn forward_flash(&self, input: &Matrix) -> Result<Matrix> {
+		let batch = self.geometry(input)?;
+		let sequence_length = self.sequence_length.get();
+		let (query, key, value) = self.project(input)?;
+		let query = {{split_operation}}(&query, batch, sequence_length, self.num_heads)?;
+		let key = {{split_operation}}(&key, batch, sequence_length, self.num_heads)?;
+		let value = {{split_operation}}(&value, batch, sequence_length, self.num_heads)?;
+		let scale = 1.0 / ((self.model_width / self.num_heads) as f32).sqrt();
+		let context = {{flash_operation}}(&query, &key, &value, scale)?;
+		let context = {{merge_operation}}(&context, batch, sequence_length, self.num_heads)?;
+		let output = self.output_projection.forward(&context)?;
+		self.last_backend.set({{backend_type}}::Flash);
+		Ok(output)
+	}
+
+	/// Apply self-attention using the configured visibility and provider policy.
+	///
+	/// `Auto` deliberately uses the standard provider until a device-specific
+	/// benchmark qualifies another route. Explicit Flash fails closed unless the
+	/// operation is causal F32 with `S <= 1024`.
+	///
+	/// # Errors
+	///
+	/// Returns an error for invalid input geometry, an ineligible explicit Flash
+	/// request, or failed operation recording.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		let mode = self.mode.get();
+		match self.backend.get() {
+			{{backend_type}}::Flash => {
+				if mode != {{mode_type}}::Causal
+					|| input.dtype() != DType::F32
+					|| self.dropout_probability != 0.0
+					|| self.sequence_length.get() > 1024
+				{
+					return Err(Error::invalid_argument(
+						"FlashAttention requires causal F32 input, dropout=0, and sequence length <= 1024",
+					));
+				}
+				self.forward_flash(input)
+			}
+			{{backend_type}}::Linear => Err(Error::invalid_argument(
+				"{{backend_type}}::Linear is not supported by {{name}}; use {{linear_name}} instead",
+			)),
+			{{backend_type}}::Auto | {{backend_type}}::Standard => {
+				self.forward_standard(input, None, mode == {{mode_type}}::Causal)
+			}
+		}
+	}
+
+	/// Apply standard bidirectional attention with an additive `[B*H*S, S]` mask.
+	///
+	/// The arbitrary mask route is never silently sent to Flash.
+	///
+	/// # Errors
+	///
+	/// Returns an error when Flash is explicitly selected, mask/input geometry is
+	/// invalid, or operation recording fails.
+	pub fn forward_masked(&self, input: &Matrix, additive_mask: &Matrix) -> Result<Matrix> {
+		if self.backend.get() == {{backend_type}}::Flash {
+			return Err(Error::invalid_argument(
+				"FlashAttention does not accept an arbitrary additive mask",
+			));
+		}
+		self.forward_standard(input, Some(additive_mask), false)
+	}
+
+	/// Allocate an empty incremental-decode cache owned by this module.
+	///
+	/// The cache fixes the accepted batch size and holds one `[B*H, T, D/H]`
+	/// key/value pair per [`Self::step`] call.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `batch_size` is zero.
+	pub fn new_cache(&self, batch_size: usize) -> Result<{{cache_type}}> {
+		if batch_size == 0 {
+			return Err(Error::invalid_argument(
+				"{{name}} attention cache requires a positive batch size",
+			));
+		}
+		Ok({{cache_type}} {
+			owner_id: self.query_projection.weight().data().value_id(),
+			batch_size,
+			keys: None,
+			values: None,
+			position: 0,
+		})
+	}
+
+	/// Advance one autoregressive position against `cache`.
+	///
+	/// `input` must be F32 `[batch, model_width]` for the cache's batch size.
+	/// The projected key and value append to the cache, then the query attends
+	/// over every cached position — causality is structural, so no mask is
+	/// needed. This is an inference-only operation: cache differentiation is
+	/// not admitted, and calling it while a [`crate::ml::GradientTape`] is
+	/// active returns an error.
+	///
+	/// # Errors
+	///
+	/// Returns an error for an active gradient tape, a cache owned by another
+	/// module, mismatched batch/shape/dtype, or failed recording.
+	pub fn step(&self, input: &Matrix, cache: &mut {{cache_type}}) -> Result<Matrix> {
+		if {{recording_active_operation}}() {
+			return Err(Error::failed_precondition(
+				"{{name}} incremental attention is inference-only and cannot run inside a GradientTape",
+			));
+		}
+		let owner = self.query_projection.weight().data();
+		if cache.owner_id != owner.value_id() {
+			return Err(Error::invalid_argument(
+				"{{name}} attention cache belongs to another module instance",
+			));
+		}
+		if input.shape() != [cache.batch_size, self.model_width] || input.dtype() != DType::F32 {
+			return Err(Error::invalid_argument(format!(
+				"{{name}} step requires F32 input [{}, {}]; found {:?} {}",
+				cache.batch_size,
+				self.model_width,
+				input.shape(),
+				input.dtype().token(),
+			)));
+		}
+		let (query, key, value) = self.project(input)?;
+		let query = {{split_operation}}(&query, cache.batch_size, 1, self.num_heads)?;
+		let key = {{split_operation}}(&key, cache.batch_size, 1, self.num_heads)?;
+		let value = {{split_operation}}(&value, cache.batch_size, 1, self.num_heads)?;
+		let (keys, values) = match (cache.keys.take(), cache.values.take()) {
+			(Some(keys), Some(values)) => (
+				{{concat_operation}}(&[keys, key], 1)?,
+				{{concat_operation}}(&[values, value], 1)?,
+			),
+			(None, None) => (key, value),
+			_ => {
+				return Err(Error::failed_precondition(
+					"{{name}} attention cache holds a partial key/value pair",
+				));
+			}
+		};
+		let scale = 1.0 / ((self.model_width / self.num_heads) as f32).sqrt();
+		let scores = {{score_operation}}(&query, &keys)?;
+		let scaled = {{scale_operation}}(&scores, scale)?;
+		let probabilities = {{step_softmax_operation}}(&scaled, -1)?;
+		let context = {{context_operation}}(&probabilities, &values)?;
+		cache.keys = Some(keys);
+		cache.values = Some(values);
+		cache.position += 1;
+		let context = {{merge_operation}}(&context, cache.batch_size, 1, self.num_heads)?;
+		self.output_projection.forward(&context)
+	}
+
+	/// Select the requested attention provider policy.
+	pub fn set_backend(&self, backend: {{backend_type}}) {
+		self.backend.set(backend);
+	}
+
+	/// Return the requested attention provider policy.
+	pub fn backend(&self) -> {{backend_type}} {
+		self.backend.get()
+	}
+
+	/// Return the provider used by the most recent successful forward call.
+	pub fn last_backend(&self) -> {{backend_type}} {
+		self.last_backend.get()
+	}
+
+	/// Select causal or bidirectional token visibility.
+	pub fn set_mode(&self, mode: {{mode_type}}) {
+		self.mode.set(mode);
+	}
+
+	/// Return the configured token-visibility contract.
+	pub fn mode(&self) -> {{mode_type}} {
+		self.mode.get()
+	}
+
+	pub const fn model_width(&self) -> usize {
+		self.model_width
+	}
+	pub const fn num_heads(&self) -> usize {
+		self.num_heads
+	}
+	pub fn sequence_length(&self) -> usize {
+		self.sequence_length.get()
+	}
+
+	/// Change runtime sequence geometry without rebuilding projection weights.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `sequence_length` is zero.
+	pub fn set_sequence_length(&self, sequence_length: usize) -> Result<()> {
+		if sequence_length == 0 {
+			return Err(Error::invalid_argument(
+				"attention sequence length must be nonzero",
+			));
+		}
+		if self.sequence_length.replace(sequence_length) != sequence_length {
+			self.mask_cache.borrow_mut().clear();
+		}
+		Ok(())
+	}
+
+	/// Return whether all four projections own trainable biases.
+	pub fn has_bias(&self) -> bool {
+		self.query_projection.has_bias()
+	}
+
+	/// Return the probability dropped from attention weights during training.
+	pub const fn dropout_probability(&self) -> f32 {
+		self.dropout_probability
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}
+
+// ── Linear attention ──────────────────────────────────────────────────────────
+
+/// Token-visibility contract for linear attention.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum {{linear_mode_type}} {
+	/// Each position attends only to itself and earlier positions.
+	///
+	/// Implemented as a cumulative-KV prefix scan: at each step `t` the
+	/// running `[B*H, d, d]` accumulator `kv_t = Σ_{i≤t} phi(k_i)ᵀ phi(v_i)`
+	/// is queried by `phi(q_t)`.  No S×S matrix is ever materialised.
+	/// Bounded fused scan state; projections and adjoints scale with S.
+	#[default]
+	Causal,
+	/// Every position attends to every other position.
+	///
+	/// Uses the true O(B·H·d_head²) global KV accumulation.
+	Bidirectional,
+}
+
+/// Multi-head linear attention over packed `[B*S, D]` values.
+///
+/// Uses the Katharopoulos (2020) ELU+1 kernel rather than softmax.
+/// Causal heads up to 64 use fused forward and recomputed prefix/suffix
+/// adjoints. Saved projections/context scale as O(B*H*S*d), with bounded
+/// O(d²) scan state per head. Larger heads retain the compositional path,
+/// whose training tape saves O(B*H*S*d²) prefixes. Bidirectional mode uses
+/// the global KV composition. Standard attention stores S² probabilities;
+/// Flash recomputes them and does not store a global S² score matrix.
+///
+/// ## Parameter layout
+///
+/// Four biased projections (`{{query_name}}`, `{{key_name}}`, `{{value_name}}`, `{{output_name}}`)
+/// with the same names and seed stride as [`{{name}}`], so checkpoints are
+/// transferable between the two modules.
+pub struct {{linear_name}} {
+	model_width: usize,
+	num_heads: usize,
+	sequence_length: Cell<usize>,
+	query_projection: Rc<Linear>,
+	key_projection: Rc<Linear>,
+	value_projection: Rc<Linear>,
+	output_projection: Rc<Linear>,
+	mode: Cell<{{linear_mode_type}}>,
+	registry: ModuleRegistry,
+}
+
+impl {{linear_name}} {
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed(
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_on(&Engine::current()?, model_width, num_heads, sequence_length, seed)	}
+
+	/// Construct four biased projections with causal visibility.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless dimensions are positive, `model_width` is
+	/// divisible by `num_heads`, or child construction/registration fails.
+	pub fn new_with_seed_on(
+		engine: &Engine,
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_options_on(engine, model_width, num_heads, sequence_length, true, seed)
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed_and_bias(
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_bias_on(&Engine::current()?, model_width, num_heads, sequence_length, bias, seed)	}
+
+	/// Construct four projections with explicit optional bias.
+	///
+	/// # Errors
+	///
+	/// Returns an error unless dimensions are positive, `model_width` is
+	/// divisible by `num_heads`, or child construction/registration fails.
+	pub fn new_with_seed_and_bias_on(
+		engine: &Engine,
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_options_on(engine, model_width, num_heads, sequence_length, bias, seed)
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed_and_options(
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		Self::new_with_seed_and_options_on(&Engine::current()?, model_width, num_heads, sequence_length, bias, seed)	}
+
+	/// Construct with explicit bias policy; initial mode is
+	/// [`{{linear_mode_type}}::Causal`].
+	///
+	/// # Errors
+	///
+	/// Returns an error unless dimensions are positive, `model_width` is
+	/// divisible by `num_heads`, or child construction/registration fails.
+	pub fn new_with_seed_and_options_on(
+		engine: &Engine,
+		model_width: usize,
+		num_heads: usize,
+		sequence_length: usize,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
+		if model_width == 0
+			|| num_heads == 0
+			|| sequence_length == 0
+			|| !model_width.is_multiple_of(num_heads)
+		{
+			return Err(Error::invalid_argument(
+				"{{linear_name}} requires positive D/H/S and D divisible by H",
+			));
+		}
+		let query_projection = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			model_width,
+			bias,
+			seed,
+		)?);
+		let key_projection = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			model_width,
+			bias,
+			seed.wrapping_add(1),
+		)?);
+		let value_projection = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			model_width,
+			bias,
+			seed.wrapping_add(2),
+		)?);
+		let output_projection = Rc::new({{projection_constructor}}(
+			engine,
+			model_width,
+			model_width,
+			bias,
+			seed.wrapping_add(3),
+		)?);
+		let mut registry = ModuleRegistry::new();
+		registry.register_module("{{query_name}}", query_projection.clone())?;
+		registry.register_module("{{key_name}}", key_projection.clone())?;
+		registry.register_module("{{value_name}}", value_projection.clone())?;
+		registry.register_module("{{output_name}}", output_projection.clone())?;
+		Ok(Self {
+			model_width,
+			num_heads,
+			sequence_length: Cell::new(sequence_length),
+			query_projection,
+			key_projection,
+			value_projection,
+			output_projection,
+			mode: Cell::new({{linear_mode_type}}::Causal),
+			registry,
+		})
+	}
+
+	// ── forward paths ─────────────────────────────────────────────────────────
+
+	fn geometry(&self, input: &Matrix) -> Result<usize> {
+		let sequence_length = self.sequence_length.get();
+		let [rows, width] = input.shape() else {
+			return Err(Error::invalid_argument(
+				"{{linear_name}} expects F32 [B*S, D] input",
+			));
+		};
+		if input.dtype() != DType::F32
+			|| *width != self.model_width
+			|| *rows == 0
+			|| !rows.is_multiple_of(sequence_length)
+		{
+			return Err(Error::invalid_argument(format!(
+				"{{linear_name}} expects nonempty F32 [B*S, {}] with S={}; found {:?} {}",
+				self.model_width,
+				sequence_length,
+				input.shape(),
+				input.dtype().token(),
+			)));
+		}
+		Ok(rows / sequence_length)
+	}
+
+	/// ELU(x, α=1) + 1 — the Katharopoulos feature map phi(x).
+	///
+	/// Evaluates the negative branch directly to avoid ELU + 1 cancellation.
+	/// Extreme negative inputs may still underflow; normalization has a floor.
+	fn feature_map(x: &Matrix) -> Result<Matrix> {
+		core_matrix::add(
+			&core_matrix::exp(&core_matrix::clamp_max(x, 0.0)?)?,
+			&super::super::matrix::relu(x)?,
+		)
+	}
+
+	/// Causal linear attention: cumulative-KV prefix scan.
+	///
+	/// For each position `t` in `0..S`:
+	/// ```text
+	/// kv_t    += phi(K)[t]ᵀ ⊗ V[t]     [B*H, d, d]  running accumulator
+	/// k_sum_t += phi(K)[t]                   [B*H, 1, d]  running normaliser
+	/// ctx_t    = phi(Q)[t] @ kv_t            [B*H, 1, d]
+	/// denom_t  = phi(Q)[t] @ k_sum_tᵀ       [B*H, 1, 1]
+	/// out_t    = ctx_t / denom_t             [B*H, 1, d]
+	/// ```
+	/// `out_t` is concatenated into `[B*H, S, d]`.  No S×S matrix is ever
+	/// materialised. The compositional fallback retains prefixes for reverse
+	/// mode. Heads up to 64 use the fused bounded-state Matrix provider.
+	fn forward_causal(&self, input: &Matrix) -> Result<Matrix> {
+		let batch = self.geometry(input)?;
+		let sequence_length = self.sequence_length.get();
+		let head_dim = self.model_width / self.num_heads;
+
+		if head_dim <= 64 {
+            let q = {{split_operation}}(&self.query_projection.forward(input)?, batch, sequence_length, self.num_heads)?;
+            let k = {{split_operation}}(&self.key_projection.forward(input)?, batch, sequence_length, self.num_heads)?;
+            let v = {{split_operation}}(&self.value_projection.forward(input)?, batch, sequence_length, self.num_heads)?;
+            let context = {{linear_operation}}(&q, &k, &v, 1.0e-6)?;
+            let context = {{merge_operation}}(&context, batch, sequence_length, self.num_heads)?;
+            return self.output_projection.forward(&context);
+        }
+
+        let phi_q = Self::feature_map(&self.query_projection.forward(input)?)?;
+		let phi_k = Self::feature_map(&self.key_projection.forward(input)?)?;
+		let phi_v = self.value_projection.forward(input)?;
+
+		// [B*H, S, d_head]
+		let phi_q = {{split_operation}}(&phi_q, batch, sequence_length, self.num_heads)?;
+		let phi_k = {{split_operation}}(&phi_k, batch, sequence_length, self.num_heads)?;
+		let phi_v = {{split_operation}}(&phi_v, batch, sequence_length, self.num_heads)?;
+
+		let batch_heads = batch
+			.checked_mul(self.num_heads)
+			.ok_or_else(|| Error::invalid_argument("linear attention batch-head count overflows"))?;
+
+		// Zero accumulators: kv [B*H, d, d], k_sum [B*H, d, 1].
+		let kv_count = batch_heads
+			.checked_mul(head_dim)
+			.and_then(|n| n.checked_mul(head_dim))
+			.ok_or_else(|| Error::invalid_argument("linear attention kv size overflows"))?;
+		let ksum_count = batch_heads
+			.checked_mul(head_dim)
+			.ok_or_else(|| Error::invalid_argument("linear attention k_sum size overflows"))?;
+		let kv = Matrix::allocate(
+			input.engine_handle(),
+			vec![batch_heads, head_dim, head_dim],
+			kv_count,
+			DType::F32,
+		)?;
+		kv.write_values(&vec![0.0_f32; kv_count])?;
+		let k_sum = Matrix::allocate(
+			input.engine_handle(),
+			vec![batch_heads, head_dim, 1],
+			ksum_count,
+			DType::F32,
+		)?;
+		k_sum.write_values(&vec![0.0_f32; ksum_count])?;
+
+		// Prefix scan over sequence positions.
+		let mut kv = kv;
+		let mut k_sum = k_sum;
+		let mut steps: Vec<Matrix> = Vec::with_capacity(sequence_length);
+		for t in 0..sequence_length {
+			let t_i64 = t as i64;
+			// phi_q_t, phi_k_t, phi_v_t : [B*H, 1, d_head]
+			let phi_q_t = {{slice_operation}}(&phi_q, 1, t_i64, t_i64 + 1)?;
+			let phi_k_t = {{slice_operation}}(&phi_k, 1, t_i64, t_i64 + 1)?;
+			let phi_v_t = {{slice_operation}}(&phi_v, 1, t_i64, t_i64 + 1)?;
+
+			// kv += phi_k_t^T @ phi_v_t  — [B*H, d, d]
+			kv = {{add_operation}}(&kv, &{{kv_operation}}(&phi_k_t, &phi_v_t)?)?;
+
+			// k_sum += phi_k_t^T  — [B*H, d, 1]
+			// phi_k_t is [B*H, 1, d]; reshape to [B*H, d, 1] for column accumulation.
+			let phi_k_t_col = phi_k_t.reshape([batch_heads, head_dim, 1])?;
+			k_sum = {{add_operation}}(&k_sum, &phi_k_t_col)?;
+
+			// ctx_t = phi_q_t @ kv  — [B*H, 1, d]
+			let ctx_t = {{context_operation}}(&phi_q_t, &kv)?;
+
+			// denom_t = phi_q_t @ k_sum  — [B*H, 1, 1]
+			let denom_t = {{context_operation}}(&phi_q_t, &k_sum)?;
+
+			// out_t = ctx_t / denom_t  — [B*H, 1, d]
+			steps.push({{div_operation}}(&ctx_t, &core_matrix::clamp_min(&denom_t, 1.0e-6)?)?);
+		}
+
+		// Concatenate [B*H, 1, d] steps into [B*H, S, d].
+		let context = {{concat_operation}}(&steps, 1)?;
+		let context = {{merge_operation}}(&context, batch, sequence_length, self.num_heads)?;
+		self.output_projection.forward(&context)
+	}
+
+	/// Bidirectional linear attention: true O(B·H·d_head²) workspace.
+	///
+	/// Computes:
+	/// ```text
+	/// kv          = phi(K)ᵀ @ phi(V)          [B*H, d, d]
+	/// context_raw = phi(Q) @ kv                [B*H, S, d]
+	/// k_sum       = sum_seq(phi(K))            [B*H, 1, d]
+	/// denom       = phi(Q) @ k_sum^T           [B*H, S, 1]
+	/// context     = context_raw / denom        [B*H, S, d]
+	/// ```
+	fn forward_bidirectional(&self, input: &Matrix) -> Result<Matrix> {
+		let batch = self.geometry(input)?;
+		let sequence_length = self.sequence_length.get();
+		let head_dim = self.model_width / self.num_heads;
+
+		let phi_q = Self::feature_map(&self.query_projection.forward(input)?)?;
+		let phi_k = Self::feature_map(&self.key_projection.forward(input)?)?;
+		let phi_v = self.value_projection.forward(input)?;
+
+		// [B*H, S, d_head]
+		let phi_q = {{split_operation}}(&phi_q, batch, sequence_length, self.num_heads)?;
+		let phi_k = {{split_operation}}(&phi_k, batch, sequence_length, self.num_heads)?;
+		let phi_v = {{split_operation}}(&phi_v, batch, sequence_length, self.num_heads)?;
+
+		let batch_heads = batch
+			.checked_mul(self.num_heads)
+			.ok_or_else(|| Error::invalid_argument("linear attention batch-head count overflows"))?;
+
+		// KV accumulation: phi(K)^T @ phi(V) → [B*H, d_head, d_head].
+		let kv = {{kv_operation}}(&phi_k, &phi_v)?;
+
+		// Unnormalised context: phi(Q) @ kv → [B*H, S, d_head].
+		let context_raw = {{context_operation}}(&phi_q, &kv)?;
+
+		// Key column sum: sum over sequence axis → [B*H, 1, d_head] (keepdim).
+		let k_sum = {{sum_operation}}(&phi_k, 1)?;
+
+		// Denominator: phi(Q) @ k_sum^T → [B*H, S, 1].
+		let k_sum_col = k_sum.reshape([batch_heads, head_dim, 1])?;
+		let denom = {{context_operation}}(&phi_q, &k_sum_col)?;
+
+		// Normalise: [B*H, S, d_head] / [B*H, S, 1] (broadcast).
+		let context = {{div_operation}}(&context_raw, &core_matrix::clamp_min(&denom, 1.0e-6)?)?;
+
+		let context = {{merge_operation}}(&context, batch, sequence_length, self.num_heads)?;
+		self.output_projection.forward(&context)
+	}
+
+	// ── public API ────────────────────────────────────────────────────────────
+
+	/// Apply linear attention using the configured visibility policy.
+	///
+	/// Accepts packed F32 `[B*S, D]` input where `B` is the batch size and `S`
+	/// is the configured sequence length.
+	///
+	/// # Errors
+	///
+	/// Returns an error for invalid input geometry or failed operation
+	/// recording.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		match self.mode.get() {
+			{{linear_mode_type}}::Causal => self.forward_causal(input),
+			{{linear_mode_type}}::Bidirectional => self.forward_bidirectional(input),
+		}
+	}
+
+	/// Select causal or bidirectional visibility.
+	pub fn set_mode(&self, mode: {{linear_mode_type}}) {
+		self.mode.set(mode);
+	}
+
+	/// Return the configured visibility contract.
+	pub fn mode(&self) -> {{linear_mode_type}} {
+		self.mode.get()
+	}
+
+	pub const fn model_width(&self) -> usize {
+		self.model_width
+	}
+	pub const fn num_heads(&self) -> usize {
+		self.num_heads
+	}
+	pub fn sequence_length(&self) -> usize {
+		self.sequence_length.get()
+	}
+
+	/// Change runtime sequence geometry without rebuilding projection weights.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `sequence_length` is zero.
+	pub fn set_sequence_length(&self, sequence_length: usize) -> Result<()> {
+		if sequence_length == 0 {
+			return Err(Error::invalid_argument(
+				"linear attention sequence length must be nonzero",
+			));
+		}
+		self.sequence_length.set(sequence_length);
+		Ok(())
+	}
+
+	/// Return whether all four projections own trainable biases.
+	pub fn has_bias(&self) -> bool {
+		self.query_projection.has_bias()
+	}
+}
+
+impl Module for {{linear_name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{linear_name}}::forward(self, input)
+	}
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

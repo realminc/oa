@@ -1,0 +1,10 @@
+// Complete admitted OA Matrix reverse recipes; see README.md.
+
+// @operation dropout
+// @fields input,output_id,probability,seed
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+		return Ok(false);
+	};
+	let input_gradient = matrix::dropout_backward(&output_gradient, *probability, *seed)?;
+	gradients.accumulate(input.value_id(), input_gradient)?;
+	Ok(true)

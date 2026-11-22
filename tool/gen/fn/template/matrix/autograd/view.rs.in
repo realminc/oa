@@ -1,0 +1,10 @@
+// Complete admitted OA Matrix reverse recipes; see README.md.
+
+// @operation reshape
+// @fields input,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+		return Ok(false);
+	};
+	let input_gradient = matrix::reshape_backward(&output_gradient, input.shape())?;
+	gradients.accumulate(input.value_id(), input_gradient)?;
+	Ok(true)

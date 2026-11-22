@@ -1,0 +1,1510 @@
+{
+	"schema_version": 1,
+	"family": "video",
+	"domain": "video",
+	"contracts": [
+		{
+			"name": "resample",
+			"fusion_class": "gather",
+			"input_kinds": [
+				"matrix"
+			],
+			"variadic_input": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"output_kinds": [
+				"matrix"
+			],
+			"variadic_output": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"shape_rule": "explicit",
+			"dtype_rule": "explicit",
+			"effects": [
+				"read_inputs",
+				"write_outputs"
+			],
+			"differentiation": "none",
+			"lowering": "compute_dispatch",
+			"attributes": [
+				[
+					"mode",
+					"enum"
+				],
+				[
+					"interpolation",
+					"enum"
+				],
+				[
+					"out_width",
+					"unsigned_integer"
+				],
+				[
+					"out_height",
+					"unsigned_integer"
+				],
+				[
+					"params",
+					"string"
+				]
+			]
+		},
+		{
+			"name": "to_matrix",
+			"fusion_class": "gather",
+			"input_kinds": [
+				"matrix"
+			],
+			"variadic_input": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"output_kinds": [
+				"matrix"
+			],
+			"shape_rule": "explicit",
+			"dtype_rule": "explicit",
+			"effects": [
+				"read_inputs",
+				"write_outputs"
+			],
+			"differentiation": "none",
+			"lowering": "compute_dispatch",
+			"attributes": [
+				[
+					"channels",
+					"enum"
+				],
+				[
+					"layout",
+					"enum"
+				],
+				[
+					"interpolation",
+					"enum"
+				],
+				[
+					"resize",
+					"enum"
+				],
+				[
+					"color_space",
+					"enum"
+				],
+				[
+					"full_range",
+					"boolean"
+				],
+				[
+					"normalization",
+					"string"
+				],
+				[
+					"crop",
+					"string"
+				]
+			]
+		},
+		{
+			"name": "overlay",
+			"fusion_class": "gather",
+			"input_kinds": [
+				"matrix"
+			],
+			"variadic_input": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"output_kinds": [
+				"matrix"
+			],
+			"variadic_output": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"shape_rule": "explicit",
+			"dtype_rule": "explicit",
+			"effects": [
+				"read_inputs",
+				"write_outputs"
+			],
+			"differentiation": "none",
+			"lowering": "compute_dispatch",
+			"attributes": [
+				[
+					"mode",
+					"enum"
+				],
+				[
+					"box_count",
+					"unsigned_integer"
+				],
+				[
+					"border_width",
+					"unsigned_integer"
+				],
+				[
+					"params",
+					"string"
+				]
+			]
+		},
+		{
+			"name": "blend",
+			"fusion_class": "pointwise",
+			"input_kinds": [
+				"matrix"
+			],
+			"variadic_input": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"output_kinds": [
+				"matrix"
+			],
+			"variadic_output": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"shape_rule": "explicit",
+			"dtype_rule": "explicit",
+			"effects": [
+				"read_inputs",
+				"write_outputs"
+			],
+			"differentiation": "none",
+			"lowering": "compute_dispatch",
+			"attributes": [
+				[
+					"mode",
+					"enum"
+				],
+				[
+					"alpha",
+					"unsigned_integer"
+				],
+				[
+					"fill",
+					"unsigned_integer"
+				],
+				[
+					"params",
+					"string"
+				]
+			]
+		},
+		{
+			"name": "score_blend",
+			"fusion_class": "pointwise",
+			"input_kinds": [
+				"matrix"
+			],
+			"variadic_input": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"output_kinds": [
+				"matrix"
+			],
+			"variadic_output": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"shape_rule": "explicit",
+			"dtype_rule": "explicit",
+			"effects": [
+				"read_inputs",
+				"write_outputs"
+			],
+			"differentiation": "none",
+			"lowering": "compute_dispatch",
+			"attributes": [
+				[
+					"mode",
+					"enum"
+				],
+				[
+					"threshold",
+					"float"
+				],
+				[
+					"fill",
+					"unsigned_integer"
+				],
+				[
+					"params",
+					"string"
+				]
+			]
+		},
+		{
+			"name": "luma_map",
+			"fusion_class": "pointwise",
+			"input_kinds": [
+				"matrix"
+			],
+			"variadic_input": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"output_kinds": [
+				"matrix"
+			],
+			"variadic_output": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"shape_rule": "explicit",
+			"dtype_rule": "explicit",
+			"effects": [
+				"read_inputs",
+				"write_outputs"
+			],
+			"differentiation": "none",
+			"lowering": "compute_dispatch",
+			"attributes": [
+				[
+					"mode",
+					"enum"
+				],
+				[
+					"threshold",
+					"unsigned_integer"
+				],
+				[
+					"low",
+					"unsigned_integer"
+				],
+				[
+					"high",
+					"unsigned_integer"
+				]
+			]
+		},
+		{
+			"name": "range_convert",
+			"fusion_class": "pointwise",
+			"input_kinds": [
+				"matrix"
+			],
+			"variadic_input": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"output_kinds": [
+				"matrix"
+			],
+			"variadic_output": {
+				"kind": "matrix",
+				"minimum": 1
+			},
+			"shape_rule": "explicit",
+			"dtype_rule": "explicit",
+			"effects": [
+				"read_inputs",
+				"write_outputs"
+			],
+			"differentiation": "none",
+			"lowering": "compute_dispatch",
+			"attributes": [
+				[
+					"mode",
+					"enum"
+				],
+				[
+					"source_range",
+					"enum"
+				],
+				[
+					"target_range",
+					"enum"
+				],
+				[
+					"params",
+					"string"
+				]
+			]
+		}
+	],
+	"kernels": [
+		{
+			"stable_id": 699,
+			"registered": false,
+			"name": "cvt_ycbcr_to_rgba8",
+			"fusion_class": "opaque",
+			"kernel_id": "VideoCvtYcbcrToRgba8",
+			"source": "src/slang/video/cvt_ycbcr_to_rgba8.slang",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"push_fields": [
+				[
+					"out_idx",
+					"uint32"
+				],
+				[
+					"width",
+					"uint32"
+				],
+				[
+					"height",
+					"uint32"
+				],
+				[
+					"coded_width",
+					"uint32"
+				],
+				[
+					"coded_height",
+					"uint32"
+				],
+				[
+					"origin_x",
+					"uint32"
+				],
+				[
+					"origin_y",
+					"uint32"
+				]
+			]
+		},
+		{
+			"stable_id": 697,
+			"registered": false,
+			"name": "cvt_rgba64_to_p010",
+			"fusion_class": "opaque",
+			"kernel_id": "VideoCvtRgba64ToP010",
+			"source": "src/slang/video/cvt_rgba64_to_p010.slang",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"push_fields": [
+				[
+					"rgba_idx",
+					"uint32"
+				],
+				[
+					"y_idx",
+					"uint32"
+				],
+				[
+					"uv_idx",
+					"uint32"
+				],
+				[
+					"width",
+					"uint32"
+				],
+				[
+					"height",
+					"uint32"
+				],
+				[
+					"coded_width",
+					"uint32"
+				],
+				[
+					"coded_height",
+					"uint32"
+				],
+				[
+					"color_space",
+					"uint32"
+				],
+				[
+					"full_range",
+					"uint32"
+				],
+				[
+					"_pad",
+					"uint32"
+				]
+			]
+		},
+		{
+			"stable_id": 698,
+			"registered": false,
+			"name": "cvt_yuv420_to_rgba8",
+			"fusion_class": "opaque",
+			"kernel_id": "VideoCvtYuv420ToRgba8",
+			"source": "src/slang/video/cvt_yuv420_to_rgba8.slang",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"push_fields": [
+				[
+					"src_idx",
+					"uint32"
+				],
+				[
+					"dst_idx",
+					"uint32"
+				],
+				[
+					"src_width",
+					"uint32"
+				],
+				[
+					"src_height",
+					"uint32"
+				],
+				[
+					"dst_width",
+					"uint32"
+				],
+				[
+					"dst_height",
+					"uint32"
+				],
+				[
+					"uv_offset",
+					"uint32"
+				],
+				[
+					"v_offset",
+					"uint32"
+				],
+				[
+					"uv_layout",
+					"uint32"
+				],
+				[
+					"color_space",
+					"uint32"
+				],
+				[
+					"full_range",
+					"uint32"
+				],
+				[
+					"sample_bits",
+					"uint32"
+				]
+			]
+		},
+		{
+			"stable_id": 567,
+			"registered": false,
+			"name": "cvt_rgba_to_nv12",
+			"fusion_class": "opaque",
+			"kernel_id": "VideoCvtRgbaToNv12",
+			"source": "src/slang/video/cvt_rgba_to_nv12.slang",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"push_fields": [
+				[
+					"rgba_idx",
+					"uint32"
+				],
+				[
+					"y_idx",
+					"uint32"
+				],
+				[
+					"uv_idx",
+					"uint32"
+				],
+				[
+					"width",
+					"uint32"
+				],
+				[
+					"height",
+					"uint32"
+				],
+				[
+					"coded_width",
+					"uint32"
+				],
+				[
+					"coded_height",
+					"uint32"
+				],
+				[
+					"color_space",
+					"uint32"
+				],
+				[
+					"full_range",
+					"uint32"
+				],
+				[
+					"_pad",
+					"uint32"
+				]
+			]
+		},
+		{
+			"stable_id": 568,
+			"name": "to_matrix_i420",
+			"kernel_id": "VideoToMatrixI420",
+			"source": "src/slang/video/to_matrix_i420.slang",
+			"variant": "planar_420_8bit",
+			"dtype": "u8",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"semantic_operation": "to_matrix",
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 3,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"luma_index",
+					"uint32"
+				],
+				[
+					"chroma_u_index",
+					"uint32"
+				],
+				[
+					"chroma_v_index",
+					"uint32"
+				],
+				[
+					"output_index",
+					"uint32"
+				],
+				[
+					"out_width",
+					"uint32"
+				],
+				[
+					"out_height",
+					"uint32"
+				],
+				[
+					"output_base",
+					"uint32"
+				],
+				[
+					"channels_mode",
+					"uint32"
+				],
+				[
+					"layout_mode",
+					"uint32"
+				],
+				[
+					"interp_mode",
+					"uint32"
+				],
+				[
+					"luma_width",
+					"uint32"
+				],
+				[
+					"luma_height",
+					"uint32"
+				],
+				[
+					"chroma_width",
+					"uint32"
+				],
+				[
+					"chroma_height",
+					"uint32"
+				],
+				[
+					"color_mode",
+					"uint32"
+				],
+				[
+					"src_off_x",
+					"float32"
+				],
+				[
+					"src_off_y",
+					"float32"
+				],
+				[
+					"src_scale_x",
+					"float32"
+				],
+				[
+					"src_scale_y",
+					"float32"
+				],
+				[
+					"valid_min_x",
+					"float32"
+				],
+				[
+					"valid_min_y",
+					"float32"
+				],
+				[
+					"valid_max_x",
+					"float32"
+				],
+				[
+					"valid_max_y",
+					"float32"
+				],
+				[
+					"fill_0",
+					"float32"
+				],
+				[
+					"fill_1",
+					"float32"
+				],
+				[
+					"fill_2",
+					"float32"
+				],
+				[
+					"mean_0",
+					"float32"
+				],
+				[
+					"mean_1",
+					"float32"
+				],
+				[
+					"mean_2",
+					"float32"
+				],
+				[
+					"std_0",
+					"float32"
+				],
+				[
+					"std_1",
+					"float32"
+				],
+				[
+					"std_2",
+					"float32"
+				]
+			]
+		},
+		{
+			"stable_id": 570,
+			"name": "resample",
+			"kernel_id": "VideoResample",
+			"source": "src/slang/video/resample.slang",
+			"variant": "plane_u8",
+			"dtype": "u8",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"semantic_operation": "resample",
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 1,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"src_index",
+					"uint32"
+				],
+				[
+					"dst_index",
+					"uint32"
+				],
+				[
+					"src_width",
+					"uint32"
+				],
+				[
+					"src_height",
+					"uint32"
+				],
+				[
+					"src_elem_stride",
+					"uint32"
+				],
+				[
+					"dst_elem_stride",
+					"uint32"
+				],
+				[
+					"src_component",
+					"uint32"
+				],
+				[
+					"dst_component",
+					"uint32"
+				],
+				[
+					"elem_count",
+					"uint32"
+				],
+				[
+					"dst_width",
+					"uint32"
+				],
+				[
+					"dst_height",
+					"uint32"
+				],
+				[
+					"dst_row_stride",
+					"uint32"
+				],
+				[
+					"dst_off_x",
+					"uint32"
+				],
+				[
+					"dst_off_y",
+					"uint32"
+				],
+				[
+					"swap_xy",
+					"uint32"
+				],
+				[
+					"interp_mode",
+					"uint32"
+				],
+				[
+					"fill_value",
+					"uint32"
+				],
+				[
+					"src_off_x",
+					"float32"
+				],
+				[
+					"src_off_y",
+					"float32"
+				],
+				[
+					"src_scale_x",
+					"float32"
+				],
+				[
+					"src_scale_y",
+					"float32"
+				],
+				[
+					"valid_min_x",
+					"float32"
+				],
+				[
+					"valid_min_y",
+					"float32"
+				],
+				[
+					"valid_max_x",
+					"float32"
+				],
+				[
+					"valid_max_y",
+					"float32"
+				]
+			]
+		},
+		{
+			"stable_id": 569,
+			"name": "to_matrix_nv12",
+			"kernel_id": "VideoToMatrixNv12",
+			"source": "src/slang/video/to_matrix_nv12.slang",
+			"variant": "semiplanar_420_8bit",
+			"dtype": "u8",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"semantic_operation": "to_matrix",
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 2,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"luma_index",
+					"uint32"
+				],
+				[
+					"chroma_uv_index",
+					"uint32"
+				],
+				[
+					"output_index",
+					"uint32"
+				],
+				[
+					"out_width",
+					"uint32"
+				],
+				[
+					"out_height",
+					"uint32"
+				],
+				[
+					"output_base",
+					"uint32"
+				],
+				[
+					"channels_mode",
+					"uint32"
+				],
+				[
+					"layout_mode",
+					"uint32"
+				],
+				[
+					"interp_mode",
+					"uint32"
+				],
+				[
+					"luma_width",
+					"uint32"
+				],
+				[
+					"luma_height",
+					"uint32"
+				],
+				[
+					"chroma_width",
+					"uint32"
+				],
+				[
+					"chroma_height",
+					"uint32"
+				],
+				[
+					"color_mode",
+					"uint32"
+				],
+				[
+					"src_off_x",
+					"float32"
+				],
+				[
+					"src_off_y",
+					"float32"
+				],
+				[
+					"src_scale_x",
+					"float32"
+				],
+				[
+					"src_scale_y",
+					"float32"
+				],
+				[
+					"valid_min_x",
+					"float32"
+				],
+				[
+					"valid_min_y",
+					"float32"
+				],
+				[
+					"valid_max_x",
+					"float32"
+				],
+				[
+					"valid_max_y",
+					"float32"
+				],
+				[
+					"fill_0",
+					"float32"
+				],
+				[
+					"fill_1",
+					"float32"
+				],
+				[
+					"fill_2",
+					"float32"
+				],
+				[
+					"mean_0",
+					"float32"
+				],
+				[
+					"mean_1",
+					"float32"
+				],
+				[
+					"mean_2",
+					"float32"
+				],
+				[
+					"std_0",
+					"float32"
+				],
+				[
+					"std_1",
+					"float32"
+				],
+				[
+					"std_2",
+					"float32"
+				]
+			]
+		},
+		{
+			"stable_id": 719,
+			"name": "to_matrix_p010",
+			"kernel_id": "VideoToMatrixP010",
+			"source": "src/slang/video/to_matrix_p010.slang",
+			"variant": "semiplanar_420_10bit",
+			"dtype": "u8",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"semantic_operation": "to_matrix",
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 2,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"luma_index",
+					"uint32"
+				],
+				[
+					"chroma_uv_index",
+					"uint32"
+				],
+				[
+					"output_index",
+					"uint32"
+				],
+				[
+					"out_width",
+					"uint32"
+				],
+				[
+					"out_height",
+					"uint32"
+				],
+				[
+					"output_base",
+					"uint32"
+				],
+				[
+					"channels_mode",
+					"uint32"
+				],
+				[
+					"layout_mode",
+					"uint32"
+				],
+				[
+					"interp_mode",
+					"uint32"
+				],
+				[
+					"luma_width",
+					"uint32"
+				],
+				[
+					"luma_height",
+					"uint32"
+				],
+				[
+					"chroma_width",
+					"uint32"
+				],
+				[
+					"chroma_height",
+					"uint32"
+				],
+				[
+					"color_mode",
+					"uint32"
+				],
+				[
+					"src_off_x",
+					"float32"
+				],
+				[
+					"src_off_y",
+					"float32"
+				],
+				[
+					"src_scale_x",
+					"float32"
+				],
+				[
+					"src_scale_y",
+					"float32"
+				],
+				[
+					"valid_min_x",
+					"float32"
+				],
+				[
+					"valid_min_y",
+					"float32"
+				],
+				[
+					"valid_max_x",
+					"float32"
+				],
+				[
+					"valid_max_y",
+					"float32"
+				],
+				[
+					"fill_0",
+					"float32"
+				],
+				[
+					"fill_1",
+					"float32"
+				],
+				[
+					"fill_2",
+					"float32"
+				],
+				[
+					"mean_0",
+					"float32"
+				],
+				[
+					"mean_1",
+					"float32"
+				],
+				[
+					"mean_2",
+					"float32"
+				],
+				[
+					"std_0",
+					"float32"
+				],
+				[
+					"std_1",
+					"float32"
+				],
+				[
+					"std_2",
+					"float32"
+				]
+			]
+		},
+		{
+			"stable_id": 571,
+			"name": "overlay_rect",
+			"kernel_id": "VideoOverlayRect",
+			"source": "src/slang/video/overlay_rect.slang",
+			"variant": "plane_u8",
+			"dtype": "u8",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"semantic_operation": "overlay",
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 1,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"src_index",
+					"uint32"
+				],
+				[
+					"dst_index",
+					"uint32"
+				],
+				[
+					"plane_width",
+					"uint32"
+				],
+				[
+					"plane_height",
+					"uint32"
+				],
+				[
+					"rect_x",
+					"uint32"
+				],
+				[
+					"rect_y",
+					"uint32"
+				],
+				[
+					"rect_w",
+					"uint32"
+				],
+				[
+					"rect_h",
+					"uint32"
+				],
+				[
+					"elem_stride",
+					"uint32"
+				],
+				[
+					"src_component",
+					"uint32"
+				],
+				[
+					"dst_component",
+					"uint32"
+				],
+				[
+					"fill_value",
+					"uint32"
+				],
+				[
+					"border_width",
+					"uint32"
+				]
+			]
+		},
+		{
+			"stable_id": 572,
+			"name": "blend",
+			"kernel_id": "VideoBlend",
+			"source": "src/slang/video/blend.slang",
+			"variant": "plane_u8",
+			"dtype": "u8",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"semantic_operation": "blend",
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 2,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"back_index",
+					"uint32"
+				],
+				[
+					"front_index",
+					"uint32"
+				],
+				[
+					"dst_index",
+					"uint32"
+				],
+				[
+					"plane_width",
+					"uint32"
+				],
+				[
+					"plane_height",
+					"uint32"
+				],
+				[
+					"elem_stride",
+					"uint32"
+				],
+				[
+					"component",
+					"uint32"
+				],
+				[
+					"mode",
+					"uint32"
+				],
+				[
+					"alpha",
+					"uint32"
+				],
+				[
+					"fill_value",
+					"uint32"
+				],
+				[
+					"mask_width",
+					"uint32"
+				],
+				[
+					"mask_height",
+					"uint32"
+				],
+				[
+					"mask_scale",
+					"uint32"
+				]
+			]
+		},
+		{
+			"stable_id": 573,
+			"name": "range_convert",
+			"kernel_id": "VideoRangeConvert",
+			"source": "src/slang/video/range_convert.slang",
+			"variant": "plane_u8",
+			"dtype": "u8",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"semantic_operation": "range_convert",
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 1,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"src_index",
+					"uint32"
+				],
+				[
+					"dst_index",
+					"uint32"
+				],
+				[
+					"plane_width",
+					"uint32"
+				],
+				[
+					"plane_height",
+					"uint32"
+				],
+				[
+					"elem_stride",
+					"uint32"
+				],
+				[
+					"component",
+					"uint32"
+				],
+				[
+					"component_kind",
+					"uint32"
+				],
+				[
+					"direction",
+					"uint32"
+				]
+			]
+		},
+		{
+			"stable_id": 574,
+			"name": "luma_map",
+			"kernel_id": "VideoLumaMap",
+			"source": "src/slang/video/luma_map.slang",
+			"variant": "plane_u8",
+			"dtype": "u8",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"semantic_operation": "luma_map",
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 1,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"src_index",
+					"uint32"
+				],
+				[
+					"dst_index",
+					"uint32"
+				],
+				[
+					"plane_width",
+					"uint32"
+				],
+				[
+					"plane_height",
+					"uint32"
+				],
+				[
+					"elem_stride",
+					"uint32"
+				],
+				[
+					"component",
+					"uint32"
+				],
+				[
+					"mode",
+					"uint32"
+				],
+				[
+					"threshold",
+					"uint32"
+				],
+				[
+					"low_value",
+					"uint32"
+				],
+				[
+					"high_value",
+					"uint32"
+				]
+			]
+		},
+		{
+			"stable_id": 720,
+			"name": "score_blend",
+			"kernel_id": "VideoScoreBlend",
+			"source": "src/slang/video/score_blend.slang",
+			"variant": "plane_u8",
+			"dtype": "u8",
+			"workgroup_size": [
+				16,
+				16,
+				1
+			],
+			"semantic_operation": "score_blend",
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 2,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"back_index",
+					"uint32"
+				],
+				[
+					"score_index",
+					"uint32"
+				],
+				[
+					"dst_index",
+					"uint32"
+				],
+				[
+					"plane_width",
+					"uint32"
+				],
+				[
+					"plane_height",
+					"uint32"
+				],
+				[
+					"elem_stride",
+					"uint32"
+				],
+				[
+					"component",
+					"uint32"
+				],
+				[
+					"threshold",
+					"float32"
+				],
+				[
+					"fill_value",
+					"uint32"
+				],
+				[
+					"mask_width",
+					"uint32"
+				],
+				[
+					"mask_height",
+					"uint32"
+				],
+				[
+					"mask_scale",
+					"uint32"
+				]
+			]
+		}
+	]
+}

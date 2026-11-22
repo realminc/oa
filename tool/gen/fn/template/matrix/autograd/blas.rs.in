@@ -1,0 +1,11 @@
+// Tape traversal adapters; numerical adjoints live beside forward providers.
+
+// @operation mat_mul_nt
+// @fields left,right,output_id
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+return Ok(false);
+};
+let (left_gradient, right_gradient) = matrix::mat_mul_nt_backward(left, right, &output_gradient)?;
+gradients.accumulate(left.value_id(), left_gradient)?;
+gradients.accumulate(right.value_id(), right_gradient)?;
+Ok(true)

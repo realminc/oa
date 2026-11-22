@@ -1,0 +1,69 @@
+	let operation = contract.name();
+	let (axis, output_shape) = sum_shape(input, dim, operation)?;
+	let output_count = if dim == -1 {
+		1
+	} else {
+		usize::try_from(axis.group_count)
+			.map_err(|_| Error::invalid_argument(format!("{operation} output count exceeds usize")))?
+	};
+	let engine = input.engine_handle();
+	let partial = Matrix::allocate(engine, output_shape.clone(), output_count, DType::F32)?;
+	let output = Matrix::allocate(engine, output_shape, output_count, DType::F32)?;
+	let sum_buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::write(partial.storage()),
+	];
+	let full_push = [PushConstant::U32(axis.dim_size)];
+	let axis_push = [
+		PushConstant::U32(axis.outer_size),
+		PushConstant::U32(axis.dim_size),
+		PushConstant::U32(axis.inner_size),
+	];
+	let (sum_kernel, sum_push, sum_workgroups) = if dim == -1 {
+		(KernelId::MatrixSumF32, full_push.as_slice(), [1_u32, 1, 1])
+	} else {
+		(
+			KernelId::MatrixSumAxisF32,
+			axis_push.as_slice(),
+			[axis.group_count.div_ceil(256), 1, 1],
+		)
+	};
+	let lowering = engine.begin_semantic_lowering()?;
+	lowering.record_physical(ComputeDispatch {
+		kernel: sum_kernel,
+		buffers: &sum_buffers,
+		push_constants: sum_push,
+		workgroups: sum_workgroups,
+		indirect: None,
+	})?;
+	let scale_count = u32::try_from(output_count)
+		.map_err(|_| Error::invalid_argument(format!("{operation} output count exceeds u32")))?;
+	let scale_buffers = [
+		BufferBinding::read(partial.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let scale_push = [
+		PushConstant::U32(scale_count),
+		PushConstant::F32(1.0 / axis.dim_size as f32),
+	];
+	lowering.record_physical(ComputeDispatch {
+		kernel: KernelId::MatrixScaleF32,
+		buffers: &scale_buffers,
+		push_constants: &scale_push,
+		workgroups: KernelId::MatrixScaleF32.linear_workgroups(scale_count),
+		indirect: None,
+	})?;
+	let attributes = [OpAttribute::SignedInteger {
+		name: "dim".into(),
+		value: i64::from(dim),
+	}];
+	let inputs = [input];
+	let outputs = [&output];
+	lowering.commit(SemanticDispatch {
+		contract,
+		inputs: &inputs,
+		outputs: &outputs,
+		attributes: &attributes,
+	})?;
+	autograd::record_mean(input, &output, dim)?;
+	Ok(output)

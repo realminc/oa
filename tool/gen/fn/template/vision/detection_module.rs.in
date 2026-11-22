@@ -1,0 +1,120 @@
+//! Stateless object-detection operations.
+
+// OA donor: source/cpp/lib/oa/vision/fndetection/fnDetection.cpp
+// Adaptation: Rust ownership/ABI and mechanical generation; algorithms preserved.
+
+use crate::{
+	DType, Error, Matrix, OpAttribute, Result,
+	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
+};
+
+{{items}}
+
+fn box_rows(boxes: &Matrix, label: &str) -> Result<u32> {
+	if boxes.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"vision box input {label} must use f32 storage; received {}",
+			boxes.dtype().token()
+		)));
+	}
+	let [rows, columns] = boxes.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"vision box input {label} must have shape [N, 4]; received {:?}",
+			boxes.shape()
+		)));
+	};
+	if *rows == 0 || *columns != 4 {
+		return Err(Error::invalid_argument(format!(
+			"vision box input {label} must have nonempty shape [N, 4]; received {:?}",
+			boxes.shape()
+		)));
+	}
+	u32::try_from(*rows)
+		.map_err(|_| Error::out_of_range(format!("vision box input {label} row count exceeds u32")))
+}
+
+fn vector(matrix: &Matrix, label: &str, length: usize, dtype: DType) -> Result<()> {
+	if matrix.shape() != [length] || matrix.dtype() != dtype {
+		return Err(Error::invalid_argument(format!(
+			"vision input {label} must have shape [{length}] and dtype {}; received {:?} {}",
+			dtype.token(),
+			matrix.shape(),
+			matrix.dtype().token()
+		)));
+	}
+	Ok(())
+}
+
+fn nonempty_vector(matrix: &Matrix, label: &str, dtype: DType) -> Result<u32> {
+	let [length] = matrix.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"vision input {label} must be a nonempty {} vector; received {:?}",
+			dtype.token(),
+			matrix.shape()
+		)));
+	};
+	if *length == 0 || matrix.dtype() != dtype {
+		return Err(Error::invalid_argument(format!(
+			"vision input {label} must be a nonempty {} vector; received {:?} {}",
+			dtype.token(),
+			matrix.shape(),
+			matrix.dtype().token()
+		)));
+	}
+	u32::try_from(*length)
+		.map_err(|_| Error::out_of_range(format!("vision input {label} length exceeds u32")))
+}
+
+fn equal_nonempty(left: &Matrix, right: &Matrix, dtype: DType, operation: &str) -> Result<u32> {
+	if left.shape() != right.shape() || left.dtype() != dtype || right.dtype() != dtype {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires equal-shaped {} inputs; received {:?} {} and {:?} {}",
+			dtype.token(),
+			left.shape(),
+			left.dtype().token(),
+			right.shape(),
+			right.dtype().token()
+		)));
+	}
+	if left.num_elements() == 0 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must be nonempty"
+		)));
+	}
+	validate_same_engine(left, &[right], operation)?;
+	u32::try_from(left.num_elements())
+		.map_err(|_| Error::out_of_range(format!("{operation} element count exceeds u32")))
+}
+
+fn validate_same_engine(reference: &Matrix, others: &[&Matrix], operation: &str) -> Result<()> {
+	if others
+		.iter()
+		.any(|matrix| !reference.engine_handle().same_as(matrix.engine_handle()))
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must belong to the same engine"
+		)));
+	}
+	Ok(())
+}
+
+fn positive_class_count(class_count: i32, operation: &str) -> Result<u32> {
+	u32::try_from(class_count)
+		.ok()
+		.filter(|count| *count != 0)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} class_count must be positive")))
+}
+
+fn allocate(
+	engine: &crate::runtime::EngineHandle,
+	shape: &[u32],
+	element_count: u32,
+	dtype: DType,
+) -> Result<Matrix> {
+	Matrix::allocate(
+		engine,
+		shape.iter().map(|value| *value as usize).collect(),
+		element_count as usize,
+		dtype,
+	)
+}

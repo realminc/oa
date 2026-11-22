@@ -1,0 +1,718 @@
+# OA Rust CI — Build, Test, Release
+#
+# GitHub-hosted runners use Lavapipe for a bounded, no-skip CPU-Vulkan smoke
+# profile, including private ML-KEM public-key/erasure proofs. Physical ML/crypto,
+# Vulkan Video, WSI and performance qualification remain hardware-gated.
+#
+# Triggers:
+#   realminc/oa tag (v*) on main → build + test + release
+#   realminc/oa pull request     → build + test + package, without publication
+#
+# Every job is repository-gated. The private empyrealm/oa staging repository
+# may receive the same refs, but it must not consume hosted or self-hosted
+# runner time.
+
+name: CI
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [dev, main]
+
+env:
+  RUSTUP_TOOLCHAIN: "1.98.1"
+  SLANG_VERSION: "2026.14"
+  SLANG_SHA256: "9445cf0b35332bfda055c9424e307f957ff58befb04c5b45b9f9f29894a41cf8"
+  CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "2"
+
+jobs:
+  build:
+    name: Build & Test
+    if: github.repository == 'realminc/oa'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Tag validation needs the tagged commit's ancestry, not only the tag and
+          # current main tips. A depth-1 fetch makes a valid ancestor look unrelated.
+          fetch-depth: 0
+
+      - name: Verify sanitized public source
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+
+          assert pathlib.Path(".oa-public-snapshot").is_file()
+          private = (
+              ".cursor", ".devin", ".vscode", ".zed", "AGENTS.md",
+              "/".join(("docs", "internal")), "docs/README.md",
+              "/".join(("tool", "release")),
+              "/".join(("test", "py", "tool", "release")),
+          )
+          paths = subprocess.check_output(
+              ["git", "ls-files", "-z"], text=True
+          ).split("\0")
+          leaked = [name for name in paths if any(
+              name == prefix or name.startswith(prefix + "/") for prefix in private
+          )]
+          assert not leaked, leaked
+          print("Public source inventory excludes private engineering files")
+          PY
+
+      - name: Verify release tag and version sources agree
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          CARGO_VERSION="$(python3 -c 'import tomllib; print(tomllib.loads(open("Cargo.toml").read())["package"]["version"])')"
+          PYTHON_VERSION="$(python3 -c 'import tomllib; print(tomllib.loads(open("pyproject.toml").read())["project"]["version"])')"
+          test "$CARGO_VERSION" = "$TAG_VERSION" || {
+            echo "::error::Cargo.toml=$CARGO_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          }
+          test "$PYTHON_VERSION" = "$TAG_VERSION" || {
+            echo "::error::pyproject.toml=$PYTHON_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          }
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup self update
+          rustup toolchain uninstall "$RUSTUP_TOOLCHAIN" || true
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" \
+            --profile minimal --component clippy --component rustfmt
+          rustup override set "$RUSTUP_TOOLCHAIN"
+
+      - name: Validate generated and Python tooling
+        run: |
+          python3 -m unittest discover -s test/py/tool -v
+          python3 -m unittest discover -s test/py -p test_inventory.py -v
+          python3 tool/oa gen fn --check
+          python3 tool/oa gen drift
+          git diff --check
+          git diff --exit-code
+
+      - name: Audit the Rust registry archive inventory
+        run: |
+          cargo package -p oarust --locked --no-verify
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          python3 tool/oa audit crate "target/package/oarust-${version}.crate" "$version"
+
+      - name: Verify tag is on main
+        if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor ${{ github.sha }} origin/main; then
+            echo "::error::Tag must be on main branch"
+            exit 1
+          fi
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang libclang-dev libasound2-dev libpipewire-0.3-dev libvulkan-dev mesa-vulkan-drivers \
+            pkg-config spirv-tools unzip cmake libwayland-dev libxkbcommon-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev
+          # Set AR to use system ar instead of llvm-ar
+          echo "AR=ar" >> $GITHUB_ENV
+
+      - name: Install Slang
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/slang.tar.gz" \
+            "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+          printf '%s  %s\n' "$SLANG_SHA256" "$RUNNER_TEMP/slang.tar.gz" | sha256sum --check --strict
+          sudo mkdir -p /opt/slang
+          sudo tar -xzf "$RUNNER_TEMP/slang.tar.gz" -C /opt/slang
+          test -x /opt/slang/bin/slangc
+          echo /opt/slang/bin >> "$GITHUB_PATH"
+
+      - name: Compile and verify the Rust registry archive
+        run: |
+          cargo package -p oarust --locked
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          python3 tool/oa audit crate "target/package/oarust-${version}.crate" "$version"
+
+      - name: Format, lint, test, and document
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          cargo test --workspace --all-features --locked
+          RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked
+
+      - name: Execute software Vulkan compute and cryptography
+        env:
+          OA_BUILD_PROFILE: compatibility
+        run: |
+          set -euo pipefail
+          # Pin the loader to Lavapipe so this is deliberate software execution.
+          # Mesa's architecture suffix varies between runner distributions.
+          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          test -n "$icd"
+          export VK_DRIVER_FILES="$icd"
+          cargo run -p sdk --all-features --example tu_core_device_canary --locked -- --list-devices
+          cargo test --test runtime --all-features --locked \
+            vk::software_vulkan_index_executes_compute_and_crypto -- --exact --ignored --nocapture
+          OA_TEST_DEVICE_INDEX=0 cargo test --lib --all-features --locked \
+            runtime::engine::secret_tests::abandoned_secret_is_quarantined_instead_of_recycled \
+            -- --exact --ignored --nocapture
+          OA_TEST_DEVICE_INDEX=0 cargo test --test crypto --all-features --locked \
+            crypto::batch_shake_matches_cpu_across_rate_boundaries -- --exact --ignored --nocapture
+          OA_TEST_DEVICE_INDEX=0 cargo test --test crypto --all-features --locked \
+            crypto::batch_hash_chain_replays_and_rebinds_without_host_intermediates -- --exact --ignored --nocapture
+          # Correctness on the explicit software device; no driver-JIT performance claim.
+          OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
+            cargo test --test crypto --all-features --locked \
+            hash_batch:: -- --ignored --test-threads=1 --nocapture
+          OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
+            cargo test --test crypto --all-features --locked \
+            merkle_proofs:: -- --ignored --test-threads=1 --nocapture
+          OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
+            cargo test --test crypto --all-features --locked \
+            bigint:: -- --ignored --test-threads=1 --nocapture
+          OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
+            cargo test --test crypto --all-features --locked \
+            bigint_modular:: -- --ignored --test-threads=1 --nocapture
+          OA_TEST_DEVICE_INDEX=0 LP_NUM_THREADS=2 GALLIVM_PERF=nopt \
+            cargo test --test crypto --all-features --locked \
+            bigint_breadth:: -- --ignored --test-threads=1 --nocapture
+          OA_TEST_DEVICE_INDEX=0 cargo test --test crypto --all-features --locked \
+            ml_dsa_ -- --ignored --test-threads=1 --nocapture
+          # The bounded secret ML-DSA provider is not admitted by this
+          # software device's shared-memory limit. Select the qualified ML-KEM
+          # pack before execution; never turn MissingCapability into success.
+          OA_TEST_DEVICE_INDEX=0 cargo test --lib --all-features --locked \
+            -- --include-ignored --test-threads=1 --nocapture \
+            runtime::engine::secret_tests::secret_entropy \
+            runtime::engine::secret_tests::secret_erasure \
+            runtime::engine::secret_tests::secret_storage \
+            runtime::engine::secret_tests::secret_staging \
+            runtime::engine::secret_tests::secret_descriptor \
+            runtime::engine::secret_tests::secret_mlkem \
+            runtime::engine::secret_tests::dropped_erasure \
+            runtime::engine::secret_tests::unavailable_retirement
+          echo 'Software Vulkan: secret storage and ML-KEM pack qualified; bounded ML-DSA provider not admitted by this software device (physical qualification required).' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Package Rust API documentation
+        run: |
+          mkdir -p dist
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          tar -czf "dist/oa-${version}-rust-api.tar.gz" -C target doc
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: oa-crate
+          retention-days: 7
+          if-no-files-found: error
+          path: target/package/oarust-*.crate
+
+      - name: Release debug build storage before SDK packaging
+        if: github.repository == 'realminc/oa'
+        run: cargo clean --profile dev
+
+      # Verify every artifact on the public candidate before creating a tag.
+      - name: Build and stage SDK programs
+        if: github.repository == 'realminc/oa'
+        run: |
+          # The default stager copies both binaries and examples.
+          cargo build --workspace --release --bins --examples --locked
+          python3 tool/oa stage --clean --profile release
+          python3 tool/oa stage --profile release
+          test -n "$(find bin/release/sdk -type f -perm -111 -print -quit)"
+
+      - name: Package source, SDK programs, and build evidence
+        if: github.repository == 'realminc/oa'
+        run: |
+          set -euo pipefail
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          epoch="$(git show -s --format=%ct HEAD)"
+          source_name="oa-${version}-source"
+          sdk_name="oa-sdk-${version}-linux-x86_64"
+          mkdir -p dist "stage/$source_name" "stage/$sdk_name"
+
+          git archive --format=tar HEAD | tar -xf - -C "stage/$source_name"
+          cp Cargo.lock "stage/$source_name/Cargo.lock"
+          cp -a bin/release/sdk "stage/$sdk_name/sdk"
+          install -Dm755 bin/release/oa "stage/$sdk_name/bin/oa"
+          cp README.md LICENSE NOTICE.md "stage/$sdk_name/"
+
+          tar --sort=name --mtime="@${epoch}" --owner=0 --group=0 --numeric-owner \
+            -czf "dist/${source_name}.tar.gz" -C stage "$source_name"
+          tar --sort=name --mtime="@${epoch}" --owner=0 --group=0 --numeric-owner \
+            -czf "dist/${sdk_name}.tar.gz" -C stage "$sdk_name"
+
+          cargo tree --workspace --all-features --locked --prefix none \
+            > "dist/oa-${version}-dependencies.txt"
+          {
+            echo "OA v${version}"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "source_date_epoch=${epoch}"
+            rustc -Vv
+            cargo -V
+            clang --version | head -n 1
+            slangc -version
+            spirv-val --version
+          } > "dist/oa-${version}-build-info.txt"
+
+      - name: Build SDK distro packages
+        if: github.repository == 'realminc/oa'
+        run: |
+          set -euo pipefail
+          VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          sudo apt-get install -y --no-install-recommends ruby ruby-dev build-essential rpm zstd libarchive-tools
+          sudo gem install --no-document fpm
+
+          # Rust has no stable native ABI. Package the runnable SDK programs under
+          # their truthful name; do not publish the internal Rust library as a
+          # system runtime .so.
+          mkdir -p stage/oa-sdk-distro/usr
+          cp -a bin/release/sdk/* stage/oa-sdk-distro/usr/
+          install -Dm755 bin/release/oa stage/oa-sdk-distro/usr/bin/oa
+          mkdir -p stage/oa-sdk-distro/usr/share/doc/oa-sdk
+          cp README.md LICENSE NOTICE.md stage/oa-sdk-distro/usr/share/doc/oa-sdk/
+
+          MAINT="Empyrealm <realminc.depravity737@passinbox.com>"
+          URL="https://github.com/realminc/oa"; LIC="BUSL-1.1"
+          pkg() {  # pkg <target> <name> <root> <desc> <dep...>
+            local tgt="$1" name="$2" root="$3" desc="$4"; shift 4
+            local deps=(); local d; for d in "$@"; do deps+=(--depends "$d"); done
+            fpm -s dir -t "$tgt" -n "$name" -v "$VERSION" -a x86_64 --vendor "Realm" \
+              --license "$LIC" --maintainer "$MAINT" --url "$URL" --description "$desc" \
+              "${deps[@]}" -C "$root" -p dist/ usr
+          }
+          # The Vulkan loader dependency name differs per distro.
+          pkg deb    oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" libvulkan1 libasound2t64 libpipewire-0.3-0t64 libstdc++6
+          pkg rpm    oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" vulkan-loader alsa-lib pipewire-libs libstdc++
+          pkg pacman oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" vulkan-icd-loader alsa-lib pipewire gcc-libs
+
+          ( cd dist && sha256sum *.tar.gz *.deb *.rpm *.pkg.tar.zst > SHA256SUMS.txt )
+          echo "### 📦 Distro packages" >> "$GITHUB_STEP_SUMMARY"
+          ls -lh dist/*.deb dist/*.rpm dist/*.pkg.tar.zst | awk '{print "- " $NF " (" $5 ")"}' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Rust release assets
+        if: github.repository == 'realminc/oa'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: oa-dist
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pkg.tar.zst
+            dist/*.txt
+
+  wheel:
+    name: Build and test portable Python wheel
+    if: github.repository == 'realminc/oa' && (github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify release identity
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          CARGO_VERSION="$(python3 -c 'import tomllib; print(tomllib.loads(open("Cargo.toml").read())["package"]["version"])')"
+          PYTHON_VERSION="$(python3 -c 'import tomllib; print(tomllib.loads(open("pyproject.toml").read())["project"]["version"])')"
+          test "$CARGO_VERSION" = "$TAG_VERSION" || {
+            echo "::error::Cargo.toml=$CARGO_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          }
+          test "$PYTHON_VERSION" = "$TAG_VERSION" || {
+            echo "::error::pyproject.toml=$PYTHON_VERSION does not match tag $TAG_VERSION"
+            exit 1
+          }
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang libclang-dev libasound2-dev libpipewire-0.3-dev libvulkan-dev mesa-vulkan-drivers \
+            pkg-config spirv-tools cmake libwayland-dev libxkbcommon-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev
+          # Set AR to use system ar instead of llvm-ar
+          echo "AR=ar" >> $GITHUB_ENV
+          curl -fsSL -o "$RUNNER_TEMP/slang.tar.gz" \
+            "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz"
+          printf '%s  %s\n' "$SLANG_SHA256" "$RUNNER_TEMP/slang.tar.gz" | sha256sum --check --strict
+          sudo mkdir -p /opt/slang
+          sudo tar -xzf "$RUNNER_TEMP/slang.tar.gz" -C /opt/slang
+          echo /opt/slang/bin >> "$GITHUB_PATH"
+
+      - name: Install pinned Rust and Python build tools
+        run: |
+          rustup self update
+          rustup toolchain uninstall "$RUSTUP_TOOLCHAIN" || true
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt
+          rustup override set "$RUSTUP_TOOLCHAIN"
+          python -m pip install --upgrade pip
+          python -m pip install maturin patchelf ziglang
+          python-zig version
+
+      - name: Build portable ABI3 wheel
+        run: |
+          # Zig's cross-CMake configuration hides native desktop libraries.
+          # SDL uses native Clang; Zig performs the final link and maturin
+          # audits the resulting ELF symbol versions for manylinux_2_38.
+          cat > "$RUNNER_TEMP/oa-wheel-native.cmake" <<'CMAKE'
+          set(CMAKE_C_COMPILER clang)
+          set(CMAKE_CXX_COMPILER clang++)
+          set(CMAKE_AR ar)
+          set(CMAKE_RANLIB ranlib)
+          CMAKE
+          CMAKE_TOOLCHAIN_FILE="$RUNNER_TEMP/oa-wheel-native.cmake" \
+            ZIG_COMMAND=python-zig python -m maturin build \
+              --release --zig --locked --compatibility manylinux_2_38
+
+      - name: Test installed wheel package integrity
+        run: |
+          python -m venv "$RUNNER_TEMP/oa-wheel-smoke"
+          "$RUNNER_TEMP/oa-wheel-smoke/bin/pip" install target/wheels/oapython-*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/oa-wheel-smoke/bin/python" - <<'PY'
+          import importlib.metadata
+          import pathlib
+          import oa
+          import oa.audio
+          import oa.core
+          import oa.crypto
+          import oa.image
+          import oa.matrix
+          import oa.ml
+          import oa.plot
+          import oa.runtime
+          import oa.video
+          import oa.viewer
+          import oa.vision
+
+          assert importlib.metadata.version("oapython") == oa.__version__
+          assert callable(oa.Engine)
+          assert callable(oa.matrix.add)
+          assert oa.audio.Audio is oa.Audio
+          assert oa.image.Image is oa.Image
+          assert pathlib.Path(oa.__file__).is_file()
+          PY
+          package_root="$("$RUNNER_TEMP/oa-wheel-smoke/bin/python" -c \
+            'import pathlib, oa; print(pathlib.Path(oa.__file__).parent)')"
+          "$RUNNER_TEMP/oa-wheel-smoke/bin/python" -m compileall -q "$package_root"
+          unzip -l "$GITHUB_WORKSPACE"/target/wheels/oapython-*.whl > wheel-files.txt
+          grep -q 'oa/_native.abi3.so' wheel-files.txt
+          grep -q 'oa/_native.pyi' wheel-files.txt
+          grep -q 'oa/py.typed' wheel-files.txt
+          grep -q 'oa/ml/matrix.py' wheel-files.txt
+          grep -q 'licenses/NOTICE.md' wheel-files.txt
+          grep -q 'licenses/LICENSE' wheel-files.txt
+          if grep -q '__pycache__\|\.pyc' wheel-files.txt; then
+            echo "::error::wheel contains Python cache files"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: oa-wheel
+          retention-days: 7
+          if-no-files-found: error
+          path: target/wheels/oapython-*.whl
+
+  pypi:
+    name: Publish to PyPI (oapython preview)
+    runs-on: ubuntu-24.04
+    needs: [build, wheel]
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: oa-wheel
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+        with:
+          skip-existing: true
+
+  crates:
+    name: Publish to crates.io (oarust preview)
+    runs-on: ubuntu-24.04
+    needs: [build, wheel]
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: oa-crate
+          path: verified-crate
+      - name: Verify exact archive and publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CARGO_REGISTRY_TOKEN" || { echo "::error::Missing CRATES_IO_TOKEN"; exit 1; }
+          version="${GITHUB_REF_NAME#v}"
+          cargo package -p oarust --locked --no-verify
+          cmp "verified-crate/oarust-${version}.crate" "target/package/oarust-${version}.crate"
+          python3 tool/oa audit crate "target/package/oarust-${version}.crate" "$version"
+          # A retry may find a version published before a later job failed.
+          # Admit that version only if its registry checksum matches this archive.
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import urllib.error
+          import urllib.request
+
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          request = urllib.request.Request(
+              f"https://crates.io/api/v1/crates/oarust/{version}",
+              headers={"User-Agent": "OA-release-publication"},
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  existing = json.load(response)["version"]
+          except urllib.error.HTTPError as error:
+              if error.code != 404:
+                  raise
+              subprocess.run(["cargo", "publish", "-p", "oarust", "--locked", "--no-verify"], check=True)
+          else:
+              archive = pathlib.Path(f"target/package/oarust-{version}.crate")
+              assert not existing["yanked"]
+              assert hashlib.sha256(archive.read_bytes()).hexdigest() == existing["checksum"]
+              print("Existing crates.io version matches the verified archive")
+          PY
+
+  release:
+    name: Release
+    runs-on: ubuntu-24.04
+    needs: [build, wheel, pypi, crates]
+    if: github.repository == 'realminc/oa' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Keep the full ancestry so a tag remains verifiable after main advances.
+          fetch-depth: 0
+
+      - name: Verify tag is on main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor ${{ github.sha }} origin/main; then
+            echo "::error::Release tags must be on main branch"
+            exit 1
+          fi
+
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: oa-dist
+          path: dist
+
+      - name: Download wheel artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: oa-wheel
+          path: dist
+
+      - name: Download verified Rust crate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: oa-crate
+          path: verified-crate
+
+      - name: Verify the crate published by crates.io
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import time
+          import urllib.request
+
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          for attempt in range(12):
+              try:
+                  request = urllib.request.Request(
+                      f"https://crates.io/api/v1/crates/oarust/{version}",
+                      headers={"User-Agent": "OA-release-verification"},
+                  )
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      metadata = json.load(response)["version"]
+                  break
+              except Exception:
+                  if attempt == 11:
+                      raise
+                  time.sleep(5)
+          assert not metadata["yanked"]
+          request = urllib.request.Request(
+              f"https://crates.io/api/v1/crates/oarust/{version}/download",
+              headers={"User-Agent": "OA-release-verification"},
+          )
+          with urllib.request.urlopen(request, timeout=60) as response:
+              data = response.read()
+          assert hashlib.sha256(data).hexdigest() == metadata["checksum"]
+          name = f"oarust-{version}.crate"
+          assert data == pathlib.Path("verified-crate", name).read_bytes()
+          pathlib.Path("dist", name).write_bytes(data)
+          PY
+
+      - name: Use the exact wheel published by PyPI
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import time
+          import urllib.request
+
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          metadata = None
+          for attempt in range(12):
+              try:
+                  with urllib.request.urlopen(
+                      f"https://pypi.org/pypi/oapython/{version}/json?attempt={attempt}"
+                  ) as response:
+                      metadata = json.load(response)
+                  break
+              except Exception:
+                  if attempt == 11:
+                      raise
+                  time.sleep(5)
+          candidates = [
+              item for item in metadata["urls"]
+              if item["packagetype"] == "bdist_wheel"
+              and "cp310-abi3-manylinux" in item["filename"]
+              and not item["yanked"]
+          ]
+          assert len(candidates) == 1, [item["filename"] for item in candidates]
+          item = candidates[0]
+          target = pathlib.Path("dist", item["filename"])
+          staged = list(pathlib.Path("dist").glob("*.whl"))
+          assert staged == [target], [path.name for path in staged]
+          assert hashlib.sha256(target.read_bytes()).hexdigest() == item["digests"]["sha256"]
+          urllib.request.urlretrieve(item["url"], target)
+          actual = hashlib.sha256(target.read_bytes()).hexdigest()
+          assert actual == item["digests"]["sha256"], (actual, item["digests"]["sha256"])
+          PY
+
+      - name: Create complete checksum manifest
+        run: |
+          set -euo pipefail
+          (
+            cd dist
+            find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\n' \
+              | LC_ALL=C sort \
+              | while IFS= read -r asset; do sha256sum "$asset"; done \
+              > SHA256SUMS.txt
+            sha256sum -c SHA256SUMS.txt
+          )
+
+      - name: Create release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          body: |
+            ## OA ${{ github.ref_name }} — Rust development preview
+
+            This prerelease publishes the exact tagged OA source together with the
+            verified `oarust` crate, Rust API documentation and SDK binaries/packages.
+            Both the crates.io package and the `oapython` PyPI wheel are published
+            before this release is created; their downloaded bytes are verified.
+
+            ⚠️ **Preview, not a stable API.** Read the README's honest preview
+            boundaries and the changelog for this tag before depending on
+            experimental hardware paths. See [release notes](https://github.com/realminc/oa/blob/main/RELEASE_NOTES.md).
+
+            ### Linux SDK binaries
+            Download the matching SDK archive or Debian/RPM/Arch package below.
+            These packages contain the Rust tutorials, examples and applications.
+
+            ### Rust
+            ```bash
+            cargo add oarust
+            ```
+            The library namespace is `oa`. See the README for native build prerequisites.
+
+            ### Python 3.10+
+            ```bash
+            python -m pip install oapython
+            ```
+
+            ### Verify automated package assets
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```
+          files: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pkg.tar.zst
+            dist/*.crate
+            dist/*.whl
+            dist/*.txt
+
+      - name: Publish and anonymously verify complete checksum manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets public-assets
+          gh release download "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir release-assets
+          (
+            cd release-assets
+            rm -f SHA256SUMS.txt
+            manifest_tmp="$(mktemp)"
+            find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\n' \
+              | LC_ALL=C sort \
+              | while IFS= read -r asset; do sha256sum "$asset"; done \
+              > "$manifest_tmp"
+            mv "$manifest_tmp" SHA256SUMS.txt
+            gh release upload "$GITHUB_REF_NAME" SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          )
+
+          release_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          curl -fsSL --retry 5 --retry-delay 2 \
+            -H 'Cache-Control: no-cache' \
+            "${release_url}/SHA256SUMS.txt?run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -o public-assets/SHA256SUMS.txt
+          cmp release-assets/SHA256SUMS.txt public-assets/SHA256SUMS.txt
+          (
+            cd public-assets
+            while read -r digest asset; do
+              test -n "$digest"
+              test -n "$asset"
+              curl -fsSL --retry 5 --retry-delay 2 \
+                "${release_url}/${asset}" \
+                -o "$asset"
+            done < SHA256SUMS.txt
+            sha256sum -c SHA256SUMS.txt
+          )

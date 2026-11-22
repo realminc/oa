@@ -1,0 +1,19 @@
+/// Immutable device snapshot of a public modulus and its exact Barrett reciprocal.
+///
+/// Constructed by `setup_barrett`; the encoded device rows cannot be supplied or
+/// modified by callers. Preparation records device work and does not read the
+/// modulus on the host. Each row keeps its own significant width and reciprocal.
+#[derive(Clone)]
+pub struct BarrettParameters {
+	encoded: Matrix,
+	status: Matrix,
+	words: usize,
+}
+
+impl BarrettParameters {
+	/// Declared modulus width in 32-bit words.
+	pub const fn words(&self) -> usize { self.words }
+
+	/// Device U32 row flags: one for nonzero moduli, zero for invalid moduli.
+	pub const fn status(&self) -> &Matrix { &self.status }
+}

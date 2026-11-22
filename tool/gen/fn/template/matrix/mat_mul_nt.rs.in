@@ -1,0 +1,92 @@
+	let operation = contract.name();
+	let [m, k] = left.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires rank-two inputs; left is {:?}",
+			left.shape()
+		)));
+	};
+	let [n, right_k] = right.shape() else {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires rank-two inputs; right is {:?}",
+			right.shape()
+		)));
+	};
+	if k != right_k {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires equal K extents; left is {:?}, right is {:?}",
+			left.shape(),
+			right.shape()
+		)));
+	}
+	if left.dtype() != DType::F32 || right.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires two F32 matrices; left is {}, right is {}",
+			left.dtype().token(),
+			right.dtype().token()
+		)));
+	}
+	let engine = left.engine_handle();
+	if !engine.same_as(right.engine_handle()) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} inputs must belong to the same engine"
+		)));
+	}
+
+	let output_count = m
+		.checked_mul(*n)
+		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
+	let m = u32::try_from(*m)
+		.map_err(|_| Error::invalid_argument(format!("{operation} M extent exceeds u32")))?;
+	let n = u32::try_from(*n)
+		.map_err(|_| Error::invalid_argument(format!("{operation} N extent exceeds u32")))?;
+	let k = u32::try_from(*k)
+		.map_err(|_| Error::invalid_argument(format!("{operation} K extent exceeds u32")))?;
+	for (label, count) in [
+		("left", left.element_count()),
+		("right", right.element_count()),
+		("output", output_count),
+	] {
+		u32::try_from(count).map_err(|_| {
+			Error::invalid_argument(format!("{operation} {label} element count exceeds u32"))
+		})?;
+	}
+
+	let launch = if m != 0 && n != 0 && k != 0 {
+		let plan = crate::runtime::plan_mat_mul_nt_lowered(engine, m, n, k)?;
+		Some((plan, crate::runtime::lower_mat_mul_nt(&plan, m, n, k)?))
+	} else {
+		None
+	};
+	let output = Matrix::allocate(
+		engine,
+		vec![m as usize, n as usize],
+		output_count,
+		DType::F32,
+	)?;
+	if let Some((plan, launch)) = launch {
+		if !crate::runtime::record_mat_mul_nt_f16(
+			engine, left, right, &output, &plan, [m, n, k],
+		)? {
+			let buffers = launch.bindings(&[left.storage(), right.storage(), output.storage()])?;
+			let push_constants = &launch.push_constants[..launch.push_count];
+			let inputs = [left, right];
+			let outputs = [&output];
+			engine.record_semantic(
+				ComputeDispatch {
+					kernel: launch.kernel_id,
+					buffers: &buffers,
+					push_constants,
+					workgroups: launch.grid,
+					indirect: None,
+				},
+				SemanticDispatch {
+					contract,
+					inputs: &inputs,
+					outputs: &outputs,
+					attributes: &[],
+				},
+			)?;
+		}
+		autograd::record_mat_mul_nt(left, right, &output)?;
+	}
+	Ok(output)

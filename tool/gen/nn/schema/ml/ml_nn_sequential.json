@@ -1,0 +1,22 @@
+{
+	"version": 1,
+	"family": "sequential",
+	"imports": [
+		"use std::rc::Rc;",
+		"use crate::{Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Sequential",
+			"doc": "Apply registered child modules in insertion order.",
+			"template": "sequential",
+			"values": {
+				"child_prefix": "layer"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/sequential/sequential.cpp",
+			"adaptation": "Preserved ordered Rc-owned children, layer_N names, checked registration and recursive mode propagation through the existing ModuleRegistry"
+		}
+	]
+}
