@@ -171,6 +171,7 @@ impl GradNode {
 				}
 			}
 			GradNode::LinearAttention(_)
+			| GradNode::Audio(_)
 			| GradNode::Matrix(_)
 			| GradNode::Operation(_)
 			| GradNode::FlowLinearState { .. }

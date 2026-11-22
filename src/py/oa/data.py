@@ -3,7 +3,7 @@
 from ._native import (
 	DataFrame,
 	DataFrameView,
-	DsOhlcv,
+	OhlcvDataset,
 	OhlcvWindows,
 	UnixTimeUnit,
 	shuffle,
@@ -12,7 +12,7 @@ from ._native import (
 __all__ = [
 	"DataFrame",
 	"DataFrameView",
-	"DsOhlcv",
+	"OhlcvDataset",
 	"OhlcvWindows",
 	"UnixTimeUnit",
 	"shuffle",

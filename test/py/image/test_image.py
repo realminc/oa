@@ -302,5 +302,60 @@ class ImageQueryTest(unittest.TestCase):
 			oa.image.can_decode("xyz_unknown_codec")
 
 
+
+class ImageAugmentationTest(unittest.TestCase):
+	@classmethod
+	def setUpClass(cls) -> None:
+		cls.engine = oa.Engine()
+		cls.image = _make_gray_image(cls.engine, width=8, height=8)
+
+	def test_noise_like_deterministic_and_bounded(self) -> None:
+		first = oa.image.noise_like(self.image, "gaussian", 0.1, 42)
+		repeat = oa.image.noise_like(self.image, "gaussian", 0.1, 42)
+		self.assertEqual(first.as_matrix().read_f32(), repeat.as_matrix().read_f32())
+		other = oa.image.noise_like(self.image, "gaussian", 0.1, 43)
+		self.assertNotEqual(first.as_matrix().read_f32(), other.as_matrix().read_f32())
+		uniform = oa.image.noise_like(self.image, "uniform", 0.5, 42)
+		assert all(abs(v) <= 0.5 + 1e-6 for v in uniform.as_matrix().read_f32())
+		with self.assertRaises(Exception):
+			oa.image.noise_like(self.image, "gaussian", -1.0, 42)
+
+	def test_random_flip_deterministic_and_forced(self) -> None:
+		a = oa.image.random_flip(self.image, 1.0, 0.0, 7)
+		b = oa.image.random_flip(self.image, 1.0, 0.0, 7)
+		self.assertEqual(a.as_matrix().read_f32(), b.as_matrix().read_f32())
+		source = self.image.as_matrix().read_f32()
+		flipped = a.as_matrix().read_f32()
+		for row in range(8):
+			for col in range(8):
+				self.assertEqual(flipped[row * 8 + col], source[row * 8 + (7 - col)])
+		with self.assertRaises(Exception):
+			oa.image.random_flip(self.image, 1.5, 0.0, 7)
+
+	def test_random_crop_is_valid_window(self) -> None:
+		a = oa.image.random_crop(self.image, 4, 4, 9)
+		b = oa.image.random_crop(self.image, 4, 4, 9)
+		self.assertEqual(a.as_matrix().read_f32(), b.as_matrix().read_f32())
+		self.assertEqual(a.as_matrix().shape, [1, 1, 4, 4])
+		source = self.image.as_matrix().read_f32()
+		cropped = a.as_matrix().read_f32()
+		valid = any(
+			all(cropped[i] == source[(y + i // 4) * 8 + (x + i % 4)] for i in range(16))
+			for y in range(5) for x in range(5)
+		)
+		assert valid
+		with self.assertRaises(Exception):
+			oa.image.random_crop(self.image, 0, 4, 9)
+		with self.assertRaises(Exception):
+			oa.image.random_crop(self.image, 9, 4, 9)
+
+	def test_random_rotate_is_pixel_permutation(self) -> None:
+		a = oa.image.random_rotate(self.image, 5)
+		b = oa.image.random_rotate(self.image, 5)
+		self.assertEqual(a.as_matrix().read_f32(), b.as_matrix().read_f32())
+		assert sorted(a.as_matrix().read_f32()) == sorted(self.image.as_matrix().read_f32())
+
+
 if __name__ == "__main__":
+
 	unittest.main()

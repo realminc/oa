@@ -256,20 +256,25 @@ impl PythonOhlcvWindows {
 }
 
 /// Device adapter retaining the existing Engine, never a second runtime owner.
-#[pyclass(name = "DsOhlcv", unsendable)]
-pub(crate) struct PythonDsOhlcv {
+#[pyclass(name = "OhlcvDataset", unsendable)]
+pub(crate) struct PythonOhlcvDataset {
 	engine: Py<PythonEngine>,
 	windows: PythonOhlcvWindows,
 }
 
 #[pymethods]
-impl PythonDsOhlcv {
+impl PythonOhlcvDataset {
 	#[new]
-	fn new(engine: Py<PythonEngine>, windows: &PythonOhlcvWindows) -> Self {
-		Self {
-			engine,
+	#[pyo3(signature = (windows, engine=None))]
+	fn new(
+		py: Python<'_>,
+		windows: &PythonOhlcvWindows,
+		engine: Option<Py<PythonEngine>>,
+	) -> PyResult<Self> {
+		Ok(Self {
+			engine: PythonEngine::resolve_owned(py, engine)?,
 			windows: windows.clone(),
-		}
+		})
 	}
 
 	fn __len__(&self) -> usize {
@@ -279,7 +284,7 @@ impl PythonDsOhlcv {
 	fn get_item(&self, py: Python<'_>, index: i64) -> PyResult<PythonMatrix> {
 		let engine = self.engine.borrow(py);
 		let windows = self.windows.native_window(index)?;
-		oa::DsOhlcv::new(&engine.inner, windows)
+		oa::OhlcvDataset::new(&engine.inner, windows)
 			.get_item(0)
 			.map(PythonMatrix::wrap)
 			.map_err(python_error)
@@ -292,7 +297,7 @@ impl PythonDsOhlcv {
 	) -> PyResult<(PythonMatrix, Option<PythonMatrix>)> {
 		let engine = self.engine.borrow(py);
 		let windows = self.windows.native_window(index)?;
-		let sample = oa::DsOhlcv::new(&engine.inner, windows)
+		let sample = oa::OhlcvDataset::new(&engine.inner, windows)
 			.get_sample(0)
 			.map_err(python_error)?;
 		Ok((
@@ -317,6 +322,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	module.add_class::<PythonDataFrameView>()?;
 	module.add_class::<PythonUnixTimeUnit>()?;
 	module.add_class::<PythonOhlcvWindows>()?;
-	module.add_class::<PythonDsOhlcv>()?;
+	module.add_class::<PythonOhlcvDataset>()?;
 	Ok(())
 }

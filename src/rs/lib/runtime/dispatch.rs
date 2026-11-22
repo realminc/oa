@@ -58,6 +58,12 @@ impl SemanticDispatch<'_> {
 	}
 }
 
+/// Semantic input whose public value kind can be Audio or its spectral Matrix form.
+pub(crate) enum AudioSemanticInput<'a> {
+	Audio(&'a Audio),
+	Matrix(&'a Matrix),
+}
+
 /// Semantic output whose public value kind can differ from its Audio input.
 pub(crate) enum AudioSemanticOutput<'a> {
 	Audio(&'a Audio),
@@ -67,7 +73,7 @@ pub(crate) enum AudioSemanticOutput<'a> {
 /// Borrowed Audio-valued semantic operation for one or more executable nodes.
 pub(crate) struct AudioSemanticDispatch<'a> {
 	pub(crate) contract: OperationContract,
-	pub(crate) inputs: &'a [&'a Audio],
+	pub(crate) inputs: &'a [AudioSemanticInput<'a>],
 	pub(crate) outputs: &'a [AudioSemanticOutput<'a>],
 	pub(crate) attributes: &'a [OpAttribute],
 }

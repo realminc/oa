@@ -643,3 +643,420 @@ fn generated_dsp_config_defaults_preserve_donor_contracts() {
 	assert_eq!(mfcc.num_coeffs, 13);
 	assert_eq!(mfcc.mel, mel);
 }
+
+test_vk!(stft_complex_matches_magnitude_spectrum, engine, {
+	use oa::audio::{StftConfig, stft, stft_complex};
+	let samples = (0..512)
+		.map(|index| {
+			let phase = index as f32;
+			(0.4 * (std::f32::consts::TAU * phase / 16.0).sin())
+				+ (0.2 * (std::f32::consts::TAU * phase / 7.0).cos())
+		})
+		.collect::<Vec<_>>();
+	let input = Audio::new_from_planar_f32(&engine, &samples, 1, 48_000, AudioChannelLayout::Mono)?;
+	let config = StftConfig {
+		fft_size: 64,
+		hop_size: 16,
+		win_size: 0,
+		center: true,
+		..StftConfig::default()
+	};
+	let complex = stft_complex(&input, config)?;
+	assert_eq!(complex.shape(), [1, 33, 33, 2]);
+	let magnitude = stft(&input, config)?;
+	assert_eq!(magnitude.shape(), [1, 33, 33]);
+	let complex_values = complex.read_f32()?;
+	let magnitude_values = magnitude.read_f32()?;
+	for (bin, expected) in magnitude_values.iter().enumerate() {
+		let real = complex_values[bin * 2];
+		let imaginary = complex_values[bin * 2 + 1];
+		let actual = (real * real + imaginary * imaginary).sqrt();
+		assert!(
+			(actual - expected).abs() < 1e-5,
+			"bin {bin}: complex magnitude {actual} != stft {expected}"
+		);
+	}
+	Ok(())
+});
+
+test_vk!(istft_roundtrip_reconstructs_audio, engine, {
+	use oa::audio::{IstftConfig, StftConfig, StftWindow, istft, stft_complex};
+	let sample_count = 1_024usize;
+	let samples = (0..sample_count)
+		.map(|index| {
+			let phase = index as f32;
+			(0.5 * (std::f32::consts::TAU * phase / 32.0).sin())
+				+ (0.3 * (std::f32::consts::TAU * phase / 11.0).cos())
+				+ 0.1 * (phase * 0.37).sin()
+		})
+		.collect::<Vec<_>>();
+	let input = Audio::new_from_planar_f32(&engine, &samples, 1, 48_000, AudioChannelLayout::Mono)?;
+	for window in [StftWindow::Hann, StftWindow::Rectangular] {
+		let stft_config = StftConfig {
+			fft_size: 256,
+			hop_size: 64,
+			win_size: 0,
+			window,
+			center: true,
+		};
+		let complex = stft_complex(&input, stft_config)?;
+		let output = istft(
+			&complex,
+			IstftConfig {
+				fft_size: 256,
+				hop_size: 64,
+				win_size: 0,
+				window,
+				center: true,
+				sample_rate: 48_000,
+			},
+		)?;
+		assert_eq!(output.channels(), 1);
+		assert_eq!(output.samples(), sample_count);
+		assert_eq!(output.sample_rate(), 48_000);
+		let reconstructed = output.as_matrix().read_f32()?;
+		for (index, (actual, expected)) in reconstructed.iter().zip(&samples).enumerate() {
+			assert!(
+				(actual - expected).abs() < 1e-4,
+				"sample {index}: reconstructed {actual} != {expected}"
+			);
+		}
+	}
+	Ok(())
+});
+
+test_vk!(istft_rejects_invalid_inputs, engine, {
+	use oa::audio::{IstftConfig, istft};
+	let matrix = oa::Matrix::new_from_f32_on(&engine, [1, 4, 9, 2], &[0.0; 72])?;
+	let config = IstftConfig {
+		fft_size: 16,
+		hop_size: 4,
+		sample_rate: 48_000,
+		..IstftConfig::default()
+	};
+	assert!(istft(&matrix, config).is_ok());
+	assert!(
+		istft(
+			&matrix,
+			IstftConfig {
+				fft_size: 32,
+				..config
+			}
+		)
+		.is_err()
+	);
+	assert!(
+		istft(
+			&matrix,
+			IstftConfig {
+				fft_size: 12,
+				..config
+			}
+		)
+		.is_err()
+	);
+	assert!(
+		istft(
+			&matrix,
+			IstftConfig {
+				hop_size: 0,
+				..config
+			}
+		)
+		.is_err()
+	);
+	assert!(
+		istft(
+			&matrix,
+			IstftConfig {
+				sample_rate: 0,
+				..config
+			}
+		)
+		.is_err()
+	);
+	let rank_two = oa::Matrix::new_from_f32_on(&engine, [4, 9], &[0.0; 36])?;
+	assert!(istft(&rank_two, config).is_err());
+	Ok(())
+});
+
+test_vk!(noise_like_is_deterministic_per_seed, engine, {
+	let samples: Vec<f32> = (0..128).map(|i| (i as f32 * 0.02).sin()).collect();
+	let audio = Audio::new_from_planar_f32(&engine, &samples, 1, 8_000, AudioChannelLayout::Mono)?;
+	let first = oa::audio::noise_like(&audio, oa::audio::NoiseDistribution::Gaussian, 0.1, 42)?;
+	let repeat = oa::audio::noise_like(&audio, oa::audio::NoiseDistribution::Gaussian, 0.1, 42)?;
+	let other = oa::audio::noise_like(&audio, oa::audio::NoiseDistribution::Gaussian, 0.1, 43)?;
+	let uniform = oa::audio::noise_like(&audio, oa::audio::NoiseDistribution::Uniform, 0.5, 42)?;
+	assert_eq!(
+		first.as_matrix().read_f32()?,
+		repeat.as_matrix().read_f32()?
+	);
+	assert_ne!(first.as_matrix().read_f32()?, other.as_matrix().read_f32()?);
+	assert!(
+		uniform
+			.as_matrix()
+			.read_f32()?
+			.iter()
+			.all(|v| v.abs() <= 0.5 + f32::EPSILON)
+	);
+	assert!(oa::audio::noise_like(&audio, oa::audio::NoiseDistribution::Gaussian, -1.0, 42).is_err());
+	assert!(
+		oa::audio::noise_like(&audio, oa::audio::NoiseDistribution::Gaussian, f32::NAN, 42).is_err()
+	);
+	Ok(())
+});
+
+test_vk!(mix_snr_reaches_target_signal_to_noise_ratio, engine, {
+	let samples: Vec<f32> = (0..4096)
+		.map(|i| ((i as f32 * 0.05).sin() + 0.5 * (i as f32 * 0.13).cos()) * 0.5)
+		.collect();
+	let signal = Audio::new_from_planar_f32(&engine, &samples, 1, 8_000, AudioChannelLayout::Mono)?;
+	let noise = oa::audio::noise_like(&signal, oa::audio::NoiseDistribution::Gaussian, 0.2, 7)?;
+	let snr_db = 10.0_f32;
+	let mixed = oa::audio::mix_snr(&signal, &noise, snr_db)?;
+	let signal_read = signal.as_matrix().read_f32()?;
+	let mixed_read = mixed.as_matrix().read_f32()?;
+	// Host oracle: measured SNR between signal and the injected noise component.
+	let mut signal_power = 0.0f64;
+	let mut residual_power = 0.0f64;
+	for (s, m) in signal_read.iter().zip(mixed_read.iter()) {
+		signal_power += f64::from(*s) * f64::from(*s);
+		let residual = f64::from(m - s);
+		residual_power += residual * residual;
+	}
+	let measured_snr_db = 10.0 * (signal_power / residual_power).log10() as f32;
+	assert!(
+		(measured_snr_db - snr_db).abs() < 0.25,
+		"measured SNR {measured_snr_db} dB differs from target {snr_db} dB"
+	);
+	let mismatched = oa::audio::noise_like(
+		&Audio::new_from_planar_f32(&engine, &samples[..64], 1, 8_000, AudioChannelLayout::Mono)?,
+		oa::audio::NoiseDistribution::Gaussian,
+		0.2,
+		7,
+	)?;
+	assert!(oa::audio::mix_snr(&signal, &mismatched, snr_db).is_err());
+	assert!(oa::audio::mix_snr(&signal, &noise, f32::INFINITY).is_err());
+	Ok(())
+});
+
+fn deterministic_values(count: usize, seed: u64) -> Vec<f32> {
+	let mut state = seed;
+	(0..count)
+		.map(|_| {
+			state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+			((state >> 33) as f32 / u32::MAX as f32) * 0.2 - 0.1
+		})
+		.collect()
+}
+
+test_vk!(stft_complex_backward_matches_finite_difference, engine, {
+	// Graph: y = x @ W^T -> audio -> stft_complex -> mse -> scalar loss.
+	// The weight is a watched nn parameter, so its gradient surfaces through
+	// the transform adjoint and can be checked against finite differences.
+	let (n, out) = (32_usize, 128_usize);
+	let config = oa::audio::StftConfig {
+		fft_size: 64,
+		hop_size: 16,
+		win_size: 0,
+		window: oa::audio::StftWindow::Hann,
+		center: true,
+	};
+	let x = oa::Matrix::new_from_f32_on(&engine, [1, n], &deterministic_values(n, 7))?;
+	let weights = deterministic_values(out * n, 11);
+	let loss_of = |weights: &[f32]| -> oa::Result<f32> {
+		let layer = oa::ml::nn::Linear::new_from_weight(oa::Matrix::new_from_f32_on(
+			&engine,
+			[out, n],
+			weights,
+		)?)?;
+		let audio = Audio::new(layer.forward(&x)?, 8_000, AudioChannelLayout::Mono)?;
+		let spectrum = oa::audio::stft_complex(&audio, config)?;
+		let zeros = oa::Matrix::new_from_f32_on(
+			&engine,
+			spectrum.shape().to_vec(),
+			&vec![0.0; spectrum.shape().iter().product::<usize>()],
+		)?;
+		oa::ml::loss::mse(&spectrum, &zeros)?
+			.read_f32()
+			.map(|values| values[0])
+	};
+	let tape = oa::ml::GradientTape::new();
+	let layer =
+		oa::ml::nn::Linear::new_from_weight(oa::Matrix::new_from_f32_on(&engine, [out, n], &weights)?)?;
+	let audio = Audio::new(layer.forward(&x)?, 8_000, AudioChannelLayout::Mono)?;
+	let spectrum = oa::audio::stft_complex(&audio, config)?;
+	let zeros = oa::Matrix::new_from_f32_on(
+		&engine,
+		spectrum.shape().to_vec(),
+		&vec![0.0; spectrum.shape().iter().product::<usize>()],
+	)?;
+	let loss = oa::ml::loss::mse(&spectrum, &zeros)?;
+	tape.backward(&loss)?;
+	let gradient = layer
+		.weight()
+		.gradient()
+		.expect("stft_complex backward must reach the linear weight")
+		.read_f32()?;
+	let epsilon = 1.0e-3_f32;
+	for index in [0_usize, n + 3, out * n - 7] {
+		let mut plus = weights.clone();
+		let mut minus = weights.clone();
+		plus[index] += epsilon;
+		minus[index] -= epsilon;
+		let finite = (loss_of(&plus)? - loss_of(&minus)?) / (2.0 * epsilon);
+		assert!(
+			(finite - gradient[index]).abs() < 1.0e-2 + 0.05 * finite.abs(),
+			"stft_complex backward weight {index}: finite {finite} vs tape {}",
+			gradient[index]
+		);
+	}
+	Ok(())
+});
+
+test_vk!(istft_backward_matches_finite_difference, engine, {
+	// Graph: spec_flat = x @ W^T -> reshape [1, frames, bins, 2] -> istft ->
+	// audio -> mse -> scalar loss. Same finite-difference check through the
+	// synthesis adjoint.
+	let (n, frames, bins) = (8_usize, 9_usize, 33_usize);
+	let spec_count = frames * bins * 2;
+	let config = oa::audio::IstftConfig {
+		fft_size: 64,
+		hop_size: 16,
+		win_size: 0,
+		window: oa::audio::StftWindow::Hann,
+		center: true,
+		sample_rate: 8_000,
+	};
+	let x = oa::Matrix::new_from_f32_on(&engine, [1, n], &deterministic_values(n, 13))?;
+	let weights = deterministic_values(spec_count * n, 17);
+	let forward =
+		|weights: &[f32], engine: &oa::Engine| -> oa::Result<(oa::ml::nn::Linear, oa::Matrix)> {
+			let layer = oa::ml::nn::Linear::new_from_weight(oa::Matrix::new_from_f32_on(
+				engine,
+				[spec_count, n],
+				weights,
+			)?)?;
+			let spec = layer.forward(&x)?.reshape([1, frames, bins, 2])?;
+			let audio = oa::audio::istft(&spec, config)?;
+			let target = oa::Matrix::new_from_f32_on(
+				engine,
+				audio.as_matrix().shape().to_vec(),
+				&deterministic_values(audio.as_matrix().shape().iter().product::<usize>(), 19),
+			)?;
+			Ok((layer, oa::ml::loss::mse(audio.as_matrix(), &target)?))
+		};
+	let loss_of = |weights: &[f32]| -> oa::Result<f32> {
+		forward(weights, &engine).and_then(|(_, loss)| loss.read_f32().map(|values| values[0]))
+	};
+	let tape = oa::ml::GradientTape::new();
+	let (layer, loss) = forward(&weights, &engine)?;
+	tape.backward(&loss)?;
+	let gradient = layer
+		.weight()
+		.gradient()
+		.expect("istft backward must reach the linear weight")
+		.read_f32()?;
+	let epsilon = 1.0e-3_f32;
+	for index in [0_usize, n + 5, spec_count * n - 11] {
+		let mut plus = weights.clone();
+		let mut minus = weights.clone();
+		plus[index] += epsilon;
+		minus[index] -= epsilon;
+		let finite = (loss_of(&plus)? - loss_of(&minus)?) / (2.0 * epsilon);
+		assert!(
+			(finite - gradient[index]).abs() < 1.0e-2 + 0.05 * finite.abs(),
+			"istft backward weight {index}: finite {finite} vs tape {}",
+			gradient[index]
+		);
+	}
+	Ok(())
+});
+
+test_vk!(batch_pad_crop_stack_and_mask, engine, {
+	let clip_a = Audio::new(
+		oa::Matrix::new_from_f32_on(&engine, [1, 3], &[1.0, 2.0, 3.0])?,
+		48_000,
+		AudioChannelLayout::Mono,
+	)?;
+	let clip_b = Audio::new(
+		oa::Matrix::new_from_f32_on(
+			&engine,
+			[1, 16],
+			&[
+				4.0, 5.0, 6.0, 7.0, 8.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 1.0, 2.0,
+			],
+		)?,
+		48_000,
+		AudioChannelLayout::Mono,
+	)?;
+
+	let padded = oa::audio::pad_to(&clip_a, clip_b.samples())?;
+	assert_eq!(padded.samples(), 16);
+	assert_eq!(padded.sample_rate(), 48_000);
+	let tail = &padded.as_matrix().read_f32()?[3..];
+	assert!(tail.iter().all(|value| *value == 0.0));
+
+	let cropped = oa::audio::crop_to(&clip_b, 4)?;
+	assert_eq!(cropped.as_matrix().read_f32()?, [4.0, 5.0, 6.0, 7.0]);
+
+	let batch = oa::audio::stack(&[padded, clip_b])?;
+	assert_eq!(batch.channels(), 2);
+	assert_eq!(batch.samples(), 16);
+	assert_eq!(batch.as_matrix().read_f32()?[..3], [1.0, 2.0, 3.0]);
+
+	let mask = oa::audio::length_mask(&batch, &[3, 16])?;
+	assert_eq!(mask.shape(), [2, 16]);
+	let values = mask.read_f32()?;
+	assert_eq!(values[..3], [1.0, 1.0, 1.0]);
+	assert!(values[3..16].iter().all(|value| *value == 0.0));
+	assert!(values[16..].iter().all(|value| *value == 1.0));
+
+	// A stacked mono batch feeds per-row ops without special batching code.
+	let spectrum = oa::audio::stft_complex(
+		&batch,
+		oa::audio::StftConfig {
+			fft_size: 16,
+			hop_size: 4,
+			win_size: 16,
+			window: oa::audio::StftWindow::Rectangular,
+			center: false,
+		},
+	)?;
+	assert_eq!(spectrum.shape(), [2, 1, 9, 2]);
+	Ok(())
+});
+
+test_vk!(batch_ops_reject_mismatched_inputs, engine, {
+	let clip = Audio::new(
+		oa::Matrix::new_from_f32_on(&engine, [1, 4], &[1.0; 4])?,
+		48_000,
+		AudioChannelLayout::Mono,
+	)?;
+	let other_rate = Audio::new(
+		oa::Matrix::new_from_f32_on(&engine, [1, 4], &[2.0; 4])?,
+		44_100,
+		AudioChannelLayout::Mono,
+	)?;
+	let other_length = Audio::new(
+		oa::Matrix::new_from_f32_on(&engine, [1, 6], &[3.0; 6])?,
+		48_000,
+		AudioChannelLayout::Mono,
+	)?;
+	let stereo = Audio::new(
+		oa::Matrix::new_from_f32_on(&engine, [2, 4], &[0.5; 8])?,
+		48_000,
+		AudioChannelLayout::Stereo,
+	)?;
+
+	assert!(oa::audio::pad_to(&clip, 2).is_err());
+	assert!(oa::audio::crop_to(&clip, 0).is_err());
+	assert!(oa::audio::crop_to(&clip, 5).is_err());
+	assert!(oa::audio::stack(&[]).is_err());
+	assert!(oa::audio::stack(&[clip.clone(), other_rate]).is_err());
+	assert!(oa::audio::stack(&[clip.clone(), other_length]).is_err());
+	assert!(oa::audio::stack(&[clip.clone(), stereo]).is_err());
+	assert!(oa::audio::length_mask(&clip, &[4, 4]).is_err());
+	assert!(oa::audio::length_mask(&clip, &[5]).is_err());
+	Ok(())
+});

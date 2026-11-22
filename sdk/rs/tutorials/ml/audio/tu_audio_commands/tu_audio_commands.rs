@@ -5,10 +5,12 @@
 //! whole batch in one mel_spectrogram dispatch, and train a small CNN
 //! classifier with ItTraining capture/replay.
 //!
-//! The bundled subset at sdk/asset/audio/commands holds four clips per
-//! command (32 total, ~1 MB) so the tutorial runs quickly out of the box.
-//! Point --dataset at an extracted mini_speech_commands archive for the full
-//! ~8,000-clip workload and meaningful generalization numbers.
+//! The tutorial runs against the TensorFlow mini_speech_commands corpus
+//! (~8,000 one-second clips). Fetch the `mini_speech_commands` pack through
+//! `oads`/`oadspython` or the upstream archive and extract it under the shared
+//! OA data root (`OA_DATA_DIR`, else `~/.oads`) so the tree sits at
+//! `mini_speech_commands/1.0.0/mini_speech_commands`, or pass `--dataset` to
+//! any `<label>/*.wav` root.
 
 use std::path::PathBuf;
 
@@ -19,6 +21,16 @@ use sdk::ml::audio;
 
 fn arg_value(flag: &str) -> Option<String> {
 	std::env::args().skip_while(|arg| arg != flag).nth(1)
+}
+
+/// Default mini_speech_commands tree inside the shared OA data root —
+/// `OA_DATA_DIR`, else `~/.oads` — beside the pack's cached zip.
+fn commands_dataset_dir() -> PathBuf {
+	let root = std::env::var_os("OA_DATA_DIR")
+		.map(PathBuf::from)
+		.or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".oads")))
+		.unwrap_or_else(|| PathBuf::from(".oads"));
+	root.join("mini_speech_commands/1.0.0/mini_speech_commands")
 }
 
 fn arg_usize(flag: &str, default: usize) -> usize {
@@ -60,8 +72,14 @@ fn evaluate(
 fn main() -> oa::Result<()> {
 	let engine = oa::Engine::new()?;
 	oa::Engine::set_default(engine.clone());
-	let dataset_dir =
-		arg_value("--dataset").map_or_else(|| PathBuf::from("sdk/asset/audio/commands"), PathBuf::from);
+	let dataset_dir = arg_value("--dataset").map_or_else(commands_dataset_dir, PathBuf::from);
+	if !dataset_dir.is_dir() {
+		return Err(oa::Error::not_found(format!(
+			"speech-commands dataset not found at {}; extract the mini_speech_commands \
+			 pack there (oads or the upstream archive) or pass --dataset",
+			dataset_dir.display()
+		)));
+	}
 	let epochs = arg_usize("--epochs", audio::TRAINING_EPOCHS);
 	let batch = arg_usize("--batch", audio::BATCH_SIZE);
 	let dataset = audio::SpeechCommandsDataset::load(&dataset_dir)?;
@@ -285,15 +303,6 @@ fn main() -> oa::Result<()> {
 
 	assert!(initial_loss > 1.0);
 	assert!(final_training_loss < initial_loss);
-	// The recorded oracles describe the canonical bundled-subset recipe only.
-	let canonical = arg_value("--dataset").is_none()
-		&& arg_value("--steps").is_none()
-		&& epochs == audio::TRAINING_EPOCHS
-		&& batch == audio::BATCH_SIZE;
-	if canonical {
-		assert!((final_training_loss - audio::COMMANDS_FINAL_LOSS).abs() < 0.01);
-		assert!(accuracy >= f64::from(audio::COMMANDS_TEST_ACCURACY));
-	}
 
 	let checkpoint = oa::Path::temp().join("oars_commands").with_extension("oam");
 	oa::ml::save_checkpoint(&checkpoint, &model, &optimizer)?;

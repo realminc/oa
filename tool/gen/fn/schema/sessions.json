@@ -124,9 +124,9 @@
 						"OhlcvWindows<'a>"
 					]
 				],
-				"returns": "DsOhlcv<'a>",
+				"returns": "OhlcvDataset<'a>",
 				"visibility": "pub",
-				"target": "crate::data::DsOhlcv::new",
+				"target": "crate::data::OhlcvDataset::new",
 				"raw_return": true
 			}
 		},

@@ -1356,7 +1356,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 			"effects": ["read_inputs", "write_outputs"],
 			"mutated_inputs": [],
 			"output_alias_inputs": [-1] * len(operation["output_kinds"]),
-			"differentiation": "none",
+			"differentiation": operation.get("differentiation", "none"),
 			"lowering": "compute_dispatch",
 		}
 		if "control_flow" in operation:
@@ -1494,7 +1494,7 @@ def generate_operation_registry(schemas: Schemas) -> str:
 			"effects": ["read_inputs", "write_outputs"],
 			"mutated_inputs": [],
 			"output_alias_inputs": [-1] * len(operation["output_kinds"]),
-			"differentiation": "none",
+			"differentiation": operation.get("differentiation", "none"),
 			"lowering": "compute_dispatch",
 		}
 		if "control_flow" in operation:

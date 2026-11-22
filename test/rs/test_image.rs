@@ -4,6 +4,9 @@
 #[path = "support/test_vk.rs"]
 mod test_vk_fixture;
 
+#[path = "image/test_augmentation.rs"]
+mod augmentation;
+
 #[path = "image/test_geometric.rs"]
 mod geometric;
 

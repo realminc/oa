@@ -96,7 +96,5 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	module.add("AUDIO_TRAINING_EPOCHS", audio::TRAINING_EPOCHS)?;
 	module.add("AUDIO_BATCH_SIZE", audio::BATCH_SIZE)?;
 	module.add("AUDIO_MEL_CHUNK_CLIPS", audio::MEL_CHUNK_CLIPS)?;
-	module.add("COMMANDS_FINAL_LOSS", audio::COMMANDS_FINAL_LOSS)?;
-	module.add("COMMANDS_TEST_ACCURACY", audio::COMMANDS_TEST_ACCURACY)?;
 	Ok(())
 }

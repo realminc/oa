@@ -3,7 +3,8 @@
 use crate::{
 	Audio, DType, Error, Matrix, OpAttribute, Result,
 	runtime::{
-		AudioSemanticDispatch, AudioSemanticOutput, BufferBinding, ComputeDispatch, KernelId,
+		AudioSemanticDispatch, AudioSemanticInput, AudioSemanticOutput, BufferBinding, ComputeDispatch,
+		KernelId,
 		PushConstant,
 	},
 };

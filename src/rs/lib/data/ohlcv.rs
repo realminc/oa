@@ -231,12 +231,12 @@ impl<'a> OhlcvWindows<'a> {
 /// input and `horizon` future-close labels and uploads each once. Timestamps
 /// remain metadata, never float features. No normalization or readback occurs.
 /// Host windowing is zero-copy; packing and device upload are explicit copies.
-pub struct DsOhlcv<'a> {
+pub struct OhlcvDataset<'a> {
 	engine: &'a Engine,
 	windows: OhlcvWindows<'a>,
 }
 
-impl<'a> DsOhlcv<'a> {
+impl<'a> OhlcvDataset<'a> {
 	/// Attach an existing checked host window set to a borrowed Engine.
 	pub fn new(engine: &'a Engine, windows: OhlcvWindows<'a>) -> Self {
 		Self { engine, windows }
@@ -248,7 +248,7 @@ impl<'a> DsOhlcv<'a> {
 	}
 }
 
-impl Dataset for DsOhlcv<'_> {
+impl Dataset for OhlcvDataset<'_> {
 	fn len(&self) -> i64 {
 		self.windows.len()
 	}

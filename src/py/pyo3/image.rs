@@ -224,6 +224,64 @@ fn image_can_decode(codec_name: &str) -> PyResult<bool> {
 	Ok(oa::image::can_decode(codec(codec_name)?))
 }
 
+fn noise_distribution(token: &str) -> PyResult<oa::audio::NoiseDistribution> {
+	match token {
+		"uniform" => Ok(oa::audio::NoiseDistribution::Uniform),
+		"gaussian" => Ok(oa::audio::NoiseDistribution::Gaussian),
+		_ => Err(python_error(oa::Error::invalid_argument(format!(
+			"unknown noise distribution: {token}"
+		)))),
+	}
+}
+
+#[pyfunction]
+fn image_noise_like(
+	input: &PythonImage,
+	distribution: &str,
+	amplitude: f32,
+	seed: u64,
+) -> PyResult<PythonImage> {
+	oa::image::noise_like(
+		&input.inner,
+		noise_distribution(distribution)?,
+		amplitude,
+		seed,
+	)
+	.map(PythonImage::wrap)
+	.map_err(python_error)
+}
+
+#[pyfunction]
+fn image_random_flip(
+	input: &PythonImage,
+	p_horizontal: f32,
+	p_vertical: f32,
+	seed: u64,
+) -> PyResult<PythonImage> {
+	oa::image::random_flip(&input.inner, p_horizontal, p_vertical, seed)
+		.map(PythonImage::wrap)
+		.map_err(python_error)
+}
+
+#[pyfunction]
+fn image_random_crop(
+	input: &PythonImage,
+	width: u32,
+	height: u32,
+	seed: u64,
+) -> PyResult<PythonImage> {
+	oa::image::random_crop(&input.inner, width, height, seed)
+		.map(PythonImage::wrap)
+		.map_err(python_error)
+}
+
+#[pyfunction]
+fn image_random_rotate(input: &PythonImage, seed: u64) -> PyResult<PythonImage> {
+	oa::image::random_rotate(&input.inner, seed)
+		.map(PythonImage::wrap)
+		.map_err(python_error)
+}
+
 #[pyfunction]
 fn image_can_encode(codec_name: &str) -> PyResult<bool> {
 	Ok(oa::image::can_encode(codec(codec_name)?))
@@ -236,6 +294,11 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	}
 	generated::register(module)?;
 	add_functions!(
+		// augmentation
+		image_noise_like,
+		image_random_crop,
+		image_random_flip,
+		image_random_rotate,
 		// codec
 		image_decode_file,
 		image_decode_memory,

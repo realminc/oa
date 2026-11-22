@@ -4,6 +4,7 @@
 //! Operations belong here once they have an operation schema, an executable
 //! lowering, and an independent correctness oracle.
 
+mod augmentation;
 mod codec;
 #[path = "image/color.gen.rs"]
 mod color;
@@ -18,6 +19,7 @@ mod methods;
 #[path = "image/pixel.gen.rs"]
 mod pixel;
 
+pub use augmentation::{noise_like, random_crop, random_flip, random_rotate};
 pub use image::{Image, ImageFormat, ImageLayout};
 
 pub use codec::{

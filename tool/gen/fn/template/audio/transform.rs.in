@@ -32,7 +32,7 @@
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &attributes,
 		},
@@ -114,7 +114,7 @@
 			&dispatches,
 			AudioSemanticDispatch {
 				contract: {{contract}},
-				inputs: &[input],
+				inputs: &[AudioSemanticInput::Audio(input)],
 				outputs: &outputs,
 				attributes: &attributes,
 			},
@@ -141,7 +141,7 @@
 			&dispatches,
 			AudioSemanticDispatch {
 				contract: {{contract}},
-				inputs: &[input],
+				inputs: &[AudioSemanticInput::Audio(input)],
 				outputs: &outputs,
 				attributes: &attributes,
 			},
@@ -236,9 +236,124 @@
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &attributes,
 		},
 	)?;
 	Ok(output)
+// @operation stft_complex
+	let shape = validate_stft(input, config)?;
+	let elements = shape.channels * shape.frames * shape.freq_bins * 2;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		vec![
+			shape.channels as usize,
+			shape.frames as usize,
+			shape.freq_bins as usize,
+			2,
+		],
+		elements as usize,
+		DType::F32,
+	)?;
+	{{bindings:0}}
+	let win_size = if config.win_size == 0 {
+		config.fft_size
+	} else {
+		config.win_size
+	};
+	let window: u32 = match config.window {
+		StftWindow::Hann => 0,
+		StftWindow::Hamming => 1,
+		StftWindow::Blackman => 2,
+		StftWindow::Rectangular => 3,
+	};
+	{{push:0}}
+	let attributes = [{{attributes}}];
+	let outputs = [AudioSemanticOutput::Matrix(&output)];
+	input.engine_handle().record_audio_semantic(
+		{{dispatch:0}},
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[AudioSemanticInput::Audio(input)],
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	crate::audio::autograd::record(crate::audio::autograd::GradNodeAudio::StftComplex {
+		input: input.as_matrix().clone(),
+		output_id: output.value_id(),
+		fft_size: config.fft_size,
+		hop_size: config.hop_size,
+		win_size: config.win_size,
+		window: config.window,
+		center: config.center,
+		sample_rate: input.sample_rate(),
+	})?;
+	Ok(output)
+// @operation istft
+	let shape = validate_istft(input, config)?;
+	let scratch = Matrix::allocate(
+		input.engine_handle(),
+		vec![shape.channels as usize, shape.padded_samples as usize],
+		(shape.channels * shape.padded_samples) as usize,
+		DType::F32,
+	)?;
+	let norm = Matrix::allocate(
+		input.engine_handle(),
+		vec![shape.channels as usize, shape.padded_samples as usize],
+		(shape.channels * shape.padded_samples) as usize,
+		DType::F32,
+	)?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		vec![shape.channels as usize, shape.out_samples as usize],
+		(shape.channels * shape.out_samples) as usize,
+		DType::F32,
+	)?;
+	{{bindings:0}}
+	{{bindings:1}}
+	let win_size = if config.win_size == 0 {
+		config.fft_size
+	} else {
+		config.win_size
+	};
+	let window: u32 = match config.window {
+		StftWindow::Hann => 0,
+		StftWindow::Hamming => 1,
+		StftWindow::Blackman => 2,
+		StftWindow::Rectangular => 3,
+	};
+	{{push:0}}
+	{{push:1}}
+	let dispatches = [
+		{{dispatch:0}},
+		{{dispatch:1}},
+	];
+	let attributes = [{{attributes}}];
+	let audio = Audio::new(
+		output.clone(),
+		config.sample_rate,
+		AudioChannelLayout::for_channel_count(shape.channels as usize),
+	)?;
+	let outputs = [AudioSemanticOutput::Audio(&audio)];
+	input.engine_handle().record_audio_split_semantic(
+		&dispatches,
+		AudioSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[AudioSemanticInput::Matrix(input)],
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	crate::audio::autograd::record(crate::audio::autograd::GradNodeAudio::Istft {
+		input: input.clone(),
+		output_id: audio.as_matrix().value_id(),
+		fft_size: config.fft_size,
+		hop_size: config.hop_size,
+		win_size: config.win_size,
+		window: config.window,
+		center: config.center,
+		sample_rate: config.sample_rate,
+	})?;
+	Ok(audio)

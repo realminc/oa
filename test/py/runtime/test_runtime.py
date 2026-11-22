@@ -88,14 +88,14 @@ class EngineLoggingTest(unittest.TestCase):
 	def test_default_engine_construction_succeeds(self) -> None:
 		# Basic construction without explicit LogOptions.
 		engine = oa.Engine()
-		self.assertIsInstance(oa.Engine, engine=engine)
+		self.assertIsInstance(engine, oa.Engine)
 
 	def test_engine_with_explicit_log_options(self) -> None:
 		opts = oa.LogOptions()
 		opts.minimum_level(oa.LogLevel.Warn)
 		opts.console_output(False)
 		engine = oa.Engine(logging=opts)
-		self.assertIsInstance(oa.Engine, engine=engine)
+		self.assertIsInstance(engine, oa.Engine)
 
 	def test_log_level_getter_returns_log_level(self) -> None:
 		engine = oa.Engine()

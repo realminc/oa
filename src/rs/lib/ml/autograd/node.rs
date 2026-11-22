@@ -20,6 +20,7 @@ pub(super) struct GradNodeLinearAttention {
 
 pub(super) enum GradNode {
 	LinearAttention(Box<GradNodeLinearAttention>),
+	Audio(crate::audio::autograd::GradNodeAudio),
 	Matrix(crate::matrix::autograd::GradNodeMatrix),
 	Operation(GradNodeOperation),
 	FlowLinearState {
@@ -262,6 +263,7 @@ impl GradNode {
 			Self::LinearAttention(node) => node.output.value_id(),
 			Self::Operation(node) => node.output_id(),
 			Self::Matrix(node) => node.output_id(),
+			Self::Audio(node) => node.output_id(),
 			Self::FlowLinearState { output_id, .. }
 			| Self::FlowLinearVelocity { output_id, .. }
 			| Self::FlowEulerStep { output_id, .. }
@@ -405,6 +407,20 @@ pub(super) struct GradNodeGruCell {
 	pub(super) bias_value: Matrix,
 	pub(super) bias_version: Option<u64>,
 	pub(super) has_bias: bool,
+}
+
+impl crate::audio::autograd::GradNodeAudio {
+	pub(super) fn output_id(&self) -> u64 {
+		match self {
+			Self::StftComplex { output_id, .. } | Self::Istft { output_id, .. } => *output_id,
+		}
+	}
+}
+
+impl From<crate::audio::autograd::GradNodeAudio> for GradNode {
+	fn from(node: crate::audio::autograd::GradNodeAudio) -> Self {
+		Self::Audio(node)
+	}
 }
 
 impl From<crate::matrix::autograd::GradNodeMatrix> for GradNode {

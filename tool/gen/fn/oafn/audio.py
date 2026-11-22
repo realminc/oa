@@ -27,9 +27,13 @@ def validate_audio_schema(schema: dict[str, Any]) -> None:
 		where = f"Audio contracts[{index}]"
 		require(isinstance(contract, dict), f"{where} must be an object")
 		require(
-			(set(contract) - {"python", "donor_op", "control_flow", "fusion_class"})
+			(set(contract) - {"python", "donor_op", "control_flow", "fusion_class", "differentiation"})
 			== {"name", "input_kinds", "output_kinds", "shape_rule", "dtype_rule", "attributes", "rust"},
 			f"{where} fields are incomplete or unknown",
+		)
+		require(
+			contract.get("differentiation", "none") in {"none", "reverse"},
+			f"{where}.differentiation must be none or reverse",
 		)
 		name = contract["name"]
 		require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.name is invalid")
@@ -37,8 +41,8 @@ def validate_audio_schema(schema: dict[str, Any]) -> None:
 		require(
 			isinstance(contract["input_kinds"], list)
 			and contract["input_kinds"]
-			and all(kind == "audio" for kind in contract["input_kinds"]),
-			f"{where}.input_kinds must contain Audio values",
+			and all(kind in {"audio", "matrix"} for kind in contract["input_kinds"]),
+			f"{where}.input_kinds must contain Audio or Matrix values",
 		)
 		require(
 			contract["output_kinds"] in (["audio"], ["matrix"]),
@@ -123,12 +127,12 @@ def validate_audio_generation(schema: dict[str, Any]) -> None:
 			"audio",
 			op,
 			where,
-			allowed_types={"&Audio", "f32", "u32", "u64", "NormalizeAudioConfig", "ResampleConfig", "BiquadCoefficients", "&[BiquadCoefficients]", "StftConfig", "MelConfig", "MfccConfig"},
+			allowed_types={"&Audio", "&Matrix", "f32", "u32", "u64", "NormalizeAudioConfig", "ResampleConfig", "BiquadCoefficients", "&[BiquadCoefficients]", "StftConfig", "MelConfig", "MfccConfig", "IstftConfig"},
 		)
 		require(signature is not None, f"{where} has no public signature")
 		require(
-			sum(kind == "&Audio" for _, kind in signature["parameters"]) == len(op["input_kinds"]),
-			f"{where} Audio input count differs from contract",
+			sum(kind in {"&Audio", "&Matrix"} for _, kind in signature["parameters"]) == len(op["input_kinds"]),
+			f"{where} Audio or Matrix input count differs from contract",
 		)
 		require(all(kind in {"float", "unsigned_integer", "boolean"} for _, kind in op["attributes"]), f"{where} attribute kind has no generated encoding")
 		sources = rust["attribute_sources"]

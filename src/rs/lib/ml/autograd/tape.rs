@@ -7,6 +7,7 @@ use crate::ml::Parameter;
 use crate::{Error, Result, matrix::autograd as matrix_autograd};
 
 use super::node::GradNode;
+use crate::audio::autograd as audio_autograd;
 
 #[path = "backward.rs"]
 pub(in crate::ml::autograd) mod backward;
@@ -45,6 +46,7 @@ pub struct GradientTape {
 	recording: Rc<RecordingState>,
 	active: Cell<bool>,
 	matrix_recording: RefCell<Option<matrix_autograd::RecordingSelection>>,
+	audio_recording: RefCell<Option<audio_autograd::RecordingSelection>>,
 }
 
 impl GradientTape {
@@ -64,10 +66,19 @@ impl GradientTape {
 			let node = GradNode::from(node);
 			record_node_for(&tape, node)
 		});
+		let audio_weak = Rc::downgrade(&recording);
+		let audio_recording = audio_autograd::select(move |node| {
+			let Some(tape) = audio_weak.upgrade() else {
+				return Ok(());
+			};
+			let node = GradNode::from(node);
+			record_node_for(&tape, node)
+		});
 		Self {
 			recording,
 			active: Cell::new(true),
 			matrix_recording: RefCell::new(Some(matrix_recording)),
+			audio_recording: RefCell::new(Some(audio_recording)),
 		}
 	}
 
@@ -77,6 +88,7 @@ impl GradientTape {
 			return;
 		}
 		self.matrix_recording.borrow_mut().take();
+		self.audio_recording.borrow_mut().take();
 		ACTIVE_TAPES.with(|tapes| {
 			tapes.borrow_mut().retain(|candidate| {
 				candidate.strong_count() != 0 && !candidate.ptr_eq(&Rc::downgrade(&self.recording))

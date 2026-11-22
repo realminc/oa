@@ -16,6 +16,16 @@ fn normalize_mode(token: &str) -> PyResult<oa::audio::NormalizeAudioMode> {
 	}
 }
 
+fn noise_distribution(token: &str) -> PyResult<oa::audio::NoiseDistribution> {
+	match token {
+		"uniform" => Ok(oa::audio::NoiseDistribution::Uniform),
+		"gaussian" => Ok(oa::audio::NoiseDistribution::Gaussian),
+		_ => Err(PyValueError::new_err(
+			"noise distribution must be 'uniform' or 'gaussian'",
+		)),
+	}
+}
+
 fn stft_window(token: &str) -> PyResult<oa::audio::StftWindow> {
 	match token {
 		"hann" => Ok(oa::audio::StftWindow::Hann),
@@ -126,6 +136,66 @@ impl PythonAudio {
 }
 
 #[pyfunction]
+pub(crate) fn audio_noise_like(
+	input: &PythonAudio,
+	distribution: &str,
+	amplitude: f32,
+	seed: u64,
+) -> PyResult<PythonAudio> {
+	oa::audio::noise_like(
+		&input.inner,
+		noise_distribution(distribution)?,
+		amplitude,
+		seed,
+	)
+	.map(PythonAudio::wrap)
+	.map_err(python_error)
+}
+
+#[pyfunction]
+pub(crate) fn audio_mix_snr(
+	signal: &PythonAudio,
+	noise: &PythonAudio,
+	snr_db: f32,
+) -> PyResult<PythonAudio> {
+	oa::audio::mix_snr(&signal.inner, &noise.inner, snr_db)
+		.map(PythonAudio::wrap)
+		.map_err(python_error)
+}
+
+#[pyfunction]
+pub(crate) fn audio_pad_to(input: &PythonAudio, samples: usize) -> PyResult<PythonAudio> {
+	oa::audio::pad_to(&input.inner, samples)
+		.map(PythonAudio::wrap)
+		.map_err(python_error)
+}
+
+#[pyfunction]
+pub(crate) fn audio_crop_to(input: &PythonAudio, samples: usize) -> PyResult<PythonAudio> {
+	oa::audio::crop_to(&input.inner, samples)
+		.map(PythonAudio::wrap)
+		.map_err(python_error)
+}
+
+#[pyfunction]
+pub(crate) fn audio_stack(inputs: Vec<PyRef<'_, PythonAudio>>) -> PyResult<PythonAudio> {
+	let audios: Vec<oa::Audio> = inputs.iter().map(|input| input.inner.clone()).collect();
+	oa::audio::stack(&audios)
+		.map(PythonAudio::wrap)
+		.map_err(python_error)
+}
+
+#[pyfunction]
+pub(crate) fn audio_length_mask(
+	reference: &PythonAudio,
+	lengths: Vec<usize>,
+) -> PyResult<PythonMatrix> {
+	oa::audio::length_mask(&reference.inner, &lengths)
+		.map(PythonMatrix::wrap)
+		.map_err(python_error)
+}
+
+#[pyfunction]
 pub(crate) fn audio_decode_file(
 	path: &str,
 	engine: Option<&PythonEngine>,
@@ -178,6 +248,12 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	}
 	generated::register(module)?;
 	add_functions!(
+		audio_crop_to,
+		audio_length_mask,
+		audio_mix_snr,
+		audio_noise_like,
+		audio_pad_to,
+		audio_stack,
 		audio_decode_file,
 		audio_decode_memory,
 		audio_encode_wav_f32,

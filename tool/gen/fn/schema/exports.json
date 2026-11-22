@@ -14,7 +14,7 @@
 		"Av1Profile",
 		"DataFrame",
 		"DataFrameView",
-		"DsOhlcv",
+		"OhlcvDataset",
 		"OhlcvWindows",
 		"UnixTimeUnit",
 		"Engine",

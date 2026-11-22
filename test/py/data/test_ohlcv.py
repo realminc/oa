@@ -16,7 +16,7 @@ def frame(rows=6):
 
 class OhlcvBindingTest(unittest.TestCase):
 	def test_module_identity(self):
-		for name in ("DataFrame", "DataFrameView", "DsOhlcv", "OhlcvWindows", "UnixTimeUnit"):
+		for name in ("DataFrame", "DataFrameView", "OhlcvDataset", "OhlcvWindows", "UnixTimeUnit"):
 			self.assertIs(getattr(oa, name), getattr(oa.data, name))
 
 	def test_exact_time_and_transactional_replacement(self):
@@ -70,7 +70,7 @@ class OhlcvBindingTest(unittest.TestCase):
 		value.set_f32("close", [10.0 + row * 0.1 for row in range(6)])
 		windows = oa.OhlcvWindows(value, oa.UnixTimeUnit.Nanoseconds, 2, 2)
 		engine = oa.Engine(logging=oa.LogOptions().console_output(False))
-		dataset = oa.DsOhlcv(windows, engine=engine)
+		dataset = oa.OhlcvDataset(windows, engine=engine)
 		del engine, windows, value
 		gc.collect()
 		self.assertEqual(len(dataset), 3)

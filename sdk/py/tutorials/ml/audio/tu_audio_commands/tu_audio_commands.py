@@ -5,15 +5,18 @@ Mirrors sdk/rs/tutorials/ml/audio/tu_audio_commands/tu_audio_commands.rs.
 
 Decodes one-second clips, extracts mel features for a whole batch in one
 mel_spectrogram dispatch, and trains a small CNN classifier with ItTraining
-capture/replay. The bundled subset at sdk/asset/audio/commands holds four
-clips per command (32 total, ~1 MB) so the tutorial runs quickly out of the
-box; point --dataset at an extracted mini_speech_commands archive for the
-full ~8,000-clip workload and meaningful generalization numbers.
+capture/replay. The tutorial runs against the TensorFlow
+mini_speech_commands corpus (~8,000 one-second clips): fetch the pack
+through `oads`/`oadspython` or the upstream archive and extract it under
+the shared OA data root (`OA_DATA_DIR`, else `~/.oads`) so the tree sits at
+mini_speech_commands/1.0.0/mini_speech_commands, or pass --dataset to any
+<label>/*.wav root.
 """
 
 import argparse
 import math
 import os
+import pathlib
 import sys
 
 import oa
@@ -51,7 +54,7 @@ def main() -> None:
 	)
 	parser.add_argument(
 		"--dataset",
-		default="sdk/asset/audio/commands",
+		default=None,
 		help="speech-commands root containing <label>/*.wav directories",
 	)
 	parser.add_argument("--epochs", type=int, default=0, help="data passes")
@@ -66,7 +69,19 @@ def main() -> None:
 	engine = oa.Engine()
 
 	oa.Engine.set_default(engine=engine)
-	dataset = audio.SpeechCommandsDataset(args.dataset)
+	# Default mini_speech_commands tree inside the shared OA data root —
+	# OA_DATA_DIR, else ~/.oads — beside the pack's cached zip.
+	root = pathlib.Path(os.environ.get("OA_DATA_DIR", pathlib.Path.home() / ".oads"))
+	dataset_dir = pathlib.Path(
+		args.dataset or root / "mini_speech_commands" / "1.0.0" / "mini_speech_commands"
+	)
+	if not dataset_dir.is_dir():
+		parser.error(
+			f"speech-commands dataset not found at {dataset_dir}; extract the "
+			"mini_speech_commands pack there (oads or the upstream archive) or "
+			"pass --dataset"
+		)
+	dataset = audio.SpeechCommandsDataset(str(dataset_dir))
 	clip_count = len(dataset)
 
 	print()
@@ -75,7 +90,7 @@ def main() -> None:
 	print("╚══════════════════════════════════════════════════════════════════╝")
 	print()
 	print(
-		f"dataset: {args.dataset} · {clip_count} clips · "
+		f"dataset: {dataset_dir} · {clip_count} clips · "
 		f"{len(audio.AUDIO_COMMAND_LABELS)} commands "
 		f"({audio.AUDIO_SAMPLES_PER_CLIP // audio.AUDIO_CLIP_SAMPLE_RATE} s"
 		f"{audio.AUDIO_CLIP_SAMPLE_RATE // 1000}kHz samples each)"
@@ -265,17 +280,6 @@ def main() -> None:
 
 	assert initial_loss > 1.0
 	assert final_training_loss < initial_loss
-	# The recorded oracles describe the canonical bundled-subset recipe only.
-	canonical = (
-		args.dataset == "sdk/asset/audio/commands"
-		and args.steps <= 0
-		and epochs == audio.AUDIO_TRAINING_EPOCHS
-		and batch == audio.AUDIO_BATCH_SIZE
-	)
-	if canonical:
-		assert abs(final_training_loss - audio.COMMANDS_FINAL_LOSS) < 0.01
-		assert accuracy >= audio.COMMANDS_TEST_ACCURACY
-
 	checkpoint = oa.Path.temp().join("oars_commands").with_extension("oam")
 	oa.ml.save_checkpoint(str(checkpoint), model.all_parameters(), optimizer)
 	reloaded = audio.commands_cnn(mel_bands, mel_frames, num_classes)

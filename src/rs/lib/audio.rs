@@ -5,6 +5,9 @@
 
 #[allow(clippy::module_inception)]
 mod audio;
+mod augmentation;
+pub(crate) mod autograd;
+mod batch;
 mod capture;
 mod codec;
 mod decoder;
@@ -21,6 +24,8 @@ mod transform;
 
 pub(crate) use audio::validate_sample_buffer;
 pub use audio::{Audio, AudioChannelLayout};
+pub use augmentation::{NoiseDistribution, mix_snr, noise_like};
+pub use batch::{crop_to, length_mask, pad_to, stack};
 pub use capture::{AudioCapture, AudioCaptureChunk};
 pub use codec::wav::{encode_interleaved_wav_f32, encode_wav_f32, save_wav_f32};
 pub use decoder::{decode_file, decode_file_on, decode_memory, decode_memory_on};
@@ -31,7 +36,10 @@ pub use signal::{
 	biquad, clip, fade, gain, mix, normalize, pre_emphasis, resample, reverb, saturate, sos_filter,
 	to_mono, waveform_envelope,
 };
-pub use transform::{MelConfig, MfccConfig, StftConfig, StftWindow, mel_spectrogram, mfcc, stft};
+pub use transform::{
+	IstftConfig, MelConfig, MfccConfig, StftConfig, StftWindow, istft, mel_spectrogram, mfcc, stft,
+	stft_complex,
+};
 pub use types::{AudioCaptureConfig, AudioPlayerConfig};
 
 #[path = "audio/parity.gen.rs"]

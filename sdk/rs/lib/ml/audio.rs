@@ -28,18 +28,11 @@ pub const RNG_SEED: u64 = 20_260_818;
 /// Complete data passes in one canonical tutorial run, matching the
 /// TensorFlow simple-audio recipe.
 pub const TRAINING_EPOCHS: usize = 10;
-/// Clips per canonical training batch; the bundled subset trains full-batch.
+/// Clips per canonical training batch.
 pub const BATCH_SIZE: usize = 8;
 /// Clips per mel-feature dispatch; keeps each submission bounded on
 /// memory-constrained devices and below driver watchdog windows.
 pub const MEL_CHUNK_CLIPS: usize = 512;
-/// Accepted OARS final loss for the canonical commands run.
-pub const COMMANDS_FINAL_LOSS: f32 = 0.622_496;
-/// Accepted OARS final test accuracy for the canonical commands run. The
-/// bundled subset carries four clips per command, so this floor is the
-/// deterministic memorization result — meaningful generalization numbers
-/// require `--dataset` pointed at full mini_speech_commands.
-pub const COMMANDS_TEST_ACCURACY: f32 = 0.0;
 
 /// One decoded clip: mono FP32 samples padded or trimmed to
 /// [`SAMPLES_PER_CLIP`], plus its command class index.

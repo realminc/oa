@@ -9,7 +9,7 @@
 // matrix_rng_sha256=bc63df2993dd5d9a09ae6d6f482a8fdf1f8dec4740a79dc6a3c475fe3de1da91
 // matrix_index_sha256=128d540ce6db24bfba19ff1d64add45419eec3dc907678f705100c2ebb4a3385
 // ml_training_sha256=fc8e36b17fa2f93f1897a2e98625d4e33da9ec46d91dc785017e425401309ebd
-// audio_sha256=d0f3ad863cf459a51240421f3876f2b1ab39293c90df611d549a8c5a0f434b71
+// audio_sha256=0acacb625934738cbac7eca8170ac18c3fb7f7dc2fb4b57552bf03ab04585d3b
 // cryptography_hash_sha256=346a7ffb863b1e9905cd924bf5b52ea0b452e06f9c1a0918d8d76e8ff4df2dc3
 // cryptography_pqc_sha256=8f189e5eb316e76fc2971de4cd6f5852eb7011a1e6fcaeebaba92903ca0214ed
 // image_sha256=fd3d0f85770c96d9be90c60a235a3b774a1661c36ffcb53024ada70f2c0b8919
@@ -4412,6 +4412,46 @@ pub mod audio {
 	.with_shape_rule(OpShapeRule::Explicit)
 	.with_dtype_rule(OpDTypeRule::MatchInput)
 	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("fftSize", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("hopSize", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("winSize", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("window", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("center", OpAttributeKind::Boolean),
+	]);
+
+	pub const STFT_COMPLEX: OperationContract = OperationContract::new(
+		"oa::audio::stft_complex",
+		0x48b250bc5761b8fe,
+		&[OpValueKind::Audio],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("fftSize", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("hopSize", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("winSize", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("window", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("center", OpAttributeKind::Boolean),
+	]);
+
+	pub const ISTFT: OperationContract = OperationContract::new(
+		"oa::audio::istft",
+		0x101dd193d1458452,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Audio],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
 	.with_lowering(OpLowering::Dispatch)
 	.with_fusion_class(OpFusionClass::Effect)
 	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))

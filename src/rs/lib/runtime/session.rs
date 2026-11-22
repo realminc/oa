@@ -7,11 +7,11 @@ use crate::{
 };
 
 use super::{
-	AudioSemanticDispatch, AudioSemanticOutput, Buffer, BufferAccess, BufferBinding, ComputeDispatch,
-	Device, ImageSemanticDispatch, ImageSemanticInput, OptionalSemanticDispatch, PushConstant,
-	QuantSemanticDispatch, QuantSemanticInput, QuantSemanticOutput, SemanticDispatch, SemanticGraph,
-	SemanticValueDesc, SemanticValueId, Storage, dna::fusion, graph::executable::ExecutableGraph,
-	storage::ReadinessSnapshot,
+	AudioSemanticDispatch, AudioSemanticInput, AudioSemanticOutput, Buffer, BufferAccess,
+	BufferBinding, ComputeDispatch, Device, ImageSemanticDispatch, ImageSemanticInput,
+	OptionalSemanticDispatch, PushConstant, QuantSemanticDispatch, QuantSemanticInput,
+	QuantSemanticOutput, SemanticDispatch, SemanticGraph, SemanticValueDesc, SemanticValueId,
+	Storage, dna::fusion, graph::executable::ExecutableGraph, storage::ReadinessSnapshot,
 };
 
 use super::{
@@ -1305,7 +1305,13 @@ fn admit_audio_semantic_dispatch(
 	let inputs = semantic
 		.inputs
 		.iter()
-		.map(|audio| admit_audio(graph, values, storage, audio, true).map(Some))
+		.map(|input| {
+			match input {
+				AudioSemanticInput::Audio(audio) => admit_audio(graph, values, storage, audio, true),
+				AudioSemanticInput::Matrix(matrix) => admit_matrix(graph, values, storage, matrix, true),
+			}
+			.map(Some)
+		})
 		.collect::<Result<Vec<_>>>()?;
 	let outputs = semantic
 		.outputs

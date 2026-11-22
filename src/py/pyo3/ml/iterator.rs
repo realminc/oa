@@ -96,12 +96,14 @@ fn call_record(record: &Py<PyAny>, prepared: Py<PyAny>) -> oa::Result<oa::Matrix
 impl PythonItTraining {
 	/// Construct a training lifecycle around one engine and AdamW optimizer.
 	#[new]
+	#[pyo3(signature = (optimizer, config, engine=None))]
 	pub fn new(
 		py: Python<'_>,
-		engine: Py<PythonEngine>,
 		optimizer: Py<PyAny>,
 		config: &PythonItTrainingConfig,
+		engine: Option<Py<PythonEngine>>,
 	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve_owned(py, engine)?;
 		let cfg = config.inner.clone();
 		let inner = {
 			let eng = engine.bind(py).borrow();

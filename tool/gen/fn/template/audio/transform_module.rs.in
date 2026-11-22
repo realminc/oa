@@ -1,9 +1,10 @@
 //! Stateless GPU feature transforms from Audio to Matrix.
 
 use crate::{
-	Audio, DType, Error, Matrix, OpAttribute, Result,
+	Audio, AudioChannelLayout, DType, Error, Matrix, OpAttribute, Result,
 	runtime::{
-		AudioSemanticDispatch, AudioSemanticOutput, BufferBinding, ComputeDispatch, KernelId,
+		AudioSemanticDispatch, AudioSemanticInput, AudioSemanticOutput, BufferBinding, ComputeDispatch,
+		KernelId,
 		PushConstant,
 	},
 };
@@ -50,6 +51,69 @@ fn validate_stft(input: &Audio, config: StftConfig) -> Result<StftShape> {
 		samples,
 		frames,
 		freq_bins,
+	})
+}
+
+
+fn validate_istft(input: &Matrix, config: IstftConfig) -> Result<IstftShape> {
+	if !config.fft_size.is_power_of_two() || !(16..=1_024).contains(&config.fft_size) {
+		return Err(Error::invalid_argument(
+			"audio::istft fft_size must be a power of two in [16, 1024]",
+		));
+	}
+	if config.hop_size == 0 {
+		return Err(Error::invalid_argument(
+			"audio::istft hop_size must be nonzero",
+		));
+	}
+	let win_size = if config.win_size == 0 {
+		config.fft_size
+	} else {
+		config.win_size
+	};
+	if win_size > config.fft_size {
+		return Err(Error::invalid_argument(
+			"audio::istft win_size must be zero or no larger than fft_size",
+		));
+	}
+	if config.sample_rate == 0 {
+		return Err(Error::invalid_argument(
+			"audio::istft sample_rate must be nonzero",
+		));
+	}
+	let dims = input.shape();
+	if dims.len() != 4 || dims[3] != 2 {
+		return Err(Error::invalid_argument(
+			"audio::istft input must be [channels, frames, frequency_bins, 2]",
+		));
+	}
+	let channels = u32_extent(dims[0], "audio::istft channels")?;
+	let frames = u32_extent(dims[1], "audio::istft frames")?;
+	let freq_bins = u32_extent(dims[2], "audio::istft frequency_bins")?;
+	if frames == 0 || freq_bins != config.fft_size / 2 + 1 {
+		return Err(Error::invalid_argument(
+			"audio::istft input shape does not match fft_size",
+		));
+	}
+	let padded_samples = frames
+		.checked_sub(1)
+		.and_then(|value| value.checked_mul(config.hop_size))
+		.and_then(|value| value.checked_add(config.fft_size))
+		.ok_or_else(|| Error::out_of_range("audio::istft output exceeds u32"))?;
+	let crop_offset = if config.center { config.fft_size / 2 } else { 0 };
+	let out_samples = padded_samples
+		.checked_sub(2 * crop_offset)
+		.ok_or_else(|| Error::invalid_argument("audio::istft crop exceeds padded output"))?;
+	channels
+		.checked_mul(padded_samples)
+		.ok_or_else(|| Error::out_of_range("audio::istft output exceeds u32"))?;
+	Ok(IstftShape {
+		channels,
+		frames,
+		freq_bins,
+		padded_samples,
+		crop_offset,
+		out_samples,
 	})
 }
 

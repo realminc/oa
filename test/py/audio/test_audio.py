@@ -224,3 +224,102 @@ class AudioCodecTest(unittest.TestCase):
 
 if __name__ == "__main__":
 	unittest.main()
+
+class StftComplexIstftTest(unittest.TestCase):
+	"""GPU complex STFT and inverse STFT round trip."""
+
+	@classmethod
+	def setUpClass(cls) -> None:
+		cls.engine = oa.Engine()
+		samples = [
+			0.5 * math.sin(2 * math.pi * i / 32.0)
+			+ 0.3 * math.cos(2 * math.pi * i / 11.0)
+			+ 0.1 * math.sin(i * 0.37)
+			for i in range(1024)
+		]
+		cls.samples = samples
+		cls.tone = oa.Audio.new_from_planar_f32(
+			samples, channels=1, sample_rate=48_000, layout="mono", engine=cls.engine
+		)
+
+	def test_stft_complex_matches_magnitude(self) -> None:
+		complex_spectrum = oa.audio.stft_complex(self.tone, fft_size=64, hop_size=16)
+		self.assertEqual(complex_spectrum.shape, [1, 65, 33, 2])
+		magnitude = oa.audio.stft(self.tone, fft_size=64, hop_size=16)
+		complex_values = complex_spectrum.read_f32()
+		magnitude_values = magnitude.read_f32()
+		for index, expected in enumerate(magnitude_values):
+			real = complex_values[index * 2]
+			imaginary = complex_values[index * 2 + 1]
+			actual = math.sqrt(real * real + imaginary * imaginary)
+			self.assertAlmostEqual(actual, expected, places=5)
+
+	def test_istft_roundtrip_reconstructs_audio(self) -> None:
+		complex_spectrum = oa.audio.stft_complex(self.tone, fft_size=256, hop_size=64)
+		output = oa.audio.istft(
+			complex_spectrum, fft_size=256, hop_size=64, sample_rate=48_000
+		)
+		self.assertEqual(output.channels, 1)
+		self.assertEqual(output.samples, len(self.samples))
+		self.assertEqual(output.sample_rate, 48_000)
+		for actual, expected in zip(output.as_matrix().read_f32(), self.samples):
+			self.assertAlmostEqual(actual, expected, places=4)
+
+	def test_istft_rejects_mismatched_shape(self) -> None:
+		bad = oa.Matrix.new_from_f32([1, 4, 8, 2], [0.0] * 64, engine=self.engine)
+		with self.assertRaises(Exception):
+			oa.audio.istft(bad, fft_size=16)
+
+
+class AudioAugmentationTest(unittest.TestCase):
+	def test_noise_like_deterministic_and_mix_snr_reaches_target(self) -> None:
+		samples = [math.sin(i * 0.05) * 0.5 for i in range(4096)]
+		signal = oa.Audio.new_from_planar_f32(samples, channels=1, sample_rate=8000, layout="mono")
+		first = oa.audio.noise_like(signal, "gaussian", 0.2, 42)
+		repeat = oa.audio.noise_like(signal, "gaussian", 0.2, 42)
+		assert first.as_matrix().read_f32() == repeat.as_matrix().read_f32()
+		other = oa.audio.noise_like(signal, "gaussian", 0.2, 43)
+		assert first.as_matrix().read_f32() != other.as_matrix().read_f32()
+		uniform = oa.audio.noise_like(signal, "uniform", 0.5, 42)
+		assert all(abs(v) <= 0.5 + 1e-6 for v in uniform.as_matrix().read_f32())
+
+		mixed = oa.audio.mix_snr(signal, first, 10.0)
+		signal_read = signal.as_matrix().read_f32()
+		mixed_read = mixed.as_matrix().read_f32()
+		signal_power = sum(s * s for s in signal_read)
+		residual_power = sum((m - s) * (m - s) for s, m in zip(signal_read, mixed_read))
+		measured = 10.0 * math.log10(signal_power / residual_power)
+		assert abs(measured - 10.0) < 0.25
+
+	def test_pad_crop_stack_and_length_mask(self) -> None:
+		clip_a = oa.Audio.new_from_planar_f32(
+			[1.0, 2.0, 3.0], channels=1, sample_rate=48_000, layout="mono")
+		clip_b = oa.Audio.new_from_planar_f32(
+			[float(i) for i in range(16)], channels=1, sample_rate=48_000, layout="mono")
+
+		padded = oa.audio.pad_to(clip_a, 16)
+		assert padded.samples == 16
+		assert padded.as_matrix().read_f32()[3:] == [0.0] * 13
+		cropped = oa.audio.crop_to(clip_b, 4)
+		assert cropped.as_matrix().read_f32() == [0.0, 1.0, 2.0, 3.0]
+
+		batch = oa.audio.stack([padded, clip_b])
+		assert batch.channels == 2
+		assert batch.samples == 16
+		mask = oa.audio.length_mask(batch, [3, 16])
+		assert mask.shape == [2, 16]
+		values = mask.read_f32()
+		assert values[:3] == [1.0, 1.0, 1.0]
+		assert all(v == 0.0 for v in values[3:16])
+		assert all(v == 1.0 for v in values[16:])
+
+		spectrum = oa.audio.stft_complex(
+			batch, fft_size=16, hop_size=4, win_size=16, window="rectangular", center=False)
+		assert spectrum.shape == [2, 1, 9, 2]
+
+		with self.assertRaises(Exception):
+			oa.audio.pad_to(clip_a, 2)
+		with self.assertRaises(Exception):
+			oa.audio.stack([clip_a, clip_b])
+		with self.assertRaises(Exception):
+			oa.audio.length_mask(batch, [3])

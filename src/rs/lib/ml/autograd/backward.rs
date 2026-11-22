@@ -88,6 +88,14 @@ impl GradientTape {
 						continue;
 					}
 				}
+				GradNode::Audio(node) => {
+					let Some(output_gradient) = gradients.remove(&reached_output_id) else {
+						continue;
+					};
+					let (input_id, input_gradient) =
+						crate::audio::autograd::backward(node, &output_gradient)?;
+					accumulate_value_gradient(&mut gradients, input_id, input_gradient)?;
+				}
 				GradNode::FlowLinearState {
 					clean,
 					noise,

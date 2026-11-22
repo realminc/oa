@@ -24,10 +24,12 @@ mod ohlcv;
 mod types;
 
 pub use dataframe::{DataFrame, DataFrameView, Series, SeriesView, SeriesViewMut};
-pub use ohlcv::{DsOhlcv, OhlcvView, OhlcvWindows, UnixTimeUnit};
+pub use ohlcv::{OhlcvDataset, OhlcvView, OhlcvWindows, UnixTimeUnit};
 pub use types::{Batch, DataLoaderConfig, OhlcvWindowConfig, SplitResult};
 
-pub use dataset::{DataLoader, Dataset, Sample, Subset, collate, random_split, shuffle};
+pub use dataset::{
+	DataLoader, Dataset, MatrixDataset, Sample, Subset, collate, random_split, shuffle,
+};
 
 #[path = "data/parity.gen.rs"]
 mod parity;

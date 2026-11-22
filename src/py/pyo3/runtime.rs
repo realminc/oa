@@ -170,6 +170,23 @@ impl PythonEngine {
 			None => oa::Engine::current().map_err(python_error),
 		}
 	}
+
+	/// Resolve an optional owned engine handle for owners that pin the engine
+	/// allocation for their own lifetime.
+	pub(crate) fn resolve_owned(
+		py: Python<'_>,
+		engine: Option<Py<PythonEngine>>,
+	) -> PyResult<Py<PythonEngine>> {
+		match engine {
+			Some(engine) => Ok(engine),
+			None => Py::new(
+				py,
+				Self {
+					inner: oa::Engine::current().map_err(python_error)?,
+				},
+			),
+		}
+	}
 }
 
 #[pymethods]

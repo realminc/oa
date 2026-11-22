@@ -28,7 +28,7 @@
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &attributes,
 		},
@@ -74,7 +74,7 @@
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &attributes,
 		},
@@ -95,7 +95,7 @@
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &[{{attributes}}],
 		},
@@ -116,7 +116,7 @@
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &[{{attributes}}],
 		},
@@ -141,7 +141,7 @@
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &[{{attributes}}],
 		},
@@ -203,7 +203,7 @@
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &attributes,
 		},
@@ -311,7 +311,7 @@
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &attributes,
 		},
@@ -358,7 +358,7 @@
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &attributes,
 		},
@@ -380,7 +380,7 @@
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &[{{attributes}}],
 		},
@@ -403,7 +403,7 @@
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &[{{attributes}}],
 		},
@@ -424,7 +424,7 @@
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &[{{attributes}}],
 		},
@@ -452,7 +452,7 @@
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[left, right],
+			inputs: &[AudioSemanticInput::Audio(left), AudioSemanticInput::Audio(right)],
 			outputs: &outputs,
 			attributes: &attributes,
 		},
@@ -474,7 +474,7 @@
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &attributes,
 		},
@@ -506,7 +506,7 @@
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
-			inputs: &[input],
+			inputs: &[AudioSemanticInput::Audio(input)],
 			outputs: &outputs,
 			attributes: &attributes,
 		},

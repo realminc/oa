@@ -22,7 +22,7 @@ SESSION_TYPE_PATHS = {
 	"VideoMuxerConfig": "crate::video",
 	"AudioEncodeProfile": "crate::audio", "AudioEncoder": "crate::audio",
 	"DataFrame": "crate::data", "DataFrameView": "crate::data", "DataLoader": "crate::data",
-	"DataLoaderConfig": "crate::data", "Dataset": "crate::data", "DsOhlcv": "crate::data",
+	"DataLoaderConfig": "crate::data", "Dataset": "crate::data", "OhlcvDataset": "crate::data",
 	"OhlcvView": "crate::data", "OhlcvWindowConfig": "crate::data", "OhlcvWindows": "crate::data",
 	"Subset": "crate::data", "UnixTimeUnit": "crate::data",
 	"EnvironmentExecution": "crate::ml::environment",

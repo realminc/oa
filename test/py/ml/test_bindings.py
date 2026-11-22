@@ -683,7 +683,7 @@ class TrainingProgramTest(unittest.TestCase):
 	def setUp(self) -> None:
 		self.engine = oa.Engine()
 		# Build a minimal 1-layer linear model + AdamW for capture.
-		self.linear = oa.ml.Linear( in_features=4, out_features=1, seed=0, engine=self.engine)
+		self.linear = oa.ml.Linear( input_features=4, output_features=1, seed=0, engine=self.engine)
 		params = self.linear.all_parameters()
 		self.optimizer = oa.ml.AdamW(params, learning_rate=1e-3)
 
@@ -788,7 +788,7 @@ class NlpPresetSmoke(unittest.TestCase):
 
 	def _assert_preset(self, cls_name: str, **kwargs) -> None:
 		preset_cls = getattr(oa.ml, cls_name)
-		model = preset_cls(self.engine, **kwargs)
+		model = preset_cls(engine=self.engine, **kwargs)
 		self.assertIn(cls_name, repr(model))
 		params = model.all_parameters()
 		self.assertGreater(len(params), 0)
@@ -1228,7 +1228,7 @@ class OptimizerConstructorsTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
 		cls.engine = oa.Engine()
-		cls.linear = oa.ml.Linear( in_features=4, out_features=2, seed=1, engine=cls.engine)
+		cls.linear = oa.ml.Linear( input_features=4, output_features=2, seed=1, engine=cls.engine)
 		cls.params = cls.linear.all_parameters()
 
 	def test_sgd_constructs_and_round_trips_lr(self) -> None:
@@ -1336,11 +1336,11 @@ class EnvironmentTransitionTest(unittest.TestCase):
 
 	def test_round_trips_all_five_matrices(self) -> None:
 		e = self.engine
-		obs = oa.Matrix.new_from_f32(e, [2, 4], [0.0] * 8)
-		nobs = oa.Matrix.new_from_f32(e, [2, 4], [1.0] * 8)
-		rew = oa.Matrix.new_from_f32(e, [2], [0.5, 0.5])
-		term = oa.Matrix.new_from_u8(e, [2], [0, 1])
-		trunc = oa.Matrix.new_from_u8(e, [2], [0, 0])
+		obs = oa.Matrix.new_from_f32([2, 4], [0.0] * 8, engine=e)
+		nobs = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, engine=e)
+		rew = oa.Matrix.new_from_f32([2], [0.5, 0.5], engine=e)
+		term = oa.Matrix.new_from_u8([2], [0, 1], engine=e)
+		trunc = oa.Matrix.new_from_u8([2], [0, 0], engine=e)
 		t = oa.ml.EnvironmentTransition(obs, nobs, rew, term, trunc)
 		self.assertIsInstance(t, oa.ml.EnvironmentTransition)
 		self.assertEqual(t.observation.shape, [2, 4])
@@ -1361,21 +1361,21 @@ class EnvironmentFunctionsTest(unittest.TestCase):
 
 	def test_normalize_observation_preserves_shape(self) -> None:
 		e = self.engine
-		obs = oa.Matrix.new_from_f32(e, [2, 4], [1.0] * 8)
-		mean = oa.Matrix.new_from_f32(e, [4], [0.0] * 4)
-		std = oa.Matrix.new_from_f32(e, [4], [1.0] * 4)
+		obs = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, engine=e)
+		mean = oa.Matrix.new_from_f32([4], [0.0] * 4, engine=e)
+		std = oa.Matrix.new_from_f32([4], [1.0] * 4, engine=e)
 		result = oa.ml.normalize_observation(obs, mean, std, 1e-5, 5.0)
 		self.assertEqual(result.shape, [2, 4])
 
 	def test_scale_action_clamps_and_rescales(self) -> None:
 		e = self.engine
-		action = oa.Matrix.new_from_f32(e, [2, 2], [0.5, -0.5, 1.0, -1.0])
+		action = oa.Matrix.new_from_f32([2, 2], [0.5, -0.5, 1.0, -1.0], engine=e)
 		result = oa.ml.scale_action(action, -1.0, 1.0, 0.0, 1.0, clamp_source=True)
 		self.assertEqual(result.shape, [2, 2])
 
 	def test_clip_reward_preserves_shape(self) -> None:
 		e = self.engine
-		reward = oa.Matrix.new_from_f32(e, [4], [5.0, -5.0, 0.1, -0.1])
+		reward = oa.Matrix.new_from_f32([4], [5.0, -5.0, 0.1, -0.1], engine=e)
 		result = oa.ml.clip_reward(reward, -1.0, 1.0)
 		self.assertEqual(result.shape, [4])
 
@@ -1390,12 +1390,12 @@ class ReplayTransitionTest(unittest.TestCase):
 
 	def test_round_trips_all_six_matrices(self) -> None:
 		e = self.engine
-		obs = oa.Matrix.new_from_f32(e, [1, 4], [0.0] * 4)
-		act = oa.Matrix.new_from_i32(e, [1, 1], [0])
-		nobs = oa.Matrix.new_from_f32(e, [1, 4], [1.0] * 4)
-		rew = oa.Matrix.new_from_f32(e, [1], [1.0])
-		term = oa.Matrix.new_from_u8(e, [1], [0])
-		trunc = oa.Matrix.new_from_u8(e, [1], [0])
+		obs = oa.Matrix.new_from_f32([1, 4], [0.0] * 4, engine=e)
+		act = oa.Matrix.new_from_i32([1, 1], [0], engine=e)
+		nobs = oa.Matrix.new_from_f32([1, 4], [1.0] * 4, engine=e)
+		rew = oa.Matrix.new_from_f32([1], [1.0], engine=e)
+		term = oa.Matrix.new_from_u8([1], [0], engine=e)
+		trunc = oa.Matrix.new_from_u8([1], [0], engine=e)
 		t = oa.ml.ReplayTransition(obs, act, nobs, rew, term, trunc)
 		self.assertEqual(t.observation.shape, [1, 4])
 		self.assertEqual(t.action.shape, [1, 1])
@@ -1419,12 +1419,12 @@ class ReplayBufferTest(unittest.TestCase):
 
 	def _make_transition(self):
 		e = self.engine
-		obs = oa.Matrix.new_from_f32(e, [1, 4], [0.0] * 4)
-		act = oa.Matrix.new_from_i32(e, [1, 1], [0])  # batch=1, action_shape=[1]
-		nobs = oa.Matrix.new_from_f32(e, [1, 4], [1.0] * 4)
-		rew = oa.Matrix.new_from_f32(e, [1], [1.0])
-		term = oa.Matrix.new_from_u8(e, [1], [0])
-		trunc = oa.Matrix.new_from_u8(e, [1], [0])
+		obs = oa.Matrix.new_from_f32([1, 4], [0.0] * 4, engine=e)
+		act = oa.Matrix.new_from_i32([1, 1], [0], engine=e)  # batch=1, action_shape=[1]
+		nobs = oa.Matrix.new_from_f32([1, 4], [1.0] * 4, engine=e)
+		rew = oa.Matrix.new_from_f32([1], [1.0], engine=e)
+		term = oa.Matrix.new_from_u8([1], [0], engine=e)
+		trunc = oa.Matrix.new_from_u8([1], [0], engine=e)
 		return oa.ml.ReplayTransition(obs, act, nobs, rew, term, trunc)
 
 	def test_empty_buffer_len_and_capacity(self) -> None:
@@ -1472,14 +1472,14 @@ class RolloutTransitionTest(unittest.TestCase):
 
 	def test_round_trips_all_eight_matrices(self) -> None:
 		e = self.engine
-		obs = oa.Matrix.new_from_f32(e, [1, 4], [0.0] * 4)
-		act = oa.Matrix.new_from_i32(e, [1], [0])
-		rew = oa.Matrix.new_from_f32(e, [1], [0.5])
-		val = oa.Matrix.new_from_f32(e, [1], [0.1])
-		nval = oa.Matrix.new_from_f32(e, [1], [0.2])
-		logp = oa.Matrix.new_from_f32(e, [1], [-1.0])
-		term = oa.Matrix.new_from_u8(e, [1], [0])
-		trunc = oa.Matrix.new_from_u8(e, [1], [0])
+		obs = oa.Matrix.new_from_f32([1, 4], [0.0] * 4, engine=e)
+		act = oa.Matrix.new_from_i32([1], [0], engine=e)
+		rew = oa.Matrix.new_from_f32([1], [0.5], engine=e)
+		val = oa.Matrix.new_from_f32([1], [0.1], engine=e)
+		nval = oa.Matrix.new_from_f32([1], [0.2], engine=e)
+		logp = oa.Matrix.new_from_f32([1], [-1.0], engine=e)
+		term = oa.Matrix.new_from_u8([1], [0], engine=e)
+		trunc = oa.Matrix.new_from_u8([1], [0], engine=e)
 		t = oa.ml.RolloutTransition(obs, act, rew, val, nval, logp, term, trunc)
 		self.assertEqual(t.observation.shape, [1, 4])
 		self.assertEqual(t.action.shape, [1])
@@ -1504,14 +1504,14 @@ class RolloutBufferTest(unittest.TestCase):
 
 	def _make_transition(self):
 		e = self.engine
-		obs = oa.Matrix.new_from_f32(e, [1, 4], [0.0] * 4)
-		act = oa.Matrix.new_from_i32(e, [1], [0])
-		rew = oa.Matrix.new_from_f32(e, [1], [0.5])
-		val = oa.Matrix.new_from_f32(e, [1], [0.1])
-		nval = oa.Matrix.new_from_f32(e, [1], [0.2])
-		logp = oa.Matrix.new_from_f32(e, [1], [-1.0])
-		term = oa.Matrix.new_from_u8(e, [1], [0])
-		trunc = oa.Matrix.new_from_u8(e, [1], [0])
+		obs = oa.Matrix.new_from_f32([1, 4], [0.0] * 4, engine=e)
+		act = oa.Matrix.new_from_i32([1], [0], engine=e)
+		rew = oa.Matrix.new_from_f32([1], [0.5], engine=e)
+		val = oa.Matrix.new_from_f32([1], [0.1], engine=e)
+		nval = oa.Matrix.new_from_f32([1], [0.2], engine=e)
+		logp = oa.Matrix.new_from_f32([1], [-1.0], engine=e)
+		term = oa.Matrix.new_from_u8([1], [0], engine=e)
+		trunc = oa.Matrix.new_from_u8([1], [0], engine=e)
 		return oa.ml.RolloutTransition(obs, act, rew, val, nval, logp, term, trunc)
 
 	def test_empty_buffer_properties(self) -> None:
@@ -1545,16 +1545,16 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 
 	def test_masked_cross_entropy_ignores_the_masked_row(self) -> None:
 		e = self.engine
-		logits = oa.Matrix.new_from_f32(e, [2, 2], [0.0, 0.0, 1000.0, -1000.0])
-		targets = oa.Matrix.new_from_u32(e, [2], [0, 1])
-		mask = oa.Matrix.new_from_f32(e, [2], [1.0, 0.0])
+		logits = oa.Matrix.new_from_f32([2, 2], [0.0, 0.0, 1000.0, -1000.0], engine=e)
+		targets = oa.Matrix.new_from_u32([2], [0, 1], engine=e)
+		mask = oa.Matrix.new_from_f32([2], [1.0, 0.0], engine=e)
 		loss = oa.ml.loss.masked_cross_entropy(logits, targets, mask, 1)
 		self.assertEqual(loss.shape, [])
 		self.assertAlmostEqual(loss.read_f32()[0], math.log(2.0), places=6)
 
 	def test_advantage_normalize_preserves_shape(self) -> None:
 		e = self.engine
-		adv = oa.Matrix.new_from_f32(e, [8], [1.0, -1.0, 2.0, -2.0, 0.5, -0.5, 3.0, -3.0])
+		adv = oa.Matrix.new_from_f32([8], [1.0, -1.0, 2.0, -2.0, 0.5, -0.5, 3.0, -3.0], engine=e)
 		result = oa.ml.advantage_normalize(adv, epsilon=1e-8)
 		self.assertIsInstance(result, oa.Matrix)
 		self.assertEqual(result.shape, [8])
@@ -1562,11 +1562,11 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 	def test_advantage_gae_returns_result_with_correct_fields(self) -> None:
 		e = self.engine
 		shape = [4, 1]
-		reward = oa.Matrix.new_from_f32(e, shape, [1.0, 0.5, 2.0, 0.0])
-		value = oa.Matrix.new_from_f32(e, shape, [0.5, 0.3, 0.8, 0.1])
-		next_value = oa.Matrix.new_from_f32(e, shape, [0.3, 0.8, 0.1, 0.0])
-		terminated = oa.Matrix.new_from_u8(e, shape, [0] * 4)
-		truncated = oa.Matrix.new_from_u8(e, shape, [0] * 4)
+		reward = oa.Matrix.new_from_f32(shape, [1.0, 0.5, 2.0, 0.0], engine=e)
+		value = oa.Matrix.new_from_f32(shape, [0.5, 0.3, 0.8, 0.1], engine=e)
+		next_value = oa.Matrix.new_from_f32(shape, [0.3, 0.8, 0.1, 0.0], engine=e)
+		terminated = oa.Matrix.new_from_u8(shape, [0] * 4, engine=e)
+		truncated = oa.Matrix.new_from_u8(shape, [0] * 4, engine=e)
 		cfg = oa.ml.GaeConfig(0.99, 0.95)
 		result = oa.ml.advantage_gae(reward, value, next_value, terminated, truncated, cfg)
 		self.assertIsInstance(result, oa.ml.GaeResult)
@@ -1576,14 +1576,14 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 
 	def test_clip_reward_clamps_values(self) -> None:
 		e = self.engine
-		reward = oa.Matrix.new_from_f32(e, [4], [10.0, -10.0, 0.5, -0.5])
+		reward = oa.Matrix.new_from_f32([4], [10.0, -10.0, 0.5, -0.5], engine=e)
 		clipped = oa.ml.clip_reward(reward, -1.0, 1.0)
 		self.assertEqual(clipped.shape, [4])
 
 	def test_policy_sample_categorical_returns_policy_result(self) -> None:
 		e = self.engine
-		logits = oa.Matrix.new_from_f32(e, [2, 4], [0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.1])
-		value = oa.Matrix.new_from_f32(e, [2], [0.5, 0.3])
+		logits = oa.Matrix.new_from_f32([2, 4], [0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.1], engine=e)
+		value = oa.Matrix.new_from_f32([2], [0.5, 0.3], engine=e)
 		result = oa.ml.policy_sample_categorical(logits, value, 42)
 		self.assertIsInstance(result, oa.ml.PolicyResult)
 		self.assertEqual(result.action.shape, [2])
@@ -1594,18 +1594,18 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 
 	def test_policy_evaluate_categorical_returns_policy_result(self) -> None:
 		e = self.engine
-		logits = oa.Matrix.new_from_f32(e, [2, 4], [0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.1])
-		action = oa.Matrix.new_from_i32(e, [2], [1, 2])
-		value = oa.Matrix.new_from_f32(e, [2], [0.5, 0.3])
+		logits = oa.Matrix.new_from_f32([2, 4], [0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.1], engine=e)
+		action = oa.Matrix.new_from_i32([2], [1, 2], engine=e)
+		value = oa.Matrix.new_from_f32([2], [0.5, 0.3], engine=e)
 		result = oa.ml.policy_evaluate_categorical(logits, action, value)
 		self.assertIsInstance(result, oa.ml.PolicyResult)
 		self.assertEqual(result.action.shape, [2])
 
 	def test_policy_sample_tanh_normal_returns_continuous_result(self) -> None:
 		e = self.engine
-		mean = oa.Matrix.new_from_f32(e, [2, 2], [0.0] * 4)
-		log_std = oa.Matrix.new_from_f32(e, [2, 2], [-0.5] * 4)
-		value = oa.Matrix.new_from_f32(e, [2], [0.5, 0.3])
+		mean = oa.Matrix.new_from_f32([2, 2], [0.0] * 4, engine=e)
+		log_std = oa.Matrix.new_from_f32([2, 2], [-0.5] * 4, engine=e)
+		value = oa.Matrix.new_from_f32([2], [0.5, 0.3], engine=e)
 		result = oa.ml.policy_sample_tanh_normal(mean, log_std, value, -1.0, 1.0, 42, 1e-6)
 		self.assertIsInstance(result, oa.ml.ContinuousPolicyResult)
 		self.assertEqual(result.action.shape, [2, 2])
@@ -1617,30 +1617,30 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 
 	def test_policy_evaluate_tanh_normal_returns_continuous_result(self) -> None:
 		e = self.engine
-		mean = oa.Matrix.new_from_f32(e, [2, 2], [0.0] * 4)
-		log_std = oa.Matrix.new_from_f32(e, [2, 2], [-0.5] * 4)
-		raw_action = oa.Matrix.new_from_f32(e, [2, 2], [0.1, -0.1, 0.2, -0.2])
-		value = oa.Matrix.new_from_f32(e, [2], [0.5, 0.3])
+		mean = oa.Matrix.new_from_f32([2, 2], [0.0] * 4, engine=e)
+		log_std = oa.Matrix.new_from_f32([2, 2], [-0.5] * 4, engine=e)
+		raw_action = oa.Matrix.new_from_f32([2, 2], [0.1, -0.1, 0.2, -0.2], engine=e)
+		value = oa.Matrix.new_from_f32([2], [0.5, 0.3], engine=e)
 		result = oa.ml.policy_evaluate_tanh_normal(mean, log_std, raw_action, value, -1.0, 1.0, 1e-6)
 		self.assertIsInstance(result, oa.ml.ContinuousPolicyResult)
 
 	def test_loss_ppo_clipped_policy_returns_matrix(self) -> None:
 		e = self.engine
-		new_lp = oa.Matrix.new_from_f32(e, [4], [-0.5, -0.3, -0.7, -0.4])
-		old_lp = oa.Matrix.new_from_f32(e, [4], [-0.6, -0.4, -0.6, -0.5])
-		adv = oa.Matrix.new_from_f32(e, [4], [1.0, -1.0, 0.5, -0.5])
+		new_lp = oa.Matrix.new_from_f32([4], [-0.5, -0.3, -0.7, -0.4], engine=e)
+		old_lp = oa.Matrix.new_from_f32([4], [-0.6, -0.4, -0.6, -0.5], engine=e)
+		adv = oa.Matrix.new_from_f32([4], [1.0, -1.0, 0.5, -0.5], engine=e)
 		result = oa.ml.loss_ppo_clipped_policy(new_lp, old_lp, adv, 0.2)
 		self.assertIsInstance(result, oa.Matrix)
 		self.assertEqual(result.shape, [])
 
 	def test_loss_ppo_returns_ppo_loss_result(self) -> None:
 		e = self.engine
-		new_lp = oa.Matrix.new_from_f32(e, [4], [-0.5, -0.3, -0.7, -0.4])
-		old_lp = oa.Matrix.new_from_f32(e, [4], [-0.6, -0.4, -0.6, -0.5])
-		adv = oa.Matrix.new_from_f32(e, [4], [1.0, -1.0, 0.5, -0.5])
-		value = oa.Matrix.new_from_f32(e, [4], [0.5, 0.3, 0.8, 0.1])
-		target = oa.Matrix.new_from_f32(e, [4], [0.6, 0.4, 0.9, 0.2])
-		entropy = oa.Matrix.new_from_f32(e, [4], [0.5, 0.6, 0.4, 0.5])
+		new_lp = oa.Matrix.new_from_f32([4], [-0.5, -0.3, -0.7, -0.4], engine=e)
+		old_lp = oa.Matrix.new_from_f32([4], [-0.6, -0.4, -0.6, -0.5], engine=e)
+		adv = oa.Matrix.new_from_f32([4], [1.0, -1.0, 0.5, -0.5], engine=e)
+		value = oa.Matrix.new_from_f32([4], [0.5, 0.3, 0.8, 0.1], engine=e)
+		target = oa.Matrix.new_from_f32([4], [0.6, 0.4, 0.9, 0.2], engine=e)
+		entropy = oa.Matrix.new_from_f32([4], [0.5, 0.6, 0.4, 0.5], engine=e)
 		cfg = oa.ml.PpoLossConfig(clip_epsilon=0.2)
 		result = oa.ml.loss_ppo(new_lp, old_lp, adv, value, target, entropy, cfg)
 		self.assertIsInstance(result, oa.ml.PpoLossResult)
@@ -1652,12 +1652,12 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 
 	def test_loss_dqn_returns_dqn_loss_result(self) -> None:
 		e = self.engine
-		q = oa.Matrix.new_from_f32(e, [4, 2], [0.5, 0.3, 0.7, 0.2, 0.6, 0.4, 0.8, 0.1])
-		action = oa.Matrix.new_from_i32(e, [4], [0, 1, 0, 1])
-		reward = oa.Matrix.new_from_f32(e, [4], [1.0, 0.0, 0.5, -0.5])
-		next_q = oa.Matrix.new_from_f32(e, [4, 2], [0.4, 0.6, 0.3, 0.7, 0.5, 0.5, 0.2, 0.8])
-		terminated = oa.Matrix.new_from_u8(e, [4], [0, 0, 0, 1])
-		truncated = oa.Matrix.new_from_u8(e, [4], [0] * 4)
+		q = oa.Matrix.new_from_f32([4, 2], [0.5, 0.3, 0.7, 0.2, 0.6, 0.4, 0.8, 0.1], engine=e)
+		action = oa.Matrix.new_from_i32([4], [0, 1, 0, 1], engine=e)
+		reward = oa.Matrix.new_from_f32([4], [1.0, 0.0, 0.5, -0.5], engine=e)
+		next_q = oa.Matrix.new_from_f32([4, 2], [0.4, 0.6, 0.3, 0.7, 0.5, 0.5, 0.2, 0.8], engine=e)
+		terminated = oa.Matrix.new_from_u8([4], [0, 0, 0, 1], engine=e)
+		truncated = oa.Matrix.new_from_u8([4], [0] * 4, engine=e)
 		cfg = oa.ml.DqnLossConfig(discount=0.99)
 		result = oa.ml.loss_dqn(q, action, reward, next_q, terminated, truncated, cfg)
 		self.assertIsInstance(result, oa.ml.DqnLossResult)
@@ -1668,14 +1668,14 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 
 	def test_loss_sac_critic_returns_sac_critic_loss_result(self) -> None:
 		e = self.engine
-		q1 = oa.Matrix.new_from_f32(e, [4], [0.5, 0.3, 0.7, 0.2])
-		q2 = oa.Matrix.new_from_f32(e, [4], [0.4, 0.35, 0.65, 0.25])
-		reward = oa.Matrix.new_from_f32(e, [4], [1.0, 0.0, 0.5, -0.5])
-		next_q1 = oa.Matrix.new_from_f32(e, [4], [0.4, 0.3, 0.6, 0.1])
-		next_q2 = oa.Matrix.new_from_f32(e, [4], [0.45, 0.25, 0.55, 0.15])
-		next_lp = oa.Matrix.new_from_f32(e, [4], [-0.5, -0.4, -0.6, -0.3])
-		terminated = oa.Matrix.new_from_u8(e, [4], [0, 0, 0, 1])
-		truncated = oa.Matrix.new_from_u8(e, [4], [0] * 4)
+		q1 = oa.Matrix.new_from_f32([4], [0.5, 0.3, 0.7, 0.2], engine=e)
+		q2 = oa.Matrix.new_from_f32([4], [0.4, 0.35, 0.65, 0.25], engine=e)
+		reward = oa.Matrix.new_from_f32([4], [1.0, 0.0, 0.5, -0.5], engine=e)
+		next_q1 = oa.Matrix.new_from_f32([4], [0.4, 0.3, 0.6, 0.1], engine=e)
+		next_q2 = oa.Matrix.new_from_f32([4], [0.45, 0.25, 0.55, 0.15], engine=e)
+		next_lp = oa.Matrix.new_from_f32([4], [-0.5, -0.4, -0.6, -0.3], engine=e)
+		terminated = oa.Matrix.new_from_u8([4], [0, 0, 0, 1], engine=e)
+		truncated = oa.Matrix.new_from_u8([4], [0] * 4, engine=e)
 		cfg = oa.ml.SacLossConfig(discount=0.99, entropy_coefficient=0.2)
 		result = oa.ml.loss_sac_critic(q1, q2, reward, next_q1, next_q2, next_lp, terminated, truncated, cfg)
 		self.assertIsInstance(result, oa.ml.SacCriticLossResult)
@@ -1687,9 +1687,9 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 
 	def test_loss_sac_actor_returns_matrix(self) -> None:
 		e = self.engine
-		q1 = oa.Matrix.new_from_f32(e, [4], [0.5, 0.3, 0.7, 0.2])
-		q2 = oa.Matrix.new_from_f32(e, [4], [0.4, 0.35, 0.65, 0.25])
-		lp = oa.Matrix.new_from_f32(e, [4], [-0.5, -0.4, -0.6, -0.3])
+		q1 = oa.Matrix.new_from_f32([4], [0.5, 0.3, 0.7, 0.2], engine=e)
+		q2 = oa.Matrix.new_from_f32([4], [0.4, 0.35, 0.65, 0.25], engine=e)
+		lp = oa.Matrix.new_from_f32([4], [-0.5, -0.4, -0.6, -0.3], engine=e)
 		result = oa.ml.loss_sac_actor(q1, q2, lp, 0.2)
 		self.assertIsInstance(result, oa.Matrix)
 		self.assertEqual(result.shape, [])
@@ -1707,24 +1707,24 @@ class NnLayerSmokeTest(unittest.TestCase):
 
 	def test_embedding_forward(self) -> None:
 		e = self.engine
-		layer = oa.ml.Embedding(e, num_embeddings=10, embedding_dim=4, seed=0)
-		tokens = oa.Matrix.new_from_u32(e, [2, 3], [0, 1, 2, 3, 4, 5])
+		layer = oa.ml.Embedding(num_embeddings=10, embedding_dim=4, seed=0, engine=e)
+		tokens = oa.Matrix.new_from_u32([2, 3], [0, 1, 2, 3, 4, 5], engine=e)
 		out = layer(tokens)
 		self.assertEqual(out.shape, [2, 3, 4])
 		self.assertIn("Embedding", repr(layer))
 
 	def test_layer_norm_forward(self) -> None:
 		e = self.engine
-		layer = oa.ml.LayerNorm(e, normalized_shape=[4], seed=0)
-		x = oa.Matrix.new_from_f32(e, [2, 4], [1.0] * 8)
+		layer = oa.ml.LayerNorm(normalized_shape=[4], seed=0, engine=e)
+		x = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, engine=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4])
 		self.assertIn("LayerNorm", repr(layer))
 
 	def test_rms_norm_forward(self) -> None:
 		e = self.engine
-		layer = oa.ml.RmsNorm(e, features=4, seed=0)
-		x = oa.Matrix.new_from_f32(e, [2, 4], [1.0] * 8)
+		layer = oa.ml.RmsNorm(features=4, seed=0, engine=e)
+		x = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, engine=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4])
 		self.assertIn("RmsNorm", repr(layer))
@@ -1732,43 +1732,43 @@ class NnLayerSmokeTest(unittest.TestCase):
 	def test_dropout_forward(self) -> None:
 		e = self.engine
 		layer = oa.ml.Dropout(probability=0.1, seed=0)
-		x = oa.Matrix.new_from_f32(e, [2, 4], [1.0] * 8)
+		x = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, engine=e)
 		out = layer.forward(x)
 		self.assertEqual(out.shape, [2, 4])
 		self.assertIn("Dropout", repr(layer))
 
 	def test_rnn_cell_forward(self) -> None:
 		e = self.engine
-		layer = oa.ml.RnnCell(e, input_size=4, hidden_size=8, seed=0)
-		x = oa.Matrix.new_from_f32(e, [2, 4], [0.5] * 8)
-		h = oa.Matrix.new_from_f32(e, [2, 8], [0.0] * 16)
+		layer = oa.ml.RnnCell(input_size=4, hidden_size=8, seed=0, engine=e)
+		x = oa.Matrix.new_from_f32([2, 4], [0.5] * 8, engine=e)
+		h = oa.Matrix.new_from_f32([2, 8], [0.0] * 16, engine=e)
 		out = layer(x, h)
 		self.assertEqual(out.shape, [2, 8])
 		self.assertIn("RnnCell", repr(layer))
 
 	def test_rnn_forward(self) -> None:
 		e = self.engine
-		layer = oa.ml.Rnn(e, input_size=4, hidden_size=8, seed=0)
-		x = oa.Matrix.new_from_f32(e, [2, 3, 4], [0.5] * 24)
-		h = oa.Matrix.new_from_f32(e, [2, 8], [0.0] * 16)
+		layer = oa.ml.Rnn(input_size=4, hidden_size=8, seed=0, engine=e)
+		x = oa.Matrix.new_from_f32([2, 3, 4], [0.5] * 24, engine=e)
+		h = oa.Matrix.new_from_f32([2, 8], [0.0] * 16, engine=e)
 		out = layer(x, h)
 		self.assertEqual(out.shape, [2, 3, 8])
 		self.assertIn("Rnn", repr(layer))
 
 	def test_gru_cell_forward(self) -> None:
 		e = self.engine
-		layer = oa.ml.GruCell(e, input_size=4, hidden_size=8, seed=0)
-		x = oa.Matrix.new_from_f32(e, [2, 4], [0.5] * 8)
-		h = oa.Matrix.new_from_f32(e, [2, 8], [0.0] * 16)
+		layer = oa.ml.GruCell(input_size=4, hidden_size=8, seed=0, engine=e)
+		x = oa.Matrix.new_from_f32([2, 4], [0.5] * 8, engine=e)
+		h = oa.Matrix.new_from_f32([2, 8], [0.0] * 16, engine=e)
 		out = layer(x, h)
 		self.assertEqual(out.shape, [2, 8])
 		self.assertIn("GruCell", repr(layer))
 
 	def test_gru_forward(self) -> None:
 		e = self.engine
-		layer = oa.ml.Gru(e, input_size=4, hidden_size=8, seed=0)
-		x = oa.Matrix.new_from_f32(e, [2, 3, 4], [0.5] * 24)
-		h = oa.Matrix.new_from_f32(e, [2, 8], [0.0] * 16)
+		layer = oa.ml.Gru(input_size=4, hidden_size=8, seed=0, engine=e)
+		x = oa.Matrix.new_from_f32([2, 3, 4], [0.5] * 24, engine=e)
+		h = oa.Matrix.new_from_f32([2, 8], [0.0] * 16, engine=e)
 		out = layer(x, h)
 		self.assertEqual(out.shape, [2, 3, 8])
 		self.assertIn("Gru", repr(layer))
@@ -1776,10 +1776,10 @@ class NnLayerSmokeTest(unittest.TestCase):
 	def test_transformer_block_forward(self) -> None:
 		e = self.engine
 		block = oa.ml.TransformerBlock(
-			e, dim=8, heads=2, seq_len=4, seed=0
+			dim=8, heads=2, seq_len=4, seed=0, engine=e
 		)
 		# forward expects [B*S, D] input, so [4, 8] for batch=1, seq=4, dim=8
-		x = oa.Matrix.new_from_f32(e, [4, 8], [0.0] * 32)
+		x = oa.Matrix.new_from_f32([4, 8], [0.0] * 32, engine=e)
 		out = block(x)
 		self.assertEqual(out.shape, [4, 8])
 		self.assertIn("TransformerBlock", repr(block))
@@ -1787,7 +1787,7 @@ class NnLayerSmokeTest(unittest.TestCase):
 	def test_relu_forward(self) -> None:
 		e = self.engine
 		layer = oa.ml.Relu()
-		x = oa.Matrix.new_from_f32(e, [4], [-1.0, 0.0, 1.0, 2.0])
+		x = oa.Matrix.new_from_f32([4], [-1.0, 0.0, 1.0, 2.0], engine=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [4])
 		self.assertIn("Relu", repr(layer))
@@ -1795,7 +1795,7 @@ class NnLayerSmokeTest(unittest.TestCase):
 	def test_gelu_forward(self) -> None:
 		e = self.engine
 		layer = oa.ml.Gelu()
-		x = oa.Matrix.new_from_f32(e, [4], [-1.0, 0.0, 1.0, 2.0])
+		x = oa.Matrix.new_from_f32([4], [-1.0, 0.0, 1.0, 2.0], engine=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [4])
 		self.assertIn("Gelu", repr(layer))
@@ -1803,14 +1803,14 @@ class NnLayerSmokeTest(unittest.TestCase):
 	def test_silu_forward(self) -> None:
 		e = self.engine
 		layer = oa.ml.Silu()
-		x = oa.Matrix.new_from_f32(e, [4], [-1.0, 0.0, 1.0, 2.0])
+		x = oa.Matrix.new_from_f32([4], [-1.0, 0.0, 1.0, 2.0], engine=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [4])
 
 	def test_softmax_forward(self) -> None:
 		e = self.engine
 		layer = oa.ml.Softmax(dim=1)
-		x = oa.Matrix.new_from_f32(e, [2, 4], [1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5])
+		x = oa.Matrix.new_from_f32([2, 4], [1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5], engine=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4])
 		self.assertIn("Softmax", repr(layer))
@@ -1818,14 +1818,14 @@ class NnLayerSmokeTest(unittest.TestCase):
 	def test_log_softmax_forward(self) -> None:
 		e = self.engine
 		layer = oa.ml.LogSoftmax(dim=1)
-		x = oa.Matrix.new_from_f32(e, [2, 4], [1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5])
+		x = oa.Matrix.new_from_f32([2, 4], [1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5], engine=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4])
 
 	def test_identity_forward(self) -> None:
 		e = self.engine
 		layer = oa.ml.Identity()
-		x = oa.Matrix.new_from_f32(e, [2, 4], [1.0] * 8)
+		x = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, engine=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4])
 		self.assertIn("Identity", repr(layer))
@@ -1833,33 +1833,33 @@ class NnLayerSmokeTest(unittest.TestCase):
 	def test_flatten_forward(self) -> None:
 		e = self.engine
 		layer = oa.ml.Flatten()
-		x = oa.Matrix.new_from_f32(e, [2, 3, 4], [1.0] * 24)
+		x = oa.Matrix.new_from_f32([2, 3, 4], [1.0] * 24, engine=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 12])
 		self.assertIn("Flatten", repr(layer))
 
 	def test_swiglu_forward(self) -> None:
 		e = self.engine
-		layer = oa.ml.Swiglu(e, input_dim=4, hidden_dim=8, output_dim=4, seed=0)
-		x = oa.Matrix.new_from_f32(e, [2, 4], [0.5] * 8)
+		layer = oa.ml.Swiglu(input_dim=4, hidden_dim=8, output_dim=4, seed=0, engine=e)
+		x = oa.Matrix.new_from_f32([2, 4], [0.5] * 8, engine=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4])
 		self.assertIn("Swiglu", repr(layer))
 
 	def test_ffn_forward(self) -> None:
 		e = self.engine
-		layer = oa.ml.Ffn(e, dim=4, hidden_dim=8, seed=0)
-		x = oa.Matrix.new_from_f32(e, [2, 4, 4], [0.5] * 32)
+		layer = oa.ml.Ffn(dim=4, hidden_dim=8, seed=0, engine=e)
+		x = oa.Matrix.new_from_f32([2, 4, 4], [0.5] * 32, engine=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4, 4])
 		self.assertIn("Ffn", repr(layer))
 
 	def test_sequential_forward(self) -> None:
 		e = self.engine
-		linear1 = oa.ml.Linear(e, in_features=4, out_features=8, seed=0)
-		linear2 = oa.ml.Linear(e, in_features=8, out_features=2, seed=1)
+		linear1 = oa.ml.Linear(input_features=4, output_features=8, seed=0, engine=e)
+		linear2 = oa.ml.Linear(input_features=8, output_features=2, seed=1, engine=e)
 		seq = oa.ml.Sequential([linear1, linear2])
-		x = oa.Matrix.new_from_f32(e, [2, 4], [0.5] * 8)
+		x = oa.Matrix.new_from_f32([2, 4], [0.5] * 8, engine=e)
 		out = seq(x)
 		self.assertEqual(out.shape, [2, 2])
 		self.assertIn("Sequential", repr(seq))
@@ -1875,7 +1875,7 @@ class NnLayerSmokeTest(unittest.TestCase):
 		e = self.engine
 		# Rope(dim=4) → num_heads=1, head_dim=4; input must be [tokens, 4]
 		layer = oa.ml.Rope(dim=4, seq_len=8)
-		x = oa.Matrix.new_from_f32(e, [8, 4], [0.5] * 32)
+		x = oa.Matrix.new_from_f32([8, 4], [0.5] * 32, engine=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [8, 4])
 		self.assertIn("Rope", repr(layer))
@@ -1890,7 +1890,7 @@ class CheckpointFunctionsTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
 		cls.engine = oa.Engine()
-		cls.linear = oa.ml.Linear( in_features=4, out_features=2, seed=0, engine=cls.engine)
+		cls.linear = oa.ml.Linear( input_features=4, output_features=2, seed=0, engine=cls.engine)
 		cls.optimizer = oa.ml.AdamW(cls.linear.all_parameters(), learning_rate=1e-3)
 
 	def test_save_and_load_checkpoint_roundtrip(self) -> None:
@@ -1902,7 +1902,7 @@ class CheckpointFunctionsTest(unittest.TestCase):
 			oa.ml.save_checkpoint(path, self.linear.all_parameters(), self.optimizer)
 			self.assertTrue(os.path.exists(path))
 			# Load into a fresh model/optimizer with the same shape.
-			linear2 = oa.ml.Linear( in_features=4, out_features=2, seed=99, engine=self.engine)
+			linear2 = oa.ml.Linear( input_features=4, output_features=2, seed=99, engine=self.engine)
 			opt2 = oa.ml.AdamW(linear2.all_parameters(), learning_rate=1e-3)
 			oa.ml.load_checkpoint( path, linear2.all_parameters(), opt2, engine=self.engine)
 		finally:
@@ -1914,11 +1914,11 @@ class CheckpointFunctionsTest(unittest.TestCase):
 	def test_clip_grad_norm_clips_gradients(self) -> None:
 		e = self.engine
 		# Run a forward+backward to accumulate gradients.
-		linear = oa.ml.Linear(e, in_features=4, out_features=1, seed=0)
+		linear = oa.ml.Linear(input_features=4, output_features=1, seed=0, engine=e)
 		params = linear.all_parameters()
 		opt = oa.ml.AdamW(params, learning_rate=1e-3)
-		x = oa.Matrix.new_from_f32(e, [1, 4], [1.0, 2.0, 3.0, 4.0])
-		target = oa.Matrix.new_from_f32(e, [1, 1], [0.0])
+		x = oa.Matrix.new_from_f32([1, 4], [1.0, 2.0, 3.0, 4.0], engine=e)
+		target = oa.Matrix.new_from_f32([1, 1], [0.0], engine=e)
 		with oa.ml.GradientTape() as tape:
 			pred = linear(x)
 			loss = oa.ml.loss.mse(pred, target)
@@ -1976,7 +1976,7 @@ class ParameterAndGradientTapeTest(unittest.TestCase):
 
 	def test_parameter_is_accessible_on_ml_and_has_value_attr(self) -> None:
 		e = self.engine
-		linear = oa.ml.Linear(e, in_features=4, out_features=2, seed=0)
+		linear = oa.ml.Linear(input_features=4, output_features=2, seed=0, engine=e)
 		params = linear.all_parameters()
 		self.assertGreater(len(params), 0)
 		for p in params:
@@ -1988,8 +1988,8 @@ class ParameterAndGradientTapeTest(unittest.TestCase):
 		cfg = oa.ml.CategoricalActorCriticConfig(
 			observation_size=4, action_count=2, hidden_size=8, seed=0
 		)
-		model = oa.ml.CategoricalActorCritic(e, cfg)
-		obs = oa.Matrix.new_from_f32(e, [1, 4], [0.1, 0.2, 0.3, 0.4])
+		model = oa.ml.CategoricalActorCritic(cfg, engine=e)
+		obs = oa.Matrix.new_from_f32([1, 4], [0.1, 0.2, 0.3, 0.4], engine=e)
 		output = model.evaluate(obs)
 		self.assertIsInstance(output, oa.ml.CategoricalActorCriticOutput)
 		self.assertEqual(output.logits.shape, [1, 2])

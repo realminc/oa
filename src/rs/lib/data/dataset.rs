@@ -87,6 +87,84 @@ pub trait Dataset {
 	}
 }
 
+/// Dense labeled feature/label pair implementing [`Dataset`].
+///
+/// `x` is a rank-≥1 `[N, ...]` F32 feature matrix and `y` a `[N]` F32
+/// label vector on the same engine. `get_item` returns the rank-(N-1)
+/// feature slice; `get_sample` pairs it with the `[1]` label slice —
+/// the contract [`DataLoader`]/[`collate`] expect for labeled corpora.
+/// Dataset packs and synthetic benchmarks build their `Dataset` impl on
+/// this type instead of repeating bounds, slice, and pairing logic.
+pub struct MatrixDataset {
+	x: Matrix,
+	y: Matrix,
+}
+
+impl MatrixDataset {
+	/// Wrap caller-owned matrices as a labeled dataset.
+	///
+	/// `x` must have a leading sample dimension and `y` must be rank-1
+	/// with the same leading count; both must be F32 on one engine —
+	/// [`matrix::slice`] is F32-only.
+	///
+	/// # Errors
+	///
+	/// Returns an error for a rank-0 feature matrix, non-vector labels,
+	/// mismatched leading counts, non-F32 dtypes, or matrices owned by
+	/// different engines.
+	pub fn new(x: Matrix, y: Matrix) -> Result<Self> {
+		if x.shape().is_empty() || y.shape().len() != 1 || x.shape()[0] != y.shape()[0] {
+			return Err(Error::invalid_argument(
+				"matrix dataset requires [N, ...] features and [N] labels with equal counts",
+			));
+		}
+		if x.dtype() != crate::DType::F32 || y.dtype() != crate::DType::F32 {
+			return Err(Error::invalid_argument(
+				"matrix dataset requires F32 features and labels",
+			));
+		}
+		if !x.same_engine(&y) {
+			return Err(Error::invalid_argument(
+				"matrix dataset features and labels must share one engine",
+			));
+		}
+		Ok(Self { x, y })
+	}
+
+	/// Full `[N, ...]` feature matrix on the owning engine.
+	#[must_use]
+	pub const fn x(&self) -> &Matrix {
+		&self.x
+	}
+
+	/// Full `[N]` label matrix on the owning engine.
+	#[must_use]
+	pub const fn y(&self) -> &Matrix {
+		&self.y
+	}
+}
+
+impl Dataset for MatrixDataset {
+	fn len(&self) -> i64 {
+		i64::try_from(self.x.shape()[0]).unwrap_or(i64::MAX)
+	}
+
+	fn get_item(&self, index: i64) -> Result<Matrix> {
+		if index < 0 || index >= self.len() {
+			return Err(Error::out_of_range(
+				"matrix dataset index is outside the dataset",
+			));
+		}
+		matrix::slice(&self.x, 0, index, index + 1)?.squeeze(0)
+	}
+
+	fn get_sample(&self, index: i64) -> Result<Sample> {
+		let x = self.get_item(index)?;
+		let y = matrix::slice(&self.y, 0, index, index + 1)?;
+		Ok(Sample::new_with_label(x, y))
+	}
+}
+
 /// Zero-copy indexed view returned by [`Dataset::subset`].
 ///
 /// Used for train/val/test splits, subsampling, and index filtering.

@@ -109,11 +109,13 @@ pub(crate) struct PythonCheckpointManager {
 impl PythonCheckpointManager {
 	/// Construct and validate the manager.
 	#[new]
+	#[pyo3(signature = (config, engine=None))]
 	pub fn new(
 		py: Python<'_>,
-		engine: Py<PythonEngine>,
 		config: &PythonCheckpointManagerConfig,
+		engine: Option<Py<PythonEngine>>,
 	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve_owned(py, engine)?;
 		let cfg = config.inner.clone();
 		let eng = engine.bind(py).borrow();
 		// SAFETY: _engine keeps the allocation alive for the lifetime of this struct.

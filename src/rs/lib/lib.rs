@@ -49,7 +49,7 @@ pub use core::{
 pub use crypto::pqc::{Keypair, PublicKey, SecretKey, Signature};
 pub use crypto::{Hash, Hasher, MerkleProof, MerkleTree, SecureBuffer, Shake128, Shake256};
 pub use data::{
-	Batch, DataFrame, DataFrameView, DataLoader, DataLoaderConfig, Dataset, DsOhlcv, OhlcvView,
+	Batch, DataFrame, DataFrameView, DataLoader, DataLoaderConfig, Dataset, OhlcvDataset, OhlcvView,
 	OhlcvWindowConfig, OhlcvWindows, Sample, Series, SeriesView, SeriesViewMut, SplitResult, Subset,
 	UnixTimeUnit,
 };

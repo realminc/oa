@@ -345,13 +345,15 @@ impl PythonPpoTrainer {
 	/// `model` must be a `CategoricalActorCritic`.
 	/// `optimizer` must be `Sgd`, `Adam`, `AdamW`, or `Muon`.
 	#[new]
+	#[pyo3(signature = (model, optimizer, config, engine=None))]
 	pub fn new(
 		py: Python<'_>,
-		engine: Py<PythonEngine>,
 		model: Py<PyAny>,
 		optimizer: Py<PyAny>,
 		config: &PythonPpoTrainerConfig,
+		engine: Option<Py<PythonEngine>>,
 	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve_owned(py, engine)?;
 		let cfg = config.inner.clone();
 		// Build the trainer while we hold borrows on the Python objects.
 		// The raw pointers remain valid as long as the Py<T> handles are alive,
@@ -568,15 +570,17 @@ impl PythonDqnTrainer {
 	///
 	/// Both `online` and `target` must be recognized Module types.
 	#[new]
+	#[pyo3(signature = (online, target, optimizer, replay, config, engine=None))]
 	pub fn new(
 		py: Python<'_>,
-		engine: Py<PythonEngine>,
 		online: Py<PyAny>,
 		target: Py<PyAny>,
 		optimizer: Py<PyAny>,
 		replay: Py<PythonReplayBuffer>,
 		config: &PythonDqnTrainerConfig,
+		engine: Option<Py<PythonEngine>>,
 	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve_owned(py, engine)?;
 		let cfg = config.inner.clone();
 		let inner = {
 			let eng = engine.bind(py).borrow();
@@ -717,9 +721,9 @@ impl PythonSacTrainer {
 	/// Both `actor_optimizer` and `critic_optimizer` must be standard optimizer types.
 	#[new]
 	#[allow(clippy::too_many_arguments)]
+	#[pyo3(signature = (actor, critic1, critic2, target_critic1, target_critic2, actor_optimizer, critic_optimizer, replay, config, engine=None))]
 	pub fn new(
 		py: Python<'_>,
-		engine: Py<PythonEngine>,
 		actor: Py<PyAny>,
 		critic1: Py<PyAny>,
 		critic2: Py<PyAny>,
@@ -729,7 +733,9 @@ impl PythonSacTrainer {
 		critic_optimizer: Py<PyAny>,
 		replay: Py<PythonReplayBuffer>,
 		config: &PythonSacTrainerConfig,
+		engine: Option<Py<PythonEngine>>,
 	) -> PyResult<Self> {
+		let engine = PythonEngine::resolve_owned(py, engine)?;
 		let cfg = config.inner.clone();
 		let inner = {
 			let eng = engine.bind(py).borrow();

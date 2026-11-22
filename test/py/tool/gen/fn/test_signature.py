@@ -226,7 +226,9 @@ class SignatureModelTests(unittest.TestCase):
 			for signature in signatures:
 				self.assertIn(f"fn {domain}_{signature['name']}(", rust)
 				self.assertIn(f"def {domain}_{signature['name']}(", stub)
-				self.assertIn(f"def {signature['name']}(self", methods)
+				first = signature["parameters"][0][1] if signature["parameters"] else ""
+				if first == f"&{domain.capitalize()}":
+					self.assertIn(f"def {signature['name']}(self", methods)
 			self.assertIn('interpolation="bilinear"' if domain == "image" else 'target_db=-3.0, mode="peak"', rust)
 			ast.parse(stub)
 
