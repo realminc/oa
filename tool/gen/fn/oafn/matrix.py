@@ -1055,7 +1055,9 @@ def generate_blas_shader(
 	semantic_name = operation.get("semantic_operation", operation["name"])
 	return f"""{banner(schema_hash, '//', 'matrix_blas.json').rstrip()}
 // Semantic operation: matrix.{semantic_name}; stable kernel ID: {operation['stable_id']}.
-// FP32 specialization of OA's established 64x64x16 tiled GEMM arithmetic.
+// FP32 specialization of OA's 64x64x16 tiled GEMM: float4 vectorized
+// global loads and shared-memory tiles (row-major left, K-major right for
+// conflict-free fragment reads) with two barriers per K tile.
 
 import storage;
 import attributes;
@@ -1079,33 +1081,30 @@ static const uint TM = 4;
 static const uint TN = 4;
 static const uint THREADS_COL = BN / TN;
 static const uint LOAD_WIDTH = 4;
-static const uint BK_PAD = BK + 1;
+static const uint KVEC = BK / LOAD_WIDTH + 1;
+static const uint BN_F4 = BN / LOAD_WIDTH + 1;
 
-groupshared float shared_left[BM * BK_PAD];
-groupshared float shared_right[BN * BK_PAD];
+groupshared float4 shared_left[BM * KVEC];
+groupshared float4 shared_right[BK * BN_F4];
 
-void load_slice(
+float4 load_slice(
 	uint row,
 	uint k_begin,
 	uint buffer_index,
-	uint row_limit,
-	out float values[LOAD_WIDTH]
+	uint row_limit
 ) {{
 	if (row < row_limit && k_begin + LOAD_WIDTH <= push.k) {{
-		float4 packed = storage_buffers[buffer_index].Load<float4>(
+		return storage_buffers[buffer_index].Load<float4>(
 			(row * push.k + k_begin) * 4u
 		);
-		values[0] = packed.x;
-		values[1] = packed.y;
-		values[2] = packed.z;
-		values[3] = packed.w;
-	}} else {{
-		[[unroll]] for (uint element = 0; element < LOAD_WIDTH; ++element) {{
-			values[element] = row < row_limit && k_begin + element < push.k
-				? load_f32(storage_buffers[buffer_index], row * push.k + k_begin + element)
-				: 0.0f;
-		}}
 	}}
+	float4 values;
+	[[unroll]] for (uint element = 0; element < LOAD_WIDTH; ++element) {{
+		values[element] = row < row_limit && k_begin + element < push.k
+			? load_f32(storage_buffers[buffer_index], row * push.k + k_begin + element)
+			: 0.0f;
+	}}
+	return values;
 }}
 
 [kernel_name("{operation['kernel_name']}")]
@@ -1121,53 +1120,51 @@ void main(uint3 group_id : SV_GroupID, uint3 group_thread_id : SV_GroupThreadID)
 	uint thread_column = thread % THREADS_COL;
 	uint row_base = group_id.x * BM;
 	uint column_base = group_id.y * BN;
-	uint shared_row = (thread * LOAD_WIDTH) / BK;
-	uint shared_column = (thread * LOAD_WIDTH) % BK;
-	uint shared_offset = shared_row * BK_PAD + shared_column;
+	uint load_row = (thread * LOAD_WIDTH) / BK;
+	uint load_column = (thread * LOAD_WIDTH) % BK;
+	uint load_slot = load_row * KVEC + load_column / LOAD_WIDTH;
+	uint right_slot = load_row / LOAD_WIDTH;
+	uint right_lane = load_row % LOAD_WIDTH;
 
 	float accumulators[TM * TN];
 	[[unroll]] for (uint index = 0; index < TM * TN; ++index) {{
 		accumulators[index] = 0.0f;
 	}}
 
-	for (uint k_base = 0; k_base < push.k; k_base += BK) {{
-		float left_values[LOAD_WIDTH];
-		float right_values[LOAD_WIDTH];
-		load_slice(
-			row_base + shared_row,
-			k_base + shared_column,
-			push.left_index,
-			push.m,
-			left_values
+	uint k_tile_count = (push.k + BK - 1u) / BK;
+	for (uint tile = 0; tile < k_tile_count; ++tile) {{
+		uint k_base = tile * BK;
+		float4 stage_left = load_slice(
+			row_base + load_row, k_base + load_column, push.left_index, push.m
 		);
-		load_slice(
-			column_base + shared_row,
-			k_base + shared_column,
-			push.right_index,
-			push.n,
-			right_values
+		float4 stage_right = load_slice(
+			column_base + load_row, k_base + load_column, push.right_index, push.n
 		);
-		[[unroll]] for (uint element = 0; element < LOAD_WIDTH; ++element) {{
-			shared_left[shared_offset + element] = left_values[element];
-			shared_right[shared_offset + element] = right_values[element];
-		}}
+		shared_left[load_slot] = stage_left;
+		shared_right[(load_column + 0u) * BN_F4 + right_slot][right_lane] = stage_right.x;
+		shared_right[(load_column + 1u) * BN_F4 + right_slot][right_lane] = stage_right.y;
+		shared_right[(load_column + 2u) * BN_F4 + right_slot][right_lane] = stage_right.z;
+		shared_right[(load_column + 3u) * BN_F4 + right_slot][right_lane] = stage_right.w;
 		GroupMemoryBarrierWithGroupSync();
 
-		[[unroll]] for (uint inner = 0; inner < BK; ++inner) {{
-			float left_fragment[TM];
-			float right_fragment[TN];
+		[[unroll]] for (uint kk = 0; kk < BK / LOAD_WIDTH; ++kk) {{
+			float4 left_fragment[TM];
 			[[unroll]] for (uint row = 0; row < TM; ++row) {{
-				left_fragment[row] = shared_left[(thread_row * TM + row) * BK_PAD + inner];
+				left_fragment[row] =
+					shared_left[(thread_row * TM + row) * KVEC + kk];
 			}}
-			[[unroll]] for (uint column = 0; column < TN; ++column) {{
-				right_fragment[column] = shared_right[(thread_column * TN + column) * BK_PAD + inner];
-			}}
-			[[unroll]] for (uint row = 0; row < TM; ++row) {{
-				[[unroll]] for (uint column = 0; column < TN; ++column) {{
-					accumulators[row * TN + column] += left_fragment[row] * right_fragment[column];
+			[[unroll]] for (uint lane = 0; lane < LOAD_WIDTH; ++lane) {{
+				float4 right_fragment =
+					shared_right[(kk * LOAD_WIDTH + lane) * BN_F4 + thread_column];
+				[[unroll]] for (uint row = 0; row < TM; ++row) {{
+					[[unroll]] for (uint column = 0; column < TN; ++column) {{
+						accumulators[row * TN + column] +=
+							left_fragment[row][lane] * right_fragment[column];
+					}}
 				}}
 			}}
 		}}
+
 		GroupMemoryBarrierWithGroupSync();
 	}}
 

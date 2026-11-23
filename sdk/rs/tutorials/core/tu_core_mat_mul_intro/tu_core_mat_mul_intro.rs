@@ -1,7 +1,7 @@
 use std::{env, hint::black_box, time::Instant};
 
 use anyhow::{Context, bail, ensure};
-use oa::{Matrix, matrix};
+use oa::{Engine, Matrix, matrix};
 
 const CORRECTNESS_CASES: &[ShapeCase] = &[
 	ShapeCase::new("tiny-square", 8, 8, 8),
@@ -173,26 +173,47 @@ fn run_performance_suite(options: &Options) -> anyhow::Result<()> {
 
 	let mut matched = options.case.is_none();
 	for &case in PERFORMANCE_CASES {
-		if options
-			.case
-			.as_deref()
-			.is_some_and(|name| name != case.name)
-		{
+		if !selected(options, case) {
 			continue;
 		}
 		matched = true;
 		let result = bench_one(case, options.warmup, options.samples)?;
-		println!(
-			"   {:<16} [{:5},{:5},{:5}] p50={:9.3} ms p95={:9.3} ms {:9.2} GFLOP/s",
-			case.name, case.m, case.n, case.k, result.p50_ms, result.p95_ms, result.gflops
-		);
-		println!(
-			"BENCH name={} m={} n={} k={} boundary=eager_submit_readback p50_ms={:.6} p95_ms={:.6} gflops={:.6}",
-			case.name, case.m, case.n, case.k, result.p50_ms, result.p95_ms, result.gflops
-		);
+		print_result(case, &result, "eager_submit_readback");
 	}
 	ensure!(matched, "unknown performance case: {:?}", options.case);
+
+	println!("\n4. Compiled replay performance");
+	println!("   boundary: captured mat_mul_nt plan, device-timestamped replay (no readback)");
+	println!(
+		"   warmup={} samples={} (one process; same kernel, replay boundary)",
+		options.warmup, options.samples
+	);
+
+	let engine = Engine::new()?;
+	Engine::set_default(engine.clone());
+	for &case in PERFORMANCE_CASES {
+		if !selected(options, case) {
+			continue;
+		}
+		let result = bench_one_replay(&engine, case, options.warmup, options.samples)?;
+		print_result(case, &result, "replay_submit_timed");
+	}
 	Ok(())
+}
+
+fn selected(options: &Options, case: ShapeCase) -> bool {
+	options.case.as_deref().is_none_or(|name| name == case.name)
+}
+
+fn print_result(case: ShapeCase, result: &PerfResult, boundary: &str) {
+	println!(
+		"   {:<16} [{:5},{:5},{:5}] p50={:9.3} ms p95={:9.3} ms {:9.2} GFLOP/s",
+		case.name, case.m, case.n, case.k, result.p50_ms, result.p95_ms, result.gflops
+	);
+	println!(
+		"BENCH name={} m={} n={} k={} boundary={} p50_ms={:.6} p95_ms={:.6} gflops={:.6}",
+		case.name, case.m, case.n, case.k, boundary, result.p50_ms, result.p95_ms, result.gflops
+	);
 }
 
 fn bench_one(case: ShapeCase, warmup: usize, sample_count: usize) -> anyhow::Result<PerfResult> {
@@ -227,6 +248,49 @@ fn bench_one(case: ShapeCase, warmup: usize, sample_count: usize) -> anyhow::Res
 		let output = matrix::mat_mul_nt(&left, &right)?;
 		black_box(output.read_f32()?);
 		samples.push(start.elapsed().as_secs_f64() * 1_000.0);
+	}
+	samples.sort_by(f64::total_cmp);
+	let p50_ms = percentile(&samples, 0.50);
+	let p95_ms = percentile(&samples, 0.95);
+	let gflop = 2.0 * case.m as f64 * case.n as f64 * case.k as f64 / 1.0e9;
+	Ok(PerfResult {
+		p50_ms,
+		p95_ms,
+		gflops: gflop / (p50_ms / 1_000.0),
+	})
+}
+
+fn bench_one_replay(
+	engine: &Engine,
+	case: ShapeCase,
+	warmup: usize,
+	sample_count: usize,
+) -> anyhow::Result<PerfResult> {
+	let left = matrix::full([case.m, case.k], 0.25)?;
+	let right = matrix::full([case.n, case.k], 0.5)?;
+	let (plan, output) = engine
+		.capture(|| matrix::mat_mul_nt(&left, &right))
+		.context("capture mat_mul_nt execution plan")?;
+	engine.submit(&plan)?.wait()?;
+	let expected = case.k as f32 * 0.125;
+	let actual = output.read_f32()?;
+	ensure!(
+		actual.len() == case.m * case.n
+			&& actual
+				.iter()
+				.all(|&value| value.is_finite()
+					&& (value - expected).abs() <= expected.abs().max(1.0) * 1.0e-5),
+		"{} replay constant-input oracle failed",
+		case.name
+	);
+	for _ in 0..warmup {
+		engine.submit(&plan)?.wait()?;
+	}
+
+	let mut samples = Vec::with_capacity(sample_count);
+	for _ in 0..sample_count {
+		let duration = engine.submit_timed(&plan)?.device_duration()?;
+		samples.push(duration.as_secs_f64() * 1_000.0);
 	}
 	samples.sort_by(f64::total_cmp);
 	let p50_ms = percentile(&samples, 0.50);

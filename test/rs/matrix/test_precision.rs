@@ -8,15 +8,17 @@
 static PRECISION_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Scoped `OA_FORCE_PRECISION` override; serialized so concurrent ignored
-/// tests never observe a torn mode.
-struct PrecisionMode {
+/// tests never observe a torn mode. `pub(crate)` because the mode is
+/// process-wide — route census tests outside this module must hold the same
+/// lock while they assert F32 kernel identity.
+pub(crate) struct PrecisionMode {
 	previous: Option<std::ffi::OsString>,
 	_guard: std::sync::MutexGuard<'static, ()>,
 }
 
 impl PrecisionMode {
 	/// Lock the mode and remove the variable — the unforced default route.
-	fn remove() -> Self {
+	pub(crate) fn remove() -> Self {
 		let guard = PRECISION_LOCK
 			.lock()
 			.unwrap_or_else(|poisoned| poisoned.into_inner());

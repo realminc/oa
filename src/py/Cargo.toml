@@ -1,6 +1,6 @@
 [package]
 name = "oa-python"
-version = "0.15.1"
+version = "0.15.2"
 edition = "2024"
 rust-version = "1.98"
 publish = false
@@ -11,8 +11,8 @@ crate-type = ["cdylib"]
 path = "pyo3/lib.rs"
 
 [dependencies]
-oa = { package = "oarust", version = "0.15.1", path = "../.." }
-sdk = { version = "0.15.1", path = "../../sdk" }
+oa = { package = "oarust", version = "0.15.2", path = "../.." }
+sdk = { version = "0.15.2", path = "../../sdk" }
 pyo3 = { version = "0.27", features = ["abi3-py310", "multiple-pymethods"] }
 
 [lints.rust]

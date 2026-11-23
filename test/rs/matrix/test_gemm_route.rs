@@ -51,6 +51,9 @@ test_vk!(
 	tiled_wide_route_records_wide_kernel_and_matches_oracle,
 	engine,
 	{
+		// Kernel-identity assertions observe the process-wide precision mode;
+		// hold the shared lock so a concurrent FP16-mode test cannot tear it.
+		let _mode = crate::precision::PrecisionMode::remove();
 		// Every case carries at least 64 output tiles of the 128x64 grid so the
 		// structural preference admits the wide variant; the mix still crosses
 		// M, N, and K tails plus the single-K-tile boundary.
@@ -85,6 +88,7 @@ test_vk!(
 );
 
 test_vk!(sub_tile_extents_keep_established_route, engine, {
+	let _mode = crate::precision::PrecisionMode::remove();
 	// Below the wide-tile occupancy preference an established route must be
 	// selected instead; the wide variant must not silently take problems it
 	// was not admitted for.

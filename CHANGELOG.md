@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.2
+
+- Fix shared-memory bank conflicts in the wide tiled F32 and F16 GEMM kernels and vectorize shared-memory tile loads across the tiled matrix family; drop a dead left-tile padding allocation. Measured `mat_mul_nt` throughput on Iris Xe improves on NLP/ALM representative shapes at the compiled-replay boundary.
+- Update the `vkrust` dependency to 0.13.4 and serialize precision mode across kernel-census tests.
+- Add a compiled-replay (`replay_submit_timed`) boundary to the matmul tutorial alongside `eager_submit_readback`.
+- Record the VTune characterization (EU stall-bound) and rejected schedule experiments in the benchmark ledger.
+
 ## 0.14.1
 
 - Fix a throughput regression: `Engine::current()` clones ran `.vkcache`

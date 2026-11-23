@@ -30,10 +30,11 @@ static const uint TM = 8;
 static const uint TN = 4;
 static const uint THREADS_ROW = BN / TN;
 static const uint LOAD_WIDTH = 4;
-static const uint KVEC = BK / LOAD_WIDTH + 1;
+static const uint KVEC = BK / LOAD_WIDTH;
+static const uint BN_F4 = BN / LOAD_WIDTH + 1;
 
 groupshared float4 shared_left[2][BM * KVEC];
-groupshared float4 shared_right[2][BN * KVEC];
+groupshared float4 shared_right[2][BK * BN_F4];
 
 float4 load_slice(
 	uint row,
@@ -88,10 +89,15 @@ void main(uint3 group_id : SV_GroupID, uint3 group_thread_id : SV_GroupThreadID)
 		: float4(0.0f);
 
 	uint load_slot = load_row * KVEC + load_column / LOAD_WIDTH;
+	uint right_slot = load_row / LOAD_WIDTH;
+	uint right_lane = load_row % LOAD_WIDTH;
 	shared_left[0][load_slot] = stage_a[0];
 	shared_left[0][load_slot + 64u * KVEC] = stage_a[1];
 	if (load_row < BN) {
-		shared_right[0][load_slot] = stage_b[0];
+		shared_right[0][(load_column + 0u) * BN_F4 + right_slot][right_lane] = stage_b[0].x;
+		shared_right[0][(load_column + 1u) * BN_F4 + right_slot][right_lane] = stage_b[0].y;
+		shared_right[0][(load_column + 2u) * BN_F4 + right_slot][right_lane] = stage_b[0].z;
+		shared_right[0][(load_column + 3u) * BN_F4 + right_slot][right_lane] = stage_b[0].w;
 	}
 	GroupMemoryBarrierWithGroupSync();
 
@@ -117,9 +123,9 @@ void main(uint3 group_id : SV_GroupID, uint3 group_thread_id : SV_GroupThreadID)
 
 		[[unroll]] for (uint kk = 0; kk < BK / LOAD_WIDTH; ++kk) {
 			float4 right_fragment[TN];
-			[[unroll]] for (uint column = 0; column < TN; ++column) {
-				right_fragment[column] =
-					shared_right[buffer][(thread_column * TN + column) * KVEC + kk];
+			[[unroll]] for (uint lane = 0; lane < LOAD_WIDTH; ++lane) {
+				right_fragment[lane] =
+					shared_right[buffer][(kk * LOAD_WIDTH + lane) * BN_F4 + thread_column];
 			}
 			[[unroll]] for (uint row = 0; row < TM; ++row) {
 				float4 left_fragment =
@@ -127,7 +133,7 @@ void main(uint3 group_id : SV_GroupID, uint3 group_thread_id : SV_GroupThreadID)
 				[[unroll]] for (uint column = 0; column < TN; ++column) {
 					[[unroll]] for (uint lane = 0; lane < LOAD_WIDTH; ++lane) {
 						accumulators[row * TN + column] +=
-							left_fragment[lane] * right_fragment[column][lane];
+							left_fragment[lane] * right_fragment[lane][column];
 					}
 				}
 			}
@@ -138,7 +144,10 @@ void main(uint3 group_id : SV_GroupID, uint3 group_thread_id : SV_GroupThreadID)
 			shared_left[next][load_slot] = stage_a[0];
 			shared_left[next][load_slot + 64u * KVEC] = stage_a[1];
 			if (load_row < BN) {
-				shared_right[next][load_slot] = stage_b[0];
+				shared_right[next][(load_column + 0u) * BN_F4 + right_slot][right_lane] = stage_b[0].x;
+				shared_right[next][(load_column + 1u) * BN_F4 + right_slot][right_lane] = stage_b[0].y;
+				shared_right[next][(load_column + 2u) * BN_F4 + right_slot][right_lane] = stage_b[0].z;
+				shared_right[next][(load_column + 3u) * BN_F4 + right_slot][right_lane] = stage_b[0].w;
 			}
 			buffer = next;
 		}

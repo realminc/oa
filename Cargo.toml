@@ -1,6 +1,6 @@
 [package]
 name = "oarust"
-version = "0.15.1"
+version = "0.15.2"
 edition = "2024"
 rust-version = "1.98"
 autotests = false
@@ -99,7 +99,7 @@ default = ["bundled-sdl"]
 bundled-sdl = ["sdl3/build-from-source-static"]
 
 [dependencies]
-vkrust = { version = "0.13.2", features = ["allocator"] }
+vkrust = { version = "0.13.4", features = ["allocator"] }
 sdl3 = { version = "0.20", features = ["use-pkg-config"] }
 
 bitflags = "2"
