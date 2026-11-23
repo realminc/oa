@@ -6,7 +6,7 @@ use crate::{Engine, Error, Image, ImageFormat, ImageLayout, Matrix, Result};
 
 use super::detect_codec;
 
-/// Decode a JPEG, PNG, WebP, BMP, or TGA file and upload normalized planar FP32 pixels.
+/// Decode a JPEG, PNG, WebP, BMP, TGA, or TIFF file and upload normalized planar FP32 pixels.
 ///
 /// The result is one NCHW image shaped `[1, channels, height, width]`. This is
 /// a synchronous host codec boundary followed by device upload.
@@ -23,7 +23,7 @@ pub fn decode_file(path: impl AsRef<Path>, format: ImageFormat) -> Result<Image>
 	let path = path.as_ref();
 	decode_file_on(&Engine::current()?, path, format)
 }
-/// Decode a JPEG, PNG, WebP, BMP, or TGA file and upload normalized planar FP32
+/// Decode a JPEG, PNG, WebP, BMP, TGA, or TIFF file and upload normalized planar FP32
 /// pixels on a particular engine.
 ///
 /// This is the [`decode_file`] contract evaluated on `engine` instead of this
@@ -45,7 +45,7 @@ pub fn decode_file_on(
 	decode_memory_on(engine, &encoded, format)
 }
 
-/// Decode JPEG, PNG, WebP, BMP, or TGA bytes and upload normalized planar FP32 pixels.
+/// Decode JPEG, PNG, WebP, BMP, TGA, or TIFF bytes and upload normalized planar FP32 pixels.
 ///
 /// The requested output format may be Gray, Rgb, or Rgba. The result is one
 /// NCHW image shaped `[1, channels, height, width]`.
@@ -62,7 +62,7 @@ pub fn decode_memory(encoded: &[u8], format: ImageFormat) -> Result<Image> {
 	decode_memory_on(&Engine::current()?, encoded, format)
 }
 
-/// Decode JPEG, PNG, WebP, BMP, or TGA bytes and upload normalized planar FP32
+/// Decode JPEG, PNG, WebP, BMP, TGA, or TIFF bytes and upload normalized planar FP32
 /// pixels on a particular engine.
 ///
 /// # Errors

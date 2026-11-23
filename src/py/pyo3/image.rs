@@ -61,6 +61,7 @@ fn codec(token: &str) -> PyResult<oa::image::ImageCodec> {
 		"webp" => Ok(oa::image::ImageCodec::Webp),
 		"bmp" => Ok(oa::image::ImageCodec::Bmp),
 		"tga" => Ok(oa::image::ImageCodec::Tga),
+		"tif" | "tiff" => Ok(oa::image::ImageCodec::Tiff),
 		_ => Err(PyValueError::new_err(format!(
 			"unknown image codec: {token}"
 		))),

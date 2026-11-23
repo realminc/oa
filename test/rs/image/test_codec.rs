@@ -12,6 +12,7 @@ fn codec_capabilities_and_host_rgba_sink_are_checked() -> oa::Result<()> {
 		ImageCodec::Webp,
 		ImageCodec::Bmp,
 		ImageCodec::Tga,
+		ImageCodec::Tiff,
 	] {
 		assert!(oa::image::can_decode(codec));
 		assert!(oa::image::can_encode(codec));
@@ -53,6 +54,7 @@ test_vk!(
 			ImageCodec::Png,
 			ImageCodec::Bmp,
 			ImageCodec::Tga,
+			ImageCodec::Tiff,
 			ImageCodec::Jpeg,
 			ImageCodec::Webp,
 		] {

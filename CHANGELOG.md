@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.3
+
+- Add TIFF to the image codec family: enable the `image` crate's `tiff`
+  feature and route it through detection, extension inference, decode,
+  and encode on the Rust and Python surfaces. Unlocks TIFF dataset packs
+  (for example UC Merced land use).
+
 ## 0.15.2
 
 - Fix shared-memory bank conflicts in the wide tiled F32 and F16 GEMM kernels and vectorize shared-memory tile loads across the tiled matrix family; drop a dead left-tile padding allocation. Measured `mat_mul_nt` throughput on Iris Xe improves on NLP/ALM representative shapes at the compiled-replay boundary.

@@ -21,13 +21,20 @@ pub enum ImageCodec {
 	Bmp,
 	/// Truevision TGA image.
 	Tga,
+	/// Tagged Image File Format image.
+	Tiff,
 }
 
 /// Return whether this build can decode `codec`.
 pub const fn can_decode(codec: ImageCodec) -> bool {
 	matches!(
 		codec,
-		ImageCodec::Jpeg | ImageCodec::Png | ImageCodec::Webp | ImageCodec::Bmp | ImageCodec::Tga
+		ImageCodec::Jpeg
+			| ImageCodec::Png
+			| ImageCodec::Webp
+			| ImageCodec::Bmp
+			| ImageCodec::Tga
+			| ImageCodec::Tiff
 	)
 }
 
@@ -43,6 +50,7 @@ pub(super) fn codec_from_path(path: &std::path::Path) -> Option<ImageCodec> {
 		"webp" => Some(ImageCodec::Webp),
 		"bmp" => Some(ImageCodec::Bmp),
 		"tga" => Some(ImageCodec::Tga),
+		"tif" | "tiff" => Some(ImageCodec::Tiff),
 		_ => None,
 	}
 }
@@ -55,6 +63,7 @@ pub(super) const fn external_format(codec: ImageCodec) -> Option<image_codec::Im
 		ImageCodec::Webp => Some(image_codec::ImageFormat::WebP),
 		ImageCodec::Bmp => Some(image_codec::ImageFormat::Bmp),
 		ImageCodec::Tga => Some(image_codec::ImageFormat::Tga),
+		ImageCodec::Tiff => Some(image_codec::ImageFormat::Tiff),
 	}
 }
 
@@ -65,6 +74,7 @@ pub(super) fn detect_codec(encoded: &[u8]) -> Option<ImageCodec> {
 		Some(image_codec::ImageFormat::WebP) => Some(ImageCodec::Webp),
 		Some(image_codec::ImageFormat::Bmp) => Some(ImageCodec::Bmp),
 		Some(image_codec::ImageFormat::Tga) => Some(ImageCodec::Tga),
+		Some(image_codec::ImageFormat::Tiff) => Some(ImageCodec::Tiff),
 		_ if looks_like_tga(encoded) => Some(ImageCodec::Tga),
 		_ => None,
 	}

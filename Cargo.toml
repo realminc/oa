@@ -1,6 +1,6 @@
 [package]
 name = "oarust"
-version = "0.15.2"
+version = "0.15.3"
 edition = "2024"
 rust-version = "1.98"
 autotests = false
@@ -120,7 +120,7 @@ symphonia = { version = "0.6", default-features = false, features = [
 	"vorbis",
 	"wav",
 ] }
-image-codec = { package = "image", version = "0.25.10", default-features = false, features = ["bmp", "hdr", "jpeg", "png", "tga", "webp"] }
+image-codec = { package = "image", version = "0.25.10", default-features = false, features = ["bmp", "hdr", "jpeg", "png", "tga", "tiff", "webp"] }
 webp-codec = { package = "webp", version = "0.3.1", default-features = false }
 libc = "0.2"
 getrandom = "0.4.3"
