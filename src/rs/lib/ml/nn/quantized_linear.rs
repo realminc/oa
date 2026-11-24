@@ -29,7 +29,7 @@ impl QuantizedLinear {
 	///
 	/// # Errors
 	///
-	/// Returns an error when the weight fails the [`quant::quantize`]
+	/// Returns an error when the weight fails the [`crate::ml::matrix::quantize`]
 	/// contract or buffer registration fails.
 	pub fn from_linear(linear: &super::Linear, quantization: Quantization) -> Result<Self> {
 		let weight = ml_matrix::quantize(&linear.weight().data(), quantization)?;
