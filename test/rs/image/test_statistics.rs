@@ -31,8 +31,8 @@ test_vk!(calc_hist_counts_each_plane_independently, engine, {
 	Ok(())
 });
 
-#[test]
-fn calc_hist_rejects_invalid_parameters() -> oa::Result<()> {
+test_vk!(calc_hist_rejects_invalid_parameters, engine, {
+	let _ = engine;
 	let values = [0.5f32; 4];
 	let image = Image::new(
 		Matrix::new_from_f32([1, 1, 1, 4], &values)?,
@@ -53,7 +53,7 @@ fn calc_hist_rejects_invalid_parameters() -> oa::Result<()> {
 		assert_eq!(error.kind(), ErrorKind::InvalidArgument);
 	}
 	Ok(())
-}
+});
 
 test_vk!(equalize_hist_spreads_the_cumulative_distribution, engine, {
 	// [1,1,1,4] = [0,0,0,0.9]: buckets 0,0,0,230; cdf_min=3, total=4.
@@ -117,35 +117,39 @@ test_vk!(compare_hist_matches_independent_metric_oracles, engine, {
 	Ok(())
 });
 
-#[test]
-fn compare_hist_rejects_mismatched_or_nonhistogram_inputs() -> oa::Result<()> {
-	let first = Matrix::new_from_slice([2, 3], &[1u32, 0, 0, 0, 1, 0])?;
-	let wrong_dtype = Matrix::new_from_f32([2, 3], &[1.0; 6])?;
-	let wrong_shape = Matrix::new_from_slice([6], &[1u32; 6])?;
-	let rank_one = Matrix::new_from_slice([3], &[1u32, 0, 0])?;
-	assert_eq!(
-		oa::image::compare_hist(&first, &wrong_dtype, HistogramComparison::Correlation)
-			.err()
-			.unwrap()
-			.kind(),
-		ErrorKind::InvalidArgument
-	);
-	assert_eq!(
-		oa::image::compare_hist(&first, &wrong_shape, HistogramComparison::Correlation)
-			.err()
-			.unwrap()
-			.kind(),
-		ErrorKind::InvalidArgument
-	);
-	assert_eq!(
-		oa::image::compare_hist(&rank_one, &rank_one, HistogramComparison::Correlation)
-			.err()
-			.unwrap()
-			.kind(),
-		ErrorKind::InvalidArgument
-	);
-	Ok(())
-}
+test_vk!(
+	compare_hist_rejects_mismatched_or_nonhistogram_inputs,
+	engine,
+	{
+		let _ = engine;
+		let first = Matrix::new_from_slice([2, 3], &[1u32, 0, 0, 0, 1, 0])?;
+		let wrong_dtype = Matrix::new_from_f32([2, 3], &[1.0; 6])?;
+		let wrong_shape = Matrix::new_from_slice([6], &[1u32; 6])?;
+		let rank_one = Matrix::new_from_slice([3], &[1u32, 0, 0])?;
+		assert_eq!(
+			oa::image::compare_hist(&first, &wrong_dtype, HistogramComparison::Correlation)
+				.err()
+				.unwrap()
+				.kind(),
+			ErrorKind::InvalidArgument
+		);
+		assert_eq!(
+			oa::image::compare_hist(&first, &wrong_shape, HistogramComparison::Correlation)
+				.err()
+				.unwrap()
+				.kind(),
+			ErrorKind::InvalidArgument
+		);
+		assert_eq!(
+			oa::image::compare_hist(&rank_one, &rank_one, HistogramComparison::Correlation)
+				.err()
+				.unwrap()
+				.kind(),
+			ErrorKind::InvalidArgument
+		);
+		Ok(())
+	}
+);
 
 test_vk!(captured_histogram_plan_replays_identical_counts, engine, {
 	let values = [0.0, 0.25, 0.5, 0.75, 1.5, 0.5, -0.5, 0.999];
