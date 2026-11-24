@@ -36,6 +36,7 @@ fn compatibility_adapts_source_without_a_core_compilation() {
 		profile: BuildProfile::Compatibility,
 		spirv_capability: "spirv_1_5",
 		vulkan_target: "vulkan1.2",
+		stub: false,
 	};
 	let adapted = compute_source(source.to_str().unwrap(), "selected", 3, &build).unwrap();
 	assert_eq!(

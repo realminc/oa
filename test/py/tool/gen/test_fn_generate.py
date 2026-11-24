@@ -81,6 +81,9 @@ class MlSchemaTests(unittest.TestCase):
 				"adamw",
 				"adamw_graph_advance",
 				"adamw_graph",
+				"adamw_gated_graph_advance",
+				"adamw_gated_graph",
+				"grad_scaler_advance",
 				"embedding",
 				"embedding_backward",
 				"channel_norm",
@@ -135,6 +138,10 @@ class MlSchemaTests(unittest.TestCase):
 				"max_pool_2d_relu_backward",
 				"adaptive_avg_pool_2d",
 				"adaptive_avg_pool_2d_backward",
+				"max_pool_1d",
+				"max_pool_1d_backward",
+				"adaptive_max_pool_1d",
+				"adaptive_max_pool_1d_backward",
 				"batch_norm_2d",
 				"batch_norm_2d_with_stats",
 				"batch_norm_2d_running_update",
@@ -148,27 +155,36 @@ class MlSchemaTests(unittest.TestCase):
 				"conv_2d_relu",
 				"conv_2d_backward",
 				"conv_2d_parameter_backward",
+				"conv_3d",
+				"conv_3d_backward",
+				"conv_3d_parameter_backward",
+				"unfold",
+				"fold",
 				"conv_1d",
 				"conv_1d_bias_add",
-				"conv_1d_transpose",
-				"conv_1d_bias_transpose",
-				"conv_1d_bias_transpose_relu",
-				"conv_1d_bias_transpose_residual_relu",
-				"conv_1d_bias_transpose_norm",
-				"conv_1d_bias_transpose_norm_relu",
+				"conv_1d_layout_transpose",
+				"conv_1d_bias_layout_transpose",
+				"conv_1d_bias_layout_transpose_relu",
+				"conv_1d_bias_layout_transpose_residual_relu",
+				"conv_1d_bias_layout_transpose_norm",
+				"conv_1d_bias_layout_transpose_norm_relu",
 				"conv_1d_bias_copy",
 				"conv_1d_backward",
 				"conv_1d_parameter_backward",
-				"conv_transpose_1d",
-				"conv_transpose_1d_backward",
-				"conv_transpose_2d",
-				"conv_transpose_2d_bias_add",
-				"conv_transpose_2d_backward",
-				"conv_transpose_2d_parameter_backward",
+				"conv_1d_transpose",
+				"conv_1d_transpose_backward",
+				"conv_2d_transpose",
+				"conv_2d_transpose_bias_add",
+				"conv_2d_transpose_backward",
+				"conv_2d_transpose_parameter_backward",
 				"gru_scan",
 				"gru_scan_backward",
 				"gru_cell",
 				"gru_cell_backward",
+				"lstm_scan",
+				"lstm_scan_backward",
+				"lstm_cell",
+				"lstm_cell_backward",
 				"rnn_cell",
 				"rnn_cell_backward",
 				"bmm",
@@ -272,6 +288,25 @@ class MlSchemaTests(unittest.TestCase):
 				"small_causal_sdpa",
 				"grouped_linear_m_act",
 				"grouped_backward_prologue",
+				"max_pool_3d",
+				"max_pool_3d_backward",
+				"avg_pool_3d",
+				"avg_pool_3d_backward",
+				"adaptive_max_pool_2d",
+				"adaptive_max_pool_2d_backward",
+				"adaptive_max_pool_3d",
+				"adaptive_max_pool_3d_backward",
+				"adaptive_avg_pool_3d",
+				"adaptive_avg_pool_3d_backward",
+				"max_unpool_1d",
+				"max_unpool_1d_backward",
+				"max_unpool_2d",
+				"max_unpool_2d_backward",
+				"conv_3d_transpose",
+				"conv_3d_transpose_backward",
+				"conv_3d_transpose_parameter_backward",
+				"ctc",
+				"ctc_backward",
 			],
 		)
 		covered = {
@@ -482,14 +517,14 @@ class MlSchemaTests(unittest.TestCase):
 			[operations[name]["stable_id"] for name in (
 				"conv_1d",
 				"conv_1d_bias_add",
-				"conv_1d_transpose",
+				"conv_1d_layout_transpose",
 				"conv_1d_backward",
 				"conv_1d_parameter_backward",
 			)],
 			[290, 291, 292, 293, 294],
 		)
 		self.assertEqual(operations["conv_1d"]["differentiation"], "conv_1d_backward")
-		for name in ("conv_1d_bias_add", "conv_1d_transpose"):
+		for name in ("conv_1d_bias_add", "conv_1d_layout_transpose"):
 			self.assertEqual(operations[name]["semantic_operation"], "conv_1d")
 		self.assertEqual(
 			operations["conv_1d_parameter_backward"]["semantic_operation"],
@@ -502,58 +537,58 @@ class MlSchemaTests(unittest.TestCase):
 		)
 		self.assertIn("64x64x16 tiled MatMulNt", provenance["reason"])
 
-	def test_conv_transpose_1d_reuses_the_conv_1d_adjoint_and_gemm(self) -> None:
+	def test_conv_1d_transpose_reuses_the_conv_1d_adjoint_and_gemm(self) -> None:
 		operations = {
 			operation["name"]: operation for operation in self.schema["operations"]
 		}
 		self.assertEqual(
 			[
-				operations["conv_transpose_1d"]["stable_id"],
-				operations["conv_transpose_1d_backward"]["stable_id"],
+				operations["conv_1d_transpose"]["stable_id"],
+				operations["conv_1d_transpose_backward"]["stable_id"],
 			],
 			[295, 296],
 		)
 		self.assertEqual(
-			operations["conv_transpose_1d"]["differentiation"],
-			"conv_transpose_1d_backward",
+			operations["conv_1d_transpose"]["differentiation"],
+			"conv_1d_transpose_backward",
 		)
 		provenance = next(
 			record
 			for record in self.schema["port_provenance"]
-			if record["family"] == "conv_transpose_1d"
+			if record["family"] == "conv_1d_transpose"
 		)
 		self.assertIn("64x64x16 tiled MatMulNt", provenance["reason"])
 		self.assertIn("rather than introducing a second", provenance["reason"])
 
-	def test_conv_transpose_2d_preserves_data_adjoint_and_bias_lowering(self) -> None:
+	def test_conv_2d_transpose_preserves_data_adjoint_and_bias_lowering(self) -> None:
 		operations = {
 			operation["name"]: operation for operation in self.schema["operations"]
 		}
 		self.assertEqual(
 			[operations[name]["stable_id"] for name in (
-				"conv_transpose_2d",
-				"conv_transpose_2d_bias_add",
-				"conv_transpose_2d_backward",
-				"conv_transpose_2d_parameter_backward",
+				"conv_2d_transpose",
+				"conv_2d_transpose_bias_add",
+				"conv_2d_transpose_backward",
+				"conv_2d_transpose_parameter_backward",
 			)],
 			[305, 306, 307, 308],
 		)
 		self.assertEqual(
-			operations["conv_transpose_2d"]["differentiation"],
-			"conv_transpose_2d_backward",
+			operations["conv_2d_transpose"]["differentiation"],
+			"conv_2d_transpose_backward",
 		)
 		self.assertEqual(
-			operations["conv_transpose_2d_bias_add"]["semantic_operation"],
-			"conv_transpose_2d",
+			operations["conv_2d_transpose_bias_add"]["semantic_operation"],
+			"conv_2d_transpose",
 		)
 		self.assertEqual(
-			operations["conv_transpose_2d_parameter_backward"]["semantic_operation"],
-			"conv_transpose_2d_backward",
+			operations["conv_2d_transpose_parameter_backward"]["semantic_operation"],
+			"conv_2d_transpose_backward",
 		)
 		provenance = next(
 			record
 			for record in self.schema["port_provenance"]
-			if record["family"] == "conv_transpose_2d"
+			if record["family"] == "conv_2d_transpose"
 		)
 		self.assertIn("unsigned coordinate underflow", provenance["reason"])
 
@@ -895,13 +930,15 @@ class MlSchemaTests(unittest.TestCase):
 
 	def test_pool_attachment_moves_saved_indices_and_retains_geometry(self) -> None:
 		output = oa_ml.generate_ml_autograd_attachments(self.schema, self.digest, "matrix/pool")
-		self.assertIn("indices: Matrix", output)
-		self.assertNotIn("indices: &Matrix", output)
-		self.assertNotIn("indices.clone()", output)
+		self.assertEqual(output.count("indices: Matrix"), 6)
+		# MaxUnpool takes indices as a borrowed forward input rather than saved
+		# pool output, so its records borrow and clone like every other input.
+		self.assertEqual(output.count("indices: &Matrix"), 2)
+		self.assertEqual(output.count("indices: indices.clone()"), 2)
 		self.assertIn("input: input.clone()", output)
-		for name in ("kernel_size", "stride", "padding", "output_height", "output_width"):
+		for name in ("kernel_size", "stride", "padding", "output_height", "output_width", "output_depth"):
 			self.assertIn(f"{name}: usize", output)
-		for name in ("AvgPool2d", "MaxPool2d", "AdaptiveAvgPool2d"):
+		for name in ("AvgPool2d", "MaxPool2d", "AdaptiveAvgPool2d", "MaxUnpool1d", "MaxUnpool2d"):
 			self.assertIn(f"GradNodeOperation::{name}", output)
 
 	def test_owned_saved_matrix_policy_rejects_invalid_ownership(self) -> None:
@@ -915,7 +952,7 @@ class MlSchemaTests(unittest.TestCase):
 
 	def test_generated_record_fields_match_the_forward_saved_state(self) -> None:
 		operations = oa_ml.ml_autograd_operations(self.schema)
-		self.assertEqual(len(operations), 23)
+		self.assertEqual(len(operations), 35)
 		for family in sorted({op["autograd"]["family"] for op in operations}):
 			output = oa_ml.generate_ml_autograd_records(self.schema, self.digest, family)
 			for operation in operations:

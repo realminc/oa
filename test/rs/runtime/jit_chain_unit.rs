@@ -5784,7 +5784,7 @@ fn tile_conv_1d_im2_col_route_matches_incumbent() -> Result<()> {
 		assert_eq!(
 			specialized, 4,
 			"conv_1d must specialize im2col and both tail members before the \
-			 tail merge substitutes `conv_1d_bias_transpose`: {census}"
+			 tail merge substitutes `conv_1d_bias_layout_transpose`: {census}"
 		);
 	}
 	// (batch, in_channels, height, width, out_channels, kernel, stride,
@@ -5977,7 +5977,7 @@ fn tile_conv_1d_parameter_backward_route_matches_incumbent() -> Result<()> {
 
 #[test]
 #[ignore = "explicit Slang library, selected Vulkan device and opt-in tile flags"]
-fn tile_conv_transpose_1d_route_matches_incumbent() -> Result<()> {
+fn tile_conv_1d_transpose_route_matches_incumbent() -> Result<()> {
 	let index = std::env::var("OA_TEST_DEVICE_INDEX")
 		.expect("explicit device index")
 		.parse::<usize>()
@@ -6055,7 +6055,7 @@ fn tile_conv_transpose_1d_route_matches_incumbent() -> Result<()> {
 			"OA_TILE_CONV",
 			backward,
 			&expected,
-			&format!("conv_transpose_1d {batch}x{channels}x{length} k{kernel} s{stride} p{padding}"),
+			&format!("conv_1d_transpose {batch}x{channels}x{length} k{kernel} s{stride} p{padding}"),
 		)?;
 		let census = device.fusion_census().snapshot();
 		let specialized = census.jit_admitted_count() + census.jit_reused_count()
@@ -6063,7 +6063,7 @@ fn tile_conv_transpose_1d_route_matches_incumbent() -> Result<()> {
 			- before.jit_reused_count();
 		assert_eq!(
 			specialized, 4,
-			"conv_transpose_1d run must specialize forward, unfold, transpose, \
+			"conv_1d_transpose run must specialize forward, unfold, transpose, \
 			 and parameter adjoints: {census}"
 		);
 	}
@@ -6178,7 +6178,7 @@ fn tile_conv_2d_backward_route_matches_incumbent() -> Result<()> {
 
 #[test]
 #[ignore = "explicit Slang library, selected Vulkan device and opt-in tile flags"]
-fn tile_conv_transpose_2d_route_matches_incumbent() -> Result<()> {
+fn tile_conv_2d_transpose_route_matches_incumbent() -> Result<()> {
 	let index = std::env::var("OA_TEST_DEVICE_INDEX")
 		.expect("explicit device index")
 		.parse::<usize>()
@@ -6260,7 +6260,7 @@ fn tile_conv_transpose_2d_route_matches_incumbent() -> Result<()> {
 			backward,
 			&expected,
 			&format!(
-				"conv_transpose_2d {batch}x{channels}x{height}x{width} k{kernel} s{stride} p{padding}"
+				"conv_2d_transpose {batch}x{channels}x{height}x{width} k{kernel} s{stride} p{padding}"
 			),
 		)?;
 		let census = device.fusion_census().snapshot();
@@ -6269,7 +6269,7 @@ fn tile_conv_transpose_2d_route_matches_incumbent() -> Result<()> {
 			- before.jit_reused_count();
 		assert_eq!(
 			specialized, 4,
-			"conv_transpose_2d run must specialize forward, bias-add, and both \
+			"conv_2d_transpose run must specialize forward, bias-add, and both \
 			 adjoints: {census}"
 		);
 	}
@@ -6352,28 +6352,28 @@ fn tile_conv_1d_bias_tail_routes_match_incumbent() -> Result<()> {
 			}
 			Ok(())
 		};
-	fused_tail("bias_transpose", "conv_1d_bias_transpose.f32", &conv)?;
+	fused_tail("bias_transpose", "conv_1d_bias_layout_transpose.f32", &conv)?;
 	fused_tail(
 		"bias_transpose_relu",
-		"conv_1d_bias_transpose_relu.f32",
+		"conv_1d_bias_layout_transpose_relu.f32",
 		&|| crate::ml::matrix::relu(&conv()?),
 	)?;
 	let residual = crate::Matrix::new_from_f32([2, 5, 40], &values(2 * 5 * 40))?;
 	fused_tail(
 		"bias_transpose_residual_relu",
-		"conv_1d_bias_transpose_residual_relu.f32",
+		"conv_1d_bias_layout_transpose_residual_relu.f32",
 		&|| crate::matrix::add(&crate::ml::matrix::relu(&conv()?)?, &residual),
 	)?;
 	let norm_weight = crate::Matrix::new_from_f32([5], &values(5))?;
 	let norm_bias = crate::Matrix::new_from_f32([5], &values(5))?;
 	fused_tail(
 		"bias_transpose_norm",
-		"conv_1d_bias_transpose_norm.f32",
+		"conv_1d_bias_layout_transpose_norm.f32",
 		&|| crate::ml::matrix::channel_norm(&conv()?, &norm_weight, &norm_bias, 1e-5),
 	)?;
 	fused_tail(
 		"bias_transpose_norm_relu",
-		"conv_1d_bias_transpose_norm_relu.f32",
+		"conv_1d_bias_layout_transpose_norm_relu.f32",
 		&|| crate::ml::matrix::channel_norm_relu(&conv()?, &norm_weight, &norm_bias, 1e-5),
 	)?;
 	fused_tail("bias_copy", "conv_1d_bias_copy.f32", &|| {

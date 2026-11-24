@@ -1,6 +1,6 @@
 [package]
 name = "oarust"
-version = "0.15.3"
+version = "0.16.0"
 edition = "2024"
 rust-version = "1.98"
 autotests = false
@@ -95,8 +95,14 @@ name = "render"
 path = "test/rs/test_render.rs"
 
 [features]
-default = ["bundled-sdl"]
+default = ["bundled-sdl", "pipewire"]
 bundled-sdl = ["sdl3/build-from-source-static"]
+
+[package.metadata.docs.rs]
+# docs.rs has no PipeWire/libspa headers; the vendored SDL3 build is
+# self-contained so it stays enabled.
+no-default-features = true
+features = ["bundled-sdl"]
 
 [dependencies]
 vkrust = { version = "0.13.4", features = ["allocator"] }
@@ -141,4 +147,4 @@ serde_json = "1"
 unsafe_op_in_unsafe_fn = "deny"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-pipewire = "0.10.1"
+pipewire = { version = "0.10.1", optional = true }

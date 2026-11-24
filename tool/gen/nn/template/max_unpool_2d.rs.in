@@ -1,0 +1,123 @@
+/// {{doc}}
+pub struct {{name}} {
+	kernel_size: usize,
+	stride: usize,
+	padding: usize,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct {{name}} with `stride == kernel_size` and no padding.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `kernel_size` is zero.
+	pub fn new(kernel_size: usize) -> Result<Self> {
+		Self::new_with_options(kernel_size, kernel_size, 0)
+	}
+
+	/// Construct {{name}} with explicit square-kernel geometry.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `kernel_size` or `stride` is zero.
+	pub fn new_with_options(kernel_size: usize, stride: usize, padding: usize) -> Result<Self> {
+		if kernel_size == 0 || stride == 0 {
+			return Err(Error::invalid_argument(
+				"{{name}} kernel size and stride must be nonzero",
+			));
+		}
+		Ok(Self {
+			kernel_size,
+			stride,
+			padding,
+			registry: ModuleRegistry::new(),
+		})
+	}
+
+	/// Return the square kernel extent.
+	pub const fn kernel_size(&self) -> usize {
+		self.kernel_size
+	}
+
+	/// Return the spatial stride.
+	pub const fn stride(&self) -> usize {
+		self.stride
+	}
+
+	/// Return the symmetric padding extent.
+	pub const fn padding(&self) -> usize {
+		self.padding
+	}
+
+	/// Compute the implied output extent for one pooled spatial extent.
+	fn implied_output_extent(&self, input_extent: usize) -> usize {
+		(input_extent - 1) * self.stride - 2 * self.padding + self.kernel_size
+	}
+
+	/// Unpool one NCHW Matrix against recorded argmax indices using the
+	/// geometry-implied output extent.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation or when `input`
+	/// is not a rank-four NCHW matrix with nonzero spatial extents.
+	pub fn forward(&self, input: &Matrix, indices: &Matrix) -> Result<Matrix> {
+		let [_, _, input_height, input_width] = input.shape() else {
+			return Err(Error::invalid_argument(
+				"{{name}} input must be a rank-four NCHW matrix",
+			));
+		};
+		if *input_height == 0 || *input_width == 0 {
+			return Err(Error::invalid_argument(
+				"{{name}} input spatial extents must be nonzero",
+			));
+		}
+		{{operation}}(
+			input,
+			indices,
+			self.kernel_size,
+			self.stride,
+			self.padding,
+			self.implied_output_extent(*input_height),
+			self.implied_output_extent(*input_width),
+		)
+	}
+
+	/// Unpool one NCHW Matrix against recorded argmax indices into an explicit
+	/// output extent.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation.
+	pub fn forward_with_output(
+		&self,
+		input: &Matrix,
+		indices: &Matrix,
+		output_height: usize,
+		output_width: usize,
+	) -> Result<Matrix> {
+		{{operation}}(
+			input,
+			indices,
+			self.kernel_size,
+			self.stride,
+			self.padding,
+			output_height,
+			output_width,
+		)
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		let _ = input;
+		Err(Error::invalid_argument(
+			"{{name}} requires pooled input plus recorded argmax indices; call {{name}}::forward(input, indices)",
+		))
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

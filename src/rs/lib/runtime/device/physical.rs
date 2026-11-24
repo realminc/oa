@@ -426,14 +426,19 @@ impl DevicePhysical {
 				handle,
 				vk::EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
 			)?;
+			let shader_bfloat16_extension =
+				has_device_extension(instance, handle, vk::KHR_SHADER_BFLOAT16_EXTENSION_NAME)?;
 			let features = DeviceFeatures::query(
 				instance,
 				handle,
 				properties.api_version,
-				cooperative_matrix_extension,
-				synchronization2_extension,
-				dynamic_rendering_extension,
-				integer_dot_product_extension,
+				super::features::FeatureQueryExtensions {
+					cooperative_matrix: cooperative_matrix_extension,
+					synchronization2: synchronization2_extension,
+					dynamic_rendering: dynamic_rendering_extension,
+					integer_dot_product: integer_dot_product_extension,
+					shader_bfloat16: shader_bfloat16_extension,
+				},
 			)?;
 			let profile = ExecutionProfile::BUILD;
 			if properties.api_version < profile.minimum_api_version() {

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.16.0
+
+- Complete the `nn` module surface: 3-D and transposed convolutions, the
+  full pooling/unpooling family, padding modes, dropout variants, and the
+  remaining misc modules; `oa::ml::nn` now exports 95 modules.
+- Add `oa::ml::loss::ctc` with forward-backward DP kernels and generated
+  autograd, plus nine composed losses and `nn::AdaptiveLogSoftmaxWithLoss`.
+- Add `matrix::cast_f32_i32`/`cast_i32_f32`, the first dtype-cast ops.
+- Add fused LSTM kernels, KV-cache Transformer decode, encoder-decoder
+  cross-attention, GQA/MQA attention, gradient clipping, device-resident
+  AMP scaling, ONNX graph import, QuantizedLinear, async-prefetch data
+  loading, and image histogram statistics.
+- Rename transposed-convolution functions to `conv_<dim>_transpose*`.
+- Gate PipeWire audio capture behind an optional feature.
+
 ## 0.15.3
 
 - Add TIFF to the image codec family: enable the `image` crate's `tiff`

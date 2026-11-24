@@ -55,6 +55,7 @@ pub enum AttentionMode {
 pub struct MultiHeadAttention {
 	model_width: usize,
 	num_heads: usize,
+	num_kv_heads: usize,
 	sequence_length: Cell<usize>,
 	query_projection: Rc<Linear>,
 	key_projection: Rc<Linear>,
@@ -72,6 +73,7 @@ pub struct MultiHeadAttention {
 struct AttentionMask {
 	batch: usize,
 	sequence_length: usize,
+	key_length: usize,
 	causal: bool,
 	value: Matrix,
 }
@@ -231,13 +233,52 @@ impl MultiHeadAttention {
 		bias: bool,
 		seed: u64,
 	) -> Result<Self> {
+		Self::new_with_seed_and_options_grouped_on(
+			engine,
+			model_width,
+			num_heads,
+			num_heads,
+			sequence_length,
+			dropout_probability,
+			bias,
+			seed,
+		)
+	}
+
+	/// Construct grouped-query attention with explicit key/value head count.
+	///
+	/// `num_kv_heads` must divide `num_heads`; `num_kv_heads == 1` is
+	/// multi-query attention and `num_kv_heads == num_heads` degenerates to
+	/// ordinary multi-head attention. Every group of
+	/// `num_heads / num_kv_heads` query heads shares one key/value head, so
+	/// the key and value projections own `num_kv_heads * (model_width /
+	/// num_heads)` output columns each.
+	///
+	/// # Errors
+	///
+	/// Returns an error under the same contract as
+	/// [`Self::new_with_seed_and_options_on`], or when `num_kv_heads` is
+	/// zero or does not divide `num_heads`.
+	#[allow(clippy::too_many_arguments)]
+	pub fn new_with_seed_and_options_grouped_on(
+		engine: &Engine,
+		model_width: usize,
+		num_heads: usize,
+		num_kv_heads: usize,
+		sequence_length: usize,
+		dropout_probability: f32,
+		bias: bool,
+		seed: u64,
+	) -> Result<Self> {
 		if model_width == 0
 			|| num_heads == 0
+			|| num_kv_heads == 0
 			|| sequence_length == 0
 			|| !model_width.is_multiple_of(num_heads)
+			|| !num_heads.is_multiple_of(num_kv_heads)
 		{
 			return Err(Error::invalid_argument(
-				"attention requires positive D/H/S and D divisible by H",
+				"attention requires positive D/H/KV/S, D divisible by H, and H divisible by KV",
 			));
 		}
 		if !dropout_probability.is_finite() || !(0.0..1.0).contains(&dropout_probability) {
@@ -245,6 +286,9 @@ impl MultiHeadAttention {
 				"attention dropout probability must be finite and in [0, 1)",
 			));
 		}
+		let kv_width = (model_width / num_heads)
+			.checked_mul(num_kv_heads)
+			.ok_or_else(|| Error::invalid_argument("attention key/value width overflows usize"))?;
 		let query_projection = Rc::new(Linear::new_with_seed_and_bias_on(
 			engine,
 			model_width,
@@ -255,14 +299,14 @@ impl MultiHeadAttention {
 		let key_projection = Rc::new(Linear::new_with_seed_and_bias_on(
 			engine,
 			model_width,
-			model_width,
+			kv_width,
 			bias,
 			seed.wrapping_add(1),
 		)?);
 		let value_projection = Rc::new(Linear::new_with_seed_and_bias_on(
 			engine,
 			model_width,
-			model_width,
+			kv_width,
 			bias,
 			seed.wrapping_add(2),
 		)?);
@@ -281,6 +325,7 @@ impl MultiHeadAttention {
 		Ok(Self {
 			model_width,
 			num_heads,
+			num_kv_heads,
 			sequence_length: Cell::new(sequence_length),
 			query_projection,
 			key_projection,
@@ -327,6 +372,24 @@ impl MultiHeadAttention {
 		))
 	}
 
+	/// Split a projected key or value into `[B*KV, S, D/H]` heads and
+	/// repeat each head over its query-head group, yielding `[B*H, S, D/H]`.
+	fn grouped_heads(&self, tensor: &Matrix, batch: usize, sequence_length: usize) -> Result<Matrix> {
+		let heads = split_heads(tensor, batch, sequence_length, self.num_kv_heads)?;
+		if self.num_kv_heads == self.num_heads {
+			return Ok(heads);
+		}
+		core_matrix::repeat_interleave(&heads, self.num_heads / self.num_kv_heads, 0)
+	}
+
+	/// Repeat `[B*KV, T, D/H]` cached heads over their query-head group.
+	fn expand_cached_heads(&self, tensor: &Matrix) -> Result<Matrix> {
+		if self.num_kv_heads == self.num_heads {
+			return Ok(tensor.clone());
+		}
+		core_matrix::repeat_interleave(tensor, self.num_heads / self.num_kv_heads, 0)
+	}
+
 	fn forward_standard(
 		&self,
 		input: &Matrix,
@@ -337,8 +400,8 @@ impl MultiHeadAttention {
 		let sequence_length = self.sequence_length.get();
 		let (query, key, value) = self.project(input)?;
 		let query = split_heads(&query, batch, sequence_length, self.num_heads)?;
-		let key = split_heads(&key, batch, sequence_length, self.num_heads)?;
-		let value = split_heads(&value, batch, sequence_length, self.num_heads)?;
+		let key = self.grouped_heads(&key, batch, sequence_length)?;
+		let value = self.grouped_heads(&value, batch, sequence_length)?;
 		let scale = 1.0 / ((self.model_width / self.num_heads) as f32).sqrt();
 		let context = if self.is_training() && self.dropout_probability > 0.0 {
 			let batch_heads = batch
@@ -373,8 +436,22 @@ impl MultiHeadAttention {
 
 	fn cached_mask(&self, input: &Matrix, batch: usize, causal: bool) -> Result<Matrix> {
 		let sequence_length = self.sequence_length.get();
+		self.cached_mask_impl(input, batch, sequence_length, sequence_length, causal)
+	}
+
+	fn cached_mask_impl(
+		&self,
+		input: &Matrix,
+		batch: usize,
+		sequence_length: usize,
+		key_length: usize,
+		causal: bool,
+	) -> Result<Matrix> {
 		if let Some(mask) = self.mask_cache.borrow().iter().find(|mask| {
-			mask.batch == batch && mask.sequence_length == sequence_length && mask.causal == causal
+			mask.batch == batch
+				&& mask.sequence_length == sequence_length
+				&& mask.key_length == key_length
+				&& mask.causal == causal
 		}) {
 			return Ok(mask.value.clone());
 		}
@@ -385,20 +462,20 @@ impl MultiHeadAttention {
 			.checked_mul(sequence_length)
 			.ok_or_else(|| Error::invalid_argument("attention score rows overflow usize"))?;
 		let count = score_rows
-			.checked_mul(sequence_length)
+			.checked_mul(key_length)
 			.ok_or_else(|| Error::invalid_argument("attention score size overflows usize"))?;
 		let mut values = vec![0.0_f32; count];
 		if causal {
 			for row in 0..score_rows {
 				let query = row % sequence_length;
-				for key in query + 1..sequence_length {
-					values[row * sequence_length + key] = -1.0e9;
+				for key in query + 1..key_length {
+					values[row * key_length + key] = -1.0e9;
 				}
 			}
 		}
 		let mask = Matrix::allocate(
 			input.engine_handle(),
-			vec![score_rows, sequence_length],
+			vec![score_rows, key_length],
 			count,
 			DType::F32,
 		)?;
@@ -406,6 +483,7 @@ impl MultiHeadAttention {
 		self.mask_cache.borrow_mut().push(AttentionMask {
 			batch,
 			sequence_length,
+			key_length,
 			causal,
 			value: mask.clone(),
 		});
@@ -417,8 +495,8 @@ impl MultiHeadAttention {
 		let sequence_length = self.sequence_length.get();
 		let (query, key, value) = self.project(input)?;
 		let query = split_heads(&query, batch, sequence_length, self.num_heads)?;
-		let key = split_heads(&key, batch, sequence_length, self.num_heads)?;
-		let value = split_heads(&value, batch, sequence_length, self.num_heads)?;
+		let key = self.grouped_heads(&key, batch, sequence_length)?;
+		let value = self.grouped_heads(&value, batch, sequence_length)?;
 		let scale = 1.0 / ((self.model_width / self.num_heads) as f32).sqrt();
 		let context = flash_attention_causal(&query, &key, &value, scale)?;
 		let context = merge_heads(&context, batch, sequence_length, self.num_heads)?;
@@ -476,6 +554,112 @@ impl MultiHeadAttention {
 			));
 		}
 		self.forward_standard(input, Some(additive_mask), false)
+	}
+
+	/// Apply cross-attention: queries from `input` attend over keys and
+	/// values projected from `key_value_source`.
+	///
+	/// `input` is F32 `[B*S_q, D]` under the configured query sequence
+	/// length; `key_value_source` is F32 `[B*S_kv, D]` for the same batch
+	/// and model width with any positive source length. Visibility is
+	/// bidirectional — every query observes every source position — so
+	/// [`Self::mode`] does not apply. The composed score/softmax/context
+	/// route is used because query and key lengths may differ; it records
+	/// ordinary adjoints and admits training-mode attention dropout.
+	///
+	/// # Errors
+	///
+	/// Returns an error when Flash is explicitly selected, either input's
+	/// geometry or dtype is invalid, the engines differ, or operation
+	/// recording fails.
+	pub fn forward_kv(&self, input: &Matrix, key_value_source: &Matrix) -> Result<Matrix> {
+		self.forward_kv_impl(input, key_value_source, None)
+	}
+
+	/// Apply cross-attention with an explicit additive `[B*H*S_q, S_kv]` mask.
+	///
+	/// # Errors
+	///
+	/// Returns an error under the same contract as [`Self::forward_kv`], or
+	/// when the mask does not match the flattened cross-attention score
+	/// geometry.
+	pub fn forward_kv_masked(
+		&self,
+		input: &Matrix,
+		key_value_source: &Matrix,
+		additive_mask: &Matrix,
+	) -> Result<Matrix> {
+		self.forward_kv_impl(input, key_value_source, Some(additive_mask))
+	}
+
+	fn forward_kv_impl(
+		&self,
+		input: &Matrix,
+		key_value_source: &Matrix,
+		additive_mask: Option<&Matrix>,
+	) -> Result<Matrix> {
+		if self.backend.get() == AttentionBackend::Flash {
+			return Err(Error::invalid_argument(
+				"FlashAttention does not admit a separate key/value source",
+			));
+		}
+		let batch = self.geometry(input)?;
+		let sequence_length = self.sequence_length.get();
+		let [key_rows, key_width] = key_value_source.shape() else {
+			return Err(Error::invalid_argument(
+				"MultiHeadAttention cross-attention expects F32 [B*S_kv, D] key/value source",
+			));
+		};
+		if key_value_source.dtype() != DType::F32
+			|| *key_width != self.model_width
+			|| *key_rows == 0
+			|| !key_rows.is_multiple_of(batch)
+			|| !input
+				.engine_handle()
+				.same_as(key_value_source.engine_handle())
+		{
+			return Err(Error::invalid_argument(format!(
+				"MultiHeadAttention cross-attention requires same-engine F32 [B*S_kv, {}] source with batch {batch}; found {:?} {}",
+				self.model_width,
+				key_value_source.shape(),
+				key_value_source.dtype().token(),
+			)));
+		}
+		let key_length = key_rows / batch;
+		let query = self.query_projection.forward(input)?;
+		let key = self.key_projection.forward(key_value_source)?;
+		let value = self.value_projection.forward(key_value_source)?;
+		let query = split_heads(&query, batch, sequence_length, self.num_heads)?;
+		let key = self.grouped_heads(&key, batch, key_length)?;
+		let value = self.grouped_heads(&value, batch, key_length)?;
+		let scale = 1.0 / ((self.model_width / self.num_heads) as f32).sqrt();
+		let batch_heads = batch
+			.checked_mul(self.num_heads)
+			.ok_or_else(|| Error::invalid_argument("attention batch by head count overflows usize"))?;
+		let score_rows = batch_heads
+			.checked_mul(sequence_length)
+			.ok_or_else(|| Error::invalid_argument("attention score rows overflow usize"))?;
+		let scores = bmm_nt(&query, &key)?.reshape([score_rows, key_length])?;
+		let owned_mask;
+		let mask = if let Some(mask) = additive_mask {
+			mask
+		} else {
+			owned_mask = self.cached_mask_impl(input, batch, sequence_length, key_length, false)?;
+			&owned_mask
+		};
+		let mut probability = softmax_scaled_masked(&scores, mask, scale)?;
+		if self.is_training() && self.dropout_probability > 0.0 {
+			probability =
+				core_matrix::dropout(&probability, self.dropout_probability, self.dropout_seed)?;
+		}
+		let context = bmm(
+			&probability.reshape([batch_heads, sequence_length, key_length])?,
+			&value,
+		)?;
+		let context = merge_heads(&context, batch, sequence_length, self.num_heads)?;
+		let output = self.output_projection.forward(&context)?;
+		self.last_backend.set(AttentionBackend::Standard);
+		Ok(output)
 	}
 
 	/// Allocate an empty incremental-decode cache owned by this module.
@@ -537,8 +721,8 @@ impl MultiHeadAttention {
 		}
 		let (query, key, value) = self.project(input)?;
 		let query = split_heads(&query, cache.batch_size, 1, self.num_heads)?;
-		let key = split_heads(&key, cache.batch_size, 1, self.num_heads)?;
-		let value = split_heads(&value, cache.batch_size, 1, self.num_heads)?;
+		let key = split_heads(&key, cache.batch_size, 1, self.num_kv_heads)?;
+		let value = split_heads(&value, cache.batch_size, 1, self.num_kv_heads)?;
 		let (keys, values) = match (cache.keys.take(), cache.values.take()) {
 			(Some(keys), Some(values)) => (
 				core_matrix::concat(&[keys, key], 1)?,
@@ -551,11 +735,15 @@ impl MultiHeadAttention {
 				));
 			}
 		};
+		let (attend_keys, attend_values) = (
+			self.expand_cached_heads(&keys)?,
+			self.expand_cached_heads(&values)?,
+		);
 		let scale = 1.0 / ((self.model_width / self.num_heads) as f32).sqrt();
-		let scores = bmm_nt(&query, &keys)?;
+		let scores = bmm_nt(&query, &attend_keys)?;
 		let scaled = core_matrix::scale(&scores, scale)?;
 		let probabilities = core_matrix::softmax(&scaled, -1)?;
-		let context = bmm(&probabilities, &values)?;
+		let context = bmm(&probabilities, &attend_values)?;
 		cache.keys = Some(keys);
 		cache.values = Some(values);
 		cache.position += 1;
@@ -593,6 +781,15 @@ impl MultiHeadAttention {
 	}
 	pub const fn num_heads(&self) -> usize {
 		self.num_heads
+	}
+
+	/// Return the key/value head count each query-head group shares.
+	///
+	/// Equals [`Self::num_heads`] unless the module was constructed through
+	/// [`Self::new_with_seed_and_options_grouped_on`]; `1` is multi-query
+	/// attention.
+	pub const fn num_kv_heads(&self) -> usize {
+		self.num_kv_heads
 	}
 	pub fn sequence_length(&self) -> usize {
 		self.sequence_length.get()

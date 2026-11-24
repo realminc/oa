@@ -1,0 +1,49 @@
+/// {{doc}}
+pub struct {{name}} {
+	output_length: usize,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct {{name}} with the requested output extent.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `output_length` is zero.
+	pub fn new(output_length: usize) -> Result<Self> {
+		if output_length == 0 {
+			return Err(Error::invalid_argument(
+				"{{name}} output extent must be nonzero",
+			));
+		}
+		Ok(Self {
+			output_length,
+			registry: ModuleRegistry::new(),
+		})
+	}
+
+	/// Return the requested output extent.
+	pub const fn output_length(&self) -> usize {
+		self.output_length
+	}
+
+	/// Adaptively pool one NCL Matrix and retain argmax state for reverse
+	/// mode.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		Ok({{operation}}(input, self.output_length)?.output)
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

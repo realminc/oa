@@ -5,9 +5,12 @@ mod batch_norm;
 mod channel_norm;
 mod conv;
 mod embedding;
+#[path = "matrix/fold.gen.rs"]
+mod fold;
 mod gru;
 mod layer_norm;
 mod linear;
+mod lstm;
 mod mamba3;
 mod moe;
 #[path = "matrix/pool.gen.rs"]
@@ -37,18 +40,26 @@ pub(in crate::ml) use attention::{
 pub(in crate::ml) use batch_norm::record_batch_norm_2d;
 pub(in crate::ml) use channel_norm::record_channel_norm;
 pub(in crate::ml) use conv::{
-	record_conv_1d, record_conv_2d, record_conv_transpose_1d, record_conv_transpose_2d,
+	record_conv_1d, record_conv_1d_transpose, record_conv_2d, record_conv_2d_transpose,
+	record_conv_3d, record_conv_3d_transpose,
 };
 pub(in crate::ml) use embedding::record_embedding;
+pub(in crate::ml) use fold::{record_fold, record_unfold};
 pub(in crate::ml) use gru::{record_gru_cell, record_gru_scan};
 pub(in crate::ml) use layer_norm::record_layer_norm;
 pub(in crate::ml) use linear::record_linear;
+pub(in crate::ml) use lstm::{record_lstm_cell, record_lstm_scan};
 pub(in crate::ml) use mamba3::{record_mamba3_mimo, record_mamba3_preprocess, record_mamba3_siso};
 pub(in crate::ml) use moe::{
 	record_grouped_gemm_m, record_grouped_linear_m, record_moe_combine, record_moe_gather,
 	record_moe_route_weights,
 };
-pub(in crate::ml) use pool::{record_adaptive_avg_pool_2d, record_avg_pool_2d, record_max_pool_2d};
+pub(in crate::ml) use pool::{
+	record_adaptive_avg_pool_2d, record_adaptive_avg_pool_3d, record_adaptive_max_pool_1d,
+	record_adaptive_max_pool_2d, record_adaptive_max_pool_3d, record_avg_pool_2d, record_avg_pool_3d,
+	record_max_pool_1d, record_max_pool_2d, record_max_pool_3d, record_max_unpool_1d,
+	record_max_unpool_2d,
+};
 pub(in crate::ml) use rms_norm::{record_rms_norm, record_rms_norm_gated};
 pub(in crate::ml) use rnn::{record_rnn_cell, record_rnn_scan};
 pub(in crate::ml) use rope::record_rope;

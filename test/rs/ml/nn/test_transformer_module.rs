@@ -246,3 +246,75 @@ test_vk!(adaptive_transformer_rejects_invalid_contracts, engine, {
 	}
 	Ok(())
 });
+
+test_vk!(
+	transformer_incremental_decode_matches_full_forward,
+	engine,
+	{
+		let model = oa::ml::nn::Transformer::new_with_seed(8, 4, 8, 16, 2, 2, 1.0e-5, 7)?;
+		let token_values = [1_u32, 3, 0, 5];
+		let tokens = oa::Matrix::new_from_slice([1, 4], &token_values)?;
+		let full = model.forward(&tokens)?;
+		assert_eq!(full.shape(), [4, 8]);
+		let full_logits = full.read_f32()?;
+
+		let mut cache = model.new_cache(1)?;
+		assert!(cache.is_empty());
+		let mut step_logits = Vec::new();
+		for (position, &value) in token_values.iter().enumerate() {
+			let token = oa::Matrix::new_from_slice([1], &[value])?;
+			let logits = model.step(&token, &mut cache)?;
+			assert_eq!(logits.shape(), [1, 8]);
+			assert_eq!(cache.len(), position + 1);
+			step_logits.extend(logits.read_f32()?);
+		}
+		for (index, (stepped, expected)) in step_logits.iter().zip(&full_logits).enumerate() {
+			assert!(
+				(stepped - expected).abs() <= 1.0e-4,
+				"decode logit {index} differs: stepped={stepped}, forward={expected}"
+			);
+		}
+
+		let extra = oa::Matrix::new_from_slice([1], &[2_u32])?;
+		assert!(model.step(&extra, &mut cache).is_err());
+		Ok(())
+	}
+);
+
+test_vk!(transformer_step_rejects_contract_violations, engine, {
+	let model = oa::ml::nn::Transformer::new_with_seed(8, 4, 8, 16, 1, 2, 1.0e-5, 3)?;
+	let mut cache = model.new_cache(1)?;
+	let pair = oa::Matrix::new_from_slice([2], &[1_u32, 2])?;
+	assert!(model.step(&pair, &mut cache).is_err());
+	let f32_token = oa::Matrix::new_from_f32([1], &[0.5])?;
+	assert!(model.step(&f32_token, &mut cache).is_err());
+	assert!(model.new_cache(0).is_err());
+	Ok(())
+});
+
+test_vk!(
+	transformer_grouped_query_attention_builds_and_decodes,
+	engine,
+	{
+		use oa::ml::nn::Transformer;
+
+		let grouped = Transformer::new_with_seed_gqa(32, 8, 8, 16, 2, 4, 2, 1.0e-5, 0x4751_5452)?;
+		assert_eq!(grouped.num_heads(), 4);
+		assert_eq!(grouped.num_kv_heads(), 2);
+		assert_eq!(
+			Transformer::new_with_seed_gqa(32, 8, 8, 16, 2, 4, 3, 1.0e-5, 0x4751_5452)
+				.err()
+				.expect("transformer accepted a non-dividing key/value head count")
+				.kind(),
+			oa::ErrorKind::InvalidArgument
+		);
+		let tokens = oa::Matrix::new_from_slice([1, 8], &[1_u32, 2, 3, 4, 5, 6, 7, 8])?;
+		let logits = grouped.forward(&tokens)?;
+		assert_eq!(logits.shape(), [8, 32]);
+		let mut cache = grouped.new_cache(1)?;
+		let stepped = grouped.step(&oa::Matrix::new_from_slice([1], &[9_u32])?, &mut cache)?;
+		assert_eq!(stepped.shape(), [1, 32]);
+		assert_eq!(cache.len(), 1);
+		Ok(())
+	}
+);

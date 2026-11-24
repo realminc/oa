@@ -302,5 +302,38 @@ fn main() -> oa::Result<()> {
 		(1.0 - flash.as_secs_f64() / standard.as_secs_f64()) * 100.0
 	);
 	println!("fusion census: {}", engine.fusion_stats());
+
+	// KV-cached decode vs full-context decode. The prompt is five tokens,
+	// so eleven generated tokens fill the sixteen-position window exactly;
+	// identical greedy output is the correctness gate before timing.
+	let decode_prompt = "to be";
+	let decode_tokens = nlp::CONTEXT_LENGTH - nlp::encode(decode_prompt).len();
+	let uncached_text = nlp::generate_greedy(&engine, &model, decode_prompt, decode_tokens)?;
+	let cached_text = nlp::generate_greedy_cached(&engine, &model, decode_prompt, decode_tokens)?;
+	if uncached_text != cached_text {
+		return Err(oa::Error::failed_precondition(format!(
+			"cached decode diverged: uncached {uncached_text:?} vs cached {cached_text:?}"
+		)));
+	}
+	const DECODE_REPS: usize = 10;
+	let mut uncached_samples = Vec::with_capacity(DECODE_REPS);
+	let mut cached_samples = Vec::with_capacity(DECODE_REPS);
+	for _ in 0..DECODE_REPS {
+		let start = std::time::Instant::now();
+		nlp::generate_greedy(&engine, &model, decode_prompt, decode_tokens)?;
+		uncached_samples.push(start.elapsed());
+		let start = std::time::Instant::now();
+		nlp::generate_greedy_cached(&engine, &model, decode_prompt, decode_tokens)?;
+		cached_samples.push(start.elapsed());
+	}
+	uncached_samples.sort_unstable();
+	cached_samples.sort_unstable();
+	let uncached_median = uncached_samples[DECODE_REPS / 2];
+	let cached_median = cached_samples[DECODE_REPS / 2];
+	println!(
+		"decode {decode_tokens} tokens wall median: uncached {:.3} ms/token · KV-cached {:.3} ms/token",
+		milliseconds(uncached_median) / decode_tokens as f64,
+		milliseconds(cached_median) / decode_tokens as f64,
+	);
 	Ok(())
 }

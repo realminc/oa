@@ -1,0 +1,69 @@
+/// {{doc}}
+pub struct {{name}} {
+	kernel_size: usize,
+	stride: usize,
+	padding: usize,
+	dilation: usize,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct {{name}} with explicit sliding-window geometry.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `kernel_size`, `stride`, or `dilation` is zero.
+	pub fn new(kernel_size: usize, stride: usize, padding: usize, dilation: usize) -> Result<Self> {
+		if kernel_size == 0 || stride == 0 || dilation == 0 {
+			return Err(crate::Error::invalid_argument(
+				"{{name}} requires nonzero kernel size, stride, and dilation",
+			));
+		}
+		Ok(Self {
+			kernel_size,
+			stride,
+			padding,
+			dilation,
+			registry: ModuleRegistry::new(),
+		})
+	}
+
+	/// Extract NCHW sliding windows into column layout without submitting or waiting.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{operation}}(input, self.kernel_size, self.stride, self.padding, self.dilation)
+	}
+
+	/// Return the square kernel extent.
+	pub const fn kernel_size(&self) -> usize {
+		self.kernel_size
+	}
+
+	/// Return the spatial stride.
+	pub const fn stride(&self) -> usize {
+		self.stride
+	}
+
+	/// Return the symmetric zero-padding extent.
+	pub const fn padding(&self) -> usize {
+		self.padding
+	}
+
+	/// Return the kernel dilation.
+	pub const fn dilation(&self) -> usize {
+		self.dilation
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

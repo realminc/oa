@@ -1,7 +1,7 @@
 use oa::ml::{
-	CosineScheduler, CosineWarmRestartsScheduler, CyclicMode, CyclicScheduler,
-	LinearWarmupCosineScheduler, LrScheduler, OneCycleScheduler, PlateauMode,
-	ReduceOnPlateauScheduler, SequentialScheduler, WarmupScheduler,
+	CosineScheduler, CosineWarmRestartsScheduler, CyclicMode, CyclicScheduler, ExponentialScheduler,
+	LinearWarmupCosineScheduler, LrScheduler, MultiStepScheduler, OneCycleScheduler, PlateauMode,
+	ReduceOnPlateauScheduler, SequentialScheduler, StepScheduler, WarmupScheduler,
 };
 
 struct Constant(f32);
@@ -118,4 +118,34 @@ fn invalid_scheduler_domains_fail_before_step_evaluation() {
 	assert!(LinearWarmupCosineScheduler::new(4, 4, 1.0, 0.0).is_err());
 	assert!(SequentialScheduler::new(vec![Box::new(Constant(1.0))], vec![1]).is_err());
 	assert!(ReduceOnPlateauScheduler::new(1.0, 0.0, 1, 0.0, 0.0, PlateauMode::Min).is_err());
+}
+
+#[test]
+fn step_multi_step_and_exponential_schedules_decay_at_their_boundaries() -> oa::Result<()> {
+	// StepLR: decays exactly at step_size multiples.
+	let step = StepScheduler::new(1.0, 0.5, 4)?;
+	assert_close(step.learning_rate(0), 1.0);
+	assert_close(step.learning_rate(3), 1.0);
+	assert_close(step.learning_rate(4), 0.5);
+	assert_close(step.learning_rate(7), 0.5);
+	assert_close(step.learning_rate(8), 0.25);
+	assert!(StepScheduler::new(1.0, 0.5, 0).is_err());
+	assert!(StepScheduler::new(1.0, -1.0, 4).is_err());
+
+	// MultiStepLR: decays once per elapsed milestone.
+	let multi = MultiStepScheduler::new(0.8, 0.5, vec![3, 7])?;
+	assert_close(multi.learning_rate(2), 0.8);
+	assert_close(multi.learning_rate(3), 0.4);
+	assert_close(multi.learning_rate(6), 0.4);
+	assert_close(multi.learning_rate(7), 0.2);
+	assert!(MultiStepScheduler::new(0.8, 0.5, vec![]).is_err());
+	assert!(MultiStepScheduler::new(0.8, 0.5, vec![7, 3]).is_err());
+
+	// ExponentialLR: gamma^step without floor boundaries.
+	let exponential = ExponentialScheduler::new(0.9, 0.5)?;
+	assert_close(exponential.learning_rate(0), 0.9);
+	assert_close(exponential.learning_rate(1), 0.45);
+	assert_close(exponential.learning_rate(2), 0.225);
+	assert!(ExponentialScheduler::new(0.9, -0.5).is_err());
+	Ok(())
 }

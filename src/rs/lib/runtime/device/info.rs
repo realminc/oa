@@ -538,7 +538,12 @@ pub(super) fn log_compute_device(device: &super::Device, p: &str, is_last: bool)
 		feature_state(feat.shader_float64, enabled.shader_float64)
 	);
 	crate::log_info!(crate::LogComponent::RUNTIME, "{}f32:  enabled", ppp);
-	crate::log_info!(crate::LogComponent::RUNTIME, "{}bf16: not queried", ppp);
+	crate::log_info!(
+		crate::LogComponent::RUNTIME,
+		"{}bf16: {}",
+		ppp,
+		feature_state(feat.shader_bfloat16, false)
+	);
 	crate::log_info!(
 		crate::LogComponent::RUNTIME,
 		"{}f16:  {}",

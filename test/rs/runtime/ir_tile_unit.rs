@@ -680,8 +680,8 @@ fn conv_1d_bias_add_template_is_deterministic() {
 }
 
 #[test]
-fn conv_1d_transpose_template_is_deterministic() {
-	let program = BlockProgram::conv_1d_transpose();
+fn conv_1d_layout_transpose_template_is_deterministic() {
+	let program = BlockProgram::conv_1d_layout_transpose();
 	assert_eq!(program.bindings.len(), 2);
 	assert_eq!(program.push_scalars.len(), 3);
 	assert_eq!(program.shape.lanes, 1024);
@@ -773,13 +773,13 @@ fn conv_2d_parameter_backward_template_is_deterministic() {
 }
 
 #[test]
-fn conv_transpose_2d_template_is_deterministic() {
-	let program = BlockProgram::conv_transpose_2d();
+fn conv_2d_transpose_template_is_deterministic() {
+	let program = BlockProgram::conv_2d_transpose();
 	assert_eq!(program.bindings.len(), 3);
 	assert_eq!(program.push_scalars.len(), 10);
 	let source = program
 		.slang_source(true)
-		.expect("conv_transpose_2d source");
+		.expect("conv_2d_transpose source");
 	assert_eq!(source, program.slang_source(true).unwrap());
 	assert!(source.contains("push.output_width"));
 	assert!(source.contains("loop2"));
@@ -788,13 +788,13 @@ fn conv_transpose_2d_template_is_deterministic() {
 }
 
 #[test]
-fn conv_transpose_2d_bias_add_template_is_deterministic() {
-	let program = BlockProgram::conv_transpose_2d_bias_add();
+fn conv_2d_transpose_bias_add_template_is_deterministic() {
+	let program = BlockProgram::conv_2d_transpose_bias_add();
 	assert_eq!(program.bindings.len(), 2);
 	assert_eq!(program.push_scalars.len(), 4);
 	let source = program
 		.slang_source(true)
-		.expect("conv_transpose_2d_bias_add source");
+		.expect("conv_2d_transpose_bias_add source");
 	assert_eq!(source, program.slang_source(true).unwrap());
 	assert!(source.contains("push.channels"));
 	assert!(source.contains("push.height"));
@@ -802,13 +802,13 @@ fn conv_transpose_2d_bias_add_template_is_deterministic() {
 }
 
 #[test]
-fn conv_transpose_2d_backward_template_is_deterministic() {
-	let program = BlockProgram::conv_transpose_2d_backward();
+fn conv_2d_transpose_backward_template_is_deterministic() {
+	let program = BlockProgram::conv_2d_transpose_backward();
 	assert_eq!(program.bindings.len(), 3);
 	assert_eq!(program.push_scalars.len(), 10);
 	let source = program
 		.slang_source(true)
-		.expect("conv_transpose_2d_backward source");
+		.expect("conv_2d_transpose_backward source");
 	assert_eq!(source, program.slang_source(true).unwrap());
 	assert!(source.contains("push.output_height"));
 	assert!(source.contains("loop2"));
@@ -817,13 +817,13 @@ fn conv_transpose_2d_backward_template_is_deterministic() {
 }
 
 #[test]
-fn conv_transpose_2d_parameter_backward_template_is_deterministic() {
-	let program = BlockProgram::conv_transpose_2d_parameter_backward();
+fn conv_2d_transpose_parameter_backward_template_is_deterministic() {
+	let program = BlockProgram::conv_2d_transpose_parameter_backward();
 	assert_eq!(program.bindings.len(), 4);
 	assert_eq!(program.push_scalars.len(), 11);
 	let source = program
 		.slang_source(true)
-		.expect("conv_transpose_2d_parameter_backward source");
+		.expect("conv_2d_transpose_parameter_backward source");
 	assert_eq!(source, program.slang_source(true).unwrap());
 	assert!(source.contains("push.parameter_count"));
 	assert!(source.contains("loop3"));
@@ -832,13 +832,13 @@ fn conv_transpose_2d_parameter_backward_template_is_deterministic() {
 }
 
 #[test]
-fn conv_1d_bias_transpose_template_is_deterministic() {
-	let program = BlockProgram::conv_1d_bias_transpose();
+fn conv_1d_bias_layout_transpose_template_is_deterministic() {
+	let program = BlockProgram::conv_1d_bias_layout_transpose();
 	assert_eq!(program.bindings.len(), 3);
 	assert_eq!(program.push_scalars.len(), 3);
 	let source = program
 		.slang_source(true)
-		.expect("conv_1d_bias_transpose source");
+		.expect("conv_1d_bias_layout_transpose source");
 	assert_eq!(source, program.slang_source(true).unwrap());
 	assert!(source.contains("push.columns"));
 	assert!(source.contains("push.rows"));
@@ -847,26 +847,26 @@ fn conv_1d_bias_transpose_template_is_deterministic() {
 }
 
 #[test]
-fn conv_1d_bias_transpose_relu_template_is_deterministic() {
-	let program = BlockProgram::conv_1d_bias_transpose_relu();
+fn conv_1d_bias_layout_transpose_relu_template_is_deterministic() {
+	let program = BlockProgram::conv_1d_bias_layout_transpose_relu();
 	assert_eq!(program.bindings.len(), 3);
 	assert_eq!(program.push_scalars.len(), 3);
 	let source = program
 		.slang_source(true)
-		.expect("conv_1d_bias_transpose_relu source");
+		.expect("conv_1d_bias_layout_transpose_relu source");
 	assert_eq!(source, program.slang_source(true).unwrap());
 	assert!(source.contains("max("));
 	assert_eq!(source.matches("GroupMemoryBarrierWithGroupSync").count(), 1);
 }
 
 #[test]
-fn conv_1d_bias_transpose_residual_relu_template_is_deterministic() {
-	let program = BlockProgram::conv_1d_bias_transpose_residual_relu();
+fn conv_1d_bias_layout_transpose_residual_relu_template_is_deterministic() {
+	let program = BlockProgram::conv_1d_bias_layout_transpose_residual_relu();
 	assert_eq!(program.bindings.len(), 5);
 	assert_eq!(program.push_scalars.len(), 3);
 	let source = program
 		.slang_source(true)
-		.expect("conv_1d_bias_transpose_residual_relu source");
+		.expect("conv_1d_bias_layout_transpose_residual_relu source");
 	assert_eq!(source, program.slang_source(true).unwrap());
 	assert!(source.contains("max("));
 	assert_eq!(source.matches("GroupMemoryBarrierWithGroupSync").count(), 1);
@@ -886,14 +886,14 @@ fn conv_1d_bias_copy_template_is_deterministic() {
 }
 
 #[test]
-fn conv_1d_bias_transpose_norm_template_is_deterministic() {
-	let program = BlockProgram::conv_1d_bias_transpose_norm(false);
+fn conv_1d_bias_layout_transpose_norm_template_is_deterministic() {
+	let program = BlockProgram::conv_1d_bias_layout_transpose_norm(false);
 	assert_eq!(program.bindings.len(), 6);
 	assert_eq!(program.push_scalars.len(), 3);
 	assert_eq!(program.push_f32_scalars.len(), 1);
 	let source = program
 		.slang_source(true)
-		.expect("conv_1d_bias_transpose_norm source");
+		.expect("conv_1d_bias_layout_transpose_norm source");
 	assert_eq!(source, program.slang_source(true).unwrap());
 	assert!(source.contains("push.epsilon"));
 	assert!(source.contains("rsqrt"));
@@ -902,14 +902,14 @@ fn conv_1d_bias_transpose_norm_template_is_deterministic() {
 }
 
 #[test]
-fn conv_1d_bias_transpose_norm_relu_template_is_deterministic() {
-	let program = BlockProgram::conv_1d_bias_transpose_norm(true);
+fn conv_1d_bias_layout_transpose_norm_relu_template_is_deterministic() {
+	let program = BlockProgram::conv_1d_bias_layout_transpose_norm(true);
 	assert_eq!(program.bindings.len(), 6);
 	assert_eq!(program.push_scalars.len(), 3);
 	assert_eq!(program.push_f32_scalars.len(), 1);
 	let source = program
 		.slang_source(true)
-		.expect("conv_1d_bias_transpose_norm_relu source");
+		.expect("conv_1d_bias_layout_transpose_norm_relu source");
 	assert_eq!(source, program.slang_source(true).unwrap());
 	assert!(source.contains("max("));
 	assert!(source.contains("rsqrt"));
@@ -1005,13 +1005,13 @@ fn adaptive_avg_pool_2d_backward_template_is_deterministic() {
 }
 
 #[test]
-fn conv_transpose_1d_template_is_deterministic() {
-	let program = BlockProgram::conv_transpose_1d();
+fn conv_1d_transpose_template_is_deterministic() {
+	let program = BlockProgram::conv_1d_transpose();
 	assert_eq!(program.bindings.len(), 3);
 	assert_eq!(program.push_scalars.len(), 9);
 	let source = program
 		.slang_source(true)
-		.expect("conv_transpose_1d source");
+		.expect("conv_1d_transpose source");
 	assert_eq!(source, program.slang_source(true).unwrap());
 	assert!(source.contains("push.output_channels"));
 	assert!(source.contains("push.dilation"));

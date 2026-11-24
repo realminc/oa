@@ -461,3 +461,158 @@ test_vk!(
 
 #[path = "data/test_ohlcv.rs"]
 mod test_ohlcv;
+
+// ---- PrefetchDataLoader ------------------------------------------------------
+
+fn host_dataset(count: usize) -> oa::data::HostTensorDataset {
+	let features = (0..count)
+		.flat_map(|index| [index as f32, index as f32 + 0.5, index as f32 + 0.25])
+		.collect::<Vec<_>>();
+	let labels = (0..count).map(|index| index as u32).collect::<Vec<_>>();
+	oa::data::HostTensorDataset::new(
+		oa::data::HostTensor::new([count, 3], oa::data::HostValues::F32(features))
+			.expect("feature tensor"),
+		oa::data::HostTensor::new([count], oa::data::HostValues::U32(labels)).expect("label tensor"),
+	)
+	.expect("host dataset")
+}
+
+fn prefetch_config(batch_size: i32, shuffle: bool, drop_last: bool) -> oa::DataLoaderConfig {
+	oa::DataLoaderConfig {
+		batch_size,
+		shuffle,
+		seed: 11,
+		drop_last,
+	}
+}
+
+fn host_first_column(batch: &oa::data::HostBatch) -> Vec<f32> {
+	let oa::data::HostValues::F32(values) = &batch.x.values else {
+		panic!("f32 batch");
+	};
+	values.iter().step_by(3).copied().collect()
+}
+
+#[test]
+fn prefetch_loader_iterates_the_epoch_in_order() -> oa::Result<()> {
+	let dataset = std::sync::Arc::new(host_dataset(10));
+	let mut loader = oa::data::PrefetchDataLoader::new(dataset, prefetch_config(3, false, false), 2)?;
+	assert_eq!(loader.num_batches(), 4);
+	let mut order = Vec::new();
+	while let Some(batch) = loader.next_batch()? {
+		order.extend(host_first_column(&batch));
+	}
+	assert_eq!(order, (0..10).map(|i| i as f32).collect::<Vec<_>>());
+	assert!(loader.next_batch()?.is_none());
+	Ok(())
+}
+
+#[test]
+fn prefetch_loader_reset_epoch_reproduces_and_varies_shuffle() -> oa::Result<()> {
+	let dataset = std::sync::Arc::new(host_dataset(16));
+	let config = prefetch_config(4, true, false);
+	let drain = |loader: &mut oa::data::PrefetchDataLoader| -> oa::Result<Vec<i64>> {
+		let mut order = Vec::new();
+		while let Some(batch) = loader.next_batch()? {
+			order.extend(host_first_column(&batch).iter().map(|&v| v as i64));
+		}
+		Ok(order)
+	};
+	let mut loader = oa::data::PrefetchDataLoader::new(dataset.clone(), config, 2)?;
+	loader.reset_epoch(0)?;
+	let epoch0 = drain(&mut loader)?;
+	let mut second = oa::data::PrefetchDataLoader::new(dataset, config, 2)?;
+	second.reset_epoch(0)?;
+	assert_eq!(drain(&mut second)?, epoch0);
+	loader.reset_epoch(1)?;
+	let epoch1 = drain(&mut loader)?;
+	assert_ne!(epoch1, epoch0);
+	let mut sorted = epoch1;
+	sorted.sort_unstable();
+	assert_eq!(sorted, (0..16_i64).collect::<Vec<_>>());
+	Ok(())
+}
+
+#[test]
+fn prefetch_loader_drop_last_drops_the_incomplete_batch() -> oa::Result<()> {
+	let dataset = std::sync::Arc::new(host_dataset(10));
+	let mut loader = oa::data::PrefetchDataLoader::new(dataset, prefetch_config(3, false, true), 2)?;
+	assert_eq!(loader.num_batches(), 3);
+	let mut count = 0;
+	while loader.next_batch()?.is_some() {
+		count += 1;
+	}
+	assert_eq!(count, 3);
+	Ok(())
+}
+
+#[test]
+fn prefetch_loader_delivers_worker_errors() -> oa::Result<()> {
+	struct Failing;
+	impl oa::data::HostDataset for Failing {
+		fn len(&self) -> i64 {
+			4
+		}
+		fn get_host_sample(&self, index: i64) -> oa::Result<oa::data::HostSample> {
+			if index >= 2 {
+				return Err(oa::Error::invalid_argument("synthetic read failure"));
+			}
+			Ok(oa::data::HostSample {
+				x: oa::data::HostTensor::new([1], oa::data::HostValues::F32(vec![index as f32]))?,
+				y: None,
+			})
+		}
+	}
+	let mut loader = oa::data::PrefetchDataLoader::new(
+		std::sync::Arc::new(Failing),
+		prefetch_config(2, false, false),
+		2,
+	)?;
+	let first = loader.next_batch()?;
+	assert!(first.is_some());
+	assert!(loader.next_batch().is_err());
+	assert!(loader.next_batch()?.is_none());
+	Ok(())
+}
+
+#[test]
+fn collate_host_rejects_mismatched_components() -> oa::Result<()> {
+	let sample = |shape: &[usize]| -> oa::Result<oa::data::HostSample> {
+		Ok(oa::data::HostSample {
+			x: oa::data::HostTensor::new(
+				shape.to_vec(),
+				oa::data::HostValues::F32(vec![1.0; shape.iter().product()]),
+			)?,
+			y: Some(oa::data::HostTensor::new(
+				vec![1],
+				oa::data::HostValues::F32(vec![0.0]),
+			)?),
+		})
+	};
+	assert!(oa::data::collate_host(&[sample(&[3])?, sample(&[4])?]).is_err());
+	let unlabeled = oa::data::HostSample {
+		x: oa::data::HostTensor::new([3], oa::data::HostValues::F32(vec![1.0; 3]))?,
+		y: None,
+	};
+	assert!(oa::data::collate_host(&[sample(&[3])?, unlabeled]).is_err());
+	Ok(())
+}
+
+test_vk!(prefetch_loader_uploads_collated_batches, engine, {
+	let dataset = std::sync::Arc::new(host_dataset(8));
+	let mut loader = oa::data::PrefetchDataLoader::new(dataset, prefetch_config(4, false, false), 2)?;
+	let first = loader.next_batch_on(&engine)?.expect("first batch");
+	assert_eq!(first.x.shape(), [4, 3]);
+	assert_eq!(
+		first.x.read_f32()?,
+		[
+			0.0, 0.5, 0.25, 1.0, 1.5, 1.25, 2.0, 2.5, 2.25, 3.0, 3.5, 3.25
+		]
+	);
+	let labels = first.y.expect("labeled batch");
+	assert_eq!(labels.shape(), [4, 1]);
+	let second = loader.next_batch_on(&engine)?.expect("second batch");
+	assert_eq!(second.x.shape(), [4, 3]);
+	assert!(loader.next_batch_on(&engine)?.is_none());
+	Ok(())
+});

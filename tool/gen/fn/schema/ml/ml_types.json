@@ -269,6 +269,131 @@
 		},
 		{
 			"class": "result",
+			"name": "MaxPool1dResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "",
+			"fields": [
+				{
+					"name": "output",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Maximum value selected from each pooling window."
+				},
+				{
+					"name": "indices",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Flat input index selected for each output element."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+		{
+			"class": "result",
+			"name": "AdaptiveMaxPool1dResult",
+			"kind": "struct",
+			"visibility": "pub",
+			"derive": [],
+			"doc": "",
+			"fields": [
+				{
+					"name": "output",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Maximum value selected from each pooling window."
+				},
+				{
+					"name": "indices",
+					"type": "Matrix",
+					"visibility": "pub",
+					"doc": "Flat input index selected for each output element."
+				}
+			],
+			"variants": [],
+			"defaults": null,
+			"default_variant": null
+		},
+{
+		  "class": "result",
+		  "name": "MaxPool3dResult",
+		  "kind": "struct",
+		  "visibility": "pub",
+		  "derive": [],
+		  "doc": "",
+		  "fields": [
+		    {
+		      "name": "output",
+		      "type": "Matrix",
+		      "visibility": "pub",
+		      "doc": "Maximum value selected from each pooling window."
+		    },
+		    {
+		      "name": "indices",
+		      "type": "Matrix",
+		      "visibility": "pub",
+		      "doc": "Flat input index selected for each output element."
+		    }
+		  ],
+		  "variants": [],
+		  "defaults": null,
+		  "default_variant": null
+		},
+{
+		  "class": "result",
+		  "name": "AdaptiveMaxPool2dResult",
+		  "kind": "struct",
+		  "visibility": "pub",
+		  "derive": [],
+		  "doc": "",
+		  "fields": [
+		    {
+		      "name": "output",
+		      "type": "Matrix",
+		      "visibility": "pub",
+		      "doc": "Maximum value selected from each pooling window."
+		    },
+		    {
+		      "name": "indices",
+		      "type": "Matrix",
+		      "visibility": "pub",
+		      "doc": "Flat input index selected for each output element."
+		    }
+		  ],
+		  "variants": [],
+		  "defaults": null,
+		  "default_variant": null
+		},
+{
+		  "class": "result",
+		  "name": "AdaptiveMaxPool3dResult",
+		  "kind": "struct",
+		  "visibility": "pub",
+		  "derive": [],
+		  "doc": "",
+		  "fields": [
+		    {
+		      "name": "output",
+		      "type": "Matrix",
+		      "visibility": "pub",
+		      "doc": "Maximum value selected from each pooling window."
+		    },
+		    {
+		      "name": "indices",
+		      "type": "Matrix",
+		      "visibility": "pub",
+		      "doc": "Flat input index selected for each output element."
+		    }
+		  ],
+		  "variants": [],
+		  "defaults": null,
+		  "default_variant": null
+		},
+		{
+			"class": "result",
 			"name": "VqAssignResult",
 			"kind": "struct",
 			"visibility": "pub",

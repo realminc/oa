@@ -19,19 +19,22 @@ pub(in crate::ml) use flow::{
 };
 
 pub(in crate::ml) use loss::{
-	record_bce, record_cross_entropy, record_l1, record_masked_cross_entropy, record_mse,
+	record_bce, record_cross_entropy, record_ctc, record_l1, record_masked_cross_entropy, record_mse,
 	record_ppo_clipped_policy, record_smooth_l1,
 };
 pub(in crate::ml) use matrix::{
-	record_adaptive_avg_pool_2d, record_avg_pool_2d, record_batch_norm_2d, record_bmm, record_bmm_nt,
-	record_bmm_tn, record_causal_linear_attention, record_channel_norm, record_conv_1d,
-	record_conv_2d, record_conv_transpose_1d, record_conv_transpose_2d, record_elu, record_embedding,
-	record_flash_attention, record_gelu, record_grouped_gemm_m, record_grouped_linear_m,
+	record_adaptive_avg_pool_2d, record_adaptive_avg_pool_3d, record_adaptive_max_pool_1d,
+	record_adaptive_max_pool_2d, record_adaptive_max_pool_3d, record_avg_pool_2d, record_avg_pool_3d,
+	record_batch_norm_2d, record_bmm, record_bmm_nt, record_bmm_tn, record_causal_linear_attention,
+	record_channel_norm, record_conv_1d, record_conv_1d_transpose, record_conv_2d,
+	record_conv_2d_transpose, record_conv_3d, record_conv_3d_transpose, record_elu, record_embedding,
+	record_flash_attention, record_fold, record_gelu, record_grouped_gemm_m, record_grouped_linear_m,
 	record_gru_cell, record_gru_scan, record_layer_norm, record_leaky_relu, record_linear,
-	record_mamba3_mimo, record_mamba3_preprocess, record_mamba3_siso, record_max_pool_2d,
-	record_merge_heads, record_mish, record_moe_combine, record_moe_gather, record_moe_route_weights,
-	record_relu, record_rms_norm, record_rms_norm_gated, record_rnn_cell, record_rnn_scan,
-	record_rope, record_scaled_dot_product_attention, record_sigmoid, record_silu, record_silu_mul,
-	record_softmax_scaled_masked, record_softplus, record_split_heads, record_swiglu, record_tanh,
-	record_upsample_2d,
+	record_lstm_cell, record_lstm_scan, record_mamba3_mimo, record_mamba3_preprocess,
+	record_mamba3_siso, record_max_pool_1d, record_max_pool_2d, record_max_pool_3d,
+	record_max_unpool_1d, record_max_unpool_2d, record_merge_heads, record_mish, record_moe_combine,
+	record_moe_gather, record_moe_route_weights, record_relu, record_rms_norm, record_rms_norm_gated,
+	record_rnn_cell, record_rnn_scan, record_rope, record_scaled_dot_product_attention,
+	record_sigmoid, record_silu, record_silu_mul, record_softmax_scaled_masked, record_softplus,
+	record_split_heads, record_swiglu, record_tanh, record_unfold, record_upsample_2d,
 };

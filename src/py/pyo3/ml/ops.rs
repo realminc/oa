@@ -104,6 +104,25 @@ pub(crate) fn ml_loss_masked_cross_entropy(
 }
 
 #[pyfunction]
+pub(crate) fn ml_loss_ctc(
+	log_probs: &PythonMatrix,
+	targets: &PythonMatrix,
+	input_lengths: &PythonMatrix,
+	target_lengths: &PythonMatrix,
+	blank: usize,
+) -> PyResult<PythonMatrix> {
+	oa::ml::loss::ctc(
+		&log_probs.inner,
+		&targets.inner,
+		&input_lengths.inner,
+		&target_lengths.inner,
+		blank,
+	)
+	.map(PythonMatrix::wrap)
+	.map_err(python_error)
+}
+
+#[pyfunction]
 pub(crate) fn ml_metric_scalar_loss(loss: &PythonMatrix) -> PyResult<f32> {
 	oa::ml::metric::scalar_loss(&loss.inner).map_err(python_error)
 }
@@ -224,6 +243,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 		ml_loss_bce,
 		ml_loss_cross_entropy,
 		ml_loss_masked_cross_entropy,
+		ml_loss_ctc,
 		ml_metric_scalar_loss,
 		ml_metric_accuracy,
 		ml_byte_encode,

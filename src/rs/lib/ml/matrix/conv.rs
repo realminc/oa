@@ -189,10 +189,10 @@ impl Conv1dGeometry {
 	}
 }
 
-// ── ConvTranspose1d geometry ──────────────────────────────────────────────────
+// ── Conv1dTranspose geometry ──────────────────────────────────────────────────
 
 #[derive(Clone, Copy)]
-struct ConvTranspose1dGeometry {
+struct Conv1dTransposeGeometry {
 	batch_size: u32,
 	input_channels: u32,
 	output_channels: u32,
@@ -206,7 +206,7 @@ struct ConvTranspose1dGeometry {
 	weight_count: u32,
 }
 
-impl ConvTranspose1dGeometry {
+impl Conv1dTransposeGeometry {
 	fn resolve(
 		input: &Matrix,
 		weight: &Matrix,
@@ -337,10 +337,10 @@ impl ConvTranspose1dGeometry {
 	}
 }
 
-// ── ConvTranspose2d geometry ──────────────────────────────────────────────────
+// ── Conv2dTranspose geometry ──────────────────────────────────────────────────
 
 #[derive(Clone, Copy)]
-struct ConvTranspose2dGeometry {
+struct Conv2dTransposeGeometry {
 	batch_size: u32,
 	input_channels: u32,
 	output_channels: u32,
@@ -356,7 +356,7 @@ struct ConvTranspose2dGeometry {
 	parameter_count: u32,
 }
 
-impl ConvTranspose2dGeometry {
+impl Conv2dTransposeGeometry {
 	fn resolve(
 		input: &Matrix,
 		weight: &Matrix,
@@ -505,6 +505,209 @@ impl ConvTranspose2dGeometry {
 			PushConstant::U32(self.kernel_size),
 			PushConstant::U32(self.stride),
 			PushConstant::U32(self.padding),
+			PushConstant::U32(self.output_height),
+			PushConstant::U32(self.output_width),
+		]
+	}
+
+	fn attributes(self) -> [OpAttribute; 2] {
+		[
+			OpAttribute::UnsignedInteger {
+				name: "stride".into(),
+				value: u64::from(self.stride),
+			},
+			OpAttribute::UnsignedInteger {
+				name: "padding".into(),
+				value: u64::from(self.padding),
+			},
+		]
+	}
+}
+
+// ── Conv3dTranspose geometry ─────────────────────────────────────────────────
+
+#[derive(Clone, Copy)]
+struct Conv3dTransposeGeometry {
+	batch_size: u32,
+	input_channels: u32,
+	output_channels: u32,
+	input_depth: u32,
+	input_height: u32,
+	input_width: u32,
+	kernel_size: u32,
+	stride: u32,
+	padding: u32,
+	output_depth: u32,
+	output_height: u32,
+	output_width: u32,
+	output_count: u32,
+	weight_count: u32,
+	parameter_count: u32,
+}
+
+impl Conv3dTransposeGeometry {
+	fn resolve(
+		input: &Matrix,
+		weight: &Matrix,
+		bias: Option<&Matrix>,
+		stride: usize,
+		padding: usize,
+		operation: &'static str,
+	) -> Result<Self> {
+		let [
+			batch_size,
+			input_channels,
+			input_depth,
+			input_height,
+			input_width,
+		] = input.shape()
+		else {
+			return Err(Error::invalid_argument(format!(
+				"{operation} input must have NCDHW rank five; found {:?}",
+				input.shape()
+			)));
+		};
+		let [
+			weight_input_channels,
+			output_channels,
+			kernel_depth,
+			kernel_height,
+			kernel_width,
+		] = weight.shape()
+		else {
+			return Err(Error::invalid_argument(format!(
+				"{operation} weight must have IOKKK rank five; found {:?}",
+				weight.shape()
+			)));
+		};
+		if *batch_size == 0
+			|| *input_channels == 0
+			|| *output_channels == 0
+			|| *input_depth == 0
+			|| *input_height == 0
+			|| *input_width == 0
+			|| *kernel_depth == 0
+			|| kernel_depth != kernel_height
+			|| kernel_height != kernel_width
+			|| *weight_input_channels != *input_channels
+			|| stride == 0
+		{
+			return Err(Error::invalid_argument(format!(
+				"{operation} requires nonzero NCDHW input, matching nonzero cubic IOKKK weight, and nonzero stride"
+			)));
+		}
+		if let Some(bias) = bias
+			&& bias.shape() != [*output_channels]
+		{
+			return Err(Error::invalid_argument(format!(
+				"{operation} bias must have shape [{output_channels}]; found {:?}",
+				bias.shape()
+			)));
+		}
+		let expanded = |extent: usize, name: &str| -> Result<usize> {
+			extent
+				.saturating_sub(1)
+				.checked_mul(stride)
+				.and_then(|value| value.checked_add(*kernel_depth))
+				.ok_or_else(|| {
+					Error::invalid_argument(format!("{operation} expanded {name} overflows usize"))
+				})
+		};
+		let expanded_depth = expanded(*input_depth, "depth")?;
+		let expanded_height = expanded(*input_height, "height")?;
+		let expanded_width = expanded(*input_width, "width")?;
+		let doubled_padding = padding.checked_mul(2).ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} doubled padding overflows usize"))
+		})?;
+		if expanded_depth <= doubled_padding
+			|| expanded_height <= doubled_padding
+			|| expanded_width <= doubled_padding
+		{
+			return Err(Error::invalid_argument(format!(
+				"{operation} padding removes the complete transposed output"
+			)));
+		}
+		let output_depth = expanded_depth - doubled_padding;
+		let output_height = expanded_height - doubled_padding;
+		let output_width = expanded_width - doubled_padding;
+		let output_count = batch_size
+			.checked_mul(*output_channels)
+			.and_then(|count| count.checked_mul(output_depth))
+			.and_then(|count| count.checked_mul(output_height))
+			.and_then(|count| count.checked_mul(output_width))
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
+		let weight_count = input_channels
+			.checked_mul(*output_channels)
+			.and_then(|count| count.checked_mul(*kernel_depth))
+			.and_then(|count| count.checked_mul(*kernel_height))
+			.and_then(|count| count.checked_mul(*kernel_width))
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} weight size overflows usize")))?;
+		if weight_count != weight.num_elements() {
+			return Err(Error::internal(format!(
+				"{operation} validated weight shape disagrees with its storage extent"
+			)));
+		}
+		let parameter_count = weight_count.checked_add(*output_channels).ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} parameter count overflows usize"))
+		})?;
+		let last = |extent: usize| -> Result<usize> {
+			extent
+				.saturating_sub(1)
+				.checked_mul(stride)
+				.and_then(|coordinate| coordinate.checked_add(kernel_depth.saturating_sub(1)))
+				.ok_or_else(|| Error::invalid_argument(format!("{operation} coordinate overflows usize")))
+		};
+		for (label, value) in [
+			("input depth", *input_depth),
+			("input height", *input_height),
+			("input width", *input_width),
+			("output depth", output_depth),
+			("output height", output_height),
+			("output width", output_width),
+			("kernel size", *kernel_depth),
+			("stride", stride),
+			("padding", padding),
+			("last Z coordinate", last(*input_depth)?),
+			("last Y coordinate", last(*input_height)?),
+			("last X coordinate", last(*input_width)?),
+		] {
+			if value > i32::MAX as usize {
+				return Err(Error::invalid_argument(format!(
+					"{operation} {label} exceeds the signed shader coordinate ABI"
+				)));
+			}
+		}
+		Ok(Self {
+			batch_size: shader_u32(*batch_size, "batch size", operation)?,
+			input_channels: shader_u32(*input_channels, "input channel count", operation)?,
+			output_channels: shader_u32(*output_channels, "output channel count", operation)?,
+			input_depth: shader_u32(*input_depth, "input depth", operation)?,
+			input_height: shader_u32(*input_height, "input height", operation)?,
+			input_width: shader_u32(*input_width, "input width", operation)?,
+			kernel_size: shader_u32(*kernel_depth, "kernel size", operation)?,
+			stride: shader_u32(stride, "stride", operation)?,
+			padding: shader_u32(padding, "padding", operation)?,
+			output_depth: shader_u32(output_depth, "output depth", operation)?,
+			output_height: shader_u32(output_height, "output height", operation)?,
+			output_width: shader_u32(output_width, "output width", operation)?,
+			output_count: shader_u32(output_count, "output element count", operation)?,
+			weight_count: shader_u32(weight_count, "weight element count", operation)?,
+			parameter_count: shader_u32(parameter_count, "parameter count", operation)?,
+		})
+	}
+
+	fn dimensions(self) -> [PushConstant; 12] {
+		[
+			PushConstant::U32(self.batch_size),
+			PushConstant::U32(self.input_channels),
+			PushConstant::U32(self.output_channels),
+			PushConstant::U32(self.input_depth),
+			PushConstant::U32(self.input_height),
+			PushConstant::U32(self.input_width),
+			PushConstant::U32(self.kernel_size),
+			PushConstant::U32(self.stride),
+			PushConstant::U32(self.padding),
+			PushConstant::U32(self.output_depth),
 			PushConstant::U32(self.output_height),
 			PushConstant::U32(self.output_width),
 		]
@@ -869,6 +1072,164 @@ pub(in crate::ml) fn conv_1d_backward(
 	Ok((input_gradient, weight_gradient, bias_gradient))
 }
 
+/// Apply grouped three-dimensional convolution to an NCDHW Matrix.
+///
+/// `weight` uses `[output_channels, input_channels / groups, kernel, kernel,
+/// kernel]` layout and `bias` uses `[output_channels]`. The output spatial
+/// extent is `floor((input + 2 * padding - kernel) / stride) + 1` on every
+/// axis.
+///
+/// # Errors
+///
+/// Returns an error unless all inputs are same-engine F32 matrices, shapes and
+/// group divisibility agree, the cubic kernel fits the padded input, every
+/// extent fits the shader ABI, or runtime recording fails.
+pub fn conv_3d(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: &Matrix,
+	stride: usize,
+	padding: usize,
+	groups: usize,
+) -> Result<Matrix> {
+	let output = conv_3d_dispatch(input, weight, bias, stride, padding, groups)?;
+	autograd::record_conv_3d(
+		input,
+		&output,
+		None,
+		weight.clone(),
+		None,
+		bias.clone(),
+		stride,
+		padding,
+		groups,
+	)?;
+	Ok(output)
+}
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "module forwarding keeps parameter identity separate from Matrix values"
+)]
+pub(in crate::ml) fn conv_3d_parameterized(
+	input: &Matrix,
+	weight: (Parameter, Matrix, u64),
+	bias: (Parameter, Matrix, u64),
+	stride: usize,
+	padding: usize,
+	groups: usize,
+) -> Result<Matrix> {
+	let (weight_parameter, weight_value, weight_version) = weight;
+	let (bias_parameter, bias_value, bias_version) = bias;
+	let output = conv_3d_dispatch(input, &weight_value, &bias_value, stride, padding, groups)?;
+	autograd::record_conv_3d(
+		input,
+		&output,
+		Some((weight_parameter, weight_version)),
+		weight_value,
+		Some((bias_parameter, bias_version)),
+		bias_value,
+		stride,
+		padding,
+		groups,
+	)?;
+	Ok(output)
+}
+
+pub(in crate::ml) fn conv_3d_backward(
+	input: &Matrix,
+	weight: &Matrix,
+	output_gradient: &Matrix,
+	stride: usize,
+	padding: usize,
+	groups: usize,
+) -> Result<(Matrix, Matrix, Matrix)> {
+	let contract = crate::core::operation::ml::CONV_3D_BACKWARD;
+	let operation = contract.name();
+	validate_f32_same_engine(operation, &[input, weight, output_gradient])?;
+	let geometry = Conv3dGeometry::resolve(input, weight, None, stride, padding, groups, operation)?;
+	let expected_output_shape = [
+		geometry.batch_size as usize,
+		geometry.output_channels as usize,
+		geometry.output_depth as usize,
+		geometry.output_height as usize,
+		geometry.output_width as usize,
+	];
+	if output_gradient.shape() != expected_output_shape {
+		return Err(Error::invalid_argument(format!(
+			"{operation} output gradient must have shape {expected_output_shape:?}; found {:?}",
+			output_gradient.shape()
+		)));
+	}
+	let input_gradient = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let weight_gradient = Matrix::allocate(
+		input.engine_handle(),
+		weight.shape().to_vec(),
+		geometry.weight_count as usize,
+		DType::F32,
+	)?;
+	let bias_gradient = Matrix::allocate(
+		input.engine_handle(),
+		vec![geometry.output_channels as usize],
+		geometry.output_channels as usize,
+		DType::F32,
+	)?;
+	let dimensions = geometry.dimensions();
+	let input_buffers = [
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::read(weight.storage()),
+		BufferBinding::write(input_gradient.storage()),
+	];
+	let parameter_buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(weight_gradient.storage()),
+		BufferBinding::write(bias_gradient.storage()),
+	];
+	let mut parameter_dimensions = dimensions.to_vec();
+	parameter_dimensions.push(PushConstant::U32(geometry.parameter_count));
+	let input_kernel = KernelId::MlConv3dBackwardF32;
+	let parameter_kernel = KernelId::MlConv3dParameterBackwardF32;
+	let dispatches = [
+		ComputeDispatch {
+			kernel: input_kernel,
+			buffers: &input_buffers,
+			push_constants: &dimensions,
+			workgroups: input_kernel.linear_workgroups(shader_u32(
+				input.num_elements(),
+				"input element count",
+				operation,
+			)?),
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: parameter_kernel,
+			buffers: &parameter_buffers,
+			push_constants: &parameter_dimensions,
+			workgroups: parameter_kernel.linear_workgroups(geometry.parameter_count),
+			indirect: None,
+		},
+	];
+	let attributes = geometry.attributes();
+	let inputs = [input, weight, output_gradient];
+	let outputs = [&input_gradient, &weight_gradient, &bias_gradient];
+	input.engine_handle().record_split_semantic(
+		&dispatches,
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok((input_gradient, weight_gradient, bias_gradient))
+}
+
 /// Apply bias-free one-dimensional transposed convolution to an NCL Matrix.
 ///
 /// `weight` uses `[input_channels, output_channels, kernel]` layout. The output
@@ -879,15 +1240,15 @@ pub(in crate::ml) fn conv_1d_backward(
 /// Returns an error unless both inputs are nonempty same-engine F32 matrices,
 /// channel geometry agrees, stride and dilation are nonzero, the output extent
 /// is positive and fits the shader ABI, or runtime recording fails.
-pub fn conv_transpose_1d(
+pub fn conv_1d_transpose(
 	input: &Matrix,
 	weight: &Matrix,
 	stride: usize,
 	padding: usize,
 	dilation: usize,
 ) -> Result<Matrix> {
-	let output = conv_transpose_1d_dispatch(input, weight, stride, padding, dilation)?;
-	autograd::record_conv_transpose_1d(
+	let output = conv_1d_transpose_dispatch(input, weight, stride, padding, dilation)?;
+	autograd::record_conv_1d_transpose(
 		input,
 		&output,
 		None,
@@ -899,7 +1260,7 @@ pub fn conv_transpose_1d(
 	Ok(output)
 }
 
-pub(in crate::ml) fn conv_transpose_1d_parameterized(
+pub(in crate::ml) fn conv_1d_transpose_parameterized(
 	input: &Matrix,
 	weight: (Parameter, Matrix, u64),
 	stride: usize,
@@ -907,8 +1268,8 @@ pub(in crate::ml) fn conv_transpose_1d_parameterized(
 	dilation: usize,
 ) -> Result<Matrix> {
 	let (weight_parameter, weight_value, weight_version) = weight;
-	let output = conv_transpose_1d_dispatch(input, &weight_value, stride, padding, dilation)?;
-	autograd::record_conv_transpose_1d(
+	let output = conv_1d_transpose_dispatch(input, &weight_value, stride, padding, dilation)?;
+	autograd::record_conv_1d_transpose(
 		input,
 		&output,
 		Some((weight_parameter, weight_version)),
@@ -920,7 +1281,7 @@ pub(in crate::ml) fn conv_transpose_1d_parameterized(
 	Ok(output)
 }
 
-pub(in crate::ml) fn conv_transpose_1d_backward(
+pub(in crate::ml) fn conv_1d_transpose_backward(
 	input: &Matrix,
 	weight: &Matrix,
 	output_gradient: &Matrix,
@@ -928,11 +1289,11 @@ pub(in crate::ml) fn conv_transpose_1d_backward(
 	padding: usize,
 	dilation: usize,
 ) -> Result<(Matrix, Matrix)> {
-	let contract = crate::core::operation::ml::CONV_TRANSPOSE_1D_BACKWARD;
+	let contract = crate::core::operation::ml::CONV_1D_TRANSPOSE_BACKWARD;
 	let operation = contract.name();
 	validate_f32_same_engine(operation, &[input, weight, output_gradient])?;
 	let transposed =
-		ConvTranspose1dGeometry::resolve(input, weight, stride, padding, dilation, operation)?;
+		Conv1dTransposeGeometry::resolve(input, weight, stride, padding, dilation, operation)?;
 	let expected_output_shape = [
 		transposed.batch_size as usize,
 		transposed.output_channels as usize,
@@ -1041,10 +1402,10 @@ pub(in crate::ml) fn conv_transpose_1d_backward(
 	parameter_constants.push(PushConstant::U32(forward.parameter_count));
 	let dispatches = [
 		ComputeDispatch {
-			kernel: KernelId::MlConvTranspose1dBackwardF32,
+			kernel: KernelId::MlConv1dTransposeBackwardF32,
 			buffers: &unfold_buffers,
 			push_constants: &unfold_constants,
-			workgroups: KernelId::MlConvTranspose1dBackwardF32.linear_workgroups(forward.columns_count),
+			workgroups: KernelId::MlConv1dTransposeBackwardF32.linear_workgroups(forward.columns_count),
 			indirect: None,
 		},
 		ComputeDispatch {
@@ -1055,7 +1416,7 @@ pub(in crate::ml) fn conv_transpose_1d_backward(
 			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MlConv1dTransposeF32,
+			kernel: KernelId::MlConv1dLayoutTransposeF32,
 			buffers: &transpose_buffers,
 			push_constants: &transpose_constants,
 			workgroups: [
@@ -1099,15 +1460,15 @@ pub(in crate::ml) fn conv_transpose_1d_backward(
 /// Returns an error unless all inputs are nonempty same-engine F32 matrices,
 /// channel and square-kernel geometry agree, stride is nonzero, output extents
 /// are positive and fit the shader ABI, or runtime recording fails.
-pub fn conv_transpose_2d(
+pub fn conv_2d_transpose(
 	input: &Matrix,
 	weight: &Matrix,
 	bias: &Matrix,
 	stride: usize,
 	padding: usize,
 ) -> Result<Matrix> {
-	let output = conv_transpose_2d_dispatch(input, weight, bias, stride, padding)?;
-	autograd::record_conv_transpose_2d(
+	let output = conv_2d_transpose_dispatch(input, weight, bias, stride, padding)?;
+	autograd::record_conv_2d_transpose(
 		input,
 		&output,
 		None,
@@ -1124,7 +1485,7 @@ pub fn conv_transpose_2d(
 	clippy::too_many_arguments,
 	reason = "module forwarding keeps parameter identity separate from Matrix values"
 )]
-pub(in crate::ml) fn conv_transpose_2d_parameterized(
+pub(in crate::ml) fn conv_2d_transpose_parameterized(
 	input: &Matrix,
 	weight: (Parameter, Matrix, u64),
 	bias: (Parameter, Matrix, u64),
@@ -1133,8 +1494,8 @@ pub(in crate::ml) fn conv_transpose_2d_parameterized(
 ) -> Result<Matrix> {
 	let (weight_parameter, weight_value, weight_version) = weight;
 	let (bias_parameter, bias_value, bias_version) = bias;
-	let output = conv_transpose_2d_dispatch(input, &weight_value, &bias_value, stride, padding)?;
-	autograd::record_conv_transpose_2d(
+	let output = conv_2d_transpose_dispatch(input, &weight_value, &bias_value, stride, padding)?;
+	autograd::record_conv_2d_transpose(
 		input,
 		&output,
 		Some((weight_parameter, weight_version)),
@@ -1147,17 +1508,17 @@ pub(in crate::ml) fn conv_transpose_2d_parameterized(
 	Ok(output)
 }
 
-pub(in crate::ml) fn conv_transpose_2d_backward(
+pub(in crate::ml) fn conv_2d_transpose_backward(
 	input: &Matrix,
 	weight: &Matrix,
 	output_gradient: &Matrix,
 	stride: usize,
 	padding: usize,
 ) -> Result<(Matrix, Matrix, Matrix)> {
-	let contract = crate::core::operation::ml::CONV_TRANSPOSE_2D_BACKWARD;
+	let contract = crate::core::operation::ml::CONV_2D_TRANSPOSE_BACKWARD;
 	let operation = contract.name();
 	validate_f32_same_engine(operation, &[input, weight, output_gradient])?;
-	let geometry = ConvTranspose2dGeometry::resolve(input, weight, None, stride, padding, operation)?;
+	let geometry = Conv2dTransposeGeometry::resolve(input, weight, None, stride, padding, operation)?;
 	let expected_output_shape = [
 		geometry.batch_size as usize,
 		geometry.output_channels as usize,
@@ -1204,10 +1565,10 @@ pub(in crate::ml) fn conv_transpose_2d_backward(
 	parameter_constants.push(PushConstant::U32(geometry.parameter_count));
 	let dispatches = [
 		ComputeDispatch {
-			kernel: KernelId::MlConvTranspose2dBackwardF32,
+			kernel: KernelId::MlConv2dTransposeBackwardF32,
 			buffers: &input_buffers,
 			push_constants: &dimensions,
-			workgroups: KernelId::MlConvTranspose2dBackwardF32.linear_workgroups(shader_u32(
+			workgroups: KernelId::MlConv2dTransposeBackwardF32.linear_workgroups(shader_u32(
 				input.num_elements(),
 				"input element count",
 				operation,
@@ -1215,10 +1576,161 @@ pub(in crate::ml) fn conv_transpose_2d_backward(
 			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MlConvTranspose2dParameterBackwardF32,
+			kernel: KernelId::MlConv2dTransposeParameterBackwardF32,
 			buffers: &parameter_buffers,
 			push_constants: &parameter_constants,
-			workgroups: KernelId::MlConvTranspose2dParameterBackwardF32
+			workgroups: KernelId::MlConv2dTransposeParameterBackwardF32
+				.linear_workgroups(geometry.parameter_count),
+			indirect: None,
+		},
+	];
+	let attributes = geometry.attributes();
+	let inputs = [input, weight, output_gradient];
+	let outputs = [&input_gradient, &weight_gradient, &bias_gradient];
+	input.engine_handle().record_split_semantic(
+		&dispatches,
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
+	Ok((input_gradient, weight_gradient, bias_gradient))
+}
+
+/// Apply three-dimensional transposed convolution to an NCDHW Matrix.
+///
+/// `weight` uses `[input_channels, output_channels, kernel, kernel, kernel]`
+/// IOKKK layout and `bias` uses `[output_channels]`. Each output extent is
+/// `(input - 1) * stride - 2 * padding + kernel`.
+///
+/// # Errors
+///
+/// Returns an error unless all inputs are nonempty same-engine F32 matrices,
+/// channel and cubic-kernel geometry agree, stride is nonzero, output extents
+/// are positive and fit the shader ABI, or runtime recording fails.
+pub fn conv_3d_transpose(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: &Matrix,
+	stride: usize,
+	padding: usize,
+) -> Result<Matrix> {
+	let output = conv_3d_transpose_dispatch(input, weight, bias, stride, padding)?;
+	autograd::record_conv_3d_transpose(
+		input,
+		&output,
+		None,
+		weight.clone(),
+		None,
+		bias.clone(),
+		stride,
+		padding,
+	)?;
+	Ok(output)
+}
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "module forwarding keeps parameter identity separate from Matrix values"
+)]
+pub(in crate::ml) fn conv_3d_transpose_parameterized(
+	input: &Matrix,
+	weight: (Parameter, Matrix, u64),
+	bias: (Parameter, Matrix, u64),
+	stride: usize,
+	padding: usize,
+) -> Result<Matrix> {
+	let (weight_parameter, weight_value, weight_version) = weight;
+	let (bias_parameter, bias_value, bias_version) = bias;
+	let output = conv_3d_transpose_dispatch(input, &weight_value, &bias_value, stride, padding)?;
+	autograd::record_conv_3d_transpose(
+		input,
+		&output,
+		Some((weight_parameter, weight_version)),
+		weight_value,
+		Some((bias_parameter, bias_version)),
+		bias_value,
+		stride,
+		padding,
+	)?;
+	Ok(output)
+}
+
+pub(in crate::ml) fn conv_3d_transpose_backward(
+	input: &Matrix,
+	weight: &Matrix,
+	output_gradient: &Matrix,
+	stride: usize,
+	padding: usize,
+) -> Result<(Matrix, Matrix, Matrix)> {
+	let contract = crate::core::operation::ml::CONV_3D_TRANSPOSE_BACKWARD;
+	let operation = contract.name();
+	validate_f32_same_engine(operation, &[input, weight, output_gradient])?;
+	let geometry = Conv3dTransposeGeometry::resolve(input, weight, None, stride, padding, operation)?;
+	let expected_output_shape = [
+		geometry.batch_size as usize,
+		geometry.output_channels as usize,
+		geometry.output_depth as usize,
+		geometry.output_height as usize,
+		geometry.output_width as usize,
+	];
+	if output_gradient.shape() != expected_output_shape {
+		return Err(Error::invalid_argument(format!(
+			"{operation} output gradient must have shape {expected_output_shape:?}; found {:?}",
+			output_gradient.shape()
+		)));
+	}
+	let input_gradient = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.num_elements(),
+		DType::F32,
+	)?;
+	let weight_gradient = Matrix::allocate(
+		input.engine_handle(),
+		weight.shape().to_vec(),
+		geometry.weight_count as usize,
+		DType::F32,
+	)?;
+	let bias_gradient = Matrix::allocate(
+		input.engine_handle(),
+		vec![geometry.output_channels as usize],
+		geometry.output_channels as usize,
+		DType::F32,
+	)?;
+	let dimensions = geometry.dimensions();
+	let input_buffers = [
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::read(weight.storage()),
+		BufferBinding::write(input_gradient.storage()),
+	];
+	let parameter_buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::read(output_gradient.storage()),
+		BufferBinding::write(weight_gradient.storage()),
+		BufferBinding::write(bias_gradient.storage()),
+	];
+	let mut parameter_constants = dimensions.to_vec();
+	parameter_constants.push(PushConstant::U32(geometry.parameter_count));
+	let dispatches = [
+		ComputeDispatch {
+			kernel: KernelId::MlConv3dTransposeBackwardF32,
+			buffers: &input_buffers,
+			push_constants: &dimensions,
+			workgroups: KernelId::MlConv3dTransposeBackwardF32.linear_workgroups(shader_u32(
+				input.num_elements(),
+				"input element count",
+				operation,
+			)?),
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: KernelId::MlConv3dTransposeParameterBackwardF32,
+			buffers: &parameter_buffers,
+			push_constants: &parameter_constants,
+			workgroups: KernelId::MlConv3dTransposeParameterBackwardF32
 				.linear_workgroups(geometry.parameter_count),
 			indirect: None,
 		},
@@ -1394,6 +1906,224 @@ pub(in crate::ml) fn conv_2d_backward(
 	Ok((input_gradient, weight_gradient, bias_gradient))
 }
 
+#[derive(Clone, Copy)]
+struct Conv3dGeometry {
+	batch_size: u32,
+	input_channels: u32,
+	output_channels: u32,
+	input_depth: u32,
+	input_height: u32,
+	input_width: u32,
+	kernel_size: u32,
+	stride: u32,
+	padding: u32,
+	output_depth: u32,
+	output_height: u32,
+	output_width: u32,
+	groups: u32,
+	output_count: u32,
+	weight_count: u32,
+	parameter_count: u32,
+}
+
+impl Conv3dGeometry {
+	fn resolve(
+		input: &Matrix,
+		weight: &Matrix,
+		bias: Option<&Matrix>,
+		stride: usize,
+		padding: usize,
+		groups: usize,
+		operation: &'static str,
+	) -> Result<Self> {
+		let [
+			batch_size,
+			input_channels,
+			input_depth,
+			input_height,
+			input_width,
+		] = input.shape()
+		else {
+			return Err(Error::invalid_argument(format!(
+				"{operation} input must have NCDHW rank five; found {:?}",
+				input.shape()
+			)));
+		};
+		let [
+			output_channels,
+			weight_input_channels,
+			kernel_depth,
+			kernel_height,
+			kernel_width,
+		] = weight.shape()
+		else {
+			return Err(Error::invalid_argument(format!(
+				"{operation} weight must have grouped OIDHW rank five; found {:?}",
+				weight.shape()
+			)));
+		};
+		if *batch_size == 0
+			|| *input_channels == 0
+			|| *output_channels == 0
+			|| *input_depth == 0
+			|| *input_height == 0
+			|| *input_width == 0
+			|| *kernel_depth == 0
+			|| kernel_depth != kernel_height
+			|| kernel_height != kernel_width
+			|| stride == 0
+			|| groups == 0
+			|| !input_channels.is_multiple_of(groups)
+			|| !output_channels.is_multiple_of(groups)
+			|| *weight_input_channels != input_channels / groups
+		{
+			return Err(Error::invalid_argument(format!(
+				"{operation} requires nonzero NCDHW input, cubic OIDHW/group weight, nonzero stride/groups, and channels divisible by groups"
+			)));
+		}
+		if let Some(bias) = bias
+			&& bias.shape() != [*output_channels]
+		{
+			return Err(Error::invalid_argument(format!(
+				"{operation} bias must have shape [{output_channels}]; found {:?}",
+				bias.shape()
+			)));
+		}
+		let doubled_padding = padding.checked_mul(2).ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} doubled padding overflows usize"))
+		})?;
+		let padded_depth = input_depth.checked_add(doubled_padding).ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} padded depth overflows usize"))
+		})?;
+		let padded_height = input_height.checked_add(doubled_padding).ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} padded height overflows usize"))
+		})?;
+		let padded_width = input_width.checked_add(doubled_padding).ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} padded width overflows usize"))
+		})?;
+		if padded_depth < *kernel_depth
+			|| padded_height < *kernel_height
+			|| padded_width < *kernel_width
+		{
+			return Err(Error::invalid_argument(format!(
+				"{operation} kernel does not fit the padded input"
+			)));
+		}
+		let output_depth = (padded_depth - kernel_depth) / stride + 1;
+		let output_height = (padded_height - kernel_height) / stride + 1;
+		let output_width = (padded_width - kernel_width) / stride + 1;
+		let output_count = batch_size
+			.checked_mul(*output_channels)
+			.and_then(|count| count.checked_mul(output_depth))
+			.and_then(|count| count.checked_mul(output_height))
+			.and_then(|count| count.checked_mul(output_width))
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
+		let kernel_volume = kernel_depth
+			.checked_mul(*kernel_height)
+			.and_then(|count| count.checked_mul(*kernel_width))
+			.ok_or_else(|| {
+				Error::invalid_argument(format!("{operation} kernel volume overflows usize"))
+			})?;
+		let weight_count = output_channels
+			.checked_mul(*weight_input_channels)
+			.and_then(|count| count.checked_mul(kernel_volume))
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} weight size overflows usize")))?;
+		if weight_count != weight.num_elements() {
+			return Err(Error::internal(format!(
+				"{operation} validated weight shape disagrees with its storage extent"
+			)));
+		}
+		let parameter_count = weight_count.checked_add(*output_channels).ok_or_else(|| {
+			Error::invalid_argument(format!("{operation} parameter count overflows usize"))
+		})?;
+		for (label, extent, kernel_extent) in [
+			("depth", output_depth, *kernel_depth),
+			("height", output_height, *kernel_height),
+			("width", output_width, *kernel_width),
+		] {
+			let last = extent
+				.saturating_sub(1)
+				.checked_mul(stride)
+				.and_then(|value| value.checked_add(kernel_extent.saturating_sub(1)))
+				.ok_or_else(|| {
+					Error::invalid_argument(format!("{operation} shader coordinate overflows usize"))
+				})?;
+			if last > i32::MAX as usize {
+				return Err(Error::invalid_argument(format!(
+					"{operation} last input {label} coordinate exceeds the signed shader coordinate ABI"
+				)));
+			}
+		}
+		for (label, value) in [
+			("input depth", *input_depth),
+			("input height", *input_height),
+			("input width", *input_width),
+			("kernel size", *kernel_depth),
+			("stride", stride),
+			("padding", padding),
+		] {
+			if value > i32::MAX as usize {
+				return Err(Error::invalid_argument(format!(
+					"{operation} {label} exceeds the signed shader coordinate ABI"
+				)));
+			}
+		}
+		Ok(Self {
+			batch_size: shader_u32(*batch_size, "batch size", operation)?,
+			input_channels: shader_u32(*input_channels, "input channel count", operation)?,
+			output_channels: shader_u32(*output_channels, "output channel count", operation)?,
+			input_depth: shader_u32(*input_depth, "input depth", operation)?,
+			input_height: shader_u32(*input_height, "input height", operation)?,
+			input_width: shader_u32(*input_width, "input width", operation)?,
+			kernel_size: shader_u32(*kernel_depth, "kernel size", operation)?,
+			stride: shader_u32(stride, "stride", operation)?,
+			padding: shader_u32(padding, "padding", operation)?,
+			output_depth: shader_u32(output_depth, "output depth", operation)?,
+			output_height: shader_u32(output_height, "output height", operation)?,
+			output_width: shader_u32(output_width, "output width", operation)?,
+			groups: shader_u32(groups, "group count", operation)?,
+			output_count: shader_u32(output_count, "output element count", operation)?,
+			weight_count: shader_u32(weight_count, "weight element count", operation)?,
+			parameter_count: shader_u32(parameter_count, "parameter count", operation)?,
+		})
+	}
+
+	fn dimensions(self) -> [PushConstant; 13] {
+		[
+			PushConstant::U32(self.batch_size),
+			PushConstant::U32(self.input_channels),
+			PushConstant::U32(self.output_channels),
+			PushConstant::U32(self.input_depth),
+			PushConstant::U32(self.input_height),
+			PushConstant::U32(self.input_width),
+			PushConstant::U32(self.kernel_size),
+			PushConstant::U32(self.stride),
+			PushConstant::U32(self.padding),
+			PushConstant::U32(self.output_depth),
+			PushConstant::U32(self.output_height),
+			PushConstant::U32(self.output_width),
+			PushConstant::U32(self.groups),
+		]
+	}
+
+	fn attributes(self) -> [OpAttribute; 3] {
+		[
+			OpAttribute::UnsignedInteger {
+				name: "stride".into(),
+				value: u64::from(self.stride),
+			},
+			OpAttribute::UnsignedInteger {
+				name: "padding".into(),
+				value: u64::from(self.padding),
+			},
+			OpAttribute::UnsignedInteger {
+				name: "groups".into(),
+				value: u64::from(self.groups),
+			},
+		]
+	}
+}
+
 // ── private dispatch helpers ──────────────────────────────────────────────────
 
 fn conv_1d_dispatch(
@@ -1505,7 +2235,7 @@ fn conv_1d_dispatch(
 			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MlConv1dTransposeF32,
+			kernel: KernelId::MlConv1dLayoutTransposeF32,
 			buffers: &transpose_buffers,
 			push_constants: &transpose_constants,
 			workgroups: [
@@ -1531,18 +2261,18 @@ fn conv_1d_dispatch(
 	Ok(output)
 }
 
-fn conv_transpose_1d_dispatch(
+fn conv_1d_transpose_dispatch(
 	input: &Matrix,
 	weight: &Matrix,
 	stride: usize,
 	padding: usize,
 	dilation: usize,
 ) -> Result<Matrix> {
-	let contract = crate::core::operation::ml::CONV_TRANSPOSE_1D;
+	let contract = crate::core::operation::ml::CONV_1D_TRANSPOSE;
 	let operation = contract.name();
 	validate_f32_same_engine(operation, &[input, weight])?;
 	let geometry =
-		ConvTranspose1dGeometry::resolve(input, weight, stride, padding, dilation, operation)?;
+		Conv1dTransposeGeometry::resolve(input, weight, stride, padding, dilation, operation)?;
 	let output = Matrix::allocate(
 		input.engine_handle(),
 		vec![
@@ -1560,7 +2290,7 @@ fn conv_transpose_1d_dispatch(
 	];
 	let dimensions = geometry.dimensions();
 	let attributes = geometry.attributes();
-	let kernel = KernelId::MlConvTranspose1dF32;
+	let kernel = KernelId::MlConv1dTransposeF32;
 	{
 		let inputs: &[&Matrix] = &[input, weight];
 		let outputs: &[&Matrix] = &[&output];
@@ -1595,18 +2325,18 @@ fn conv_transpose_1d_dispatch(
 	Ok(output)
 }
 
-fn conv_transpose_2d_dispatch(
+fn conv_2d_transpose_dispatch(
 	input: &Matrix,
 	weight: &Matrix,
 	bias: &Matrix,
 	stride: usize,
 	padding: usize,
 ) -> Result<Matrix> {
-	let contract = crate::core::operation::ml::CONV_TRANSPOSE_2D;
+	let contract = crate::core::operation::ml::CONV_2D_TRANSPOSE;
 	let operation = contract.name();
 	validate_f32_same_engine(operation, &[input, weight, bias])?;
 	let geometry =
-		ConvTranspose2dGeometry::resolve(input, weight, Some(bias), stride, padding, operation)?;
+		Conv2dTransposeGeometry::resolve(input, weight, Some(bias), stride, padding, operation)?;
 	let output = Matrix::allocate(
 		input.engine_handle(),
 		vec![
@@ -1636,17 +2366,17 @@ fn conv_transpose_2d_dispatch(
 	];
 	let dispatches = [
 		ComputeDispatch {
-			kernel: KernelId::MlConvTranspose2dF32,
+			kernel: KernelId::MlConv2dTransposeF32,
 			buffers: &convolution_buffers,
 			push_constants: &dimensions,
-			workgroups: KernelId::MlConvTranspose2dF32.linear_workgroups(geometry.output_count),
+			workgroups: KernelId::MlConv2dTransposeF32.linear_workgroups(geometry.output_count),
 			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MlConvTranspose2dBiasAddF32,
+			kernel: KernelId::MlConv2dTransposeBiasAddF32,
 			buffers: &bias_buffers,
 			push_constants: &bias_constants,
-			workgroups: KernelId::MlConvTranspose2dBiasAddF32.linear_workgroups(geometry.output_count),
+			workgroups: KernelId::MlConv2dTransposeBiasAddF32.linear_workgroups(geometry.output_count),
 			indirect: None,
 		},
 	];
@@ -1736,5 +2466,132 @@ fn conv_2d_dispatch(
 			},
 		)
 	}?;
+	Ok(output)
+}
+
+fn conv_3d_dispatch(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: &Matrix,
+	stride: usize,
+	padding: usize,
+	groups: usize,
+) -> Result<Matrix> {
+	let contract = crate::core::operation::ml::CONV_3D;
+	let operation = contract.name();
+	validate_f32_same_engine(operation, &[input, weight, bias])?;
+	let geometry = Conv3dGeometry::resolve(
+		input,
+		weight,
+		Some(bias),
+		stride,
+		padding,
+		groups,
+		operation,
+	)?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		vec![
+			geometry.batch_size as usize,
+			geometry.output_channels as usize,
+			geometry.output_depth as usize,
+			geometry.output_height as usize,
+			geometry.output_width as usize,
+		],
+		geometry.output_count as usize,
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::read(weight.storage()),
+		BufferBinding::read(bias.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let dimensions = geometry.dimensions();
+	let attributes = geometry.attributes();
+	let kernel = KernelId::MlConv3dF32;
+	{
+		let inputs: &[&Matrix] = &[input, weight, bias];
+		let outputs: &[&Matrix] = &[&output];
+		let attributes: &[OpAttribute] = &attributes;
+		let dispatch = ComputeDispatch {
+			kernel,
+			buffers: &buffers,
+			push_constants: &dimensions,
+			workgroups: kernel.linear_workgroups(geometry.output_count),
+			indirect: None,
+		};
+		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
+			Error::internal(format!(
+				"lowering-only kernel {} cannot own one semantic ML operation",
+				dispatch.kernel.report_name()
+			))
+		})?;
+		let engine = inputs
+			.first()
+			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
+			.engine_handle();
+		engine.record_semantic(
+			dispatch,
+			SemanticDispatch {
+				contract,
+				inputs,
+				outputs,
+				attributes,
+			},
+		)
+	}?;
+	Ok(output)
+}
+
+fn conv_3d_transpose_dispatch(
+	input: &Matrix,
+	weight: &Matrix,
+	bias: &Matrix,
+	stride: usize,
+	padding: usize,
+) -> Result<Matrix> {
+	let contract = crate::core::operation::ml::CONV_3D_TRANSPOSE;
+	let operation = contract.name();
+	validate_f32_same_engine(operation, &[input, weight, bias])?;
+	let geometry =
+		Conv3dTransposeGeometry::resolve(input, weight, Some(bias), stride, padding, operation)?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		vec![
+			geometry.batch_size as usize,
+			geometry.output_channels as usize,
+			geometry.output_depth as usize,
+			geometry.output_height as usize,
+			geometry.output_width as usize,
+		],
+		geometry.output_count as usize,
+		DType::F32,
+	)?;
+	let buffers = [
+		BufferBinding::read(input.storage()),
+		BufferBinding::read(weight.storage()),
+		BufferBinding::read(bias.storage()),
+		BufferBinding::write(output.storage()),
+	];
+	let dimensions = geometry.dimensions();
+	let attributes = geometry.attributes();
+	let inputs = [input, weight, bias];
+	let outputs = [&output];
+	input.engine_handle().record_semantic(
+		ComputeDispatch {
+			kernel: KernelId::MlConv3dTransposeF32,
+			buffers: &buffers,
+			push_constants: &dimensions,
+			workgroups: KernelId::MlConv3dTransposeF32.linear_workgroups(geometry.output_count),
+			indirect: None,
+		},
+		SemanticDispatch {
+			contract,
+			inputs: &inputs,
+			outputs: &outputs,
+			attributes: &attributes,
+		},
+	)?;
 	Ok(output)
 }

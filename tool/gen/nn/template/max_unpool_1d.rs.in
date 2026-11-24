@@ -1,0 +1,120 @@
+/// {{doc}}
+pub struct {{name}} {
+	kernel_size: usize,
+	stride: usize,
+	padding: usize,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct {{name}} with `stride == kernel_size` and no padding.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `kernel_size` is zero.
+	pub fn new(kernel_size: usize) -> Result<Self> {
+		Self::new_with_options(kernel_size, kernel_size, 0)
+	}
+
+	/// Construct {{name}} with explicit geometry.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `kernel_size` or `stride` is zero.
+	pub fn new_with_options(kernel_size: usize, stride: usize, padding: usize) -> Result<Self> {
+		if kernel_size == 0 || stride == 0 {
+			return Err(Error::invalid_argument(
+				"{{name}} kernel size and stride must be nonzero",
+			));
+		}
+		Ok(Self {
+			kernel_size,
+			stride,
+			padding,
+			registry: ModuleRegistry::new(),
+		})
+	}
+
+	/// Return the kernel extent.
+	pub const fn kernel_size(&self) -> usize {
+		self.kernel_size
+	}
+
+	/// Return the spatial stride.
+	pub const fn stride(&self) -> usize {
+		self.stride
+	}
+
+	/// Return the symmetric padding extent.
+	pub const fn padding(&self) -> usize {
+		self.padding
+	}
+
+	/// Compute the implied output length for a pooled input length.
+	fn implied_output_length(&self, input_length: usize) -> usize {
+		(input_length - 1) * self.stride - 2 * self.padding + self.kernel_size
+	}
+
+	/// Unpool one NCL Matrix against recorded argmax indices using the
+	/// geometry-implied output length.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation or when `input`
+	/// is empty.
+	pub fn forward(&self, input: &Matrix, indices: &Matrix) -> Result<Matrix> {
+		let [_, _, input_length] = input.shape() else {
+			return Err(Error::invalid_argument(
+				"{{name}} input must be a rank-three NCL matrix",
+			));
+		};
+		if *input_length == 0 {
+			return Err(Error::invalid_argument(
+				"{{name}} input length must be nonzero",
+			));
+		}
+		{{operation}}(
+			input,
+			indices,
+			self.kernel_size,
+			self.stride,
+			self.padding,
+			self.implied_output_length(*input_length),
+		)
+	}
+
+	/// Unpool one NCL Matrix against recorded argmax indices into an explicit
+	/// output length.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation.
+	pub fn forward_with_output(
+		&self,
+		input: &Matrix,
+		indices: &Matrix,
+		output_length: usize,
+	) -> Result<Matrix> {
+		{{operation}}(
+			input,
+			indices,
+			self.kernel_size,
+			self.stride,
+			self.padding,
+			output_length,
+		)
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		let _ = input;
+		Err(Error::invalid_argument(
+			"{{name}} requires pooled input plus recorded argmax indices; call {{name}}::forward(input, indices)",
+		))
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

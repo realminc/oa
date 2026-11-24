@@ -597,3 +597,121 @@ test_vk!(
 		Ok(())
 	}
 );
+
+// ---------------------------------------------------------------------------
+// QuantizedLinear — model-level quantized-inference contract (ML-5).
+
+use oa::ml::Module;
+use oa::ml::nn::{Linear, QuantizedLinear};
+
+fn dense_linear(with_bias: bool) -> oa::Result<Linear> {
+	let weight = oa::Matrix::new_from_f32(
+		[4, 32],
+		&(0..128)
+			.map(|i| (i as f32 * 0.07).cos() * 9.0)
+			.collect::<Vec<f32>>(),
+	)?;
+	if with_bias {
+		let bias = oa::Matrix::new_from_f32(
+			[4],
+			&(0..4).map(|i| i as f32 * 0.25 - 0.5).collect::<Vec<f32>>(),
+		)?;
+		Linear::new_from_matrices(weight, bias)
+	} else {
+		Linear::new_from_weight(weight)
+	}
+}
+
+test_vk!(
+	quantized_linear_q8_matches_dense_forward_within_tolerance,
+	engine,
+	{
+		let dense = dense_linear(true)?;
+		let quantized = QuantizedLinear::from_linear(&dense, Quantization::Q8)?;
+		assert_eq!(quantized.input_features(), 32);
+		assert_eq!(quantized.output_features(), 4);
+		assert_eq!(quantized.quantization(), Quantization::Q8);
+		assert_eq!(quantized.num_parameters()?, 0);
+
+		let input_values: Vec<f32> = (0..96).map(|i| (i as f32 * 0.19).sin() * 4.0).collect();
+		let input = oa::Matrix::new_from_f32([3, 32], &input_values)?;
+		let expected = dense.forward(&input)?.read_f32()?;
+		let actual = quantized.forward(&input)?.read_f32()?;
+		assert_eq!(expected.len(), actual.len());
+		for (i, (e, a)) in expected.iter().zip(actual.iter()).enumerate() {
+			// Q8 error budget: block scale ~ max|w|/127, per-element weight
+			// error <= scale/2, amplified by |x| over K=32 products.
+			assert!(
+				(e - a).abs() <= 0.05 + 0.01 * e.abs(),
+				"Q8 QuantizedLinear deviates at {i}: expected {e}, found {a}"
+			);
+		}
+		Ok(())
+	}
+);
+
+test_vk!(
+	quantized_linear_q4_without_bias_matches_dequantized_oracle,
+	engine,
+	{
+		let dense = dense_linear(false)?;
+		let quantized = QuantizedLinear::from_linear(&dense, Quantization::Q4)?;
+		assert!(quantized.bias().is_none());
+
+		let input_values: Vec<f32> = (0..64).map(|i| (i as f32 * 0.11).cos() * 2.0).collect();
+		let input = oa::Matrix::new_from_f32([2, 32], &input_values)?;
+		// Independent host oracle: dequantize the packed weight, then x @ W^T.
+		let weight = dequantize(quantized.weight())?.read_f32()?;
+		let expected: Vec<f32> = (0..2)
+			.flat_map(|r| (0..4).map(move |n| (r, n)))
+			.map(|(r, n)| {
+				(0..32)
+					.map(|k| input_values[r * 32 + k] * weight[n * 32 + k])
+					.sum::<f32>()
+			})
+			.collect();
+		let actual = quantized.forward(&input)?.read_f32()?;
+		for (i, (e, a)) in expected.iter().zip(actual.iter()).enumerate() {
+			assert!(
+				(e - a).abs() <= 0.05,
+				"Q4 QuantizedLinear deviates from dequantized oracle at {i}: expected {e}, found {a}"
+			);
+		}
+		Ok(())
+	}
+);
+
+test_vk!(
+	quantized_linear_registers_bias_as_persistent_buffer_not_parameter,
+	engine,
+	{
+		let dense = dense_linear(true)?;
+		let quantized = QuantizedLinear::from_linear(&dense, Quantization::Q8)?;
+		assert!(quantized.all_named_parameters()?.is_empty());
+		let buffers = quantized.all_named_buffers()?;
+		assert_eq!(buffers.len(), 1);
+		assert_eq!(buffers[0].path(), "bias");
+		assert!(buffers[0].persistent());
+		Ok(())
+	}
+);
+
+test_vk!(quantized_linear_rejects_rank_and_bias_mismatch, engine, {
+	let rank1 = quantize(
+		&oa::Matrix::new_from_f32([32], &[1.0; 32])?,
+		Quantization::Q8,
+	)?;
+	assert!(QuantizedLinear::from_quantized(rank1, None).is_err());
+	let weight = quantize(
+		&oa::Matrix::new_from_f32([4, 32], &[0.5; 128])?,
+		Quantization::Q8,
+	)?;
+	let bad_bias = oa::Matrix::new_from_f32([3], &[0.0; 3])?;
+	assert!(QuantizedLinear::from_quantized(weight, Some(bad_bias)).is_err());
+
+	let dense = dense_linear(false)?;
+	let quantized = QuantizedLinear::from_linear(&dense, Quantization::Q8)?;
+	let bad_input = oa::Matrix::new_from_f32([2, 16], &[0.0; 32])?;
+	assert!(quantized.forward(&bad_input).is_err());
+	Ok(())
+});

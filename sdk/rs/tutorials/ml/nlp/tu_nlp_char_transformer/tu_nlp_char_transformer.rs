@@ -9,6 +9,7 @@ struct NlpConfig {
 	batch: u64,
 	lr: f32,
 	plot: String,
+	amp: bool,
 }
 
 fn main() -> oa::Result<()> {
@@ -25,9 +26,15 @@ fn main() -> oa::Result<()> {
 		|c: &mut NlpConfig| &mut c.plot,
 		"render the loss curve to an image file",
 	);
+	cli.add_flag(
+		"--amp",
+		|c: &mut NlpConfig, v: bool| c.amp = v,
+		"mixed precision: GradScaler dynamic loss scaling (pair with OA_FORCE_PRECISION=FP16)",
+	);
 	if !cli.parse() {
 		return Ok(());
 	}
+	let amp = cli.config().amp;
 	let steps = if cli.config().steps > 0 {
 		cli.config().steps as usize
 	} else {
@@ -48,6 +55,11 @@ fn main() -> oa::Result<()> {
 	oa::Engine::set_default(engine.clone());
 	let model = nlp::CharTransformer::new()?;
 	let mut optimizer = oa::ml::AdamW::new(model.all_parameters()?, lr)?;
+	let mut scaler = oa::ml::optim::GradScaler::new();
+	if amp {
+		scaler.prepare_captured(&engine)?;
+		optimizer.set_finite_gate(&scaler.finite_flag()?)?;
+	}
 	let mut sampler = nlp::CharSampler::new(batch)?;
 
 	println!("\n╔══════════════════════════════════════════════════════════════════╗");
@@ -87,6 +99,7 @@ fn main() -> oa::Result<()> {
 	training.add_metric(&mut loss_metric);
 	training.add_callback(&mut progress);
 	training.add_callback(&mut summary_callback);
+	let parameters = model.all_parameters()?;
 
 	let mut metrics = LogMetrics::new();
 	let log_dir = oa::Path::var_rel("log/nlp/char_transformer");
@@ -98,6 +111,11 @@ fn main() -> oa::Result<()> {
 	let mut loss_curve = Vec::new();
 	let mut last_input = Vec::new();
 	let mut last_target = Vec::new();
+	if amp {
+		println!(
+			"precision: AMP — GradScaler dynamic loss scaling, gated captured replay (F16 storage under OA_FORCE_PRECISION=FP16)"
+		);
+	}
 	for _ in 0..steps {
 		assert!(training.step(
 			|| {
@@ -113,7 +131,14 @@ fn main() -> oa::Result<()> {
 				let tape = oa::ml::GradientTape::new();
 				let logits = model.forward(&input)?;
 				let loss = oa::ml::loss::cross_entropy(&logits, &target)?;
-				tape.backward(&loss)?;
+				if amp {
+					let scaled = scaler.scale_loss(&loss)?;
+					tape.backward(&scaled)?;
+					let check = scaler.unscale_gradients(&parameters)?;
+					scaler.record_finite_gate(&check)?;
+				} else {
+					tape.backward(&loss)?;
+				}
 				Ok(loss)
 			},
 		)?);

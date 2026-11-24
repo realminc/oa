@@ -778,3 +778,102 @@ test_vk!(
 		Ok(())
 	}
 );
+test_vk!(pad_matches_all_border_mode_oracles, engine, {
+	let _ = engine;
+	let input = oa::Matrix::new_from_f32([2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
+	let padded = oa::matrix::pad(&input, &[0, 0, 1, 2], oa::matrix::PadMode::Constant, 9.0)?;
+	assert_eq!(padded.shape(), [2, 6]);
+	assert_eq!(
+		padded.read_f32()?,
+		[9.0, 1.0, 2.0, 3.0, 9.0, 9.0, 9.0, 4.0, 5.0, 6.0, 9.0, 9.0]
+	);
+	let vector = oa::Matrix::new_from_f32([3], &[1.0, 2.0, 3.0])?;
+	assert_eq!(
+		oa::matrix::pad(&vector, &[1, 2], oa::matrix::PadMode::Replicate, 0.0)?.read_f32()?,
+		[1.0, 1.0, 2.0, 3.0, 3.0, 3.0]
+	);
+	assert_eq!(
+		oa::matrix::pad(&vector, &[1, 1], oa::matrix::PadMode::Reflect, 0.0)?.read_f32()?,
+		[2.0, 1.0, 2.0, 3.0, 2.0]
+	);
+	assert_eq!(
+		oa::matrix::pad(&vector, &[1, 0], oa::matrix::PadMode::Circular, 0.0)?.read_f32()?,
+		[3.0, 1.0, 2.0, 3.0]
+	);
+	assert_eq!(
+		oa::matrix::pad(&vector, &[1, 2], oa::matrix::PadMode::Circular, 0.0)?.read_f32()?,
+		[3.0, 1.0, 2.0, 3.0, 1.0, 2.0]
+	);
+	let volume = oa::Matrix::new_from_f32(
+		[1, 2, 1, 2, 3],
+		&(0..12).map(|v| v as f32 + 1.0).collect::<Vec<_>>(),
+	)?;
+	let padded_volume = oa::matrix::pad(
+		&volume,
+		&[0, 0, 1, 0, 0, 0, 0, 1, 1, 1],
+		oa::matrix::PadMode::Constant,
+		0.0,
+	)?;
+	assert_eq!(padded_volume.shape(), [1, 3, 1, 3, 5]);
+	assert!(oa::matrix::pad(&vector, &[2], oa::matrix::PadMode::Constant, 0.0).is_err());
+	assert!(oa::matrix::pad(&vector, &[3, 0], oa::matrix::PadMode::Reflect, 0.0).is_err());
+	Ok(())
+});
+
+test_vk!(pad_backward_matches_border_preimage_oracles, engine, {
+	let _ = engine;
+	for (mode, pads, expected) in [
+		(
+			oa::matrix::PadMode::Replicate,
+			&[1_usize, 2][..],
+			&[2.0, 1.0, 3.0][..],
+		),
+		(
+			oa::matrix::PadMode::Reflect,
+			&[1, 1][..],
+			&[1.0, 3.0, 1.0][..],
+		),
+		(
+			oa::matrix::PadMode::Circular,
+			&[1, 0][..],
+			&[1.0, 1.0, 2.0][..],
+		),
+	] {
+		let embedding =
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([1, 3], &[1.0, 2.0, 3.0])?)?;
+		let ids = oa::Matrix::new_from_slice([1], &[0_u32])?;
+		let tape = oa::ml::GradientTape::new();
+		let input = embedding.forward(&ids)?.reshape([3])?;
+		let padded = oa::matrix::pad(&input, pads, mode, 0.0)?;
+		let loss = oa::matrix::sum(&padded, -1)?.reshape([])?;
+		tape.backward(&loss)?;
+		assert_eq!(
+			embedding
+				.weight()
+				.gradient()
+				.expect("pad adjoint did not reach the input")
+				.read_f32()?,
+			expected
+		);
+	}
+	Ok(())
+});
+
+test_vk!(cast_f32_i32_truncates_and_cast_i32_f32_lifts, engine, {
+	let _ = engine;
+	let floats = oa::Matrix::new_from_f32([4], &[2.9, -1.7, 0.0, 42.5])?;
+	let ints = oa::matrix::cast_f32_i32(&floats)?;
+	assert_eq!(ints.dtype(), oa::DType::I32);
+	assert_eq!(ints.read::<i32>()?, [2, -1, 0, 42]);
+	let lifted = oa::matrix::cast_i32_f32(&ints)?;
+	assert_eq!(lifted.dtype(), oa::DType::F32);
+	assert_eq!(lifted.read_f32()?, [2.0, -1.0, 0.0, 42.0]);
+	let unsigned = oa::Matrix::new_from_slice([3], &[7_u32, 0, 300])?;
+	assert_eq!(
+		oa::matrix::cast_i32_f32(&unsigned)?.read_f32()?,
+		[7.0, 0.0, 300.0]
+	);
+	assert!(oa::matrix::cast_f32_i32(&unsigned).is_err());
+	assert!(oa::matrix::cast_i32_f32(&floats).is_err());
+	Ok(())
+});

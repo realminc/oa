@@ -329,7 +329,7 @@ def registry_entries(schemas: Schemas) -> list[dict[str, Any]]:
 			{
 				"domain": "image",
 				"name": kernel["name"],
-				"dtype": image["dtype"],
+				"dtype": kernel.get("dtype", image["dtype"]),
 				"kernel_id": kernel["kernel_id"],
 				"stable_id": kernel["stable_id"],
 				"workgroup_size": kernel["workgroup_size"],

@@ -28,6 +28,26 @@
 			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry; Matrix provider owns dispatch and adjoints"
 		},
 		{
+			"name": "MaxPool1d",
+			"doc": "Parameterless one-dimensional max-pooling module for NCL matrices.",
+			"template": "max_pool_1d",
+			"values": {
+				"operation": "matrix::max_pool_1d"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/maxpool2d/maxPool2d.cpp",
+			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry over the NCL kernel; Matrix provider owns dispatch and adjoints"
+		},
+		{
+			"name": "AdaptiveMaxPool1d",
+			"doc": "Parameterless adaptive max-pooling module for NCL matrices.",
+			"template": "adaptive_max_pool_1d",
+			"values": {
+				"operation": "matrix::adaptive_max_pool_1d"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/adaptiveavgpool2d/adaptiveAvgPool2d.cpp",
+			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry over the adaptive-bin argmax kernel; Matrix provider owns dispatch and adjoints"
+		},
+		{
 			"name": "AdaptiveAvgPool2d",
 			"doc": "Parameterless adaptive average-pooling module for NCHW matrices.",
 			"template": "adaptive_avg_pool_2d",
@@ -36,6 +56,76 @@
 			},
 			"donor": "source/cpp/lib/oa/ml/nn/adaptiveavgpool2d/adaptiveAvgPool2d.cpp",
 			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry; Matrix provider owns dispatch and adjoints; preserves documented true rectangular adaptive-bin correction to donor square-window approximation"
+		},
+		{
+			"name": "MaxPool3d",
+			"doc": "Parameterless three-dimensional max-pooling module for NCDHW matrices.",
+			"template": "max_pool_3d",
+			"values": {
+				"operation": "matrix::max_pool_3d"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/maxpool2d/maxPool2d.cpp",
+			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry over the NCDHW argmax kernel; Matrix provider owns dispatch and adjoints"
+		},
+		{
+			"name": "AvgPool3d",
+			"doc": "Parameterless three-dimensional average-pooling module for NCDHW matrices.",
+			"template": "avg_pool_3d",
+			"values": {
+				"operation": "matrix::avg_pool_3d"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/avgpool2d/avgPool2d.cpp",
+			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry over the NCDHW kernel; Matrix provider owns dispatch and adjoints"
+		},
+		{
+			"name": "AdaptiveMaxPool2d",
+			"doc": "Parameterless adaptive max-pooling module for NCHW matrices.",
+			"template": "adaptive_max_pool_2d",
+			"values": {
+				"operation": "matrix::adaptive_max_pool_2d"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/adaptiveavgpool2d/adaptiveAvgPool2d.cpp",
+			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry over the adaptive-bin argmax kernel; Matrix provider owns dispatch and adjoints"
+		},
+		{
+			"name": "AdaptiveMaxPool3d",
+			"doc": "Parameterless adaptive max-pooling module for NCDHW matrices.",
+			"template": "adaptive_max_pool_3d",
+			"values": {
+				"operation": "matrix::adaptive_max_pool_3d"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/adaptiveavgpool2d/adaptiveAvgPool2d.cpp",
+			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry over the adaptive-bin argmax kernel; Matrix provider owns dispatch and adjoints"
+		},
+		{
+			"name": "AdaptiveAvgPool3d",
+			"doc": "Parameterless adaptive average-pooling module for NCDHW matrices.",
+			"template": "adaptive_avg_pool_3d",
+			"values": {
+				"operation": "matrix::adaptive_avg_pool_3d"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/adaptiveavgpool2d/adaptiveAvgPool2d.cpp",
+			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry over the NCDHW adaptive-bin kernel; Matrix provider owns dispatch and adjoints"
+		},
+		{
+			"name": "MaxUnpool1d",
+			"doc": "Parameterless one-dimensional max-unpooling module consuming recorded argmax indices over NCL matrices.",
+			"template": "max_unpool_1d",
+			"values": {
+				"operation": "matrix::max_unpool_1d"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/maxpool2d/maxPool2d.cpp",
+			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry over the recorded-argmax unpool kernel; Module::forward rejects calls without indices; Matrix provider owns dispatch and adjoints"
+		},
+		{
+			"name": "MaxUnpool2d",
+			"doc": "Parameterless two-dimensional max-unpooling module consuming recorded argmax indices over NCHW matrices.",
+			"template": "max_unpool_2d",
+			"values": {
+				"operation": "matrix::max_unpool_2d"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/maxpool2d/maxPool2d.cpp",
+			"adaptation": "Mechanical generation of established Rust validation and ModuleRegistry over the recorded-argmax unpool kernel; Module::forward rejects calls without indices; Matrix provider owns dispatch and adjoints"
 		}
 	]
 }

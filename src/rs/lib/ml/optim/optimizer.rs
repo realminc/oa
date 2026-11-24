@@ -46,6 +46,28 @@ pub trait Optimizer {
 
 	/// Return whether this optimizer can participate in work owned by `engine`.
 	fn belongs_to(&self, engine: &Engine) -> bool;
+
+	/// Bind a device-resident finite flag gating captured updates.
+	///
+	/// The flag is a same-engine FP32 single-element `Matrix` written by a
+	/// gradient scaler's device check. When a bound optimizer records its
+	/// step inside an `Engine::capture` program, the update kernels read the
+	/// flag at replay time: a nonzero flag applies the normal update and a
+	/// zero flag freezes parameters, moments, and the device step counter
+	/// exactly, so AMP overflow handling replays inside one captured
+	/// program without a mid-step host decision. Eager steps ignore the
+	/// binding; the host-side scaler gate owns that path.
+	///
+	/// # Errors
+	///
+	/// Returns an error when the optimizer does not admit gated captured
+	/// updates or the flag contract is violated.
+	fn set_finite_gate(&mut self, flag: &Matrix) -> Result<()> {
+		let _ = flag;
+		Err(Error::unimplemented(
+			"optimizer does not admit a captured finite gate",
+		))
+	}
 }
 
 /// Optimizer with a complete native `.oam` save-and-restore contract.

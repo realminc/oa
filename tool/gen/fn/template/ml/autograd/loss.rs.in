@@ -80,3 +80,22 @@ let Some(output_gradient) = gradients.remove(output_id) else {
 let gradient = matrix::mul(&loss::bce_backward(prediction, target)?, &output_gradient)?;
 accumulate_value_gradient(gradients, prediction.value_id(), gradient)?;
 Ok(BackwardStatus::Recorded)
+
+// @operation ctc
+let Self {
+	log_probs,
+	targets,
+	input_lengths,
+	target_lengths,
+	blank,
+	output_id,
+} = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let gradient = matrix::mul(
+	&loss::ctc_backward(log_probs, targets, input_lengths, target_lengths, *blank)?,
+	&output_gradient,
+)?;
+accumulate_value_gradient(gradients, log_probs.value_id(), gradient)?;
+Ok(BackwardStatus::Recorded)

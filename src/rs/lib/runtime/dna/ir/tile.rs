@@ -2445,7 +2445,7 @@ impl BlockProgram {
 	/// `lane / 32`/`lane % 32`; the `TILE + 1` stride preserves its
 	/// bank-conflict padding. `[input, output]` +
 	/// `[batch_size, rows, columns]` ABI.
-	pub(in crate::runtime) fn conv_1d_transpose() -> Self {
+	pub(in crate::runtime) fn conv_1d_layout_transpose() -> Self {
 		use LaneExpr as E;
 		let lane_exprs = vec![
 			/* 0 */ E::Lane,
@@ -3094,13 +3094,13 @@ impl BlockProgram {
 		)
 	}
 
-	/// Flat `conv_transpose_1d` template — one transposed-conv output
+	/// Flat `conv_1d_transpose` template — one transposed-conv output
 	/// element per 256-lane flat index, accumulating over input channels
-	/// and kernel taps. Donor: `ml/nn/conv/conv_transpose_1d.slang`
-	/// (`MlConvTranspose1dF32`; nine `ConvTranspose1dGeometry` scalars).
+	/// and kernel taps. Donor: `ml/nn/conv/conv_1d_transpose.slang`
+	/// (`MlConv1dTransposeF32`; nine `Conv1dTransposeGeometry` scalars).
 	/// The signed `input_numerator` spells as the same u32 predicate pair
 	/// used by `conv_1d_backward`.
-	pub(in crate::runtime) fn conv_transpose_1d() -> Self {
+	pub(in crate::runtime) fn conv_1d_transpose() -> Self {
 		use LaneExpr as E;
 		let lane_exprs = vec![
 			/* 0 */ E::GroupX,
@@ -3677,13 +3677,13 @@ impl BlockProgram {
 		)
 	}
 
-	/// Flat `conv_transpose_2d` forward — one NCHW output element per
+	/// Flat `conv_2d_transpose` forward — one NCHW output element per
 	/// 256-lane flat index, accumulating `input × weight` over
 	/// `input_channels × kernel × kernel` serial taps with the
 	/// transposed divisibility predicates. Donor:
-	/// `ml/nn/conv/conv_transpose_2d.slang` (`MlConvTranspose2dF32`;
-	/// ten `ConvTranspose2dGeometry` scalars, IOKK weight layout).
-	pub(in crate::runtime) fn conv_transpose_2d() -> Self {
+	/// `ml/nn/conv/conv_2d_transpose.slang` (`MlConv2dTransposeF32`;
+	/// ten `Conv2dTransposeGeometry` scalars, IOKK weight layout).
+	pub(in crate::runtime) fn conv_2d_transpose() -> Self {
 		use LaneExpr as E;
 		let lane_exprs = vec![
 			/* 0 */ E::GroupX,
@@ -3854,11 +3854,11 @@ impl BlockProgram {
 		)
 	}
 
-	/// Flat `conv_transpose_2d_bias_add` epilogue — the donor's in-place
+	/// Flat `conv_2d_transpose_bias_add` epilogue — the donor's in-place
 	/// NCHW channel-bias read-modify-write. Donor:
-	/// `ml/nn/conv/conv_transpose_2d_bias_add.slang`
-	/// (`MlConvTranspose2dBiasAddF32`; four scalars).
-	pub(in crate::runtime) fn conv_transpose_2d_bias_add() -> Self {
+	/// `ml/nn/conv/conv_2d_transpose_bias_add.slang`
+	/// (`MlConv2dTransposeBiasAddF32`; four scalars).
+	pub(in crate::runtime) fn conv_2d_transpose_bias_add() -> Self {
 		use LaneExpr as E;
 		let lane_exprs = vec![
 			/* 0 */ E::GroupX,
@@ -3907,15 +3907,15 @@ impl BlockProgram {
 		)
 	}
 
-	/// Flat `conv_transpose_2d` input adjoint — one NCHW input-gradient
+	/// Flat `conv_2d_transpose` input adjoint — one NCHW input-gradient
 	/// element per 256-lane flat index, accumulating
 	/// `output_gradient × weight` over `output_channels × kernel ×
 	/// kernel` taps. Unlike `conv_2d_backward`, the transposed output
 	/// coordinate `input * stride + kernel - padding` needs only the
 	/// signed bounds check, not divisibility. Donor:
-	/// `ml/nn/conv/conv_transpose_2d_backward.slang`
-	/// (`MlConvTranspose2dBackwardF32`; ten scalars, IOKK weight layout).
-	pub(in crate::runtime) fn conv_transpose_2d_backward() -> Self {
+	/// `ml/nn/conv/conv_2d_transpose_backward.slang`
+	/// (`MlConv2dTransposeBackwardF32`; ten scalars, IOKK weight layout).
+	pub(in crate::runtime) fn conv_2d_transpose_backward() -> Self {
 		use LaneExpr as E;
 		let lane_exprs = vec![
 			/* 0 */ E::GroupX,
@@ -4079,17 +4079,17 @@ impl BlockProgram {
 		)
 	}
 
-	/// Flat `conv_transpose_2d` parameter adjoint — the donor's
+	/// Flat `conv_2d_transpose` parameter adjoint — the donor's
 	/// deterministic IOKK weight/bias gradient program. Weight lanes
 	/// decompose to `(input_channel, output_channel, ky, kx)` and
 	/// accumulate `input × output_gradient` over `batch × input_height
 	/// × input_width` serial taps — the transposed input-space walk
 	/// with `input * stride + kernel - padding` bounds checks; bias
 	/// lanes reduce `output_gradient` over `batch × oh × ow`. Donor:
-	/// `ml/nn/conv/conv_transpose_2d_parameter_backward.slang`
-	/// (`MlConvTranspose2dParameterBackwardF32`; ten geometry scalars
+	/// `ml/nn/conv/conv_2d_transpose_parameter_backward.slang`
+	/// (`MlConv2dTransposeParameterBackwardF32`; ten geometry scalars
 	/// plus `parameter_count`).
-	pub(in crate::runtime) fn conv_transpose_2d_parameter_backward() -> Self {
+	pub(in crate::runtime) fn conv_2d_transpose_parameter_backward() -> Self {
 		use LaneExpr as E;
 		let lane_exprs = vec![
 			/* 0 */ E::GroupX,
@@ -4316,31 +4316,31 @@ impl BlockProgram {
 		)
 	}
 
-	/// `conv_1d_bias_transpose` fused-tail family — the 1024-lane 32×32
+	/// `conv_1d_bias_layout_transpose` fused-tail family — the 1024-lane 32×32
 	/// shared-tile NCL transpose with the channel bias folded into the
-	/// tile load. Donor: `ml/nn/conv/conv_1d_bias_transpose.slang`
-	/// (`MlConv1dBiasTransposeF32`; three scalars, `[projected, bias,
+	/// tile load. Donor: `ml/nn/conv/conv_1d_bias_layout_transpose.slang`
+	/// (`MlConv1dBiasLayoutTransposeF32`; three scalars, `[projected, bias,
 	/// output]`).
-	pub(in crate::runtime) fn conv_1d_bias_transpose() -> Self {
-		Self::conv_1d_bias_transpose_program(ConvTailStore::Plain)
+	pub(in crate::runtime) fn conv_1d_bias_layout_transpose() -> Self {
+		Self::conv_1d_bias_layout_transpose_program(ConvTailStore::Plain)
 	}
 
-	/// `conv_1d_bias_transpose_relu` — the same fused transpose with
+	/// `conv_1d_bias_layout_transpose_relu` — the same fused transpose with
 	/// `max(0.0f, ·)` at the store
-	/// (`MlConv1dBiasTransposeReluF32`).
-	pub(in crate::runtime) fn conv_1d_bias_transpose_relu() -> Self {
-		Self::conv_1d_bias_transpose_program(ConvTailStore::Relu)
+	/// (`MlConv1dBiasLayoutTransposeReluF32`).
+	pub(in crate::runtime) fn conv_1d_bias_layout_transpose_relu() -> Self {
+		Self::conv_1d_bias_layout_transpose_program(ConvTailStore::Relu)
 	}
 
-	/// `conv_1d_bias_transpose_residual_relu` — the ReLU store plus a
+	/// `conv_1d_bias_layout_transpose_residual_relu` — the ReLU store plus a
 	/// second `sum` binding receiving `activated + residual` at the
-	/// same offset (`MlConv1dBiasTransposeResidualReluF32`; five
+	/// same offset (`MlConv1dBiasLayoutTransposeResidualReluF32`; five
 	/// bindings `[projected, bias, output, residual, sum]`).
-	pub(in crate::runtime) fn conv_1d_bias_transpose_residual_relu() -> Self {
-		Self::conv_1d_bias_transpose_program(ConvTailStore::ResidualRelu)
+	pub(in crate::runtime) fn conv_1d_bias_layout_transpose_residual_relu() -> Self {
+		Self::conv_1d_bias_layout_transpose_program(ConvTailStore::ResidualRelu)
 	}
 
-	fn conv_1d_bias_transpose_program(store: ConvTailStore) -> Self {
+	fn conv_1d_bias_layout_transpose_program(store: ConvTailStore) -> Self {
 		use LaneExpr as E;
 		let lane_exprs = vec![
 			/* 0 */ E::Lane,
@@ -4513,18 +4513,18 @@ impl BlockProgram {
 		)
 	}
 
-	/// `conv_1d_bias_transpose_norm` — the row-per-workgroup fused
+	/// `conv_1d_bias_layout_transpose_norm` — the row-per-workgroup fused
 	/// channel normalization: each 256-lane group folds the biased conv
 	/// row `input + conv_bias` lane-strided, tree-reduces mean and
 	/// variance with the donor's explicit inter-pass barrier, then
 	/// republishes both the biased conv output and the normalized (or
 	/// ReLU-normalized) output at `[B, C, T]` offsets. Donor:
-	/// `ml/nn/conv/conv_1d_bias_transpose_norm{,_relu}.slang`
-	/// (`MlConv1dBiasTransposeNorm{,Relu}F32`; three u32 scalars plus
+	/// `ml/nn/conv/conv_1d_bias_layout_transpose_norm{,_relu}.slang`
+	/// (`MlConv1dBiasLayoutTransposeNorm{,Relu}F32`; three u32 scalars plus
 	/// `epsilon`, six bindings). The biased value is recomputed in the
 	/// variance and store passes rather than held in a per-lane array —
 	/// the loads are identical, so the result is bit-exact.
-	pub(in crate::runtime) fn conv_1d_bias_transpose_norm(relu: bool) -> Self {
+	pub(in crate::runtime) fn conv_1d_bias_layout_transpose_norm(relu: bool) -> Self {
 		use LaneExpr as E;
 		let lane_exprs = vec![
 			/* 0 */ E::Push(0), // batch

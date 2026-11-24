@@ -356,6 +356,74 @@ class ImageAugmentationTest(unittest.TestCase):
 		assert sorted(a.as_matrix().read_f32()) == sorted(self.image.as_matrix().read_f32())
 
 
+class ImageStatisticsTest(unittest.TestCase):
+	@classmethod
+	def setUpClass(cls) -> None:
+		cls.engine = oa.Engine()
+
+	def test_calc_hist_matches_bucket_oracle(self) -> None:
+		vals = [0.0, 0.25, 0.5, 0.75, 1.5, 0.5, -0.5, 0.999]
+		m = oa.Matrix.new_from_f32([1, 1, 2, 4], vals, engine=self.engine)
+		img = oa.Image.new_from_matrix(m, "nchw", "gray")
+		histogram = img.calc_hist(4, 0.0, 1.0)
+		self.assertEqual(histogram.dtype, "u32")
+		self.assertEqual(histogram.shape, [1, 1, 4])
+		self.assertEqual(histogram.read_u32(), [1, 1, 2, 2])
+
+	def test_calc_hist_rejects_invalid_parameters(self) -> None:
+		img = _make_gray_image(self.engine)
+		for bins, lower, upper in (
+			(0, 0.0, 1.0),
+			(300, 0.0, 1.0),
+			(4, 1.0, 1.0),
+			(4, 0.5, 0.0),
+			(4, float("nan"), 1.0),
+			(4, 0.0, float("inf")),
+		):
+			with self.assertRaises(Exception):
+				oa.image.calc_hist(img, bins, lower, upper)
+
+	def test_equalize_hist_spreads_degenerate_plane(self) -> None:
+		m = oa.Matrix.new_from_f32([1, 1, 2, 4], [0.5] * 8, engine=self.engine)
+		img = oa.Image.new_from_matrix(m, "nchw", "gray")
+		result = oa.image.equalize_hist(img)
+		self.assertIsInstance(result, oa.Image)
+		self.assertEqual(result.channels, 1)
+
+	def test_compare_hist_metric_oracles(self) -> None:
+		first = oa.Matrix.new_from_u32([1, 1, 3], [1, 0, 0], engine=self.engine)
+		second = oa.Matrix.new_from_u32([1, 1, 3], [0, 1, 0], engine=self.engine)
+		for method, expected in (
+			("correlation", -0.5),
+			("chi_square", 1.0),
+			("intersection", 0.0),
+			("bhattacharyya", 1.0),
+		):
+			scores = oa.image.compare_hist(first, second, method)
+			self.assertEqual(scores.shape, [1, 1])
+			self.assertAlmostEqual(scores.read_f32()[0], expected, places=6)
+		for method, expected in (
+			("correlation", 1.0),
+			("intersection", 1.0),
+			("chi_square", 0.0),
+			("bhattacharyya", 0.0),
+		):
+			scores = oa.image.compare_hist(first, first, method)
+			self.assertAlmostEqual(scores.read_f32()[0], expected, places=6)
+
+	def test_compare_hist_rejects_invalid_inputs(self) -> None:
+		first = oa.Matrix.new_from_u32([1, 1, 3], [1, 0, 0], engine=self.engine)
+		wrong_dtype = oa.Matrix.new_from_f32([1, 1, 3], [1.0, 0.0, 0.0], engine=self.engine)
+		wrong_shape = oa.Matrix.new_from_u32([1, 3], [1, 0, 0], engine=self.engine)
+		rank_one = oa.Matrix.new_from_u32([3], [1, 0, 0], engine=self.engine)
+		with self.assertRaises(Exception):
+			oa.image.compare_hist(first, wrong_dtype)
+		with self.assertRaises(Exception):
+			oa.image.compare_hist(first, wrong_shape)
+		with self.assertRaises(Exception):
+			oa.image.compare_hist(rank_one, rank_one)
+
+
 if __name__ == "__main__":
 
 	unittest.main()

@@ -1,0 +1,67 @@
+/// {{doc}}
+///
+/// Padding uses PyTorch ordering on the trailing {{dim}} axis or axes:
+/// `[left, right]` for one dimension, `[left, right, top, bottom]` for two,
+/// and `[left, right, top, bottom, front, back]` for three.
+pub struct {{name}} {
+	padding: [usize; {{sides}}],
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct {{name}} with equal padding on both sides of each axis.
+	pub const fn new(padding: usize) -> Self {
+		Self::new_with_padding([padding; {{sides}}])
+	}
+
+	/// Construct {{name}} with explicit per-side padding in PyTorch order.
+	pub const fn new_with_padding(padding: [usize; {{sides}}]) -> Self {
+		Self {
+			padding,
+			registry: ModuleRegistry::new(),
+		}
+	}
+
+	/// Return the configured per-side padding in PyTorch order.
+	pub const fn padding(&self) -> &[usize; {{sides}}] {
+		&self.padding
+	}
+
+	/// Pad the trailing {{dim}} axis or axes of one Matrix.
+	///
+	/// # Errors
+	///
+	/// Returns an error when the input rank is below {{dim}} or the underlying
+	/// pad contract fails.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		let rank = input.shape().len();
+		if rank < {{dim}} {
+			return Err(Error::invalid_argument(
+				"{{name}} requires an input of rank at least {{dim}}",
+			));
+		}
+		let mut pads = vec![0_usize; 2 * rank];
+		for index in 0..{{dim}} {
+			let axis = rank - 1 - index;
+			pads[2 * axis] = self.padding[2 * index];
+			pads[2 * axis + 1] = self.padding[2 * index + 1];
+		}
+		{{operation}}(input, &pads, crate::matrix::PadMode::{{mode}}, 0.0)
+	}
+}
+
+impl Default for {{name}} {
+	fn default() -> Self {
+		Self::new(0)
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

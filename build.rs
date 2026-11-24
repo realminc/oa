@@ -52,6 +52,10 @@ struct ShaderBuild<'a> {
 	profile: BuildProfile,
 	spirv_capability: &'static str,
 	vulkan_target: &'static str,
+	/// Documentation-only builds (docs.rs sets `DOCS_RS`) have no Slang
+	/// toolchain: emit placeholder artifacts so `include_bytes!` sites
+	/// compile without executing shader compilation or validation.
+	stub: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -151,6 +155,7 @@ const VIDEO_CVT_YUV420_TO_RGBA8: &str = "src/slang/video/cvt_yuv420_to_rgba8.sla
 
 fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	println!("cargo:rerun-if-env-changed=OA_BUILD_PROFILE");
+	println!("cargo:rerun-if-env-changed=DOCS_RS");
 	println!("cargo:rustc-check-cfg=cfg(oa_profile, values(\"core\", \"compatibility\"))");
 	let selected = env::var("OA_BUILD_PROFILE");
 	let profile = match &selected {
@@ -279,6 +284,7 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		profile,
 		spirv_capability,
 		vulkan_target,
+		stub: env::var_os("DOCS_RS").is_some(),
 	};
 	for operation in operations {
 		// Lowering-only kernels own a handwritten Slang source and a fixed push
@@ -572,10 +578,11 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 		return Err("Image schema contains no kernels".into());
 	}
 	for kernel in image_kernels {
+		let kernel_dtype = kernel["dtype"].as_str().unwrap_or(image_dtype);
 		build_schema_shader(
 			kernel,
 			"image",
-			image_dtype,
+			kernel_dtype,
 			&kernel["workgroup_size"],
 			&build,
 		)?;
@@ -713,6 +720,19 @@ fn build_shaders() -> Result<(), Box<dyn std::error::Error>> {
 	Ok(())
 }
 
+/// Write a minimal well-formed SPIR-V module header. Documentation-only
+/// builds run without a Slang toolchain; `include_bytes!` sites only
+/// require the artifact to exist.
+fn write_stub_spirv(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+	const HEADER: [u32; 5] = [0x0723_0203, 0x0001_0600, 0, 1, 0];
+	let mut bytes = Vec::with_capacity(HEADER.len() * 4);
+	for word in HEADER {
+		bytes.extend_from_slice(&word.to_le_bytes());
+	}
+	fs::write(path, bytes)?;
+	Ok(())
+}
+
 /// Emit `OUT_DIR/shader_content_ids.rs` with an FNV-1a content hash per
 /// produced `.spv`, keyed by the artifact stem in upper snake case.
 fn emit_shader_content_ids(output_directory: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -761,6 +781,9 @@ fn build_video_shader(
 	let reflection_path = build
 		.output_directory
 		.join(format!("{artifact}.reflection.json"));
+	if build.stub {
+		return write_stub_spirv(&spirv);
+	}
 	let output = Command::new(build.slangc)
 		.arg(source)
 		.args([
@@ -847,6 +870,9 @@ fn build_graphics_shader(
 	build: &ShaderBuild<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let spirv = build.output_directory.join(format!("render_{stem}.spv"));
+	if build.stub {
+		return write_stub_spirv(&spirv);
+	}
 	// Slang lowers fragment discard to OpDemoteToHelperInvocation for SPIR-V
 	// 1.6. The UI uses ordinary pixel rejection without the optional Vulkan
 	// demote feature. SPIR-V 1.5 lowers the same discard to OpKill.
@@ -955,6 +981,9 @@ fn build_shader(
 	let reflection = build
 		.output_directory
 		.join(format!("matrix_{name}_{dtype}.reflection.json"));
+	if build.stub {
+		return write_stub_spirv(&spirv);
+	}
 
 	let fields = expected_push_fields(
 		string_at(operation, "kind")?,
@@ -1243,6 +1272,9 @@ fn build_schema_shader(
 	let reflection = build
 		.output_directory
 		.join(format!("{domain}_{name}_{dtype}.reflection.json"));
+	if build.stub {
+		return write_stub_spirv(&spirv);
+	}
 
 	let buffer_count = schema_buffer_count(operation)?;
 	let selected_source = compute_source(

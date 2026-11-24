@@ -133,6 +133,8 @@ def validate_ml_schema(schema: dict[str, Any]) -> None:
 			optimizer_family = (
 				"grad_clip"
 				if operation["name"].startswith("clip_grad_norm")
+				else "grad_scaler"
+				if operation["name"].startswith("grad_scaler")
 				else "adamw"
 				if operation["name"].startswith("adamw")
 				else "adam"
@@ -510,7 +512,9 @@ def validate_ml_contract(contract: Any, differentiation: str, where: str) -> Non
 			"f32_logits_u8_u32_or_i32_labels_u32_output",
 			"f32_logits_u8_u32_or_i32_labels_f32_mask_u32_output",
 			"u32_state",
+			"u32_state_f32_flag",
 			"f32_parameter_u32_state",
+			"f32_parameter_u32_state_f32_flag",
 			"f32_logits_u32_targets",
 			"f32_logits_u32_or_i32_targets",
 			"f32_weight_u32_indices",
@@ -526,6 +530,8 @@ def validate_ml_contract(contract: Any, differentiation: str, where: str) -> Non
 			"f32_values_i32_indices",
 			"f32_logits_i32_indices",
 			"f32_input_u32_output",
+			"f32_input_i32_output",
+			"i32_or_u32_input_f32_output",
 			"categorical_rollout_sources_and_time_major_storage",
             "f32_observation_i32_action_f32_statistics_preserve_dtype",
             "f32_accumulator_f32_value_u32_cursor",

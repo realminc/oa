@@ -1,30 +1,50 @@
 {
-	"version": 1,
-	"family": "utility",
-	"imports": [
-		"use crate::{Error, Matrix, Result};",
-		"use super::super::{Module, ModuleRegistry};"
-	],
-	"helper": "flatten_dimensions",
-	"layers": [
-		{
-			"name": "Identity",
-			"doc": "Return the input value unchanged.",
-			"template": "identity",
-			"values": {},
-			"donor": "source/cpp/lib/oa/ml/nn/identity/identity.cpp",
-			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
-		},
-		{
-			"name": "Flatten",
-			"doc": "Flatten an inclusive range of Matrix dimensions into one dimension.",
-			"template": "flatten",
-			"values": {
-				"start_dim": 1,
-				"end_dim": -1
-			},
-			"donor": "source/cpp/lib/oa/ml/nn/flatten/flatten.cpp",
-			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
-		}
-	]
+ "version": 1,
+ "family": "utility",
+ "imports": [
+  "use crate::{Error, Matrix, Result};",
+  "use super::super::{Module, ModuleRegistry, matrix};"
+ ],
+ "helper": "flatten_dimensions",
+ "layers": [
+  {
+   "name": "Identity",
+   "doc": "Return the input value unchanged.",
+   "template": "identity",
+   "values": {},
+   "donor": "source/cpp/lib/oa/ml/nn/identity/identity.cpp",
+   "adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+  },
+  {
+   "name": "Flatten",
+   "doc": "Flatten an inclusive range of Matrix dimensions into one dimension.",
+   "template": "flatten",
+   "values": {
+    "start_dim": 1,
+    "end_dim": -1
+   },
+   "donor": "source/cpp/lib/oa/ml/nn/flatten/flatten.cpp",
+   "adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+  },
+  {
+   "name": "Unfold",
+   "doc": "Extract NCHW sliding kernel windows into [N, C * kernel\u00b2, L] column layout.",
+   "template": "unfold",
+   "values": {
+    "operation": "matrix::unfold"
+   },
+   "donor": "source/cpp/lib/oa/ml/nn/unfold/unfold.cpp",
+   "adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+  },
+  {
+   "name": "Fold",
+   "doc": "Combine [N, C * kernel\u00b2, L] sliding columns into an overlapping NCHW image.",
+   "template": "fold",
+   "values": {
+    "operation": "matrix::fold"
+   },
+   "donor": "source/cpp/lib/oa/ml/nn/fold/fold.cpp",
+   "adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+  }
+ ]
 }

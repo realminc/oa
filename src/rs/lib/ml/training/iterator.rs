@@ -844,6 +844,83 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		self.complete_eager_step(loss, device_prefix)
 	}
 
+	/// Complete one eagerly authored scaled-loss step under a `GradScaler`.
+	///
+	/// The caller runs forward and backward against `scaler.scale_loss(&loss)`
+	/// and unscales parameter gradients through
+	/// `GradScaler::unscale_gradients`, then hands the unscaled loss and the
+	/// scaler's finite check to this method. The optimizer step applies only
+	/// when every unscaled gradient is finite; `scaler.update()` adjusts the
+	/// scale either way. Returns whether the optimizer step ran.
+	///
+	/// This is the eager AMP contract: the finite gate reads one scalar back
+	/// at the step boundary, where torch performs the equivalent CPU-side
+	/// check. The automatically captured `step` path instead replays the
+	/// device-resident gate produced by `GradScaler::record_finite_gate`
+	/// through `Optimizer::set_finite_gate`, freezing the update inside the
+	/// program when gradients are not finite.
+	///
+	/// # Errors
+	///
+	/// Returns an error for an unmatched begin, invalid loss, scaler or
+	/// optimizer failure, timestamp failure, metric accounting overflow, or
+	/// callback failure.
+	pub fn complete_step_scaled(
+		&mut self,
+		loss: &Matrix,
+		check: &Matrix,
+		scaler: &mut crate::ml::optim::GradScaler,
+	) -> Result<bool> {
+		self.require_pending()?;
+		if let Err(error) = self.select_execution_mode(ExecutionMode::Eager) {
+			return self.fail(error);
+		}
+		if let Err(error) = self.seal_stable_resources() {
+			return self.fail(error);
+		}
+		if !loss.shape().is_empty() || loss.dtype() != DType::F32 {
+			return self.fail(Error::invalid_argument(
+				"training loss must be an FP32 scalar",
+			));
+		}
+		if !self.engine.owns_matrix(loss) {
+			return self.fail(Error::invalid_argument(
+				"training loss must belong to the selected engine",
+			));
+		}
+		let stepped = match scaler.step_optimizer(self.optimizer.behavior_mut(), check) {
+			Ok(stepped) => stepped,
+			Err(error) => return self.fail(error),
+		};
+		scaler.update();
+		let event = if self.config.enable_gpu_timing {
+			self.engine.checkpoint_timed()
+		} else {
+			self.engine.checkpoint()
+		};
+		let event = match event {
+			Ok(event) => event,
+			Err(error) => return self.fail(error),
+		};
+		let gpu_time = if self.config.enable_gpu_timing {
+			match event.device_duration() {
+				Ok(value) => Some(value),
+				Err(error) => return self.fail(error),
+			}
+		} else {
+			if let Err(error) = event.wait() {
+				return self.fail(error);
+			}
+			None
+		};
+		let values = match loss.read_f32() {
+			Ok(values) => values,
+			Err(error) => return self.fail(error),
+		};
+		self.complete(values[0], gpu_time)?;
+		Ok(stepped)
+	}
+
 	fn complete_eager_step(&mut self, loss: &Matrix, device_prefix: Duration) -> Result<()> {
 		if let Err(error) = self.seal_stable_resources() {
 			return self.fail(error);

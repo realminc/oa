@@ -22,59 +22,62 @@ def validate_image_schema(schema: dict[str, Any]) -> None:
 	require(schema.get("dtype") == "f32", "Image dtype must be f32")
 	contracts = schema.get("contracts")
 	expected_contracts = {
-		"resize": ["image"],
-		"crop": ["image"],
-		"flip": ["image"],
-		"rotate": ["image"],
-		"pad": ["image"],
-		"center_crop": ["image"],
-		"remap": ["image", "matrix"],
-		"warp_affine": ["image", "matrix"],
-		"warp_perspective": ["image", "matrix"],
-		"threshold_binary": ["image"],
-		"threshold_binary_inv": ["image"],
-		"threshold_truncate": ["image"],
-		"threshold_to_zero": ["image"],
-		"threshold_to_zero_inv": ["image"],
-		"in_range": ["image"],
-		"clamp": ["image"],
-		"invert": ["image"],
-		"brightness_contrast": ["image"],
-		"gamma_contrast": ["image"],
-		"solarize": ["image"],
-		"posterize": ["image"],
-		"grayscale": ["image"],
-		"alpha_blend": ["image", "image"],
-		"composite": ["image", "image", "image"],
-		"erase": ["image"],
-		"color_twist": ["image", "matrix"],
-		"channel_reorder": ["image"],
-		"gaussian_noise": ["image"],
-		"salt_pepper_noise": ["image"],
-		"convolve_2d": ["image", "matrix"],
-		"separable_convolve_2d": ["image", "matrix", "matrix"],
-		"average_blur": ["image"],
-		"sobel": ["image"],
-		"scharr": ["image"],
-		"laplacian": ["image"],
-		"erode": ["image"],
-		"dilate": ["image"],
-		"morphology_open": ["image"],
-		"morphology_close": ["image"],
-		"morphology_gradient": ["image"],
-		"gaussian_blur": ["image"],
-		"sharpen": ["image"],
-		"median_blur": ["image"],
-		"bilateral_filter": ["image"],
-		"unsharp_mask": ["image"],
-		"morphology_top_hat": ["image"],
-		"morphology_black_hat": ["image"],
-		"adaptive_threshold_mean": ["image"],
-		"adaptive_threshold_gaussian": ["image"],
-		"normalize": ["image"],
-		"convert_color": ["image"],
-		"resize_normalize": ["image"],
-		"segmentation_overlay": ["image", "matrix", "matrix"],
+		"resize": (["image"], ["image"]),
+		"crop": (["image"], ["image"]),
+		"flip": (["image"], ["image"]),
+		"rotate": (["image"], ["image"]),
+		"pad": (["image"], ["image"]),
+		"center_crop": (["image"], ["image"]),
+		"remap": (["image", "matrix"], ["image"]),
+		"warp_affine": (["image", "matrix"], ["image"]),
+		"warp_perspective": (["image", "matrix"], ["image"]),
+		"threshold_binary": (["image"], ["image"]),
+		"threshold_binary_inv": (["image"], ["image"]),
+		"threshold_truncate": (["image"], ["image"]),
+		"threshold_to_zero": (["image"], ["image"]),
+		"threshold_to_zero_inv": (["image"], ["image"]),
+		"in_range": (["image"], ["image"]),
+		"clamp": (["image"], ["image"]),
+		"invert": (["image"], ["image"]),
+		"brightness_contrast": (["image"], ["image"]),
+		"gamma_contrast": (["image"], ["image"]),
+		"solarize": (["image"], ["image"]),
+		"posterize": (["image"], ["image"]),
+		"grayscale": (["image"], ["image"]),
+		"alpha_blend": (["image", "image"], ["image"]),
+		"composite": (["image", "image", "image"], ["image"]),
+		"erase": (["image"], ["image"]),
+		"color_twist": (["image", "matrix"], ["image"]),
+		"channel_reorder": (["image"], ["image"]),
+		"gaussian_noise": (["image"], ["image"]),
+		"salt_pepper_noise": (["image"], ["image"]),
+		"convolve_2d": (["image", "matrix"], ["image"]),
+		"separable_convolve_2d": (["image", "matrix", "matrix"], ["image"]),
+		"average_blur": (["image"], ["image"]),
+		"sobel": (["image"], ["image"]),
+		"scharr": (["image"], ["image"]),
+		"laplacian": (["image"], ["image"]),
+		"erode": (["image"], ["image"]),
+		"dilate": (["image"], ["image"]),
+		"morphology_open": (["image"], ["image"]),
+		"morphology_close": (["image"], ["image"]),
+		"morphology_gradient": (["image"], ["image"]),
+		"gaussian_blur": (["image"], ["image"]),
+		"sharpen": (["image"], ["image"]),
+		"median_blur": (["image"], ["image"]),
+		"bilateral_filter": (["image"], ["image"]),
+		"unsharp_mask": (["image"], ["image"]),
+		"morphology_top_hat": (["image"], ["image"]),
+		"morphology_black_hat": (["image"], ["image"]),
+		"adaptive_threshold_mean": (["image"], ["image"]),
+		"adaptive_threshold_gaussian": (["image"], ["image"]),
+		"normalize": (["image"], ["image"]),
+		"convert_color": (["image"], ["image"]),
+		"resize_normalize": (["image"], ["image"]),
+		"segmentation_overlay": (["image", "matrix", "matrix"], ["image"]),
+		"calc_hist": (["image"], ["matrix"]),
+		"equalize_hist": (["image"], ["image"]),
+		"compare_hist": (["matrix", "matrix"], ["matrix"]),
 	}
 	require(
 		isinstance(contracts, list)
@@ -93,11 +96,12 @@ def validate_image_schema(schema: dict[str, Any]) -> None:
 		name = contract["name"]
 		require(isinstance(name, str) and IDENTIFIER.fullmatch(name) is not None, f"{where}.name is invalid")
 		validate_unique(name, contract_names, f"{where}.name")
+		expected_inputs, expected_outputs = expected_contracts[name]
 		require(
-			contract["input_kinds"] == expected_contracts[name],
+			contract["input_kinds"] == expected_inputs,
 			f"{where}.input_kinds are invalid",
 		)
-		require(contract["output_kinds"] == ["image"], f"{where}.output_kinds must contain one Image")
+		require(contract["output_kinds"] == expected_outputs, f"{where}.output_kinds are invalid")
 		require(contract["shape_rule"] == "explicit", f"{where}.shape_rule must be explicit")
 		require(contract["dtype_rule"] in {"f32", "explicit"}, f"{where}.dtype_rule is invalid")
 		validate_semantic_attributes(contract["attributes"], where)
@@ -155,7 +159,7 @@ def validate_image_schema(schema: dict[str, Any]) -> None:
 	validate_image_generation(schema)
 
 
-IMAGE_CATEGORIES = ("pixel", "filter", "geometric", "color")
+IMAGE_CATEGORIES = ("pixel", "filter", "geometric", "color", "statistics")
 
 
 def image_templates(category: str) -> dict[str, str]:
@@ -167,11 +171,13 @@ def image_templates(category: str) -> dict[str, str]:
 
 def validate_image_generation(schema: dict[str, Any]) -> None:
 	kernels = {kernel["kernel_id"]: kernel for kernel in schema["kernels"]}
+	matrix_outputs = {"calc_hist", "compare_hist"}
 	validate_dispatch_generation(
 		schema, set(IMAGE_CATEGORIES),
-		{"&Image", "&Matrix", "f32", "u32", "u64", "bool", "[u32; 4]", "BorderMode", "InterpolationMode", "ImageFormat", "crate::ImageFormat", "NormalizationConfig"},
-		{op["name"]: "Image" for op in schema["contracts"]},
+		{"&Image", "&Matrix", "f32", "u32", "u64", "bool", "[u32; 4]", "BorderMode", "InterpolationMode", "ImageFormat", "crate::ImageFormat", "NormalizationConfig", "HistogramComparison"},
+		{op["name"]: ("Matrix" if op["name"] in matrix_outputs else "Image") for op in schema["contracts"]},
 		{"float": {"float"}, "unsigned_integer": {"unsigned", "unsigned64", "inline_unsigned"}, "boolean": {"boolean"}, "enum": {"enumeration", "inline_enum"}},
+		read_write=True,
 	)
 	selectors = [record for record in schema["types"] if record["name"] == "InterpolationMode"]
 	require(len(selectors) == 1 and selectors[0]["kind"] == "enum" and all("kernel" in variant for variant in selectors[0]["variants"]), "Image resize requires its interpolation selector")

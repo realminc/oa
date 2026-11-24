@@ -869,3 +869,239 @@ test_vk!(
 		Ok(())
 	}
 );
+
+test_vk!(
+	grouped_query_attention_rejects_invalid_head_grouping,
+	engine,
+	{
+		use oa::ml::nn::MultiHeadAttention;
+
+		// Zero, non-dividing, and oversized key/value head counts are invalid.
+		for num_kv_heads in [0_usize, 3, 5] {
+			assert_eq!(
+				MultiHeadAttention::new_with_seed_and_options_grouped_on(
+					&engine,
+					8,
+					4,
+					num_kv_heads,
+					4,
+					0.0,
+					true,
+					0x4751_4142,
+				)
+				.err()
+				.expect("grouped attention accepted an invalid key/value head count")
+				.kind(),
+				oa::ErrorKind::InvalidArgument
+			);
+		}
+		Ok(())
+	}
+);
+
+test_vk!(
+	grouped_query_attention_degenerates_to_multi_head_when_counts_match,
+	engine,
+	{
+		use oa::ml::nn::MultiHeadAttention;
+
+		let host = (0..64)
+			.map(|index| 0.3 * (0.29 * index as f32 + 0.07).sin())
+			.collect::<Vec<f32>>();
+		let input = oa::Matrix::new_from_f32([8, 8], &host)?;
+		let plain = MultiHeadAttention::new_with_seed_on(&engine, 8, 4, 4, 0x4d48_4145)?;
+		let grouped = MultiHeadAttention::new_with_seed_and_options_grouped_on(
+			&engine,
+			8,
+			4,
+			4,
+			4,
+			0.0,
+			true,
+			0x4d48_4145,
+		)?;
+		assert_eq!(grouped.num_heads(), 4);
+		assert_eq!(grouped.num_kv_heads(), 4);
+		assert_close(
+			&grouped.forward(&input)?.read_f32()?,
+			&plain.forward(&input)?.read_f32()?,
+			1.0e-6,
+		);
+		Ok(())
+	}
+);
+
+test_vk!(
+	grouped_and_multi_query_attention_own_compact_key_value_projections,
+	engine,
+	{
+		use oa::ml::{Module, nn::MultiHeadAttention};
+
+		let input = oa::Matrix::new_from_f32([4, 8], &[0.15; 32])?;
+		// GQA: four query heads share two key/value heads (K/V width 4).
+		let gqa = MultiHeadAttention::new_with_seed_and_options_grouped_on(
+			&engine,
+			8,
+			4,
+			2,
+			4,
+			0.0,
+			true,
+			0x4751_413f,
+		)?;
+		assert_eq!(gqa.num_kv_heads(), 2);
+		let gqa_named = gqa.all_named_parameters()?;
+		let shape_of = |named: &[oa::ml::NamedParameter], path: &str| {
+			named
+				.iter()
+				.find(|parameter| parameter.path() == path)
+				.map(|parameter| parameter.parameter().data().shape().to_vec())
+		};
+		assert_eq!(
+			shape_of(&gqa_named, "k_proj.weight").as_deref(),
+			Some(&[4, 8][..])
+		);
+		assert_eq!(
+			shape_of(&gqa_named, "v_proj.weight").as_deref(),
+			Some(&[4, 8][..])
+		);
+		assert_eq!(
+			shape_of(&gqa_named, "q_proj.weight").as_deref(),
+			Some(&[8, 8][..])
+		);
+		assert_eq!(gqa.forward(&input)?.shape(), [4, 8]);
+
+		// MQA: one shared key/value head (K/V width 2).
+		let mqa = MultiHeadAttention::new_with_seed_and_options_grouped_on(
+			&engine,
+			8,
+			4,
+			1,
+			4,
+			0.0,
+			true,
+			0x4d51_413f,
+		)?;
+		assert_eq!(mqa.num_kv_heads(), 1);
+		let mqa_named = mqa.all_named_parameters()?;
+		assert_eq!(
+			shape_of(&mqa_named, "k_proj.weight").as_deref(),
+			Some(&[2, 8][..])
+		);
+		assert_eq!(
+			shape_of(&mqa_named, "v_proj.weight").as_deref(),
+			Some(&[2, 8][..])
+		);
+		assert_eq!(mqa.forward(&input)?.shape(), [4, 8]);
+		Ok(())
+	}
+);
+
+test_vk!(
+	grouped_query_attention_cross_attends_unequal_source_lengths,
+	engine,
+	{
+		use oa::ml::nn::MultiHeadAttention;
+
+		let attention = MultiHeadAttention::new_with_seed_and_options_grouped_on(
+			&engine,
+			8,
+			4,
+			2,
+			4,
+			0.0,
+			true,
+			0x4352_4f53,
+		)?;
+		let queries = oa::Matrix::new_from_f32([4, 8], &[0.2; 32])?;
+		let keys_values = oa::Matrix::new_from_f32([7, 8], &[0.1; 56])?;
+		let output = attention.forward_kv(&queries, &keys_values)?;
+		assert_eq!(output.shape(), [4, 8]);
+		Ok(())
+	}
+);
+
+test_vk!(
+	grouped_query_attention_step_matches_the_causal_scan,
+	engine,
+	{
+		use oa::ml::nn::MultiHeadAttention;
+
+		for num_kv_heads in [2_usize, 1] {
+			let attention = MultiHeadAttention::new_with_seed_and_options_grouped_on(
+				&engine,
+				8,
+				4,
+				num_kv_heads,
+				4,
+				0.0,
+				true,
+				0x4b56_4741,
+			)?;
+			let host = (0..64)
+				.map(|index| 0.35 * (0.37 * index as f32 + 0.11).sin())
+				.collect::<Vec<f32>>();
+			let packed = oa::Matrix::new_from_f32([8, 8], &host)?;
+			let scan = attention.forward(&packed)?.read_f32()?;
+
+			let mut cache = attention.new_cache(2)?;
+			for time in 0..4 {
+				let step_input = oa::Matrix::new_from_f32(
+					[2, 8],
+					&[
+						&host[time * 8..time * 8 + 8],
+						&host[32 + time * 8..32 + time * 8 + 8],
+					]
+					.concat(),
+				)?;
+				let stepped = attention.step(&step_input, &mut cache)?.read_f32()?;
+				assert_eq!(cache.len(), time + 1);
+				let mut expected = Vec::with_capacity(16);
+				expected.extend_from_slice(&scan[time * 8..time * 8 + 8]);
+				expected.extend_from_slice(&scan[32 + time * 8..32 + time * 8 + 8]);
+				assert_close(&stepped, &expected, 2.0e-4);
+			}
+		}
+		Ok(())
+	}
+);
+
+test_vk!(
+	grouped_query_attention_backpropagates_through_head_sharing,
+	engine,
+	{
+		use oa::ml::{Module, nn::MultiHeadAttention};
+
+		let attention = MultiHeadAttention::new_with_seed_and_options_grouped_on(
+			&engine,
+			8,
+			4,
+			2,
+			4,
+			0.0,
+			true,
+			0x4752_4144,
+		)?;
+		let input = oa::Matrix::new_from_f32([4, 8], &[0.2; 32])?;
+		let tape = oa::ml::GradientTape::new();
+		let output = attention.forward(&input)?;
+		let target = oa::Matrix::new_from_f32([4, 8], &[0.0; 32])?;
+		let loss = oa::ml::loss::mse(&output, &target)?;
+		tape.backward(&loss)?;
+		let mut checked = 0_usize;
+		for named in attention.all_named_parameters()? {
+			let gradient = named
+				.parameter()
+				.gradient()
+				.expect("grouped attention parameter missed a gradient");
+			assert!(
+				gradient.read_f32()?.iter().any(|value| *value != 0.0),
+				"{} produced a zero gradient through grouped attention",
+				named.path(),
+			);
+			checked += 1;
+		}
+		assert_eq!(checked, 8);
+		Ok(())
+	}
+);

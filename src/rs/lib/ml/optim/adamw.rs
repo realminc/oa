@@ -69,6 +69,146 @@ fn adamw_graph_advance(state: &Matrix) -> Result<()> {
 	}
 }
 
+fn adamw_gated_graph_advance(state: &Matrix, flag: &Matrix) -> Result<()> {
+	const OPERATION: &str = crate::core::operation::ml::ADAMW_GATED_GRAPH_ADVANCE.name();
+	if state.dtype() != DType::U32 || state.shape() != [6] {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} requires U32 optimizer state [6]"
+		)));
+	}
+	if flag.dtype() != DType::F32
+		|| flag.num_elements() != 1
+		|| !flag.engine_handle().same_as(state.engine_handle())
+	{
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} requires a same-engine single-element F32 finite flag"
+		)));
+	}
+	let buffers = [
+		BufferBinding::read_write(state.storage()),
+		BufferBinding::read(flag.storage()),
+	];
+	{
+		let inputs: &[&Matrix] = &[state, flag];
+		let outputs: &[&Matrix] = &[state];
+		let attributes: &[OpAttribute] = &[];
+		let dispatch = ComputeDispatch {
+			kernel: KernelId::MlAdamWGatedGraphAdvanceU32,
+			buffers: &buffers,
+			push_constants: &[],
+			workgroups: [1, 1, 1],
+			indirect: None,
+		};
+		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
+			Error::internal(format!(
+				"lowering-only kernel {} cannot own one semantic ML operation",
+				dispatch.kernel.report_name()
+			))
+		})?;
+		let engine = inputs
+			.first()
+			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
+			.engine_handle();
+		engine.record_semantic(
+			dispatch,
+			SemanticDispatch {
+				contract,
+				inputs,
+				outputs,
+				attributes,
+			},
+		)
+	}
+}
+
+fn adamw_gated_graph(
+	parameter: &Matrix,
+	gradient: &Matrix,
+	first_moment: &Matrix,
+	second_moment: &Matrix,
+	state: &Matrix,
+	flag: &Matrix,
+) -> Result<()> {
+	const OPERATION: &str = crate::core::operation::ml::ADAMW_GATED_GRAPH.name();
+	validate_f32_same_engine(
+		OPERATION,
+		&[parameter, gradient, first_moment, second_moment, flag],
+	)?;
+	if state.dtype() != DType::U32 || !state.engine_handle().same_as(parameter.engine_handle()) {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} requires same-engine U32 optimizer state"
+		)));
+	}
+	if flag.num_elements() != 1 {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} requires a single-element F32 finite flag"
+		)));
+	}
+	for candidate in [gradient, first_moment, second_moment] {
+		if candidate.shape() != parameter.shape() {
+			return Err(Error::invalid_argument(format!(
+				"{OPERATION} requires identical parameter, gradient, and moment shapes"
+			)));
+		}
+	}
+	if state.shape() != [6] {
+		return Err(Error::invalid_argument(format!(
+			"{OPERATION} requires optimizer state [6]"
+		)));
+	}
+	let element_count = shader_u32(parameter.num_elements(), "element count", OPERATION)?;
+	if element_count == 0 {
+		return Ok(());
+	}
+	let buffers = [
+		BufferBinding::read_write(parameter.storage()),
+		BufferBinding::read(gradient.storage()),
+		BufferBinding::read_write(first_moment.storage()),
+		BufferBinding::read_write(second_moment.storage()),
+		BufferBinding::read(state.storage()),
+		BufferBinding::read(flag.storage()),
+	];
+	let push_constants = [PushConstant::U32(element_count)];
+	{
+		let inputs: &[&Matrix] = &[
+			parameter,
+			gradient,
+			first_moment,
+			second_moment,
+			state,
+			flag,
+		];
+		let outputs: &[&Matrix] = &[parameter, first_moment, second_moment];
+		let attributes: &[OpAttribute] = &[];
+		let dispatch = ComputeDispatch {
+			kernel: KernelId::MlAdamWGatedGraphF32,
+			buffers: &buffers,
+			push_constants: &push_constants,
+			workgroups: KernelId::MlAdamWGatedGraphF32.linear_workgroups(element_count),
+			indirect: None,
+		};
+		let contract = dispatch.kernel.semantic_contract().ok_or_else(|| {
+			Error::internal(format!(
+				"lowering-only kernel {} cannot own one semantic ML operation",
+				dispatch.kernel.report_name()
+			))
+		})?;
+		let engine = inputs
+			.first()
+			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
+			.engine_handle();
+		engine.record_semantic(
+			dispatch,
+			SemanticDispatch {
+				contract,
+				inputs,
+				outputs,
+				attributes,
+			},
+		)
+	}
+}
+
 fn adamw_graph(
 	parameter: &Matrix,
 	gradient: &Matrix,
@@ -488,6 +628,7 @@ pub struct AdamWProgramSignature {
 	pub(crate) parameter_ids: Vec<u64>,
 	pub(crate) gradient_ids: Vec<u64>,
 	pub(crate) moment_ids: Vec<(u64, u64)>,
+	pub(crate) gate_id: Option<u64>,
 	pub(crate) base_step: u32,
 }
 
@@ -502,6 +643,7 @@ pub struct AdamW {
 	pub(super) weight_decay: f32,
 	pub(super) step: u32,
 	pub(super) graph_state: Option<Matrix>,
+	pub(super) gate: Option<Matrix>,
 }
 
 impl AdamW {
@@ -607,6 +749,7 @@ impl AdamW {
 			weight_decay,
 			step: 0,
 			graph_state: None,
+			gate: None,
 		})
 	}
 
@@ -709,14 +852,18 @@ impl AdamW {
 				self.weight_decay.to_bits(),
 			],
 		)?;
-		adamw_graph_advance(&state)?;
+		if let Some(flag) = &self.gate {
+			adamw_gated_graph_advance(&state, flag)?;
+		} else {
+			adamw_graph_advance(&state)?;
+		}
 		let parameters = self
 			.parameters
 			.iter()
 			.map(|parameter_state| parameter_state.parameter.data())
 			.collect::<Vec<_>>();
 		let mut indices = (0..self.parameters.len()).collect::<Vec<_>>().into_iter();
-		while indices.len() >= 4 {
+		while indices.len() >= 4 && self.gate.is_none() {
 			let batch_indices: [usize; 4] =
 				std::array::from_fn(|_| indices.next().expect("four indices remain"));
 			let entries = std::array::from_fn(|batch| {
@@ -732,15 +879,57 @@ impl AdamW {
 		}
 		for index in indices {
 			let parameter_state = &self.parameters[index];
-			adamw_graph(
-				&parameters[index],
-				&gradients[index],
-				&parameter_state.first_moment,
-				&parameter_state.second_moment,
-				&state,
-			)?;
+			if let Some(flag) = &self.gate {
+				adamw_gated_graph(
+					&parameters[index],
+					&gradients[index],
+					&parameter_state.first_moment,
+					&parameter_state.second_moment,
+					&state,
+					flag,
+				)?;
+			} else {
+				adamw_graph(
+					&parameters[index],
+					&gradients[index],
+					&parameter_state.first_moment,
+					&parameter_state.second_moment,
+					&state,
+				)?;
+			}
 		}
 		self.graph_state = Some(state);
+		Ok(())
+	}
+
+	/// Bind a device-resident finite flag gating captured replayed updates.
+	///
+	/// With a flag bound, `step` inside `Engine::capture` records the gated
+	/// kernels: the device step counter and every parameter, first-moment, and
+	/// second-moment write are selected against their prior values when the
+	/// flag is zero, which freezes the update exactly as a skipped
+	/// `torch.cuda.amp` step does. `GradScaler::record_finite_gate` produces
+	/// the flag each replayed step.
+	///
+	/// # Errors
+	///
+	/// Returns an error when the flag is not a same-engine single-element F32
+	/// matrix.
+	pub fn set_finite_gate(&mut self, flag: &Matrix) -> Result<()> {
+		if flag.dtype() != DType::F32 || flag.num_elements() != 1 {
+			return Err(Error::invalid_argument(
+				"AdamW finite gate requires a single-element F32 flag",
+			));
+		}
+		if !flag
+			.engine_handle()
+			.same_as(self.parameters[0].parameter.data().engine_handle())
+		{
+			return Err(Error::invalid_argument(
+				"AdamW finite gate flag must belong to the optimizer engine",
+			));
+		}
+		self.gate = Some(flag.clone());
 		Ok(())
 	}
 
@@ -826,6 +1015,7 @@ impl AdamW {
 					)
 				})
 				.collect(),
+			gate_id: self.gate.as_ref().map(|flag| flag.value_id()),
 			base_step: self.step,
 		})
 	}
@@ -871,6 +1061,7 @@ impl AdamW {
 			|| parameter_ids != signature.parameter_ids
 			|| gradient_ids.as_deref() != Some(signature.gradient_ids.as_slice())
 			|| moment_ids != signature.moment_ids
+			|| self.gate.as_ref().map(|flag| flag.value_id()) != signature.gate_id
 		{
 			return Err(Error::failed_precondition(
 				"AdamW state no longer matches the captured training program",
@@ -1042,6 +1233,10 @@ impl Optimizer for AdamW {
 
 	fn belongs_to(&self, engine: &Engine) -> bool {
 		Self::belongs_to(self, engine)
+	}
+
+	fn set_finite_gate(&mut self, flag: &Matrix) -> Result<()> {
+		Self::set_finite_gate(self, flag)
 	}
 }
 

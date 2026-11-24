@@ -11,9 +11,11 @@ mod batch_norm;
 mod channel_norm;
 mod conv;
 mod embedding;
+mod fold;
 mod gru;
 mod layer_norm;
 mod linear;
+mod lstm;
 mod mamba3;
 mod moe;
 #[path = "matrix/parity.gen.rs"]
@@ -61,19 +63,28 @@ pub use channel_norm::{
 	channel_norm_relu_backward,
 };
 pub(in crate::ml) use channel_norm::{channel_norm_backward_saved, channel_norm_forward};
-pub use conv::{conv_1d, conv_2d, conv_transpose_1d, conv_transpose_2d};
+pub use conv::{
+	conv_1d, conv_1d_transpose, conv_2d, conv_2d_transpose, conv_3d, conv_3d_transpose,
+};
 pub(in crate::ml) use conv::{
-	conv_1d_backward, conv_1d_parameterized, conv_2d_backward, conv_2d_parameterized,
-	conv_transpose_1d_backward, conv_transpose_1d_parameterized, conv_transpose_2d_backward,
-	conv_transpose_2d_parameterized,
+	conv_1d_backward, conv_1d_parameterized, conv_1d_transpose_backward,
+	conv_1d_transpose_parameterized, conv_2d_backward, conv_2d_parameterized,
+	conv_2d_transpose_backward, conv_2d_transpose_parameterized, conv_3d_backward,
+	conv_3d_parameterized, conv_3d_transpose_backward, conv_3d_transpose_parameterized,
 };
 pub(in crate::ml) use embedding::{embedding, embedding_backward};
+pub use fold::{fold, unfold};
+pub(in crate::ml) use fold::{fold_backward, unfold_backward};
 pub use gru::{gru_cell, gru_scan};
 pub(in crate::ml) use gru::{
 	gru_cell_backward, gru_cell_parameterized, gru_scan_backward, gru_scan_parameterized,
 };
 pub(in crate::ml) use layer_norm::{layer_norm, layer_norm_backward};
 pub(in crate::ml) use linear::{linear, linear_backward};
+pub use lstm::{lstm_cell, lstm_scan};
+pub(in crate::ml) use lstm::{
+	lstm_cell_backward, lstm_cell_parameterized, lstm_scan_backward, lstm_scan_parameterized,
+};
 pub use mamba3::{
 	Mamba3MimoBackward, Mamba3PreprocessBackward, SsmBackward, mamba3_mimo, mamba3_mimo_backward,
 	mamba3_mimo_step, mamba3_preprocess, mamba3_preprocess_backward, mamba3_siso,
@@ -84,9 +95,16 @@ pub(in crate::ml) use moe::{
 	grouped_gemm_m_backward, grouped_linear_m_backward, grouped_linear_m_parameterized,
 	moe_combine_backward, moe_gather_backward, moe_route_weights_backward,
 };
-pub use pool::{adaptive_avg_pool_2d, avg_pool_2d, max_pool_2d};
+pub use pool::{
+	adaptive_avg_pool_2d, adaptive_avg_pool_3d, adaptive_max_pool_1d, adaptive_max_pool_2d,
+	adaptive_max_pool_3d, avg_pool_2d, avg_pool_3d, max_pool_1d, max_pool_2d, max_pool_3d,
+	max_unpool_1d, max_unpool_2d,
+};
 pub(in crate::ml) use pool::{
-	adaptive_avg_pool_2d_backward, avg_pool_2d_backward, max_pool_2d_backward,
+	adaptive_avg_pool_2d_backward, adaptive_avg_pool_3d_backward, adaptive_max_pool_1d_backward,
+	adaptive_max_pool_2d_backward, adaptive_max_pool_3d_backward, avg_pool_2d_backward,
+	avg_pool_3d_backward, max_pool_1d_backward, max_pool_2d_backward, max_pool_3d_backward,
+	max_unpool_1d_backward, max_unpool_2d_backward,
 };
 pub use quant::{QuantMatrix, Quantization, dequantize, mat_mul_nt, quantize};
 pub use rms_norm::{RmsNormGatedBackward, rms_norm, rms_norm_gated, rms_norm_gated_backward};

@@ -31,10 +31,10 @@ class MatrixAutogradSchemaTests(unittest.TestCase):
 		with self.assertRaises(oa_util.SchemaError):
 			oa_matrix.validate_matrix_autograd_schema(schema)
 
-	def test_existing_catalog_has_30_records_and_five_composition_aliases(self):
+	def test_existing_catalog_has_31_records_and_five_composition_aliases(self):
 		rows = oa_matrix.matrix_autograd_rows(list(self.schemas.values()))
-		self.assertEqual(len(rows), 30)
-		self.assertEqual(len({op["autograd"]["node"] for op in rows}), 30)
+		self.assertEqual(len(rows), 31)
+		self.assertEqual(len({op["autograd"]["node"] for op in rows}), 31)
 		aliases = {op["name"]: op["autograd"]["target"] for op in self.schemas["elemwise"]["operations"] if op.get("autograd", {}).get("mode") == "alias"}
 		self.assertEqual(aliases, {"neg": "scale", "add_scalar": "scale", "sub_scalar": "scale", "div_scalar": "scale", "bias_add": "add"})
 

@@ -7,12 +7,12 @@
 // matrix_blas_sha256=069a018c55da56f4a086cd2e1adf93d14c368274db0386dd226084fb9060700b
 // matrix_reduce_sha256=12a02e351479af1f60fb6c783c17c0a4834cbc5f513691df32e782777ded56bc
 // matrix_rng_sha256=bc63df2993dd5d9a09ae6d6f482a8fdf1f8dec4740a79dc6a3c475fe3de1da91
-// matrix_index_sha256=128d540ce6db24bfba19ff1d64add45419eec3dc907678f705100c2ebb4a3385
-// ml_training_sha256=fc8e36b17fa2f93f1897a2e98625d4e33da9ec46d91dc785017e425401309ebd
+// matrix_index_sha256=3af2a22d5d958bba3246d8ade8e5cafb8f51de44d1c36155cc41e324fbea3fdb
+// ml_training_sha256=faa4f7fe14ddee83260c86ef0ae313b7b0e9b8e7f586f1090e4350fbec8d9e38
 // audio_sha256=0acacb625934738cbac7eca8170ac18c3fb7f7dc2fb4b57552bf03ab04585d3b
 // cryptography_hash_sha256=346a7ffb863b1e9905cd924bf5b52ea0b452e06f9c1a0918d8d76e8ff4df2dc3
 // cryptography_pqc_sha256=8f189e5eb316e76fc2971de4cd6f5852eb7011a1e6fcaeebaba92903ca0214ed
-// image_sha256=fd3d0f85770c96d9be90c60a235a3b774a1661c36ffcb53024ada70f2c0b8919
+// image_sha256=4c3af0f4b2504702bcaaa32134afcbd07ca92d06660d4847a5eeb5a0691dde61
 // vision_detection_sha256=02e86d30bda28aa25900407a10548d1272ebbac64461f518e53e8266eebd9f1a
 // Current OARS compatibility contracts; donor OA identities replace each row when its full contract lands.
 
@@ -710,6 +710,42 @@ pub mod matrix {
 		OpAttributeSpec::new("end", OpAttributeKind::SignedInteger),
 	]);
 
+	pub const PAD: OperationContract = OperationContract::new(
+		"oa::matrix::pad",
+		0xa230e8355b39a336,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Gather)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("pads", OpAttributeKind::Shape),
+		OpAttributeSpec::new("mode", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("fill", OpAttributeKind::Float),
+	]);
+
+	pub const PAD_BACKWARD: OperationContract = OperationContract::new(
+		"oa::matrix::pad_backward",
+		0x085aed5943d4c786,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Gather)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("input_shape", OpAttributeKind::Shape),
+		OpAttributeSpec::new("pads", OpAttributeKind::Shape),
+		OpAttributeSpec::new("mode", OpAttributeKind::UnsignedInteger),
+	]);
+
 	pub const REPEAT_INTERLEAVE: OperationContract = OperationContract::new(
 		"oa::FnMatrix::repeatInterleave",
 		0x38ff9eff40739b27,
@@ -982,6 +1018,32 @@ pub mod matrix {
 	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
 	.with_control_flow(OpControlFlow::Conditional)
 	.optional_inputs(0x08);
+
+	pub const CAST_F32_I32: OperationContract = OperationContract::new(
+		"oa::matrix::cast_f32_i32",
+		0xc1fa6c9e17122a31,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::MatchInput)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const CAST_I32_F32: OperationContract = OperationContract::new(
+		"oa::matrix::cast_i32_f32",
+		0x5853a46a91848be0,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::MatchInput)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
 }
 
 /// Generated compatibility contracts for current ML kernels.
@@ -1434,6 +1496,75 @@ pub mod ml {
 	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
 	.mutated_inputs(0x0d)
 	.alias(0, 0)
+	.alias(1, 2)
+	.alias(2, 3);
+
+	pub const ADAMW_GATED_GRAPH_ADVANCE: OperationContract = OperationContract::new(
+		"oa::ml::optim::adamw_gated_graph_advance",
+		0xe2090b8caa755438,
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.mutated_inputs(0x01)
+	.alias(0, 0);
+
+	pub const ADAMW_GATED_GRAPH: OperationContract = OperationContract::new(
+		"oa::ml::optim::adamw_gated_graph",
+		0x97de0df5d8804c3a,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.mutated_inputs(0x0d)
+	.alias(0, 0)
+	.alias(1, 2)
+	.alias(2, 3);
+
+	pub const GRAD_SCALER_ADVANCE: OperationContract = OperationContract::new(
+		"oa::ml::optim::grad_scaler_advance",
+		0x30bed15237afeb07,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.mutated_inputs(0x0e)
+	.alias(0, 1)
 	.alias(1, 2)
 	.alias(2, 3);
 
@@ -2108,6 +2239,84 @@ pub mod ml {
 		OpAttributeSpec::new("output_width", OpAttributeKind::UnsignedInteger),
 	]);
 
+	pub const MAX_POOL_1D: OperationContract = OperationContract::new(
+		"oa::ml::matrix::max_pool_1d",
+		0xb75c0f0ec623a8c2,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("kernel_size", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const MAX_POOL_1D_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::max_pool_1d_backward",
+		0x80f77ee0202efe74,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("kernel_size", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const ADAPTIVE_MAX_POOL_1D: OperationContract = OperationContract::new(
+		"oa::ml::matrix::adaptive_max_pool_1d",
+		0x292ebd0f9e12c6ca,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new(
+		"output_length",
+		OpAttributeKind::UnsignedInteger,
+	)]);
+
+	pub const ADAPTIVE_MAX_POOL_1D_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::adaptive_max_pool_1d_backward",
+		0x392ef0738decc0e1,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new(
+		"output_length",
+		OpAttributeKind::UnsignedInteger,
+	)]);
+
 	pub const BATCH_NORM_2D: OperationContract = OperationContract::new(
 		"oa::ml::matrix::batch_norm_2d",
 		0xda7b505171725de3,
@@ -2278,6 +2487,94 @@ pub mod ml {
 		OpAttributeSpec::new("groups", OpAttributeKind::UnsignedInteger),
 	]);
 
+	pub const CONV_3D: OperationContract = OperationContract::new(
+		"oa::ml::matrix::conv_3d",
+		0x76331e99280417f2,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("groups", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const CONV_3D_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::conv_3d_backward",
+		0xc4d8069b807b39af,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("groups", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const UNFOLD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::unfold",
+		0xba155f2c6f2335db,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("kernel_size", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("dilation", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const FOLD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::fold",
+		0xc1333a3a92c35354,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("output_height", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("output_width", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("kernel_size", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("dilation", OpAttributeKind::UnsignedInteger),
+	]);
+
 	pub const CONV_1D: OperationContract = OperationContract::new(
 		"oa::ml::matrix::conv_1d",
 		0xd14897b9f7d9fffb,
@@ -2326,9 +2623,9 @@ pub mod ml {
 		OpAttributeSpec::new("dilation", OpAttributeKind::UnsignedInteger),
 	]);
 
-	pub const CONV_TRANSPOSE_1D: OperationContract = OperationContract::new(
-		"oa::ml::matrix::conv_transpose_1d",
-		0x35d6d97e23774f59,
+	pub const CONV_1D_TRANSPOSE: OperationContract = OperationContract::new(
+		"oa::ml::matrix::conv_1d_transpose",
+		0x065faf88fd4e4f3e,
 		&[OpValueKind::Matrix, OpValueKind::Matrix],
 		&[OpValueKind::Matrix],
 	)
@@ -2344,9 +2641,9 @@ pub mod ml {
 		OpAttributeSpec::new("dilation", OpAttributeKind::UnsignedInteger),
 	]);
 
-	pub const CONV_TRANSPOSE_1D_BACKWARD: OperationContract = OperationContract::new(
-		"oa::ml::matrix::conv_transpose_1d_backward",
-		0x36061ba519023ec2,
+	pub const CONV_1D_TRANSPOSE_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::conv_1d_transpose_backward",
+		0x044b6285a1ca1399,
 		&[
 			OpValueKind::Matrix,
 			OpValueKind::Matrix,
@@ -2366,9 +2663,9 @@ pub mod ml {
 		OpAttributeSpec::new("dilation", OpAttributeKind::UnsignedInteger),
 	]);
 
-	pub const CONV_TRANSPOSE_2D: OperationContract = OperationContract::new(
-		"oa::ml::matrix::conv_transpose_2d",
-		0xff236e3fead0dee4,
+	pub const CONV_2D_TRANSPOSE: OperationContract = OperationContract::new(
+		"oa::ml::matrix::conv_2d_transpose",
+		0xe9425ec91162405d,
 		&[
 			OpValueKind::Matrix,
 			OpValueKind::Matrix,
@@ -2387,9 +2684,9 @@ pub mod ml {
 		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
 	]);
 
-	pub const CONV_TRANSPOSE_2D_BACKWARD: OperationContract = OperationContract::new(
-		"oa::ml::matrix::conv_transpose_2d_backward",
-		0x89b9da6e3c21389d,
+	pub const CONV_2D_TRANSPOSE_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::conv_2d_transpose_backward",
+		0x52b9b65325ee5e29,
 		&[
 			OpValueKind::Matrix,
 			OpValueKind::Matrix,
@@ -2491,6 +2788,114 @@ pub mod ml {
 			OpValueKind::Matrix,
 		],
 		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new("has_bias", OpAttributeKind::Boolean)]);
+
+	pub const LSTM_SCAN: OperationContract = OperationContract::new(
+		"oa::ml::matrix::lstm_scan",
+		0x79d1a1962071ef9d,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Scan)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.with_control_flow(OpControlFlow::Loop)
+	.attributes(&[
+		OpAttributeSpec::new("hiddenSize", OpAttributeKind::SignedInteger),
+		OpAttributeSpec::new("sequenceLength", OpAttributeKind::SignedInteger),
+		OpAttributeSpec::new("batch", OpAttributeKind::SignedInteger),
+	])
+	.optional_inputs(0x04);
+
+	pub const LSTM_SCAN_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::lstm_scan_backward",
+		0x013bbecdbf1eeeeb,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Scan)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new("has_bias", OpAttributeKind::Boolean)]);
+
+	pub const LSTM_CELL: OperationContract = OperationContract::new(
+		"oa::ml::matrix::lstm_cell",
+		0x63bb4de89f955adf,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Opaque)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new("has_bias", OpAttributeKind::Boolean)]);
+
+	pub const LSTM_CELL_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::lstm_cell_backward",
+		0x0a6964144da0f4d8,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[
+			OpValueKind::Matrix,
 			OpValueKind::Matrix,
 			OpValueKind::Matrix,
 			OpValueKind::Matrix,
@@ -3836,6 +4241,348 @@ pub mod ml {
 	.with_lowering(OpLowering::Dispatch)
 	.with_fusion_class(OpFusionClass::Gemm)
 	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const MAX_POOL_3D: OperationContract = OperationContract::new(
+		"oa::ml::matrix::max_pool_3d",
+		0xd1686a2512e5c1d6,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("kernel_size", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const MAX_POOL_3D_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::max_pool_3d_backward",
+		0x80ef2ae64d2a306b,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("kernel_size", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const AVG_POOL_3D: OperationContract = OperationContract::new(
+		"oa::ml::matrix::avg_pool_3d",
+		0xdbc3abdda96df779,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("kernel_size", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const AVG_POOL_3D_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::avg_pool_3d_backward",
+		0x029115c7867314cf,
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("kernel_size", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const ADAPTIVE_MAX_POOL_2D: OperationContract = OperationContract::new(
+		"oa::ml::matrix::adaptive_max_pool_2d",
+		0xa9158aba43fcf8fa,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("output_height", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("output_width", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const ADAPTIVE_MAX_POOL_2D_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::adaptive_max_pool_2d_backward",
+		0x2dd99a4222e22ba2,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("output_height", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("output_width", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const ADAPTIVE_MAX_POOL_3D: OperationContract = OperationContract::new(
+		"oa::ml::matrix::adaptive_max_pool_3d",
+		0xfe5e587c7b947616,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("output_depth", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("output_height", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("output_width", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const ADAPTIVE_MAX_POOL_3D_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::adaptive_max_pool_3d_backward",
+		0x6f45dc3279e484f1,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("output_depth", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("output_height", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("output_width", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const ADAPTIVE_AVG_POOL_3D: OperationContract = OperationContract::new(
+		"oa::ml::matrix::adaptive_avg_pool_3d",
+		0x7335fb47ec54e909,
+		&[OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("output_depth", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("output_height", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("output_width", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const ADAPTIVE_AVG_POOL_3D_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::adaptive_avg_pool_3d_backward",
+		0x06a050243d65f945,
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("output_depth", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("output_height", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("output_width", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const MAX_UNPOOL_1D: OperationContract = OperationContract::new(
+		"oa::ml::matrix::max_unpool_1d",
+		0x1b74f5303c5a5657,
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("kernel_size", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const MAX_UNPOOL_1D_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::max_unpool_1d_backward",
+		0x26aa0b3d9e23dbf6,
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const MAX_UNPOOL_2D: OperationContract = OperationContract::new(
+		"oa::ml::matrix::max_unpool_2d",
+		0xbeb2045e64e7e4ee,
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("kernel_size", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const MAX_UNPOOL_2D_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::max_unpool_2d_backward",
+		0xc8c91c2e317fabcb,
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const CONV_3D_TRANSPOSE: OperationContract = OperationContract::new(
+		"oa::ml::matrix::conv_3d_transpose",
+		0x07ce1cfd1d11cd53,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const CONV_3D_TRANSPOSE_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::matrix::conv_3d_transpose_backward",
+		0xe4d86967a08de8e5,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("stride", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("padding", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const CTC: OperationContract = OperationContract::new(
+		"oa::ml::loss::ctc",
+		0x781ac33df2699194,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::Reverse)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Reduce)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new(
+		"blank",
+		OpAttributeKind::UnsignedInteger,
+	)]);
+
+	pub const CTC_BACKWARD: OperationContract = OperationContract::new(
+		"oa::ml::loss::ctc_backward",
+		0xf298e1b5a5e77053,
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Reduce)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new(
+		"blank",
+		OpAttributeKind::UnsignedInteger,
+	)]);
 
 	pub const NORMALIZE_OBSERVATION: OperationContract = OperationContract::new(
 		"oa::FnEnvironment::normalizeObservation",
@@ -6988,6 +7735,51 @@ pub mod image {
 	.with_fusion_class(OpFusionClass::Pointwise)
 	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
 	.attributes(&[OpAttributeSpec::new("alpha", OpAttributeKind::Float)]);
+
+	pub const CALC_HIST: OperationContract = OperationContract::new(
+		"oa::image::calc_hist",
+		0xdec648b1235465bc,
+		&[OpValueKind::Image],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Reduce)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("bins", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("lower", OpAttributeKind::Float),
+		OpAttributeSpec::new("upper", OpAttributeKind::Float),
+	]);
+
+	pub const EQUALIZE_HIST: OperationContract = OperationContract::new(
+		"oa::image::equalize_hist",
+		0x9cb3304a059426e6,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const COMPARE_HIST: OperationContract = OperationContract::new(
+		"oa::image::compare_hist",
+		0x1ebdbd17e40cfacb,
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Reduce)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new("method", OpAttributeKind::Enum)]);
 }
 
 /// Generated semantic contracts for Vision operations.

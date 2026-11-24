@@ -126,7 +126,8 @@ class ImageGenerationTests(unittest.TestCase):
 			with self.assertRaises(oa_util.SchemaError):
 				oa_image.validate_image_schema(self.schema)
 		self.schema = copy.deepcopy(original)
-		del self.schema["types"][-1]["defaults"]["std"]
+		normalization = next(t for t in self.schema["types"] if t["name"] == "NormalizationConfig")
+		del normalization["defaults"]["std"]
 		with self.assertRaisesRegex(oa_util.SchemaError, "defaults"):
 			oa_image.validate_image_schema(self.schema)
 

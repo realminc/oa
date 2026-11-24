@@ -1,0 +1,105 @@
+/// {{doc}}
+pub struct {{name}} {
+	output_height: usize,
+	output_width: usize,
+	kernel_size: usize,
+	stride: usize,
+	padding: usize,
+	dilation: usize,
+	registry: ModuleRegistry,
+}
+
+impl {{name}} {
+	/// Construct {{name}} with explicit output extent and window geometry.
+	///
+	/// # Errors
+	///
+	/// Returns an error when any extent or `kernel_size`, `stride`, `dilation`
+	/// is zero.
+	pub fn new(
+		output_height: usize,
+		output_width: usize,
+		kernel_size: usize,
+		stride: usize,
+		padding: usize,
+		dilation: usize,
+	) -> Result<Self> {
+		if output_height == 0
+			|| output_width == 0
+			|| kernel_size == 0
+			|| stride == 0
+			|| dilation == 0
+		{
+			return Err(crate::Error::invalid_argument(
+				"{{name}} requires nonzero output extent, kernel size, stride, and dilation",
+			));
+		}
+		Ok(Self {
+			output_height,
+			output_width,
+			kernel_size,
+			stride,
+			padding,
+			dilation,
+			registry: ModuleRegistry::new(),
+		})
+	}
+
+	/// Combine sliding columns into an overlapping NCHW image without
+	/// submitting or waiting.
+	///
+	/// # Errors
+	///
+	/// Returns an error from the underlying Matrix operation.
+	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{operation}}(
+			input,
+			self.output_height,
+			self.output_width,
+			self.kernel_size,
+			self.stride,
+			self.padding,
+			self.dilation,
+		)
+	}
+
+	/// Return the reconstructed image height.
+	pub const fn output_height(&self) -> usize {
+		self.output_height
+	}
+
+	/// Return the reconstructed image width.
+	pub const fn output_width(&self) -> usize {
+		self.output_width
+	}
+
+	/// Return the square kernel extent.
+	pub const fn kernel_size(&self) -> usize {
+		self.kernel_size
+	}
+
+	/// Return the spatial stride.
+	pub const fn stride(&self) -> usize {
+		self.stride
+	}
+
+	/// Return the symmetric zero-padding extent.
+	pub const fn padding(&self) -> usize {
+		self.padding
+	}
+
+	/// Return the kernel dilation.
+	pub const fn dilation(&self) -> usize {
+		self.dilation
+	}
+}
+
+impl Module for {{name}} {
+	fn forward(&self, input: &Matrix) -> Result<Matrix> {
+		{{name}}::forward(self, input)
+	}
+
+	fn registry(&self) -> &ModuleRegistry {
+		&self.registry
+	}
+}

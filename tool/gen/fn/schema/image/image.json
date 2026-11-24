@@ -3132,6 +3132,173 @@
         ],
         "annotations": []
       }
+    },
+    {
+      "name": "calc_hist",
+      "region_read": "elementwise",
+      "fusion_class": "reduce",
+      "input_kinds": ["image"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "explicit",
+      "dtype_rule": "explicit",
+      "attributes": [["bins", "unsigned_integer"], ["lower", "float"], ["upper", "float"]],
+      "python": {"defaults": {"lower": 0.0, "upper": 1.0}},
+      "rust": {
+        "category": "statistics",
+        "parameters": [["input", "&Image"], ["bins", "u32"], ["lower", "f32"], ["upper", "f32"]],
+        "returns": "Matrix",
+        "doc": [
+          "Accumulate a per-plane histogram over an FP32 NCHW or CHW image.",
+          "",
+          "Each `(batch, channel)` plane contributes one row of `bins` buckets to the",
+          "U32 result whose leading dimensions mirror the image; `[B,C,H,W]` and",
+          "`[C,H,W]` inputs produce `[B,C,bins]` and `[C,bins]` results. Values below",
+          "`lower` or at or above `upper` are ignored; in-range values map uniformly",
+          "onto `[0, bins)`. The accumulator is cleared inside the operation, so a",
+          "captured plan replays the same counts.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless `bins` is in `1..=256`, `lower` and `upper` are",
+          "finite with `lower < upper`, the image is nonempty FP32 NCHW/CHW, and all",
+          "sizes fit the shader ABI."
+        ],
+        "attribute_sources": {
+          "bins": {"encoding": "unsigned", "value": "bins"},
+          "lower": {"encoding": "float", "value": "lower"},
+          "upper": {"encoding": "float", "value": "upper"}
+        },
+        "bindings": [
+          {"name": "clear_buffers", "values": {"output_index": ["write", "histogram"]}},
+          {"name": "count_buffers", "values": {"input_index": ["read", "input"], "output_index": ["read_write", "histogram"]}}
+        ],
+        "push_constants": [
+          {"name": "clear_push", "values": {"element_count": ["U32", "histogram_elements"]}},
+          {"name": "count_push", "values": {"batch_size": ["U32", "batch"], "channels": ["U32", "channels"], "height": ["U32", "image_height"], "width": ["U32", "image_width"], "bins": ["U32", "bins"], "lower": ["F32", "lower"], "upper": ["F32", "upper"]}}
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageCalcHistClearU32"],
+            "kernel": "KernelId::ImageCalcHistClearU32",
+            "workgroups": "KernelId::ImageCalcHistClearU32.linear_workgroups(histogram_elements)"
+          },
+          {
+            "kernels": ["ImageCalcHistF32"],
+            "kernel": "KernelId::ImageCalcHistF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "equalize_hist",
+      "region_read": "elementwise",
+      "fusion_class": "effect",
+      "input_kinds": ["image"],
+      "output_kinds": ["image"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [],
+      "rust": {
+        "category": "statistics",
+        "parameters": [["input", "&Image"]],
+        "returns": "Image",
+        "doc": [
+          "Equalize a normalized FP32 image histogram per `(batch, channel)` plane.",
+          "",
+          "Pixel values are quantized into 256 uniform buckets over `[0, 1]`, the",
+          "per-plane cumulative distribution is spread back over `[0, 1]` following",
+          "the `equalizeHist` contract, and the result keeps the input layout and",
+          "format. Values outside `[0, 1]` clamp into the edge buckets.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless the image is nonempty FP32 NCHW/CHW and all",
+          "sizes fit the shader ABI."
+        ],
+        "attribute_sources": {},
+        "bindings": [
+          {"name": "clear_buffers", "values": {"output_index": ["write", "histogram"]}},
+          {"name": "count_buffers", "values": {"input_index": ["read", "input"], "output_index": ["read_write", "histogram"]}},
+          {"name": "lut_buffers", "values": {"histogram_index": ["read", "histogram"], "lut_index": ["write", "lut"]}},
+          {"name": "remap_buffers", "values": {"input_index": ["read", "input"], "lut_index": ["read", "lut"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": "clear_push", "values": {"element_count": ["U32", "histogram_elements"]}},
+          {"name": "count_push", "values": {"batch_size": ["U32", "batch"], "channels": ["U32", "channels"], "height": ["U32", "image_height"], "width": ["U32", "image_width"]}},
+          {"name": "lut_push", "values": {"element_count": ["U32", "histogram_elements"]}},
+          {"name": "remap_push", "values": {"batch_size": ["U32", "batch"], "channels": ["U32", "channels"], "height": ["U32", "image_height"], "width": ["U32", "image_width"]}}
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageEqualizeHistClearU32"],
+            "kernel": "KernelId::ImageEqualizeHistClearU32",
+            "workgroups": "KernelId::ImageEqualizeHistClearU32.linear_workgroups(histogram_elements)"
+          },
+          {
+            "kernels": ["ImageEqualizeHistF32"],
+            "kernel": "KernelId::ImageEqualizeHistF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          },
+          {
+            "kernels": ["ImageEqualizeHistLutF32"],
+            "kernel": "KernelId::ImageEqualizeHistLutF32",
+            "workgroups": "KernelId::ImageEqualizeHistLutF32.linear_workgroups(histogram_elements)"
+          },
+          {
+            "kernels": ["ImageEqualizeHistRemapF32"],
+            "kernel": "KernelId::ImageEqualizeHistRemapF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "compare_hist",
+      "region_read": "elementwise",
+      "fusion_class": "reduce",
+      "input_kinds": ["matrix", "matrix"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "explicit",
+      "dtype_rule": "explicit",
+      "attributes": [["method", "enum"]],
+      "python": {"defaults": {"method": "correlation"}},
+      "rust": {
+        "category": "statistics",
+        "parameters": [["first", "&Matrix"], ["second", "&Matrix"], ["method", "HistogramComparison"]],
+        "returns": "Matrix",
+        "doc": [
+          "Compare two same-shape U32 histogram matrices row by row.",
+          "",
+          "The last dimension is the bucket axis; every leading index is an",
+          "independent row, so `[B,C,bins]` histograms produce a `[B,C]` FP32 score",
+          "matrix. Correlation, chi-square, intersection, and Bhattacharyya follow",
+          "the OpenCV `compareHist` formulas; degenerate rows return `0.0` rather",
+          "than propagating a zero denominator.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless both inputs are same-shape nonempty U32 matrices",
+          "of rank at least two on one engine, and all sizes fit the shader ABI."
+        ],
+        "attribute_sources": {"method": {"encoding": "enumeration", "value": "method.token()"}},
+        "bindings": [
+          {"name": null, "values": {"first_index": ["read", "first"], "second_index": ["read", "second"], "output_index": ["write", "output"]}}
+        ],
+        "push_constants": [
+          {"name": null, "values": {"row_count": ["U32", "row_count"], "bin_count": ["U32", "bin_count"], "method": ["U32", "method.code()"]}}
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageCompareHistU32"],
+            "kernel": "KernelId::ImageCompareHistU32",
+            "workgroups": "KernelId::ImageCompareHistU32.linear_workgroups(row_count)"
+          }
+        ],
+        "annotations": []
+      }
     }
   ],
   "kernels": [
@@ -5206,6 +5373,226 @@
         ["class_count", "uint32"],
         ["alpha", "float32"]
       ]
+    },
+    {
+      "stable_id": 721,
+      "name": "calc_hist_clear",
+      "fusion_class": "effect",
+      "kernel_id": "ImageCalcHistClearU32",
+      "source": "src/slang/image/statistics/calc_hist_clear.slang",
+      "variant": "replay_safe_zero",
+      "dtype": "u32",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "calc_hist",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 0,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["output_index", "uint32"],
+        ["element_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 722,
+      "name": "calc_hist",
+      "fusion_class": "reduce",
+      "kernel_id": "ImageCalcHistF32",
+      "source": "src/slang/image/statistics/calc_hist.slang",
+      "variant": "atomic_u32",
+      "dtype": "f32",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "calc_hist",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["bins", "uint32"],
+        ["lower", "float32"],
+        ["upper", "float32"]
+      ]
+    },
+    {
+      "stable_id": 723,
+      "name": "equalize_hist_clear",
+      "fusion_class": "effect",
+      "kernel_id": "ImageEqualizeHistClearU32",
+      "source": "src/slang/image/statistics/equalize_hist_clear.slang",
+      "variant": "replay_safe_zero",
+      "dtype": "u32",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "equalize_hist",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 0,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["output_index", "uint32"],
+        ["element_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 724,
+      "name": "equalize_hist",
+      "fusion_class": "reduce",
+      "kernel_id": "ImageEqualizeHistF32",
+      "source": "src/slang/image/statistics/equalize_hist.slang",
+      "variant": "atomic_u32",
+      "dtype": "f32",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "equalize_hist",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "shared_atomic_contributors",
+            "extent": "one_element",
+            "collision": "atomic_u32",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 725,
+      "name": "equalize_hist_lut",
+      "fusion_class": "reduce",
+      "kernel_id": "ImageEqualizeHistLutF32",
+      "source": "src/slang/image/statistics/equalize_hist_lut.slang",
+      "variant": "cdf_lut",
+      "dtype": "f32",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "equalize_hist",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["histogram_index", "uint32"],
+        ["lut_index", "uint32"],
+        ["element_count", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 726,
+      "name": "equalize_hist_remap",
+      "fusion_class": "gather",
+      "kernel_id": "ImageEqualizeHistRemapF32",
+      "source": "src/slang/image/statistics/equalize_hist_remap.slang",
+      "variant": "lut_apply",
+      "dtype": "f32",
+      "workgroup_size": [16, 16, 1],
+      "dispatch_tile_size": [16, 16, 1],
+      "semantic_operation": "equalize_hist",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["lut_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 727,
+      "name": "compare_hist",
+      "fusion_class": "reduce",
+      "kernel_id": "ImageCompareHistU32",
+      "source": "src/slang/image/statistics/compare_hist.slang",
+      "variant": "row_reduce",
+      "dtype": "u32",
+      "workgroup_size": [256, 1, 1],
+      "semantic_operation": "compare_hist",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["first_index", "uint32"],
+        ["second_index", "uint32"],
+        ["output_index", "uint32"],
+        ["row_count", "uint32"],
+        ["bin_count", "uint32"],
+        ["method", "uint32"]
+      ]
     }
   ],
   "types": [
@@ -5312,6 +5699,49 @@
       "variants": [],
       "defaults": {"mean": "[0.0; 3]", "std": "[1.0; 3]"},
       "default_variant": null
+    },
+    {
+      "category": "statistics",
+      "class": "mode",
+      "name": "HistogramComparison",
+      "before": "compare_hist",
+      "kind": "enum",
+      "visibility": "pub",
+      "derive": ["Clone", "Copy", "Debug", "Default", "PartialEq", "Eq"],
+      "doc": "Row-wise histogram comparison metric used by [`compare_hist`].",
+      "fields": [],
+      "variants": [
+        {
+          "name": "Correlation",
+          "doc": "Pearson correlation between centered rows; `1.0` is a perfect match.",
+          "token": "correlation",
+          "code": "0"
+        },
+        {
+          "name": "ChiSquare",
+          "doc": "Chi-square distance over paired buckets; `0.0` is a perfect match.",
+          "token": "chi_square",
+          "code": "1"
+        },
+        {
+          "name": "Intersection",
+          "doc": "Normalized per-bucket minimum sum; `1.0` is a perfect match.",
+          "token": "intersection",
+          "code": "2"
+        },
+        {
+          "name": "Bhattacharyya",
+          "doc": "Bhattacharyya distance between normalized rows; `0.0` is a perfect match.",
+          "token": "bhattacharyya",
+          "code": "3"
+        }
+      ],
+      "defaults": null,
+      "default_variant": "Correlation",
+      "mappings": [
+        {"name": "token", "visibility": "pub(super)", "returns": "&'static str", "field": "token"},
+        {"name": "code", "visibility": "pub(super)", "returns": "u32", "field": "code"}
+      ]
     }
   ]
 }

@@ -130,11 +130,20 @@ pub(crate) enum ImageSemanticInput<'a> {
 	Matrix(&'a Matrix),
 }
 
+/// Semantic output produced by an Image operation.
+///
+/// Pixel transformations keep their [`Image`] result; statistic and
+/// interpretation operations produce ordinary [`Matrix`] values instead.
+pub(crate) enum ImageSemanticOutput<'a> {
+	Image(&'a Image),
+	Matrix(&'a Matrix),
+}
+
 /// Borrowed Image-valued semantic operation for one executable lowering.
 pub(crate) struct ImageSemanticDispatch<'a> {
 	pub(crate) contract: OperationContract,
 	pub(crate) inputs: &'a [ImageSemanticInput<'a>],
-	pub(crate) outputs: &'a [&'a Image],
+	pub(crate) outputs: &'a [ImageSemanticOutput<'a>],
 	pub(crate) attributes: &'a [OpAttribute],
 }
 

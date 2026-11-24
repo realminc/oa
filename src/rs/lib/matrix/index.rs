@@ -415,6 +415,114 @@ pub fn greater_equal(input: &Matrix, value: f32) -> Result<Matrix> {
 	Ok(output)
 }
 
+/// Convert an FP32 matrix to I32, truncating each element toward zero.
+///
+/// The result is intentionally detached because a discrete cast has no
+/// admitted adjoint.
+///
+/// # Errors
+///
+/// Returns an error when `input` is not FP32, its element count exceeds the
+/// shader ABI, allocation fails, or runtime recording fails.
+pub fn cast_f32_i32(input: &Matrix) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::CAST_F32_I32;
+	let operation = CONTRACT.name();
+	if input.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires an F32 input"
+		)));
+	}
+	let element_count = u32::try_from(input.element_count())
+		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.element_count(),
+		DType::I32,
+	)?;
+	if element_count != 0 {
+		let buffers = [
+			BufferBinding::read(input.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let push_constants = [PushConstant::U32(element_count)];
+		let inputs = [input];
+		let outputs = [&output];
+		input.engine_handle().record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::MatrixCastF32I32F32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: KernelId::MatrixCastF32I32F32.linear_workgroups(element_count),
+				indirect: None,
+			},
+			SemanticDispatch {
+				contract: CONTRACT,
+				inputs: &inputs,
+				outputs: &outputs,
+				attributes: &[],
+			},
+		)?;
+	}
+	Ok(output)
+}
+
+/// Convert an I32 or U32 matrix to FP32.
+///
+/// The result is intentionally detached because a discrete cast has no
+/// admitted adjoint.
+///
+/// # Errors
+///
+/// Returns an error when `input` is not I32 or U32, its element count exceeds
+/// the shader ABI, allocation fails, or runtime recording fails.
+pub fn cast_i32_f32(input: &Matrix) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::CAST_I32_F32;
+	let operation = CONTRACT.name();
+	if !matches!(input.dtype(), DType::I32 | DType::U32) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires an I32 or U32 input"
+		)));
+	}
+	let element_count = u32::try_from(input.element_count())
+		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		input.shape().to_vec(),
+		input.element_count(),
+		DType::F32,
+	)?;
+	if element_count != 0 {
+		let buffers = [
+			BufferBinding::read(input.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let source_dtype = if input.dtype() == DType::I32 { 0 } else { 1 };
+		let push_constants = [
+			PushConstant::U32(element_count),
+			PushConstant::U32(source_dtype),
+		];
+		let inputs = [input];
+		let outputs = [&output];
+		input.engine_handle().record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::MatrixCastI32F32F32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: KernelId::MatrixCastI32F32F32.linear_workgroups(element_count),
+				indirect: None,
+			},
+			SemanticDispatch {
+				contract: CONTRACT,
+				inputs: &inputs,
+				outputs: &outputs,
+				attributes: &[],
+			},
+		)?;
+	}
+	Ok(output)
+}
+
 fn causal_mask_axes(input: &Matrix, operation: &'static str) -> Result<(u32, u32)> {
 	if input.dtype() != DType::F32 || input.shape().len() < 2 || input.element_count() == 0 {
 		return Err(Error::invalid_argument(format!(
@@ -1589,6 +1697,269 @@ pub(crate) fn slice_backward(
 		)?;
 	}
 	Ok(output)
+}
+
+/// Border contract for [`pad`].
+///
+/// Constant fills padded elements with `fill`; the remaining modes source
+/// padded elements from the input border. The numeric discriminants are the
+/// kernel push-constant mode values.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PadMode {
+	/// Fill padded elements with a constant value.
+	#[default]
+	Constant = 0,
+	/// Clamp each padded coordinate to the nearest edge element.
+	Replicate = 1,
+	/// Mirror the border without repeating the edge element.
+	Reflect = 2,
+	/// Wrap padded coordinates around the axis extent.
+	Circular = 3,
+}
+
+/// Pad a rank-one through rank-five FP32 matrix per dimension.
+///
+/// `pads` holds one `[before, after]` pair per axis in input order;
+/// `output[i] = input[i] + before_i + after_i` per axis. `fill` applies only
+/// to [`PadMode::Constant`]. Reflect mode requires each pad amount to be
+/// smaller than the axis extent.
+///
+/// # Errors
+///
+/// Returns an error when the rank, dtype, pad arity, reflect bound, shader
+/// ABI, allocation, or runtime recording contract is invalid.
+pub fn pad(input: &Matrix, pads: &[usize], mode: PadMode, fill: f32) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::PAD;
+	let operation = CONTRACT.name();
+	let shape = input.shape();
+	let rank = shape.len();
+	if input.dtype() != DType::F32 || !(1..=5).contains(&rank) {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires a rank-one through rank-five F32 matrix"
+		)));
+	}
+	if pads.len() != 2 * rank {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires one [before, after] pad pair per axis"
+		)));
+	}
+	let mut output_shape = shape.to_vec();
+	for (axis, extent) in output_shape.iter_mut().enumerate() {
+		let before = pads[2 * axis];
+		let after = pads[2 * axis + 1];
+		if mode == PadMode::Reflect && (before >= *extent || after >= *extent) {
+			return Err(Error::invalid_argument(format!(
+				"{operation} reflect pads must be smaller than the axis extent"
+			)));
+		}
+		*extent = extent
+			.checked_add(before)
+			.and_then(|extent| extent.checked_add(after))
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
+	}
+	let output_count = output_shape.iter().try_fold(1_usize, |count, extent| {
+		count
+			.checked_mul(*extent)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))
+	})?;
+	let count = as_u32(output_count, operation, "output element count")?;
+	let output = Matrix::allocate(
+		input.engine_handle(),
+		output_shape.clone(),
+		output_count,
+		DType::F32,
+	)?;
+	if count != 0 {
+		let buffers = [
+			BufferBinding::read(input.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let push_constants = pad_push_constants(
+			count,
+			rank,
+			mode,
+			fill,
+			&PadExtents {
+				input: shape,
+				output: &output_shape,
+				pads,
+			},
+			true,
+			operation,
+		)?;
+		let inputs = [input];
+		let outputs = [&output];
+		let attributes = [
+			OpAttribute::Shape {
+				name: "pads".into(),
+				value: pads.to_vec(),
+			},
+			OpAttribute::UnsignedInteger {
+				name: "mode".into(),
+				value: mode as u64,
+			},
+			OpAttribute::Float {
+				name: "fill".into(),
+				value: fill as f64,
+			},
+		];
+		input.engine_handle().record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::MatrixPadF32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: KernelId::MatrixPadF32.linear_workgroups(count),
+				indirect: None,
+			},
+			SemanticDispatch {
+				contract: CONTRACT,
+				inputs: &inputs,
+				outputs: &outputs,
+				attributes: &attributes,
+			},
+		)?;
+	}
+	autograd::record_pad(input, &output, pads.to_vec(), mode as usize)?;
+	Ok(output)
+}
+
+pub(crate) fn pad_backward(
+	input_shape: &[usize],
+	pads: &[usize],
+	mode: usize,
+	output_gradient: &Matrix,
+) -> Result<Matrix> {
+	const CONTRACT: OperationContract = crate::core::operation::matrix::PAD_BACKWARD;
+	let operation = CONTRACT.name();
+	let rank = input_shape.len();
+	if output_gradient.dtype() != DType::F32 || !(1..=5).contains(&rank) || pads.len() != 2 * rank {
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires rank-one through rank-five F32 geometry"
+		)));
+	}
+	let mut expected = input_shape.to_vec();
+	for (axis, extent) in expected.iter_mut().enumerate() {
+		*extent += pads[2 * axis] + pads[2 * axis + 1];
+	}
+	if output_gradient.shape() != expected {
+		return Err(Error::invalid_argument(format!(
+			"{operation} output gradient shape does not match the saved pad"
+		)));
+	}
+	let output_count = input_shape.iter().try_fold(1_usize, |count, extent| {
+		count
+			.checked_mul(*extent)
+			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))
+	})?;
+	let count = as_u32(output_count, operation, "output element count")?;
+	let output = Matrix::allocate(
+		output_gradient.engine_handle(),
+		input_shape.to_vec(),
+		output_count,
+		DType::F32,
+	)?;
+	if count != 0 {
+		let pad_mode = match mode {
+			1 => PadMode::Replicate,
+			2 => PadMode::Reflect,
+			3 => PadMode::Circular,
+			_ => PadMode::Constant,
+		};
+		let buffers = [
+			BufferBinding::read(output_gradient.storage()),
+			BufferBinding::write(output.storage()),
+		];
+		let push_constants = pad_push_constants(
+			count,
+			rank,
+			pad_mode,
+			0.0,
+			&PadExtents {
+				input: input_shape,
+				output: output_gradient.shape(),
+				pads,
+			},
+			false,
+			operation,
+		)?;
+		let inputs = [output_gradient];
+		let outputs = [&output];
+		let attributes = [
+			OpAttribute::Shape {
+				name: "input_shape".into(),
+				value: input_shape.to_vec(),
+			},
+			OpAttribute::Shape {
+				name: "pads".into(),
+				value: pads.to_vec(),
+			},
+			OpAttribute::UnsignedInteger {
+				name: "mode".into(),
+				value: mode as u64,
+			},
+		];
+		output_gradient.engine_handle().record_semantic(
+			ComputeDispatch {
+				kernel: KernelId::MatrixPadBackwardF32,
+				buffers: &buffers,
+				push_constants: &push_constants,
+				workgroups: KernelId::MatrixPadBackwardF32.linear_workgroups(count),
+				indirect: None,
+			},
+			SemanticDispatch {
+				contract: CONTRACT,
+				inputs: &inputs,
+				outputs: &outputs,
+				attributes: &attributes,
+			},
+		)?;
+	}
+	Ok(output)
+}
+
+/// Shapes shared by the pad kernel push layout.
+struct PadExtents<'a> {
+	input: &'a [usize],
+	output: &'a [usize],
+	pads: &'a [usize],
+}
+
+/// Pack the shared pad kernel push layout: count, rank, mode, optional fill
+/// bits, five in/out extents, and five pad-before values. Resource indices
+/// are prepended by runtime recording.
+fn pad_push_constants(
+	count: u32,
+	rank: usize,
+	mode: PadMode,
+	fill: f32,
+	extents: &PadExtents<'_>,
+	forward: bool,
+	operation: &'static str,
+) -> Result<Vec<PushConstant>> {
+	let mut push_constants = Vec::with_capacity(if forward { 19 } else { 18 });
+	push_constants.push(PushConstant::U32(count));
+	push_constants.push(PushConstant::U32(rank as u32));
+	push_constants.push(PushConstant::U32(mode as u32));
+	if forward {
+		push_constants.push(PushConstant::U32(fill.to_bits()));
+	}
+	for shape in [extents.input, extents.output] {
+		for axis in 0..5 {
+			push_constants.push(PushConstant::U32(if axis < shape.len() {
+				as_u32(shape[axis], operation, "pad extent")?
+			} else {
+				0
+			}));
+		}
+	}
+	for axis in 0..5 {
+		push_constants.push(PushConstant::U32(if axis < rank {
+			as_u32(extents.pads[2 * axis], operation, "pad before")?
+		} else {
+			0
+		}));
+	}
+	Ok(push_constants)
 }
 
 /// Split `input` along `dim` into one device-resident matrix per `sizes` entry.

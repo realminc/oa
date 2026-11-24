@@ -1,0 +1,177 @@
+{
+	"version": 1,
+	"family": "padding",
+	"imports": [
+		"use crate::{Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "ConstantPad1d",
+			"doc": "Pad the last dimension of a Matrix with a constant value.",
+			"template": "constant_pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"dim": 1,
+				"sides": 2
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/constant_pad_1d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "ConstantPad2d",
+			"doc": "Pad the trailing two dimensions of a Matrix with a constant value.",
+			"template": "constant_pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"dim": 2,
+				"sides": 4
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/constant_pad_2d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "ConstantPad3d",
+			"doc": "Pad the trailing three dimensions of a Matrix with a constant value.",
+			"template": "constant_pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"dim": 3,
+				"sides": 6
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/constant_pad_3d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "ReflectionPad1d",
+			"doc": "Pad the last dimension by mirroring the border without repeating the edge element.",
+			"template": "pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"mode": "Reflect",
+				"dim": 1,
+				"sides": 2
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/reflection_pad_1d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "ReflectionPad2d",
+			"doc": "Pad the trailing two dimensions by mirroring the border without repeating edge elements.",
+			"template": "pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"mode": "Reflect",
+				"dim": 2,
+				"sides": 4
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/reflection_pad_2d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "ReflectionPad3d",
+			"doc": "Pad the trailing three dimensions by mirroring the border without repeating edge elements.",
+			"template": "pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"mode": "Reflect",
+				"dim": 3,
+				"sides": 6
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/reflection_pad_3d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "ReplicationPad1d",
+			"doc": "Pad the last dimension by clamping coordinates to the edge element.",
+			"template": "pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"mode": "Replicate",
+				"dim": 1,
+				"sides": 2
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/replication_pad_1d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "ReplicationPad2d",
+			"doc": "Pad the trailing two dimensions by clamping coordinates to edge elements.",
+			"template": "pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"mode": "Replicate",
+				"dim": 2,
+				"sides": 4
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/replication_pad_2d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "ReplicationPad3d",
+			"doc": "Pad the trailing three dimensions by clamping coordinates to edge elements.",
+			"template": "pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"mode": "Replicate",
+				"dim": 3,
+				"sides": 6
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/replication_pad_3d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "CircularPad1d",
+			"doc": "Pad the last dimension by wrapping coordinates around the axis extent.",
+			"template": "pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"mode": "Circular",
+				"dim": 1,
+				"sides": 2
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/circular_pad_1d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "CircularPad2d",
+			"doc": "Pad the trailing two dimensions by wrapping coordinates around each axis extent.",
+			"template": "pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"mode": "Circular",
+				"dim": 2,
+				"sides": 4
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/circular_pad_2d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "CircularPad3d",
+			"doc": "Pad the trailing three dimensions by wrapping coordinates around each axis extent.",
+			"template": "pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"mode": "Circular",
+				"dim": 3,
+				"sides": 6
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/circular_pad_3d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		},
+		{
+			"name": "ZeroPad2d",
+			"doc": "Pad the trailing two dimensions of a Matrix with zeros.",
+			"template": "pad",
+			"values": {
+				"operation": "crate::matrix::pad",
+				"mode": "Constant",
+				"dim": 2,
+				"sides": 4
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/pad/zero_pad_2d.cpp",
+			"adaptation": "Rust ownership, ModuleRegistry and checked error contracts; preserved operation behavior"
+		}
+	]
+}

@@ -9,6 +9,15 @@ let Some(output_gradient) = gradients.take_output(*output_id) else {
 	gradients.accumulate(input.value_id(), input_gradient)?;
 	Ok(true)
 
+// @operation pad
+// @fields input,output_id,pads,mode
+let Some(output_gradient) = gradients.take_output(*output_id) else {
+		return Ok(false);
+	};
+	let input_gradient = matrix::pad_backward(input.shape(), pads, *mode, &output_gradient)?;
+	gradients.accumulate(input.value_id(), input_gradient)?;
+	Ok(true)
+
 // @operation repeat_interleave
 // @fields input,output_id,repeats,dim
 let Some(output_gradient) = gradients.take_output(*output_id) else {

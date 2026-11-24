@@ -1756,7 +1756,7 @@ fn lower_embedding_backward_sum(nodes: &[ComputeNode]) -> Option<Vec<(usize, Com
 	)
 }
 
-/// Decode the Conv1d tail `[MlConv1dBiasAddF32, MlConv1dTransposeF32]`
+/// Decode the Conv1d tail `[MlConv1dBiasAddF32, MlConv1dLayoutTransposeF32]`
 /// plus an eligible direct consumer of the transposed output into one
 /// dispatch, or the pair alone when the tail ends there. The bias add
 /// updates the projected GEMM buffer in place, so every fused shape must
@@ -1827,7 +1827,7 @@ fn lower_conv_1d_bias_tail(nodes: &[ComputeNode]) -> Option<(ComputeNode, usize)
 						&& !sum.same_as(residual)
 						&& !sum.same_as(conv_out)
 					{
-						let kernel = KernelId::MlConv1dBiasTransposeResidualReluF32;
+						let kernel = KernelId::MlConv1dBiasLayoutTransposeResidualReluF32;
 						let semantic_ops = merged_semantic_ops(&[
 							&add.semantic_ops,
 							&transpose.semantic_ops,
@@ -1864,7 +1864,7 @@ fn lower_conv_1d_bias_tail(nodes: &[ComputeNode]) -> Option<(ComputeNode, usize)
 				}
 			}
 			{
-				let kernel = KernelId::MlConv1dBiasTransposeReluF32;
+				let kernel = KernelId::MlConv1dBiasLayoutTransposeReluF32;
 				let semantic_ops = merged_semantic_ops(&[
 					&add.semantic_ops,
 					&transpose.semantic_ops,
@@ -1903,9 +1903,9 @@ fn lower_conv_1d_bias_tail(nodes: &[ComputeNode]) -> Option<(ComputeNode, usize)
 			&& matches!(consumer.push_constants[3], PushConstant::F32(_))
 		{
 			let kernel = if consumer.kernel == KernelId::MlChannelNormReluF32 {
-				KernelId::MlConv1dBiasTransposeNormReluF32
+				KernelId::MlConv1dBiasLayoutTransposeNormReluF32
 			} else {
-				KernelId::MlConv1dBiasTransposeNormF32
+				KernelId::MlConv1dBiasLayoutTransposeNormF32
 			};
 			let semantic_ops = merged_semantic_ops(&[
 				&add.semantic_ops,
@@ -1987,7 +1987,7 @@ fn lower_conv_1d_bias_tail(nodes: &[ComputeNode]) -> Option<(ComputeNode, usize)
 	let fused = fused_node(
 		add,
 		transpose,
-		KernelId::MlConv1dBiasTransposeF32,
+		KernelId::MlConv1dBiasLayoutTransposeF32,
 		vec![
 			BufferUse {
 				buffer: projected.clone(),

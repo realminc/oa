@@ -27,8 +27,8 @@ pub(crate) use device::logical::dispatch::{
 pub use device::{DeviceKind, DeviceSummary};
 pub(crate) use dispatch::{
 	AudioSemanticDispatch, AudioSemanticInput, AudioSemanticOutput, ImageSemanticDispatch,
-	ImageSemanticInput, OptionalSemanticDispatch, QuantSemanticDispatch, QuantSemanticInput,
-	QuantSemanticOutput, SemanticDispatch,
+	ImageSemanticInput, ImageSemanticOutput, OptionalSemanticDispatch, QuantSemanticDispatch,
+	QuantSemanticInput, QuantSemanticOutput, SemanticDispatch,
 };
 pub(crate) use dna::kernel::KernelId;
 pub(in crate::runtime) use dna::provider::blas::{

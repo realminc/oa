@@ -29,3 +29,20 @@ pub(super) fn unit_uniform(length: usize, seed: u64) -> Vec<f32> {
 	let mut random = SplitMix64::new(seed);
 	(0..length).map(|_| random.next_f32()).collect()
 }
+
+/// Box-Muller standard-normal stream scaled by `stddev`, sharing the
+/// SplitMix64 seed contract. Pairwise draws keep prefixes stable across
+/// call lengths so constructor seeds stay comparable.
+pub(super) fn normal(length: usize, stddev: f32, seed: u64) -> Vec<f32> {
+	let mut random = SplitMix64::new(seed);
+	(0..length.div_ceil(2))
+		.flat_map(|_| {
+			let u1 = random.next_f32().max(f32::MIN_POSITIVE);
+			let u2 = random.next_f32();
+			let radius = (-2.0 * u1.ln()).sqrt() * stddev;
+			let angle = std::f32::consts::TAU * u2;
+			[radius * angle.cos(), radius * angle.sin()]
+		})
+		.take(length)
+		.collect()
+}

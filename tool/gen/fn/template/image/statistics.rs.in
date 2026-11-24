@@ -1,0 +1,180 @@
+// @operation calc_hist
+	if bins == 0 || bins > 256 {
+		return Err(Error::invalid_argument(
+			"image::calc_hist bins must be in 1..=256",
+		));
+	}
+	if !lower.is_finite() || !upper.is_finite() || lower >= upper {
+		return Err(Error::invalid_argument(
+			"image::calc_hist requires finite bounds with lower < upper",
+		));
+	}
+	let (batch, channels, image_height, image_width) = image_extent(input, "image::calc_hist")?;
+	let mut shape = input.as_matrix().shape().to_vec();
+	shape.truncate(shape.len() - 2);
+	shape.push(bins as usize);
+	let histogram_elements = shape
+		.iter()
+		.try_fold(1u32, |count, value| {
+			count.checked_mul(u32::try_from(*value).ok()?)
+		})
+		.ok_or_else(|| Error::out_of_range("image::calc_hist output size exceeds u32"))?;
+	let histogram = Matrix::allocate(
+		input.engine_handle(),
+		shape,
+		histogram_elements as usize,
+		DType::U32,
+	)?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups: {{workgroups:1}},
+			indirect: None,
+		},
+	];
+	let attributes = [{{attributes}}];
+	input.engine_handle().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Matrix(&histogram)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(histogram)
+// @operation equalize_hist
+	let (batch, channels, image_height, image_width) = image_extent(input, "image::equalize_hist")?;
+	let mut histogram_shape = input.as_matrix().shape().to_vec();
+	histogram_shape.truncate(histogram_shape.len() - 2);
+	histogram_shape.push(256);
+	let histogram_elements = histogram_shape
+		.iter()
+		.try_fold(1u32, |count, value| {
+			count.checked_mul(u32::try_from(*value).ok()?)
+		})
+		.ok_or_else(|| Error::out_of_range("image::equalize_hist workspace exceeds u32"))?;
+	let engine = input.engine_handle();
+	let histogram = Matrix::allocate(
+		engine,
+		histogram_shape.clone(),
+		histogram_elements as usize,
+		DType::U32,
+	)?;
+	let lut = Matrix::allocate(
+		engine,
+		histogram_shape,
+		histogram_elements as usize,
+		DType::F32,
+	)?;
+	let output = allocate_like(input, "image::equalize_hist")?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let {{binding_name:2}} = [{{bindings:2}}];
+	let {{push_name:2}} = [{{push:2}}];
+	let {{binding_name:3}} = [{{bindings:3}}];
+	let {{push_name:3}} = [{{push:3}}];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups: {{workgroups:1}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:2}},
+			buffers: &{{binding_name:2}},
+			push_constants: &{{push_name:2}},
+			workgroups: {{workgroups:2}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:3}},
+			buffers: &{{binding_name:3}},
+			push_constants: &{{push_name:3}},
+			workgroups: {{workgroups:3}},
+			indirect: None,
+		},
+	];
+	input.engine_handle().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation compare_hist
+	if first.dtype() != DType::U32
+		|| second.dtype() != DType::U32
+		|| first.shape() != second.shape()
+		|| !first.engine_handle().same_as(second.engine_handle())
+	{
+		return Err(Error::invalid_argument(
+			"image::compare_hist requires same-shape same-engine U32 histograms",
+		));
+	}
+	let shape = first.shape();
+	if shape.len() < 2 || shape.contains(&0) {
+		return Err(Error::invalid_argument(
+			"image::compare_hist requires nonempty matrices of rank at least two",
+		));
+	}
+	let bin_count = u32::try_from(shape[shape.len() - 1])
+		.map_err(|_| Error::out_of_range("image::compare_hist bin count exceeds u32"))?;
+	let row_count = shape[..shape.len() - 1]
+		.iter()
+		.try_fold(1u32, |count, value| {
+			count.checked_mul(u32::try_from(*value).ok()?)
+		})
+		.ok_or_else(|| Error::out_of_range("image::compare_hist row count exceeds u32"))?;
+	let output = Matrix::allocate(
+		first.engine_handle(),
+		shape[..shape.len() - 1].to_vec(),
+		row_count as usize,
+		DType::F32,
+	)?;
+	first.engine_handle().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[
+				ImageSemanticInput::Matrix(first),
+				ImageSemanticInput::Matrix(second),
+			],
+			outputs: &[ImageSemanticOutput::Matrix(&output)],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)

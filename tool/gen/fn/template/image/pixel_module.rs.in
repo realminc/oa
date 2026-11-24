@@ -3,7 +3,8 @@
 use crate::{
 	DType, Error, Image, ImageFormat, ImageLayout, Matrix, OpAttribute, Result,
 	runtime::{
-		BufferBinding, ComputeDispatch, ImageSemanticDispatch, ImageSemanticInput, KernelId,
+		BufferBinding, ComputeDispatch, ImageSemanticDispatch, ImageSemanticInput,
+		ImageSemanticOutput, KernelId,
 		PushConstant,
 	},
 };

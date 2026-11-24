@@ -1773,7 +1773,7 @@ test_vk!(epilogue_fuses_embedding_backward_sum_pair, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_conv_1d_bias_transpose_pair, engine, {
+test_vk!(epilogue_fuses_conv_1d_bias_layout_transpose_pair, engine, {
 	// Every Conv1d lowering ends with an in-place bias add over the
 	// projected GEMM buffer followed by the NCL transpose. The fused
 	// kernel adds bias[channel] at the tile load, so the projected
@@ -1832,7 +1832,7 @@ test_vk!(epilogue_fuses_conv_1d_bias_transpose_pair, engine, {
 			node["kernel"]
 				.as_str()
 				.unwrap()
-				.ends_with("conv_1d_bias_transpose_relu.f32")
+				.ends_with("conv_1d_bias_layout_transpose_relu.f32")
 		})
 		.count();
 	assert_eq!(
@@ -1845,7 +1845,7 @@ test_vk!(epilogue_fuses_conv_1d_bias_transpose_pair, engine, {
 			node["kernel"]
 				.as_str()
 				.unwrap()
-				.ends_with("conv_1d_bias_transpose.f32")
+				.ends_with("conv_1d_bias_layout_transpose.f32")
 		})
 		.count();
 	assert_eq!(
@@ -1856,7 +1856,7 @@ test_vk!(epilogue_fuses_conv_1d_bias_transpose_pair, engine, {
 		!nodes.iter().any(|node| {
 			let kernel = node["kernel"].as_str().unwrap();
 			kernel.ends_with("conv_1d_bias_add.f32")
-				|| kernel.ends_with("conv_1d_transpose.f32")
+				|| kernel.ends_with("conv_1d_layout_transpose.f32")
 				|| kernel.ends_with("matrix.relu.f32")
 		}),
 		"no unfused Conv1d bias add, transpose or ReLU may remain"
@@ -1873,7 +1873,7 @@ test_vk!(epilogue_fuses_conv_1d_bias_transpose_pair, engine, {
 });
 
 test_vk!(
-	epilogue_fuses_conv_1d_bias_transpose_residual_relu,
+	epilogue_fuses_conv_1d_bias_layout_transpose_residual_relu,
 	engine,
 	{
 		// The ALM encoder's residual block feeds relu(conv(x)) + residual
@@ -1941,7 +1941,7 @@ test_vk!(
 				node["kernel"]
 					.as_str()
 					.unwrap()
-					.ends_with("conv_1d_bias_transpose_residual_relu.f32")
+					.ends_with("conv_1d_bias_layout_transpose_residual_relu.f32")
 			})
 			.count();
 		assert_eq!(
@@ -1952,7 +1952,7 @@ test_vk!(
 			!nodes.iter().any(|node| {
 				let kernel = node["kernel"].as_str().unwrap();
 				kernel.ends_with("conv_1d_bias_add.f32")
-					|| kernel.ends_with("conv_1d_transpose.f32")
+					|| kernel.ends_with("conv_1d_layout_transpose.f32")
 					|| kernel.ends_with("matrix.relu.f32")
 			}),
 			"no unfused Conv1d bias add, transpose or ReLU may remain"
@@ -1969,23 +1969,26 @@ test_vk!(
 	}
 );
 
-test_vk!(epilogue_fuses_conv_1d_bias_transpose_norm_relu, engine, {
-	// The ALM encoder applies channel normalization with fused ReLU
-	// directly after Conv1d. The fused kernel reduces over the channels
-	// of the biased projected row — the same lane-strided order the
-	// unfused normalization applies to the transposed output — and
-	// republishes the biased conv output because the backward adjoint
-	// consumes it as saved state.
-	let input = oa::Matrix::new_from_f32(
-		[2, 3, 11],
-		&vec![0.0; 2 * 3 * 11]
-			.iter()
-			.enumerate()
-			.map(|(i, _)| ((i * 31 % 19) as f32 - 9.0) / 8.0)
-			.collect::<Vec<f32>>(),
-	)?;
-	let target = oa::Matrix::new_from_f32([2, 5, 11], &vec![0.0; 2 * 5 * 11])?;
-	let layers =
+test_vk!(
+	epilogue_fuses_conv_1d_bias_layout_transpose_norm_relu,
+	engine,
+	{
+		// The ALM encoder applies channel normalization with fused ReLU
+		// directly after Conv1d. The fused kernel reduces over the channels
+		// of the biased projected row — the same lane-strided order the
+		// unfused normalization applies to the transposed output — and
+		// republishes the biased conv output because the backward adjoint
+		// consumes it as saved state.
+		let input = oa::Matrix::new_from_f32(
+			[2, 3, 11],
+			&vec![0.0; 2 * 3 * 11]
+				.iter()
+				.enumerate()
+				.map(|(i, _)| ((i * 31 % 19) as f32 - 9.0) / 8.0)
+				.collect::<Vec<f32>>(),
+		)?;
+		let target = oa::Matrix::new_from_f32([2, 5, 11], &vec![0.0; 2 * 5 * 11])?;
+		let layers =
 		|| -> oa::Result<(oa::ml::nn::Conv1d, oa::ml::nn::LayerNorm, oa::ml::nn::Conv1d)> {
 			Ok((
 				oa::ml::nn::Conv1d::new_with_seed(3, 5, 3, 1, 1, 1, 0x6d1)?,
@@ -1993,81 +1996,82 @@ test_vk!(epilogue_fuses_conv_1d_bias_transpose_norm_relu, engine, {
 				oa::ml::nn::Conv1d::new_with_seed(5, 5, 3, 1, 1, 1, 0x6d2)?,
 			))
 		};
-	let reference = layers()?;
-	let candidate = layers()?;
-	let gradients = |layers: &(
-		oa::ml::nn::Conv1d,
-		oa::ml::nn::LayerNorm,
-		oa::ml::nn::Conv1d,
-	)|
-	 -> oa::Result<Vec<Vec<f32>>> {
-		layers
-			.0
-			.parameters()
+		let reference = layers()?;
+		let candidate = layers()?;
+		let gradients = |layers: &(
+			oa::ml::nn::Conv1d,
+			oa::ml::nn::LayerNorm,
+			oa::ml::nn::Conv1d,
+		)|
+		 -> oa::Result<Vec<Vec<f32>>> {
+			layers
+				.0
+				.parameters()
+				.iter()
+				.chain(layers.1.parameters().iter())
+				.chain(layers.2.parameters().iter())
+				.map(|p| p.gradient().unwrap().read_f32())
+				.collect()
+		};
+		let run = |layers: &(
+			oa::ml::nn::Conv1d,
+			oa::ml::nn::LayerNorm,
+			oa::ml::nn::Conv1d,
+		)|
+		 -> oa::Result<Vec<Vec<f32>>> {
+			let tape = oa::ml::GradientTape::new();
+			let hidden = layers.1.forward_channel_relu(&layers.0.forward(&input)?)?;
+			let reconstruction = layers.2.forward(&hidden)?;
+			let loss = oa::ml::loss::mse(&reconstruction, &target)?;
+			tape.backward(&loss)?;
+			gradients(layers)
+		};
+		let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
+		let expected = run(&reference)?;
+		drop(epilogue_disabled);
+		let (plan, _) = engine.capture(|| {
+			let _ = run(&candidate);
+			Ok(())
+		})?;
+		let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("epilogue"))
+			.expect("fused epilogue executable report must be valid JSON");
+		let nodes = report["nodes"].as_array().expect("nodes");
+		let fused = nodes
 			.iter()
-			.chain(layers.1.parameters().iter())
-			.chain(layers.2.parameters().iter())
-			.map(|p| p.gradient().unwrap().read_f32())
-			.collect()
-	};
-	let run = |layers: &(
-		oa::ml::nn::Conv1d,
-		oa::ml::nn::LayerNorm,
-		oa::ml::nn::Conv1d,
-	)|
-	 -> oa::Result<Vec<Vec<f32>>> {
-		let tape = oa::ml::GradientTape::new();
-		let hidden = layers.1.forward_channel_relu(&layers.0.forward(&input)?)?;
-		let reconstruction = layers.2.forward(&hidden)?;
-		let loss = oa::ml::loss::mse(&reconstruction, &target)?;
-		tape.backward(&loss)?;
-		gradients(layers)
-	};
-	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
-	let expected = run(&reference)?;
-	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
-		let _ = run(&candidate);
-		Ok(())
-	})?;
-	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("epilogue"))
-		.expect("fused epilogue executable report must be valid JSON");
-	let nodes = report["nodes"].as_array().expect("nodes");
-	let fused = nodes
-		.iter()
-		.filter(|node| {
-			node["kernel"]
-				.as_str()
-				.unwrap()
-				.ends_with("conv_1d_bias_transpose_norm_relu.f32")
-		})
-		.count();
-	assert_eq!(
-		fused, 1,
-		"the Conv1d-norm-ReLU tail must fuse all three nodes"
-	);
-	assert!(
-		!nodes.iter().any(|node| {
-			let kernel = node["kernel"].as_str().unwrap();
-			kernel.ends_with("conv_1d_bias_add.f32")
-				|| kernel.ends_with("conv_1d_transpose.f32")
-				|| kernel.ends_with("channel_norm_relu.f32")
-		}),
-		"no unfused Conv1d bias add, transpose or channel norm may remain"
-	);
-	engine.submit(&plan)?.wait()?;
-	let actual = gradients(&candidate)?;
-	// The fused norm keeps the donor's lane-strided reduction order, so
-	// forward is bit-identical; backward runs the other matchers the
-	// disabled reference skipped, so gradients agree within tolerance.
-	for (actual, expected) in actual.iter().flatten().zip(expected.iter().flatten()) {
-		assert!(
-			(actual - expected).abs() <= 1e-4 + 1e-4 * expected.abs(),
-			"fused Conv1d-norm tail must match unfused: {actual} vs {expected}"
+			.filter(|node| {
+				node["kernel"]
+					.as_str()
+					.unwrap()
+					.ends_with("conv_1d_bias_layout_transpose_norm_relu.f32")
+			})
+			.count();
+		assert_eq!(
+			fused, 1,
+			"the Conv1d-norm-ReLU tail must fuse all three nodes"
 		);
+		assert!(
+			!nodes.iter().any(|node| {
+				let kernel = node["kernel"].as_str().unwrap();
+				kernel.ends_with("conv_1d_bias_add.f32")
+					|| kernel.ends_with("conv_1d_layout_transpose.f32")
+					|| kernel.ends_with("channel_norm_relu.f32")
+			}),
+			"no unfused Conv1d bias add, transpose or channel norm may remain"
+		);
+		engine.submit(&plan)?.wait()?;
+		let actual = gradients(&candidate)?;
+		// The fused norm keeps the donor's lane-strided reduction order, so
+		// forward is bit-identical; backward runs the other matchers the
+		// disabled reference skipped, so gradients agree within tolerance.
+		for (actual, expected) in actual.iter().flatten().zip(expected.iter().flatten()) {
+			assert!(
+				(actual - expected).abs() <= 1e-4 + 1e-4 * expected.abs(),
+				"fused Conv1d-norm tail must match unfused: {actual} vs {expected}"
+			);
+		}
+		Ok(())
 	}
-	Ok(())
-});
+);
 
 test_vk!(epilogue_fuses_conv_1d_bias_copy, engine, {
 	// The ALM decoder transposes a Conv1d output straight back to
@@ -2128,7 +2132,7 @@ test_vk!(epilogue_fuses_conv_1d_bias_copy, engine, {
 	assert!(
 		!nodes.iter().any(|node| {
 			let kernel = node["kernel"].as_str().unwrap();
-			kernel.ends_with("conv_1d_bias_add.f32") || kernel.ends_with("conv_1d_transpose.f32")
+			kernel.ends_with("conv_1d_bias_add.f32") || kernel.ends_with("conv_1d_layout_transpose.f32")
 		}),
 		"no unfused Conv1d bias add or NCL transpose may remain"
 	);

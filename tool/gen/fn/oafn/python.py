@@ -95,9 +95,11 @@ PYTHON_PRIMITIVE_TYPES = {
 PYTHON_ENUM_TYPES = {
 	"InterpolationMode": "super::interpolation",
 	"BorderMode": "super::border",
+	"HistogramComparison": "super::histogram_comparison",
 	"ImageFormat": "super::format",
 	"crate::ImageFormat": "super::format",
 	"NormalizeAudioMode": "super::normalize_mode",
+	"PadMode": "super::pad_mode",
 	"StftWindow": "super::stft_window",
 }
 

@@ -1806,7 +1806,7 @@ pub(in crate::runtime) fn specialize_conv_node(device: &Arc<Device>, node: &mut 
 		return;
 	}
 	let (program, accesses, scalar_count) = match node.kernel {
-		KernelId::MlConv1dIm2ColF32 | KernelId::MlConvTranspose1dBackwardF32 => (
+		KernelId::MlConv1dIm2ColF32 | KernelId::MlConv1dTransposeBackwardF32 => (
 			BlockProgram::conv_1d_im2_col(),
 			&[BufferAccess::Read, BufferAccess::Write][..],
 			8,
@@ -1816,8 +1816,8 @@ pub(in crate::runtime) fn specialize_conv_node(device: &Arc<Device>, node: &mut 
 			&[BufferAccess::Read, BufferAccess::Read, BufferAccess::Write][..],
 			9,
 		),
-		KernelId::MlConvTranspose1dF32 => (
-			BlockProgram::conv_transpose_1d(),
+		KernelId::MlConv1dTransposeF32 => (
+			BlockProgram::conv_1d_transpose(),
 			&[BufferAccess::Read, BufferAccess::Read, BufferAccess::Write][..],
 			9,
 		),
@@ -1836,23 +1836,23 @@ pub(in crate::runtime) fn specialize_conv_node(device: &Arc<Device>, node: &mut 
 			][..],
 			12,
 		),
-		KernelId::MlConvTranspose2dF32 => (
-			BlockProgram::conv_transpose_2d(),
+		KernelId::MlConv2dTransposeF32 => (
+			BlockProgram::conv_2d_transpose(),
 			&[BufferAccess::Read, BufferAccess::Read, BufferAccess::Write][..],
 			10,
 		),
-		KernelId::MlConvTranspose2dBiasAddF32 => (
-			BlockProgram::conv_transpose_2d_bias_add(),
+		KernelId::MlConv2dTransposeBiasAddF32 => (
+			BlockProgram::conv_2d_transpose_bias_add(),
 			&[BufferAccess::ReadWrite, BufferAccess::Read][..],
 			4,
 		),
-		KernelId::MlConvTranspose2dBackwardF32 => (
-			BlockProgram::conv_transpose_2d_backward(),
+		KernelId::MlConv2dTransposeBackwardF32 => (
+			BlockProgram::conv_2d_transpose_backward(),
 			&[BufferAccess::Read, BufferAccess::Read, BufferAccess::Write][..],
 			10,
 		),
-		KernelId::MlConvTranspose2dParameterBackwardF32 => (
-			BlockProgram::conv_transpose_2d_parameter_backward(),
+		KernelId::MlConv2dTransposeParameterBackwardF32 => (
+			BlockProgram::conv_2d_transpose_parameter_backward(),
 			&[
 				BufferAccess::Read,
 				BufferAccess::Read,
@@ -1861,18 +1861,18 @@ pub(in crate::runtime) fn specialize_conv_node(device: &Arc<Device>, node: &mut 
 			][..],
 			11,
 		),
-		KernelId::MlConv1dBiasTransposeF32 => (
-			BlockProgram::conv_1d_bias_transpose(),
+		KernelId::MlConv1dBiasLayoutTransposeF32 => (
+			BlockProgram::conv_1d_bias_layout_transpose(),
 			&[BufferAccess::Read, BufferAccess::Read, BufferAccess::Write][..],
 			3,
 		),
-		KernelId::MlConv1dBiasTransposeReluF32 => (
-			BlockProgram::conv_1d_bias_transpose_relu(),
+		KernelId::MlConv1dBiasLayoutTransposeReluF32 => (
+			BlockProgram::conv_1d_bias_layout_transpose_relu(),
 			&[BufferAccess::Read, BufferAccess::Read, BufferAccess::Write][..],
 			3,
 		),
-		KernelId::MlConv1dBiasTransposeResidualReluF32 => (
-			BlockProgram::conv_1d_bias_transpose_residual_relu(),
+		KernelId::MlConv1dBiasLayoutTransposeResidualReluF32 => (
+			BlockProgram::conv_1d_bias_layout_transpose_residual_relu(),
 			&[
 				BufferAccess::Read,
 				BufferAccess::Read,
@@ -1887,8 +1887,8 @@ pub(in crate::runtime) fn specialize_conv_node(device: &Arc<Device>, node: &mut 
 			&[BufferAccess::Read, BufferAccess::Read, BufferAccess::Write][..],
 			2,
 		),
-		KernelId::MlConv1dBiasTransposeNormF32 => (
-			BlockProgram::conv_1d_bias_transpose_norm(false),
+		KernelId::MlConv1dBiasLayoutTransposeNormF32 => (
+			BlockProgram::conv_1d_bias_layout_transpose_norm(false),
 			&[
 				BufferAccess::Read,
 				BufferAccess::Read,
@@ -1899,8 +1899,8 @@ pub(in crate::runtime) fn specialize_conv_node(device: &Arc<Device>, node: &mut 
 			][..],
 			4,
 		),
-		KernelId::MlConv1dBiasTransposeNormReluF32 => (
-			BlockProgram::conv_1d_bias_transpose_norm(true),
+		KernelId::MlConv1dBiasLayoutTransposeNormReluF32 => (
+			BlockProgram::conv_1d_bias_layout_transpose_norm(true),
 			&[
 				BufferAccess::Read,
 				BufferAccess::Read,
@@ -1916,8 +1916,8 @@ pub(in crate::runtime) fn specialize_conv_node(device: &Arc<Device>, node: &mut 
 			&[BufferAccess::ReadWrite, BufferAccess::Read][..],
 			2,
 		),
-		KernelId::MlConv1dTransposeF32 => (
-			BlockProgram::conv_1d_transpose(),
+		KernelId::MlConv1dLayoutTransposeF32 => (
+			BlockProgram::conv_1d_layout_transpose(),
 			&[BufferAccess::Read, BufferAccess::Write][..],
 			3,
 		),

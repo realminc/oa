@@ -2,6 +2,8 @@
 
 #[path = "test_activation.rs"]
 mod activation;
+#[path = "test_adaptive_softmax.rs"]
+mod adaptive_softmax;
 #[path = "test_attention.rs"]
 mod attention;
 #[path = "test_batch_norm.rs"]
@@ -12,8 +14,14 @@ mod byte;
 mod channel_norm;
 #[path = "test_conv.rs"]
 mod conv;
+#[path = "test_dropout_ext.rs"]
+mod dropout_ext;
+#[path = "test_embedding_bag.rs"]
+mod embedding_bag;
 #[path = "test_empyrealm.rs"]
 mod empyrealm;
+#[path = "test_encoder_decoder.rs"]
+mod encoder_decoder;
 #[path = "test_ffn.rs"]
 mod ffn;
 #[path = "test_flow.rs"]
@@ -24,10 +32,18 @@ mod gru;
 mod layer_norm;
 #[path = "test_linear_attention.rs"]
 mod linear_attention;
+#[path = "test_lstm.rs"]
+mod lstm;
 #[path = "test_mamba3.rs"]
 mod mamba3;
+#[path = "test_misc.rs"]
+mod misc;
 #[path = "test_moe.rs"]
 mod moe;
+#[path = "test_nn_parity.rs"]
+mod nn_parity;
+#[path = "test_padding.rs"]
+mod padding;
 #[path = "test_pool.rs"]
 mod pool;
 #[path = "test_rms_norm.rs"]

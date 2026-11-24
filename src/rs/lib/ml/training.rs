@@ -51,9 +51,9 @@ pub use program::{
 };
 
 pub use schedule::{
-	CosineScheduler, CosineWarmRestartsScheduler, CyclicMode, CyclicScheduler,
-	LinearWarmupCosineScheduler, LrScheduler, OneCycleScheduler, PlateauMode,
-	ReduceOnPlateauScheduler, SequentialScheduler, WarmupScheduler,
+	CosineScheduler, CosineWarmRestartsScheduler, CyclicMode, CyclicScheduler, ExponentialScheduler,
+	LinearWarmupCosineScheduler, LrScheduler, MultiStepScheduler, OneCycleScheduler, PlateauMode,
+	ReduceOnPlateauScheduler, SequentialScheduler, StepScheduler, WarmupScheduler,
 };
 pub use session::{
 	TrainingCommand, TrainingCommandDisposition, TrainingCommandError, TrainingCommandKind,

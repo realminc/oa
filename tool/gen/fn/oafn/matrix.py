@@ -630,6 +630,8 @@ def validate_index_schema(schema: dict[str, Any]) -> None:
 			"moe_routing_bias_update",
 			"slice",
 			"slice_backward",
+			"pad",
+			"pad_backward",
 			"repeat_interleave",
 			"repeat_interleave_backward",
 			"gather",
@@ -650,6 +652,8 @@ def validate_index_schema(schema: dict[str, Any]) -> None:
 			"scatter_rows_indirect",
 			"compact_rows_backward_indirect",
 			"scatter_rows_backward_source_indirect",
+			"cast_f32_i32",
+			"cast_i32_f32",
 		],
 		"Index operations must preserve the admitted donor family order",
 	)

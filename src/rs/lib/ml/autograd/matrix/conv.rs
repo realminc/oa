@@ -41,9 +41,9 @@ pub(in crate::ml) fn record_conv_1d(
 
 #[allow(
 	clippy::too_many_arguments,
-	reason = "the node retains exact ConvTranspose1d state and optional module parameter"
+	reason = "the node retains exact Conv1dTranspose state and optional module parameter"
 )]
-pub(in crate::ml) fn record_conv_transpose_1d(
+pub(in crate::ml) fn record_conv_1d_transpose(
 	input: &Matrix,
 	output: &Matrix,
 	weight: Option<(Parameter, u64)>,
@@ -55,7 +55,7 @@ pub(in crate::ml) fn record_conv_transpose_1d(
 	let (weight, weight_version) = weight
 		.map(|(parameter, version)| (Some(parameter), Some(version)))
 		.unwrap_or((None, None));
-	record_node(GradNode::ConvTranspose1d {
+	record_node(GradNode::Conv1dTranspose {
 		input: input.clone(),
 		output_id: output.value_id(),
 		weight,
@@ -69,9 +69,9 @@ pub(in crate::ml) fn record_conv_transpose_1d(
 
 #[allow(
 	clippy::too_many_arguments,
-	reason = "the node retains exact ConvTranspose2d state and optional module parameters"
+	reason = "the node retains exact Conv2dTranspose state and optional module parameters"
 )]
-pub(in crate::ml) fn record_conv_transpose_2d(
+pub(in crate::ml) fn record_conv_2d_transpose(
 	input: &Matrix,
 	output: &Matrix,
 	weight: Option<(Parameter, u64)>,
@@ -87,7 +87,41 @@ pub(in crate::ml) fn record_conv_transpose_2d(
 	let (bias, bias_version) = bias
 		.map(|(parameter, version)| (Some(parameter), Some(version)))
 		.unwrap_or((None, None));
-	record_node(GradNode::ConvTranspose2d {
+	record_node(GradNode::Conv2dTranspose {
+		input: input.clone(),
+		output_id: output.value_id(),
+		weight,
+		weight_value,
+		weight_version,
+		bias,
+		bias_value,
+		bias_version,
+		stride,
+		padding,
+	})
+}
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "the node retains exact Conv3dTranspose state and optional module parameters"
+)]
+pub(in crate::ml) fn record_conv_3d_transpose(
+	input: &Matrix,
+	output: &Matrix,
+	weight: Option<(Parameter, u64)>,
+	weight_value: Matrix,
+	bias: Option<(Parameter, u64)>,
+	bias_value: Matrix,
+	stride: usize,
+	padding: usize,
+) -> Result<()> {
+	let (weight, weight_version) = weight
+		.map(|(parameter, version)| (Some(parameter), Some(version)))
+		.unwrap_or((None, None));
+	let (bias, bias_version) = bias
+		.map(|(parameter, version)| (Some(parameter), Some(version)))
+		.unwrap_or((None, None));
+	record_node(GradNode::Conv3dTranspose {
 		input: input.clone(),
 		output_id: output.value_id(),
 		weight,
@@ -123,6 +157,42 @@ pub(in crate::ml) fn record_conv_2d(
 		.map(|(parameter, version)| (Some(parameter), Some(version)))
 		.unwrap_or((None, None));
 	record_node(GradNode::Conv2d {
+		input: input.clone(),
+		output_id: output.value_id(),
+		weight,
+		weight_value,
+		weight_version,
+		bias,
+		bias_value,
+		bias_version,
+		stride,
+		padding,
+		groups,
+	})
+}
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "the node retains exact grouped-convolution state and optional module parameters"
+)]
+pub(in crate::ml) fn record_conv_3d(
+	input: &Matrix,
+	output: &Matrix,
+	weight: Option<(Parameter, u64)>,
+	weight_value: Matrix,
+	bias: Option<(Parameter, u64)>,
+	bias_value: Matrix,
+	stride: usize,
+	padding: usize,
+	groups: usize,
+) -> Result<()> {
+	let (weight, weight_version) = weight
+		.map(|(parameter, version)| (Some(parameter), Some(version)))
+		.unwrap_or((None, None));
+	let (bias, bias_version) = bias
+		.map(|(parameter, version)| (Some(parameter), Some(version)))
+		.unwrap_or((None, None));
+	record_node(GradNode::Conv3d {
 		input: input.clone(),
 		output_id: output.value_id(),
 		weight,

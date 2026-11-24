@@ -234,6 +234,44 @@ impl GradientTape {
 						bias.accumulate_gradient(bias_gradient)?;
 					}
 				}
+				GradNode::Conv3d {
+					input,
+					output_id,
+					weight,
+					weight_value,
+					bias,
+					bias_value,
+					stride,
+					padding,
+					groups,
+					..
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let (input_gradient, weight_gradient, bias_gradient) =
+						crate::ml::matrix::conv_3d_backward(
+							input,
+							weight_value,
+							&output_gradient,
+							*stride,
+							*padding,
+							*groups,
+						)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						weight_value.value_id(),
+						weight_gradient.clone(),
+					)?;
+					accumulate_value_gradient(&mut gradients, bias_value.value_id(), bias_gradient.clone())?;
+					if let Some(weight) = weight {
+						weight.accumulate_gradient(weight_gradient)?;
+					}
+					if let Some(bias) = bias {
+						bias.accumulate_gradient(bias_gradient)?;
+					}
+				}
 				GradNode::Conv1d {
 					input,
 					output_id,
@@ -272,7 +310,7 @@ impl GradientTape {
 						bias.accumulate_gradient(bias_gradient)?;
 					}
 				}
-				GradNode::ConvTranspose1d {
+				GradNode::Conv1dTranspose {
 					input,
 					output_id,
 					weight,
@@ -285,7 +323,7 @@ impl GradientTape {
 					let Some(output_gradient) = gradients.remove(output_id) else {
 						continue;
 					};
-					let (input_gradient, weight_gradient) = crate::ml::matrix::conv_transpose_1d_backward(
+					let (input_gradient, weight_gradient) = crate::ml::matrix::conv_1d_transpose_backward(
 						input,
 						weight_value,
 						&output_gradient,
@@ -303,7 +341,7 @@ impl GradientTape {
 						weight.accumulate_gradient(weight_gradient)?;
 					}
 				}
-				GradNode::ConvTranspose2d {
+				GradNode::Conv2dTranspose {
 					input,
 					output_id,
 					weight,
@@ -318,7 +356,43 @@ impl GradientTape {
 						continue;
 					};
 					let (input_gradient, weight_gradient, bias_gradient) =
-						crate::ml::matrix::conv_transpose_2d_backward(
+						crate::ml::matrix::conv_2d_transpose_backward(
+							input,
+							weight_value,
+							&output_gradient,
+							*stride,
+							*padding,
+						)?;
+					accumulate_value_gradient(&mut gradients, input.value_id(), input_gradient)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						weight_value.value_id(),
+						weight_gradient.clone(),
+					)?;
+					accumulate_value_gradient(&mut gradients, bias_value.value_id(), bias_gradient.clone())?;
+					if let Some(weight) = weight {
+						weight.accumulate_gradient(weight_gradient)?;
+					}
+					if let Some(bias) = bias {
+						bias.accumulate_gradient(bias_gradient)?;
+					}
+				}
+				GradNode::Conv3dTranspose {
+					input,
+					output_id,
+					weight,
+					weight_value,
+					bias,
+					bias_value,
+					stride,
+					padding,
+					..
+				} => {
+					let Some(output_gradient) = gradients.remove(output_id) else {
+						continue;
+					};
+					let (input_gradient, weight_gradient, bias_gradient) =
+						crate::ml::matrix::conv_3d_transpose_backward(
 							input,
 							weight_value,
 							&output_gradient,
@@ -1030,6 +1104,106 @@ impl GradientTape {
 						bias.accumulate_gradient(bias_gradient)?;
 					}
 				}
+				GradNode::LstmScan(node) => {
+					let Some(output_gradient) = gradients.remove(&node.output_id) else {
+						continue;
+					};
+					let (gates_i_gradient, weight_gradient, bias_gradient) =
+						crate::ml::matrix::lstm_scan_backward(
+							&output_gradient,
+							&node.gates_i,
+							&node.hidden_previous,
+							&node.cell_previous,
+							&node.cell_state,
+							&node.weight_value,
+							&node.bias_value,
+							node.has_bias,
+						)?;
+					accumulate_value_gradient(&mut gradients, node.gates_i.value_id(), gates_i_gradient)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						node.weight_value.value_id(),
+						weight_gradient.clone(),
+					)?;
+					if node.has_bias {
+						accumulate_value_gradient(
+							&mut gradients,
+							node.bias_value.value_id(),
+							bias_gradient.clone(),
+						)?;
+					}
+					if let Some(weight) = &node.weight {
+						weight.accumulate_gradient(weight_gradient)?;
+					}
+					if let Some(bias) = &node.bias {
+						bias.accumulate_gradient(bias_gradient)?;
+					}
+				}
+				GradNode::LstmCell(node) => {
+					let hidden_gradient = gradients.remove(&node.output_id);
+					let cell_gradient = gradients.remove(&node.cell_next_id);
+					if hidden_gradient.is_none() && cell_gradient.is_none() {
+						continue;
+					}
+					let hidden_gradient = match hidden_gradient {
+						Some(gradient) => gradient,
+						None => Matrix::new_from_slice_handle(
+							node.hidden.engine_handle(),
+							node.hidden.shape().to_vec(),
+							&vec![0.0_f32; node.hidden.element_count()],
+						)?,
+					};
+					let cell_gradient = match cell_gradient {
+						Some(gradient) => gradient,
+						None => Matrix::new_from_slice_handle(
+							node.cell.engine_handle(),
+							node.cell.shape().to_vec(),
+							&vec![0.0_f32; node.cell.element_count()],
+						)?,
+					};
+					let (
+						gates_i_gradient,
+						hidden_state_gradient,
+						cell_state_gradient,
+						weight_gradient,
+						bias_gradient,
+					) = crate::ml::matrix::lstm_cell_backward(
+						&node.gates_i,
+						&node.gates_h,
+						&node.hidden,
+						&node.cell,
+						&hidden_gradient,
+						&cell_gradient,
+						&node.weight_value,
+						&node.bias_value,
+						node.has_bias,
+					)?;
+					accumulate_value_gradient(&mut gradients, node.gates_i.value_id(), gates_i_gradient)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						node.hidden.value_id(),
+						hidden_state_gradient,
+					)?;
+					accumulate_value_gradient(&mut gradients, node.cell.value_id(), cell_state_gradient)?;
+					accumulate_value_gradient(
+						&mut gradients,
+						node.weight_value.value_id(),
+						weight_gradient.clone(),
+					)?;
+					if node.has_bias {
+						accumulate_value_gradient(
+							&mut gradients,
+							node.bias_value.value_id(),
+							bias_gradient.clone(),
+						)?;
+					}
+					if let Some(weight) = &node.weight {
+						weight.accumulate_gradient(weight_gradient)?;
+					}
+					if let Some(bias) = &node.bias {
+						bias.accumulate_gradient(bias_gradient)?;
+					}
+				}
 			}
 			if let Some((forward, generation)) = attachment {
 				engine.complete_semantic_autograd(forward, entry.sequence, generation, backward_first)?;
@@ -1050,6 +1224,9 @@ fn reached_output_id(node: &GradNode, gradients: &HashMap<u64, Matrix>) -> Optio
 			.outputs
 			.iter()
 			.map(Matrix::value_id)
+			.find(|output_id| gradients.contains_key(output_id)),
+		GradNode::LstmCell(node) => [node.output_id, node.cell_next_id]
+			.into_iter()
 			.find(|output_id| gradients.contains_key(output_id)),
 		_ => gradients
 			.contains_key(&node.output_id())

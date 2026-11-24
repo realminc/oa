@@ -45,3 +45,134 @@ let input_gradient = crate::ml::matrix::adaptive_avg_pool_2d_backward(
 )?;
 accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
 Ok(BackwardStatus::Recorded)
+
+// @operation max_pool_1d
+let Self { input, indices, output_id, kernel_size, stride, padding } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = crate::ml::matrix::max_pool_1d_backward(
+	input,
+	indices,
+	&output_gradient,
+	*kernel_size,
+	*stride,
+	*padding,
+)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation adaptive_max_pool_1d
+let Self { input, indices, output_id, output_length } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = crate::ml::matrix::adaptive_max_pool_1d_backward(
+	input,
+	indices,
+	&output_gradient,
+	*output_length,
+)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation max_pool_3d
+let Self { input, indices, output_id, kernel_size, stride, padding } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = crate::ml::matrix::max_pool_3d_backward(
+	input,
+	indices,
+	&output_gradient,
+	*kernel_size,
+	*stride,
+	*padding,
+)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation avg_pool_3d
+let Self { input, output_id, kernel_size, stride, padding } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = crate::ml::matrix::avg_pool_3d_backward(
+	input,
+	&output_gradient,
+	*kernel_size,
+	*stride,
+	*padding,
+)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation adaptive_max_pool_2d
+let Self { input, indices, output_id, output_height, output_width } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = crate::ml::matrix::adaptive_max_pool_2d_backward(
+	input,
+	indices,
+	&output_gradient,
+	*output_height,
+	*output_width,
+)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation adaptive_max_pool_3d
+let Self { input, indices, output_id, output_depth, output_height, output_width } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = crate::ml::matrix::adaptive_max_pool_3d_backward(
+	input,
+	indices,
+	&output_gradient,
+	*output_depth,
+	*output_height,
+	*output_width,
+)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation adaptive_avg_pool_3d
+let Self { input, output_id, output_depth, output_height, output_width } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = crate::ml::matrix::adaptive_avg_pool_3d_backward(
+	input,
+	&output_gradient,
+	*output_depth,
+	*output_height,
+	*output_width,
+)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation max_unpool_1d
+let Self { input, indices, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = crate::ml::matrix::max_unpool_1d_backward(
+	indices,
+	&output_gradient,
+)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation max_unpool_2d
+let Self { input, indices, output_id } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = crate::ml::matrix::max_unpool_2d_backward(
+	indices,
+	&output_gradient,
+)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)

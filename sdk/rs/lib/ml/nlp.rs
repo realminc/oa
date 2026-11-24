@@ -1541,6 +1541,24 @@ impl CharTransformer {
 	pub fn forward(&self, tokens: &Matrix) -> Result<Matrix> {
 		self.inner.forward(tokens)
 	}
+
+	/// Allocate the per-layer decode cache for one autoregressive session.
+	///
+	/// # Errors
+	///
+	/// Returns an error when `batch_size` is zero.
+	pub fn new_cache(&self, batch_size: usize) -> Result<nn::TransformerCache> {
+		self.inner.new_cache(batch_size)
+	}
+
+	/// Advance one decode position; `token` is a `[B]` U32 matrix.
+	///
+	/// # Errors
+	///
+	/// Returns an error for an exhausted context window or a failed step.
+	pub fn step(&self, token: &Matrix, cache: &mut nn::TransformerCache) -> Result<Matrix> {
+		self.inner.step(token, cache)
+	}
 }
 
 impl Module for CharTransformer {
@@ -1778,6 +1796,64 @@ pub fn generate_greedy(
 			context.copy_within(1.., 0);
 			context[CONTEXT_LENGTH - 1] = next;
 			logit_row = CONTEXT_LENGTH - 1;
+		}
+	}
+	Ok(output)
+}
+
+/// Greedily generate characters through the model's KV-cached decode path.
+///
+/// [`CharTransformer::step`] replaces the per-token full-context forward:
+/// the prompt warms the cache one position at a time and each generated
+/// token costs one incremental step. Output is identical to
+/// [`generate_greedy`] while generation stays inside the context window —
+/// the cache cannot evict, so `prompt.len() + count` must not exceed
+/// `CONTEXT_LENGTH`.
+///
+/// # Errors
+///
+/// Returns an error for an empty prompt, an over-long generation, invalid
+/// model output, or failed execution/readback.
+pub fn generate_greedy_cached(
+	engine: &Engine,
+	model: &CharTransformer,
+	prompt: &str,
+	count: usize,
+) -> Result<String> {
+	let prompt_tokens = encode(prompt);
+	if prompt_tokens.is_empty() {
+		return Err(Error::invalid_argument(
+			"NLP cached generation prompt must not be empty",
+		));
+	}
+	let mut cache = model.new_cache(1)?;
+	let mut current = None;
+	for &token in prompt_tokens.iter().take(CONTEXT_LENGTH) {
+		let input = Matrix::new_from_slice_on(engine, [1], &[token])?;
+		current = Some(model.step(&input, &mut cache)?);
+	}
+	let mut output = prompt.to_owned();
+	for index in 0..count {
+		let Some(logits) = &current else {
+			return Err(Error::failed_precondition(
+				"NLP cached generation produced no prompt logits",
+			));
+		};
+		if logits.shape() != [1, CHAR_VOCAB_SIZE] {
+			return Err(Error::failed_precondition(
+				"character model cached generation produced an invalid logit shape",
+			));
+		}
+		let values = logits.read_f32()?;
+		let next = values[..CHAR_VOCAB_SIZE]
+			.iter()
+			.enumerate()
+			.max_by(|left, right| left.1.total_cmp(right.1))
+			.map_or(0_u32, |(token, _)| token as u32);
+		output.push(decode_char(next));
+		if index + 1 < count {
+			let input = Matrix::new_from_slice_on(engine, [1], &[next])?;
+			current = Some(model.step(&input, &mut cache)?);
 		}
 	}
 	Ok(output)

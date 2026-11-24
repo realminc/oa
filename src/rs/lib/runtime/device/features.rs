@@ -41,6 +41,8 @@ pub(in crate::runtime) struct DeviceFeatures {
 	pub(in crate::runtime) shader_int64: bool,
 	pub(in crate::runtime) shader_float64: bool,
 	pub(in crate::runtime) shader_float16: bool,
+	/// `VK_KHR_shader_bfloat16` `shaderBFloat16Type` support.
+	pub(in crate::runtime) shader_bfloat16: bool,
 	pub(in crate::runtime) shader_integer_dot_product: bool,
 	/// Exact legal tuples live in `DevicePhysical::cooperative_matrix`.
 	pub(in crate::runtime) cooperative_matrix: bool,
@@ -62,15 +64,22 @@ pub(in crate::runtime) struct DeviceFeatures {
 	pub(in crate::runtime) descriptor_binding_update_unused_while_pending: bool,
 }
 
+/// Device-extension presence consulted by [`DeviceFeatures::query`].
+#[derive(Clone, Copy, Debug, Default)]
+pub(in crate::runtime) struct FeatureQueryExtensions {
+	pub(in crate::runtime) cooperative_matrix: bool,
+	pub(in crate::runtime) synchronization2: bool,
+	pub(in crate::runtime) dynamic_rendering: bool,
+	pub(in crate::runtime) integer_dot_product: bool,
+	pub(in crate::runtime) shader_bfloat16: bool,
+}
+
 impl DeviceFeatures {
 	pub(in crate::runtime) fn query(
 		instance: &Instance,
 		physical: vk::PhysicalDevice,
 		api_version: u32,
-		cooperative_matrix_extension: bool,
-		synchronization2_extension: bool,
-		dynamic_rendering_extension: bool,
-		integer_dot_product_extension: bool,
+		extensions: FeatureQueryExtensions,
 	) -> Result<Self> {
 		let mut features13 = vk::PhysicalDeviceVulkan13Features::new();
 		let mut features12 = vk::PhysicalDeviceVulkan12Features::new();
@@ -79,6 +88,7 @@ impl DeviceFeatures {
 		let mut dynamic_rendering = vk::PhysicalDeviceDynamicRenderingFeatures::new();
 		let mut integer_dot_product = vk::PhysicalDeviceShaderIntegerDotProductFeatures::new();
 		let mut cooperative_matrix = vk::PhysicalDeviceCooperativeMatrixFeaturesKHR::new();
+		let mut shader_bfloat16 = vk::PhysicalDeviceShaderBfloat16FeaturesKHR::new();
 		let mut features2 = vk::PhysicalDeviceFeatures2::new()
 			.push_next(&mut features12)
 			.map_err(Error::from)?
@@ -87,25 +97,32 @@ impl DeviceFeatures {
 		if api_version >= vk::API_VERSION_1_3 {
 			features2 = features2.push_next(&mut features13).map_err(Error::from)?;
 		} else {
-			if integer_dot_product_extension {
+			if extensions.integer_dot_product {
 				features2 = features2
 					.push_next(&mut integer_dot_product)
 					.map_err(Error::from)?;
 			}
-			if synchronization2_extension {
+			if extensions.synchronization2 {
 				features2 = features2
 					.push_next(&mut synchronization2)
 					.map_err(Error::from)?;
 			}
-			if dynamic_rendering_extension {
+			if extensions.dynamic_rendering {
 				features2 = features2
 					.push_next(&mut dynamic_rendering)
 					.map_err(Error::from)?;
 			}
 		}
-		let mut features2 = if cooperative_matrix_extension {
+		let features2 = if extensions.cooperative_matrix {
 			features2
 				.push_next(&mut cooperative_matrix)
+				.map_err(Error::from)?
+		} else {
+			features2
+		};
+		let mut features2 = if extensions.shader_bfloat16 {
+			features2
+				.push_next(&mut shader_bfloat16)
 				.map_err(Error::from)?
 		} else {
 			features2
@@ -129,15 +146,17 @@ impl DeviceFeatures {
 			shader_draw_parameters: features11.shader_draw_parameters == vk::TRUE,
 			sampler_ycbcr_conversion: features11.sampler_ycbcr_conversion == vk::TRUE,
 			shader_float16: features12.shader_float16 == vk::TRUE,
+			shader_bfloat16: extensions.shader_bfloat16
+				&& shader_bfloat16.shader_b_float16_type == vk::TRUE,
 			storage_buffer_16_bit_access: features11.storage_buffer16_bit_access == vk::TRUE,
 			uniform_and_storage_buffer_16_bit_access: features11.uniform_and_storage_buffer16_bit_access
 				== vk::TRUE,
 			shader_integer_dot_product: if api_version >= vk::API_VERSION_1_3 {
 				features13.shader_integer_dot_product == vk::TRUE
 			} else {
-				integer_dot_product_extension && integer_dot_product.shader_integer_dot_product == vk::TRUE
+				extensions.integer_dot_product && integer_dot_product.shader_integer_dot_product == vk::TRUE
 			},
-			cooperative_matrix: cooperative_matrix_extension
+			cooperative_matrix: extensions.cooperative_matrix
 				&& cooperative_matrix.cooperative_matrix == vk::TRUE,
 			vulkan_memory_model: features12.vulkan_memory_model == vk::TRUE,
 			vulkan_memory_model_device_scope: features12.vulkan_memory_model_device_scope == vk::TRUE,
@@ -148,12 +167,12 @@ impl DeviceFeatures {
 			synchronization2: if api_version >= vk::API_VERSION_1_3 {
 				features13.synchronization2 == vk::TRUE
 			} else {
-				synchronization2_extension && synchronization2.synchronization2 == vk::TRUE
+				extensions.synchronization2 && synchronization2.synchronization2 == vk::TRUE
 			},
 			dynamic_rendering: if api_version >= vk::API_VERSION_1_3 {
 				features13.dynamic_rendering == vk::TRUE
 			} else {
-				dynamic_rendering_extension && dynamic_rendering.dynamic_rendering == vk::TRUE
+				extensions.dynamic_rendering && dynamic_rendering.dynamic_rendering == vk::TRUE
 			},
 			storage_buffer_8_bit_access: features12.storage_buffer8_bit_access == vk::TRUE,
 			uniform_and_storage_buffer_8_bit_access: features12.uniform_and_storage_buffer8_bit_access

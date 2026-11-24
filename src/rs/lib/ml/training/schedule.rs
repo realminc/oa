@@ -587,6 +587,121 @@ impl LrScheduler for LinearWarmupCosineScheduler {
 	}
 }
 
+/// Step-decay schedule: `base * gamma^floor(step / step_size)`.
+pub struct StepScheduler {
+	base_learning_rate: f32,
+	gamma: f32,
+	step_size: u64,
+}
+
+impl StepScheduler {
+	/// Construct a step-decay schedule.
+	///
+	/// # Errors
+	///
+	/// Returns an error for an invalid rate, a non-finite or negative `gamma`,
+	/// or a zero `step_size`.
+	pub fn new(base_learning_rate: f32, gamma: f32, step_size: u64) -> Result<Self> {
+		validate_rate(base_learning_rate, "base")?;
+		if !gamma.is_finite() || gamma < 0.0 {
+			return Err(Error::invalid_argument(
+				"step schedule gamma must be finite and non-negative",
+			));
+		}
+		if step_size == 0 {
+			return Err(Error::invalid_argument(
+				"step schedule requires a nonzero step size",
+			));
+		}
+		Ok(Self {
+			base_learning_rate,
+			gamma,
+			step_size,
+		})
+	}
+}
+
+impl LrScheduler for StepScheduler {
+	fn learning_rate(&self, step: u64) -> f32 {
+		self.base_learning_rate * self.gamma.powi((step / self.step_size) as i32)
+	}
+}
+
+/// Milestone-decay schedule: `base * gamma^count(milestones <= step)`.
+pub struct MultiStepScheduler {
+	base_learning_rate: f32,
+	gamma: f32,
+	milestones: Vec<u64>,
+}
+
+impl MultiStepScheduler {
+	/// Construct a milestone-decay schedule over sorted `milestones`.
+	///
+	/// # Errors
+	///
+	/// Returns an error for an invalid rate, a non-finite or negative `gamma`,
+	/// or empty or unsorted `milestones`.
+	pub fn new(base_learning_rate: f32, gamma: f32, milestones: Vec<u64>) -> Result<Self> {
+		validate_rate(base_learning_rate, "base")?;
+		if !gamma.is_finite() || gamma < 0.0 {
+			return Err(Error::invalid_argument(
+				"multi-step schedule gamma must be finite and non-negative",
+			));
+		}
+		if milestones.is_empty() || !milestones.windows(2).all(|pair| pair[0] < pair[1]) {
+			return Err(Error::invalid_argument(
+				"multi-step schedule milestones must be nonempty and strictly increasing",
+			));
+		}
+		Ok(Self {
+			base_learning_rate,
+			gamma,
+			milestones,
+		})
+	}
+}
+
+impl LrScheduler for MultiStepScheduler {
+	fn learning_rate(&self, step: u64) -> f32 {
+		let decays = self
+			.milestones
+			.partition_point(|milestone| *milestone <= step);
+		self.base_learning_rate * self.gamma.powi(decays as i32)
+	}
+}
+
+/// Exponential-decay schedule: `base * gamma^step`.
+pub struct ExponentialScheduler {
+	base_learning_rate: f32,
+	gamma: f32,
+}
+
+impl ExponentialScheduler {
+	/// Construct an exponential-decay schedule.
+	///
+	/// # Errors
+	///
+	/// Returns an error for an invalid rate or a non-finite or negative `gamma`.
+	pub fn new(base_learning_rate: f32, gamma: f32) -> Result<Self> {
+		validate_rate(base_learning_rate, "base")?;
+		if !gamma.is_finite() || gamma < 0.0 {
+			return Err(Error::invalid_argument(
+				"exponential schedule gamma must be finite and non-negative",
+			));
+		}
+		Ok(Self {
+			base_learning_rate,
+			gamma,
+		})
+	}
+}
+
+impl LrScheduler for ExponentialScheduler {
+	fn learning_rate(&self, step: u64) -> f32 {
+		self.base_learning_rate * self.gamma.powi(step.min(i32::MAX as u64) as i32)
+	}
+}
+
 fn validate_rate(rate: f32, name: &str) -> Result<()> {
 	if !rate.is_finite() || rate < 0.0 {
 		return Err(Error::invalid_argument(format!(

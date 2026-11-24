@@ -55,6 +55,20 @@ impl GradNode {
 					bias.validate_version(*bias_version)?;
 				}
 			}
+			GradNode::Conv3d {
+				weight,
+				weight_version,
+				bias,
+				bias_version,
+				..
+			} => {
+				if let (Some(weight), Some(weight_version)) = (weight, weight_version) {
+					weight.validate_version(*weight_version)?;
+				}
+				if let (Some(bias), Some(bias_version)) = (bias, bias_version) {
+					bias.validate_version(*bias_version)?;
+				}
+			}
 			GradNode::Conv1d {
 				weight,
 				weight_version,
@@ -69,7 +83,7 @@ impl GradNode {
 					bias.validate_version(*bias_version)?;
 				}
 			}
-			GradNode::ConvTranspose1d {
+			GradNode::Conv1dTranspose {
 				weight,
 				weight_version,
 				..
@@ -78,7 +92,21 @@ impl GradNode {
 					weight.validate_version(*weight_version)?;
 				}
 			}
-			GradNode::ConvTranspose2d {
+			GradNode::Conv2dTranspose {
+				weight,
+				weight_version,
+				bias,
+				bias_version,
+				..
+			} => {
+				if let (Some(weight), Some(weight_version)) = (weight, weight_version) {
+					weight.validate_version(*weight_version)?;
+				}
+				if let (Some(bias), Some(bias_version)) = (bias, bias_version) {
+					bias.validate_version(*bias_version)?;
+				}
+			}
+			GradNode::Conv3dTranspose {
 				weight,
 				weight_version,
 				bias,
@@ -147,6 +175,22 @@ impl GradNode {
 				}
 			}
 			GradNode::GruScan(node) => {
+				if let (Some(weight), Some(version)) = (&node.weight, node.weight_version) {
+					weight.validate_version(version)?;
+				}
+				if let (Some(bias), Some(version)) = (&node.bias, node.bias_version) {
+					bias.validate_version(version)?;
+				}
+			}
+			GradNode::LstmCell(node) => {
+				if let (Some(weight), Some(version)) = (&node.weight, node.weight_version) {
+					weight.validate_version(version)?;
+				}
+				if let (Some(bias), Some(version)) = (&node.bias, node.bias_version) {
+					bias.validate_version(version)?;
+				}
+			}
+			GradNode::LstmScan(node) => {
 				if let (Some(weight), Some(version)) = (&node.weight, node.weight_version) {
 					weight.validate_version(version)?;
 				}

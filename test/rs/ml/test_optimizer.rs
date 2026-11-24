@@ -83,6 +83,103 @@ test_vk!(
 	}
 );
 
+test_vk!(
+	clip_parameter_grad_norm_rescales_stored_parameter_gradients,
+	engine,
+	{
+		let input = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, -1.0, 0.5])?;
+		let targets = oa::Matrix::new_from_slice([2], &[1_u32, 0])?;
+		let weight = oa::Matrix::new_from_f32([2, 2], &[0.2, -0.1, -0.3, 0.4])?;
+		let bias = oa::Matrix::new_from_f32([2], &[0.0, 0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
+		let tape = oa::ml::GradientTape::new();
+		let loss = oa::ml::loss::cross_entropy(&layer.forward(&input)?, &targets)?;
+		tape.backward(&loss)?;
+
+		let parameters = layer.parameters();
+		let original_norm = parameters
+			.iter()
+			.flat_map(|parameter| {
+				parameter
+					.gradient()
+					.expect("backward produced a gradient")
+					.read_f32()
+					.expect("gradient readback")
+			})
+			.map(|value| f64::from(value) * f64::from(value))
+			.sum::<f64>()
+			.sqrt();
+		assert!(original_norm > 0.0);
+
+		let max_norm = (0.5 * original_norm) as f32;
+		oa::ml::optim::clip_parameter_grad_norm(&parameters, max_norm)?;
+
+		let clipped_norm = parameters
+			.iter()
+			.flat_map(|parameter| {
+				parameter
+					.gradient()
+					.expect("clipped gradient remains stored")
+					.read_f32()
+					.expect("gradient readback")
+			})
+			.map(|value| f64::from(value) * f64::from(value))
+			.sum::<f64>()
+			.sqrt();
+		assert!(
+			(clipped_norm - f64::from(max_norm)).abs() < 1.0e-3,
+			"clipped norm {clipped_norm} differs from max_norm {max_norm}"
+		);
+		Ok(())
+	}
+);
+
+test_vk!(
+	clip_parameter_grad_norm_scales_beyond_the_fused_storage_limit,
+	engine,
+	{
+		// The fused kernel admits at most sixteen gradient storages; nine
+		// Linear layers contribute eighteen parameters and exercise the
+		// device-resident broadcast-rescale route.
+		let layers = (0..9)
+			.map(|_| {
+				oa::ml::nn::Linear::new_from_matrices(
+					oa::Matrix::new_from_f32([1, 1], &[1.0])?,
+					oa::Matrix::new_from_f32([1], &[0.0])?,
+				)
+			})
+			.collect::<oa::Result<Vec<_>>>()?;
+		let input = oa::Matrix::new_from_f32([1, 1], &[1.0])?;
+		let tape = oa::ml::GradientTape::new();
+		let mut loss = layers[0].forward(&input)?.sum(-1)?;
+		for layer in &layers[1..] {
+			loss = loss.add(&layer.forward(&input)?.sum(-1)?)?;
+		}
+		let loss = loss.reshape(Vec::<usize>::new())?;
+		tape.backward(&loss)?;
+
+		// Every weight and bias gradient is one; the global norm is sqrt(18).
+		let parameters = layers
+			.iter()
+			.flat_map(oa::ml::nn::Linear::parameters)
+			.collect::<Vec<_>>();
+		assert_eq!(parameters.len(), 18);
+		oa::ml::optim::clip_parameter_grad_norm(&parameters, 1.0)?;
+		let expected = 1.0_f32 / (18.0_f32.sqrt() + 1.0e-6);
+		for parameter in &parameters {
+			assert_close(
+				&parameter
+					.gradient()
+					.expect("clipped gradient remains stored")
+					.read_f32()?,
+				&[expected],
+				1.0e-5,
+			);
+		}
+		Ok(())
+	}
+);
+
 test_vk!(sgd_matches_the_donor_fp32_update_order, engine, {
 	const LEARNING_RATE: f32 = 0.05;
 	const WEIGHT_DECAY: f32 = 0.01;
@@ -410,3 +507,162 @@ fn mat_mul_nt_reference(left: &[f32], right: &[f32], m: usize, n: usize, k: usiz
 	}
 	output
 }
+
+test_vk!(
+	grad_scaler_unscales_steps_and_grows_on_finite_gradients,
+	engine,
+	{
+		let input = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, -1.0, 0.5])?;
+		let targets = oa::Matrix::new_from_slice([2], &[1_u32, 0])?;
+		let weight = oa::Matrix::new_from_f32([2, 2], &[0.2, -0.1, -0.3, 0.4])?;
+		let bias = oa::Matrix::new_from_f32([2], &[0.0, 0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
+		let tape = oa::ml::GradientTape::new();
+		let loss = oa::ml::loss::cross_entropy(&layer.forward(&input)?, &targets)?;
+
+		let mut scaler = oa::ml::optim::GradScaler::with_config(8.0, 2.0, 0.5, 1)?;
+		let scaled_loss = scaler.scale_loss(&loss)?;
+		let scaled_value = scaled_loss.read_f32()?;
+		let plain_value = loss.read_f32()?;
+		assert_close(&scaled_value, &[plain_value[0] * 8.0], 1.0e-5);
+
+		tape.backward(&scaled_loss)?;
+		let parameters = layer.parameters();
+		let scaled_gradient = parameters
+			.iter()
+			.flat_map(|parameter| {
+				parameter
+					.gradient()
+					.expect("backward produced a gradient")
+					.read_f32()
+					.expect("gradient readback")
+			})
+			.collect::<Vec<_>>();
+
+		let check = scaler.unscale_gradients(&parameters)?;
+		assert!(check.read_f32()?[0].is_finite());
+
+		let unscaled_gradient = parameters
+			.iter()
+			.flat_map(|parameter| {
+				parameter
+					.gradient()
+					.expect("unscaled gradient remains stored")
+					.read_f32()
+					.expect("gradient readback")
+			})
+			.collect::<Vec<_>>();
+		let expected = scaled_gradient
+			.iter()
+			.map(|value| value / 8.0)
+			.collect::<Vec<_>>();
+		assert_close(&unscaled_gradient, &expected, 1.0e-6);
+
+		let mut optimizer = oa::ml::optim::Sgd::new(parameters.clone(), 0.0, 0.0, 0.0)?;
+		assert!(scaler.step_optimizer(&mut optimizer, &check)?);
+		scaler.update();
+		assert_eq!(scaler.scale(), 16.0);
+		Ok(())
+	}
+);
+
+test_vk!(
+	grad_scaler_skips_step_and_backs_off_on_nonfinite_check,
+	engine,
+	{
+		let check = oa::Matrix::new_from_f32([1], &[f32::INFINITY])?;
+		let mut scaler = oa::ml::optim::GradScaler::with_config(8.0, 2.0, 0.5, 1)?;
+		let weight = oa::Matrix::new_from_f32([2, 2], &[0.2, -0.1, -0.3, 0.4])?;
+		let bias = oa::Matrix::new_from_f32([2], &[0.0, 0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
+		let mut optimizer = oa::ml::optim::Sgd::new(layer.parameters(), 0.1, 0.0, 0.0)?;
+		assert!(!scaler.step_optimizer(&mut optimizer, &check)?);
+		assert_eq!(optimizer.step_count(), 0);
+		scaler.update();
+		assert_eq!(scaler.scale(), 4.0);
+		Ok(())
+	}
+);
+
+test_vk!(
+	grad_scaler_advance_gates_and_adapts_scale_on_device,
+	engine,
+	{
+		let mut scaler = oa::ml::optim::GradScaler::with_config(8.0, 2.0, 0.5, 2)?;
+		scaler.prepare_captured(&engine)?;
+		let flag = scaler.finite_flag()?;
+
+		let check = oa::Matrix::new_from_f32([], &[3.0])?;
+		scaler.record_finite_gate(&check)?;
+		assert_close(&flag.read_f32()?, &[1.0], 0.0);
+		assert_eq!(scaler.device_scale()?, 8.0);
+
+		scaler.record_finite_gate(&check)?;
+		assert_close(&flag.read_f32()?, &[1.0], 0.0);
+		assert_eq!(scaler.device_scale()?, 16.0);
+
+		let overflow = oa::Matrix::new_from_f32([], &[f32::INFINITY])?;
+		scaler.record_finite_gate(&overflow)?;
+		assert_close(&flag.read_f32()?, &[0.0], 0.0);
+		assert_eq!(scaler.device_scale()?, 8.0);
+		Ok(())
+	}
+);
+
+test_vk!(
+	gated_adamw_step_freezes_parameters_when_the_finite_flag_is_zero,
+	engine,
+	{
+		let input = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, -1.0, 0.5])?;
+		let targets = oa::Matrix::new_from_slice([2], &[1_u32, 0])?;
+		let weight = oa::Matrix::new_from_f32([2, 2], &[0.2, -0.1, -0.3, 0.4])?;
+		let bias = oa::Matrix::new_from_f32([2], &[0.0, 0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
+		let tape = oa::ml::GradientTape::new();
+		let loss = oa::ml::loss::cross_entropy(&layer.forward(&input)?, &targets)?;
+		tape.backward(&loss)?;
+
+		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.5)?;
+		let mut scaler = oa::ml::optim::GradScaler::new();
+		scaler.prepare_captured(&engine)?;
+		optimizer.set_finite_gate(&scaler.finite_flag()?)?;
+
+		let check_inf = oa::Matrix::new_from_f32([], &[f32::INFINITY])?;
+		let check_ok = oa::Matrix::new_from_f32([], &[1.0])?;
+
+		engine.checkpoint()?.wait()?;
+		let before: Vec<Vec<f32>> = layer
+			.parameters()
+			.iter()
+			.map(|parameter| parameter.data().read_f32().expect("parameter readback"))
+			.collect();
+		let (overflow_plan, ()) = engine.capture(|| {
+			scaler.record_finite_gate(&check_inf)?;
+			optimizer.step()
+		})?;
+		engine.submit(&overflow_plan)?.wait()?;
+		for (parameter, before) in layer.parameters().iter().zip(&before) {
+			assert_eq!(
+				&parameter.data().read_f32()?,
+				before,
+				"gated step must freeze the parameter bitwise"
+			);
+		}
+
+		engine.checkpoint()?.wait()?;
+		let (finite_plan, ()) = engine.capture(|| {
+			scaler.record_finite_gate(&check_ok)?;
+			optimizer.step()
+		})?;
+		engine.submit(&finite_plan)?.wait()?;
+		let changed = layer
+			.parameters()
+			.iter()
+			.zip(&before)
+			.any(|(parameter, before)| {
+				parameter.data().read_f32().expect("parameter readback") != *before
+			});
+		assert!(changed, "finite gate must apply the AdamW update");
+		Ok(())
+	}
+);

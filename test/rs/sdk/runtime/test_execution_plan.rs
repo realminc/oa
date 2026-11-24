@@ -60,12 +60,15 @@ test_vk!(alm_tokenizer_plan_keeps_its_conv_tail_fusions, engine, {
 		"no unfused Conv1d bias add may remain"
 	);
 	assert_eq!(
-		census.get("ml.conv_1d_transpose.f32").copied().unwrap_or(0),
+		census
+			.get("ml.conv_1d_layout_transpose.f32")
+			.copied()
+			.unwrap_or(0),
 		2,
 		"only the bias-free ConvTranspose1d backward transposes may remain"
 	);
 	assert!(
-		census.contains_key("ml.conv_1d_bias_transpose_residual_relu.f32"),
+		census.contains_key("ml.conv_1d_bias_layout_transpose_residual_relu.f32"),
 		"the residual Conv1d tail must stay fused"
 	);
 	Ok(())

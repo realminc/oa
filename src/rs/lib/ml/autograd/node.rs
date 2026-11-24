@@ -69,7 +69,7 @@ pub(super) enum GradNode {
 		padding: usize,
 		dilation: usize,
 	},
-	ConvTranspose1d {
+	Conv1dTranspose {
 		input: Matrix,
 		output_id: u64,
 		weight: Option<Parameter>,
@@ -79,7 +79,19 @@ pub(super) enum GradNode {
 		padding: usize,
 		dilation: usize,
 	},
-	ConvTranspose2d {
+	Conv2dTranspose {
+		input: Matrix,
+		output_id: u64,
+		weight: Option<Parameter>,
+		weight_value: Matrix,
+		weight_version: Option<u64>,
+		bias: Option<Parameter>,
+		bias_value: Matrix,
+		bias_version: Option<u64>,
+		stride: usize,
+		padding: usize,
+	},
+	Conv3dTranspose {
 		input: Matrix,
 		output_id: u64,
 		weight: Option<Parameter>,
@@ -92,6 +104,19 @@ pub(super) enum GradNode {
 		padding: usize,
 	},
 	Conv2d {
+		input: Matrix,
+		output_id: u64,
+		weight: Option<Parameter>,
+		weight_value: Matrix,
+		weight_version: Option<u64>,
+		bias: Option<Parameter>,
+		bias_value: Matrix,
+		bias_version: Option<u64>,
+		stride: usize,
+		padding: usize,
+		groups: usize,
+	},
+	Conv3d {
 		input: Matrix,
 		output_id: u64,
 		weight: Option<Parameter>,
@@ -237,6 +262,8 @@ pub(super) enum GradNode {
 	},
 	GruCell(Box<GradNodeGruCell>),
 	GruScan(Box<GradNodeGruScan>),
+	LstmCell(Box<GradNodeLstmCell>),
+	LstmScan(Box<GradNodeLstmScan>),
 	RnnCell(Box<GradNodeRnnCell>),
 	RnnScan(Box<GradNodeRnnScan>),
 	Mamba3Preprocess(Box<GradNodeMamba3Preprocess>),
@@ -270,9 +297,11 @@ impl GradNode {
 			| Self::FlowMaskedMse { output_id, .. }
 			| Self::Linear { output_id, .. }
 			| Self::Conv1d { output_id, .. }
-			| Self::ConvTranspose1d { output_id, .. }
-			| Self::ConvTranspose2d { output_id, .. }
+			| Self::Conv1dTranspose { output_id, .. }
+			| Self::Conv2dTranspose { output_id, .. }
+			| Self::Conv3dTranspose { output_id, .. }
 			| Self::Conv2d { output_id, .. }
+			| Self::Conv3d { output_id, .. }
 			| Self::LayerNorm { output_id, .. }
 			| Self::BatchNorm2d { output_id, .. }
 			| Self::RmsNorm { output_id, .. }
@@ -292,6 +321,8 @@ impl GradNode {
 			| Self::Embedding { output_id, .. } => *output_id,
 			Self::GruCell(node) => node.output_id,
 			Self::GruScan(node) => node.output_id,
+			Self::LstmCell(node) => node.output_id,
+			Self::LstmScan(node) => node.output_id,
 			Self::RnnCell(node) => node.output_id,
 			Self::RnnScan(node) => node.output_id,
 			Self::RmsNormGated(node) => node.output_id,
@@ -386,6 +417,37 @@ pub(super) struct GradNodeGruScan {
 	pub(super) gates_i: Matrix,
 	pub(super) hidden_previous: Matrix,
 	pub(super) output_id: u64,
+	pub(super) weight: Option<Parameter>,
+	pub(super) weight_value: Matrix,
+	pub(super) weight_version: Option<u64>,
+	pub(super) bias: Option<Parameter>,
+	pub(super) bias_value: Matrix,
+	pub(super) bias_version: Option<u64>,
+	pub(super) has_bias: bool,
+}
+
+pub(super) struct GradNodeLstmScan {
+	pub(super) gates_i: Matrix,
+	pub(super) hidden_previous: Matrix,
+	pub(super) cell_previous: Matrix,
+	pub(super) cell_state: Matrix,
+	pub(super) output_id: u64,
+	pub(super) weight: Option<Parameter>,
+	pub(super) weight_value: Matrix,
+	pub(super) weight_version: Option<u64>,
+	pub(super) bias: Option<Parameter>,
+	pub(super) bias_value: Matrix,
+	pub(super) bias_version: Option<u64>,
+	pub(super) has_bias: bool,
+}
+
+pub(super) struct GradNodeLstmCell {
+	pub(super) gates_i: Matrix,
+	pub(super) gates_h: Matrix,
+	pub(super) hidden: Matrix,
+	pub(super) cell: Matrix,
+	pub(super) output_id: u64,
+	pub(super) cell_next_id: u64,
 	pub(super) weight: Option<Parameter>,
 	pub(super) weight_value: Matrix,
 	pub(super) weight_version: Option<u64>,

@@ -1,0 +1,44 @@
+{
+ "version": 1,
+ "family": "encoder_decoder",
+ "imports": [
+  "use std::{cell::Cell, rc::Rc};",
+  "use crate::{DType, Engine, Error, Matrix, Result, matrix};",
+  "use super::super::{Module, ModuleRegistry, matrix::gelu};",
+  "use super::{AttentionMode, LayerNorm, Linear, MultiHeadAttention, TransformerBlock};"
+ ],
+ "helper": "",
+ "layers": [
+  {
+   "name": "EncoderDecoder",
+   "doc": "Ready-to-train encoder-decoder Transformer for sequence-to-sequence tasks.",
+   "template": "encoder_decoder",
+   "values": {
+    "block_type": "EncoderDecoderBlock",
+    "norm_constructor": "LayerNorm::new_on",
+    "projection_constructor": "Linear::new_with_seed_on",
+    "attention_constructor": "MultiHeadAttention::new_with_seed_on",
+    "embedding_constructor": "super::Embedding::new_with_seed_on",
+    "activation_operation": "gelu",
+    "self_norm_name": "ln_self",
+    "self_attention_name": "self_attn",
+    "cross_norm_name": "ln_cross",
+    "cross_attention_name": "cross_attn",
+    "dense_norm_name": "ln_ffn",
+    "dense_input_name": "ffn1",
+    "dense_output_name": "ffn2",
+    "source_token_name": "src_token_embedding",
+    "source_position_name": "src_position_embedding",
+    "target_token_name": "tgt_token_embedding",
+    "target_position_name": "tgt_position_embedding",
+    "encoder_norm_name": "encoder_norm",
+    "decoder_norm_name": "decoder_norm",
+    "head_name": "head",
+    "encoder_prefix": "encoder",
+    "decoder_prefix": "decoder"
+   },
+   "donor": "source/cpp/lib/oa/ml/nn/transformer/transformer.cpp",
+   "adaptation": "Rust-only composition reusing the Transformer block recipe: encoder blocks run bidirectional MultiHeadAttention, decoder blocks add a cross-attention stage whose keys and values are projected from the encoder output through the new MultiHeadAttention::forward_kv composed path; separate source/target vocabularies and context lengths, deterministic seed strides, fixed structural registration"
+  }
+ ]
+}

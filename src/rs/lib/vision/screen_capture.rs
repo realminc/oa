@@ -8,17 +8,20 @@
 //! producer buffers are copied and released before `poll` returns. DMA-BUF
 //! import remains separate, unimplemented qualification work.
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "pipewire"))]
 mod pipewire;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "pipewire"))]
 mod portal;
 
+#[cfg(all(target_os = "linux", feature = "pipewire"))]
 use crate::runtime::EngineHandle;
-use crate::video::{
-	VideoColorInfo, VideoColorMatrix, VideoColorRange, VideoFrame, VideoFrameTiming,
-};
+use crate::video::VideoFrame;
+#[cfg(all(target_os = "linux", feature = "pipewire"))]
+use crate::video::{VideoColorInfo, VideoColorMatrix, VideoColorRange, VideoFrameTiming};
 pub use crate::vision::types::ScreenCaptureConfig;
-use crate::{DType, Engine, Error, Matrix, Result};
+#[cfg(all(target_os = "linux", feature = "pipewire"))]
+use crate::{DType, Matrix};
+use crate::{Engine, Error, Result};
 
 /// Whether the capture targets whatever the compositor offers, an entire
 /// monitor, or an individual window.
@@ -62,11 +65,13 @@ impl Default for ScreenCaptureConfig {
 /// a PipeWire producer slot after returning. Drop releases host resources only;
 /// `close` explicitly disconnects the stream and reports a disconnect failure.
 pub struct ScreenCapture {
+	#[cfg(all(target_os = "linux", feature = "pipewire"))]
 	engine: EngineHandle,
+	#[cfg(all(target_os = "linux", feature = "pipewire"))]
 	fps: u32,
 	width: u32,
 	height: u32,
-	#[cfg(target_os = "linux")]
+	#[cfg(all(target_os = "linux", feature = "pipewire"))]
 	backend: Option<pipewire::Backend>,
 }
 
@@ -76,11 +81,11 @@ impl ScreenCapture {
 	/// a selected source is available. Actual admission happens in `open`.
 	#[must_use]
 	pub fn is_supported() -> bool {
-		#[cfg(target_os = "linux")]
+		#[cfg(all(target_os = "linux", feature = "pipewire"))]
 		{
 			std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some() && portal::Portal::is_supported()
 		}
-		#[cfg(not(target_os = "linux"))]
+		#[cfg(not(all(target_os = "linux", feature = "pipewire")))]
 		{
 			false
 		}
@@ -116,7 +121,7 @@ impl ScreenCapture {
 				"screen capture requires Linux, libportal and a desktop session bus",
 			));
 		}
-		#[cfg(target_os = "linux")]
+		#[cfg(all(target_os = "linux", feature = "pipewire"))]
 		{
 			Ok(Self {
 				engine: engine.handle().clone(),
@@ -126,7 +131,7 @@ impl ScreenCapture {
 				backend: Some(pipewire::Backend::open(config)?),
 			})
 		}
-		#[cfg(not(target_os = "linux"))]
+		#[cfg(not(all(target_os = "linux", feature = "pipewire")))]
 		{
 			let _ = engine;
 			Err(Error::missing_capability(
@@ -140,7 +145,7 @@ impl ScreenCapture {
 	/// # Errors
 	/// Reports closed/revoked streams, malformed frames or texture allocation.
 	pub fn poll(&mut self) -> Result<Option<VideoFrame>> {
-		#[cfg(target_os = "linux")]
+		#[cfg(all(target_os = "linux", feature = "pipewire"))]
 		{
 			let backend = self
 				.backend
@@ -168,7 +173,7 @@ impl ScreenCapture {
 			)
 			.map(Some)
 		}
-		#[cfg(not(target_os = "linux"))]
+		#[cfg(not(all(target_os = "linux", feature = "pipewire")))]
 		{
 			Err(Error::failed_precondition("ScreenCapture is closed"))
 		}
@@ -178,7 +183,7 @@ impl ScreenCapture {
 	/// # Errors
 	/// Reports a PipeWire disconnect failure after releasing the session.
 	pub fn close(&mut self) -> Result<()> {
-		#[cfg(target_os = "linux")]
+		#[cfg(all(target_os = "linux", feature = "pipewire"))]
 		if let Some(backend) = self.backend.take() {
 			return backend.close();
 		}
@@ -187,14 +192,14 @@ impl ScreenCapture {
 	/// Whether PipeWire currently reports a streaming source.
 	#[must_use]
 	pub fn is_streaming(&self) -> bool {
-		#[cfg(target_os = "linux")]
+		#[cfg(all(target_os = "linux", feature = "pipewire"))]
 		{
 			self
 				.backend
 				.as_ref()
 				.is_some_and(pipewire::Backend::is_streaming)
 		}
-		#[cfg(not(target_os = "linux"))]
+		#[cfg(not(all(target_os = "linux", feature = "pipewire")))]
 		{
 			false
 		}

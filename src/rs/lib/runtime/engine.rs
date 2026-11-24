@@ -3826,6 +3826,18 @@ impl EngineHandle {
 			.record_image_semantic(&device, dispatch, semantic)
 	}
 
+	pub(crate) fn record_image_split_semantic(
+		&self,
+		dispatches: &[ComputeDispatch<'_>],
+		semantic: ImageSemanticDispatch<'_>,
+	) -> Result<()> {
+		let mut state = self.state.borrow_mut();
+		let device = state.device.clone();
+		state
+			.session
+			.record_image_split_semantic(&device, dispatches, semantic)
+	}
+
 	pub(crate) fn record_audio_split_semantic(
 		&self,
 		dispatches: &[ComputeDispatch<'_>],

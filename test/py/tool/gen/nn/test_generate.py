@@ -21,10 +21,10 @@ class NnGenerationTests(unittest.TestCase):
 
 	def test_live_inventory_and_public_owners(self):
 		outputs = GEN.expected_outputs(ROOT, ROOT)
-		self.assertEqual(len(outputs), 26)
+		self.assertEqual(len(outputs), 29)
 		self.assertEqual(GEN.check(outputs, ROOT), [])
 		text = "\n".join(outputs.values())
-		for name in ("Relu", "Gelu", "Silu", "Softmax", "LogSoftmax", "Identity", "Flatten", "Dropout", "Linear", "Embedding", "LayerNorm", "RmsNorm", "Conv1d", "ConvTranspose1d", "ConvTranspose2d", "Conv2d", "Swiglu", "AvgPool2d", "MaxPool2d", "AdaptiveAvgPool2d", "Upsample", "Rope", "BatchNorm2d", "Sequential", "MultiHeadAttention", "Ffn", "Transformer", "TransformerBlock", "Moe", "Rnn", "RnnCell", "Gru", "GruCell", "ByteEmbedding", "ByteHead", "VectorQuantizer", "ResidualVectorQuantizer", "Mamba3", "FlowTimeEmbedding", "FlowTransformer", "FlowDenoiser", "Empyrealm"):
+		for name in ("Relu", "Gelu", "Silu", "Softmax", "LogSoftmax", "Identity", "Flatten", "Dropout", "Linear", "Embedding", "LayerNorm", "RmsNorm", "Conv1d", "ConvTranspose1d", "ConvTranspose2d", "ConvTranspose3d", "Conv2d", "Conv3d", "Swiglu", "AvgPool2d", "AvgPool3d", "MaxPool1d", "MaxPool2d", "MaxPool3d", "MaxUnpool1d", "MaxUnpool2d", "AdaptiveAvgPool2d", "AdaptiveAvgPool3d", "AdaptiveMaxPool1d", "AdaptiveMaxPool2d", "AdaptiveMaxPool3d", "Upsample", "Rope", "BatchNorm2d", "Sequential", "MultiHeadAttention", "CausalLinearAttention", "Ffn", "Transformer", "TransformerBlock", "EncoderDecoder", "EncoderDecoderBlock", "Moe", "Rnn", "RnnCell", "Gru", "GruCell", "Lstm", "LstmCell", "ByteEmbedding", "ByteHead", "VectorQuantizer", "ResidualVectorQuantizer", "Mamba3", "FlowTimeEmbedding", "FlowTransformer", "FlowDenoiser", "Empyrealm", "Unfold", "Fold", "ConstantPad1d", "ConstantPad2d", "ConstantPad3d", "ZeroPad2d", "ReflectionPad1d", "ReflectionPad2d", "ReflectionPad3d", "ReplicationPad1d", "ReplicationPad2d", "ReplicationPad3d", "CircularPad1d", "CircularPad2d", "CircularPad3d"):
 			self.assertEqual(text.count(f"pub struct {name} {{"), 1)
 			self.assertEqual(text.count(f"impl Module for {name} {{"), 1)
 		self.assertNotIn("macro_rules!", text)
@@ -438,10 +438,10 @@ class NnGenerationTests(unittest.TestCase):
 	def test_convolution_preserves_geometry_layouts_and_parameterized_adjoints(self):
 		outputs = GEN.expected_outputs(ROOT, ROOT)
 		text = outputs[ROOT / "src/rs/lib/ml/nn/conv.gen.rs"]
-		for provider in ("conv_1d", "conv_transpose_1d", "conv_transpose_2d", "conv_2d"):
+		for provider in ("conv_1d", "conv_1d_transpose", "conv_2d_transpose", "conv_3d_transpose", "conv_2d", "conv_3d"):
 			self.assertEqual(text.count(f"matrix::{provider}_parameterized("), 1)
-		self.assertEqual(text.count("(self.weight.clone(), weight, weight_version)"), 4)
-		self.assertEqual(text.count("(self.bias.clone(), bias, bias_version)"), 3)
+		self.assertEqual(text.count("(self.weight.clone(), weight, weight_version)"), 6)
+		self.assertEqual(text.count("(self.bias.clone(), bias, bias_version)"), 5)
 		self.assertIn("!input_channels.is_multiple_of(groups)", text)
 		self.assertIn("!output_channels.is_multiple_of(groups)", text)
 		self.assertIn(".checked_mul(groups)", text)
@@ -527,12 +527,23 @@ class NnGenerationTests(unittest.TestCase):
 	def test_spatial_layers_keep_operation_owned_adjoints_and_checked_geometry(self):
 		outputs = GEN.expected_outputs(ROOT, ROOT)
 		pool = outputs[ROOT / "src/rs/lib/ml/nn/pool.gen.rs"]
-		self.assertEqual(pool.count("Self::new_with_options(kernel_size, kernel_size, 0)"), 2)
-		self.assertEqual(pool.count("kernel_size == 0 || stride == 0"), 2)
+		self.assertEqual(pool.count("Self::new_with_options(kernel_size, kernel_size, 0)"), 7)
+		self.assertEqual(pool.count("kernel_size == 0 || stride == 0"), 7)
 		self.assertIn("matrix::max_pool_2d(input, self.kernel_size, self.stride, self.padding)?.output", pool)
-		self.assertIn("Self::new_with_output_size(output_size, output_size)", pool)
+		self.assertIn("matrix::max_pool_3d(input, self.kernel_size, self.stride, self.padding)?.output", pool)
+		self.assertIn("matrix::avg_pool_3d(input, self.kernel_size, self.stride, self.padding)", pool)
+		self.assertEqual(pool.count("Self::new_with_output_size(output_size, output_size)"), 2)
+		self.assertEqual(pool.count("Self::new_with_output_size(output_size, output_size, output_size)"), 2)
 		self.assertIn("output_height == 0 || output_width == 0", pool)
 		self.assertIn("matrix::adaptive_avg_pool_2d(input, self.output_height, self.output_width)", pool)
+		self.assertIn("matrix::adaptive_max_pool_2d(input, self.output_height, self.output_width)?.output", pool)
+		self.assertIn("matrix::adaptive_max_pool_3d(", pool)
+		self.assertIn("matrix::adaptive_avg_pool_3d(", pool)
+		self.assertIn("implied_output_length(*input_length)", pool)
+		self.assertIn("implied_output_extent(*input_height)", pool)
+		self.assertEqual(pool.count("matrix::max_unpool_1d("), 2)
+		self.assertEqual(pool.count("matrix::max_unpool_2d("), 2)
+		self.assertEqual(pool.count("requires pooled input plus recorded argmax indices"), 2)
 		upsample = outputs[ROOT / "src/rs/lib/ml/nn/upsample.gen.rs"]
 		self.assertIn("Self::new_with_mode(scale_factor, UpsampleMode::Bilinear)", upsample)
 		self.assertIn("scale_factor == 0", upsample)
@@ -707,7 +718,7 @@ class NnGenerationTests(unittest.TestCase):
 		self.assertIn("self.forward_standard(input, Some(additive_mask), false)", text)
 		self.assertIn("if self.is_training() && self.dropout_probability > 0.0", text)
 		self.assertIn("core_matrix::dropout(&probability, self.dropout_probability, self.dropout_seed)", text)
-		self.assertIn("mask.batch == batch && mask.sequence_length == sequence_length && mask.causal == causal", text)
+		self.assertIn("mask.batch == batch\n\t\t\t\t&& mask.sequence_length == sequence_length\n\t\t\t\t&& mask.key_length == key_length\n\t\t\t\t&& mask.causal == causal", text)
 		self.assertIn("self.mask_cache.borrow_mut().clear()", text)
 		self.assertIn("flash_attention_causal(&query, &key, &value, scale)", text)
 		self.assertNotIn("autograd::record_", text)

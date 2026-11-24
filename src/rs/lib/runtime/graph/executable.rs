@@ -1498,10 +1498,10 @@ fn validate_training_kernel_sequence<'a>(
 			"training program contains a replay RNG operation without its state advance",
 		));
 	}
-	if optimizer_state_updates != 0 && optimizer_state_advances != 1 {
-		return Err(Error::failed_precondition(format!(
-			"training program requires exactly one optimizer-state advance before replay updates; recorded {optimizer_state_advances}"
-		)));
+	if optimizer_state_updates != 0 && optimizer_state_advances == 0 {
+		return Err(Error::failed_precondition(
+			"training program requires an optimizer-state advance before replay updates",
+		));
 	}
 	Ok(())
 }

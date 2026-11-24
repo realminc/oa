@@ -730,7 +730,7 @@ const RULES: &[Rule] = &[
 		id: RuleId::Merge(MergeRule::Conv1dBiasTail),
 		pattern: &[
 			exact(MlConv1dBiasAddF32, &[RW, R], 2),
-			exact(MlConv1dTransposeF32, &[R, W], 3),
+			exact(MlConv1dLayoutTransposeF32, &[R, W], 3),
 		],
 		constraints: &[
 			Wire((0, 0), (1, 0)),
@@ -738,11 +738,11 @@ const RULES: &[Rule] = &[
 			EqualWord((0, 1), (1, 2)),
 		],
 		providers: &[
-			MlConv1dBiasTransposeF32,
-			MlConv1dBiasTransposeReluF32,
-			MlConv1dBiasTransposeResidualReluF32,
-			MlConv1dBiasTransposeNormF32,
-			MlConv1dBiasTransposeNormReluF32,
+			MlConv1dBiasLayoutTransposeF32,
+			MlConv1dBiasLayoutTransposeReluF32,
+			MlConv1dBiasLayoutTransposeResidualReluF32,
+			MlConv1dBiasLayoutTransposeNormF32,
+			MlConv1dBiasLayoutTransposeNormReluF32,
 			MlConv1dBiasCopyF32,
 		],
 		gate: Always,

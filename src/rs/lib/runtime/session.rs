@@ -9,9 +9,10 @@ use crate::{
 use super::{
 	AudioSemanticDispatch, AudioSemanticInput, AudioSemanticOutput, Buffer, BufferAccess,
 	BufferBinding, ComputeDispatch, Device, ImageSemanticDispatch, ImageSemanticInput,
-	OptionalSemanticDispatch, PushConstant, QuantSemanticDispatch, QuantSemanticInput,
-	QuantSemanticOutput, SemanticDispatch, SemanticGraph, SemanticValueDesc, SemanticValueId,
-	Storage, dna::fusion, graph::executable::ExecutableGraph, storage::ReadinessSnapshot,
+	ImageSemanticOutput, OptionalSemanticDispatch, PushConstant, QuantSemanticDispatch,
+	QuantSemanticInput, QuantSemanticOutput, SemanticDispatch, SemanticGraph, SemanticValueDesc,
+	SemanticValueId, Storage, dna::fusion, graph::executable::ExecutableGraph,
+	storage::ReadinessSnapshot,
 };
 
 use super::{
@@ -806,6 +807,60 @@ impl ExecutionSession {
 		Ok(())
 	}
 
+	pub(super) fn record_image_split_semantic(
+		&mut self,
+		device: &Arc<Device>,
+		dispatches: &[ComputeDispatch<'_>],
+		semantic: ImageSemanticDispatch<'_>,
+	) -> Result<()> {
+		if dispatches.len() < 2 {
+			return Err(Error::invalid_argument(
+				"split Image semantic recording requires multiple executable dispatches",
+			));
+		}
+		if !dispatches.iter().any(|dispatch| {
+			dispatch.kernel.semantic_contract().is_some_and(|contract| {
+				contract.name() == semantic.contract.name() && contract.hash() == semantic.contract.hash()
+			}) || dispatch.kernel.semantic_contracts().iter().any(|contract| {
+				contract.name() == semantic.contract.name() && contract.hash() == semantic.contract.hash()
+			})
+		}) {
+			return Err(Error::internal(format!(
+				"split lowering has no physical kernel registered for {}",
+				semantic.contract.name()
+			)));
+		}
+		validate_split_recording_access(dispatches)?;
+		let outputs = dispatches
+			.iter()
+			.flat_map(|dispatch| dispatch.buffers)
+			.filter(|binding| binding.access != BufferAccess::Read)
+			.map(|binding| binding.storage.clone())
+			.collect::<Vec<_>>();
+		let mut graph = ExecutableGraph::from_dispatches(device, dispatches)?;
+		if self.semantic_lowering.is_some() {
+			self.push_graph(graph, outputs);
+			return Ok(());
+		}
+		let mut candidate = self.semantic.clone();
+		let mut values = self.semantic_values.clone();
+		let mut storage = self.semantic_storage.clone();
+		let operation =
+			admit_image_semantic_dispatch(&mut candidate, &mut values, &mut storage, &semantic)?;
+		candidate.validate()?;
+		graph.attach_split_semantic(
+			operation,
+			semantic.contract.name(),
+			semantic.contract.hash(),
+		)?;
+		self.semantic = candidate;
+		self.semantic_values = values;
+		self.semantic_storage = storage;
+		self.graphs.push(graph);
+		self.record_outputs(outputs);
+		Ok(())
+	}
+
 	fn record_impl(
 		&mut self,
 		device: &Arc<Device>,
@@ -1408,7 +1463,10 @@ fn admit_image_semantic_dispatch(
 	let outputs = semantic
 		.outputs
 		.iter()
-		.map(|image| admit_image(graph, values, storage, image, false))
+		.map(|output| match output {
+			ImageSemanticOutput::Image(image) => admit_image(graph, values, storage, image, false),
+			ImageSemanticOutput::Matrix(matrix) => admit_matrix(graph, values, storage, matrix, false),
+		})
 		.collect::<Result<Vec<_>>>()?;
 	graph.add_operation(
 		semantic.contract,

@@ -108,6 +108,15 @@ impl Parameter {
 		Ok(())
 	}
 
+	/// Replace the accumulated gradient outright.
+	///
+	/// Gradient-policy helpers such as `clip_parameter_grad_norm` own this write:
+	/// callers store an already-rescaled value and the requires-grad flag is
+	/// unchanged.
+	pub(crate) fn set_gradient(&self, gradient: Matrix) {
+		self.inner.borrow_mut().gradient = Some(gradient);
+	}
+
 	pub(crate) fn replace_data(&self, data: Matrix) -> Result<()> {
 		let mut state = self.inner.borrow_mut();
 		if state.data.shape() != data.shape()

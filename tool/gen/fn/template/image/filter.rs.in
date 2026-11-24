@@ -22,7 +22,7 @@
 				ImageSemanticInput::Image(input),
 				ImageSemanticInput::Matrix(kernel),
 			],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -51,7 +51,7 @@
 				ImageSemanticInput::Matrix(kernel_x),
 				ImageSemanticInput::Matrix(kernel_y),
 			],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -74,7 +74,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -97,7 +97,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -120,7 +120,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -142,7 +142,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -170,7 +170,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -199,7 +199,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -228,7 +228,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -257,7 +257,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -286,7 +286,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -315,7 +315,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -344,7 +344,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -373,7 +373,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -406,7 +406,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -440,7 +440,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -463,7 +463,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -493,7 +493,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -518,7 +518,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;
@@ -554,7 +554,7 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
-			outputs: &[&output],
+			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},
 	)?;

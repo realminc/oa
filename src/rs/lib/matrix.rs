@@ -34,14 +34,15 @@ pub(crate) use elemwise::{
 	sub_backward,
 };
 pub use index::{
-	CompactRowsResult, MoeExpertPlan, TopKResult, causal_mask, compact_rows, concat, equal, gather,
-	gather_last_dim, greater_equal, moe_expert_plan, moe_routing_bias_update, repeat_interleave,
-	scatter_rows, scatter_rows_indirect, slice, split, top_k, top_k_mask, transpose,
+	CompactRowsResult, MoeExpertPlan, PadMode, TopKResult, cast_f32_i32, cast_i32_f32, causal_mask,
+	compact_rows, concat, equal, gather, gather_last_dim, greater_equal, moe_expert_plan,
+	moe_routing_bias_update, pad, repeat_interleave, scatter_rows, scatter_rows_indirect, slice,
+	split, top_k, top_k_mask, transpose,
 };
 pub(crate) use index::{
 	causal_mask_backward, compact_rows_backward, concat_backward, gather_backward,
-	gather_last_dim_backward, repeat_interleave_backward, scatter_rows_backward, slice_backward,
-	transpose_backward,
+	gather_last_dim_backward, pad_backward, repeat_interleave_backward, scatter_rows_backward,
+	slice_backward, transpose_backward,
 };
 pub use reduce::{
 	argmax, categorical_accuracy_count, log_softmax, masked_categorical_accuracy_count, max, mean,

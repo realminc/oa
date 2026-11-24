@@ -91,6 +91,18 @@ fn border(token: &str) -> PyResult<oa::image::BorderMode> {
 	}
 }
 
+fn histogram_comparison(token: &str) -> PyResult<oa::image::HistogramComparison> {
+	match token {
+		"correlation" => Ok(oa::image::HistogramComparison::Correlation),
+		"chi_square" => Ok(oa::image::HistogramComparison::ChiSquare),
+		"intersection" => Ok(oa::image::HistogramComparison::Intersection),
+		"bhattacharyya" => Ok(oa::image::HistogramComparison::Bhattacharyya),
+		_ => Err(PyValueError::new_err(format!(
+			"unknown histogram comparison: {token}"
+		))),
+	}
+}
+
 #[pyclass(name = "Image", unsendable)]
 pub(crate) struct PythonImage {
 	pub(crate) inner: oa::Image,

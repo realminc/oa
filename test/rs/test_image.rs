@@ -18,3 +18,6 @@ mod pixel;
 
 #[path = "image/test_codec.rs"]
 mod codec;
+
+#[path = "image/test_statistics.rs"]
+mod statistics;

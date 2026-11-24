@@ -18,6 +18,8 @@ mod image;
 mod methods;
 #[path = "image/pixel.gen.rs"]
 mod pixel;
+#[path = "image/statistics.gen.rs"]
+mod statistics;
 
 pub use augmentation::{noise_like, random_crop, random_flip, random_rotate};
 pub use image::{Image, ImageFormat, ImageLayout};
@@ -47,6 +49,7 @@ pub use pixel::{
 	solarize, threshold_binary, threshold_binary_inv, threshold_to_zero, threshold_to_zero_inv,
 	threshold_truncate,
 };
+pub use statistics::{HistogramComparison, calc_hist, compare_hist, equalize_hist};
 
 #[path = "image/parity.gen.rs"]
 mod parity;

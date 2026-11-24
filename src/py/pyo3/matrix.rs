@@ -1,9 +1,24 @@
-use pyo3::{exceptions::PyRuntimeError, prelude::*};
+use pyo3::{
+	exceptions::{PyRuntimeError, PyValueError},
+	prelude::*,
+};
 
 use crate::{error::python_error, runtime::PythonEngine};
 
 #[path = "matrix/matrix.gen.rs"]
 mod generated;
+
+fn pad_mode(token: &str) -> PyResult<oa::matrix::PadMode> {
+	match token {
+		"constant" => Ok(oa::matrix::PadMode::Constant),
+		"replicate" => Ok(oa::matrix::PadMode::Replicate),
+		"reflect" => Ok(oa::matrix::PadMode::Reflect),
+		"circular" => Ok(oa::matrix::PadMode::Circular),
+		_ => Err(PyValueError::new_err(
+			"pad mode must be 'constant', 'replicate', 'reflect', or 'circular'",
+		)),
+	}
+}
 
 #[pyclass(name = "Matrix", unsendable)]
 pub(crate) struct PythonMatrix {

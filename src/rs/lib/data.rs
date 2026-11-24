@@ -28,7 +28,9 @@ pub use ohlcv::{OhlcvDataset, OhlcvView, OhlcvWindows, UnixTimeUnit};
 pub use types::{Batch, DataLoaderConfig, OhlcvWindowConfig, SplitResult};
 
 pub use dataset::{
-	DataLoader, Dataset, MatrixDataset, Sample, Subset, collate, random_split, shuffle,
+	DataLoader, Dataset, HostBatch, HostDataset, HostSample, HostTensor, HostTensorDataset,
+	HostValues, MatrixDataset, PrefetchDataLoader, Sample, Subset, collate, collate_host,
+	random_split, shuffle,
 };
 
 #[path = "data/parity.gen.rs"]

@@ -839,6 +839,378 @@
 			}
 		},
 		{
+			"stable_id": 745,
+			"name": "pad",
+			"fusion_class": "gather",
+			"autograd": {
+				"mode": "generated",
+				"family": "index",
+				"node": "Pad",
+				"saved_fields": [
+					[
+						"input",
+						"matrix"
+					],
+					[
+						"output_id",
+						"output_identity"
+					],
+					[
+						"pads",
+						"usize_list"
+					],
+					[
+						"mode",
+						"usize"
+					]
+				]
+			},
+			"kernel_id": "MatrixPadF32",
+			"source": "src/slang/matrix/index/pad.slang",
+			"variant": "generic",
+			"differentiation": "reverse",
+			"semantic_attributes": [
+				[
+					"pads",
+					"shape"
+				],
+				[
+					"mode",
+					"unsigned_integer"
+				],
+				[
+					"fill",
+					"float"
+				]
+			],
+			"contract": {
+				"input_kinds": [
+					"matrix"
+				],
+				"output_kinds": [
+					"matrix"
+				],
+				"shape_rule": "explicit",
+				"dtype_rule": "all_f32",
+				"effects": [
+					"read_inputs",
+					"write_outputs"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [
+					-1
+				],
+				"lowering": "compute_dispatch"
+			},
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 1,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"input_index",
+					"uint32"
+				],
+				[
+					"output_index",
+					"uint32"
+				],
+				[
+					"count",
+					"uint32"
+				],
+				[
+					"rank",
+					"uint32"
+				],
+				[
+					"mode",
+					"uint32"
+				],
+				[
+					"fill_bits",
+					"uint32"
+				],
+				[
+					"in_dim_0",
+					"uint32"
+				],
+				[
+					"in_dim_1",
+					"uint32"
+				],
+				[
+					"in_dim_2",
+					"uint32"
+				],
+				[
+					"in_dim_3",
+					"uint32"
+				],
+				[
+					"in_dim_4",
+					"uint32"
+				],
+				[
+					"out_dim_0",
+					"uint32"
+				],
+				[
+					"out_dim_1",
+					"uint32"
+				],
+				[
+					"out_dim_2",
+					"uint32"
+				],
+				[
+					"out_dim_3",
+					"uint32"
+				],
+				[
+					"out_dim_4",
+					"uint32"
+				],
+				[
+					"pad_0",
+					"uint32"
+				],
+				[
+					"pad_1",
+					"uint32"
+				],
+				[
+					"pad_2",
+					"uint32"
+				],
+				[
+					"pad_3",
+					"uint32"
+				],
+				[
+					"pad_4",
+					"uint32"
+				]
+			],
+			"signature": {
+				"parameters": [
+					[
+						"input",
+						"&Matrix"
+					],
+					[
+						"pads",
+						"&[usize]"
+					],
+					[
+						"mode",
+						"PadMode"
+					],
+					[
+						"fill",
+						"f32"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub",
+				"receiver": "input"
+			},
+			"python": {
+				"parameters": [
+					[
+						"input",
+						"&Matrix"
+					],
+					[
+						"pads",
+						"Vec<usize>"
+					],
+					[
+						"mode",
+						"PadMode"
+					],
+					[
+						"fill",
+						"f32"
+					]
+				],
+				"arguments": {
+					"pads": "&$pads"
+				},
+				"defaults": {
+					"mode": "constant",
+					"fill": 0.0
+				}
+			}
+		},
+		{
+			"stable_id": 746,
+			"name": "pad_backward",
+			"fusion_class": "gather",
+			"kernel_id": "MatrixPadBackwardF32",
+			"source": "src/slang/matrix/index/pad_backward.slang",
+			"variant": "generic",
+			"semantic_attributes": [
+				[
+					"input_shape",
+					"shape"
+				],
+				[
+					"pads",
+					"shape"
+				],
+				[
+					"mode",
+					"unsigned_integer"
+				]
+			],
+			"contract": {
+				"input_kinds": [
+					"matrix"
+				],
+				"output_kinds": [
+					"matrix"
+				],
+				"shape_rule": "explicit",
+				"dtype_rule": "all_f32",
+				"effects": [
+					"read_inputs",
+					"write_outputs"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [
+					-1
+				],
+				"lowering": "compute_dispatch"
+			},
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 1,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"push_fields": [
+				[
+					"gradient_index",
+					"uint32"
+				],
+				[
+					"input_gradient_index",
+					"uint32"
+				],
+				[
+					"count",
+					"uint32"
+				],
+				[
+					"rank",
+					"uint32"
+				],
+				[
+					"mode",
+					"uint32"
+				],
+				[
+					"in_dim_0",
+					"uint32"
+				],
+				[
+					"in_dim_1",
+					"uint32"
+				],
+				[
+					"in_dim_2",
+					"uint32"
+				],
+				[
+					"in_dim_3",
+					"uint32"
+				],
+				[
+					"in_dim_4",
+					"uint32"
+				],
+				[
+					"out_dim_0",
+					"uint32"
+				],
+				[
+					"out_dim_1",
+					"uint32"
+				],
+				[
+					"out_dim_2",
+					"uint32"
+				],
+				[
+					"out_dim_3",
+					"uint32"
+				],
+				[
+					"out_dim_4",
+					"uint32"
+				],
+				[
+					"pad_0",
+					"uint32"
+				],
+				[
+					"pad_1",
+					"uint32"
+				],
+				[
+					"pad_2",
+					"uint32"
+				],
+				[
+					"pad_3",
+					"uint32"
+				],
+				[
+					"pad_4",
+					"uint32"
+				]
+			],
+			"signature": {
+				"parameters": [
+					[
+						"input_shape",
+						"&[usize]"
+					],
+					[
+						"pads",
+						"&[usize]"
+					],
+					[
+						"mode",
+						"usize"
+					],
+					[
+						"output_gradient",
+						"&Matrix"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub(crate)"
+			}
+		},
+		{
 			"stable_id": 344,
 			"name": "repeat_interleave",
 			"fusion_class": "gather",
@@ -1128,7 +1500,8 @@
 			"stable_id": 441,
 			"name": "gather",
 			"fusion_class": "gather",
-			"tape_op": "gather", "tape_shape": "gather",
+			"tape_op": "gather",
+			"tape_shape": "gather",
 			"donor_op": "oa::FnMatrix::gather",
 			"autograd": {
 				"mode": "generated",
@@ -1555,7 +1928,7 @@
 				]
 			},
 			"kernel_id": "MatrixConcatF32",
-      "fusion_effects": [],
+			"fusion_effects": [],
 			"source": "src/slang/matrix/index/concat.slang",
 			"variant": "generic",
 			"dtype": "u32",
@@ -1932,8 +2305,14 @@
 				"family": "index",
 				"node": "CausalMask",
 				"saved_fields": [
-					["input", "matrix"],
-					["output_id", "output_identity"]
+					[
+						"input",
+						"matrix"
+					],
+					[
+						"output_id",
+						"output_identity"
+					]
 				]
 			},
 			"differentiation": "reverse",
@@ -2873,6 +3252,160 @@
 				],
 				[
 					"d",
+					"uint32"
+				]
+			]
+		},
+		{
+			"fusion_class": "pointwise",
+			"variant": "generic",
+			"differentiation": "none",
+			"contract": {
+				"input_kinds": [
+					"matrix"
+				],
+				"output_kinds": [
+					"matrix"
+				],
+				"shape_rule": "preserve_input",
+				"dtype_rule": "f32_input_i32_output",
+				"effects": [
+					"read_inputs",
+					"write_outputs"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [
+					-1
+				],
+				"lowering": "compute_dispatch"
+			},
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 1,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"signature": {
+				"parameters": [
+					[
+						"input",
+						"&Matrix"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub",
+				"receiver": "input"
+			},
+			"python": {
+				"parameters": [
+					[
+						"input",
+						"&Matrix"
+					]
+				],
+				"arguments": {}
+			},
+			"stable_id": 749,
+			"name": "cast_f32_i32",
+			"kernel_id": "MatrixCastF32I32F32",
+			"source": "src/slang/matrix/index/cast_f32_i32.slang",
+			"push_fields": [
+				[
+					"input_index",
+					"uint32"
+				],
+				[
+					"output_index",
+					"uint32"
+				],
+				[
+					"element_count",
+					"uint32"
+				]
+			]
+		},
+		{
+			"fusion_class": "pointwise",
+			"variant": "generic",
+			"differentiation": "none",
+			"contract": {
+				"input_kinds": [
+					"matrix"
+				],
+				"output_kinds": [
+					"matrix"
+				],
+				"shape_rule": "preserve_input",
+				"dtype_rule": "i32_or_u32_input_f32_output",
+				"effects": [
+					"read_inputs",
+					"write_outputs"
+				],
+				"mutated_inputs": [],
+				"output_alias_inputs": [
+					-1
+				],
+				"lowering": "compute_dispatch"
+			},
+			"physical_write": {
+				"writes": [
+					{
+						"binding": 1,
+						"domain": "output_elements",
+						"partition": "exclusive_per_invocation",
+						"extent": "one_element",
+						"collision": "exclusive",
+						"tail": "bounds_checked"
+					}
+				],
+				"workspace": "none"
+			},
+			"signature": {
+				"parameters": [
+					[
+						"input",
+						"&Matrix"
+					]
+				],
+				"returns": "Matrix",
+				"visibility": "pub",
+				"receiver": "input"
+			},
+			"python": {
+				"parameters": [
+					[
+						"input",
+						"&Matrix"
+					]
+				],
+				"arguments": {}
+			},
+			"stable_id": 750,
+			"name": "cast_i32_f32",
+			"kernel_id": "MatrixCastI32F32F32",
+			"source": "src/slang/matrix/index/cast_i32_f32.slang",
+			"push_fields": [
+				[
+					"input_index",
+					"uint32"
+				],
+				[
+					"output_index",
+					"uint32"
+				],
+				[
+					"element_count",
+					"uint32"
+				],
+				[
+					"source_dtype",
 					"uint32"
 				]
 			]

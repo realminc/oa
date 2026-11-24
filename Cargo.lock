@@ -965,7 +965,7 @@ dependencies = [
 
 [[package]]
 name = "oa-python"
-version = "0.15.3"
+version = "0.16.0"
 dependencies = [
  "oarust",
  "pyo3",
@@ -974,7 +974,7 @@ dependencies = [
 
 [[package]]
 name = "oarust"
-version = "0.15.3"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -1385,7 +1385,7 @@ dependencies = [
 
 [[package]]
 name = "sdk"
-version = "0.15.3"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "libc",

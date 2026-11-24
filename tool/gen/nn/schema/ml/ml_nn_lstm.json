@@ -1,0 +1,32 @@
+{
+	"version": 1,
+	"family": "lstm",
+	"imports": [
+		"use std::rc::Rc;",
+		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use super::super::{Module, ModuleRegistry, Parameter, autograd, matrix, random};"
+	],
+	"helper": "",
+	"layers": [
+		{
+			"name": "Lstm",
+			"doc": "Stacked batch-first long short-term memory using whole-sequence composed scans.",
+			"template": "lstm",
+			"values": {
+				"cell_type": "LstmCell",
+				"initializer": "random::symmetric_uniform",
+				"projection_operation": "matrix::linear",
+				"projection_autograd_operation": "autograd::record_linear",
+				"scan_operation": "matrix::lstm_scan_parameterized",
+				"cell_operation": "matrix::lstm_cell_parameterized",
+				"input_weight_name": "weight_ih",
+				"hidden_weight_name": "weight_hh",
+				"input_bias_name": "bias_ih",
+				"hidden_bias_name": "bias_hh",
+				"layer_prefix": "layer"
+			},
+			"donor": "source/cpp/lib/oa/ml/nn/lstm/lstm.cpp",
+			"adaptation": "No fused C++ donor kernel exists for LSTM. Rust composes each timestep from recorded linear and elementwise dispatches in input/forget/candidate/output gate order, retaining checked FP32 geometry, deterministic seeded host initialization, versioned parameter adjoints and optional unregistered zero biases; a fused scan kernel remains planned performance work"
+		}
+	]
+}

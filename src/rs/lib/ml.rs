@@ -16,6 +16,7 @@ pub mod metric;
 mod model_file;
 mod module;
 pub mod nn;
+pub mod onnx;
 pub mod optim;
 mod parameter;
 pub mod policy;
@@ -42,6 +43,7 @@ pub use environment::{
 pub use matrix::{QuantMatrix, Quantization, UpsampleMode};
 pub use mcp_training::{McpTraining, McpTrainingConfig};
 pub use module::{Module, ModuleRegistry, NamedBuffer, NamedParameter, NamedStateU32, ScopedEval};
+pub use onnx::OnnxGraph;
 pub use optim::{Adam, AdamW, CheckpointOptimizer, Muon, NoOpOptimizer, Optimizer, Sgd};
 pub use parameter::Parameter;
 pub use policy::{ContinuousPolicyResult, PolicyResult};

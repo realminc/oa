@@ -84,5 +84,8 @@ mod nn;
 #[path = "ml/test_quant.rs"]
 mod quant;
 
+#[path = "ml/test_onnx.rs"]
+mod onnx;
+
 #[path = "ml/test_trading.rs"]
 mod trading;

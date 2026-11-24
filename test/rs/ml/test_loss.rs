@@ -376,3 +376,302 @@ test_vk!(
 		Ok(())
 	}
 );
+
+test_vk!(composed_losses_match_host_oracles, engine, {
+	let _ = engine;
+	// margin_ranking: max(0, -y*(x1-x2)+m); x1=[2,1], x2=[1,3], y=[1,-1], m=0.5
+	// row0: -1*(1)+0.5 = -0.5 -> 0; row1: +1*(1-3)+0.5 = -1.5 -> 0? y=-1: -(-1)*(x1-x2)= (x1-x2)= -2 +0.5 -> -1.5 -> 0
+	let x1 = oa::Matrix::new_from_f32([1, 2], &[2.0, 1.0])?;
+	let x2 = oa::Matrix::new_from_f32([1, 2], &[1.0, 3.0])?;
+	let y = oa::Matrix::new_from_f32([1, 2], &[1.0, 1.0])?;
+	let loss = oa::ml::loss::margin_ranking(&x1, &x2, &y, 0.5)?;
+	// elements: max(0, -1*(2-1)+0.5)=0, max(0, -1*(1-3)+0.5)=2.5 -> mean 1.25
+	assert_close(&loss.read_f32()?, &[1.25], 1e-6);
+
+	// soft_margin: mean(log(1+exp(-y*x))); x=[1,-1], y=[1,-1]
+	let x = oa::Matrix::new_from_f32([2], &[1.0, -1.0])?;
+	let t = oa::Matrix::new_from_f32([2], &[1.0, -1.0])?;
+	let loss = oa::ml::loss::soft_margin(&x, &t)?;
+	// z = -y*x = [-1,-1] -> softplus(-1) = ln(1+e^-1)*2/2
+	let expected = (1.0_f32 + (-1.0_f32).exp()).ln();
+	assert_close(&loss.read_f32()?, &[expected], 1e-6);
+
+	// nll: -mean(x[i, y_i]); scores [[1,2,3],[4,5,6]], y=[[1],[2]] -> -(2+6)/2 = -4
+	let scores = oa::Matrix::new_from_f32([2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
+	let labels = oa::Matrix::new_from_slice([2, 1], &[1_i32, 2])?;
+	let loss = oa::ml::loss::nll(&scores, &labels)?;
+	assert_close(&loss.read_f32()?, &[-4.0], 1e-6);
+
+	// multi_margin: margin=1, same scores/labels
+	// row0: s_yi=2; hinges j0: 1-2+1=0, j2: 1-2+3=2 -> sum 2 -1(j=yi term) =1? j=yi term = margin=1
+	//   row0 loss = (0+0+2 - 1)/3 = 1/3
+	// row1: s_yi=6; hinges: 1-6+4=-1->0, 1-6+5=0->0, 1 -> sum=1-1=0 -> 0
+	let loss = oa::ml::loss::multi_margin(&scores, &labels, 1.0)?;
+	assert_close(&loss.read_f32()?, &[1.0 / 3.0], 1e-6);
+	Ok(())
+});
+
+test_vk!(
+	composed_distance_and_probabilistic_losses_match_host_oracles,
+	engine,
+	{
+		let _ = engine;
+		// triplet_margin: a=[0,0], p=[1,0], n=[3,4]; d_ap=1, d_an=5, m=1 -> max(0,1-5+1)=0? use m=10 -> 6
+		let anchor = oa::Matrix::new_from_f32([1, 2], &[0.0, 0.0])?;
+		let positive = oa::Matrix::new_from_f32([1, 2], &[1.0, 0.0])?;
+		let negative = oa::Matrix::new_from_f32([1, 2], &[3.0, 4.0])?;
+		let loss = oa::ml::loss::triplet_margin(&anchor, &positive, &negative, 10.0)?;
+		assert_close(&loss.read_f32()?, &[6.0], 1e-5);
+
+		// cosine_embedding: x1=[1,0], x2=[1,0], y=1 -> 1-cos=0; y=-1 -> max(0,1-0)=1
+		let x1 = oa::Matrix::new_from_f32([1, 2], &[1.0, 0.0])?;
+		let x2 = oa::Matrix::new_from_f32([1, 2], &[1.0, 0.0])?;
+		let y1 = oa::Matrix::new_from_f32([1, 1], &[1.0])?;
+		let loss = oa::ml::loss::cosine_embedding(&x1, &x2, &y1, 0.0)?;
+		assert_close(&loss.read_f32()?, &[0.0], 1e-6);
+		let yn = oa::Matrix::new_from_f32([1, 1], &[-1.0])?;
+		let loss = oa::ml::loss::cosine_embedding(&x1, &x2, &yn, 0.0)?;
+		assert_close(&loss.read_f32()?, &[1.0], 1e-6);
+
+		// kl_div: input log-probs [ln .5, ln .5], target [0.5, 0.5]
+		// loss = mean(t*ln t - t*x) = mean(0.5 ln .5 - 0.5 ln .5)*2 = 0
+		let logp = oa::Matrix::new_from_f32([2], &[0.5_f32.ln(), 0.5_f32.ln()])?;
+		let target = oa::Matrix::new_from_f32([2], &[0.5, 0.5])?;
+		let loss = oa::ml::loss::kl_div(&logp, &target)?;
+		assert_close(&loss.read_f32()?, &[0.0], 1e-6);
+		// diverging: x = ln .25 both, t = [0.5,0.5] -> each term 0.5(ln .5 - ln .25) = 0.5 ln 2
+		let logq = oa::Matrix::new_from_f32([2], &[0.25_f32.ln(), 0.25_f32.ln()])?;
+		let loss = oa::ml::loss::kl_div(&logq, &target)?;
+		assert_close(&loss.read_f32()?, &[0.5 * 2.0_f32.ln()], 1e-6);
+
+		// gaussian_nll: x=[1], t=[0], var=[4], eps=1e-6 -> 0.5(ln4 + 1/4)
+		let x = oa::Matrix::new_from_f32([1], &[1.0])?;
+		let t = oa::Matrix::new_from_f32([1], &[0.0])?;
+		let var = oa::Matrix::new_from_f32([1], &[4.0])?;
+		let loss = oa::ml::loss::gaussian_nll(&x, &t, &var, 1e-6, false)?;
+		assert_close(&loss.read_f32()?, &[0.5 * (4.0_f32.ln() + 0.25)], 1e-6);
+
+		// poisson_nll: x=ln2 -> rate 2, t=[3] -> 2 - 3*ln2
+		let x = oa::Matrix::new_from_f32([1], &[2.0_f32.ln()])?;
+		let t = oa::Matrix::new_from_f32([1], &[3.0])?;
+		let loss = oa::ml::loss::poisson_nll(&x, &t)?;
+		assert_close(&loss.read_f32()?, &[2.0 - 3.0 * 2.0_f32.ln()], 1e-6);
+
+		// multi_label_soft_margin: logits [0,0], targets [1,0] -> mean bce = ln2 per elem
+		let logits = oa::Matrix::new_from_f32([1, 2], &[0.0, 0.0])?;
+		let targets = oa::Matrix::new_from_f32([1, 2], &[1.0, 0.0])?;
+		let loss = oa::ml::loss::multi_label_soft_margin(&logits, &targets, None)?;
+		assert_close(&loss.read_f32()?, &[2.0_f32.ln()], 1e-6);
+		Ok(())
+	}
+);
+
+test_vk!(
+	composed_loss_adjoints_reach_prediction_parameters,
+	engine,
+	{
+		// kl_div gradient on input: d mean(t*ln t - t*x)/dx = -t/N
+		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			[1, 2],
+			&[0.5_f32.ln(), 0.25_f32.ln()],
+		)?)?;
+		let ids = oa::Matrix::new_from_slice([1], &[0_u32])?;
+		let target = oa::Matrix::new_from_f32([1, 2], &[0.5, 0.5])?;
+		let tape = oa::ml::GradientTape::new();
+		let input = embedding.forward(&ids)?;
+		let loss = oa::ml::loss::kl_div(&input, &target)?;
+		tape.backward(&loss)?;
+		let gradient = embedding
+			.weight()
+			.gradient()
+			.expect("kl_div adjoint must reach the input")
+			.read_f32()?;
+		assert_close(&gradient, &[-0.25, -0.25], 1e-5);
+
+		// soft_margin gradient: sigma(-y*x)*(-y)/N with x=y=1 -> -sigma(-1)/2 each
+		let embedding =
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([1, 2], &[1.0, 1.0])?)?;
+		let ids = oa::Matrix::new_from_slice([1], &[0_u32])?;
+		let target = oa::Matrix::new_from_f32([1, 2], &[1.0, 1.0])?;
+		let tape = oa::ml::GradientTape::new();
+		let input = embedding.forward(&ids)?;
+		let loss = oa::ml::loss::soft_margin(&input, &target)?;
+		tape.backward(&loss)?;
+		let gradient = embedding
+			.weight()
+			.gradient()
+			.expect("soft_margin adjoint must reach the input")
+			.read_f32()?;
+		let expected = -1.0 / (1.0 + 1.0_f32.exp()) / 2.0;
+		assert_close(&gradient, &[expected, expected], 1e-6);
+		Ok(())
+	}
+);
+
+fn ctc_oracle_item_nll(
+	log_probs: &[f64],
+	stride: usize,
+	times: usize,
+	classes: usize,
+	target: &[i32],
+	blank: i32,
+) -> f64 {
+	let mut total = 0.0f64;
+	let mut sequence = vec![0i32; times];
+	'paths: loop {
+		let mut collapsed = Vec::new();
+		let mut previous = -1i32;
+		for &class in &sequence {
+			if class != previous {
+				collapsed.push(class);
+				previous = class;
+			}
+		}
+		let labels: Vec<i32> = collapsed
+			.into_iter()
+			.filter(|&class| class != blank)
+			.collect();
+		if labels == target {
+			let mut probability = 1.0f64;
+			for (step, &class) in sequence.iter().enumerate() {
+				probability *= log_probs[step * stride + class as usize].exp();
+			}
+			total += probability;
+		}
+		let mut index = times;
+		loop {
+			if index == 0 {
+				break 'paths;
+			}
+			index -= 1;
+			sequence[index] += 1;
+			if sequence[index] < classes as i32 {
+				break;
+			}
+			sequence[index] = 0;
+		}
+	}
+	-total.ln()
+}
+
+test_vk!(ml_loss_ctc_matches_enumerated_alignments, engine, {
+	// [T, N, C] = [3, 2, 4]; arbitrary log-domain values.
+	let log_probs = [
+		-0.4, -1.1, -2.0, -0.7, // t0 n0
+		-1.3, -0.6, -0.9, -1.8, // t0 n1
+		-0.9, -0.3, -1.4, -1.0, // t1 n0
+		-0.8, -1.7, -0.5, -0.4, // t1 n1
+		-1.6, -0.8, -0.7, -1.2, // t2 n0
+		-0.5, -1.0, -1.9, -0.2, // t2 n1
+	];
+	let log_probs = oa::Matrix::new_from_f32([3, 2, 4], &log_probs)?;
+	let targets = oa::Matrix::new_from_slice([2, 2], &[1_i32, 2, 3, 0])?;
+	let input_lengths = oa::Matrix::new_from_slice([2], &[3_i32, 3])?;
+	let target_lengths = oa::Matrix::new_from_slice([2], &[2_i32, 1])?;
+	let loss =
+		oa::ml::loss::ctc(&log_probs, &targets, &input_lengths, &target_lengths, 0)?.read_f32()?;
+	// Stride between consecutive frames for a fixed item is N*C.
+	let nll0 = ctc_oracle_item_nll(
+		&[
+			-0.4, -1.1, -2.0, -0.7, -0.9, -0.3, -1.4, -1.0, -1.6, -0.8, -0.7, -1.2,
+		],
+		4,
+		3,
+		4,
+		&[1, 2],
+		0,
+	);
+	let nll1 = ctc_oracle_item_nll(
+		&[
+			-1.3, -0.6, -0.9, -1.8, -0.8, -1.7, -0.5, -0.4, -0.5, -1.0, -1.9, -0.2,
+		],
+		4,
+		3,
+		4,
+		&[3],
+		0,
+	);
+	let expected = ((nll0 + nll1) / 2.0) as f32;
+	assert_close(&loss, &[expected], 1e-4);
+	Ok(())
+});
+
+fn item_frames(
+	values: &[f64],
+	item: usize,
+	batch: usize,
+	times: usize,
+	classes: usize,
+) -> Vec<f64> {
+	(0..times)
+		.flat_map(|t| {
+			values[(t * batch + item) * classes..(t * batch + item + 1) * classes]
+				.iter()
+				.copied()
+		})
+		.collect()
+}
+
+test_vk!(ml_loss_ctc_backward_matches_finite_difference, engine, {
+	let times = 3usize;
+	let batch = 2usize;
+	let classes = 4usize;
+	let values = [
+		-0.4, -1.1, -2.0, -0.7, -1.3, -0.6, -0.9, -1.8, -0.9, -0.3, -1.4, -1.0, -0.8, -1.7, -0.5, -0.4,
+		-1.6, -0.8, -0.7, -1.2, -0.5, -1.0, -1.9, -0.2,
+	];
+	// Rows of the embedding weight are the [T*N, C] frames; reshape
+	// restores [T, N, C] while staying on the tape.
+	let weight = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+		[times * batch, classes],
+		&values,
+	)?)?;
+	let ids = oa::Matrix::new_from_slice([times * batch], &[0_u32, 1, 2, 3, 4, 5])?;
+	let targets = oa::Matrix::new_from_slice([2, 2], &[1_i32, 2, 3, 0])?;
+	let input_lengths = oa::Matrix::new_from_slice([2], &[3_i32, 3])?;
+	let target_lengths = oa::Matrix::new_from_slice([2], &[2_i32, 1])?;
+	let tape = oa::ml::GradientTape::new();
+	let log_probs = weight.forward(&ids)?.reshape([times, batch, classes])?;
+	let loss = oa::ml::loss::ctc(&log_probs, &targets, &input_lengths, &target_lengths, 0)?;
+	tape.backward(&loss)?;
+	let gradient = weight
+		.weight()
+		.gradient()
+		.expect("ctc adjoint must reach log_probs")
+		.read_f32()?;
+	// Finite-difference oracle over the same item layout: row f of the
+	// weight is frame (f / N) item (f % N); element stride between
+	// frames of one item is N*C.
+	let targets_host = [[1, 2].as_slice(), [3].as_slice()];
+	let delta = 1e-3f64;
+	let mut expected = Vec::with_capacity(values.len());
+	for row in 0..times * batch {
+		let item = row % batch;
+		let target = targets_host[item];
+		for class in 0..classes {
+			let mut perturbed: Vec<f64> = values.iter().map(|v| *v as f64).collect();
+			let slot = row * classes + class;
+			perturbed[slot] += delta;
+			let plus = ctc_oracle_item_nll(
+				&item_frames(&perturbed, item, batch, times, classes),
+				classes,
+				times,
+				classes,
+				target,
+				0,
+			);
+			perturbed[slot] -= 2.0 * delta;
+			let minus = ctc_oracle_item_nll(
+				&item_frames(&perturbed, item, batch, times, classes),
+				classes,
+				times,
+				classes,
+				target,
+				0,
+			);
+			expected.push(((plus - minus) / (2.0 * delta) / batch as f64) as f32);
+		}
+	}
+	assert_close(&gradient, &expected, 5e-2);
+	Ok(())
+});

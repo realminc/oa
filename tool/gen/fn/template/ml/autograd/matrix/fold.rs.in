@@ -1,0 +1,34 @@
+// OA adjoint recipes mechanically extracted from the admitted Rust reverse traversal.
+// Donor source and adaptation: see README.md. No shader or numerical formula changes.
+
+// @operation unfold
+let Self { input, output_id, kernel_size, stride, padding, dilation } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = crate::ml::matrix::unfold_backward(
+	input,
+	&output_gradient,
+	*kernel_size,
+	*stride,
+	*padding,
+	*dilation,
+)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
+
+// @operation fold
+let Self { input, output_id, kernel_size, stride, padding, dilation } = self;
+let Some(output_gradient) = gradients.remove(output_id) else {
+	return Ok(BackwardStatus::Skipped);
+};
+let input_gradient = crate::ml::matrix::fold_backward(
+	input,
+	&output_gradient,
+	*kernel_size,
+	*stride,
+	*padding,
+	*dilation,
+)?;
+accumulate_value_gradient(gradients, input.value_id(), input_gradient)?;
+Ok(BackwardStatus::Recorded)
