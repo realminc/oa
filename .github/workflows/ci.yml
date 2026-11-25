@@ -396,7 +396,7 @@ jobs:
           import oa.vision
 
           assert importlib.metadata.version("oapython") == oa.__version__
-          assert callable(oa.Engine)
+          assert callable(oa.Runtime)
           assert callable(oa.matrix.add)
           assert oa.audio.Audio is oa.Audio
           assert oa.image.Image is oa.Image
