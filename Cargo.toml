@@ -14,6 +14,7 @@ include = [
   "/.oa-public-snapshot", "/src/rs/lib/**", "/src/slang/**",
   "/src/font/**",
   "/test/rs/matrix/*.gen.rs", "/tool/gen/**", "/test/rs/**/*_unit.rs",
+  "/test/rs/net/satellite_nlp_coordinator.rs", "/test/rs/net/satellite_nlp_step.rs",
   "/test/fixtures/crypto/mldsa/keyGen-*.json", "/test/fixtures/crypto/mldsa/capture-shake256.json",
   "/test/fixtures/crypto/mlkem/keyGen-*.json",
   "/test/fixtures/crypto/mlkem/encapDecap-*.json",
