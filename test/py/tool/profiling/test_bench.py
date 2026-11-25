@@ -54,6 +54,8 @@ class BenchTests(unittest.TestCase):
 		# in-process structural-off reference second; every entry measures the
 		# candidate, whose route its env selects.
 		profiler = PROFILING.parents[1].parent / "oasdk-dev/src/rs/benchmarks/ml/nlp/profile_char_transformer.rs"
+		if not profiler.is_file():
+			self.skipTest("oasdk-dev sibling checkout not present")
 		source = profiler.read_text(encoding="utf-8")
 		template = "forward + backward GPU median: fused {:.3} ms · unfused {:.3} ms"
 		self.assertIn(f'"{template}"', source)
