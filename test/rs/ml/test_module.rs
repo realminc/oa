@@ -11,7 +11,7 @@ struct CharRnn {
 }
 
 impl CharRnn {
-	fn new(_engine: &oa::Engine) -> oa::Result<Self> {
+	fn new(_runtime: &oa::Runtime) -> oa::Result<Self> {
 		let embedding = Rc::new(oa::ml::nn::Embedding::new_with_seed(3, 2, 11)?);
 		let recurrent = Rc::new(oa::ml::nn::Rnn::new_with_seed(2, 2, 1, 12)?);
 		let head = Rc::new(oa::ml::nn::Linear::new_with_seed(2, 3, 13)?);
@@ -89,9 +89,9 @@ impl Module for Branch {
 
 test_vk!(
 	module_tree_drives_one_complete_character_rnn_step,
-	engine,
+	runtime,
 	{
-		let model = CharRnn::new(&engine)?;
+		let model = CharRnn::new(&runtime)?;
 
 		assert!(model.parameters().is_empty());
 		let named = model.all_named_parameters()?;
@@ -148,7 +148,7 @@ test_vk!(
 	}
 );
 
-test_vk!(module_registration_rejects_ambiguous_ownership, engine, {
+test_vk!(module_registration_rejects_ambiguous_ownership, runtime, {
 	let parameter = Parameter::new("shared", oa::Matrix::new_from_f32([1], &[1.0])?)?;
 	let mut direct = ModuleRegistry::new();
 	direct.register_parameter("value", parameter.clone())?;
@@ -200,7 +200,7 @@ test_vk!(module_registration_rejects_ambiguous_ownership, engine, {
 	Ok(())
 });
 
-test_vk!(dropout_module_obeys_train_and_eval_modes, engine, {
+test_vk!(dropout_module_obeys_train_and_eval_modes, runtime, {
 	let dropout = oa::ml::nn::Dropout::new_with_seed(0.5, 0x4452_4f50)?;
 	let input = oa::Matrix::new_from_f32([257], &[1.0; 257])?;
 	let training = dropout.forward(&input)?.read_f32()?;
@@ -225,7 +225,7 @@ test_vk!(dropout_module_obeys_train_and_eval_modes, engine, {
 
 test_vk!(
 	utility_modules_preserve_views_and_validate_dimensions,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32(
 			[2, 3, 4],
@@ -272,7 +272,7 @@ test_vk!(
 
 test_vk!(
 	sequential_owns_and_forwards_registered_children_in_order,
-	engine,
+	runtime,
 	{
 		let flatten = Rc::new(oa::ml::nn::Flatten::default());
 		let head = Rc::new(oa::ml::nn::Linear::new_with_seed(12, 2, 991)?);

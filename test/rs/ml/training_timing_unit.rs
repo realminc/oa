@@ -13,14 +13,14 @@ fn composed_device_prefix_reaches_snapshot_and_callbacks() -> Result<()> {
 			Ok(TrainingControl::Continue)
 		}
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(crate::DeviceSelection::Index(0))
 		.build()?;
-	Engine::set_default(engine.clone());
+	Runtime::set_default(runtime.clone());
 	let mut optimizer = crate::ml::NoOpOptimizer::default();
 	let mut observed = Observe(None);
 	let mut training = ItTraining::new_eager(
-		&engine,
+		&runtime,
 		&mut optimizer,
 		ItTrainingConfig {
 			total_steps: 1,

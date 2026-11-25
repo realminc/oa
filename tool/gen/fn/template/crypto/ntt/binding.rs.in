@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 #[pyclass(name = "NttConfig", unsendable)]
 struct PythonNttConfig { inner: oa::crypto::ntt::NttConfig }
@@ -36,9 +36,9 @@ impl PythonNttParameters {
 
 #[pyfunction]
 fn crypto_ntt_prepare(config: &PythonNttConfig,
-	engine: Option<&PythonEngine>,) -> PyResult<PythonNttParameters> {
-		let engine = PythonEngine::resolve(engine)?;
-	let inner = oa::crypto::ntt::prepare(&engine, &config.inner).map_err(python_error)?;
+	runtime: Option<&PythonRuntime>,) -> PyResult<PythonNttParameters> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+	let inner = oa::crypto::ntt::prepare(&runtime, &config.inner).map_err(python_error)?;
 	Ok(PythonNttParameters { inner })
 }
 

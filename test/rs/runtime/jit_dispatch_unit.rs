@@ -1,4 +1,4 @@
-//! Validated variable-ABI laboratory recorder, sharing the Engine's pool, descriptors and cache.
+//! Validated variable-ABI laboratory recorder, sharing the Runtime's pool, descriptors and cache.
 
 use super::*;
 use crate::runtime::dna::{compiler::CompiledChain, ir::elementwise::Program};
@@ -115,7 +115,7 @@ impl PreparedChain {
 	) -> Result<ReusableCommandBuffer> {
 		if !device.same_as(&self.device) {
 			return Err(Error::invalid_argument(
-				"specialization recorder Engine mismatch",
+				"specialization recorder Runtime mismatch",
 			));
 		}
 		let bounded = cfg!(oa_profile = "compatibility");

@@ -23,14 +23,14 @@ fn fips_parameter_extents_and_prehash_sizes_are_exact() {
 
 test_vk_slow!(
 	device_mldsa_public_signing_matches_independent_verifier,
-	engine,
+	runtime,
 	{
 		for parameter in [
 			MlDsaParameters::MlDsa44,
 			MlDsaParameters::MlDsa65,
 			MlDsaParameters::MlDsa87,
 		] {
-			let key = device::mldsa_keygen(&engine, parameter)?;
+			let key = device::mldsa_keygen(&runtime, parameter)?;
 			let public = key.public_key().clone();
 			let message_bytes = b"OA public device-key integration";
 			let context_bytes = b"ctx";
@@ -71,14 +71,14 @@ test_vk_slow!(
 
 test_vk_slow!(
 	device_mlkem_public_lifecycle_and_implicit_rejection,
-	engine,
+	runtime,
 	{
 		for parameter in [
 			device::MlKemParameters::MlKem512,
 			device::MlKemParameters::MlKem768,
 			device::MlKemParameters::MlKem1024,
 		] {
-			let key = device::mlkem_keygen(&engine, parameter)?;
+			let key = device::mlkem_keygen(&runtime, parameter)?;
 			let encapsulated = device::mlkem_encapsulate(key.public_key(), parameter)?;
 			let decapsulated = device::mlkem_decapsulate(&key, &encapsulated.ciphertext)?;
 			let malformed = Matrix::new_from_slice(
@@ -105,12 +105,12 @@ test_vk_slow!(
 
 test_vk_slow!(
 	device_secrets_reject_capture_and_bad_public_metadata,
-	engine,
+	runtime,
 	{
 		let result =
-			engine.capture(|| device::mlkem_keygen(&engine, device::MlKemParameters::MlKem512));
+			runtime.capture(|| device::mlkem_keygen(&runtime, device::MlKemParameters::MlKem512));
 		assert!(matches!(result, Err(ref error) if error.kind() == oa::ErrorKind::FailedPrecondition));
-		let key = device::mldsa_keygen(&engine, MlDsaParameters::MlDsa44)?;
+		let key = device::mldsa_keygen(&runtime, MlDsaParameters::MlDsa44)?;
 		let message = Matrix::new_from_slice([1], &[1_u8])?;
 		let oversized_context = Matrix::new_from_slice([256], &[0_u8; 256])?;
 		assert!(
@@ -141,7 +141,7 @@ fn unhex(text: &str) -> Vec<u8> {
 
 test_vk_slow!(
 	device_mlkem_import_decapsulates_and_derives_public_bytes,
-	engine,
+	runtime,
 	{
 		let prompt: serde_json::Value = serde_json::from_str(include_str!(
 			"../../fixtures/crypto/mlkem/encapDecap-prompt.json"
@@ -182,7 +182,7 @@ test_vk_slow!(
 				_ => 4,
 			};
 			let expected_ek = dk[384 * k..384 * k + parameter.public_key_size()].to_vec();
-			let key = device::mlkem_import_key(&engine, parameter, &mut dk)?;
+			let key = device::mlkem_import_key(&runtime, parameter, &mut dk)?;
 			let public = key.public_key().read::<u8>()?;
 			assert_eq!(public, expected_ek);
 			let ct = Matrix::new_from_slice([ciphertext.len()], &ciphertext)?;
@@ -209,7 +209,7 @@ test_vk_slow!(
 
 test_vk_slow!(
 	device_mldsa_import_signs_for_independent_verifier,
-	engine,
+	runtime,
 	{
 		let expected: serde_json::Value = serde_json::from_str(include_str!(
 			"../../fixtures/crypto/mldsa/keyGen-expectedResults.json"
@@ -225,7 +225,7 @@ test_vk_slow!(
 				_ => MlDsaParameters::MlDsa87,
 			};
 			let public = Matrix::new_from_slice([pk.len()], &pk)?;
-			let key = device::mldsa_import_key(&engine, parameter, &mut sk, &public)?;
+			let key = device::mldsa_import_key(&runtime, parameter, &mut sk, &public)?;
 			assert_eq!(key.public_key().read::<u8>()?, pk);
 			let message_bytes = b"OA imported-key signing";
 			let context_bytes = b"import-ctx";
@@ -257,36 +257,40 @@ test_vk_slow!(
 	}
 );
 
-test_vk_slow!(device_secret_scope_defers_classifies_and_commits, engine, {
-	let scope = device::begin_secret_scope(&engine)?;
-	let key = device::mlkem_keygen(&engine, device::MlKemParameters::MlKem512)?;
-	let encapsulated =
-		device::mlkem_encapsulate(key.public_key(), device::MlKemParameters::MlKem512)?;
-	let nodes = scope.nodes();
-	assert_eq!(nodes.len(), 2);
-	assert!(nodes.iter().all(|node| node.uses_secret));
-	// Deferred events stay pending until the batch submits.
-	assert!(!key.cleanup().try_is_complete()?);
-	scope.commit()?;
-	key.cleanup().wait()?;
-	encapsulated.cleanup.wait()?;
-	assert_eq!(encapsulated.status.read::<u32>()?, [1]);
-	encapsulated.shared_secret.erase()?.wait()?;
-	key.erase()?.wait()?;
-	assert!(device::begin_secret_scope(&engine).is_ok());
-	Ok(())
-});
+test_vk_slow!(
+	device_secret_scope_defers_classifies_and_commits,
+	runtime,
+	{
+		let scope = device::begin_secret_scope(&runtime)?;
+		let key = device::mlkem_keygen(&runtime, device::MlKemParameters::MlKem512)?;
+		let encapsulated =
+			device::mlkem_encapsulate(key.public_key(), device::MlKemParameters::MlKem512)?;
+		let nodes = scope.nodes();
+		assert_eq!(nodes.len(), 2);
+		assert!(nodes.iter().all(|node| node.uses_secret));
+		// Deferred events stay pending until the batch submits.
+		assert!(!key.cleanup().try_is_complete()?);
+		scope.commit()?;
+		key.cleanup().wait()?;
+		encapsulated.cleanup.wait()?;
+		assert_eq!(encapsulated.status.read::<u32>()?, [1]);
+		encapsulated.shared_secret.erase()?.wait()?;
+		key.erase()?.wait()?;
+		assert!(device::begin_secret_scope(&runtime).is_ok());
+		Ok(())
+	}
+);
 
-test_vk_slow!(device_secret_scope_abandons_without_submission, engine, {
+test_vk_slow!(device_secret_scope_abandons_without_submission, runtime, {
 	let key;
 	{
-		let _scope = device::begin_secret_scope(&engine)?;
-		key = device::mlkem_keygen(&engine, device::MlKemParameters::MlKem512)?;
+		let _scope = device::begin_secret_scope(&runtime)?;
+		key = device::mlkem_keygen(&runtime, device::MlKemParameters::MlKem512)?;
 		// Dropping the scope abandons the batch: no submission, no wait.
 	}
 	assert!(key.cleanup().wait().is_err());
-	// The engine remains usable; the abandoned products stay quarantined.
-	let fresh = device::mlkem_keygen(&engine, device::MlKemParameters::MlKem512)?;
+	// The runtime remains usable; the abandoned products stay quarantined.
+	let fresh = device::mlkem_keygen(&runtime, device::MlKemParameters::MlKem512)?;
 	fresh.cleanup().wait()?;
 	fresh.erase()?.wait()?;
 	Ok(())

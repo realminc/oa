@@ -26,9 +26,9 @@ pub(super) fn validate_pointwise_loss_inputs(
 			target.dtype().token()
 		)));
 	}
-	if !prediction.engine_handle().same_as(target.engine_handle()) {
+	if !prediction.runtime().same_as(target.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	shader_u32(prediction.num_elements(), "element count", operation)
@@ -69,12 +69,12 @@ pub(super) fn mean_pointwise_loss(
 ) -> Result<Matrix> {
 	let element_count = validate_pointwise_loss_inputs(prediction, target, contract.name())?;
 	let per_element = Matrix::allocate(
-		prediction.engine_handle(),
+		prediction.runtime(),
 		prediction.shape().to_vec(),
 		prediction.num_elements(),
 		DType::F32,
 	)?;
-	let output = Matrix::allocate(prediction.engine_handle(), Vec::new(), 1, DType::F32)?;
+	let output = Matrix::allocate(prediction.runtime(), Vec::new(), 1, DType::F32)?;
 	let loss_buffers = [
 		BufferBinding::read(prediction.storage()),
 		BufferBinding::read(target.storage()),
@@ -107,7 +107,7 @@ pub(super) fn mean_pointwise_loss(
 	];
 	let inputs = [prediction, target];
 	let outputs = [&output];
-	prediction.engine_handle().record_split_semantic(
+	prediction.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -128,7 +128,7 @@ pub(super) fn pointwise_loss_backward(
 ) -> Result<Matrix> {
 	let element_count = validate_pointwise_loss_inputs(prediction, target, contract.name())?;
 	let gradient = Matrix::allocate(
-		prediction.engine_handle(),
+		prediction.runtime(),
 		prediction.shape().to_vec(),
 		prediction.num_elements(),
 		DType::F32,
@@ -156,11 +156,11 @@ pub(super) fn pointwise_loss_backward(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,

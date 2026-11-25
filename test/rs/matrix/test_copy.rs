@@ -1,4 +1,4 @@
-test_vk!(u8_upload_preserves_aligned_and_padded_extents, engine, {
+test_vk!(u8_upload_preserves_aligned_and_padded_extents, runtime, {
 	for count in 1..=17 {
 		let bytes: Vec<u8> = (0..count).map(|i| (i * 29 + 7) as u8).collect();
 		let value = oa::Matrix::new_from_slice([count], &bytes)?;
@@ -10,7 +10,7 @@ test_vk!(u8_upload_preserves_aligned_and_padded_extents, engine, {
 
 test_vk!(
 	copy_owns_independent_storage_and_preserves_reverse_mode,
-	engine,
+	runtime,
 	{
 		let source = oa::Matrix::new_from_f32([2], &[3.0, 4.0])?;
 		let copied = oa::matrix::copy(&source)?;

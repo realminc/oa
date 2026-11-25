@@ -61,9 +61,9 @@ pub fn evaluate_categorical(
 		));
 	}
 	for parameter in model.all_parameters()? {
-		if !environment.engine().owns_matrix(&parameter.data()) {
+		if !environment.runtime().owns_matrix(&parameter.data()) {
 			return Err(Error::invalid_argument(
-				"evaluation model must belong to the environment Engine",
+				"evaluation model must belong to the environment Runtime",
 			));
 		}
 	}
@@ -71,7 +71,7 @@ pub fn evaluate_categorical(
 	let observation_shape = environment.spec().observation().shape().to_vec();
 	let observation_elements = environment.spec().observation().elements_per_environment();
 	let mut rollout = RolloutBuffer::new(
-		environment.engine(),
+		environment.runtime(),
 		RolloutConfig {
 			time: config.horizon,
 			environments,

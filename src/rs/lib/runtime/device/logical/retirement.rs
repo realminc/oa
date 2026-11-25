@@ -199,7 +199,7 @@ impl Drop for RetirementService {
 		drop(self.sender.take());
 		self.control.disconnected.store(true, Ordering::Release);
 		// Join only after every queued item was retired or quarantined. This releases
-		// an idle host thread; it never turns engine drop into a GPU wait.
+		// an idle host thread; it never turns runtime drop into a GPU wait.
 		self.control.join_if_drained();
 	}
 }
@@ -395,7 +395,7 @@ fn drain_retirement_queue<T, Completion>(
 			quarantine(retirement)
 		};
 		// Finish resource retirement and accounting before waking Event waiters.
-		// Otherwise their Engine drop may observe a spurious pending item and
+		// Otherwise their Runtime drop may observe a spurious pending item and
 		// detach the last Device owner into process/layer shutdown.
 		control.pending.fetch_sub(1, Ordering::AcqRel);
 		publish(completion);

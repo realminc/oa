@@ -9,7 +9,7 @@ fn normalization_defaults_preserve_the_identity_transform() {
 
 test_vk!(
 	captured_image_invert_clamp_matches_standalone_dispatches,
-	engine,
+	runtime,
 	{
 		let samples: Vec<f32> = (0..273).map(|i| (i % 31 - 15) as f32 / 16.0).collect();
 		let input = Image::new(
@@ -20,7 +20,7 @@ test_vk!(
 		let inverted = input.invert(0.25)?;
 		inverted.as_matrix().read_f32()?;
 		let expected = inverted.clamp(-0.375, 0.625)?.as_matrix().read_f32()?;
-		let (plan, output) = engine.capture(|| input.invert(0.25)?.clamp(-0.375, 0.625))?;
+		let (plan, output) = runtime.capture(|| input.invert(0.25)?.clamp(-0.375, 0.625))?;
 		let report: serde_json::Value =
 			serde_json::from_str(&plan.debug_report_json("image invert and clamp"))
 				.expect("valid execution graph report");
@@ -31,7 +31,7 @@ test_vk!(
 		);
 		assert_eq!(output.layout(), input.layout());
 		assert_eq!(output.format(), input.format());
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(output.as_matrix().read_f32()?, expected);
 		Ok(())
 	}
@@ -39,7 +39,7 @@ test_vk!(
 
 test_vk!(
 	pointwise_pixel_family_matches_independent_scalar_oracles,
-	engine,
+	runtime,
 	{
 		let values = [-1.0, 0.0, 0.25, 0.5, 0.75, 1.0, 2.0];
 		let image = Image::new(
@@ -114,34 +114,38 @@ test_vk!(
 	}
 );
 
-test_vk!(pointwise_pixel_family_rejects_invalid_parameters, engine, {
-	let image = Image::new(
-		Matrix::new_from_f32([1, 1, 1], &[0.5])?,
-		ImageLayout::Chw,
-		ImageFormat::Gray,
-	)?;
-	for error in [
-		oa::image::threshold_binary(&image, f32::NAN, 1.0)
-			.err()
-			.expect("NaN accepted"),
-		oa::image::in_range(&image, 2.0, 1.0, 1.0)
-			.err()
-			.expect("reversed range accepted"),
-		oa::image::gamma_contrast(&image, 0.0, 1.0)
-			.err()
-			.expect("zero gamma accepted"),
-		oa::image::posterize(&image, 1, 0.0, 1.0)
-			.err()
-			.expect("one level accepted"),
-	] {
-		assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+test_vk!(
+	pointwise_pixel_family_rejects_invalid_parameters,
+	runtime,
+	{
+		let image = Image::new(
+			Matrix::new_from_f32([1, 1, 1], &[0.5])?,
+			ImageLayout::Chw,
+			ImageFormat::Gray,
+		)?;
+		for error in [
+			oa::image::threshold_binary(&image, f32::NAN, 1.0)
+				.err()
+				.expect("NaN accepted"),
+			oa::image::in_range(&image, 2.0, 1.0, 1.0)
+				.err()
+				.expect("reversed range accepted"),
+			oa::image::gamma_contrast(&image, 0.0, 1.0)
+				.err()
+				.expect("zero gamma accepted"),
+			oa::image::posterize(&image, 1, 0.0, 1.0)
+				.err()
+				.expect("one level accepted"),
+		] {
+			assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+		}
+		Ok(())
 	}
-	Ok(())
-});
+);
 
 test_vk!(
 	channel_composite_and_color_twist_operations_match_oracles,
-	engine,
+	runtime,
 	{
 		let rgb_values = [
 			1.0, 0.0, 0.5, 0.25, // red
@@ -213,7 +217,7 @@ test_vk!(
 
 test_vk!(
 	channel_reorder_and_seeded_noise_preserve_image_semantics,
-	engine,
+	runtime,
 	{
 		let image = Image::new(
 			Matrix::new_from_f32(
@@ -253,7 +257,7 @@ test_vk!(
 	}
 );
 
-test_vk!(normalize_matches_per_channel_oracle, engine, {
+test_vk!(normalize_matches_per_channel_oracle, runtime, {
 	let image = Image::new(
 		Matrix::new_from_f32([3, 1, 2], &[1.0, 3.0, 10.0, 14.0, -2.0, 4.0])?,
 		ImageLayout::Chw,
@@ -276,7 +280,7 @@ test_vk!(normalize_matches_per_channel_oracle, engine, {
 
 test_vk!(
 	semantic_color_compositions_preserve_typed_image_contracts,
-	engine,
+	runtime,
 	{
 		let rgb = Image::new(
 			Matrix::new_from_f32(
@@ -323,3 +327,274 @@ test_vk!(
 		Ok(())
 	}
 );
+
+test_vk!(cvt_color_rgb_to_gray_matches_luma_oracle, runtime, {
+	let rgb = Image::new(
+		Matrix::new_from_f32([1, 3, 1, 2], &[1.0, 0.0, 0.0, 1.0, 0.0, 1.0])?,
+		ImageLayout::Nchw,
+		ImageFormat::Rgb,
+	)?;
+	let gray = oa::image::cvt_color(&rgb, oa::image::ColorConversion::RgbToGray)?;
+	assert_eq!(gray.format(), ImageFormat::Gray);
+	assert_eq!(gray.as_matrix().shape(), &[1, 1, 1, 2]);
+	let result = gray.as_matrix().read_f32()?;
+	assert!((result[0] - 0.299).abs() < 1e-5);
+	assert!((result[1] - 0.701).abs() < 1e-5);
+	Ok(())
+});
+
+test_vk!(cvt_color_rgb_hsv_round_trip_recovers_source, runtime, {
+	let rgb = Image::new(
+		Matrix::new_from_f32(
+			[1, 3, 1, 3],
+			&[0.8, 0.4, 0.1, 0.2, 0.9, 0.3, 0.5, 0.25, 0.75],
+		)?,
+		ImageLayout::Nchw,
+		ImageFormat::Rgb,
+	)?;
+	let hsv = oa::image::cvt_color(&rgb, oa::image::ColorConversion::RgbToHsv)?;
+	assert_eq!(hsv.as_matrix().shape(), &[1, 3, 1, 3]);
+	let recovered = oa::image::cvt_color(&hsv, oa::image::ColorConversion::HsvToRgb)?;
+	let source = rgb.as_matrix().read_f32()?;
+	let round_trip = recovered.as_matrix().read_f32()?;
+	for (expected, actual) in source.iter().zip(round_trip.iter()) {
+		assert!((expected - actual).abs() < 1e-4, "{expected} != {actual}");
+	}
+	Ok(())
+});
+
+test_vk!(cvt_color_bgr_to_gray_uses_swapped_weights, runtime, {
+	let bgr = Image::new(
+		Matrix::new_from_f32([1, 3, 1, 1], &[1.0, 0.0, 0.0])?,
+		ImageLayout::Nchw,
+		ImageFormat::Bgr,
+	)?;
+	let gray = oa::image::cvt_color(&bgr, oa::image::ColorConversion::BgrToGray)?;
+	let result = gray.as_matrix().read_f32()?;
+	// Stored channel zero is blue under a BGR conversion.
+	assert!((result[0] - 0.114).abs() < 1e-5);
+	Ok(())
+});
+
+test_vk!(cvt_color_rejects_a_channel_count_mismatch, runtime, {
+	let rgb = Image::new(
+		Matrix::new_from_f32([1, 3, 1, 1], &[0.5; 3])?,
+		ImageLayout::Nchw,
+		ImageFormat::Rgb,
+	)?;
+	let error = oa::image::cvt_color(&rgb, oa::image::ColorConversion::GrayToRgb)
+		.err()
+		.unwrap();
+	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+	Ok(())
+});
+
+test_vk!(apply_color_map_jet_maps_endpoints, runtime, {
+	let gray = Image::new(
+		Matrix::new_from_f32([1, 1, 1, 2], &[0.0, 1.0])?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	let mapped = oa::image::apply_color_map(&gray, oa::image::ColorMap::Jet)?;
+	assert_eq!(mapped.format(), ImageFormat::Rgb);
+	assert_eq!(mapped.as_matrix().shape(), &[1, 3, 1, 2]);
+	let result = mapped.as_matrix().read_f32()?;
+	// Planar RGB: Jet at 0.0 -> (0, 0, 0.5); at 1.0 -> (0.5, 0, 0).
+	let expected = [0.0, 0.5, 0.0, 0.0, 0.5, 0.0];
+	for (expected, actual) in expected.iter().zip(result.iter()) {
+		assert!((expected - actual).abs() < 1e-5, "{expected} != {actual}");
+	}
+	Ok(())
+});
+
+test_vk!(apply_color_map_requires_a_single_channel, runtime, {
+	let rgb = Image::new(
+		Matrix::new_from_f32([1, 3, 1, 1], &[0.5; 3])?,
+		ImageLayout::Nchw,
+		ImageFormat::Rgb,
+	)?;
+	let error = oa::image::apply_color_map(&rgb, oa::image::ColorMap::Hot)
+		.err()
+		.unwrap();
+	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+	Ok(())
+});
+
+test_vk!(flood_fill_grows_bounded_region, runtime, {
+	// Left half = 0.4, right half = 0.9. Floating-range flood from (2, 2)
+	// with lo/up = 0.05 fills only the left region.
+	let width = 8;
+	let height = 6;
+	let mut plane = vec![0.0f32; width * height];
+	for y in 0..height {
+		for x in 0..width {
+			plane[y * width + x] = if x < 4 { 0.4 } else { 0.9 };
+		}
+	}
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, height, width], &plane)?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	let filled = oa::image::flood_fill(
+		&image,
+		2,
+		2,
+		1.0,
+		0.05,
+		0.05,
+		oa::image::Connectivity::Four,
+		0,
+	)?;
+	let values = filled.as_matrix().read_f32()?;
+	for y in 0..height {
+		for x in 0..width {
+			let expected = if x < 4 { 1.0 } else { 0.9 };
+			assert_eq!(
+				values[y * width + x],
+				expected,
+				"({x}, {y}) expected {expected}"
+			);
+		}
+	}
+	// Zero-diff seed-only fill on the right region propagates everywhere
+	// because the region is constant.
+	let filled_right = oa::image::flood_fill(
+		&image,
+		6,
+		3,
+		0.25,
+		0.0,
+		0.0,
+		oa::image::Connectivity::Four,
+		0,
+	)?;
+	let values = filled_right.as_matrix().read_f32()?;
+	assert_eq!(values[3 * width + 4], 0.25);
+	assert_eq!(values[0], 0.4);
+	Ok(())
+});
+
+test_vk!(draw_line_marks_segment_band, runtime, {
+	let width = 8;
+	let height = 6;
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, height, width], &vec![0.0; width * height])?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	// Horizontal line y=2, x 1..6 with thickness 1 -> band of half a pixel.
+	let out = oa::image::draw_line(&image, 1.5, 2.5, 6.5, 2.5, 1.0, 1.0)?;
+	let values = out.as_matrix().read_f32()?;
+	for x in 0..width {
+		let expected = if (1..=6).contains(&x) { 1.0 } else { 0.0 };
+		assert_eq!(values[2 * width + x], expected, "row2 x{x}");
+		assert_eq!(values[x], 0.0, "row0 x{x}");
+		assert_eq!(values[5 * width + x], 0.0, "row5 x{x}");
+	}
+	Ok(())
+});
+
+test_vk!(draw_rectangle_border_and_fill, runtime, {
+	let width = 8;
+	let height = 6;
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, height, width], &vec![0.0; width * height])?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	let out = oa::image::draw_rectangle(&image, 2.0, 1.0, 4.0, 3.0, 1.0, 1.0)?;
+	let values = out.as_matrix().read_f32()?;
+	for y in 0..height {
+		for x in 0..width {
+			let border =
+				(2..=5).contains(&x) && (1..=3).contains(&y) && (x == 2 || x == 5 || y == 1 || y == 3);
+			assert_eq!(
+				values[y * width + x],
+				if border { 1.0 } else { 0.0 },
+				"({x},{y})"
+			);
+		}
+	}
+	let filled = oa::image::draw_rectangle(&image, 2.0, 1.0, 4.0, 3.0, 1.0, -1.0)?;
+	let values = filled.as_matrix().read_f32()?;
+	for y in 0..height {
+		for x in 0..width {
+			let inside = (2..=5).contains(&x) && (1..=3).contains(&y);
+			assert_eq!(
+				values[y * width + x],
+				if inside { 1.0 } else { 0.0 },
+				"({x},{y})"
+			);
+		}
+	}
+	Ok(())
+});
+
+test_vk!(draw_circle_disk_and_ring, runtime, {
+	let width = 9;
+	let height = 9;
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, height, width], &vec![0.0; width * height])?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	// Filled disk radius 2 at (4.5, 4.5): covers the center cross exactly.
+	let disk = oa::image::draw_circle(&image, 4.5, 4.5, 2.0, 1.0, -1.0)?;
+	let values = disk.as_matrix().read_f32()?;
+	for y in 0..height {
+		for x in 0..width {
+			let d = ((x as f32 + 0.5 - 4.5).powi(2) + (y as f32 + 0.5 - 4.5).powi(2)).sqrt();
+			let expected = if d <= 2.0 { 1.0 } else { 0.0 };
+			assert_eq!(values[y * width + x], expected, "disk ({x},{y})");
+		}
+	}
+	// Ring radius 3 thickness 1: band |d - 3| <= 0.5.
+	let ring = oa::image::draw_circle(&image, 4.5, 4.5, 3.0, 1.0, 1.0)?;
+	let values = ring.as_matrix().read_f32()?;
+	for y in 0..height {
+		for x in 0..width {
+			let d = ((x as f32 + 0.5 - 4.5).powi(2) + (y as f32 + 0.5 - 4.5).powi(2)).sqrt();
+			let expected = if (d - 3.0).abs() <= 0.5 { 1.0 } else { 0.0 };
+			assert_eq!(values[y * width + x], expected, "ring ({x},{y})");
+		}
+	}
+	Ok(())
+});
+
+test_vk!(fill_polygon_fills_triangle_interior, runtime, {
+	let width = 8;
+	let height = 8;
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, height, width], &vec![0.0; width * height])?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	// Triangle (1,1) (6,1) (1,6): even-odd fill covers x<=5-... interior points.
+	let points = Matrix::new_from_f32_on(&runtime, [3, 2], &[1.0, 1.0, 6.0, 1.0, 1.0, 6.0])?;
+	let out = oa::image::fill_polygon(&image, &points, 1.0)?;
+	let values = out.as_matrix().read_f32()?;
+	// Host even-odd oracle over the same rule.
+	for y in 0..height {
+		for x in 0..width {
+			let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+			let verts = [(1.0f32, 1.0f32), (6.0, 1.0), (1.0, 6.0)];
+			let mut inside = false;
+			let mut j = 2;
+			for i in 0..3 {
+				let (xi, yi) = verts[i];
+				let (xj, yj) = verts[j];
+				if (yi > py) != (yj > py) && px < xj + (xi - xj) * (py - yj) / (yi - yj) {
+					inside = !inside;
+				}
+				j = i;
+			}
+			assert_eq!(
+				values[y * width + x],
+				if inside { 1.0 } else { 0.0 },
+				"({x},{y})"
+			);
+		}
+	}
+	Ok(())
+});

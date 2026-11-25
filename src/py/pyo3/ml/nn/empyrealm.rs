@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::super::autograd::PythonParameter;
 use super::mamba3::PythonMamba3Config;
@@ -209,10 +209,10 @@ impl PythonEmpyrealm {
 		vocab_size: usize,
 		config: &PythonEmpyrealmConfig,
 		seed: u64,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::nn::Empyrealm::new_with_seed_on(&engine, vocab_size, config.inner.clone(), seed)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::nn::Empyrealm::new_with_seed_on(&runtime, vocab_size, config.inner.clone(), seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

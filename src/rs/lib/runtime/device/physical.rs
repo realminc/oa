@@ -4,12 +4,12 @@ use std::{cmp::Reverse, ffi::CStr};
 
 use crate::runtime::{DeviceHardwareInfo, DeviceInfo, DeviceKind, DeviceSoftwareInfo};
 
-use crate::{DeviceSelection, EngineRequirements, Error, ErrorKind, Result};
+use crate::{DeviceSelection, Error, ErrorKind, Result, RuntimeRequirements};
 
 use super::super::Instance;
 use super::info::{DevicePhysicalInfo, ElectionCandidate, log_device_election};
 
-// OA's per-engine descriptor budgets are independent of Vulkan's device type.
+// OA's per-runtime descriptor budgets are independent of Vulkan's device type.
 // The actual allocation can shrink further in DescriptorHeap::new.
 const MAX_STORAGE_BUFFER_DESCRIPTORS: u32 = 262_144;
 const MAX_STORAGE_IMAGE_DESCRIPTORS: u32 = 2_048;
@@ -292,7 +292,7 @@ impl DevicePhysical {
 	pub(in crate::runtime) fn select(
 		instance: &Instance,
 		selection: DeviceSelection,
-		requirements: &EngineRequirements,
+		requirements: &RuntimeRequirements,
 	) -> Result<Self> {
 		// SAFETY: the instance is live and enumeration only writes Vulkan-owned handles
 		// into storage managed by Ash.
@@ -389,7 +389,7 @@ impl DevicePhysical {
 			let graphics_queue_family = select_graphics_queue_family(&queue_families);
 			// Presentation composes compute sources and the image on one queue.
 			// Keep exclusive resources in that family without transfers or host waits;
-			// compute-only engines retain their dedicated-compute preference.
+			// compute-only runtimes retain their dedicated-compute preference.
 			let (compute_queue_family, compute_timestamp_valid_bits) = if requirements.presentation {
 				graphics_queue_family
 					.and_then(|family| {
@@ -660,7 +660,7 @@ impl DevicePhysical {
 	fn service_rejection(
 		&self,
 		instance: &Instance,
-		requirements: &EngineRequirements,
+		requirements: &RuntimeRequirements,
 	) -> Result<Option<String>> {
 		#[cfg(oa_profile = "compatibility")]
 		if !requirements.video_encode.is_empty() {

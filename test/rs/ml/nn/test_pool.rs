@@ -113,38 +113,42 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 	}
 }
 
-test_vk!(avg_pool_2d_matches_donor_and_odd_padding_oracles, engine, {
-	let donor_input = oa::Matrix::new_from_f32(
-		[1, 1, 4, 4],
-		&[
-			1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
-		],
-	)?;
-	let donor_output = oa::ml::matrix::avg_pool_2d(&donor_input, 2, 2, 0)?;
-	assert_eq!(donor_output.shape(), [1, 1, 2, 2]);
-	assert_eq!(donor_output.read_f32()?, [3.5, 5.5, 11.5, 13.5]);
+test_vk!(
+	avg_pool_2d_matches_donor_and_odd_padding_oracles,
+	runtime,
+	{
+		let donor_input = oa::Matrix::new_from_f32(
+			[1, 1, 4, 4],
+			&[
+				1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+			],
+		)?;
+		let donor_output = oa::ml::matrix::avg_pool_2d(&donor_input, 2, 2, 0)?;
+		assert_eq!(donor_output.shape(), [1, 1, 2, 2]);
+		assert_eq!(donor_output.read_f32()?, [3.5, 5.5, 11.5, 13.5]);
 
-	let shape = [1, 2, 4, 5];
-	let values = (0..40)
-		.map(|index| index as f32 * 0.25 - 3.0)
-		.collect::<Vec<_>>();
-	let input = oa::Matrix::new_from_f32(shape, &values)?;
-	let (expected_shape, expected) = host_avg_pool_2d(&values, shape, 3, 2, 1);
-	let (plan, output) = engine.capture(|| oa::ml::matrix::avg_pool_2d(&input, 3, 2, 1))?;
-	assert_eq!(output.shape(), expected_shape);
-	assert_eq!(plan.semantic_graph().operations().len(), 1);
-	let operation = &plan.semantic_graph().operations()[0];
-	assert_eq!(operation.name(), "oa::ml::matrix::avg_pool_2d");
-	assert_eq!(operation.attributes().len(), 3);
-	assert_eq!(operation.attributes()[0].name(), "kernel_size");
-	assert_eq!(operation.attributes()[1].name(), "stride");
-	assert_eq!(operation.attributes()[2].name(), "padding");
-	engine.submit(&plan)?.wait()?;
-	assert_close(&output.read_f32()?, &expected, 1.0e-5);
-	Ok(())
-});
+		let shape = [1, 2, 4, 5];
+		let values = (0..40)
+			.map(|index| index as f32 * 0.25 - 3.0)
+			.collect::<Vec<_>>();
+		let input = oa::Matrix::new_from_f32(shape, &values)?;
+		let (expected_shape, expected) = host_avg_pool_2d(&values, shape, 3, 2, 1);
+		let (plan, output) = runtime.capture(|| oa::ml::matrix::avg_pool_2d(&input, 3, 2, 1))?;
+		assert_eq!(output.shape(), expected_shape);
+		assert_eq!(plan.semantic_graph().operations().len(), 1);
+		let operation = &plan.semantic_graph().operations()[0];
+		assert_eq!(operation.name(), "oa::ml::matrix::avg_pool_2d");
+		assert_eq!(operation.attributes().len(), 3);
+		assert_eq!(operation.attributes()[0].name(), "kernel_size");
+		assert_eq!(operation.attributes()[1].name(), "stride");
+		assert_eq!(operation.attributes()[2].name(), "padding");
+		runtime.submit(&plan)?.wait()?;
+		assert_close(&output.read_f32()?, &expected, 1.0e-5);
+		Ok(())
+	}
+);
 
-test_vk!(avg_pool_2d_module_and_adjoint_match_host_oracle, engine, {
+test_vk!(avg_pool_2d_module_and_adjoint_match_host_oracle, runtime, {
 	const SHAPE: [usize; 4] = [1, 1, 3, 4];
 	let input_values = [
 		0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, -1.2, 0.5, 0.9, 1.4, -0.2, 0.1,
@@ -187,7 +191,7 @@ test_vk!(avg_pool_2d_module_and_adjoint_match_host_oracle, engine, {
 	Ok(())
 });
 
-test_vk!(avg_pool_2d_rejects_invalid_contracts, engine, {
+test_vk!(avg_pool_2d_rejects_invalid_contracts, runtime, {
 	let rank_two = oa::Matrix::new_from_f32([2, 2], &[1.0; 4])?;
 	let integer = oa::Matrix::new_from_slice([1, 1, 2, 2], &[1_i32; 4])?;
 	let input = oa::Matrix::new_from_f32([1, 1, 2, 2], &[1.0; 4])?;
@@ -217,7 +221,7 @@ test_vk!(avg_pool_2d_rejects_invalid_contracts, engine, {
 
 test_vk!(
 	max_pool_2d_values_indices_and_adjoint_match_donor,
-	engine,
+	runtime,
 	{
 		let input_values = [
 			1.0_f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
@@ -263,7 +267,7 @@ test_vk!(
 
 test_vk!(
 	adaptive_avg_pool_2d_rectangular_forward_and_adjoint_match_oracles,
-	engine,
+	runtime,
 	{
 		let shape = [1, 1, 3, 4];
 		let input_values = [
@@ -540,7 +544,7 @@ fn host_adaptive_avg_pool_3d(
 	output
 }
 
-test_vk!(avg_pool_3d_forward_and_module_match_host_oracle, engine, {
+test_vk!(avg_pool_3d_forward_and_module_match_host_oracle, runtime, {
 	let shape = [1, 2, 3, 4, 4];
 	let values = (0..96)
 		.map(|index| index as f32 * 0.125 - 6.0)
@@ -548,13 +552,13 @@ test_vk!(avg_pool_3d_forward_and_module_match_host_oracle, engine, {
 	let (expected_shape, expected) = host_avg_pool_3d(&values, shape, 2, 2, 0);
 	assert_eq!(expected_shape, [1, 2, 1, 2, 2]);
 	let input = oa::Matrix::new_from_f32(shape, &values)?;
-	let (plan, output) = engine.capture(|| oa::ml::matrix::avg_pool_3d(&input, 2, 2, 0))?;
+	let (plan, output) = runtime.capture(|| oa::ml::matrix::avg_pool_3d(&input, 2, 2, 0))?;
 	assert_eq!(output.shape(), expected_shape);
 	assert_eq!(
 		plan.semantic_graph().operations()[0].name(),
 		"oa::ml::matrix::avg_pool_3d"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_close(&output.read_f32()?, &expected, 1.0e-5);
 
 	let module = oa::ml::nn::AvgPool3d::new_with_options(2, 2, 1)?;
@@ -568,7 +572,7 @@ test_vk!(avg_pool_3d_forward_and_module_match_host_oracle, engine, {
 
 test_vk!(
 	max_pool_3d_values_indices_and_adjoint_match_oracles,
-	engine,
+	runtime,
 	{
 		let shape = [1, 1, 4, 4, 4];
 		let values = (0..64)
@@ -614,7 +618,7 @@ test_vk!(
 
 test_vk!(
 	adaptive_max_pool_2d_values_indices_and_adjoint_match_oracles,
-	engine,
+	runtime,
 	{
 		let shape = [1, 1, 4, 5];
 		let values = (0..20)
@@ -656,7 +660,7 @@ test_vk!(
 	}
 );
 
-test_vk!(adaptive_pool_3d_variants_match_host_oracles, engine, {
+test_vk!(adaptive_pool_3d_variants_match_host_oracles, runtime, {
 	let shape = [1, 1, 3, 4, 4];
 	let values = (0..48)
 		.map(|index| ((index * 5 % 23) as f32 - 11.0) * 0.15)
@@ -692,7 +696,7 @@ test_vk!(adaptive_pool_3d_variants_match_host_oracles, engine, {
 
 test_vk!(
 	max_unpool_round_trip_reconstructs_and_gather_adjoint_routes,
-	engine,
+	runtime,
 	{
 		// 1d round trip: unpool(pool(x), indices) scatters pooled values back to
 		// their recorded argmax positions and zeroes everything else.
@@ -748,7 +752,7 @@ test_vk!(
 
 test_vk!(
 	max_unpool_2d_round_trip_and_default_extent_match_oracles,
-	engine,
+	runtime,
 	{
 		let input_values = (0..16)
 			.map(|index| ((index * 7 % 13) as f32 - 6.0) * 0.4)

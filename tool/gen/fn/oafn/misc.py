@@ -16,7 +16,7 @@ def validate_sessions_schema(schema: dict[str, Any]) -> None:
 SESSION_TYPE_PATHS = {
 	"MediaPlayer": "crate::media", "MediaPlayerConfig": "crate::media",
 	"SdlWindow": "crate::runtime", "LogComponent": "crate::runtime", "LogOptions": "crate::runtime",
-	"EngineBuilder": "crate::runtime", "DeviceSummary": "crate::runtime",
+	"RuntimeBuilder": "crate::runtime", "DeviceSummary": "crate::runtime",
 	"TcpStream": "crate::net", "TcpListener": "crate::net",
 	"VideoCodec": "crate::video", "VideoContainerInfo": "crate::video", "VideoDecoder": "crate::video",
 	"VideoMuxerConfig": "crate::video",

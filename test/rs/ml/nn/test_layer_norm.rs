@@ -131,7 +131,7 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 
 test_vk!(
 	layer_norm_forward_matches_independent_host_oracle,
-	engine,
+	runtime,
 	{
 		let input_values = [
 			0.25_f32, -0.5, 1.25, 3.0, 2.0, -1.0, 0.125, 0.5, 0.75, -2.0, 4.0, 1.0,
@@ -171,7 +171,7 @@ test_vk!(
 	}
 );
 
-test_vk!(layer_norm_backward_matches_finite_differences, engine, {
+test_vk!(layer_norm_backward_matches_finite_differences, runtime, {
 	const VOCABULARY: usize = 3;
 	const FEATURES: usize = 3;
 	const CLASSES: usize = 2;
@@ -228,7 +228,7 @@ test_vk!(layer_norm_backward_matches_finite_differences, engine, {
 	let indices = oa::Matrix::new_from_slice([2, 2], &indices_values)?;
 	let targets = oa::Matrix::new_from_slice([4], &target_values)?;
 
-	let (plan, ()) = engine.capture(|| {
+	let (plan, ()) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let embedded = embedding.forward(&indices)?;
 		let normalized = norm.forward(&embedded)?;
@@ -275,7 +275,7 @@ test_vk!(layer_norm_backward_matches_finite_differences, engine, {
 		"exclusive_per_workgroup"
 	);
 	assert!(!report.to_string().contains("layer_norm_parameter_backward"));
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 
 	assert_close(
 		&embedding
@@ -318,7 +318,7 @@ test_vk!(layer_norm_backward_matches_finite_differences, engine, {
 	Ok(())
 });
 
-test_vk!(layer_norm_rejects_invalid_contracts, engine, {
+test_vk!(layer_norm_rejects_invalid_contracts, runtime, {
 	for result in [
 		oa::ml::nn::LayerNorm::new(0, EPSILON),
 		oa::ml::nn::LayerNorm::new(3, 0.0),

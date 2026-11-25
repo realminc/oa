@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::transformer::PythonAttentionMode;
 
@@ -50,7 +50,7 @@ pub(crate) struct PythonMultiHeadAttention {
 impl PythonMultiHeadAttention {
 	/// Construct four biased projections with causal visibility and automatic backend.
 	#[new]
-	#[pyo3(signature = (model_width, num_heads, sequence_length, dropout_probability = 0.0, bias = true, seed = 0, engine=None))]
+	#[pyo3(signature = (model_width, num_heads, sequence_length, dropout_probability = 0.0, bias = true, seed = 0, runtime=None))]
 	pub fn new(
 		model_width: usize,
 		num_heads: usize,
@@ -58,11 +58,11 @@ impl PythonMultiHeadAttention {
 		dropout_probability: f32,
 		bias: bool,
 		seed: u64,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		oa::ml::nn::MultiHeadAttention::new_with_seed_and_options_on(
-			&engine,
+			&runtime,
 			model_width,
 			num_heads,
 			sequence_length,

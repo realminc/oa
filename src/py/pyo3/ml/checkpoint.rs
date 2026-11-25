@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, runtime::PythonEngine};
+use crate::{error::python_error, runtime::PythonRuntime};
 
 /// Filesystem and metric policy for checkpointing.
 #[pyclass(name = "CheckpointManagerConfig")]
@@ -93,15 +93,15 @@ impl PythonCheckpointManagerConfig {
 
 /// Stateful checkpoint selection and bounded incremental-retention policy.
 ///
-/// The engine is kept alive via a `Py<PythonEngine>` handle; an internal raw
-/// pointer satisfies `CheckpointManager<'engine>`.  The engine object must not
+/// The runtime is kept alive via a `Py<PythonRuntime>` handle; an internal raw
+/// pointer satisfies `CheckpointManager<'runtime>`.  The runtime object must not
 /// be dropped while this manager is alive — normal Python reference counting
 /// ensures this when you keep it as a local or attribute.
 #[pyclass(name = "CheckpointManager", unsendable)]
 pub(crate) struct PythonCheckpointManager {
-	// Keep the engine allocation alive.
-	_engine: Py<PythonEngine>,
-	// 'static is sound because _engine pins the allocation.
+	// Keep the runtime allocation alive.
+	_runtime: Py<PythonRuntime>,
+	// 'static is sound because _runtime pins the allocation.
 	inner: oa::ml::CheckpointManager<'static>,
 }
 
@@ -109,21 +109,21 @@ pub(crate) struct PythonCheckpointManager {
 impl PythonCheckpointManager {
 	/// Construct and validate the manager.
 	#[new]
-	#[pyo3(signature = (config, engine=None))]
+	#[pyo3(signature = (config, runtime=None))]
 	pub fn new(
 		py: Python<'_>,
 		config: &PythonCheckpointManagerConfig,
-		engine: Option<Py<PythonEngine>>,
+		runtime: Option<Py<PythonRuntime>>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve_owned(py, engine)?;
+		let runtime = PythonRuntime::resolve_owned(py, runtime)?;
 		let cfg = config.inner.clone();
-		let eng = engine.bind(py).borrow();
-		// SAFETY: _engine keeps the allocation alive for the lifetime of this struct.
-		let engine_ref: &'static oa::Engine = unsafe { &*(&eng.inner as *const oa::Engine) };
-		let inner = oa::ml::CheckpointManager::new(engine_ref, cfg).map_err(python_error)?;
+		let eng = runtime.bind(py).borrow();
+		// SAFETY: _runtime keeps the allocation alive for the lifetime of this struct.
+		let runtime_ref: &'static oa::Runtime = unsafe { &*(&eng.inner as *const oa::Runtime) };
+		let inner = oa::ml::CheckpointManager::new(runtime_ref, cfg).map_err(python_error)?;
 		drop(eng);
 		Ok(Self {
-			_engine: engine,
+			_runtime: runtime,
 			inner,
 		})
 	}
@@ -258,12 +258,6 @@ fn with_module_shared_opt<R>(
 	f: impl FnOnce(&dyn oa::ml::Module, &dyn oa::ml::CheckpointOptimizer) -> oa::Result<R>,
 ) -> PyResult<R> {
 	use super::actor_critic::PythonCategoricalActorCritic;
-	use super::nlp::{
-		PythonBpeGru, PythonBpeMamba3, PythonBpeMoeTransformer, PythonBpeRnn, PythonBpeTransformer,
-		PythonByteEmpyrealm, PythonByteGru, PythonByteMamba3, PythonByteMoeTransformer, PythonByteRnn,
-		PythonByteTransformer, PythonCharGru, PythonCharMamba3, PythonCharMoeTransformer,
-		PythonCharRnn, PythonCharTransformer,
-	};
 	use super::optim::{PythonAdam, PythonAdamW, PythonMuon, PythonSgd};
 
 	macro_rules! dispatch_model_shared {
@@ -290,25 +284,7 @@ fn with_module_shared_opt<R>(
 	}
 
 	let _ = py;
-	dispatch_model_shared!([
-		PythonCategoricalActorCritic,
-		PythonCharRnn,
-		PythonCharGru,
-		PythonCharTransformer,
-		PythonCharMoeTransformer,
-		PythonCharMamba3,
-		PythonByteRnn,
-		PythonByteGru,
-		PythonByteTransformer,
-		PythonByteMoeTransformer,
-		PythonByteMamba3,
-		PythonByteEmpyrealm,
-		PythonBpeRnn,
-		PythonBpeGru,
-		PythonBpeTransformer,
-		PythonBpeMoeTransformer,
-		PythonBpeMamba3,
-	]);
+	dispatch_model_shared!([PythonCategoricalActorCritic,]);
 	Err(pyo3::exceptions::PyTypeError::new_err(
 		"model must be a recognized Module type",
 	))
@@ -329,12 +305,6 @@ fn with_module_mut_opt<R>(
 	f: impl FnOnce(&dyn oa::ml::Module, &mut dyn oa::ml::CheckpointOptimizer) -> oa::Result<R>,
 ) -> PyResult<R> {
 	use super::actor_critic::PythonCategoricalActorCritic;
-	use super::nlp::{
-		PythonBpeGru, PythonBpeMamba3, PythonBpeMoeTransformer, PythonBpeRnn, PythonBpeTransformer,
-		PythonByteEmpyrealm, PythonByteGru, PythonByteMamba3, PythonByteMoeTransformer, PythonByteRnn,
-		PythonByteTransformer, PythonCharGru, PythonCharMamba3, PythonCharMoeTransformer,
-		PythonCharRnn, PythonCharTransformer,
-	};
 	use super::optim::{PythonAdam, PythonAdamW, PythonMuon, PythonSgd};
 
 	macro_rules! dispatch_model {
@@ -362,25 +332,7 @@ fn with_module_mut_opt<R>(
 	}
 
 	let _ = py;
-	dispatch_model!([
-		PythonCategoricalActorCritic,
-		PythonCharRnn,
-		PythonCharGru,
-		PythonCharTransformer,
-		PythonCharMoeTransformer,
-		PythonCharMamba3,
-		PythonByteRnn,
-		PythonByteGru,
-		PythonByteTransformer,
-		PythonByteMoeTransformer,
-		PythonByteMamba3,
-		PythonByteEmpyrealm,
-		PythonBpeRnn,
-		PythonBpeGru,
-		PythonBpeTransformer,
-		PythonBpeMoeTransformer,
-		PythonBpeMamba3,
-	]);
+	dispatch_model!([PythonCategoricalActorCritic,]);
 	Err(pyo3::exceptions::PyTypeError::new_err(
 		"model must be a recognized Module type",
 	))

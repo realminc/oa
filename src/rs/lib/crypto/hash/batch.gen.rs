@@ -38,7 +38,7 @@ pub fn shake128(input: &Matrix, output_length: usize) -> Result<Matrix> {
 		.ok_or_else(|| Error::invalid_argument("SHAKE output size overflows usize"))?;
 	shader_u32(element_count, "output byte size", operation.name())?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, output_row_bytes],
 		element_count,
 		DType::U8,
@@ -76,7 +76,7 @@ pub fn shake128(input: &Matrix, output_length: usize) -> Result<Matrix> {
 		value: u64::try_from(output_length)
 			.map_err(|_| Error::invalid_argument("SHAKE output length exceeds u64"))?,
 	}];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -123,7 +123,7 @@ pub fn shake256(input: &Matrix, output_length: usize) -> Result<Matrix> {
 		.ok_or_else(|| Error::invalid_argument("SHAKE output size overflows usize"))?;
 	shader_u32(element_count, "output byte size", operation.name())?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, output_row_bytes],
 		element_count,
 		DType::U8,
@@ -161,7 +161,7 @@ pub fn shake256(input: &Matrix, output_length: usize) -> Result<Matrix> {
 		value: u64::try_from(output_length)
 			.map_err(|_| Error::invalid_argument("SHAKE output length exceeds u64"))?,
 	}];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -193,7 +193,7 @@ pub fn keccak_f1600(input: &Matrix) -> Result<Matrix> {
 		)));
 	}
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::U8,
@@ -207,7 +207,7 @@ pub fn keccak_f1600(input: &Matrix) -> Result<Matrix> {
 	let push_constants = [PushConstant::U32(count)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -242,7 +242,7 @@ pub fn merkle_root(input: &Matrix) -> Result<Matrix> {
 	}
 
 	if leaf_count == 1 {
-		let output = Matrix::allocate_output(input.engine_handle(), vec![1, 32], 32, DType::U8)?;
+		let output = Matrix::allocate_output(input.runtime(), vec![1, 32], 32, DType::U8)?;
 		let kernel = KernelId::CryptographyMerkleCopyU8;
 		let buffers = [
 			BufferBinding::read(input.storage()),
@@ -251,7 +251,7 @@ pub fn merkle_root(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(8)];
 		let inputs = [input];
 		let outputs = [&output];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -269,7 +269,7 @@ pub fn merkle_root(input: &Matrix) -> Result<Matrix> {
 		return Ok(output);
 	}
 	if leaf_count == 2 {
-		let output = Matrix::allocate_output(input.engine_handle(), vec![1, 32], 32, DType::U8)?;
+		let output = Matrix::allocate_output(input.runtime(), vec![1, 32], 32, DType::U8)?;
 		let kernel = KernelId::CryptographyMerkleReduceU8;
 		let buffers = [
 			BufferBinding::read(input.storage()),
@@ -282,7 +282,7 @@ pub fn merkle_root(input: &Matrix) -> Result<Matrix> {
 		];
 		let inputs = [input];
 		let outputs = [&output];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -304,7 +304,7 @@ pub fn merkle_root(input: &Matrix) -> Result<Matrix> {
 	let mut count = leaf_count.div_ceil(2);
 	loop {
 		levels.push(Matrix::allocate_output(
-			input.engine_handle(),
+			input.runtime(),
 			vec![count, 32],
 			count
 				.checked_mul(32)
@@ -372,7 +372,7 @@ pub fn merkle_root(input: &Matrix) -> Result<Matrix> {
 			.collect::<Vec<_>>();
 		let inputs = [input];
 		let outputs = [&levels[levels.len() - 1]];
-		input.engine_handle().record_split_semantic(
+		input.runtime().record_split_semantic(
 			&dispatches,
 			SemanticDispatch {
 				contract: crate::core::operation::crypto::hash::MERKLE_ROOT,
@@ -407,7 +407,7 @@ pub fn sha224(input: &Matrix) -> Result<Matrix> {
 	let count = shader_u32(rows, "batch size", OPERATION)?;
 	let message_len = shader_u32(message_bytes, "message length", OPERATION)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, digest_bytes],
 		element_count,
 		DType::U8,
@@ -420,7 +420,7 @@ pub fn sha224(input: &Matrix) -> Result<Matrix> {
 	let push_constants = [PushConstant::U32(count), PushConstant::U32(message_len)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -458,7 +458,7 @@ pub fn sha256(input: &Matrix) -> Result<Matrix> {
 	let count = shader_u32(rows, "batch size", OPERATION)?;
 	let message_len = shader_u32(message_bytes, "message length", OPERATION)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, digest_bytes],
 		element_count,
 		DType::U8,
@@ -471,7 +471,7 @@ pub fn sha256(input: &Matrix) -> Result<Matrix> {
 	let push_constants = [PushConstant::U32(count), PushConstant::U32(message_len)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -509,7 +509,7 @@ pub fn sha384(input: &Matrix) -> Result<Matrix> {
 	let count = shader_u32(rows, "batch size", OPERATION)?;
 	let message_len = shader_u32(message_bytes, "message length", OPERATION)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, digest_bytes],
 		element_count,
 		DType::U8,
@@ -522,7 +522,7 @@ pub fn sha384(input: &Matrix) -> Result<Matrix> {
 	let push_constants = [PushConstant::U32(count), PushConstant::U32(message_len)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -560,7 +560,7 @@ pub fn sha512(input: &Matrix) -> Result<Matrix> {
 	let count = shader_u32(rows, "batch size", OPERATION)?;
 	let message_len = shader_u32(message_bytes, "message length", OPERATION)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, digest_bytes],
 		element_count,
 		DType::U8,
@@ -573,7 +573,7 @@ pub fn sha512(input: &Matrix) -> Result<Matrix> {
 	let push_constants = [PushConstant::U32(count), PushConstant::U32(message_len)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -611,7 +611,7 @@ pub fn sha512_224(input: &Matrix) -> Result<Matrix> {
 	let count = shader_u32(rows, "batch size", OPERATION)?;
 	let message_len = shader_u32(message_bytes, "message length", OPERATION)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, digest_bytes],
 		element_count,
 		DType::U8,
@@ -624,7 +624,7 @@ pub fn sha512_224(input: &Matrix) -> Result<Matrix> {
 	let push_constants = [PushConstant::U32(count), PushConstant::U32(message_len)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -662,7 +662,7 @@ pub fn sha512_256(input: &Matrix) -> Result<Matrix> {
 	let count = shader_u32(rows, "batch size", OPERATION)?;
 	let message_len = shader_u32(message_bytes, "message length", OPERATION)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, digest_bytes],
 		element_count,
 		DType::U8,
@@ -675,7 +675,7 @@ pub fn sha512_256(input: &Matrix) -> Result<Matrix> {
 	let push_constants = [PushConstant::U32(count), PushConstant::U32(message_len)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -713,7 +713,7 @@ pub fn sha3_224(input: &Matrix) -> Result<Matrix> {
 	let count = shader_u32(rows, "batch size", OPERATION)?;
 	let message_len = shader_u32(message_bytes, "message length", OPERATION)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, digest_bytes],
 		element_count,
 		DType::U8,
@@ -726,7 +726,7 @@ pub fn sha3_224(input: &Matrix) -> Result<Matrix> {
 	let push_constants = [PushConstant::U32(count), PushConstant::U32(message_len)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -764,7 +764,7 @@ pub fn sha3_256(input: &Matrix) -> Result<Matrix> {
 	let count = shader_u32(rows, "batch size", OPERATION)?;
 	let message_len = shader_u32(message_bytes, "message length", OPERATION)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, digest_bytes],
 		element_count,
 		DType::U8,
@@ -777,7 +777,7 @@ pub fn sha3_256(input: &Matrix) -> Result<Matrix> {
 	let push_constants = [PushConstant::U32(count), PushConstant::U32(message_len)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -815,7 +815,7 @@ pub fn sha3_384(input: &Matrix) -> Result<Matrix> {
 	let count = shader_u32(rows, "batch size", OPERATION)?;
 	let message_len = shader_u32(message_bytes, "message length", OPERATION)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, digest_bytes],
 		element_count,
 		DType::U8,
@@ -828,7 +828,7 @@ pub fn sha3_384(input: &Matrix) -> Result<Matrix> {
 	let push_constants = [PushConstant::U32(count), PushConstant::U32(message_len)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -866,7 +866,7 @@ pub fn sha3_512(input: &Matrix) -> Result<Matrix> {
 	let count = shader_u32(rows, "batch size", OPERATION)?;
 	let message_len = shader_u32(message_bytes, "message length", OPERATION)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, digest_bytes],
 		element_count,
 		DType::U8,
@@ -879,7 +879,7 @@ pub fn sha3_512(input: &Matrix) -> Result<Matrix> {
 	let push_constants = [PushConstant::U32(count), PushConstant::U32(message_len)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -916,7 +916,7 @@ pub fn merkle_proofs(leaves: &Matrix, indices: &Matrix) -> Result<Matrix> {
 	if leaf_bytes != hash_bytes
 		|| indices.dtype() != DType::U32
 		|| indices.shape().len() != 1
-		|| !leaves.engine_handle().same_as(indices.engine_handle())
+		|| !leaves.runtime().same_as(indices.runtime())
 	{
 		return Err(Error::invalid_argument(
 			"Merkle proof generation requires matching-owner U8 [N, 32] leaves and rank-one U32 indices",
@@ -940,7 +940,7 @@ pub fn merkle_proofs(leaves: &Matrix, indices: &Matrix) -> Result<Matrix> {
 	let depth_u32 = shader_u32(depth, "depth", OPERATION)?;
 	let hash_bytes_u32 = shader_u32(hash_bytes, "hash size", OPERATION)?;
 	let output = Matrix::allocate_output(
-		leaves.engine_handle(),
+		leaves.runtime(),
 		vec![proof_count, frame_bytes],
 		element_count,
 		DType::U8,
@@ -955,7 +955,7 @@ pub fn merkle_proofs(leaves: &Matrix, indices: &Matrix) -> Result<Matrix> {
 	for _ in 1..depth {
 		count = count.div_ceil(2);
 		levels.push(Matrix::allocate_output(
-			leaves.engine_handle(),
+			leaves.runtime(),
 			vec![count, hash_bytes],
 			count * hash_bytes,
 			DType::U8,
@@ -1043,11 +1043,11 @@ pub fn merkle_proofs(leaves: &Matrix, indices: &Matrix) -> Result<Matrix> {
 	};
 	if dispatches.len() == 1 {
 		leaves
-			.engine_handle()
+			.runtime()
 			.record_semantic(dispatches.remove(0), semantic)?;
 	} else {
 		leaves
-			.engine_handle()
+			.runtime()
 			.record_split_semantic(&dispatches, semantic)?;
 	}
 	Ok(output)
@@ -1078,7 +1078,7 @@ pub fn verify_merkle_proofs(
 	if [leaves, proofs, roots].iter().any(|value| {
 		value.dtype() != DType::U8
 			|| value.shape().len() != 2
-			|| !leaves.engine_handle().same_as(value.engine_handle())
+			|| !leaves.runtime().same_as(value.runtime())
 	}) {
 		return Err(Error::invalid_argument(
 			"Merkle proof verification requires matching-owner rank-two U8 inputs",
@@ -1112,7 +1112,7 @@ pub fn verify_merkle_proofs(
 		"status byte size",
 		OPERATION,
 	)?;
-	let output = Matrix::allocate_output(leaves.engine_handle(), vec![rows], rows, DType::U32)?;
+	let output = Matrix::allocate_output(leaves.runtime(), vec![rows], rows, DType::U32)?;
 	if rows == 0 {
 		return Ok(output);
 	}
@@ -1135,7 +1135,7 @@ pub fn verify_merkle_proofs(
 		name: "leaf_count".into(),
 		value: u64::from(leaf_count),
 	}];
-	leaves.engine_handle().record_semantic(
+	leaves.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -1194,7 +1194,7 @@ pub fn poseidon2_babybear16(input: &Matrix, output_length: usize) -> Result<Matr
 	})?;
 	shader_u32(output_bytes, "output byte extent", operation)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, output_length],
 		output_count,
 		DType::U32,
@@ -1216,7 +1216,7 @@ pub fn poseidon2_babybear16(input: &Matrix, output_length: usize) -> Result<Matr
 			name: "output_length".into(),
 			value: output_length as u64,
 		}];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1268,7 +1268,7 @@ pub fn poseidon2_babybear16_permute(input: &Matrix) -> Result<Matrix> {
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} byte extent overflows usize")))?;
 	shader_u32(bytes, "input byte extent", operation)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::U32,
@@ -1282,7 +1282,7 @@ pub fn poseidon2_babybear16_permute(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(count), PushConstant::U32(input_elements)];
 		let inputs = [input];
 		let outputs = [&output];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1342,7 +1342,7 @@ pub fn poseidon2_babybear24(input: &Matrix, output_length: usize) -> Result<Matr
 	})?;
 	shader_u32(output_bytes, "output byte extent", operation)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, output_length],
 		output_count,
 		DType::U32,
@@ -1364,7 +1364,7 @@ pub fn poseidon2_babybear24(input: &Matrix, output_length: usize) -> Result<Matr
 			name: "output_length".into(),
 			value: output_length as u64,
 		}];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1416,7 +1416,7 @@ pub fn poseidon2_babybear24_permute(input: &Matrix) -> Result<Matrix> {
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} byte extent overflows usize")))?;
 	shader_u32(bytes, "input byte extent", operation)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::U32,
@@ -1430,7 +1430,7 @@ pub fn poseidon2_babybear24_permute(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(count), PushConstant::U32(input_elements)];
 		let inputs = [input];
 		let outputs = [&output];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1490,7 +1490,7 @@ pub fn poseidon2_koalabear16(input: &Matrix, output_length: usize) -> Result<Mat
 	})?;
 	shader_u32(output_bytes, "output byte extent", operation)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, output_length],
 		output_count,
 		DType::U32,
@@ -1512,7 +1512,7 @@ pub fn poseidon2_koalabear16(input: &Matrix, output_length: usize) -> Result<Mat
 			name: "output_length".into(),
 			value: output_length as u64,
 		}];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1564,7 +1564,7 @@ pub fn poseidon2_koalabear16_permute(input: &Matrix) -> Result<Matrix> {
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} byte extent overflows usize")))?;
 	shader_u32(bytes, "input byte extent", operation)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::U32,
@@ -1578,7 +1578,7 @@ pub fn poseidon2_koalabear16_permute(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(count), PushConstant::U32(input_elements)];
 		let inputs = [input];
 		let outputs = [&output];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1638,7 +1638,7 @@ pub fn poseidon2_koalabear24(input: &Matrix, output_length: usize) -> Result<Mat
 	})?;
 	shader_u32(output_bytes, "output byte extent", operation)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows, output_length],
 		output_count,
 		DType::U32,
@@ -1660,7 +1660,7 @@ pub fn poseidon2_koalabear24(input: &Matrix, output_length: usize) -> Result<Mat
 			name: "output_length".into(),
 			value: output_length as u64,
 		}];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1712,7 +1712,7 @@ pub fn poseidon2_koalabear24_permute(input: &Matrix) -> Result<Matrix> {
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} byte extent overflows usize")))?;
 	shader_u32(bytes, "input byte extent", operation)?;
 	let output = Matrix::allocate_output(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::U32,
@@ -1726,7 +1726,7 @@ pub fn poseidon2_koalabear24_permute(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(count), PushConstant::U32(input_elements)];
 		let inputs = [input];
 		let outputs = [&output];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,

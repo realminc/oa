@@ -213,7 +213,7 @@ def validate_blas_schema(schema: dict[str, Any]) -> None:
 			f"{where}.stable_id must be a non-zero u16",
 		)
 		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
-		require(operation.get("kind") == "mat_mul_nt", f"{where}.kind must be mat_mul_nt")
+		require(operation.get("kind") == "matmul_nt", f"{where}.kind must be matmul_nt")
 		require("signature" not in operation, f"{where}.signature is derived from kind metadata")
 		validate_dnn_role(operation.get("dnn"), where)
 		require(operation.get("variant") == "tiled", f"{where}.variant must be tiled")
@@ -268,7 +268,7 @@ def validate_blas_schema(schema: dict[str, Any]) -> None:
 		)
 		validate_unique(stable_id, seen_ids, f"{where}.stable_id")
 		require(
-			candidate["kind"] in {"mat_mul_nt", "cast", "sum"},
+			candidate["kind"] in {"matmul_nt", "cast", "sum"},
 			f"{where}.kind is not an admitted candidate kind",
 		)
 		served = candidate.get("semantic_operations", [])
@@ -889,7 +889,7 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 		"",
 		"test_vk!(",
 		"\tgenerated_elementwise_dtype_variants_match_schema_oracles,",
-		"\tengine,",
+		"\truntime,",
 		"{",
 	]
 	samples: dict[tuple[str, str], str] = {}
@@ -909,8 +909,8 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 				right = ", ".join(rust_value(dtype, value) for value in test["right"])
 				lines.extend(
 					[
-						f"\tlet {label}_left = oa::Matrix::new_from_slice_on(&engine, [ELEMENT_COUNT], &repeated(&[{left}]))?;",
-						f"\tlet {label}_right = oa::Matrix::new_from_slice_on(&engine, [ELEMENT_COUNT], &repeated(&[{right}]))?;",
+						f"\tlet {label}_left = oa::Matrix::new_from_slice_on(&runtime, [ELEMENT_COUNT], &repeated(&[{left}]))?;",
+						f"\tlet {label}_right = oa::Matrix::new_from_slice_on(&runtime, [ELEMENT_COUNT], &repeated(&[{right}]))?;",
 						f"\tlet {label}_actual: Vec<{rust_type}> = oa::matrix::{name}(&{label}_left, &{label}_right)?.read()?;",
 					]
 				)
@@ -919,7 +919,7 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 				values = ", ".join(rust_value(dtype, value) for value in test["input"])
 				lines.extend(
 					[
-						f"\tlet {label}_input = oa::Matrix::new_from_slice_on(&engine, [ELEMENT_COUNT], &repeated(&[{values}]))?;",
+						f"\tlet {label}_input = oa::Matrix::new_from_slice_on(&runtime, [ELEMENT_COUNT], &repeated(&[{values}]))?;",
 						f"\tlet {label}_actual: Vec<{rust_type}> = oa::matrix::{name}(&{label}_input)?.read()?;",
 					]
 				)
@@ -928,7 +928,7 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 				values = ", ".join(rust_value(dtype, value) for value in test["input"])
 				lines.extend(
 					[
-						f"\tlet {label}_input = oa::Matrix::new_from_slice_on(&engine, [ELEMENT_COUNT], &repeated(&[{values}]))?;",
+						f"\tlet {label}_input = oa::Matrix::new_from_slice_on(&runtime, [ELEMENT_COUNT], &repeated(&[{values}]))?;",
 						f"\tlet {label}_actual: Vec<{rust_type}> = oa::matrix::{name}(&{label}_input, {rust_value(dtype, test['scalar'])})?.read()?;",
 					]
 				)
@@ -992,7 +992,7 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 			"",
 			"test_vk!(",
 			"\tgenerated_elementwise_dtype_variants_preserve_zero_extent,",
-			"\tengine,",
+			"\truntime,",
 			"{",
 		]
 	)
@@ -1001,7 +1001,7 @@ def generate_test(schema: dict[str, Any], schema_hash: str) -> str:
 	)
 	for dtype in dtypes:
 		rust_type = DTYPES[dtype]["rust_type"]
-		lines.append(f"\tlet empty_{dtype} = oa::Matrix::new_from_slice_on::<{rust_type}>(&engine, [0], &[])?;")
+		lines.append(f"\tlet empty_{dtype} = oa::Matrix::new_from_slice_on::<{rust_type}>(&runtime, [0], &[])?;")
 	for operation in schema["operations"]:
 		if operation.get("lowering_only", False):
 			continue
@@ -1644,7 +1644,7 @@ fn values(length: usize, salt: usize) -> Vec<f32> {{
 		.collect()
 }}
 
-fn cpu_mat_mul_nt(left: &[f32], right: &[f32], m: usize, n: usize, k: usize) -> Vec<f32> {{
+fn cpu_matmul_nt(left: &[f32], right: &[f32], m: usize, n: usize, k: usize) -> Vec<f32> {{
 	let mut output = vec![0.0; m * n];
 	for row in 0..m {{
 		for column in 0..n {{
@@ -1667,13 +1667,13 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {{
 	}}
 }}
 
-test_vk!(generated_mat_mul_nt_matches_schema_oracle, engine, {{
+test_vk!(generated_matmul_nt_matches_schema_oracle, runtime, {{
 	for (m, n, k) in [{shapes}] {{
 		let left_values = values(m * k, 3);
 		let right_values = values(n * k, 11);
-		let expected = cpu_mat_mul_nt(&left_values, &right_values, m, n, k);
-		let left = oa::Matrix::new_from_f32_on(&engine, [m, k], &left_values)?;
-		let right = oa::Matrix::new_from_f32_on(&engine, [n, k], &right_values)?;
+		let expected = cpu_matmul_nt(&left_values, &right_values, m, n, k);
+		let left = oa::Matrix::new_from_f32_on(&runtime, [m, k], &left_values)?;
+		let right = oa::Matrix::new_from_f32_on(&runtime, [n, k], &right_values)?;
 		let output = oa::matrix::{operation['name']}(&left, &right)?;
 		assert_eq!(output.shape(), [m, n]);
 		assert_eq!(output.dtype(), oa::DType::F32);
@@ -1682,19 +1682,19 @@ test_vk!(generated_mat_mul_nt_matches_schema_oracle, engine, {{
 	Ok(())
 }});
 
-test_vk!(generated_mat_mul_nt_rejects_invalid_contracts, engine, {{
-	let other_engine = oa::Engine::new()?;
-	let rank_one = oa::Matrix::new_from_f32_on(&engine, [6], &[0.0; 6])?;
-	let left = oa::Matrix::new_from_f32_on(&engine, [2, 3], &[0.0; 6])?;
-	let wrong_k = oa::Matrix::new_from_f32_on(&engine, [2, 4], &[0.0; 8])?;
-	let integer = oa::Matrix::new_from_slice_on(&engine, [2, 3], &[0_i32; 6])?;
-	let foreign = oa::Matrix::new_from_f32_on(&other_engine, [2, 3], &[0.0; 6])?;
+test_vk!(generated_matmul_nt_rejects_invalid_contracts, runtime, {{
+	let other_runtime = oa::Runtime::new()?;
+	let rank_one = oa::Matrix::new_from_f32_on(&runtime, [6], &[0.0; 6])?;
+	let left = oa::Matrix::new_from_f32_on(&runtime, [2, 3], &[0.0; 6])?;
+	let wrong_k = oa::Matrix::new_from_f32_on(&runtime, [2, 4], &[0.0; 8])?;
+	let integer = oa::Matrix::new_from_slice_on(&runtime, [2, 3], &[0_i32; 6])?;
+	let foreign = oa::Matrix::new_from_f32_on(&other_runtime, [2, 3], &[0.0; 6])?;
 
 	for error in [
 		oa::matrix::{operation['name']}(&rank_one, &left).err().expect("rank-one input was accepted"),
 		oa::matrix::{operation['name']}(&left, &wrong_k).err().expect("mismatched K was accepted"),
 		oa::matrix::{operation['name']}(&integer, &integer).err().expect("I32 input was accepted"),
-		oa::matrix::{operation['name']}(&left, &foreign).err().expect("cross-engine inputs were accepted"),
+		oa::matrix::{operation['name']}(&left, &foreign).err().expect("cross-runtime inputs were accepted"),
 	] {{
 		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 	}}
@@ -1834,7 +1834,7 @@ def generate_reduce_api(schema: dict[str, Any], schema_hash: str) -> str:
 ///
 /// Returns an error when logits are not a nonempty rank-two-or-greater FP32
 /// Matrix, labels do not match the leading logits shape or use U8/U32/I32,
-/// inputs belong to different engines, a size exceeds the shader ABI,
+/// inputs belong to different runtimes, a size exceeds the shader ABI,
 /// allocation fails, or recording fails.
 {signatures['categorical_accuracy_count']} {{
 {matrix_body('accuracy', accuracy_count['name'])}
@@ -1849,7 +1849,7 @@ def generate_reduce_api(schema: dict[str, Any], schema_hash: str) -> str:
 ///
 /// Returns an error under the same conditions as
 /// [`categorical_accuracy_count`], or when the mask is not FP32, does not match
-/// the labels shape, or belongs to another engine.
+/// the labels shape, or belongs to another runtime.
 {signatures['masked_categorical_accuracy_count']} {{
 {matrix_body('accuracy', masked_accuracy_count['name'])}
 }}
@@ -1866,14 +1866,14 @@ def generate_reduce_api(schema: dict[str, Any], schema_hash: str) -> str:
 def generate_blas_api(schema: dict[str, Any], schema_hash: str) -> str:
 	operation = schema["operations"][0]
 	require(
-		operation.get("kernel_id") == "MatrixMatMulNtTiledF32",
-		"Matrix mat_mul_nt must declare the tiled FP32 kernel as its shader contract",
+		operation.get("kernel_id") == "MatrixMatmulNtTiledF32",
+		"Matrix matmul must declare the tiled FP32 kernel as its shader contract",
 	)
 	contract_const = rust_const_name(operation["name"])
-	signature = operation_signature("matrix", operation, "Matrix mat_mul_nt")
-	require(signature is not None, "Matrix mat_mul_nt has no public signature")
+	signature = operation_signature("matrix", operation, "Matrix matmul")
+	require(signature is not None, "Matrix matmul has no public signature")
 	header = signature_header(signature)
-	body_template = (FN_ROOT / "template/matrix/mat_mul_nt.rs.in").read_text(encoding="utf-8")
+	body_template = (FN_ROOT / "template/matrix/matmul.rs.in").read_text(encoding="utf-8")
 	items = f"""
 /// {operation['doc']}
 ///
@@ -1886,7 +1886,7 @@ def generate_blas_api(schema: dict[str, Any], schema_hash: str) -> str:
 /// # Errors
 ///
 /// Returns an error when either input is not a rank-two FP32 matrix,
-/// their K extents differ, they belong to different engines, a dimension
+/// their K extents differ, they belong to different runtimes, a dimension
 /// exceeds the admitted shader ABI, or allocation or recording fails.
 {header} {{
 \tlet contract = crate::core::operation::matrix::{contract_const};
@@ -1986,12 +1986,12 @@ fn sum_reference(input: &[f32], shape: &[usize], dim: usize) -> Vec<f32> {{
 	output
 }}
 
-test_vk!(generated_softmax_matches_axis_oracle, engine, {{
+test_vk!(generated_softmax_matches_axis_oracle, runtime, {{
 	let shape = {shape!r};
 	let values = (0..shape.iter().product::<usize>())
 		.map(|index| ((index * 7 % 17) as f32 - 8.0) * 0.17)
 		.collect::<Vec<_>>();
-	let input = oa::Matrix::new_from_f32_on(&engine, shape, &values)?;
+	let input = oa::Matrix::new_from_f32_on(&runtime, shape, &values)?;
 	let expected = softmax_reference(&values, &shape, {dim});
 	let output = oa::matrix::{softmax['name']}(&input, {dim})?;
 	let actual = output.read_f32()?;
@@ -2009,12 +2009,12 @@ test_vk!(generated_softmax_matches_axis_oracle, engine, {{
 	Ok(())
 }});
 
-test_vk!(generated_log_softmax_matches_axis_oracle, engine, {{
+test_vk!(generated_log_softmax_matches_axis_oracle, runtime, {{
 	let shape = {shape!r};
 	let values = (0..shape.iter().product::<usize>())
 		.map(|index| ((index * 7 % 17) as f32 - 8.0) * 0.17)
 		.collect::<Vec<_>>();
-	let input = oa::Matrix::new_from_f32_on(&engine, shape, &values)?;
+	let input = oa::Matrix::new_from_f32_on(&runtime, shape, &values)?;
 	let expected = log_softmax_reference(&values, &shape, {dim});
 	let output = oa::matrix::{log_softmax['name']}(&input, {dim})?;
 	for (index, (actual, expected)) in output.read_f32()?.iter().zip(expected).enumerate() {{
@@ -2031,10 +2031,10 @@ test_vk!(generated_log_softmax_matches_axis_oracle, engine, {{
 	Ok(())
 }});
 
-test_vk!(generated_softmax_rejects_invalid_contracts, engine, {{
-	let empty = oa::Matrix::new_from_f32_on(&engine, [0], &[])?;
-	let integer = oa::Matrix::new_from_slice_on(&engine, [2], &[1_i32, 2])?;
-	let input = oa::Matrix::new_from_f32_on(&engine, [2, 2], &[1.0, 2.0, 3.0, 4.0])?;
+test_vk!(generated_softmax_rejects_invalid_contracts, runtime, {{
+	let empty = oa::Matrix::new_from_f32_on(&runtime, [0], &[])?;
+	let integer = oa::Matrix::new_from_slice_on(&runtime, [2], &[1_i32, 2])?;
+	let input = oa::Matrix::new_from_f32_on(&runtime, [2, 2], &[1.0, 2.0, 3.0, 4.0])?;
 	for error in [
 		rejected(oa::matrix::{softmax['name']}(&empty, -1), "empty input was accepted"),
 		rejected(oa::matrix::{softmax['name']}(&integer, -1), "I32 input was accepted"),
@@ -2050,12 +2050,12 @@ test_vk!(generated_softmax_rejects_invalid_contracts, engine, {{
 	Ok(())
 }});
 
-test_vk!(generated_sum_matches_full_and_axis_oracles, engine, {{
+test_vk!(generated_sum_matches_full_and_axis_oracles, runtime, {{
 	let shape = {shape!r};
 	let values = (0..shape.iter().product::<usize>())
 		.map(|index| ((index * 11 % 23) as f32 - 11.0) * 0.13)
 		.collect::<Vec<_>>();
-	let input = oa::Matrix::new_from_f32_on(&engine, shape, &values)?;
+	let input = oa::Matrix::new_from_f32_on(&runtime, shape, &values)?;
 	let axis = oa::matrix::{sum_operation['name']}(&input, {dim})?;
 	assert_eq!(axis.shape(), [shape[0], 1, shape[2]]);
 	for (actual, expected) in axis.read_f32()?.iter().zip(sum_reference(&values, &shape, {dim})) {{
@@ -2067,12 +2067,12 @@ test_vk!(generated_sum_matches_full_and_axis_oracles, engine, {{
 	Ok(())
 }});
 
-test_vk!(generated_mean_matches_full_and_axis_oracles, engine, {{
+test_vk!(generated_mean_matches_full_and_axis_oracles, runtime, {{
 	let shape = {shape!r};
 	let values = (0..shape.iter().product::<usize>())
 		.map(|index| ((index * 11 % 23) as f32 - 11.0) * 0.13)
 		.collect::<Vec<_>>();
-	let input = oa::Matrix::new_from_f32_on(&engine, shape, &values)?;
+	let input = oa::Matrix::new_from_f32_on(&runtime, shape, &values)?;
 	let axis = oa::matrix::{mean['name']}(&input, {dim})?;
 	assert_eq!(axis.shape(), [shape[0], 1, shape[2]]);
 	let width = shape[{dim}] as f32;
@@ -2088,12 +2088,12 @@ test_vk!(generated_mean_matches_full_and_axis_oracles, engine, {{
 	Ok(())
 }});
 
-test_vk!(generated_max_matches_full_oracle_and_rejects_axis, engine, {{
+test_vk!(generated_max_matches_full_oracle_and_rejects_axis, runtime, {{
 	let shape = {shape!r};
 	let values = (0..shape.iter().product::<usize>())
 		.map(|index| ((index * 13 % 29) as f32 - 14.0) * 0.11)
 		.collect::<Vec<_>>();
-	let input = oa::Matrix::new_from_f32_on(&engine, shape, &values)?;
+	let input = oa::Matrix::new_from_f32_on(&runtime, shape, &values)?;
 	let output = oa::matrix::{maximum['name']}(&input, -1)?;
 	assert_eq!(output.shape(), [1]);
 	let expected = values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
@@ -2105,9 +2105,9 @@ test_vk!(generated_max_matches_full_oracle_and_rejects_axis, engine, {{
 	Ok(())
 }});
 
-test_vk!(generated_argmax_returns_first_maximum_index, engine, {{
+test_vk!(generated_argmax_returns_first_maximum_index, runtime, {{
 	let input = oa::Matrix::new_from_f32_on(
-		&engine,
+		&runtime,
 		[2, 4],
 		&[1.0, -3.0, 7.5, 2.0, -8.0, 7.5, 0.25, 6.0],
 	)?;
@@ -2119,13 +2119,13 @@ test_vk!(generated_argmax_returns_first_maximum_index, engine, {{
 	Ok(())
 }});
 
-test_vk!(generated_mean_capture_owns_one_semantic_operation_over_two_dispatches, engine, {{
+test_vk!(generated_mean_capture_owns_one_semantic_operation_over_two_dispatches, runtime, {{
 	let input = oa::Matrix::new_from_f32_on(
-		&engine,
+		&runtime,
 		[2, 4],
 		&[1.0, -3.0, 7.5, 2.0, -8.0, 7.5, 0.25, 6.0],
 	)?;
-	let (plan, output) = engine.capture(|| oa::matrix::{mean['name']}(&input, -1))?;
+	let (plan, output) = runtime.capture(|| oa::matrix::{mean['name']}(&input, -1))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(plan.semantic_graph().operations()[0].name(), "oa::FnMatrix::mean");
 	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("mean"))
@@ -2136,14 +2136,14 @@ test_vk!(generated_mean_capture_owns_one_semantic_operation_over_two_dispatches,
 	assert_eq!(nodes.len(), 2);
 	assert_eq!(nodes[0]["kernel"], "matrix.sum.f32");
 	assert_eq!(nodes[1]["kernel"], "matrix.scale.f32");
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_eq!(output.shape(), [1]);
 	Ok(())
 }});
 
-test_vk!(generated_categorical_accuracy_counts_match_exact_oracles, engine, {{
+test_vk!(generated_categorical_accuracy_counts_match_exact_oracles, runtime, {{
 	let logits = oa::Matrix::new_from_f32_on(
-		&engine,
+		&runtime,
 		[4, 3],
 		&[
 			4.0, 4.0, 1.0,
@@ -2153,17 +2153,17 @@ test_vk!(generated_categorical_accuracy_counts_match_exact_oracles, engine, {{
 		],
 	)?;
 	for labels in [
-		oa::Matrix::new_from_slice_on(&engine, [4], &[0_u8, 1, 0, 0])?,
-		oa::Matrix::new_from_slice_on(&engine, [4], &[0_u32, 1, 0, 0])?,
-		oa::Matrix::new_from_slice_on(&engine, [4], &[0_i32, 1, -1, 0])?,
+		oa::Matrix::new_from_slice_on(&runtime, [4], &[0_u8, 1, 0, 0])?,
+		oa::Matrix::new_from_slice_on(&runtime, [4], &[0_u32, 1, 0, 0])?,
+		oa::Matrix::new_from_slice_on(&runtime, [4], &[0_i32, 1, -1, 0])?,
 	] {{
 		let count = oa::matrix::{accuracy_count['name']}(&logits, &labels)?;
 		assert_eq!(count.shape(), [1]);
 		assert_eq!(count.dtype(), oa::DType::U32);
 		assert_eq!(count.read::<u32>()?, vec![3]);
 	}}
-	let labels = oa::Matrix::new_from_slice_on(&engine, [4], &[0_u32, 1, 2, 0])?;
-	let mask = oa::Matrix::new_from_f32_on(&engine, [4], &[1.0, 0.0, -2.0, 1.0])?;
+	let labels = oa::Matrix::new_from_slice_on(&runtime, [4], &[0_u32, 1, 2, 0])?;
+	let mask = oa::Matrix::new_from_f32_on(&runtime, [4], &[1.0, 0.0, -2.0, 1.0])?;
 	assert_eq!(
 		oa::matrix::{masked_accuracy_count['name']}(&logits, &labels, &mask)?
 			.read::<u32>()?,
@@ -2172,16 +2172,16 @@ test_vk!(generated_categorical_accuracy_counts_match_exact_oracles, engine, {{
 	Ok(())
 }});
 
-test_vk!(generated_categorical_accuracy_count_rejects_invalid_contracts, engine, {{
-	let other_engine = oa::Engine::new()?;
-	let logits = oa::Matrix::new_from_f32_on(&engine, [2, 3], &[1.0, 2.0, 3.0, 3.0, 2.0, 1.0])?;
-	let rank_one = oa::Matrix::new_from_f32_on(&engine, [6], &[0.0; 6])?;
-	let labels = oa::Matrix::new_from_slice_on(&engine, [2], &[2_u32, 0])?;
-	let wrong_shape = oa::Matrix::new_from_slice_on(&engine, [1], &[2_u32])?;
-	let float_labels = oa::Matrix::new_from_f32_on(&engine, [2], &[2.0, 0.0])?;
-	let foreign_labels = oa::Matrix::new_from_slice_on(&other_engine, [2], &[2_u32, 0])?;
-	let mask = oa::Matrix::new_from_f32_on(&engine, [2], &[1.0, 1.0])?;
-	let integer_mask = oa::Matrix::new_from_slice_on(&engine, [2], &[1_u32, 1])?;
+test_vk!(generated_categorical_accuracy_count_rejects_invalid_contracts, runtime, {{
+	let other_runtime = oa::Runtime::new()?;
+	let logits = oa::Matrix::new_from_f32_on(&runtime, [2, 3], &[1.0, 2.0, 3.0, 3.0, 2.0, 1.0])?;
+	let rank_one = oa::Matrix::new_from_f32_on(&runtime, [6], &[0.0; 6])?;
+	let labels = oa::Matrix::new_from_slice_on(&runtime, [2], &[2_u32, 0])?;
+	let wrong_shape = oa::Matrix::new_from_slice_on(&runtime, [1], &[2_u32])?;
+	let float_labels = oa::Matrix::new_from_f32_on(&runtime, [2], &[2.0, 0.0])?;
+	let foreign_labels = oa::Matrix::new_from_slice_on(&other_runtime, [2], &[2_u32, 0])?;
+	let mask = oa::Matrix::new_from_f32_on(&runtime, [2], &[1.0, 1.0])?;
+	let integer_mask = oa::Matrix::new_from_slice_on(&runtime, [2], &[1_u32, 1])?;
 
 	for error in [
 		rejected(oa::matrix::{accuracy_count['name']}(&rank_one, &labels), "rank-one logits were accepted"),
@@ -2203,10 +2203,10 @@ test_vk!(generated_categorical_accuracy_count_rejects_invalid_contracts, engine,
 	Ok(())
 }});
 
-test_vk!(generated_categorical_accuracy_capture_retains_semantic_and_physical_evidence, engine, {{
-	let logits = oa::Matrix::new_from_f32_on(&engine, [2, 3], &[1.0, 2.0, 3.0, 3.0, 2.0, 1.0])?;
-	let labels = oa::Matrix::new_from_slice_on(&engine, [2], &[2_u32, 0])?;
-	let (plan, count) = engine.capture(|| oa::matrix::{accuracy_count['name']}(&logits, &labels))?;
+test_vk!(generated_categorical_accuracy_capture_retains_semantic_and_physical_evidence, runtime, {{
+	let logits = oa::Matrix::new_from_f32_on(&runtime, [2, 3], &[1.0, 2.0, 3.0, 3.0, 2.0, 1.0])?;
+	let labels = oa::Matrix::new_from_slice_on(&runtime, [2], &[2_u32, 0])?;
+	let (plan, count) = runtime.capture(|| oa::matrix::{accuracy_count['name']}(&logits, &labels))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		plan.semantic_graph().operations()[0].name(),
@@ -2218,7 +2218,7 @@ test_vk!(generated_categorical_accuracy_capture_retains_semantic_and_physical_ev
 	assert_eq!(nodes.len(), 1);
 	assert_eq!(nodes[0]["kernel"], "matrix.{accuracy_count['name']}.f32");
 	assert!(!nodes[0]["physical_write"].is_null());
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_eq!(count.read::<u32>()?, vec![2]);
 	Ok(())
 }});

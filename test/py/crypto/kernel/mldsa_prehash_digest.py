@@ -1,4 +1,4 @@
-"""HashML-DSA digest/framing composition proofs, separate from Engine admission."""
+"""HashML-DSA digest/framing composition proofs, separate from Runtime admission."""
 import hashlib
 import random
 import struct

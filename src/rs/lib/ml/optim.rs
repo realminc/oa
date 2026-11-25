@@ -18,7 +18,7 @@ pub use sgd::Sgd;
 
 use crate::ml::Parameter;
 use crate::ml::matrix::detach;
-use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::ml::validation::{shader_u32, validate_f32_same_runtime};
 use crate::runtime::{BufferBinding, ComputeDispatch, KernelId, SemanticDispatch};
 use crate::{Error, Matrix, OpAttribute, Result};
 
@@ -31,7 +31,7 @@ use crate::{Error, Matrix, OpAttribute, Result};
 /// # Errors
 ///
 /// Returns an error when `max_norm` is negative or non-finite, more than
-/// sixteen nonempty gradients are supplied, gradients do not share one engine,
+/// sixteen nonempty gradients are supplied, gradients do not share one runtime,
 /// a gradient is not FP32, storage is duplicated, a size exceeds the shader
 /// ABI, or allocation and runtime recording fail.
 pub fn clip_grad_norm(gradients: &[Matrix], max_norm: f32) -> Result<()> {
@@ -53,7 +53,7 @@ pub fn clip_grad_norm(gradients: &[Matrix], max_norm: f32) -> Result<()> {
 			"{OPERATION} supports at most 16 nonempty gradients"
 		)));
 	}
-	validate_f32_same_engine(OPERATION, &gradients)?;
+	validate_f32_same_runtime(OPERATION, &gradients)?;
 	for (index, gradient) in gradients.iter().enumerate() {
 		if gradients[..index]
 			.iter()
@@ -72,9 +72,9 @@ pub fn clip_grad_norm(gradients: &[Matrix], max_norm: f32) -> Result<()> {
 		params[index + 1] = shader_u32(gradient.num_elements(), "element count", OPERATION)?;
 	}
 	params[17] = max_norm.to_bits();
-	let engine = gradients[0].engine_handle();
-	let params = Matrix::new_from_slice_handle(engine, vec![18], &params)?;
-	let partials = Matrix::allocate(engine, vec![16], 16, crate::DType::F32)?;
+	let runtime = gradients[0].runtime();
+	let params = Matrix::new_from_slice_handle(runtime, vec![18], &params)?;
+	let partials = Matrix::allocate(runtime, vec![16], 16, crate::DType::F32)?;
 	let mut reduce_buffers = Vec::with_capacity(18);
 	reduce_buffers.push(BufferBinding::read(params.storage()));
 	reduce_buffers.push(BufferBinding::write(partials.storage()));
@@ -119,7 +119,7 @@ pub fn clip_grad_norm(gradients: &[Matrix], max_norm: f32) -> Result<()> {
 		name: "max_norm".into(),
 		value: f64::from(max_norm),
 	}];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: crate::core::operation::ml::CLIP_GRAD_NORM,
@@ -148,7 +148,7 @@ pub fn clip_grad_norm(gradients: &[Matrix], max_norm: f32) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error when `max_norm` is negative or non-finite, gradients do
-/// not share one engine or are not FP32, storages are duplicated on the fused
+/// not share one runtime or are not FP32, storages are duplicated on the fused
 /// path, a size exceeds the shader ABI, or allocation and runtime recording
 /// fail.
 pub fn clip_parameter_grad_norm(parameters: &[Parameter], max_norm: f32) -> Result<()> {

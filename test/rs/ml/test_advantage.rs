@@ -12,10 +12,10 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 
 test_vk!(
 	normalize_matches_donor_and_one_semantic_operation,
-	engine,
+	runtime,
 	{
 		let values = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, 3.0, 4.0])?;
-		let (plan, normalized) = engine.capture(|| normalize(&values, 1.0e-8))?;
+		let (plan, normalized) = runtime.capture(|| normalize(&values, 1.0e-8))?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
 		assert!(plan.diagnostics().node_count() > 1);
 		assert_eq!(
@@ -25,7 +25,7 @@ test_vk!(
 		let operation = &plan.semantic_graph().operations()[0];
 		assert_eq!(operation.name(), "oa::FnAdvantage::normalize");
 		assert_eq!(operation.attributes().len(), 1);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 
 		let mean = 2.5_f32;
 		let variance = 1.25_f32;
@@ -46,7 +46,7 @@ test_vk!(
 	}
 );
 
-test_vk!(normalize_adjoint_matches_independent_formula, engine, {
+test_vk!(normalize_adjoint_matches_independent_formula, runtime, {
 	let values_host = [1.0_f32, -2.0, 0.5, 4.0];
 	let upstream_host = [0.5_f32, -1.0, 2.0, 0.25];
 	let input =
@@ -89,7 +89,7 @@ test_vk!(normalize_adjoint_matches_independent_formula, engine, {
 	Ok(())
 });
 
-test_vk!(normalize_rejects_invalid_contracts, engine, {
+test_vk!(normalize_rejects_invalid_contracts, runtime, {
 	let values = oa::Matrix::new_from_f32([2], &[1.0, 2.0])?;
 	let integer = oa::Matrix::new_from_slice([2], &[1_i32, 2])?;
 	for invalid in [
@@ -108,7 +108,7 @@ test_vk!(normalize_rejects_invalid_contracts, engine, {
 
 test_vk!(
 	gae_matches_the_donor_oracle_and_boundary_semantics,
-	engine,
+	runtime,
 	{
 		let reward = oa::Matrix::new_from_f32([4, 2], &[1.0, 0.5, 0.2, 1.0, 2.0, 0.3, 0.7, 1.5])?;
 		let value = oa::Matrix::new_from_f32([4, 2], &[0.4, 0.1, 0.3, 0.5, 0.8, 0.2, 0.6, 0.9])?;
@@ -120,7 +120,7 @@ test_vk!(
 			lambda: 0.8,
 		};
 
-		let (plan, result) = engine.capture(|| {
+		let (plan, result) = runtime.capture(|| {
 			gae(
 				&reward,
 				&value,
@@ -135,7 +135,7 @@ test_vk!(
 			plan.semantic_graph().operations()[0].name(),
 			"oa::FnAdvantage::gae"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 
 		let reward_host = reward.read_f32()?;
 		let value_host = value.read_f32()?;
@@ -187,7 +187,7 @@ test_vk!(
 	}
 );
 
-test_vk!(gae_rejects_invalid_rollout_contracts, engine, {
+test_vk!(gae_rejects_invalid_rollout_contracts, runtime, {
 	let values = oa::Matrix::new_from_f32([2, 2], &[0.0; 4])?;
 	let mask = oa::Matrix::new_from_slice([2, 2], &[0_u8; 4])?;
 	let wrong_mask = oa::Matrix::new_from_slice([2, 1], &[0_u8; 2])?;

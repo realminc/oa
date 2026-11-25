@@ -18,13 +18,13 @@
 		)));
 	}
 	let matrix = crate::Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
 	)?;
 	let output = Image::new(matrix, input.layout(), input.format())?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -58,13 +58,13 @@
 		)));
 	}
 	let matrix = crate::Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
 	)?;
 	let output = Image::new(matrix, input.layout(), input.format())?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -98,13 +98,13 @@
 		)));
 	}
 	let matrix = crate::Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
 	)?;
 	let output = Image::new(matrix, input.layout(), input.format())?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -138,13 +138,13 @@
 		)));
 	}
 	let matrix = crate::Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
 	)?;
 	let output = Image::new(matrix, input.layout(), input.format())?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -178,13 +178,13 @@
 		)));
 	}
 	let matrix = crate::Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
 	)?;
 	let output = Image::new(matrix, input.layout(), input.format())?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -223,13 +223,13 @@
 		)));
 	}
 	let matrix = crate::Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
 	)?;
 	let output = Image::new(matrix, input.layout(), input.format())?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -268,13 +268,13 @@
 		)));
 	}
 	let matrix = crate::Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
 	)?;
 	let output = Image::new(matrix, input.layout(), input.format())?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -308,13 +308,13 @@
 		)));
 	}
 	let matrix = crate::Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
 	)?;
 	let output = Image::new(matrix, input.layout(), input.format())?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -348,13 +348,13 @@
 		)));
 	}
 	let matrix = crate::Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
 	)?;
 	let output = Image::new(matrix, input.layout(), input.format())?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -393,13 +393,13 @@
 		)));
 	}
 	let matrix = crate::Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
 	)?;
 	let output = Image::new(matrix, input.layout(), input.format())?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -433,13 +433,13 @@
 		)));
 	}
 	let matrix = crate::Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
 	)?;
 	let output = Image::new(matrix, input.layout(), input.format())?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -478,13 +478,13 @@
 		)));
 	}
 	let matrix = crate::Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
 	)?;
 	let output = Image::new(matrix, input.layout(), input.format())?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -513,7 +513,7 @@
 		_ => unreachable!("image extent admitted an unsupported layout"),
 	};
 	let output = allocate(input, shape, ImageFormat::Gray, "image::grayscale")?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -549,7 +549,7 @@
 	)?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	left.engine_handle().record_image_semantic(
+	left.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -570,7 +570,7 @@
 	validate_matching_images(left, right, "image::composite")?;
 	let (mask_batch, mask_channels, mask_height, mask_width) =
 		image_extent(mask, "image::composite")?;
-	if !left.engine_handle().same_as(mask.engine_handle())
+	if !left.runtime().same_as(mask.runtime())
 		|| mask_batch != batch
 		|| mask_height != height
 		|| mask_width != width
@@ -592,7 +592,7 @@
 	)?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	left.engine_handle().record_image_semantic(
+	left.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -632,7 +632,7 @@
 	)?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -653,10 +653,10 @@
 	if !matches!(input.format(), ImageFormat::Rgb | ImageFormat::Rgba)
 		|| transform.dtype() != DType::F32
 		|| transform.shape() != [3, 4]
-		|| !input.engine_handle().same_as(transform.engine_handle())
+		|| !input.runtime().same_as(transform.runtime())
 	{
 		return Err(Error::invalid_argument(
-			"image::color_twist requires RGB/RGBA input and a same-engine FP32 [3, 4] transform",
+			"image::color_twist requires RGB/RGBA input and a same-runtime FP32 [3, 4] transform",
 		));
 	}
 	let output = allocate(
@@ -666,7 +666,7 @@
 		"image::color_twist",
 	)?;
 	let workgroups = [width.div_ceil(16), height.div_ceil(16), batch * channels];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -702,7 +702,7 @@
 		output_format,
 		"image::channel_reorder",
 	)?;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -736,7 +736,7 @@
 		contract.name(),
 	)?;
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -773,7 +773,7 @@
 		contract.name(),
 	)?;
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -784,6 +784,248 @@
 		ImageSemanticDispatch {
 			contract,
 			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation flood_fill
+	let contract = {{contract}};
+	finite(&[value, lo_diff, up_diff], "image::flood_fill")?;
+	if lo_diff < 0.0 || up_diff < 0.0 {
+		return Err(Error::invalid_argument(
+			"image::flood_fill diffs must be nonnegative",
+		));
+	}
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	if seed_x >= image_width || seed_y >= image_height {
+		return Err(Error::invalid_argument(
+			"image::flood_fill seed must be in bounds",
+		));
+	}
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::flood_fill plane count exceeds u32"))?;
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range("image::flood_fill element count exceeds u32"))?;
+	let relax_passes = if propagation_passes == 0 {
+		image_height
+			.checked_add(image_width)
+			.ok_or_else(|| Error::out_of_range("image::flood_fill propagation bound exceeds u32"))?
+	} else {
+		propagation_passes
+	};
+	let matrix = crate::Matrix::allocate(
+		input.runtime(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	let marker = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, image_height as usize, image_width as usize],
+		element_count as usize,
+		DType::U32,
+	)?;
+	let mut workgroups = KernelId::ImageFloodFillInitF32
+		.output_workgroups(image_width, image_height);
+	workgroups[2] = plane_count;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let mut dispatches = Vec::with_capacity(1 + relax_passes as usize);
+	dispatches.push(ComputeDispatch {
+		kernel: {{kernel:0}},
+		buffers: &{{binding_name:0}},
+		push_constants: &{{push_name:0}},
+		workgroups,
+		indirect: None,
+	});
+	for _ in 0..relax_passes {
+		dispatches.push(ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups,
+			indirect: None,
+		});
+	}
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation draw_line
+	let contract = {{contract}};
+	finite(&[x1, y1, x2, y2, color, thickness], "image::draw_line")?;
+	if thickness <= 0.0 {
+		return Err(Error::invalid_argument(
+			"image::draw_line thickness must be positive",
+		));
+	}
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range("image::draw_line element count exceeds u32"))?;
+	let matrix = crate::Matrix::allocate(
+		input.runtime(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation draw_rectangle
+	let contract = {{contract}};
+	finite(
+		&[x, y, width, height, color, thickness],
+		"image::draw_rectangle",
+	)?;
+	if width <= 0.0 || height <= 0.0 {
+		return Err(Error::invalid_argument(
+			"image::draw_rectangle width and height must be positive",
+		));
+	}
+	if thickness == 0.0 {
+		return Err(Error::invalid_argument(
+			"image::draw_rectangle thickness must be nonzero",
+		));
+	}
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range("image::draw_rectangle element count exceeds u32"))?;
+	let matrix = crate::Matrix::allocate(
+		input.runtime(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation draw_circle
+	let contract = {{contract}};
+	finite(&[cx, cy, radius, color, thickness], "image::draw_circle")?;
+	if radius <= 0.0 {
+		return Err(Error::invalid_argument(
+			"image::draw_circle radius must be positive",
+		));
+	}
+	if thickness == 0.0 {
+		return Err(Error::invalid_argument(
+			"image::draw_circle thickness must be nonzero",
+		));
+	}
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range("image::draw_circle element count exceeds u32"))?;
+	let matrix = crate::Matrix::allocate(
+		input.runtime(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation fill_polygon
+	let contract = {{contract}};
+	if !color.is_finite() {
+		return Err(Error::invalid_argument(
+			"image::fill_polygon color must be finite",
+		));
+	}
+	if points.dtype() != DType::F32 {
+		return Err(Error::invalid_argument(
+			"image::fill_polygon points must be f32",
+		));
+	}
+	if !input.runtime().same_as(points.runtime()) {
+		return Err(Error::invalid_argument(
+			"image::fill_polygon points must share the input runtime",
+		));
+	}
+	if points.shape().len() != 2 || points.shape()[1] != 2 || points.shape()[0] < 3 {
+		return Err(Error::invalid_argument(
+			"image::fill_polygon points must have shape [N, 2] with N >= 3",
+		));
+	}
+	let point_count_u32 = u32::try_from(points.shape()[0])
+		.map_err(|_| Error::out_of_range("image::fill_polygon point count exceeds u32"))?;
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let element_count = u32::try_from(input.as_matrix().num_elements())
+		.map_err(|_| Error::out_of_range("image::fill_polygon element count exceeds u32"))?;
+	let matrix = crate::Matrix::allocate(
+		input.runtime(),
+		input.as_matrix().shape().to_vec(),
+		input.as_matrix().num_elements(),
+		DType::F32,
+	)?;
+	let output = Image::new(matrix, input.layout(), input.format())?;
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[
+				ImageSemanticInput::Image(input),
+				ImageSemanticInput::Matrix(points),
+			],
 			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
 		},

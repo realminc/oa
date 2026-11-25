@@ -21,7 +21,7 @@ impl {{name}} {
 		epsilon: f32,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, model_width, hidden_width, epsilon, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, model_width, hidden_width, epsilon, seed)	}
 
 	/// Construct a deterministically initialized donor-compatible FFN.
 	///
@@ -30,22 +30,22 @@ impl {{name}} {
 	/// Returns an error for invalid dimensions or epsilon, or when child
 	/// construction or registration fails.
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		model_width: usize,
 		hidden_width: usize,
 		epsilon: f32,
 		seed: u64,
 	) -> Result<Self> {
-		let norm = Rc::new({{norm_constructor}}(engine, model_width, epsilon)?);
-		let gate = Rc::new({{projection_constructor}}(engine, model_width, hidden_width, seed)?);
+		let norm = Rc::new({{norm_constructor}}(runtime, model_width, epsilon)?);
+		let gate = Rc::new({{projection_constructor}}(runtime, model_width, hidden_width, seed)?);
 		let up = Rc::new({{projection_constructor}}(
-			engine,
+			runtime,
 			model_width,
 			hidden_width,
 			seed.wrapping_add(1),
 		)?);
 		let down = Rc::new({{projection_constructor}}(
-			engine,
+			runtime,
 			hidden_width,
 			model_width,
 			seed.wrapping_add(2),

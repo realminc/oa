@@ -1,7 +1,7 @@
 //! Cross-domain compute planning, fusion and compilation.
 //!
 //! Owns compiler transformations and provider policy, not execution lifetime.
-//! Engine owns orchestration; Device owns native resources and publication.
+//! Runtime owns orchestration; Device owns native resources and publication.
 //! Shared semantic/executable representations live under runtime::graph.
 
 pub(super) mod compiler;

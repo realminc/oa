@@ -9,10 +9,10 @@ use super::{
 	DnnValueDesc,
 };
 use crate::runtime::{
-	BufferAccess, CapturedResourceDesc, EngineHandle, GemmEpilogue, KernelId, MatmulPreference,
-	MatmulProblem, PushConstant, SemanticGraph, SemanticOpId, SemanticStorageBinding,
+	BufferAccess, CapturedResourceDesc, GemmEpilogue, KernelId, MatmulPreference, MatmulProblem,
+	PushConstant, RuntimeHandle, SemanticGraph, SemanticOpId, SemanticStorageBinding,
 	graph::executable::{BufferUse, ComputeNode, ExecutableGraph, GraphNode, ResourceLifetime},
-	lower_mat_mul_nt_plan, plan_mat_mul_nt_problem,
+	lower_matmul_nt_plan, plan_matmul_nt_problem,
 };
 
 const INVALID_NODE: usize = usize::MAX;
@@ -54,7 +54,7 @@ struct LinearEpilogueRejection {
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn lower_captured_plan(
-	engine_handle: &EngineHandle,
+	runtime: &RuntimeHandle,
 	plan: &mut DnnPlan,
 	semantic: &SemanticGraph,
 	bindings: &[SemanticStorageBinding],
@@ -73,13 +73,13 @@ pub(super) fn lower_captured_plan(
 	for partition_index in 0..plan.partitions.len() {
 		plan.partitions[partition_index].state = DnnPartitionState::Analyzed;
 		plan.partitions[partition_index].fallback_reason = None;
-		let engine = plan.partitions[partition_index].engine;
+		let engine_type = plan.partitions[partition_index].engine_type;
 		let operation_count = plan.partitions[partition_index].operations.len();
-		if engine == DnnEngineType::Portable {
+		if engine_type == DnnEngineType::Portable {
 			continue;
 		}
 
-		if engine == DnnEngineType::BlasLtEpilogue {
+		if engine_type == DnnEngineType::BlasLtEpilogue {
 			if operation_count == 1 {
 				let range = partition_node_range(&plan.partitions[partition_index], source);
 				if range.count == 1 {
@@ -104,7 +104,7 @@ pub(super) fn lower_captured_plan(
 				continue;
 			}
 			let candidate = match build_linear_epilogue(
-				engine_handle,
+				runtime,
 				plan,
 				partition_index,
 				semantic,
@@ -141,7 +141,7 @@ pub(super) fn lower_captured_plan(
 			continue;
 		}
 
-		if engine == DnnEngineType::Attention && operation_count == 1 {
+		if engine_type == DnnEngineType::Attention && operation_count == 1 {
 			let source_operation = plan.partitions[partition_index].operations[0];
 			let operation = find_operation(plan, source_operation);
 			let saved_state = operation
@@ -183,9 +183,9 @@ pub(super) fn lower_captured_plan(
 			continue;
 		}
 
-		if engine == DnnEngineType::GatedFfn {
+		if engine_type == DnnEngineType::GatedFfn {
 			let candidate = match build_gate_up(
-				engine_handle,
+				runtime,
 				plan,
 				partition_index,
 				semantic,
@@ -211,7 +211,7 @@ pub(super) fn lower_captured_plan(
 			}
 			lowered.extend_from_slice(&source.nodes()[source_cursor..candidate.first_node]);
 			let mut node = candidate.node;
-			crate::runtime::dna::tile::specialize_gate_up_node(&engine_handle.device(), &mut node);
+			crate::runtime::dna::tile::specialize_gate_up_node(&runtime.device(), &mut node);
 			lowered.push(GraphNode::Compute(node));
 			source_cursor = candidate.first_node + candidate.node_count;
 			plan.partitions[partition_index].state = DnnPartitionState::Applied;
@@ -219,9 +219,9 @@ pub(super) fn lower_captured_plan(
 			continue;
 		}
 
-		if engine == DnnEngineType::VisionPreprocess {
+		if engine_type == DnnEngineType::VisionPreprocess {
 			let candidate = match build_vision_preprocess(
-				engine_handle,
+				runtime,
 				plan,
 				partition_index,
 				semantic,
@@ -253,7 +253,7 @@ pub(super) fn lower_captured_plan(
 			continue;
 		}
 
-		if engine != DnnEngineType::QkvProjectionGroup {
+		if engine_type != DnnEngineType::QkvProjectionGroup {
 			mark_fallback(
 				plan,
 				partition_index,
@@ -263,20 +263,14 @@ pub(super) fn lower_captured_plan(
 			continue;
 		}
 
-		let candidate = match build_qkv_projection(
-			engine_handle,
-			plan,
-			partition_index,
-			bindings,
-			resources,
-			source,
-		) {
-			Ok(candidate) => candidate,
-			Err(reason) => {
-				mark_fallback(plan, partition_index, reason, false);
-				continue;
-			}
-		};
+		let candidate =
+			match build_qkv_projection(runtime, plan, partition_index, bindings, resources, source) {
+				Ok(candidate) => candidate,
+				Err(reason) => {
+					mark_fallback(plan, partition_index, reason, false);
+					continue;
+				}
+			};
 		if candidate.first_node < source_cursor {
 			mark_fallback(
 				plan,
@@ -288,7 +282,7 @@ pub(super) fn lower_captured_plan(
 		}
 		lowered.extend_from_slice(&source.nodes()[source_cursor..candidate.first_node]);
 		let mut node = candidate.node;
-		crate::runtime::dna::tile::specialize_qkv_projection_node(&engine_handle.device(), &mut node);
+		crate::runtime::dna::tile::specialize_qkv_projection_node(&runtime.device(), &mut node);
 		lowered.push(GraphNode::Compute(node));
 		source_cursor = candidate.first_node + candidate.node_count;
 		plan.partitions[partition_index].state = DnnPartitionState::Applied;
@@ -299,7 +293,7 @@ pub(super) fn lower_captured_plan(
 }
 
 fn build_qkv_projection(
-	engine_handle: &EngineHandle,
+	runtime: &RuntimeHandle,
 	plan: &DnnPlan,
 	partition_index: usize,
 	bindings: &[SemanticStorageBinding],
@@ -415,7 +409,7 @@ fn build_qkv_projection(
 			},
 		})
 		.collect();
-	if engine_handle
+	if runtime
 		.require_kernel(KernelId::MlQkvProjectionBiasF32)
 		.is_err()
 	{
@@ -445,7 +439,7 @@ fn build_qkv_projection(
 
 #[allow(clippy::too_many_arguments)]
 fn build_gate_up(
-	engine_handle: &EngineHandle,
+	runtime: &RuntimeHandle,
 	plan: &DnnPlan,
 	partition_index: usize,
 	semantic: &SemanticGraph,
@@ -600,7 +594,7 @@ fn build_gate_up(
 			},
 		})
 		.collect();
-	if engine_handle
+	if runtime
 		.require_kernel(KernelId::MlGateUpSwigluBiasF32)
 		.is_err()
 	{
@@ -677,7 +671,7 @@ fn unsigned_attribute(
 
 #[allow(clippy::too_many_arguments)]
 fn build_vision_preprocess(
-	engine_handle: &EngineHandle,
+	runtime: &RuntimeHandle,
 	plan: &DnnPlan,
 	partition_index: usize,
 	semantic: &SemanticGraph,
@@ -879,7 +873,7 @@ fn build_vision_preprocess(
 			},
 		})
 		.collect();
-	if engine_handle
+	if runtime
 		.require_kernel(KernelId::ImageResizeNormalizeF32)
 		.is_err()
 	{
@@ -932,7 +926,7 @@ fn single_edge(producer: &DnnOpDesc, consumer: &DnnOpDesc) -> bool {
 
 #[allow(clippy::too_many_arguments)]
 fn build_linear_epilogue(
-	engine_handle: &EngineHandle,
+	runtime: &RuntimeHandle,
 	plan: &DnnPlan,
 	partition_index: usize,
 	semantic: &SemanticGraph,
@@ -1148,22 +1142,21 @@ fn build_linear_epilogue(
 		max_workspace_bytes: plan.policy.max_workspace_bytes,
 		..MatmulPreference::default()
 	};
-	let matmul_plan =
-		plan_mat_mul_nt_problem(engine_handle, &problem, &preference).map_err(|_| {
-			LinearEpilogueRejection {
-				reason: "linear epilogue provider found no legal device plan",
-				unexpected: false,
-			}
-		})?;
+	let matmul_plan = plan_matmul_nt_problem(runtime, &problem, &preference).map_err(|_| {
+		LinearEpilogueRejection {
+			reason: "linear epilogue provider found no legal device plan",
+			unexpected: false,
+		}
+	})?;
 	let launch =
-		lower_mat_mul_nt_plan(&matmul_plan, &problem).map_err(|_| LinearEpilogueRejection {
+		lower_matmul_nt_plan(&matmul_plan, &problem).map_err(|_| LinearEpilogueRejection {
 			reason: "linear epilogue provider produced an invalid device plan",
 			unexpected: true,
 		})?;
 	if launch.buffer_count != 4 || launch.buffer_order[..4] != [0, 1, 4, 2] {
 		return unexpected("linear epilogue provider returned an unsupported buffer permutation");
 	}
-	if engine_handle.require_kernel(launch.kernel_id).is_err() {
+	if runtime.require_kernel(launch.kernel_id).is_err() {
 		return reject("linear epilogue provider found no admitted device pipeline");
 	}
 

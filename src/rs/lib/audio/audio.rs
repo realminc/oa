@@ -6,8 +6,8 @@ use std::{
 };
 
 use crate::{
-	DType, Engine, Error, Matrix, Result,
-	runtime::{EngineHandle, Storage},
+	DType, Error, Matrix, Result, Runtime,
+	runtime::{RuntimeHandle, Storage},
 };
 
 /// Speaker layout carried by an [`Audio`] value.
@@ -104,7 +104,7 @@ impl Audio {
 	/// buffer, a zero sample rate, incompatible layout metadata, checked-size
 	/// overflow, or device allocation/upload failure.
 	pub fn new_from_planar_f32(
-		engine: &Engine,
+		runtime: &Runtime,
 		samples: &[f32],
 		channel_count: usize,
 		sample_rate: u32,
@@ -118,7 +118,7 @@ impl Audio {
 				"audio layout {layout:?} requires {expected} channels; received {channel_count}"
 			)));
 		}
-		let data = Matrix::new_from_f32_on(engine, [channel_count, samples_per_channel], samples)?;
+		let data = Matrix::new_from_f32_on(runtime, [channel_count, samples_per_channel], samples)?;
 		Self::new(data, sample_rate, layout)
 	}
 
@@ -158,8 +158,8 @@ impl Audio {
 		self.samples() as f64 / f64::from(self.sample_rate)
 	}
 
-	pub(crate) const fn engine_handle(&self) -> &EngineHandle {
-		self.data.engine_handle()
+	pub(crate) const fn runtime(&self) -> &RuntimeHandle {
+		self.data.runtime()
 	}
 
 	pub(crate) fn storage(&self) -> &Storage {

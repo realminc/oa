@@ -247,7 +247,7 @@ pub fn to_matrix(frames: &[VideoFrame], config: &VideoMatrixConfig) -> Result<Ma
 			"{OPERATION} requires device-planar frames; stage host frames with VideoFrame::upload"
 		))
 	})?;
-	let engine = first.planes[0].engine_handle();
+	let runtime = first.planes[0].runtime();
 	let format = first.format;
 	let frame_width = first.width;
 	let frame_height = first.height;
@@ -265,9 +265,9 @@ pub fn to_matrix(frames: &[VideoFrame], config: &VideoMatrixConfig) -> Result<Ma
 				"{OPERATION} requires identical format and extent in one batch"
 			)));
 		}
-		if !planar.planes[0].engine_handle().same_as(engine) {
+		if !planar.planes[0].runtime().same_as(runtime) {
 			return Err(Error::invalid_argument(format!(
-				"{OPERATION} requires frames from one engine"
+				"{OPERATION} requires frames from one runtime"
 			)));
 		}
 		if resolve_color(frame, config.unspecified_color)? != color {
@@ -345,7 +345,7 @@ pub fn to_matrix(frames: &[VideoFrame], config: &VideoMatrixConfig) -> Result<Ma
 			.checked_mul(*axis)
 			.ok_or_else(|| Error::out_of_range(format!("{OPERATION} output size overflows usize")))
 	})?;
-	let output = Matrix::allocate(engine, shape, elements, DType::F32)?;
+	let output = Matrix::allocate(runtime, shape, elements, DType::F32)?;
 
 	// Host-side mapping: continuous luma coordinates
 	//   sx = (out_x + 0.5) * scale_x + off_x
@@ -518,7 +518,7 @@ pub fn to_matrix(frames: &[VideoFrame], config: &VideoMatrixConfig) -> Result<Ma
 	};
 	if dispatches.len() == 1 {
 		let (binding_index, push) = &dispatches[0];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &binding_store[*binding_index],
@@ -529,7 +529,7 @@ pub fn to_matrix(frames: &[VideoFrame], config: &VideoMatrixConfig) -> Result<Ma
 			semantic,
 		)?;
 	} else {
-		engine.record_split_semantic(&dispatch_list, semantic)?;
+		runtime.record_split_semantic(&dispatch_list, semantic)?;
 	}
 	Ok(output)
 }

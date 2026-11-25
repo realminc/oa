@@ -6,7 +6,7 @@
 //
 // Reference:
 //   - Filament PBR white-paper (Google, 2018)
-//   - "Real Shading in Unreal Engine 4" (Epic Games, SIGGRAPH 2013)
+//   - "Real Shading in Unreal Runtime 4" (Epic Games, SIGGRAPH 2013)
 //
 // Donor: oacpp/source/cpp/lib/oa/render/shader/graphics/brdf.slang
 // Adaptation: IBL split-sum left as a stub returning 0 until the prefiltered

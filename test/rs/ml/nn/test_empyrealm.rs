@@ -39,7 +39,7 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 
 test_vk!(
 	empyrealm_hybrid_schedule_interleaves_attention_blocks,
-	engine,
+	runtime,
 	{
 		let model = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x454d_5059)?;
 		assert_eq!(model.layer_count(), 4);
@@ -54,7 +54,7 @@ test_vk!(
 
 test_vk!(
 	empyrealm_pure_mamba_schedule_has_no_attention_blocks,
-	engine,
+	runtime,
 	{
 		let mut pure = config(0);
 		pure.sequence_length = 4;
@@ -70,7 +70,7 @@ test_vk!(
 	}
 );
 
-test_vk!(empyrealm_rejects_invalid_configuration, engine, {
+test_vk!(empyrealm_rejects_invalid_configuration, runtime, {
 	for (layers, ffn_hidden, sequence_length, model_width) in
 		[(0, 16, 4, 8), (4, 0, 4, 8), (4, 16, 0, 8), (4, 16, 4, 0)]
 	{
@@ -126,7 +126,7 @@ test_vk!(empyrealm_rejects_invalid_configuration, engine, {
 
 test_vk!(
 	empyrealm_forward_is_deterministic_and_shape_checked,
-	engine,
+	runtime,
 	{
 		let first = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x454d_5059)?;
 		let second = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x454d_5059)?;
@@ -161,7 +161,7 @@ test_vk!(
 	}
 );
 
-test_vk!(empyrealm_registers_one_stable_parameter_tree, engine, {
+test_vk!(empyrealm_registers_one_stable_parameter_tree, runtime, {
 	let model = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x454d_5059)?;
 	let named = model.all_named_parameters()?;
 	let paths = named
@@ -184,7 +184,7 @@ test_vk!(empyrealm_registers_one_stable_parameter_tree, engine, {
 	Ok(())
 });
 
-test_vk!(empyrealm_decode_steps_match_the_full_scan, engine, {
+test_vk!(empyrealm_decode_steps_match_the_full_scan, runtime, {
 	let model = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x454d_5059)?;
 	let token_values = [0_u32, 1, 2, 3, 4, 5, 6, 0];
 	let tokens = oa::Matrix::new_from_slice([2, 4], &token_values)?;
@@ -207,7 +207,7 @@ test_vk!(empyrealm_decode_steps_match_the_full_scan, engine, {
 
 test_vk!(
 	empyrealm_decode_state_enforces_ownership_batch_and_tape,
-	engine,
+	runtime,
 	{
 		let model = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x454d_5059)?;
 		let other = oa::ml::nn::Empyrealm::new_with_seed(7, config(4), 0x5448_4552)?;
@@ -267,7 +267,7 @@ test_vk!(
 	}
 );
 
-test_vk!(empyrealm_moe_tail_constructs_and_forwards, engine, {
+test_vk!(empyrealm_moe_tail_constructs_and_forwards, runtime, {
 	let mut routed = config(4);
 	routed.moe_experts = 2;
 	routed.moe_experts_per_token = 1;

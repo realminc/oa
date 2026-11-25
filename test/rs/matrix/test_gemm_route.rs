@@ -13,7 +13,7 @@ fn values(length: usize, salt: usize) -> Vec<f32> {
 		.collect()
 }
 
-fn cpu_mat_mul_nt(left: &[f32], right: &[f32], m: usize, n: usize, k: usize) -> Vec<f32> {
+fn cpu_matmul_nt(left: &[f32], right: &[f32], m: usize, n: usize, k: usize) -> Vec<f32> {
 	let mut output = vec![0.0; m * n];
 	for row in 0..m {
 		for column in 0..n {
@@ -49,7 +49,7 @@ fn kernel_names(plan: &oa::ExecutionPlan, operation: &str) -> Vec<String> {
 
 test_vk!(
 	tiled_wide_route_records_wide_kernel_and_matches_oracle,
-	engine,
+	runtime,
 	{
 		// Kernel-identity assertions observe the process-wide precision mode;
 		// hold the shared lock so a concurrent FP16-mode test cannot tear it.
@@ -69,17 +69,17 @@ test_vk!(
 		] {
 			let left_values = values(m * k, 3);
 			let right_values = values(n * k, 11);
-			let expected = cpu_mat_mul_nt(&left_values, &right_values, m, n, k);
+			let expected = cpu_matmul_nt(&left_values, &right_values, m, n, k);
 			let left = oa::Matrix::new_from_f32([m, k], &left_values)?;
 			let right = oa::Matrix::new_from_f32([n, k], &right_values)?;
-			let (plan, output) = engine.capture(|| oa::matrix::mat_mul_nt(&left, &right))?;
-			let kernels = kernel_names(&plan, "mat_mul_nt");
+			let (plan, output) = runtime.capture(|| oa::matrix::matmul(&left, &right))?;
+			let kernels = kernel_names(&plan, "matmul");
 			assert_eq!(
 				kernels,
-				vec!["matrix.mat_mul_nt_tiled_wide.f32"],
+				vec!["matrix.matmul_nt_tiled_wide.f32"],
 				"m={m} n={n} must route to the wide tile"
 			);
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			assert_eq!(output.shape(), [m, n]);
 			assert_close(&output.read_f32()?, &expected, 1.0e-3);
 		}
@@ -87,7 +87,7 @@ test_vk!(
 	}
 );
 
-test_vk!(sub_tile_extents_keep_established_route, engine, {
+test_vk!(sub_tile_extents_keep_established_route, runtime, {
 	let _mode = crate::precision::PrecisionMode::remove();
 	// Below the wide-tile occupancy preference an established route must be
 	// selected instead; the wide variant must not silently take problems it
@@ -104,17 +104,17 @@ test_vk!(sub_tile_extents_keep_established_route, engine, {
 	] {
 		let left_values = values(m * k, 3);
 		let right_values = values(n * k, 11);
-		let expected = cpu_mat_mul_nt(&left_values, &right_values, m, n, k);
+		let expected = cpu_matmul_nt(&left_values, &right_values, m, n, k);
 		let left = oa::Matrix::new_from_f32([m, k], &left_values)?;
 		let right = oa::Matrix::new_from_f32([n, k], &right_values)?;
-		let (plan, output) = engine.capture(|| oa::matrix::mat_mul_nt(&left, &right))?;
-		let kernels = kernel_names(&plan, "mat_mul_nt");
+		let (plan, output) = runtime.capture(|| oa::matrix::matmul(&left, &right))?;
+		let kernels = kernel_names(&plan, "matmul");
 		assert!(
-			!kernels.contains(&"matrix.mat_mul_nt_tiled_wide.f32".to_owned()),
+			!kernels.contains(&"matrix.matmul_nt_tiled_wide.f32".to_owned()),
 			"m={m} n={n} must not route to the wide tile, found {kernels:?}"
 		);
 		println!("m={m} n={n} k={k} kernels={kernels:?}");
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_close(&output.read_f32()?, &expected, 1.0e-3);
 	}
 	Ok(())

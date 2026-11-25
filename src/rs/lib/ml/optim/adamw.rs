@@ -1,9 +1,9 @@
 //! AdamW optimizer with decoupled weight decay and graph-capture support.
 
 use crate::ml::Parameter;
-use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::ml::validation::{shader_u32, validate_f32_same_runtime};
 use crate::runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch};
-use crate::{DType, Engine, Error, Matrix, OpAttribute, Result};
+use crate::{DType, Error, Matrix, OpAttribute, Result, Runtime};
 
 use super::optimizer::{
 	MomentParameterState, Optimizer, OptimizerCheckpoint, OptimizerRestore, checkpoint_capability,
@@ -53,11 +53,11 @@ fn adamw_graph_advance(state: &Matrix) -> Result<()> {
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -78,10 +78,10 @@ fn adamw_gated_graph_advance(state: &Matrix, flag: &Matrix) -> Result<()> {
 	}
 	if flag.dtype() != DType::F32
 		|| flag.num_elements() != 1
-		|| !flag.engine_handle().same_as(state.engine_handle())
+		|| !flag.runtime().same_as(state.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{OPERATION} requires a same-engine single-element F32 finite flag"
+			"{OPERATION} requires a same-runtime single-element F32 finite flag"
 		)));
 	}
 	let buffers = [
@@ -105,11 +105,11 @@ fn adamw_gated_graph_advance(state: &Matrix, flag: &Matrix) -> Result<()> {
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -130,13 +130,13 @@ fn adamw_gated_graph(
 	flag: &Matrix,
 ) -> Result<()> {
 	const OPERATION: &str = crate::core::operation::ml::ADAMW_GATED_GRAPH.name();
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		OPERATION,
 		&[parameter, gradient, first_moment, second_moment, flag],
 	)?;
-	if state.dtype() != DType::U32 || !state.engine_handle().same_as(parameter.engine_handle()) {
+	if state.dtype() != DType::U32 || !state.runtime().same_as(parameter.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{OPERATION} requires same-engine U32 optimizer state"
+			"{OPERATION} requires same-runtime U32 optimizer state"
 		)));
 	}
 	if flag.num_elements() != 1 {
@@ -193,11 +193,11 @@ fn adamw_gated_graph(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -217,13 +217,13 @@ fn adamw_graph(
 	state: &Matrix,
 ) -> Result<()> {
 	const OPERATION: &str = crate::core::operation::ml::ADAMW_GRAPH.name();
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		OPERATION,
 		&[parameter, gradient, first_moment, second_moment],
 	)?;
-	if state.dtype() != DType::U32 || !state.engine_handle().same_as(parameter.engine_handle()) {
+	if state.dtype() != DType::U32 || !state.runtime().same_as(parameter.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{OPERATION} requires same-engine U32 optimizer state"
+			"{OPERATION} requires same-runtime U32 optimizer state"
 		)));
 	}
 	for candidate in [gradient, first_moment, second_moment] {
@@ -268,11 +268,11 @@ fn adamw_graph(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -329,7 +329,7 @@ fn adamw_many4_graph(entries: &[AdamWBatchEntry<'_>; 4], state: &Matrix) -> Resu
 		},
 	];
 	let kernel = KernelId::MlAdamWMany4GraphF32;
-	entries[0].parameter.engine_handle().record_fused_semantic(
+	entries[0].parameter.runtime().record_fused_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -349,7 +349,7 @@ fn adamw(
 	scalars: AdamWScalars,
 ) -> Result<()> {
 	const OPERATION: &str = crate::core::operation::ml::ADAMW.name();
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		OPERATION,
 		&[parameter, gradient, first_moment, second_moment],
 	)?;
@@ -396,11 +396,11 @@ fn adamw(
 					dispatch.kernel.report_name()
 				))
 			})?;
-			let engine = inputs
+			let runtime = inputs
 				.first()
 				.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-				.engine_handle();
-			engine.record_semantic(
+				.runtime();
+			runtime.record_semantic(
 				dispatch,
 				SemanticDispatch {
 					contract,
@@ -471,7 +471,7 @@ fn adamw_many4(entries: &[AdamWBatchEntry<'_>; 4], scalars: AdamWScalars) -> Res
 		},
 	];
 	let kernel = KernelId::MlAdamWMany4F32;
-	entries[0].parameter.engine_handle().record_fused_semantic(
+	entries[0].parameter.runtime().record_fused_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -488,19 +488,17 @@ fn validate_adamw_batch(
 	state: Option<&Matrix>,
 	operation: &'static str,
 ) -> Result<[u32; 4]> {
-	let engine = entries[0].parameter.engine_handle();
+	let runtime = entries[0].parameter.runtime();
 	if let Some(state) = state
-		&& (state.dtype() != DType::U32
-			|| state.shape() != [6]
-			|| !engine.same_as(state.engine_handle()))
+		&& (state.dtype() != DType::U32 || state.shape() != [6] || !runtime.same_as(state.runtime()))
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} requires same-engine U32 optimizer state [6]"
+			"{operation} requires same-runtime U32 optimizer state [6]"
 		)));
 	}
 	let mut counts = [0_u32; 4];
 	for (index, entry) in entries.iter().enumerate() {
-		validate_f32_same_engine(
+		validate_f32_same_runtime(
 			operation,
 			&[
 				entry.parameter,
@@ -509,13 +507,13 @@ fn validate_adamw_batch(
 				entry.second_moment,
 			],
 		)?;
-		if !engine.same_as(entry.parameter.engine_handle())
+		if !runtime.same_as(entry.parameter.runtime())
 			|| [entry.gradient, entry.first_moment, entry.second_moment]
 				.iter()
 				.any(|candidate| candidate.shape() != entry.parameter.shape())
 		{
 			return Err(Error::invalid_argument(format!(
-				"{operation} requires four same-engine parameter, gradient, and moment groups with identical per-group shapes"
+				"{operation} requires four same-runtime parameter, gradient, and moment groups with identical per-group shapes"
 			)));
 		}
 		counts[index] = shader_u32(entry.parameter.num_elements(), "element count", operation)?;
@@ -663,7 +661,7 @@ impl AdamW {
 	/// # Errors
 	///
 	/// Returns an error for non-finite or out-of-range scalars, an empty or
-	/// duplicate parameter set, mixed-engine ownership, or moment allocation.
+	/// duplicate parameter set, mixed-runtime ownership, or moment allocation.
 	pub fn new_with_hyperparameters(
 		parameters: impl IntoIterator<Item = Parameter>,
 		learning_rate: f32,
@@ -709,26 +707,26 @@ impl AdamW {
 				));
 			}
 		}
-		let engine = parameters[0].data().engine_handle().clone();
+		let runtime = parameters[0].data().runtime().clone();
 		if parameters
 			.iter()
-			.any(|parameter| !engine.same_as(parameter.data().engine_handle()))
+			.any(|parameter| !runtime.same_as(parameter.data().runtime()))
 		{
 			return Err(Error::invalid_argument(
-				"AdamW parameters must belong to one engine",
+				"AdamW parameters must belong to one runtime",
 			));
 		}
 		let mut states = Vec::with_capacity(parameters.len());
 		for parameter in parameters {
 			let data = parameter.data();
 			let first_moment = Matrix::allocate(
-				data.engine_handle(),
+				data.runtime(),
 				data.shape().to_vec(),
 				data.num_elements(),
 				DType::F32,
 			)?;
 			let second_moment = Matrix::allocate(
-				data.engine_handle(),
+				data.runtime(),
 				data.shape().to_vec(),
 				data.num_elements(),
 				DType::F32,
@@ -778,7 +776,7 @@ impl AdamW {
 		let capture_active = self.parameters[0]
 			.parameter
 			.data()
-			.engine_handle()
+			.runtime()
 			.capture_active();
 		if capture_active {
 			return self.capture_step(step);
@@ -839,9 +837,9 @@ impl AdamW {
 				})
 			})
 			.collect::<Result<Vec<_>>>()?;
-		let engine = self.parameters[0].parameter.data().engine_handle().clone();
+		let runtime = self.parameters[0].parameter.data().runtime().clone();
 		let state = Matrix::new_from_slice_handle(
-			&engine,
+			&runtime,
 			vec![6],
 			&[
 				step - 1,
@@ -904,7 +902,7 @@ impl AdamW {
 
 	/// Bind a device-resident finite flag gating captured replayed updates.
 	///
-	/// With a flag bound, `step` inside `Engine::capture` records the gated
+	/// With a flag bound, `step` inside `Runtime::capture` records the gated
 	/// kernels: the device step counter and every parameter, first-moment, and
 	/// second-moment write are selected against their prior values when the
 	/// flag is zero, which freezes the update exactly as a skipped
@@ -913,7 +911,7 @@ impl AdamW {
 	///
 	/// # Errors
 	///
-	/// Returns an error when the flag is not a same-engine single-element F32
+	/// Returns an error when the flag is not a same-runtime single-element F32
 	/// matrix.
 	pub fn set_finite_gate(&mut self, flag: &Matrix) -> Result<()> {
 		if flag.dtype() != DType::F32 || flag.num_elements() != 1 {
@@ -922,11 +920,11 @@ impl AdamW {
 			));
 		}
 		if !flag
-			.engine_handle()
-			.same_as(self.parameters[0].parameter.data().engine_handle())
+			.runtime()
+			.same_as(self.parameters[0].parameter.data().runtime())
 		{
 			return Err(Error::invalid_argument(
-				"AdamW finite gate flag must belong to the optimizer engine",
+				"AdamW finite gate flag must belong to the optimizer runtime",
 			));
 		}
 		self.gate = Some(flag.clone());
@@ -975,8 +973,8 @@ impl AdamW {
 		self.step
 	}
 
-	pub(crate) fn belongs_to(&self, engine: &Engine) -> bool {
-		engine.same_as_handle(self.parameters[0].parameter.data().engine_handle())
+	pub(crate) fn belongs_to(&self, runtime: &Runtime) -> bool {
+		runtime.same_as_handle(self.parameters[0].parameter.data().runtime())
 	}
 
 	pub(crate) fn program_signature(&self) -> Result<AdamWProgramSignature> {
@@ -1104,7 +1102,7 @@ impl AdamW {
 
 	/// Complete one ad-hoc captured optimizer step after its plan finished.
 	///
-	/// `step` inside `Engine::capture` only records the update; the logical step
+	/// `step` inside `Runtime::capture` only records the update; the logical step
 	/// completes when that captured submission finishes. `TrainingProgram`
 	/// replay accounts it through `complete_program_replay`; a caller that
 	/// captures `step` directly calls this once its submission event completes.
@@ -1113,6 +1111,7 @@ impl AdamW {
 	///
 	/// Returns an error when the step or parameter mutation counter is
 	/// exhausted.
+	#[allow(dead_code)]
 	pub(crate) fn complete_captured_step(&mut self) -> Result<()> {
 		let step = self
 			.step
@@ -1177,7 +1176,7 @@ impl AdamW {
 			for moment in [first, second] {
 				if moment.shape() != data.shape()
 					|| moment.dtype() != DType::F32
-					|| !moment.engine_handle().same_as(data.engine_handle())
+					|| !moment.runtime().same_as(data.runtime())
 				{
 					return Err(Error::invalid_argument(
 						"AdamW checkpoint moment contract mismatch",
@@ -1231,8 +1230,8 @@ impl Optimizer for AdamW {
 		u64::from(Self::step_count(self))
 	}
 
-	fn belongs_to(&self, engine: &Engine) -> bool {
-		Self::belongs_to(self, engine)
+	fn belongs_to(&self, runtime: &Runtime) -> bool {
+		Self::belongs_to(self, runtime)
 	}
 
 	fn set_finite_gate(&mut self, flag: &Matrix) -> Result<()> {

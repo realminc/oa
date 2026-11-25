@@ -260,7 +260,7 @@ fn record_picture(
 	}
 	// SAFETY: session coding scope is open; every referenced slot resource,
 	// parameter chain, and bitstream buffer outlives submission via the
-	// recorded-command retention on the engine timeline.
+	// recorded-command retention on the runtime timeline.
 	unsafe {
 		device.cmd_encode_video_khr(command_buffer, &encode)?;
 	}

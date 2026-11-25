@@ -60,7 +60,7 @@
 		})?;
 	u32_extent(output_elements, "image::resize output element count")?;
 	let output_matrix = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape,
 		output_elements,
 		DType::F32,
@@ -72,7 +72,7 @@
 	let mut workgroups = kernel.output_workgroups(target_width, target_height);
 	workgroups[2] = batch_channels;
 	let attributes = [{{attributes}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &{{binding_name:0}},
@@ -109,7 +109,7 @@
 	)?;
 	let mut workgroups = KernelId::ImageCropF32.output_workgroups(dispatch_width, dispatch_height);
 	workgroups[2] = planes;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -139,7 +139,7 @@
 	)?;
 	let mut workgroups = KernelId::ImageFlipF32.output_workgroups(dispatch_width, dispatch_height);
 	workgroups[2] = planes;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -180,7 +180,7 @@
 	)?;
 	let mut workgroups = KernelId::ImageRotateF32.output_workgroups(dispatch_width, dispatch_height);
 	workgroups[2] = planes;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -225,7 +225,7 @@
 	)?;
 	let mut workgroups = KernelId::ImagePadF32.output_workgroups(dispatch_width, dispatch_height);
 	workgroups[2] = planes;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -263,7 +263,7 @@
 	let mut workgroups =
 		KernelId::ImageCenterCropF32.output_workgroups(dispatch_width, dispatch_height);
 	workgroups[2] = planes;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -306,7 +306,7 @@
 	)?;
 	let mut workgroups = KernelId::ImageRemapF32.output_workgroups(dispatch_width, dispatch_height);
 	workgroups[2] = planes;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -350,7 +350,7 @@
 	let mut workgroups =
 		KernelId::ImageWarpAffineF32.output_workgroups(dispatch_width, dispatch_height);
 	workgroups[2] = planes;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -394,7 +394,7 @@
 	let mut workgroups =
 		KernelId::ImageWarpPerspectiveF32.output_workgroups(dispatch_width, dispatch_height);
 	workgroups[2] = planes;
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -410,6 +410,120 @@
 			],
 			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation pyr_down
+	let extent = validate_image(input, "image::pyr_down")?;
+	let output_width = extent.width.div_ceil(2);
+	let output_height = extent.height.div_ceil(2);
+	let output = allocate_image(input, output_width, output_height, "image::pyr_down")?;
+	let planes = extent
+		.batch
+		.checked_mul(extent.channels)
+		.ok_or_else(|| Error::out_of_range("image::pyr_down batch-channel dispatch exceeds u32"))?;
+	let workgroups = [
+		output_width.div_ceil(16),
+		output_height.div_ceil(16),
+		planes,
+	];
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups,
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation pyr_up
+	let extent = validate_image(input, "image::pyr_up")?;
+	let output_width = extent
+		.width
+		.checked_mul(2)
+		.ok_or_else(|| Error::out_of_range("image::pyr_up output width exceeds u32"))?;
+	let output_height = extent
+		.height
+		.checked_mul(2)
+		.ok_or_else(|| Error::out_of_range("image::pyr_up output height exceeds u32"))?;
+	let output = allocate_image(input, output_width, output_height, "image::pyr_up")?;
+	let planes = extent
+		.batch
+		.checked_mul(extent.channels)
+		.ok_or_else(|| Error::out_of_range("image::pyr_up batch-channel dispatch exceeds u32"))?;
+	let workgroups = [
+		output_width.div_ceil(16),
+		output_height.div_ceil(16),
+		planes,
+	];
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups,
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation warp_polar
+	if out_width == 0 || out_height == 0 {
+		return Err(Error::invalid_argument(
+			"image::warp_polar output width and height must be nonzero",
+		));
+	}
+	if !center_x.is_finite()
+		|| !center_y.is_finite()
+		|| !max_radius.is_finite()
+		|| max_radius <= 0.0
+		|| !border_value.is_finite()
+	{
+		return Err(Error::invalid_argument(
+			"image::warp_polar requires finite center, positive max_radius, and finite border_value",
+		));
+	}
+	let extent = validate_image(input, "image::warp_polar")?;
+	let output = allocate_image(input, out_width, out_height, "image::warp_polar")?;
+	let log_max_radius = max_radius.ln();
+	let dispatch_width = u32_extent(output.width(), "image operation output width")?;
+	let dispatch_height = u32_extent(output.height(), "image operation output height")?;
+	let planes = u32_extent(
+		output
+			.batch_size()
+			.checked_mul(output.channels())
+			.ok_or_else(|| Error::out_of_range("image operation batch-channel dispatch exceeds usize"))?,
+		"image operation batch-channel dispatch",
+	)?;
+	let mut workgroups =
+		KernelId::ImageWarpPolarF32.output_workgroups(dispatch_width, dispatch_height);
+	workgroups[2] = planes;
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups,
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &attributes,
 		},
 	)?;
 	Ok(output)

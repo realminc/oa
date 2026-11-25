@@ -493,7 +493,7 @@
 				"muon",
 				"muon_vector",
 				"muon_normalize",
-				"muon_mat_mul_axpby",
+				"muon_matmul_axpby",
 				"muon_linear_combination",
 				"muon_transpose",
 				"muon_apply"
@@ -505,7 +505,7 @@
 				"source/cpp/lib/oa/ml/shader/compute/optim/muon/muonNesterov.slang",
 				"source/cpp/lib/oa/ml/shader/compute/optim/muon/muonVector.slang",
 				"source/cpp/lib/oa/ml/shader/compute/optim/muon/muonNormalize.slang",
-				"source/cpp/lib/oa/ml/shader/compute/optim/muon/muonMatMulAxpby.slang",
+				"source/cpp/lib/oa/ml/shader/compute/optim/muon/muonMatmulAxpby.slang",
 				"source/cpp/lib/oa/ml/shader/compute/optim/muon/muonLinearCombination.slang",
 				"source/cpp/lib/oa/ml/shader/compute/optim/muon/muonApply.slang"
 			],
@@ -949,7 +949,7 @@
 				"source/cpp/lib/oa/ml/shader/compute/nn/conv/conv1dBwdData.slang",
 				"source/cpp/lib/oa/ml/shader/compute/nn/conv/conv1dBwdWeight.slang"
 			],
-			"reason": "Preserves the donor NCL im2col layout, existing 64x64x16 tiled MatMulNt route, in-place last-axis bias broadcast, batched channels-first transpose, dilation geometry, and explicit deterministic data/parameter adjoints while representing the four-node forward and two-node backward as single semantic operations."
+			"reason": "Preserves the donor NCL im2col layout, existing 64x64x16 tiled MatmulNt route, in-place last-axis bias broadcast, batched channels-first transpose, dilation geometry, and explicit deterministic data/parameter adjoints while representing the four-node forward and two-node backward as single semantic operations."
 		},
 		{
 			"family": "conv_1d_transpose",
@@ -967,7 +967,7 @@
 				"source/cpp/lib/oa/ml/shader/compute/nn/conv/im2Col1d.slang",
 				"source/cpp/lib/oa/ml/shader/compute/nn/conv/conv1dBwdWeight.slang"
 			],
-			"reason": "Preserves the donor bias-free NCL transposed-convolution geometry and IOK weight layout. Forward is the existing Conv1d data adjoint; backward reuses the canonical Conv1d im2col plus 64x64x16 tiled MatMulNt route and deterministic parameter adjoint as one semantic operation rather than introducing a second convolution implementation."
+			"reason": "Preserves the donor bias-free NCL transposed-convolution geometry and IOK weight layout. Forward is the existing Conv1d data adjoint; backward reuses the canonical Conv1d im2col plus 64x64x16 tiled MatmulNt route and deterministic parameter adjoint as one semantic operation rather than introducing a second convolution implementation."
 		},
 		{
 			"family": "conv_2d_transpose",
@@ -1158,11 +1158,11 @@
 				"compute_scale_q8",
 				"quantize_q8",
 				"dequantize_q8",
-				"mat_mul_nt_q4",
-				"mat_mul_nt_q8",
+				"matmul_nt_q4",
+				"matmul_nt_q8",
 				"quantize",
 				"dequantize",
-				"mat_mul_nt_quantized"
+				"matmul_nt_quantized"
 			],
 			"classification": "mechanical_adaptation",
 			"donors": [
@@ -1176,7 +1176,7 @@
 				"source/cpp/lib/oa/ml/shader/compute/quantize/matMulNtQ4.slang",
 				"source/cpp/lib/oa/ml/shader/compute/quantize/matMulNtQ8.slang"
 			],
-			"reason": "Preserves the donor symmetric 32-value block layout, one Float32 scale per block, round-to-nearest-even clamp, non-finite-to-zero payload policy, invalid-scale zero and fallback behavior, exclusive packed-word write ownership, and the fused two-plane MatMulNt group reduction. The Q8 payload stores the identical signed byte stream in U8 storage because packed planes never expose element semantics publicly; an Int8 dense dtype remains a separate admission."
+			"reason": "Preserves the donor symmetric 32-value block layout, one Float32 scale per block, round-to-nearest-even clamp, non-finite-to-zero payload policy, invalid-scale zero and fallback behavior, exclusive packed-word write ownership, and the fused two-plane MatmulNt group reduction. The Q8 payload stores the identical signed byte stream in U8 storage because packed planes never expose element semantics publicly; an Int8 dense dtype remains a separate admission."
 		},
 		{
 			"family": "fold_2d",
@@ -1910,7 +1910,7 @@
 			}
 		},
 		{
-			"name": "mat_mul_nt_quantized",
+			"name": "matmul_nt_quantized",
 			"donor_op": "oa::FnMatrix::matMulNtQuantized",
 			"semantic_domain": "ml::matrix",
 			"differentiation": "none",
@@ -5255,12 +5255,12 @@
 		},
 		{
 			"stable_id": 88,
-			"name": "muon_mat_mul_axpby",
+			"name": "muon_matmul_axpby",
 			"fusion_class": "gemm",
-			"kernel_id": "MlMuonMatMulAxpbyF32",
+			"kernel_id": "MlMuonMatmulAxpbyF32",
 			"lowering_only": true,
 			"training_replay_role": "host_stepped_optimizer",
-			"source": "src/slang/ml/optim/muon/muon_mat_mul_axpby.slang",
+			"source": "src/slang/ml/optim/muon/muon_matmul_axpby.slang",
 			"variant": "generic",
 			"differentiation": "none",
 			"workgroup_size": [
@@ -29193,11 +29193,11 @@
 		},
 		{
 			"stable_id": 563,
-			"name": "mat_mul_nt_q4",
+			"name": "matmul_nt_q4",
 			"fusion_class": "gemm",
 			"semantic_domain": "ml::matrix",
-			"kernel_id": "MlMatMulNtQ4F32",
-			"source": "src/slang/ml/quant/mat_mul_nt_q4.slang",
+			"kernel_id": "MlMatmulNtQ4F32",
+			"source": "src/slang/ml/quant/matmul_nt_q4.slang",
 			"variant": "generic",
 			"workgroup_size": [
 				32,
@@ -29286,11 +29286,11 @@
 		},
 		{
 			"stable_id": 564,
-			"name": "mat_mul_nt_q8",
+			"name": "matmul_nt_q8",
 			"fusion_class": "gemm",
 			"semantic_domain": "ml::matrix",
-			"kernel_id": "MlMatMulNtQ8F32",
-			"source": "src/slang/ml/quant/mat_mul_nt_q8.slang",
+			"kernel_id": "MlMatmulNtQ8F32",
+			"source": "src/slang/ml/quant/matmul_nt_q8.slang",
 			"variant": "generic",
 			"workgroup_size": [
 				32,

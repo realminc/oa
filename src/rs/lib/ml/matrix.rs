@@ -106,7 +106,7 @@ pub(in crate::ml) use pool::{
 	avg_pool_3d_backward, max_pool_1d_backward, max_pool_2d_backward, max_pool_3d_backward,
 	max_unpool_1d_backward, max_unpool_2d_backward,
 };
-pub use quant::{QuantMatrix, Quantization, dequantize, mat_mul_nt, quantize};
+pub use quant::{QuantMatrix, Quantization, dequantize, matmul, quantize};
 pub use rms_norm::{RmsNormGatedBackward, rms_norm, rms_norm_gated, rms_norm_gated_backward};
 pub(in crate::ml) use rms_norm::{rms_norm_backward, rms_norm_forward, rms_norm_gated_forward};
 pub use rnn::{rnn_cell, rnn_scan};

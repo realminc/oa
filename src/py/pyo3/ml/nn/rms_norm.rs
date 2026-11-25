@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::super::autograd::PythonParameter;
 
@@ -17,20 +17,20 @@ impl PythonRmsNorm {
 	/// Accepts `features` as an alias for `dimension`.  The `seed` keyword
 	/// is accepted for API compatibility but ignored.
 	#[new]
-	#[pyo3(signature = (dimension=None, epsilon=1e-5, features=None, seed=None, engine=None))]
+	#[pyo3(signature = (dimension=None, epsilon=1e-5, features=None, seed=None, runtime=None))]
 	pub fn new(
 		dimension: Option<usize>,
 		epsilon: f32,
 		features: Option<usize>,
 		seed: Option<u64>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		let _ = seed;
 		let dim = dimension.or(features).ok_or_else(|| {
 			pyo3::exceptions::PyTypeError::new_err("RmsNorm requires dimension or features")
 		})?;
-		oa::ml::nn::RmsNorm::new_on(&engine, dim, epsilon)
+		oa::ml::nn::RmsNorm::new_on(&runtime, dim, epsilon)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

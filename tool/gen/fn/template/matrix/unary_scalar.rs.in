@@ -1,10 +1,10 @@
 	let operation = contract.name();
 	let kernel = select_kernel(input.dtype(), routes, operation)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -21,7 +21,7 @@
 			name: contract.attribute_specs()[0].name().into(),
 			value: f64::from(scalar),
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,

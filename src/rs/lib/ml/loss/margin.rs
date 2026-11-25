@@ -157,7 +157,7 @@ pub fn cosine_embedding(
 	validate_pointwise_loss_inputs(target, target, operation)?;
 	if input1.shape().len() != 2
 		|| target.shape() != [input1.shape()[0], 1]
-		|| !target.engine_handle().same_as(input1.engine_handle())
+		|| !target.runtime().same_as(input1.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires rank-two [N, D] inputs and an [N, 1] target"

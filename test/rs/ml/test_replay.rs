@@ -1,7 +1,7 @@
 use oa::ml::{ReplayBuffer, ReplayConfig, ReplayTransition};
 
 fn transition(
-	_engine: &oa::Engine,
+	_runtime: &oa::Runtime,
 	observations: &[[f32; 2]],
 	actions: &[i32],
 	rewards: &[f32],
@@ -40,10 +40,10 @@ fn source_index(seed: u64, lane: u32, size: u32) -> u32 {
 
 test_vk!(
 	replay_buffer_wraparound_and_seeded_sampling_match_donor_oracle,
-	engine,
+	runtime,
 	{
 		let mut replay = ReplayBuffer::new(
-			&engine,
+			&runtime,
 			ReplayConfig {
 				capacity: 5,
 				observation_shape: vec![2],
@@ -52,7 +52,7 @@ test_vk!(
 			},
 		)?;
 		let first = transition(
-			&engine,
+			&runtime,
 			&[[0.0, 0.5], [1.0, 1.5], [2.0, 2.5]],
 			&[0, 1, 2],
 			&[10.0, 11.0, 12.0],
@@ -60,7 +60,7 @@ test_vk!(
 			&[0, 1, 0],
 		)?;
 		let second = transition(
-			&engine,
+			&runtime,
 			&[[3.0, 3.5], [4.0, 4.5], [5.0, 5.5], [6.0, 6.5]],
 			&[3, 4, 5, 6],
 			&[13.0, 14.0, 15.0, 16.0],
@@ -68,7 +68,7 @@ test_vk!(
 			&[1, 0, 1, 0],
 		)?;
 		let seed = 0x0123_4567_89ab_cdef;
-		let (plan, sample) = engine.capture(|| {
+		let (plan, sample) = runtime.capture(|| {
 			replay.append(&first)?;
 			replay.append(&second)?;
 			replay.sample(7, seed)
@@ -88,7 +88,7 @@ test_vk!(
 			plan.semantic_graph().operations()[2].name(),
 			"oa::ml::replay::sample"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 
 		let physical_observation = [[5.0, 5.5], [6.0, 6.5], [2.0, 2.5], [3.0, 3.5], [4.0, 4.5]];
 		let physical_action = [5_i32, 6, 2, 3, 4];
@@ -143,10 +143,10 @@ test_vk!(
 
 test_vk!(
 	replay_buffer_reset_and_contract_failures_are_explicit,
-	engine,
+	runtime,
 	{
 		let mut replay = ReplayBuffer::new(
-			&engine,
+			&runtime,
 			ReplayConfig {
 				capacity: 3,
 				observation_shape: vec![2],
@@ -162,7 +162,7 @@ test_vk!(
 				.kind(),
 			oa::ErrorKind::FailedPrecondition
 		);
-		let valid = transition(&engine, &[[1.0, 2.0]], &[1], &[1.0], &[0], &[0])?;
+		let valid = transition(&runtime, &[[1.0, 2.0]], &[1], &[1.0], &[0], &[0])?;
 		replay.append(&valid)?;
 		assert_eq!(replay.len(), 1);
 		assert_eq!(replay.cursor(), 1);
@@ -198,7 +198,7 @@ test_vk!(
 	}
 );
 
-test_vk!(replay_buffer_rejects_invalid_configuration, engine, {
+test_vk!(replay_buffer_rejects_invalid_configuration, runtime, {
 	for config in [
 		ReplayConfig {
 			capacity: 0,
@@ -226,7 +226,7 @@ test_vk!(replay_buffer_rejects_invalid_configuration, engine, {
 		},
 	] {
 		assert_eq!(
-			ReplayBuffer::new(&engine, config)
+			ReplayBuffer::new(&runtime, config)
 				.err()
 				.expect("invalid replay configuration was accepted")
 				.kind(),

@@ -142,7 +142,7 @@ def operation_signature(
 			python=operation.get("python"),
 		)
 	kind = operation.get("kind")
-	if kind in {"binary", "mat_mul_nt"}:
+	if kind in {"binary", "matmul_nt"}:
 		parameters = [["left", "&Matrix"], ["right", "&Matrix"]]
 	elif kind == "unary":
 		parameters = [["input", "&Matrix"]]
@@ -206,7 +206,8 @@ def signature_method(domain: str, signature: dict[str, Any]) -> str | None:
 	arguments = ", ".join(["self", *(name for name, _ in rest)])
 	target = f"crate::{domain}::{signature['name']}"
 	doc = f"/// {signature['doc'][0]}\n///\n" if signature["doc"] else ""
-	return f"{doc}/// Delegates to [`{target}`].\npub fn {signature['name']}({parameters}) -> Result<{returns}> {{\n\t{target}({arguments})\n}}"
+	allow = "#[allow(clippy::too_many_arguments)]\n" if len(signature["parameters"]) > 7 else ""
+	return f"{doc}/// Delegates to [`{target}`].\n{allow}pub fn {signature['name']}({parameters}) -> Result<{returns}> {{\n\t{target}({arguments})\n}}"
 
 
 SIGNATURE_PRIMITIVE_TYPES = {
@@ -277,8 +278,8 @@ def generate_domain_methods(domain: str, signatures: list[dict[str, Any]], schem
 		parameters = ", ".join(kinds)
 		function_type = f"fn({parameters}) -> Result<{signature['returns']}>"
 		parity.extend((
-			f"const _: {function_type} = crate::{domain}::{signature['name']};",
-			f"const _: {function_type} = {value}::{signature['name']};",
+			f"#[allow(clippy::type_complexity)]\nconst _: {function_type} = crate::{domain}::{signature['name']};",
+			f"#[allow(clippy::type_complexity)]\nconst _: {function_type} = {value}::{signature['name']};",
 		))
 	return preamble + use + f"\n\nimpl {value} {{\n" + "\n\n".join(method for _, method in emitted) + "\n}\n\n" + "\n".join(parity) + "\n"
 
@@ -294,9 +295,9 @@ def generate_signature_parity(
 	named: set[str] = set()
 	for signature in signatures:
 		named |= signature_named_types(signature)
-	use = "use crate::{" + ", ".join(sorted({"Result"} | (named & {"Matrix", "Engine"}))) + "};"
+	use = "use crate::{" + ", ".join(sorted({"Result"} | (named & {"Matrix", "Runtime"}))) + "};"
 	by_path: dict[str, list[str]] = {}
-	for name in sorted(named - {"Matrix", "Engine"}):
+	for name in sorted(named - {"Matrix", "Runtime"}):
 		by_path.setdefault((import_paths or {}).get(name, module_path), []).append(name)
 	for path in sorted(by_path):
 		use += f"\nuse {path}::{{{', '.join(by_path[path])}}};"

@@ -1,5 +1,5 @@
 // Test-only transport around the production buffered K-PKE formulas.
-// Disposable public fixtures; no Engine or secret-operation admission.
+// Disposable public fixtures; no Runtime or secret-operation admission.
 import mlkem_kpke;
 
 StructuredBuffer<uint> inputs;

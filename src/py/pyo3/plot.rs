@@ -4,7 +4,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use pyo3::prelude::*;
 
-use crate::{error::python_error, image::PythonImage, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{
+	error::python_error, image::PythonImage, matrix::PythonMatrix, runtime::PythonRuntime,
+};
 
 type Rgba = (f32, f32, f32, f32);
 
@@ -326,28 +328,28 @@ impl PythonFigure {
 		}
 	}
 
-	fn save_to(&self, path: &str, engine: Option<&PythonEngine>) -> PyResult<()> {
-		let engine = PythonEngine::resolve(engine)?;
+	fn save_to(&self, path: &str, runtime: Option<&PythonRuntime>) -> PyResult<()> {
+		let runtime = PythonRuntime::resolve(runtime)?;
 		self
 			.inner
 			.borrow()
-			.save_to_on(&engine, path)
+			.save_to_on(&runtime, path)
 			.map_err(python_error)
 	}
 
-	fn render(&self, engine: Option<&PythonEngine>) -> PyResult<PythonImage> {
-		let engine = PythonEngine::resolve(engine)?;
+	fn render(&self, runtime: Option<&PythonRuntime>) -> PyResult<PythonImage> {
+		let runtime = PythonRuntime::resolve(runtime)?;
 		self
 			.inner
 			.borrow()
-			.render_on(&engine)
+			.render_on(&runtime)
 			.map(PythonImage::wrap)
 			.map_err(python_error)
 	}
 
-	fn show(&self, engine: Option<&PythonEngine>) -> PyResult<()> {
-		let engine = PythonEngine::resolve(engine)?;
-		self.inner.borrow().show_on(&engine).map_err(python_error)
+	fn show(&self, runtime: Option<&PythonRuntime>) -> PyResult<()> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+		self.inner.borrow().show_on(&runtime).map_err(python_error)
 	}
 }
 
@@ -632,13 +634,13 @@ impl PythonFigureView {
 	}
 
 	/// Present the view in a blocking `Viewer` live-mode window.
-	#[pyo3(signature = (config=None, engine=None))]
+	#[pyo3(signature = (config=None, runtime=None))]
 	fn show(
 		&self,
 		config: Option<PyRef<'_, crate::viewer::PythonViewerConfig>>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<()> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		let cfg = config.map_or_else(
 			|| oa::ViewerConfig {
 				mode: oa::ViewerMode::Live,
@@ -652,7 +654,7 @@ impl PythonFigureView {
 		let mut view = self.inner.borrow_mut();
 		let mut viewer = oa::Viewer::new(cfg);
 		viewer.set_live_source(&mut *view);
-		viewer.run(&engine).map_err(python_error)
+		viewer.run(&runtime).map_err(python_error)
 	}
 }
 

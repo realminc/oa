@@ -5,7 +5,7 @@ use crate::{DType, Error, Matrix, OpAttribute, Result};
 
 use super::{
 	autograd,
-	validation::{shader_u32, validate_f32_same_engine},
+	validation::{shader_u32, validate_f32_same_runtime},
 };
 
 /// Linear flow state and its constant path velocity.
@@ -24,7 +24,7 @@ pub struct FlowMatchBatch {
 ///
 /// # Errors
 ///
-/// Returns an error unless every input is same-engine F32, clean and noise are
+/// Returns an error unless every input is same-runtime F32, clean and noise are
 /// matching and nonempty, time broadcasts to them, and recording succeeds.
 pub fn linear_match(clean: &Matrix, noise: &Matrix, time: &Matrix) -> Result<FlowMatchBatch> {
 	let (state, velocity) = linear_match_dispatch(clean, noise, time)?;
@@ -37,7 +37,7 @@ pub fn linear_match(clean: &Matrix, noise: &Matrix, time: &Matrix) -> Result<Flo
 /// # Errors
 ///
 /// Returns an error unless state and velocity are matching nonempty
-/// same-engine F32 matrices, `delta_time` is finite, and recording succeeds.
+/// same-runtime F32 matrices, `delta_time` is finite, and recording succeeds.
 pub fn euler_step(state: &Matrix, velocity: &Matrix, delta_time: f32) -> Result<Matrix> {
 	let output = euler_step_dispatch(state, velocity, delta_time)?;
 	autograd::record_flow_euler_step(state, velocity, delta_time, &output)?;
@@ -53,7 +53,7 @@ pub fn euler_step(state: &Matrix, velocity: &Matrix, delta_time: f32) -> Result<
 /// # Errors
 ///
 /// Returns an error unless prediction and target are matching nonempty
-/// same-engine F32 matrices, mask is same-engine F32 and broadcastable to
+/// same-runtime F32 matrices, mask is same-runtime F32 and broadcastable to
 /// prediction, and recording succeeds.
 pub fn masked_mse(prediction: &Matrix, target: &Matrix, mask: &Matrix) -> Result<Matrix> {
 	let (loss, denominator) = masked_mse_dispatch(prediction, target, mask)?;
@@ -71,7 +71,7 @@ fn linear_match_dispatch(
 	time: &Matrix,
 ) -> Result<(Matrix, Matrix)> {
 	const OPERATION: &str = "oa::FnFlow::linearMatch";
-	validate_f32_same_engine(OPERATION, &[clean, noise, time])?;
+	validate_f32_same_runtime(OPERATION, &[clean, noise, time])?;
 	if clean.shape() != noise.shape() || clean.num_elements() == 0 || clean.shape().len() > 8 {
 		return Err(Error::invalid_argument(
 			"flow linear_match requires matching nonempty clean/noise shapes with rank at most eight",
@@ -82,13 +82,13 @@ fn linear_match_dispatch(
 	let element_count = shader_u32(clean.num_elements(), "element count", OPERATION)?;
 	let rank = shader_u32(clean.shape().len(), "rank", OPERATION)?;
 	let state = Matrix::allocate(
-		clean.engine_handle(),
+		clean.runtime(),
 		clean.shape().to_vec(),
 		clean.num_elements(),
 		DType::F32,
 	)?;
 	let velocity = Matrix::allocate(
-		clean.engine_handle(),
+		clean.runtime(),
 		clean.shape().to_vec(),
 		clean.num_elements(),
 		DType::F32,
@@ -123,11 +123,11 @@ fn linear_match_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -142,7 +142,7 @@ fn linear_match_dispatch(
 
 fn euler_step_dispatch(state: &Matrix, velocity: &Matrix, delta_time: f32) -> Result<Matrix> {
 	const OPERATION: &str = "oa::FnFlow::eulerStep";
-	validate_f32_same_engine(OPERATION, &[state, velocity])?;
+	validate_f32_same_runtime(OPERATION, &[state, velocity])?;
 	if state.shape() != velocity.shape() || state.num_elements() == 0 || !delta_time.is_finite() {
 		return Err(Error::invalid_argument(
 			"flow euler_step requires matching nonempty F32 state/velocity and finite delta_time",
@@ -150,7 +150,7 @@ fn euler_step_dispatch(state: &Matrix, velocity: &Matrix, delta_time: f32) -> Re
 	}
 	let element_count = shader_u32(state.num_elements(), "element count", OPERATION)?;
 	let output = Matrix::allocate(
-		state.engine_handle(),
+		state.runtime(),
 		state.shape().to_vec(),
 		state.num_elements(),
 		DType::F32,
@@ -185,11 +185,11 @@ fn euler_step_dispatch(state: &Matrix, velocity: &Matrix, delta_time: f32) -> Re
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -208,7 +208,7 @@ fn masked_mse_dispatch(
 	mask: &Matrix,
 ) -> Result<(Matrix, Matrix)> {
 	const OPERATION: &str = "oa::FnFlow::maskedMse";
-	validate_f32_same_engine(OPERATION, &[prediction, target, mask])?;
+	validate_f32_same_runtime(OPERATION, &[prediction, target, mask])?;
 	if prediction.shape() != target.shape()
 		|| prediction.num_elements() == 0
 		|| prediction.shape().len() > 8
@@ -221,8 +221,8 @@ fn masked_mse_dispatch(
 	let prediction_strides = dense_strides(prediction.shape())?;
 	let element_count = shader_u32(prediction.num_elements(), "element count", OPERATION)?;
 	let rank = shader_u32(prediction.shape().len(), "rank", OPERATION)?;
-	let loss = Matrix::allocate(prediction.engine_handle(), Vec::new(), 1, DType::F32)?;
-	let denominator = Matrix::allocate(prediction.engine_handle(), Vec::new(), 1, DType::F32)?;
+	let loss = Matrix::allocate(prediction.runtime(), Vec::new(), 1, DType::F32)?;
+	let denominator = Matrix::allocate(prediction.runtime(), Vec::new(), 1, DType::F32)?;
 	let buffers = [
 		BufferBinding::read(prediction.storage()),
 		BufferBinding::read(target.storage()),
@@ -254,11 +254,11 @@ fn masked_mse_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -279,7 +279,7 @@ pub(in crate::ml) fn masked_mse_backward(
 	upstream: &Matrix,
 ) -> Result<Matrix> {
 	const OPERATION: &str = "oa::ml::flow::masked_mse_backward";
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		OPERATION,
 		&[prediction, target, mask, denominator, upstream],
 	)?;
@@ -298,7 +298,7 @@ pub(in crate::ml) fn masked_mse_backward(
 	let element_count = shader_u32(prediction.num_elements(), "element count", OPERATION)?;
 	let rank = shader_u32(prediction.shape().len(), "rank", OPERATION)?;
 	let gradient = Matrix::allocate(
-		prediction.engine_handle(),
+		prediction.runtime(),
 		prediction.shape().to_vec(),
 		prediction.num_elements(),
 		DType::F32,
@@ -335,11 +335,11 @@ pub(in crate::ml) fn masked_mse_backward(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,

@@ -25,14 +25,14 @@ fn screen_config_default_matches_donor() {
 	assert_eq!(config.ring_frames, 4);
 }
 
-test_vk!(camera_open_rejects_zero_extent, engine, {
+test_vk!(camera_open_rejects_zero_extent, runtime, {
 	for (width, height) in [(0, 720), (1280, 0)] {
 		let config = CameraCaptureConfig {
 			width,
 			height,
 			..Default::default()
 		};
-		match CameraCapture::open(&engine, &config) {
+		match CameraCapture::open(&runtime, &config) {
 			Err(error) => assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument),
 			Ok(_) => panic!("camera open accepted a zero extent {width}x{height}"),
 		}
@@ -40,24 +40,24 @@ test_vk!(camera_open_rejects_zero_extent, engine, {
 	Ok(())
 });
 
-test_vk!(camera_open_rejects_zero_fps, engine, {
+test_vk!(camera_open_rejects_zero_fps, runtime, {
 	let config = CameraCaptureConfig {
 		fps: 0,
 		..Default::default()
 	};
-	match CameraCapture::open(&engine, &config) {
+	match CameraCapture::open(&runtime, &config) {
 		Err(error) => assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument),
 		Ok(_) => panic!("camera open accepted a zero frame rate"),
 	}
 	Ok(())
 });
 
-test_vk!(camera_open_rejects_missing_device_index, engine, {
+test_vk!(camera_open_rejects_missing_device_index, runtime, {
 	let config = CameraCaptureConfig {
 		device_index: u32::MAX,
 		..Default::default()
 	};
-	match CameraCapture::open(&engine, &config) {
+	match CameraCapture::open(&runtime, &config) {
 		Err(error) => assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument),
 		Ok(_) => panic!("camera open accepted an out-of-range device index"),
 	}
@@ -66,10 +66,10 @@ test_vk!(camera_open_rejects_missing_device_index, engine, {
 
 test_vk!(
 	camera_poll_close_contract,
-	engine,
+	runtime,
 	"requires a Vulkan device and an OS-visible camera",
 	{
-		let mut capture = match CameraCapture::open(&engine, &CameraCaptureConfig::default()) {
+		let mut capture = match CameraCapture::open(&runtime, &CameraCaptureConfig::default()) {
 			Ok(capture) => capture,
 			Err(error) => {
 				assert_eq!(error.kind(), oa::ErrorKind::MissingCapability);
@@ -112,20 +112,20 @@ test_vk!(
 	}
 );
 
-test_vk!(screen_capture_reports_capability_gate, engine, {
+test_vk!(screen_capture_reports_capability_gate, runtime, {
 	// Supported builds require interactive consent; ordinary tests must never
 	// open a desktop picker. The ignored screen-session proof covers that route.
 	if ScreenCapture::is_supported() {
 		return Ok(());
 	}
-	match ScreenCapture::open(&engine, &ScreenCaptureConfig::default()) {
+	match ScreenCapture::open(&runtime, &ScreenCaptureConfig::default()) {
 		Err(error) => assert_eq!(error.kind(), oa::ErrorKind::MissingCapability),
 		Ok(_) => panic!("screen capture opened without a linked backend"),
 	}
 	Ok(())
 });
 
-test_vk!(screen_capture_rejects_zero_hints, engine, {
+test_vk!(screen_capture_rejects_zero_hints, runtime, {
 	for (key, config) in [
 		(
 			"extent",
@@ -149,7 +149,7 @@ test_vk!(screen_capture_rejects_zero_hints, engine, {
 			},
 		),
 	] {
-		match ScreenCapture::open(&engine, &config) {
+		match ScreenCapture::open(&runtime, &config) {
 			Err(error) => assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument, "{key}"),
 			Ok(_) => panic!("screen capture accepted a zero {key}"),
 		}

@@ -2,7 +2,7 @@
 
 use std::{collections::VecDeque, path::Path, time::Duration};
 
-use crate::{Engine, Error, Result, Texture};
+use crate::{Error, Result, Runtime, Texture};
 
 use super::{VideoContainerInfo, VideoContainerKind, VideoDecoder, VideoDemuxer, VideoFrame};
 pub use crate::video::types::VideoPlayerConfig;
@@ -47,7 +47,7 @@ pub struct VideoPlayerStats {
 /// `open` decodes through the first display-order frame, so [`current_frame`](Self::current_frame)
 /// is immediately available on success. Timing controls do not create a second
 /// decoder or runtime owner; all hardware work remains inside the supplied
-/// Engine-owned decoder session.
+/// Runtime-owned decoder session.
 pub struct VideoPlayer {
 	state: Option<PlayerState>,
 }
@@ -101,8 +101,12 @@ impl VideoPlayer {
 	///
 	/// Returns an error for invalid pacing, demux/decode failure, unsupported
 	/// codec/device capabilities, or a source with no displayable frame.
-	pub fn open(engine: &Engine, path: impl AsRef<Path>, config: VideoPlayerConfig) -> Result<Self> {
-		Self::open_with_output(engine, path, config, PlayerOutput::HostPlanar)
+	pub fn open(
+		runtime: &Runtime,
+		path: impl AsRef<Path>,
+		config: VideoPlayerConfig,
+	) -> Result<Self> {
+		Self::open_with_output(runtime, path, config, PlayerOutput::HostPlanar)
 	}
 
 	/// Open a player whose frames retain the decoder's native Vulkan images.
@@ -121,15 +125,15 @@ impl VideoPlayer {
 	///
 	/// Returns the same stream and device errors as [`open`](Self::open).
 	pub fn new_native(
-		engine: &Engine,
+		runtime: &Runtime,
 		path: impl AsRef<Path>,
 		config: VideoPlayerConfig,
 	) -> Result<Self> {
-		Self::open_with_output(engine, path, config, PlayerOutput::Native)
+		Self::open_with_output(runtime, path, config, PlayerOutput::Native)
 	}
 
 	fn open_with_output(
-		engine: &Engine,
+		runtime: &Runtime,
 		path: impl AsRef<Path>,
 		config: VideoPlayerConfig,
 		output: PlayerOutput,
@@ -175,7 +179,7 @@ impl VideoPlayer {
 				Error::out_of_range("video player frame interval is outside Duration precision")
 			})?;
 		let duration = ticks_to_duration(presentation_end, info)?;
-		let decoder = VideoDecoder::new(engine, info)?;
+		let decoder = VideoDecoder::new(runtime, info)?;
 		let presentation_cache_capacity = if !indexed {
 			0
 		} else {

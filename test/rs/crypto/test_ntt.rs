@@ -80,12 +80,12 @@ fn ntt_root(modulus: u64, length: usize) -> u64 {
 	)
 }
 
-test_vk!(ntt_forward_matches_host_oracle_and_roundtrips, engine, {
+test_vk!(ntt_forward_matches_host_oracle_and_roundtrips, runtime, {
 	use oa::crypto::ntt;
 	let modulus = 786_433_u64; // 3 * 2^18 + 1
 	for length in [16_usize, 256, 1024] {
 		let config = NttConfig::new(modulus, ntt_root(modulus, length), length).unwrap();
-		let parameters = ntt::prepare(&engine, &config)?;
+		let parameters = ntt::prepare(&runtime, &config)?;
 		let rows: Vec<Vec<u64>> = (0..2)
 			.map(|row| {
 				(0..length)
@@ -122,12 +122,12 @@ test_vk!(ntt_forward_matches_host_oracle_and_roundtrips, engine, {
 	Ok(())
 });
 
-test_vk!(ntt_scalar_storage_matches_pair_transform, engine, {
+test_vk!(ntt_scalar_storage_matches_pair_transform, runtime, {
 	use oa::crypto::ntt;
 	let modulus = 786_433_u64;
 	let length = 256_usize;
 	let config = NttConfig::new(modulus, ntt_root(modulus, length), length).unwrap();
-	let parameters = ntt::prepare(&engine, &config)?;
+	let parameters = ntt::prepare(&runtime, &config)?;
 	let row: Vec<u64> = (0..length)
 		.map(|i| ((i * 41 + 5) as u64 * 999_331 + 3) % modulus)
 		.collect();
@@ -160,13 +160,13 @@ test_vk!(ntt_scalar_storage_matches_pair_transform, engine, {
 
 test_vk!(
 	ntt_large_transform_roundtrips_through_staged_fused_route,
-	engine,
+	runtime,
 	{
 		use oa::crypto::ntt;
 		let modulus = 786_433_u64;
 		let length = 16_384_usize;
 		let config = NttConfig::new(modulus, ntt_root(modulus, length), length).unwrap();
-		let parameters = ntt::prepare(&engine, &config)?;
+		let parameters = ntt::prepare(&runtime, &config)?;
 		let row: Vec<u64> = (0..length)
 			.map(|i| ((i * 13 + 11) as u64 * 8_191 + 1) % modulus)
 			.collect();

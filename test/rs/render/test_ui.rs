@@ -26,8 +26,8 @@ fn plot_figure_normalizes_config_and_clamps_cell_indices() {
 	);
 }
 
-test_vk!(ui_compute_compositor_draws_panel_and_line, engine, {
-	let mut ui = Ui::init(&engine, 64, 48)?;
+test_vk!(ui_compute_compositor_draws_panel_and_line, runtime, {
+	let mut ui = Ui::init(&runtime, 64, 48)?;
 	ui.begin_frame(16.0);
 	ui.begin_panel(
 		"panel",
@@ -66,8 +66,8 @@ test_vk!(ui_compute_compositor_draws_panel_and_line, engine, {
 	Ok(())
 });
 
-test_vk!(ui_compute_compositor_draws_hinted_glyphs, engine, {
-	let mut ui = Ui::init(&engine, 96, 48)?;
+test_vk!(ui_compute_compositor_draws_hinted_glyphs, runtime, {
+	let mut ui = Ui::init(&runtime, 96, 48)?;
 	ui.begin_frame(16.0);
 	ui.text_at(
 		"OA",
@@ -108,9 +108,9 @@ test_vk!(ui_compute_compositor_draws_hinted_glyphs, engine, {
 
 test_vk!(
 	ui_pointer_release_survives_until_widget_evaluation,
-	engine,
+	runtime,
 	{
-		let mut ui = Ui::init(&engine, 96, 48)?;
+		let mut ui = Ui::init(&runtime, 96, 48)?;
 		ui.route_event(&InputEvent {
 			kind: InputEventKind::MouseMove,
 			mouse_x: 8.0,
@@ -149,7 +149,7 @@ test_vk!(
 	}
 );
 
-test_vk!(plot_figure_line_sink_is_not_a_flat_placeholder, engine, {
+test_vk!(plot_figure_line_sink_is_not_a_flat_placeholder, runtime, {
 	let mut figure = oa::plot::Figure::new(oa::plot::FigureConfig {
 		width: 96,
 		height: 64,
@@ -180,11 +180,11 @@ test_vk!(plot_figure_line_sink_is_not_a_flat_placeholder, engine, {
 // Reuse and resize exercise fresh bounded descriptors and prior image layouts.
 test_vk!(
 	ui_compositor_observes_deferred_texture_and_resizes,
-	engine,
+	runtime,
 	{
 		let source = oa::render::texture_from_rgba8(&[0_u8; 4 * 3 * 4], 4, 3)?;
 		let red = oa::render::clear(&source, Color::new(1.0, 0.0, 0.0, 1.0))?;
-		let mut ui = Ui::init(&engine, 4, 3)?;
+		let mut ui = Ui::init(&runtime, 4, 3)?;
 		for (width, height) in [(4, 3), (9, 7), (4, 3)] {
 			ui.resize(width, height)?;
 			ui.begin_frame(0.0);
@@ -207,9 +207,9 @@ test_vk!(
 
 // Donor drawCanvasGrid.slang: independent host pixel oracle, including all
 // tiers, off-center axes, clipping, alpha composition, gradient and falloff.
-test_vk!(ui_canvas_grid_matches_donor_pixels, engine, {
+test_vk!(ui_canvas_grid_matches_donor_pixels, runtime, {
 	use oa::ui::UiGridConfig;
-	let mut ui = Ui::init(&engine, 43, 31)?;
+	let mut ui = Ui::init(&runtime, 43, 31)?;
 	let base = Color::new_from_u32(0x181818FF);
 	ui.push_style(oa::ui::UiStyle {
 		background: base,
@@ -348,8 +348,8 @@ test_vk!(ui_canvas_grid_matches_donor_pixels, engine, {
 });
 
 // Covers the new donor source-buffer paths and their frame-owned lifetime.
-test_vk!(ui_donor_audio_matrix_pixels_and_retention, engine, {
-	let mut ui = Ui::init(&engine, 32, 24)?;
+test_vk!(ui_donor_audio_matrix_pixels_and_retention, runtime, {
+	let mut ui = Ui::init(&runtime, 32, 24)?;
 	let base = Color::new_from_u32(0x000000FF);
 	ui.push_style(oa::ui::UiStyle {
 		background: base,
@@ -411,9 +411,9 @@ test_vk!(ui_donor_audio_matrix_pixels_and_retention, engine, {
 	Ok(())
 });
 
-test_vk!(ui_donor_icons_release_and_rounded_mask, engine, {
+test_vk!(ui_donor_icons_release_and_rounded_mask, runtime, {
 	use oa::ui::{UiIcon, UiIconButtonStyle};
-	let mut ui = Ui::init(&engine, 64, 48)?;
+	let mut ui = Ui::init(&runtime, 64, 48)?;
 	ui.push_style(oa::ui::UiStyle {
 		background: Color::new_from_u32(0x000000FF),
 		..Default::default()
@@ -486,8 +486,8 @@ test_vk!(ui_donor_icons_release_and_rounded_mask, engine, {
 });
 
 // A popup at the lower-right corner must flip above its anchor and stay inside.
-test_vk!(ui_donor_popup_stays_inside_viewport, engine, {
-	let mut ui = Ui::init(&engine, 64, 48)?;
+test_vk!(ui_donor_popup_stays_inside_viewport, runtime, {
+	let mut ui = Ui::init(&runtime, 64, 48)?;
 	ui.push_style(oa::ui::UiStyle {
 		background: Color::new_from_u32(0x000000FF),
 		..Default::default()
@@ -520,7 +520,7 @@ test_vk!(ui_donor_popup_stays_inside_viewport, engine, {
 	Ok(())
 });
 
-test_vk!(ui_rect_outlines_draws_gpu_detection_records, engine, {
+test_vk!(ui_rect_outlines_draws_gpu_detection_records, runtime, {
 	use oa::vision::{Detection, DetectionBuffer};
 
 	let mut buffer = DetectionBuffer::create_host_upload(4)?;
@@ -546,7 +546,7 @@ test_vk!(ui_rect_outlines_draws_gpu_detection_records, engine, {
 			track_id: 0,
 		},
 	])?;
-	let mut ui = Ui::init(&engine, 64, 48)?;
+	let mut ui = Ui::init(&runtime, 64, 48)?;
 	ui.begin_frame(16.0);
 	let full = PixelRect::new(0, 0, 64, 48);
 	ui.rect_outlines(&buffer, full, full, Color::new(1.0, 0.0, 0.0, 1.0), 2)?;
@@ -566,7 +566,7 @@ test_vk!(ui_rect_outlines_draws_gpu_detection_records, engine, {
 	Ok(())
 });
 
-test_vk!(ui_glyphs_draws_solid_fill_records, engine, {
+test_vk!(ui_glyphs_draws_solid_fill_records, runtime, {
 	use oa::ui::{GlyphBuffer, GlyphInstance};
 
 	let mut buffer = GlyphBuffer::create_host_upload(4)?;
@@ -580,7 +580,7 @@ test_vk!(ui_glyphs_draws_solid_fill_records, engine, {
 		color: 0x00FF00FF,
 		..GlyphInstance::default()
 	}])?;
-	let mut ui = Ui::init(&engine, 64, 48)?;
+	let mut ui = Ui::init(&runtime, 64, 48)?;
 	ui.begin_frame(16.0);
 	let full = PixelRect::new(0, 0, 64, 48);
 	ui.glyphs(&buffer, full, full)?;
@@ -598,14 +598,14 @@ test_vk!(ui_glyphs_draws_solid_fill_records, engine, {
 
 test_vk!(
 	detection_overlay_draws_boxes_labels_and_reuses_slots,
-	engine,
+	runtime,
 	{
 		use oa::ui::{DetectionOverlay, DetectionOverlayConfig, DetectionOverlayItem};
 		use oa::vision::Detection;
 
-		let mut ui = Ui::init(&engine, 96, 64)?;
+		let mut ui = Ui::init(&runtime, 96, 64)?;
 		let mut overlay = DetectionOverlay::create(
-			&engine,
+			&runtime,
 			DetectionOverlayConfig {
 				max_detections: 4,
 				max_glyphs: 512,
@@ -649,9 +649,9 @@ test_vk!(
 		}
 		// Pinning all three slots forces the next update to fail closed.
 		let source = oa::Matrix::new_from_f32([4], &[1.0; 4])?;
-		let (plan, _) = engine.capture(|| source.add(&source))?;
+		let (plan, _) = runtime.capture(|| source.add(&source))?;
 		for _ in 0..3 {
-			let event = engine.submit(&plan)?;
+			let event = runtime.submit(&plan)?;
 			overlay.mark_consumed(&event)?;
 			overlay.update(&items, ui.text_atlas()?).ok();
 		}
@@ -1155,7 +1155,7 @@ fn viewport_state_setters_and_layers() {
 	assert!(!RenderLayer::NONE.intersects(RenderLayer::ALL));
 }
 
-test_vk!(viewport_setup_image_2d_and_aspect_fit, engine, {
+test_vk!(viewport_setup_image_2d_and_aspect_fit, runtime, {
 	use oa::render::texture_from_rgba8;
 
 	let texture = texture_from_rgba8(&[255_u8; 4 * 4 * 4], 4, 4)?;
@@ -1260,7 +1260,7 @@ fn cv_frame_value_defaults_and_overlay_order() {
 	assert!(frame.overlays.is_empty());
 }
 
-test_vk!(cv_frame_render_composites_boxes_and_labels, engine, {
+test_vk!(cv_frame_render_composites_boxes_and_labels, runtime, {
 	let mut frame = CvFrame {
 		w: 64,
 		h: 48,
@@ -1325,7 +1325,7 @@ test_vk!(cv_frame_render_composites_boxes_and_labels, engine, {
 	Ok(())
 });
 
-test_vk!(cv_frame_render_rejects_invalid_state, engine, {
+test_vk!(cv_frame_render_rejects_invalid_state, runtime, {
 	let mut frame = CvFrame::default();
 	assert!(frame.render().is_err());
 	frame.w = 8;
@@ -1363,7 +1363,7 @@ test_vk!(cv_frame_render_rejects_invalid_state, engine, {
 
 use oa::ui::{ImageDtype, ImagePlanes};
 
-test_vk!(image_planes_from_planes_validates_upload, engine, {
+test_vk!(image_planes_from_planes_validates_upload, runtime, {
 	// RGB U8 4x3: three planes of 12 bytes each.
 	let r = vec![255_u8; 12];
 	let g = vec![128_u8; 12];
@@ -1426,7 +1426,7 @@ test_vk!(image_planes_from_planes_validates_upload, engine, {
 	Ok(())
 });
 
-test_vk!(image_planes_load_file_decodes_rgba_png, engine, {
+test_vk!(image_planes_load_file_decodes_rgba_png, runtime, {
 	let path = std::env::temp_dir().join(format!("oa-planes-{}.png", std::process::id()));
 	// 2x1 red/green pair in RGBA8.
 	oa::image::save_rgba_file(&[255, 0, 0, 255, 0, 255, 0, 128], 2, 1, &path, 90)?;
@@ -1442,8 +1442,8 @@ test_vk!(image_planes_load_file_decodes_rgba_png, engine, {
 	Ok(())
 });
 
-test_vk!(ui_image_planar_composites_rgb_and_gray, engine, {
-	let mut ui = Ui::init(&engine, 32, 32)?;
+test_vk!(ui_image_planar_composites_rgb_and_gray, runtime, {
+	let mut ui = Ui::init(&runtime, 32, 32)?;
 	// 4x4 RGB: R=255, G=128, B=0 everywhere.
 	let planes = ImagePlanes::from_planes(
 		&[vec![255_u8; 16], vec![128_u8; 16], vec![0_u8; 16]]
@@ -1554,13 +1554,13 @@ fn training_viewer_event_dispatch_ignores_non_keys() {
 	source.close().expect("close");
 }
 
-test_vk!(training_viewer_renders_dashboard_and_preview, engine, {
+test_vk!(training_viewer_renders_dashboard_and_preview, runtime, {
 	use oa::ViewerLiveSource;
 	let session = TrainingSession::new(TrainingSessionConfig::default());
 	let mut source = TrainingViewerSource::new(&session, TrainingViewerConfig::default());
-	source.open(&engine)?;
+	source.open(&runtime)?;
 	source.update(16.0)?;
-	let mut ui = Ui::init(&engine, 800, 560)?;
+	let mut ui = Ui::init(&runtime, 800, 560)?;
 	ui.begin_frame(16.0);
 	source.render(&mut ui, 800, 560)?;
 	ui.end_frame();
@@ -1581,7 +1581,7 @@ test_vk!(training_viewer_renders_dashboard_and_preview, engine, {
 	// A published preview with a completed producer event is promoted by
 	// update and shown in the split preview panel (800 >= px(720)).
 	let texture = oa::render::texture_from_rgba8(&[250_u8; 4 * 4 * 4], 4, 4)?;
-	let completion = engine.checkpoint()?;
+	let completion = runtime.checkpoint()?;
 	completion.wait()?;
 	source.publish_preview(oa::viewer::TrainingPreviewFrame {
 		texture: Some(texture),
@@ -1605,8 +1605,8 @@ test_vk!(training_viewer_renders_dashboard_and_preview, engine, {
 	Ok(())
 });
 
-test_vk!(ui_plot_line_draws_filled_autoscaled_series, engine, {
-	let mut ui = Ui::init(&engine, 96, 64)?;
+test_vk!(ui_plot_line_draws_filled_autoscaled_series, runtime, {
+	let mut ui = Ui::init(&runtime, 96, 64)?;
 	ui.begin_frame(16.0);
 	ui.plot_line(
 		&[0.0, 1.0, 0.25, 0.75, 0.5],
@@ -1701,51 +1701,55 @@ fn dark_plot_rect(figure: &Figure, w: u32, h: u32, values: &[f32]) -> CellRect {
 	})
 }
 
-test_vk!(plot_dark_axes_frame_and_labels_stay_outside_data, engine, {
-	let (w, h) = (400, 260);
-	let mut figure = Figure::new(FigureConfig {
-		width: w,
-		height: h,
-		title: String::new(),
-		..Default::default()
-	});
-	let axes = figure.ax(0, 0);
-	axes.limits(-10.0, 10.0, -10.0, 10.0);
-	axes.x_label("optimizer step");
-	axes.y_label("cross entropy");
-	let values = figure.render()?.as_matrix().read_f32()?;
-	let area = dark_plot_rect(&figure, w, h, &values);
-	let cell = figure.cell_rect(0, 0, w, h);
-	let at = |x, y| values[(y * w as i32 + x) as usize];
-	let spine = oa::plot::Theme::Dark.ui_style().plot_border.r;
-	let bottom = area.y + area.h - 1;
-	let x_center = area.x + area.w / 2;
-	let y_center = area.y + area.h / 2;
-	assert_eq!(at(area.x, bottom), spine);
-	assert!(
-		at(x_center, y_center) < spine,
-		"zero is a normal interior grid tick"
-	);
-	assert!(
-		at(area.x + 6, area.y + 2) > at(area.x + 6, bottom - 2),
-		"dark surface has a subtle vertical gradient"
-	);
-	assert!(
-		(bottom + 19..cell.y + cell.h)
-			.any(|y| { (x_center - 32..x_center + 32).any(|x| at(x, y) > 0.35) }),
-		"x axis title is below the ticks"
-	);
-	assert!(
-		(cell.x..cell.x + 19).any(|x| {
-			(y_center - 32..y_center + 32)
-				.filter(|&y| at(x, y) > 0.35)
-				.count()
-				> 10
-		}),
-		"y axis title is rotated in its left gutter"
-	);
-	Ok(())
-});
+test_vk!(
+	plot_dark_axes_frame_and_labels_stay_outside_data,
+	runtime,
+	{
+		let (w, h) = (400, 260);
+		let mut figure = Figure::new(FigureConfig {
+			width: w,
+			height: h,
+			title: String::new(),
+			..Default::default()
+		});
+		let axes = figure.ax(0, 0);
+		axes.limits(-10.0, 10.0, -10.0, 10.0);
+		axes.x_label("optimizer step");
+		axes.y_label("cross entropy");
+		let values = figure.render()?.as_matrix().read_f32()?;
+		let area = dark_plot_rect(&figure, w, h, &values);
+		let cell = figure.cell_rect(0, 0, w, h);
+		let at = |x, y| values[(y * w as i32 + x) as usize];
+		let spine = oa::plot::Theme::Dark.ui_style().plot_border.r;
+		let bottom = area.y + area.h - 1;
+		let x_center = area.x + area.w / 2;
+		let y_center = area.y + area.h / 2;
+		assert_eq!(at(area.x, bottom), spine);
+		assert!(
+			at(x_center, y_center) < spine,
+			"zero is a normal interior grid tick"
+		);
+		assert!(
+			at(area.x + 6, area.y + 2) > at(area.x + 6, bottom - 2),
+			"dark surface has a subtle vertical gradient"
+		);
+		assert!(
+			(bottom + 19..cell.y + cell.h)
+				.any(|y| { (x_center - 32..x_center + 32).any(|x| at(x, y) > 0.35) }),
+			"x axis title is below the ticks"
+		);
+		assert!(
+			(cell.x..cell.x + 19).any(|x| {
+				(y_center - 32..y_center + 32)
+					.filter(|&y| at(x, y) > 0.35)
+					.count()
+					> 10
+			}),
+			"y axis title is rotated in its left gutter"
+		);
+		Ok(())
+	}
+);
 
 #[test]
 fn ui_style_viewer_dark_is_derived_from_realm_dark_tokens() {
@@ -1782,7 +1786,7 @@ fn plot_axes_reports_effective_and_explicit_limits() {
 	assert_eq!(axes.explicit_limits(), None);
 }
 
-test_vk!(plot_figure_render_is_deterministic, engine, {
+test_vk!(plot_figure_render_is_deterministic, runtime, {
 	let mut figure = Figure::new(FigureConfig {
 		width: 96,
 		height: 64,
@@ -1801,7 +1805,7 @@ test_vk!(plot_figure_render_is_deterministic, engine, {
 	Ok(())
 });
 
-test_vk!(plot_figure_light_theme_draws_light_canvas, engine, {
+test_vk!(plot_figure_light_theme_draws_light_canvas, runtime, {
 	let mut figure = Figure::new(FigureConfig {
 		width: 64,
 		height: 48,
@@ -1820,7 +1824,7 @@ test_vk!(plot_figure_light_theme_draws_light_canvas, engine, {
 
 test_vk!(
 	plot_figure_image_keeps_aspect_with_title_and_caption,
-	engine,
+	runtime,
 	{
 		let texture = oa::render::texture_from_rgba8(&[255, 0, 0, 255].repeat(16), 4, 4)?;
 		let mut figure = Figure::new(FigureConfig {
@@ -1849,7 +1853,7 @@ test_vk!(
 
 test_vk!(
 	plot_figure_matrix_heatmap_renders_shader_colormap,
-	engine,
+	runtime,
 	{
 		// Device-resident ramp: row 0 holds the lowest values, row 3 the highest.
 		let ramp: Vec<f32> = (0..16).map(|i| i as f32).collect();
@@ -1891,7 +1895,7 @@ test_vk!(
 	}
 );
 
-test_vk!(plot_figure_rejects_autoscale_on_device_heatmap, engine, {
+test_vk!(plot_figure_rejects_autoscale_on_device_heatmap, runtime, {
 	let matrix = oa::Matrix::new_from_f32([2, 2], &[0.0, 1.0, 1.0, 0.0])?;
 	let mut figure = Figure::new(FigureConfig {
 		width: 32,
@@ -1906,7 +1910,7 @@ test_vk!(plot_figure_rejects_autoscale_on_device_heatmap, engine, {
 	Ok(())
 });
 
-test_vk!(figure_view_zooms_pans_and_resets_data_limits, engine, {
+test_vk!(figure_view_zooms_pans_and_resets_data_limits, runtime, {
 	use oa::input::Key;
 	use oa::viewer::ViewerLiveSource;
 
@@ -1921,8 +1925,8 @@ test_vk!(figure_view_zooms_pans_and_resets_data_limits, engine, {
 		.plot(&[0.0, 1.0, 0.0, 1.0], Default::default());
 	figure.ax(0, 0).limits(0.0, 10.0, 0.0, 10.0);
 	let mut view = oa::plot::FigureView::new(figure);
-	let mut ui = Ui::init(&engine, 96, 64)?;
-	view.open(&engine)?;
+	let mut ui = Ui::init(&runtime, 96, 64)?;
+	view.open(&runtime)?;
 
 	// First render establishes the view extent.
 	ui.begin_frame(0.0);
@@ -2031,7 +2035,7 @@ fn plot_axes_artist_visibility_and_categories_api() {
 	axes.yscale(oa::plot::Scale::Linear);
 }
 
-test_vk!(plot_figure_matrix_line_matches_host_series, engine, {
+test_vk!(plot_figure_matrix_line_matches_host_series, runtime, {
 	// A device-resident [2, N] series lowers to the same explicit-XY
 	// dispatch as the uploaded path — the renders must be byte-identical.
 	let x: Vec<f32> = (0..8).map(|i| i as f32).collect();
@@ -2066,7 +2070,7 @@ test_vk!(plot_figure_matrix_line_matches_host_series, engine, {
 	Ok(())
 });
 
-test_vk!(plot_figure_matrix_y_series_draws, engine, {
+test_vk!(plot_figure_matrix_y_series_draws, runtime, {
 	// [N] index-mode series: render must differ from the empty figure.
 	let matrix = oa::Matrix::new_from_f32([8], &[0.0, 1.0, 0.0, 2.0, 0.5, 3.0, 1.0, 2.5])?;
 	let config = || FigureConfig {
@@ -2087,7 +2091,7 @@ test_vk!(plot_figure_matrix_y_series_draws, engine, {
 	Ok(())
 });
 
-test_vk!(plot_figure_log_scale_changes_render, engine, {
+test_vk!(plot_figure_log_scale_changes_render, runtime, {
 	let config = || FigureConfig {
 		width: 96,
 		height: 64,
@@ -2110,7 +2114,7 @@ test_vk!(plot_figure_log_scale_changes_render, engine, {
 	Ok(())
 });
 
-test_vk!(plot_figure_colorbar_draws_ramp_strip, engine, {
+test_vk!(plot_figure_colorbar_draws_ramp_strip, runtime, {
 	// Grayscale heatmap + colorbar: the strip brightens toward v_max at top.
 	let mut figure = Figure::new(FigureConfig {
 		width: 160,
@@ -2149,7 +2153,7 @@ test_vk!(plot_figure_colorbar_draws_ramp_strip, engine, {
 	Ok(())
 });
 
-test_vk!(figure_view_box_zoom_legend_toggle_and_state, engine, {
+test_vk!(figure_view_box_zoom_legend_toggle_and_state, runtime, {
 	use oa::input::INPUT_MOD_SHIFT;
 	use oa::viewer::ViewerLiveSource;
 
@@ -2168,8 +2172,8 @@ test_vk!(figure_view_box_zoom_legend_toggle_and_state, engine, {
 	);
 	figure.ax(0, 0).limits(0.0, 10.0, 0.0, 10.0);
 	let mut view = oa::plot::FigureView::new(figure);
-	let mut ui = Ui::init(&engine, 160, 160)?;
-	view.open(&engine)?;
+	let mut ui = Ui::init(&runtime, 160, 160)?;
+	view.open(&runtime)?;
 
 	ui.begin_frame(0.0);
 	view.render(&mut ui, 160, 160)?;
@@ -2295,7 +2299,7 @@ test_vk!(figure_view_box_zoom_legend_toggle_and_state, engine, {
 	Ok(())
 });
 
-test_vk!(figure_view_log_scale_zoom_keeps_positive_limits, engine, {
+test_vk!(figure_view_log_scale_zoom_keeps_positive_limits, runtime, {
 	use oa::viewer::ViewerLiveSource;
 
 	let mut figure = Figure::new(FigureConfig {
@@ -2310,8 +2314,8 @@ test_vk!(figure_view_log_scale_zoom_keeps_positive_limits, engine, {
 	figure.ax(0, 0).yscale(oa::plot::Scale::Log10);
 	figure.ax(0, 0).limits(0.0, 3.0, 1.0, 1000.0);
 	let mut view = oa::plot::FigureView::new(figure);
-	let mut ui = Ui::init(&engine, 96, 64)?;
-	view.open(&engine)?;
+	let mut ui = Ui::init(&runtime, 96, 64)?;
+	view.open(&runtime)?;
 	ui.begin_frame(0.0);
 	view.render(&mut ui, 96, 64)?;
 	ui.end_frame();
@@ -2351,7 +2355,7 @@ test_vk!(figure_view_log_scale_zoom_keeps_positive_limits, engine, {
 });
 
 // Sampled blit: exact nearest on upscale and 1:1; bilinear on downscale.
-test_vk!(ui_image_at_samples_native_view, engine, {
+test_vk!(ui_image_at_samples_native_view, runtime, {
 	use oa::render::texture_from_rgba8;
 
 	// 4x4 quadrant pattern: top-left red, top-right green, bottom-left blue,
@@ -2372,7 +2376,7 @@ test_vk!(ui_image_at_samples_native_view, engine, {
 	let texture = texture_from_rgba8(&src, 4, 4)?;
 
 	// Upscale 4x -> each source texel fills a 4x4 block, exact nearest.
-	let mut ui = Ui::init(&engine, 16, 16)?;
+	let mut ui = Ui::init(&runtime, 16, 16)?;
 	ui.begin_frame(16.0);
 	ui.image_at(&texture, PixelRect::new(0, 0, 16, 16))?;
 	ui.end_frame();
@@ -2397,7 +2401,7 @@ test_vk!(ui_image_at_samples_native_view, engine, {
 		}
 	}
 	let checker = texture_from_rgba8(&checks, 4, 4)?;
-	let mut ui = Ui::init(&engine, 4, 4)?;
+	let mut ui = Ui::init(&runtime, 4, 4)?;
 	ui.begin_frame(16.0);
 	ui.image_at(&checker, PixelRect::new(0, 0, 2, 2))?;
 	ui.end_frame();
@@ -2414,8 +2418,8 @@ test_vk!(ui_image_at_samples_native_view, engine, {
 });
 
 // Bottom-to-top glyph records draw ink in a tall narrow run, not a wide one.
-test_vk!(ui_text_vertical_draws_bottom_to_top, engine, {
-	let mut ui = Ui::init(&engine, 64, 64)?;
+test_vk!(ui_text_vertical_draws_bottom_to_top, runtime, {
+	let mut ui = Ui::init(&runtime, 64, 64)?;
 	ui.begin_frame(16.0);
 	ui.text_vertical_at(
 		"Axis",
@@ -2462,7 +2466,7 @@ test_vk!(ui_text_vertical_draws_bottom_to_top, engine, {
 
 // A symlog y axis keeps zero and negative data on the plot; the polyline
 // must span the full cell height.
-test_vk!(ui_plot_symlog_renders_both_signs, engine, {
+test_vk!(ui_plot_symlog_renders_both_signs, runtime, {
 	let mut figure = Figure::new(FigureConfig {
 		width: 160,
 		height: 120,
@@ -2498,7 +2502,7 @@ test_vk!(ui_plot_symlog_renders_both_signs, engine, {
 
 // `set_series_highlight` keeps the highlighted artist at full alpha and
 // fades the rest — the legend-hover emphasis path.
-test_vk!(ui_plot_series_highlight_dims_others, engine, {
+test_vk!(ui_plot_series_highlight_dims_others, runtime, {
 	let mut figure = Figure::new(FigureConfig {
 		width: 160,
 		height: 120,
@@ -2547,7 +2551,7 @@ test_vk!(ui_plot_series_highlight_dims_others, engine, {
 
 // A stream series scrolls its ring window: after overflow the rendered
 // trace covers the newest samples in order, not the dropped prefix.
-test_vk!(ui_plot_stream_scrolls_ring_window, engine, {
+test_vk!(ui_plot_stream_scrolls_ring_window, runtime, {
 	let mut figure = Figure::new(FigureConfig {
 		width: 160,
 		height: 120,
@@ -2586,7 +2590,7 @@ test_vk!(ui_plot_stream_scrolls_ring_window, engine, {
 
 // `Axes::band` shades the region between the two curves; pixels outside
 // the band keep the plot surface.
-test_vk!(ui_plot_band_fills_between_curves, engine, {
+test_vk!(ui_plot_band_fills_between_curves, runtime, {
 	let mut figure = Figure::new(FigureConfig {
 		width: 160,
 		height: 120,
@@ -2635,7 +2639,7 @@ test_vk!(ui_plot_band_fills_between_curves, engine, {
 
 // Grouped bars share each x slot side-by-side; stacked layers accumulate
 // on top of each other.
-test_vk!(ui_plot_grouped_and_stacked_bars, engine, {
+test_vk!(ui_plot_grouped_and_stacked_bars, runtime, {
 	// Grouped: two layers in one slot — red left half, green right half.
 	let mut grouped = Figure::new(FigureConfig {
 		width: 160,
@@ -2724,7 +2728,7 @@ test_vk!(ui_plot_grouped_and_stacked_bars, engine, {
 	Ok(())
 });
 
-test_vk!(ui_plot_explicit_ticks_place_grid, engine, {
+test_vk!(ui_plot_explicit_ticks_place_grid, runtime, {
 	// Explicit data-space ticks at 2/5/8 on a 0..10 axis → grid columns at
 	// 20%, 50%, 80% of the plot area; a non-tick column stays clean.
 	let mut figure = Figure::new(FigureConfig {
@@ -2762,7 +2766,7 @@ test_vk!(ui_plot_explicit_ticks_place_grid, engine, {
 	Ok(())
 });
 
-test_vk!(ui_plot_boxplot_draws_quartiles, engine, {
+test_vk!(ui_plot_boxplot_draws_quartiles, runtime, {
 	// Sorted [1..9, 50]: q1=3.25, median=5.5, q3=7.75, whiskers 1..9 on a
 	// 0..10 axis — box mid-band, thin whisker at center outside the box,
 	// and empty margin beyond the whisker tips.
@@ -2830,7 +2834,7 @@ fn plot_sink_figure() -> Figure {
 
 // Child half of the cross-process sink oracle: renders the fixture to the
 // path named by `OA_PLOT_PNG_OUT`. A run without the variable is a no-op.
-test_vk!(plot_figure_save_png_child, engine, {
+test_vk!(plot_figure_save_png_child, runtime, {
 	let Ok(path) = std::env::var("OA_PLOT_PNG_OUT") else {
 		return Ok(());
 	};
@@ -2838,7 +2842,7 @@ test_vk!(plot_figure_save_png_child, engine, {
 	Ok(())
 });
 
-test_vk!(plot_figure_save_png_matches_child_process, engine, {
+test_vk!(plot_figure_save_png_matches_child_process, runtime, {
 	let dir = std::env::temp_dir().join(format!("oa-plot-sink-{}", std::process::id()));
 	std::fs::create_dir_all(&dir).expect("create sink test dir");
 	let parent_png = dir.join("parent.png");
@@ -2869,7 +2873,7 @@ test_vk!(plot_figure_save_png_matches_child_process, engine, {
 	Ok(())
 });
 
-test_vk!(plot_figure_save_formats_decode_back, engine, {
+test_vk!(plot_figure_save_formats_decode_back, runtime, {
 	let dir = std::env::temp_dir().join(format!("oa-plot-fmt-{}", std::process::id()));
 	std::fs::create_dir_all(&dir).expect("create format test dir");
 	let figure = plot_sink_figure();
@@ -2902,10 +2906,10 @@ test_vk!(plot_figure_save_formats_decode_back, engine, {
 
 // ── Data table + filterable combo ───────────────────────────────────────────
 
-test_vk!(ui_table_selects_row_and_reports_change, engine, {
+test_vk!(ui_table_selects_row_and_reports_change, runtime, {
 	use oa::ui::{UiTableConfig, UiTableState};
 
-	let mut ui = Ui::init(&engine, 200, 300)?;
+	let mut ui = Ui::init(&runtime, 200, 300)?;
 	let mut state = UiTableState::default();
 	let columns = ["name", "value"];
 	let r0 = ["alpha", "1.0"];
@@ -2971,8 +2975,8 @@ test_vk!(ui_table_selects_row_and_reports_change, engine, {
 	Ok(())
 });
 
-test_vk!(ui_combo_filters_items_and_selects_match, engine, {
-	let mut ui = Ui::init(&engine, 200, 300)?;
+test_vk!(ui_combo_filters_items_and_selects_match, runtime, {
+	let mut ui = Ui::init(&runtime, 200, 300)?;
 	let mut selected = -1i32;
 	let mut filter = String::new();
 	let items = ["apple", "apricot", "banana", "cherry"];
@@ -3068,8 +3072,8 @@ test_vk!(ui_combo_filters_items_and_selects_match, engine, {
 	Ok(())
 });
 
-test_vk!(ui_color_picker_drag_updates_channel, engine, {
-	let mut ui = Ui::init(&engine, 200, 340)?;
+test_vk!(ui_color_picker_drag_updates_channel, runtime, {
+	let mut ui = Ui::init(&runtime, 200, 340)?;
 	let mut color = Color {
 		r: 0.2,
 		g: 0.3,
@@ -3227,110 +3231,114 @@ fn workspace_layout_json_round_trip() {
 	);
 }
 
-test_vk!(ui_workspace_renders_split_tabs_and_routes_events, engine, {
-	use oa::ui::UiDirection;
-	use oa::viewer::{Workspace, WorkspaceItem, WorkspaceNode};
-	use std::cell::Cell;
-	use std::rc::Rc;
+test_vk!(
+	ui_workspace_renders_split_tabs_and_routes_events,
+	runtime,
+	{
+		use oa::ui::UiDirection;
+		use oa::viewer::{Workspace, WorkspaceItem, WorkspaceNode};
+		use std::cell::Cell;
+		use std::rc::Rc;
 
-	struct Probe {
-		id: &'static str,
-		title: &'static str,
-		color: Color,
-		events: Rc<Cell<u32>>,
+		struct Probe {
+			id: &'static str,
+			title: &'static str,
+			color: Color,
+			events: Rc<Cell<u32>>,
+		}
+		impl WorkspaceItem for Probe {
+			fn id(&self) -> &str {
+				self.id
+			}
+			fn title(&self) -> &str {
+				self.title
+			}
+			fn render(&mut self, ui: &mut Ui<'_>, rect: PixelRect) -> oa::Result<()> {
+				ui.rect(rect, self.color, 0.0)
+			}
+			fn on_event(&mut self, _event: &InputEvent) -> oa::Result<()> {
+				self.events.set(self.events.get() + 1);
+				Ok(())
+			}
+		}
+
+		let left_events = Rc::new(Cell::new(0u32));
+		let right_events = Rc::new(Cell::new(0u32));
+		let mut workspace = Workspace::new(WorkspaceNode::split(
+			UiDirection::Row,
+			0.5,
+			WorkspaceNode::tabs(&["left"]),
+			WorkspaceNode::tabs(&["right"]),
+		));
+		workspace.add_item(Box::new(Probe {
+			id: "left",
+			title: "Left",
+			color: Color::new(0.9, 0.1, 0.1, 1.0),
+			events: left_events.clone(),
+		}));
+		workspace.add_item(Box::new(Probe {
+			id: "right",
+			title: "Right",
+			color: Color::new(0.1, 0.9, 0.1, 1.0),
+			events: right_events.clone(),
+		}));
+
+		let mut ui = Ui::init(&runtime, 400, 300)?;
+		ui.begin_frame(0.0);
+		workspace.render(&mut ui, PixelRect::new(0, 0, 400, 300))?;
+		ui.end_frame();
+
+		// Left pane: split row 0.5 over 400px with a 4px handle → first 198px;
+		// tab bar 28px → item content begins below it.
+		let px = ui.render_rgba8()?;
+		let left = &px[(150 * 400 + 50) * 4..(150 * 400 + 50) * 4 + 4];
+		assert!(
+			left[0] > 180 && left[1] < 80,
+			"left pane should be red: {left:?}"
+		);
+		let right = &px[(150 * 400 + 300) * 4..(150 * 400 + 300) * 4 + 4];
+		assert!(
+			right[1] > 180 && right[0] < 80,
+			"right pane should be green: {right:?}"
+		);
+		// The split handle band is neither pane color.
+		let handle = &px[(150 * 400 + 199) * 4..(150 * 400 + 199) * 4 + 4];
+		assert!(
+			handle[0] < 140 && handle[1] < 140,
+			"handle band: {handle:?}"
+		);
+
+		// Pointer events route to the leaf under the cursor; the click focuses it.
+		workspace.route_event(&InputEvent {
+			kind: InputEventKind::MouseDown,
+			mouse_x: 300.0,
+			mouse_y: 150.0,
+			button: 1,
+			..InputEvent::default()
+		})?;
+		assert_eq!(right_events.get(), 1);
+		assert_eq!(left_events.get(), 0);
+		// Key events follow focus (set by the click above).
+		workspace.route_event(&InputEvent {
+			kind: InputEventKind::KeyDown,
+			..InputEvent::default()
+		})?;
+		assert_eq!(right_events.get(), 2);
+		// A pointer event over the left pane routes there.
+		workspace.route_event(&InputEvent {
+			kind: InputEventKind::MouseMove,
+			mouse_x: 50.0,
+			mouse_y: 150.0,
+			..InputEvent::default()
+		})?;
+		assert_eq!(left_events.get(), 1);
+
+		ui.close()?;
+		Ok(())
 	}
-	impl WorkspaceItem for Probe {
-		fn id(&self) -> &str {
-			self.id
-		}
-		fn title(&self) -> &str {
-			self.title
-		}
-		fn render(&mut self, ui: &mut Ui<'_>, rect: PixelRect) -> oa::Result<()> {
-			ui.rect(rect, self.color, 0.0)
-		}
-		fn on_event(&mut self, _event: &InputEvent) -> oa::Result<()> {
-			self.events.set(self.events.get() + 1);
-			Ok(())
-		}
-	}
+);
 
-	let left_events = Rc::new(Cell::new(0u32));
-	let right_events = Rc::new(Cell::new(0u32));
-	let mut workspace = Workspace::new(WorkspaceNode::split(
-		UiDirection::Row,
-		0.5,
-		WorkspaceNode::tabs(&["left"]),
-		WorkspaceNode::tabs(&["right"]),
-	));
-	workspace.add_item(Box::new(Probe {
-		id: "left",
-		title: "Left",
-		color: Color::new(0.9, 0.1, 0.1, 1.0),
-		events: left_events.clone(),
-	}));
-	workspace.add_item(Box::new(Probe {
-		id: "right",
-		title: "Right",
-		color: Color::new(0.1, 0.9, 0.1, 1.0),
-		events: right_events.clone(),
-	}));
-
-	let mut ui = Ui::init(&engine, 400, 300)?;
-	ui.begin_frame(0.0);
-	workspace.render(&mut ui, PixelRect::new(0, 0, 400, 300))?;
-	ui.end_frame();
-
-	// Left pane: split row 0.5 over 400px with a 4px handle → first 198px;
-	// tab bar 28px → item content begins below it.
-	let px = ui.render_rgba8()?;
-	let left = &px[(150 * 400 + 50) * 4..(150 * 400 + 50) * 4 + 4];
-	assert!(
-		left[0] > 180 && left[1] < 80,
-		"left pane should be red: {left:?}"
-	);
-	let right = &px[(150 * 400 + 300) * 4..(150 * 400 + 300) * 4 + 4];
-	assert!(
-		right[1] > 180 && right[0] < 80,
-		"right pane should be green: {right:?}"
-	);
-	// The split handle band is neither pane color.
-	let handle = &px[(150 * 400 + 199) * 4..(150 * 400 + 199) * 4 + 4];
-	assert!(
-		handle[0] < 140 && handle[1] < 140,
-		"handle band: {handle:?}"
-	);
-
-	// Pointer events route to the leaf under the cursor; the click focuses it.
-	workspace.route_event(&InputEvent {
-		kind: InputEventKind::MouseDown,
-		mouse_x: 300.0,
-		mouse_y: 150.0,
-		button: 1,
-		..InputEvent::default()
-	})?;
-	assert_eq!(right_events.get(), 1);
-	assert_eq!(left_events.get(), 0);
-	// Key events follow focus (set by the click above).
-	workspace.route_event(&InputEvent {
-		kind: InputEventKind::KeyDown,
-		..InputEvent::default()
-	})?;
-	assert_eq!(right_events.get(), 2);
-	// A pointer event over the left pane routes there.
-	workspace.route_event(&InputEvent {
-		kind: InputEventKind::MouseMove,
-		mouse_x: 50.0,
-		mouse_y: 150.0,
-		..InputEvent::default()
-	})?;
-	assert_eq!(left_events.get(), 1);
-
-	ui.close()?;
-	Ok(())
-});
-
-test_vk!(ui_workspace_hosts_figure_view_in_pane, engine, {
+test_vk!(ui_workspace_hosts_figure_view_in_pane, runtime, {
 	use oa::plot::FigureView;
 	use oa::ui::UiDirection;
 	use oa::viewer::{ViewerLiveSource, Workspace, WorkspaceItem, WorkspaceNode};
@@ -3376,7 +3384,7 @@ test_vk!(ui_workspace_hosts_figure_view_in_pane, engine, {
 	}));
 	workspace.add_item(Box::new(view));
 
-	let mut ui = Ui::init(&engine, 400, 300)?;
+	let mut ui = Ui::init(&runtime, 400, 300)?;
 	ui.begin_frame(0.0);
 	workspace.render(&mut ui, PixelRect::new(0, 0, 400, 300))?;
 	ui.end_frame();
@@ -3422,11 +3430,11 @@ test_vk!(ui_workspace_hosts_figure_view_in_pane, engine, {
 	Ok(())
 });
 
-test_vk!(ui_workspace_drag_reorders_tab_in_bar, engine, {
+test_vk!(ui_workspace_drag_reorders_tab_in_bar, runtime, {
 	use oa::viewer::{Workspace, WorkspaceNode};
 
 	let mut workspace = Workspace::new(WorkspaceNode::tabs(&["a", "b", "c"]));
-	let mut ui = Ui::init(&engine, 400, 300)?;
+	let mut ui = Ui::init(&runtime, 400, 300)?;
 
 	let frame = |workspace: &mut Workspace, ui: &mut Ui<'_>| {
 		ui.begin_frame(0.0);
@@ -3482,7 +3490,7 @@ test_vk!(ui_workspace_drag_reorders_tab_in_bar, engine, {
 	Ok(())
 });
 
-test_vk!(ui_workspace_drag_moves_tab_across_panes, engine, {
+test_vk!(ui_workspace_drag_moves_tab_across_panes, runtime, {
 	use oa::ui::UiDirection;
 	use oa::viewer::{Workspace, WorkspaceNode};
 
@@ -3492,7 +3500,7 @@ test_vk!(ui_workspace_drag_moves_tab_across_panes, engine, {
 		WorkspaceNode::tabs(&["a"]),
 		WorkspaceNode::tabs(&["b"]),
 	));
-	let mut ui = Ui::init(&engine, 400, 300)?;
+	let mut ui = Ui::init(&runtime, 400, 300)?;
 
 	let frame = |workspace: &mut Workspace, ui: &mut Ui<'_>| {
 		ui.begin_frame(0.0);
@@ -3549,7 +3557,7 @@ test_vk!(ui_workspace_drag_moves_tab_across_panes, engine, {
 	Ok(())
 });
 
-test_vk!(ui_workspace_edge_drop_splits_pane, engine, {
+test_vk!(ui_workspace_edge_drop_splits_pane, runtime, {
 	use oa::ui::UiDirection;
 	use oa::viewer::{Workspace, WorkspaceNode};
 
@@ -3559,7 +3567,7 @@ test_vk!(ui_workspace_edge_drop_splits_pane, engine, {
 		WorkspaceNode::tabs(&["a"]),
 		WorkspaceNode::tabs(&["b"]),
 	));
-	let mut ui = Ui::init(&engine, 400, 300)?;
+	let mut ui = Ui::init(&runtime, 400, 300)?;
 
 	let frame = |workspace: &mut Workspace, ui: &mut Ui<'_>| {
 		ui.begin_frame(0.0);
@@ -3630,8 +3638,8 @@ test_vk!(ui_workspace_edge_drop_splits_pane, engine, {
 	Ok(())
 });
 
-test_vk!(ui_drag_drop_delivers_payload_to_target, engine, {
-	let mut ui = Ui::init(&engine, 300, 120)?;
+test_vk!(ui_drag_drop_delivers_payload_to_target, runtime, {
+	let mut ui = Ui::init(&runtime, 300, 120)?;
 	let source = PixelRect::new(10, 40, 80, 40);
 	let target = PixelRect::new(200, 40, 90, 40);
 	let mut dropped: Option<std::rc::Rc<u32>> = None;
@@ -3700,10 +3708,10 @@ test_vk!(ui_drag_drop_delivers_payload_to_target, engine, {
 	Ok(())
 });
 
-test_vk!(ui_input_text_multiline_edits_across_lines, engine, {
+test_vk!(ui_input_text_multiline_edits_across_lines, runtime, {
 	use oa::input::Key;
 
-	let mut ui = Ui::init(&engine, 240, 160)?;
+	let mut ui = Ui::init(&runtime, 240, 160)?;
 	let mut value = String::new();
 
 	let frame = |ui: &mut Ui<'_>, value: &mut String| {
@@ -3774,10 +3782,10 @@ test_vk!(ui_input_text_multiline_edits_across_lines, engine, {
 
 // Keyboard navigation: Tab cycles focus, Space/Enter activate the focused
 // widget, and arrows step a focused slider.
-test_vk!(ui_keyboard_nav_cycles_and_steps, engine, {
+test_vk!(ui_keyboard_nav_cycles_and_steps, runtime, {
 	use oa::input::Key;
 
-	let mut ui = Ui::init(&engine, 300, 200)?;
+	let mut ui = Ui::init(&runtime, 300, 200)?;
 	let mut hits = [false; 2];
 	let mut level = 0.5f32;
 
@@ -3851,10 +3859,10 @@ test_vk!(ui_keyboard_nav_cycles_and_steps, engine, {
 
 // Gamepad navigation: South grabs then activates focus, dpad and left stick
 // route directions into the focused widget.
-test_vk!(ui_gamepad_nav_focuses_and_steps, engine, {
+test_vk!(ui_gamepad_nav_focuses_and_steps, runtime, {
 	use oa::input::{GAMEPAD_AXIS_LEFT_X, GAMEPAD_BUTTON_DPAD_RIGHT, GAMEPAD_BUTTON_SOUTH};
 
-	let mut ui = Ui::init(&engine, 300, 200)?;
+	let mut ui = Ui::init(&runtime, 300, 200)?;
 	let mut fired = false;
 	let mut level = 0.5f32;
 
@@ -3924,10 +3932,10 @@ test_vk!(ui_gamepad_nav_focuses_and_steps, engine, {
 
 // IME plumbing: a focused text field reports its rect for the platform
 // candidate window and consumes TextEditing (pre-edit) events.
-test_vk!(ui_text_input_reports_ime_rect_and_preedit, engine, {
+test_vk!(ui_text_input_reports_ime_rect_and_preedit, runtime, {
 	use oa::input::Key;
 
-	let mut ui = Ui::init(&engine, 240, 120)?;
+	let mut ui = Ui::init(&runtime, 240, 120)?;
 	let mut value = String::from("ab");
 
 	let frame = |ui: &mut Ui<'_>, value: &mut String| {
@@ -3993,8 +4001,8 @@ test_vk!(ui_text_input_reports_ime_rect_and_preedit, engine, {
 
 // Menu button → popup of menu_items: click opens, item click activates and
 // closes the popup.
-test_vk!(ui_menu_opens_and_item_activates, engine, {
-	let mut ui = Ui::init(&engine, 300, 240)?;
+test_vk!(ui_menu_opens_and_item_activates, runtime, {
+	let mut ui = Ui::init(&runtime, 300, 240)?;
 	let mut chosen = false;
 
 	let frame = |ui: &mut Ui<'_>, chosen: &mut bool| {

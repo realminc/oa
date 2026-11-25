@@ -26,7 +26,7 @@ pub fn {{name}}({{arguments}}) -> Result<{{return_type}}> {
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} input byte extent overflows usize")))?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 {{allocations}}
 {{dispatch}}
 	Ok({{result}})

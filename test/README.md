@@ -42,10 +42,10 @@ python3 tool/build/stage.py --profile debug --tests
 ./bin/debug/test/matrix/test_matrix --ignored --nocapture
 ```
 
-`test_vk!` marks hardware Vulkan tests and supplies a fresh `Engine` binding.
-The engine is intentionally initialized per test: the current engine is
+`test_vk!` marks hardware Vulkan tests and supplies a fresh `Runtime` binding.
+The runtime is intentionally initialized per test: the current runtime is
 thread-affine and neither `Send` nor `Sync`, while Rust's test harness may run
-tests concurrently. Tests that validate engine construction, custom builders,
+tests concurrently. Tests that validate runtime construction, custom builders,
 or post-drop lifetime behavior keep explicit setup instead of using the fixture.
 
 ```bash

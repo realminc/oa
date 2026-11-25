@@ -3,7 +3,7 @@ use pyo3::{
 	prelude::*,
 };
 
-use crate::{error::python_error, runtime::PythonEngine};
+use crate::{error::python_error, runtime::PythonRuntime};
 
 #[path = "matrix/matrix.gen.rs"]
 mod generated;
@@ -37,10 +37,10 @@ impl PythonMatrix {
 	fn new_from_f32(
 		shape: Vec<usize>,
 		values: Vec<f32>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::Matrix::new_from_slice_on(&engine, shape, &values)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::Matrix::new_from_slice_on(&runtime, shape, &values)
 			.map(Self::wrap)
 			.map_err(python_error)
 	}
@@ -49,10 +49,10 @@ impl PythonMatrix {
 	fn new_from_i32(
 		shape: Vec<usize>,
 		values: Vec<i32>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::Matrix::new_from_slice_on(&engine, shape, &values)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::Matrix::new_from_slice_on(&runtime, shape, &values)
 			.map(Self::wrap)
 			.map_err(python_error)
 	}
@@ -61,10 +61,10 @@ impl PythonMatrix {
 	fn new_from_u32(
 		shape: Vec<usize>,
 		values: Vec<u32>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::Matrix::new_from_slice_on(&engine, shape, &values)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::Matrix::new_from_slice_on(&runtime, shape, &values)
 			.map(Self::wrap)
 			.map_err(python_error)
 	}
@@ -73,10 +73,10 @@ impl PythonMatrix {
 	fn new_from_u8(
 		shape: Vec<usize>,
 		values: Vec<u8>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::Matrix::new_from_slice_on(&engine, shape, &values)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::Matrix::new_from_slice_on(&runtime, shape, &values)
 			.map(Self::wrap)
 			.map_err(python_error)
 	}
@@ -167,7 +167,7 @@ impl PythonMatrix {
 	}
 
 	fn __matmul__(&self, right: &PythonMatrix) -> PyResult<Self> {
-		self.mat_mul_nt(right)
+		self.matmul(right)
 	}
 
 	fn __truediv__(&self, right: &PythonMatrix) -> PyResult<Self> {
@@ -194,10 +194,10 @@ impl PythonMatrix {
 #[pyfunction]
 pub(crate) fn matrix_ones(
 	shape: Vec<usize>,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonMatrix> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::matrix::ones_on(&engine, shape)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::matrix::ones_on(&runtime, shape)
 		.map(PythonMatrix::wrap)
 		.map_err(python_error)
 }
@@ -206,10 +206,10 @@ pub(crate) fn matrix_ones(
 pub(crate) fn matrix_full(
 	shape: Vec<usize>,
 	value: f32,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonMatrix> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::matrix::full_on(&engine, shape, value)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::matrix::full_on(&runtime, shape, value)
 		.map(PythonMatrix::wrap)
 		.map_err(python_error)
 }

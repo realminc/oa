@@ -19,7 +19,7 @@
 use crate::input::{InputEvent, InputEventKind, Key};
 use crate::ui::{PixelRect, TextLayoutConfig, Ui};
 use crate::viewer::{ViewerLiveCapabilities, ViewerLiveSource};
-use crate::{Color, Engine, Error, Result};
+use crate::{Color, Error, Result, Runtime};
 
 use super::Figure;
 use super::axes::{ArtistKind, legend_row_rect, scale_value, unscale_value};
@@ -700,7 +700,7 @@ impl ViewerLiveSource for FigureView {
 		}
 	}
 
-	fn open(&mut self, _engine: &Engine) -> Result<()> {
+	fn open(&mut self, _runtime: &Runtime) -> Result<()> {
 		Ok(())
 	}
 

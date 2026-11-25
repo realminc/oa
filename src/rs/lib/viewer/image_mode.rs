@@ -5,7 +5,7 @@
 use super::config::ViewerConfig;
 use crate::input::{InputEvent, InputEventKind, Navigation};
 use crate::ui::{Ui, types::PixelRect};
-use crate::{Engine, Result, Texture};
+use crate::{Result, Runtime, Texture};
 
 /// Channel display mode — mirrors `oa::Viewer::ImageViewMode`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -19,8 +19,8 @@ pub enum ChannelMode {
 }
 
 /// Load and GPU-upload a texture from a file path.
-pub fn load_texture(engine: &Engine, path: &str) -> Result<Texture> {
-	crate::render::texture_from_file_on(engine, path)
+pub fn load_texture(runtime: &Runtime, path: &str) -> Result<Texture> {
+	crate::render::texture_from_file_on(runtime, path)
 }
 
 /// Draw the image or its channel view into the viewport.

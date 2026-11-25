@@ -161,7 +161,7 @@ pub(crate) fn backward(node: &GradNodeAudio, output_gradient: &Matrix) -> Result
 				*window,
 			);
 			let norm = Matrix::new_from_slice_handle(
-				output_gradient.engine_handle(),
+				output_gradient.runtime(),
 				vec![channels, padded],
 				&norm_values,
 			)?;
@@ -189,7 +189,7 @@ pub(crate) fn backward(node: &GradNodeAudio, output_gradient: &Matrix) -> Result
 			let padded = (frames - 1) * *hop_size as usize + *fft_size as usize;
 			let offset = usize::from(*center) * (*fft_size as usize) / 2;
 			let out_samples = output_gradient.shape()[1];
-			let engine = output_gradient.engine_handle();
+			let runtime = output_gradient.runtime();
 			let norm_values = window_norm(
 				channels,
 				frames,
@@ -199,7 +199,7 @@ pub(crate) fn backward(node: &GradNodeAudio, output_gradient: &Matrix) -> Result
 				if *win_size == 0 { *fft_size } else { *win_size },
 				*window,
 			);
-			let norm = Matrix::new_from_slice_handle(engine, vec![channels, padded], &norm_values)?;
+			let norm = Matrix::new_from_slice_handle(runtime, vec![channels, padded], &norm_values)?;
 			// The forward normalize emits `scratch / norm` only where
 			// `norm > 1e-12`; the adjoint applies the same mask so window-edge
 			// samples (hann w[0] = 0) produce exact-zero input gradients.
@@ -215,7 +215,7 @@ pub(crate) fn backward(node: &GradNodeAudio, output_gradient: &Matrix) -> Result
 			} else {
 				let zeros = |width: usize| -> Result<Matrix> {
 					Matrix::allocate(
-						engine,
+						runtime,
 						vec![channels, width],
 						channels * width,
 						crate::DType::F32,

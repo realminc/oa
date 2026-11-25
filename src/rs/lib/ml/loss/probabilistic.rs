@@ -136,9 +136,9 @@ pub fn multi_label_soft_margin(
 		)?,
 	)?;
 	if let Some(weight) = weight {
-		if !weight.engine_handle().same_as(input.engine_handle()) {
+		if !weight.runtime().same_as(input.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} weight must belong to the same engine"
+				"{operation} weight must belong to the same runtime"
 			)));
 		}
 		term = matrix::mul(&term, weight)?;

@@ -193,7 +193,7 @@ fn finite_difference(values: &[f32], epsilon: f32, evaluate: impl Fn(&[f32]) -> 
 		.collect()
 }
 
-test_vk!(moe_route_weights_matches_the_donor_vector, engine, {
+test_vk!(moe_route_weights_matches_the_donor_vector, runtime, {
 	let probabilities = [
 		0.1_f32, 0.2, 0.3, 0.4, 0.5, 0.0, 0.25, 0.25, 0.0, 0.0, 0.0, 0.0,
 	];
@@ -202,7 +202,7 @@ test_vk!(moe_route_weights_matches_the_donor_vector, engine, {
 	let probabilities = oa::Matrix::new_from_f32([3, 4], &probabilities)?;
 	let expert_indices = oa::Matrix::new_from_slice([3, 2], &expert_indices)?;
 	let (plan, output) =
-		engine.capture(|| oa::ml::matrix::moe_route_weights(&probabilities, &expert_indices))?;
+		runtime.capture(|| oa::ml::matrix::moe_route_weights(&probabilities, &expert_indices))?;
 	assert_eq!(output.shape(), [3, 2]);
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
@@ -216,37 +216,41 @@ test_vk!(moe_route_weights_matches_the_donor_vector, engine, {
 		"ml.matrix.moe_route_weights.f32"
 	);
 	assert!(!report["nodes"][0]["physical_write"].is_null());
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_close(&output.read_f32()?, &expected, 1.0e-6);
 	Ok(())
 });
 
-test_vk!(grouped_gemm_m_matches_variable_expert_row_oracle, engine, {
-	let input = [1.0_f32, 2.0, -1.0, 3.0, 0.5, -2.0];
-	let weight = [
-		1.0_f32, 0.0, 0.0, 2.0, // expert 0
-		3.0, -1.0, 0.5, 0.25, // expert 1 (empty)
-		-2.0, 1.0, 1.5, -0.5, // expert 2
-	];
-	let offsets = [0_u32, 2, 2, 3];
-	let expected = host_grouped_gemm_m(&input, &weight, &offsets, 3, 2, 2);
-	let input = oa::Matrix::new_from_f32([3, 2], &input)?;
-	let weight = oa::Matrix::new_from_f32([3, 2, 2], &weight)?;
-	let offsets = oa::Matrix::new_from_slice([4], &offsets)?;
-	let (plan, output) =
-		engine.capture(|| oa::ml::matrix::grouped_gemm_m(&input, &weight, &offsets))?;
-	assert_eq!(output.shape(), [3, 2]);
-	assert_eq!(plan.semantic_graph().operations().len(), 1);
-	assert_eq!(
-		plan.semantic_graph().operations()[0].name(),
-		"oa::FnMatrix::groupedGemmM"
-	);
-	engine.submit(&plan)?.wait()?;
-	assert_close(&output.read_f32()?, &expected, 1.0e-6);
-	Ok(())
-});
+test_vk!(
+	grouped_gemm_m_matches_variable_expert_row_oracle,
+	runtime,
+	{
+		let input = [1.0_f32, 2.0, -1.0, 3.0, 0.5, -2.0];
+		let weight = [
+			1.0_f32, 0.0, 0.0, 2.0, // expert 0
+			3.0, -1.0, 0.5, 0.25, // expert 1 (empty)
+			-2.0, 1.0, 1.5, -0.5, // expert 2
+		];
+		let offsets = [0_u32, 2, 2, 3];
+		let expected = host_grouped_gemm_m(&input, &weight, &offsets, 3, 2, 2);
+		let input = oa::Matrix::new_from_f32([3, 2], &input)?;
+		let weight = oa::Matrix::new_from_f32([3, 2, 2], &weight)?;
+		let offsets = oa::Matrix::new_from_slice([4], &offsets)?;
+		let (plan, output) =
+			runtime.capture(|| oa::ml::matrix::grouped_gemm_m(&input, &weight, &offsets))?;
+		assert_eq!(output.shape(), [3, 2]);
+		assert_eq!(plan.semantic_graph().operations().len(), 1);
+		assert_eq!(
+			plan.semantic_graph().operations()[0].name(),
+			"oa::FnMatrix::groupedGemmM"
+		);
+		runtime.submit(&plan)?.wait()?;
+		assert_close(&output.read_f32()?, &expected, 1.0e-6);
+		Ok(())
+	}
+);
 
-test_vk!(grouped_gemm_m_reverse_matches_closed_form, engine, {
+test_vk!(grouped_gemm_m_reverse_matches_closed_form, runtime, {
 	let input_values = [1.0_f32, 2.0, -1.0, 3.0, 0.5, -2.0];
 	let weight_values = [
 		1.0_f32, 0.0, 0.0, 2.0, 3.0, -1.0, 0.5, 0.25, -2.0, 1.0, 1.5, -0.5,
@@ -314,12 +318,12 @@ test_vk!(grouped_gemm_m_reverse_matches_closed_form, engine, {
 	Ok(())
 });
 
-test_vk!(grouped_gemm_m_rejects_invalid_contracts, engine, {
-	let other_engine = oa::Engine::new()?;
+test_vk!(grouped_gemm_m_rejects_invalid_contracts, runtime, {
+	let other_runtime = oa::Runtime::new()?;
 	let input = oa::Matrix::new_from_f32([3, 2], &[1.0; 6])?;
 	let weight = oa::Matrix::new_from_f32([3, 2, 2], &[1.0; 12])?;
 	let offsets = oa::Matrix::new_from_slice([4], &[0_u32, 1, 2, 3])?;
-	let foreign_offsets = oa::Matrix::new_from_slice_on(&other_engine, [4], &[0_u32, 1, 2, 3])?;
+	let foreign_offsets = oa::Matrix::new_from_slice_on(&other_runtime, [4], &[0_u32, 1, 2, 3])?;
 	let signed_offsets = oa::Matrix::new_from_slice([4], &[0_i32, 1, 2, 3])?;
 	let bad_weight = oa::Matrix::new_from_f32([3, 2, 3], &[1.0; 18])?;
 	for result in [
@@ -340,7 +344,7 @@ test_vk!(grouped_gemm_m_rejects_invalid_contracts, engine, {
 
 test_vk!(
 	moe_route_weights_reverse_matches_finite_differences,
-	engine,
+	runtime,
 	{
 		let probabilities = [0.15_f32, 0.2, 0.35, 0.3, 0.4, 0.1, 0.2, 0.3];
 		let expert_indices = [2_i32, 0, 3, 1];
@@ -384,14 +388,14 @@ test_vk!(
 	}
 );
 
-test_vk!(moe_route_weights_rejects_invalid_contracts, engine, {
-	let other_engine = oa::Engine::new()?;
+test_vk!(moe_route_weights_rejects_invalid_contracts, runtime, {
+	let other_runtime = oa::Runtime::new()?;
 	let probabilities = oa::Matrix::new_from_f32([2, 4], &[0.25; 8])?;
 	let rank_one = oa::Matrix::new_from_f32([8], &[0.25; 8])?;
 	let indices = oa::Matrix::new_from_slice([2, 2], &[0_i32, 1, 2, 3])?;
 	let too_many = oa::Matrix::new_from_slice([2, 5], &[0_i32; 10])?;
 	let unsigned = oa::Matrix::new_from_slice([2, 2], &[0_u32, 1, 2, 3])?;
-	let foreign = oa::Matrix::new_from_slice_on(&other_engine, [2, 2], &[0_i32, 1, 2, 3])?;
+	let foreign = oa::Matrix::new_from_slice_on(&other_runtime, [2, 2], &[0_i32, 1, 2, 3])?;
 	for result in [
 		oa::ml::matrix::moe_route_weights(&rank_one, &indices),
 		oa::ml::matrix::moe_route_weights(&probabilities, &too_many),
@@ -409,7 +413,7 @@ test_vk!(moe_route_weights_rejects_invalid_contracts, engine, {
 	Ok(())
 });
 
-test_vk!(moe_pack_and_combine_match_stable_route_oracle, engine, {
+test_vk!(moe_pack_and_combine_match_stable_route_oracle, runtime, {
 	let input = oa::Matrix::new_from_f32([3, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
 	let expert_indices = oa::Matrix::new_from_slice([3, 2], &[2_i32, 0, 1, 2, 0, 1])?;
 	let plan = oa::matrix::moe_expert_plan(&expert_indices, 3)?;
@@ -426,7 +430,7 @@ test_vk!(moe_pack_and_combine_match_stable_route_oracle, engine, {
 	Ok(())
 });
 
-test_vk!(moe_pack_and_combine_reverse_matches_closed_form, engine, {
+test_vk!(moe_pack_and_combine_reverse_matches_closed_form, runtime, {
 	let input_values = [1.0_f32, -2.0, 0.5, 3.0, -1.0, 2.0];
 	let gate_values = [0.2_f32, 0.8, 0.6, 0.4, 0.3, 0.7];
 	let target = [0.0_f32, 1.0, -1.0, 2.0, 0.5, -0.5];
@@ -483,7 +487,7 @@ test_vk!(moe_pack_and_combine_reverse_matches_closed_form, engine, {
 	Ok(())
 });
 
-test_vk!(moe_pack_and_combine_reject_invalid_contracts, engine, {
+test_vk!(moe_pack_and_combine_reject_invalid_contracts, runtime, {
 	let input = oa::Matrix::new_from_f32([2, 3], &[1.0; 6])?;
 	let packed_token = oa::Matrix::new_from_slice([4], &[0_u32, 1, 0, 1])?;
 	let inverse = oa::Matrix::new_from_slice([4], &[0_u32, 2, 1, 3])?;
@@ -523,7 +527,7 @@ test_vk!(moe_pack_and_combine_reject_invalid_contracts, engine, {
 
 test_vk!(
 	grouped_linear_m_matches_variable_expert_row_oracle,
-	engine,
+	runtime,
 	{
 		let input = [
 			1.0_f32, -2.0, 0.5, 3.0, -1.0, 2.0, 4.0, 0.25, -0.5, -1.5, 2.5, 1.0,
@@ -539,20 +543,20 @@ test_vk!(
 		let bias = oa::Matrix::new_from_f32([3, 2], &bias)?;
 		let offsets = oa::Matrix::new_from_slice([4], &offsets)?;
 		let (plan, output) =
-			engine.capture(|| oa::ml::matrix::grouped_linear_m(&input, &weight, &bias, &offsets))?;
+			runtime.capture(|| oa::ml::matrix::grouped_linear_m(&input, &weight, &bias, &offsets))?;
 		assert_eq!(output.shape(), [6, 2]);
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
 			"oa::FnMatrix::groupedLinearM"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_close(&output.read_f32()?, &expected, 2.0e-5);
 		Ok(())
 	}
 );
 
-test_vk!(grouped_linear_m_reverse_matches_closed_form, engine, {
+test_vk!(grouped_linear_m_reverse_matches_closed_form, runtime, {
 	let input_values = [
 		1.0_f32, -2.0, 0.5, 3.0, -1.0, 2.0, 4.0, 0.25, -0.5, -1.5, 2.5, 1.0,
 	];
@@ -642,7 +646,7 @@ test_vk!(grouped_linear_m_reverse_matches_closed_form, engine, {
 	Ok(())
 });
 
-test_vk!(grouped_linear_m_rejects_invalid_contracts, engine, {
+test_vk!(grouped_linear_m_rejects_invalid_contracts, runtime, {
 	let input = oa::Matrix::new_from_f32([4, 2], &[1.0; 8])?;
 	let weight = oa::Matrix::new_from_f32([2, 3, 2], &[0.5; 12])?;
 	let bias = oa::Matrix::new_from_f32([2, 3], &[0.0; 6])?;
@@ -666,7 +670,7 @@ test_vk!(grouped_linear_m_rejects_invalid_contracts, engine, {
 	Ok(())
 });
 
-test_vk!(sparse_moe_matches_independent_cpu_oracle, engine, {
+test_vk!(sparse_moe_matches_independent_cpu_oracle, runtime, {
 	const TOKENS: usize = 5;
 	const MODEL_WIDTH: usize = 2;
 	const HIDDEN_WIDTH: usize = 2;
@@ -732,7 +736,7 @@ test_vk!(sparse_moe_matches_independent_cpu_oracle, engine, {
 
 test_vk!(
 	sparse_moe_reverse_matches_end_to_end_finite_differences,
-	engine,
+	runtime,
 	{
 		use oa::ml::Module as _;
 
@@ -937,7 +941,7 @@ test_vk!(
 
 test_vk!(
 	dense_and_sparse_moe_match_forward_and_expert_gradients,
-	engine,
+	runtime,
 	{
 		use oa::ml::Module as _;
 
@@ -1004,8 +1008,8 @@ test_vk!(
 );
 
 test_vk!(
-	mat_mul_nt_and_reciprocal_reverse_match_closed_form,
-	engine,
+	matmul_nt_and_reciprocal_reverse_match_closed_form,
+	runtime,
 	{
 		let left_values = [1.0_f32, 2.0, 3.0, 4.0];
 		let right_values = [2.0_f32, 1.0, 1.0, 3.0];
@@ -1017,7 +1021,7 @@ test_vk!(
 		let tape = oa::ml::GradientTape::new();
 		let left_matrix = left.forward(&rows)?;
 		let right_matrix = right.forward(&rows)?;
-		let product = oa::matrix::mat_mul_nt(&left_matrix, &right_matrix)?;
+		let product = oa::matrix::matmul(&left_matrix, &right_matrix)?;
 		let reciprocal = oa::matrix::reciprocal(&product)?;
 		let loss = oa::matrix::sum(&oa::matrix::sum(&reciprocal, 0)?, 1)?.reshape([])?;
 		tape.backward(&loss)?;
@@ -1042,7 +1046,7 @@ test_vk!(
 			&left
 				.weight()
 				.gradient()
-				.expect("left MatMulNt gradient is missing")
+				.expect("left MatmulNt gradient is missing")
 				.read_f32()?,
 			&expected_left,
 			1.0e-6,
@@ -1051,7 +1055,7 @@ test_vk!(
 			&right
 				.weight()
 				.gradient()
-				.expect("right MatMulNt gradient is missing")
+				.expect("right MatmulNt gradient is missing")
 				.read_f32()?,
 			&expected_right,
 			1.0e-6,
@@ -1062,7 +1066,7 @@ test_vk!(
 
 test_vk!(
 	moe_configuration_clamps_routes_and_rejects_invalid_layouts,
-	engine,
+	runtime,
 	{
 		let low = oa::ml::nn::Moe::new_with_seed(4, 3, 3, 0, 1.0e-5, 7)?;
 		let high = oa::ml::nn::Moe::new_with_seed(4, 3, 3, 99, 1.0e-5, 7)?;
@@ -1079,7 +1083,7 @@ test_vk!(
 	}
 );
 
-test_vk!(moe_route_stats_reduce_only_expert_vectors, engine, {
+test_vk!(moe_route_stats_reduce_only_expert_vectors, runtime, {
 	let moe = oa::ml::nn::Moe::new_from_matrices(
 		oa::Matrix::new_from_f32([2], &[1.0, 1.0])?,
 		oa::Matrix::new_from_f32([4, 2], &[0.0; 8])?,
@@ -1111,7 +1115,7 @@ test_vk!(moe_route_stats_reduce_only_expert_vectors, engine, {
 
 test_vk!(
 	moe_routing_bias_is_persistent_and_changes_selection_only,
-	engine,
+	runtime,
 	{
 		use oa::ml::Module as _;
 
@@ -1173,57 +1177,63 @@ test_vk!(
 	}
 );
 
-test_vk!(broadcast_add_adjoint_reduces_to_each_input_shape, engine, {
-	let left_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-		[2, 3],
-		&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-	)?)?;
-	let right_parameter =
-		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([1, 3], &[10.0, 20.0, 30.0])?)?;
-	let left_rows = oa::Matrix::new_from_slice([2], &[0_u32, 1])?;
-	let right_rows = oa::Matrix::new_from_slice([1], &[0_u32])?;
-	let tape = oa::ml::GradientTape::new();
-	let left = left_parameter.forward(&left_rows)?;
-	let right = right_parameter.forward(&right_rows)?;
-	let output = oa::matrix::add(&left, &right)?;
-	let target = oa::Matrix::new_from_f32([2, 3], &[0.0; 6])?;
-	let loss = oa::ml::loss::mse(&output, &target)?;
-	tape.backward(&loss)?;
+test_vk!(
+	broadcast_add_adjoint_reduces_to_each_input_shape,
+	runtime,
+	{
+		let left_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			[2, 3],
+			&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+		)?)?;
+		let right_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			[1, 3],
+			&[10.0, 20.0, 30.0],
+		)?)?;
+		let left_rows = oa::Matrix::new_from_slice([2], &[0_u32, 1])?;
+		let right_rows = oa::Matrix::new_from_slice([1], &[0_u32])?;
+		let tape = oa::ml::GradientTape::new();
+		let left = left_parameter.forward(&left_rows)?;
+		let right = right_parameter.forward(&right_rows)?;
+		let output = oa::matrix::add(&left, &right)?;
+		let target = oa::Matrix::new_from_f32([2, 3], &[0.0; 6])?;
+		let loss = oa::ml::loss::mse(&output, &target)?;
+		tape.backward(&loss)?;
 
-	let expected_left = output
-		.read_f32()?
-		.into_iter()
-		.map(|value| value / 3.0)
-		.collect::<Vec<_>>();
-	let expected_right = vec![
-		expected_left[0] + expected_left[3],
-		expected_left[1] + expected_left[4],
-		expected_left[2] + expected_left[5],
-	];
-	assert_close(
-		&left_parameter
-			.weight()
-			.gradient()
-			.expect("left broadcast gradient is missing")
-			.read_f32()?,
-		&expected_left,
-		3.0e-6,
-	);
-	assert_close(
-		&right_parameter
-			.weight()
-			.gradient()
-			.expect("right broadcast gradient is missing")
-			.read_f32()?,
-		&expected_right,
-		3.0e-6,
-	);
-	Ok(())
-});
+		let expected_left = output
+			.read_f32()?
+			.into_iter()
+			.map(|value| value / 3.0)
+			.collect::<Vec<_>>();
+		let expected_right = vec![
+			expected_left[0] + expected_left[3],
+			expected_left[1] + expected_left[4],
+			expected_left[2] + expected_left[5],
+		];
+		assert_close(
+			&left_parameter
+				.weight()
+				.gradient()
+				.expect("left broadcast gradient is missing")
+				.read_f32()?,
+			&expected_left,
+			3.0e-6,
+		);
+		assert_close(
+			&right_parameter
+				.weight()
+				.gradient()
+				.expect("right broadcast gradient is missing")
+				.read_f32()?,
+			&expected_right,
+			3.0e-6,
+		);
+		Ok(())
+	}
+);
 
 test_vk!(
 	moe_balancing_losses_are_normalized_differentiable_and_reset,
-	engine,
+	runtime,
 	{
 		use oa::ml::Module as _;
 
@@ -1289,7 +1299,7 @@ test_vk!(
 
 test_vk!(
 	moe_shared_expert_is_registered_always_on_and_trainable,
-	engine,
+	runtime,
 	{
 		use oa::ml::Module as _;
 

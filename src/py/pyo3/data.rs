@@ -6,7 +6,7 @@ use std::sync::Arc;
 use oa::data::Dataset;
 use pyo3::{exceptions::PyValueError, prelude::*};
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 #[pyclass(name = "UnixTimeUnit", eq, eq_int)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -255,24 +255,24 @@ impl PythonOhlcvWindows {
 	}
 }
 
-/// Device adapter retaining the existing Engine, never a second runtime owner.
+/// Device adapter retaining the existing Runtime, never a second runtime owner.
 #[pyclass(name = "OhlcvDataset", unsendable)]
 pub(crate) struct PythonOhlcvDataset {
-	engine: Py<PythonEngine>,
+	runtime: Py<PythonRuntime>,
 	windows: PythonOhlcvWindows,
 }
 
 #[pymethods]
 impl PythonOhlcvDataset {
 	#[new]
-	#[pyo3(signature = (windows, engine=None))]
+	#[pyo3(signature = (windows, runtime=None))]
 	fn new(
 		py: Python<'_>,
 		windows: &PythonOhlcvWindows,
-		engine: Option<Py<PythonEngine>>,
+		runtime: Option<Py<PythonRuntime>>,
 	) -> PyResult<Self> {
 		Ok(Self {
-			engine: PythonEngine::resolve_owned(py, engine)?,
+			runtime: PythonRuntime::resolve_owned(py, runtime)?,
 			windows: windows.clone(),
 		})
 	}
@@ -282,9 +282,9 @@ impl PythonOhlcvDataset {
 	}
 
 	fn get_item(&self, py: Python<'_>, index: i64) -> PyResult<PythonMatrix> {
-		let engine = self.engine.borrow(py);
+		let runtime = self.runtime.borrow(py);
 		let windows = self.windows.native_window(index)?;
-		oa::OhlcvDataset::new(&engine.inner, windows)
+		oa::OhlcvDataset::new(&runtime.inner, windows)
 			.get_item(0)
 			.map(PythonMatrix::wrap)
 			.map_err(python_error)
@@ -295,9 +295,9 @@ impl PythonOhlcvDataset {
 		py: Python<'_>,
 		index: i64,
 	) -> PyResult<(PythonMatrix, Option<PythonMatrix>)> {
-		let engine = self.engine.borrow(py);
+		let runtime = self.runtime.borrow(py);
 		let windows = self.windows.native_window(index)?;
-		let sample = oa::OhlcvDataset::new(&engine.inner, windows)
+		let sample = oa::OhlcvDataset::new(&runtime.inner, windows)
 			.get_sample(0)
 			.map_err(python_error)?;
 		Ok((
@@ -327,13 +327,13 @@ impl PythonMatrixDataset {
 		usize::try_from(self.inner.len()).unwrap_or(usize::MAX)
 	}
 
-	/// Full `[N, ...]` feature matrix on the owning engine.
+	/// Full `[N, ...]` feature matrix on the owning runtime.
 	#[getter]
 	fn x(&self) -> PythonMatrix {
 		PythonMatrix::wrap(self.inner.x().clone())
 	}
 
-	/// Full `[N]` label matrix on the owning engine.
+	/// Full `[N]` label matrix on the owning runtime.
 	#[getter]
 	fn y(&self) -> PythonMatrix {
 		PythonMatrix::wrap(self.inner.y().clone())

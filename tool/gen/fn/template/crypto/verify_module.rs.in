@@ -27,7 +27,7 @@ use crate::{
 ///
 /// # Errors
 ///
-/// Returns an error for mismatched shapes, dtypes, engines, address limits, or
+/// Returns an error for mismatched shapes, dtypes, runtimes, address limits, or
 /// an unavailable Vulkan pipeline. Out-of-range message offsets and lengths
 /// produce `0` for that row without host readback of the offset/length vectors.
 ///
@@ -61,7 +61,7 @@ pub fn verify_batch(
 ///
 /// # Errors
 ///
-/// Rejects mismatched shapes, dtypes, engines, address limits, or unavailable
+/// Rejects mismatched shapes, dtypes, runtimes, address limits, or unavailable
 /// Vulkan pipelines. Malformed encodings and out-of-range message rows return
 /// zero on the device. This Experimental public-data operation does not admit
 /// private-key execution or claim physical-device qualification.

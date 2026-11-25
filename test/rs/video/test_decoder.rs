@@ -1,7 +1,7 @@
 use std::any::TypeId;
 
 use oa::{
-	Engine, VideoDecoder, VideoDemuxer,
+	Runtime, VideoDecoder, VideoDemuxer,
 	video::{
 		Av1ObuType, Av1ReferenceState, VideoPixelFormat, parse_av1_frame_header, parse_av1_obus,
 		parse_av1_sequence_header,
@@ -80,17 +80,17 @@ fn root_decoder_export_is_the_video_session_identity() {
 #[test]
 #[ignore = "requires Vulkan H.264 hardware and the OA donor fixture"]
 fn native_decoder_retains_planes_until_consumer_completion() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 		.with_file_name("oa")
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_h264_high_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::new(&engine, info)?;
-	let mut foreign_decoder = VideoDecoder::new(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&runtime, info)?;
+	let mut foreign_decoder = VideoDecoder::new(&runtime, info)?;
 	let mut decoded = 0_usize;
 	let mut decoded_frames = Vec::new();
-	let before_decode = engine.checkpoint()?;
+	let before_decode = runtime.checkpoint()?;
 	let mut checked_event_order = false;
 
 	while let Some(packet) = demuxer.read_next_packet()? {
@@ -120,14 +120,14 @@ fn native_decoder_retains_planes_until_consumer_completion() -> oa::Result<()> {
 			checked_event_order = true;
 		}
 		decoded_frames.push(pixels);
-		let consumer = engine.checkpoint()?;
+		let consumer = runtime.checkpoint()?;
 		frame.mark_consumed(&consumer)?;
 		drop(frame);
 		decoded += 1;
 	}
 	for frame in decoder.flush()? {
 		decoded_frames.push(decoder.read_native_yuv420p(&frame)?);
-		let consumer = engine.checkpoint()?;
+		let consumer = runtime.checkpoint()?;
 		frame.mark_consumed(&consumer)?;
 		drop(frame);
 		decoded += 1;
@@ -151,13 +151,13 @@ fn native_decoder_retains_planes_until_consumer_completion() -> oa::Result<()> {
 #[test]
 #[ignore = "requires Vulkan H.265 hardware and the OA donor fixture"]
 fn native_h265_decoder_retains_planes_without_host_materialization() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 		.with_file_name("oa")
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_h265_main_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::new(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&runtime, info)?;
 	let mut decoded = 0_usize;
 	let mut decoded_frames = Vec::new();
 	let mut retained = None;
@@ -195,7 +195,7 @@ fn native_h265_decoder_retains_planes_without_host_materialization() -> oa::Resu
 	}
 	decoder.close();
 	drop(decoder);
-	drop(engine);
+	drop(runtime);
 	let retained = retained.expect("the reordered stream must retain a flush tail");
 	assert_eq!(retained.width(), info.width() as usize);
 	assert!(
@@ -210,13 +210,13 @@ fn native_h265_decoder_retains_planes_without_host_materialization() -> oa::Resu
 #[test]
 #[ignore = "requires Vulkan H.265 hardware, OA donor fixture, and FFmpeg"]
 fn public_decoder_matches_complete_h265_ffmpeg_stream() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 		.with_file_name("oa")
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_h265_main_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::new(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&runtime, info)?;
 	let mut decoded_frames = Vec::new();
 	while let Some(packet) = demuxer.read_next_packet()? {
 		let Some(frame) = decoder.decode(&packet)? else {
@@ -293,13 +293,13 @@ fn public_decoder_matches_complete_h265_ffmpeg_stream() -> oa::Result<()> {
 #[test]
 #[ignore = "requires Vulkan AV1 hardware, OA donor fixture, and FFmpeg"]
 fn public_decoder_matches_complete_av1_ffmpeg_stream() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 		.with_file_name("oa")
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_av1_main_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::new(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&runtime, info)?;
 	let mut decoded_frames = Vec::new();
 	while let Some(packet) = demuxer.read_next_packet()? {
 		if let Some(frame) = decoder.decode(&packet)? {
@@ -330,9 +330,9 @@ fn public_decoder_matches_complete_av1_ffmpeg_stream() -> oa::Result<()> {
 }
 
 #[test]
-#[ignore = "probe: does a first AV1 pass warm the AVP engine for the second?"]
+#[ignore = "probe: does a first AV1 pass warm the AVP runtime for the second?"]
 fn av1_second_pass_probe() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = std::env::var_os("OA_AV1_FIXTURE")
 		.map(std::path::PathBuf::from)
 		.unwrap_or_else(|| {
@@ -370,7 +370,7 @@ fn av1_second_pass_probe() -> oa::Result<()> {
 			}
 		}
 		demuxer.seek(0)?;
-		let mut decoder = VideoDecoder::new(&engine, info)?;
+		let mut decoder = VideoDecoder::new(&runtime, info)?;
 		let mut decoded_frames: Vec<Vec<u8>> = Vec::new();
 		if std::env::var_os("OA_AV1_NATIVE").is_some() {
 			while let Some(packet) = demuxer.read_next_packet()? {
@@ -447,7 +447,7 @@ fn av1_second_pass_probe() -> oa::Result<()> {
 #[test]
 #[ignore = "requires four Vulkan decode codecs and FFmpeg; OA_VIDEO_FIXTURE optionally selects one clip"]
 fn video_fixture_probe() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixtures = if let Some(path) = std::env::var_os("OA_VIDEO_FIXTURE") {
 		vec![std::path::PathBuf::from(path)]
 	} else {
@@ -466,18 +466,18 @@ fn video_fixture_probe() -> oa::Result<()> {
 		paths
 	};
 	for fixture in fixtures {
-		assert_video_fixture(&engine, &fixture)?;
+		assert_video_fixture(&runtime, &fixture)?;
 	}
 	Ok(())
 }
 
-fn assert_video_fixture(engine: &Engine, fixture: &std::path::Path) -> oa::Result<()> {
+fn assert_video_fixture(runtime: &Runtime, fixture: &std::path::Path) -> oa::Result<()> {
 	let reference = ffmpeg_yuv420(fixture);
 	for pass in 0..2 {
 		let mut demuxer = VideoDemuxer::open(fixture)?;
 		let info = demuxer.info();
 		demuxer.seek(0)?;
-		let mut decoder = VideoDecoder::new(engine, info)?;
+		let mut decoder = VideoDecoder::new(runtime, info)?;
 		let mut decoded_frames: Vec<Vec<u8>> = Vec::new();
 		let mut decode_error = None;
 		while let Some(packet) = demuxer.read_next_packet()? {
@@ -578,13 +578,13 @@ fn assert_video_fixture(engine: &Engine, fixture: &std::path::Path) -> oa::Resul
 #[test]
 #[ignore = "requires Vulkan AV1 hardware, OA donor fixture, and FFmpeg"]
 fn native_av1_decoder_retains_and_reuses_reference_slots() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 		.with_file_name("oa")
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_av1_main_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::new(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&runtime, info)?;
 	let mut decoded_frames = Vec::new();
 	let mut retained = None;
 	while let Some(packet) = demuxer.read_next_packet()? {
@@ -627,13 +627,13 @@ fn native_av1_decoder_retains_and_reuses_reference_slots() -> oa::Result<()> {
 #[test]
 #[ignore = "requires Vulkan VP9 hardware, OA donor fixture, and FFmpeg"]
 fn public_decoder_matches_complete_vp9_ffmpeg_stream() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 		.with_file_name("oa")
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_vp9_profile0_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::new(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&runtime, info)?;
 	let mut decoded_frames = Vec::new();
 	while let Some(packet) = demuxer.read_next_packet()? {
 		if let Some(frame) = decoder.decode(&packet)? {
@@ -664,13 +664,13 @@ fn public_decoder_matches_complete_vp9_ffmpeg_stream() -> oa::Result<()> {
 #[test]
 #[ignore = "requires Vulkan VP9 hardware, OA donor fixture, and FFmpeg"]
 fn native_vp9_decoder_retains_and_reuses_reference_slots() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 		.with_file_name("oa")
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_vp9_profile0_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::new(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&runtime, info)?;
 	let mut decoded_frames = Vec::new();
 	let mut retained = None;
 	while let Some(packet) = demuxer.read_next_packet()? {
@@ -712,13 +712,13 @@ fn native_vp9_decoder_retains_and_reuses_reference_slots() -> oa::Result<()> {
 #[test]
 #[ignore = "requires Vulkan H.264 hardware, OA donor fixture, and FFmpeg"]
 fn public_decoder_matches_complete_h264_ffmpeg_stream() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 		.with_file_name("oa")
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_h264_high_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::new(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&runtime, info)?;
 	let mut decoded_frames = Vec::new();
 	while let Some(packet) = demuxer.read_next_packet()? {
 		if let Some(frame) = decoder.decode(&packet)? {
@@ -792,15 +792,15 @@ fn public_decoder_matches_complete_h264_ffmpeg_stream() -> oa::Result<()> {
 #[test]
 #[ignore = "requires Vulkan H.264 hardware and the OA donor fixture"]
 fn decoder_rejects_work_inside_capture_and_can_retry_the_same_packet() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_h264_baseline_8bit_420.mp4");
 	let mut demuxer = VideoDemuxer::open(fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::new(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&runtime, info)?;
 	let first = demuxer.read_next_packet()?.expect("first access unit");
 
-	let error = engine
+	let error = runtime
 		.capture(|| decoder.decode_native(&first))
 		.err()
 		.expect("decode inside capture must fail");
@@ -815,7 +815,7 @@ fn decoder_rejects_work_inside_capture_and_can_retry_the_same_packet() -> oa::Re
 		frame = decoder.decode_native(&packet)?;
 	}
 	let frame = frame.expect("native output");
-	let error = engine
+	let error = runtime
 		.capture(|| decoder.read_native_yuv420p(&frame))
 		.unwrap_err();
 	assert_eq!(error.kind(), oa::ErrorKind::FailedPrecondition);
@@ -845,13 +845,13 @@ fn retained_p010_planes_replay_across_queue_families() -> oa::Result<()> {
 fn retained_native_planes_replay(profile: &str, pixel_format: &str) -> oa::Result<()> {
 	use oa::video::VideoMatrixConfig;
 
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
 		"sdk/asset/video/clip/shibuya_720p_30fps_{profile}_420.mp4"
 	));
 	let mut demuxer = VideoDemuxer::open(&fixture)?;
 	let info = demuxer.info();
-	let mut decoder = VideoDecoder::new(&engine, info)?;
+	let mut decoder = VideoDecoder::new(&runtime, info)?;
 	let frame = loop {
 		let packet = demuxer
 			.read_next_packet()?
@@ -904,7 +904,7 @@ fn retained_native_planes_replay(profile: &str, pixel_format: &str) -> oa::Resul
 	);
 
 	let (plan, staged) =
-		engine.capture(|| decoder.stage_native_planes(&frame)?.to_matrix(&config))?;
+		runtime.capture(|| decoder.stage_native_planes(&frame)?.to_matrix(&config))?;
 	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("native planes"))
 		.expect("valid executable graph report");
 	let transfers = plan.diagnostics().ownership_transfer_count();
@@ -918,8 +918,8 @@ fn retained_native_planes_replay(profile: &str, pixel_format: &str) -> oa::Resul
 
 	decoder.close();
 	drop(frame);
-	let first = engine.submit(&plan)?;
-	let second = engine.submit(&plan)?;
+	let first = runtime.submit(&plan)?;
+	let second = runtime.submit(&plan)?;
 	second.wait()?;
 	assert!(first.is_complete()?);
 	assert_eq!(staged.read_f32()?, reference, "{profile}");
@@ -930,7 +930,7 @@ fn retained_native_planes_replay(profile: &str, pixel_format: &str) -> oa::Resul
 #[test]
 #[ignore = "requires Vulkan Video hardware, OA fixtures, and FFmpeg"]
 fn recorded_avc_hevc_av1_packets_replay_through_compute() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	for profile in [
 		"h264_baseline_8bit",
 		"h264_main_8bit",
@@ -940,7 +940,7 @@ fn recorded_avc_hevc_av1_packets_replay_through_compute() -> oa::Result<()> {
 		"av1_main_8bit",
 		"av1_main_10bit",
 	] {
-		recorded_video_replay(&engine, profile).unwrap_or_else(|error| panic!("{profile}: {error:?}"));
+		recorded_video_replay(&runtime, profile).unwrap_or_else(|error| panic!("{profile}: {error:?}"));
 	}
 	Ok(())
 }
@@ -948,9 +948,9 @@ fn recorded_avc_hevc_av1_packets_replay_through_compute() -> oa::Result<()> {
 #[test]
 #[ignore = "requires VP9 Vulkan Video capture support, OA fixtures, and FFmpeg"]
 fn recorded_vp9_packets_replay_through_compute() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	for profile in ["vp9_profile0_8bit", "vp9_profile2_10bit"] {
-		recorded_video_replay(&engine, profile).unwrap_or_else(|error| panic!("{profile}: {error:?}"));
+		recorded_video_replay(&runtime, profile).unwrap_or_else(|error| panic!("{profile}: {error:?}"));
 	}
 	Ok(())
 }
@@ -958,8 +958,8 @@ fn recorded_vp9_packets_replay_through_compute() -> oa::Result<()> {
 #[test]
 #[ignore = "requires an Intel ANV driver older than Mesa 26.3"]
 fn recorded_vp9_rejects_host_probability_updates() -> oa::Result<()> {
-	let engine = Engine::new()?;
-	let info = engine.device_info();
+	let runtime = Runtime::new()?;
+	let info = runtime.device_info();
 	// The rejection only applies to ANV builds older than Mesa 26.3, where
 	// the driver still rewrites mapped VP9 probability tables on the host
 	// during command recording. Other drivers, and ANV 26.3+ with the
@@ -972,9 +972,9 @@ fn recorded_vp9_rejects_host_probability_updates() -> oa::Result<()> {
 	let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_vp9_profile0_8bit_420.mp4");
 	let mut demux = VideoDemuxer::open(&fixture)?;
-	let mut decoder = VideoDecoder::new(&engine, demux.info())?;
+	let mut decoder = VideoDecoder::new(&runtime, demux.info())?;
 	let packet = demux.read_next_packet()?.expect("fixture key picture");
-	let capture = engine.capture(|| decoder.record_to_planes(std::slice::from_ref(&packet)));
+	let capture = runtime.capture(|| decoder.record_to_planes(std::slice::from_ref(&packet)));
 	assert_eq!(
 		capture
 			.err()
@@ -986,13 +986,13 @@ fn recorded_vp9_rejects_host_probability_updates() -> oa::Result<()> {
 	Ok(())
 }
 
-fn recorded_video_replay(engine: &Engine, profile: &str) -> oa::Result<()> {
+fn recorded_video_replay(runtime: &Runtime, profile: &str) -> oa::Result<()> {
 	let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
 		"sdk/asset/video/clip/shibuya_720p_30fps_{profile}_420.mp4"
 	));
 	let mut demux = VideoDemuxer::open(&fixture)?;
 	let info = demux.info();
-	let mut decoder = VideoDecoder::new(engine, info)?;
+	let mut decoder = VideoDecoder::new(runtime, info)?;
 	let mut packets = Vec::new();
 	while let Some(packet) = demux.read_next_packet()? {
 		packets.push(packet);
@@ -1006,7 +1006,7 @@ fn recorded_video_replay(engine: &Engine, profile: &str) -> oa::Result<()> {
 		size: Some((37, 21)),
 		..Default::default()
 	};
-	let (plan, outputs) = engine.capture(|| {
+	let (plan, outputs) = runtime.capture(|| {
 		assert_eq!(
 			decoder
 				.record_to_planes(&packets[1..])
@@ -1062,8 +1062,8 @@ fn recorded_video_replay(engine: &Engine, profile: &str) -> oa::Result<()> {
 	decoder.close();
 	drop(packets);
 
-	let first = engine.submit(&plan)?;
-	let second = engine.submit(&plan)?;
+	let first = runtime.submit(&plan)?;
+	let second = runtime.submit(&plan)?;
 	second.wait()?;
 	assert!(first.is_complete()?);
 	first.wait()?;

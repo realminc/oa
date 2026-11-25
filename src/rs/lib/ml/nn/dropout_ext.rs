@@ -20,7 +20,7 @@ fn channel_mask(
 	let shape = input.shape();
 	let mask_shape = shape[..2].to_vec();
 	let ones = Matrix::new_from_slice_handle(
-		input.engine_handle(),
+		input.runtime(),
 		mask_shape.clone(),
 		&vec![1.0_f32; mask_shape.iter().product()],
 	)?;
@@ -155,7 +155,7 @@ fn alpha_dropout_apply(input: &Matrix, raw_mask: &Matrix, probability: f32) -> R
 /// Recover the raw `{0, 1}` keep mask from `matrix::dropout`'s scaled mask.
 fn raw_mask(keep_shape: &[usize], input: &Matrix, probability: f32, seed: u64) -> Result<Matrix> {
 	let ones = Matrix::new_from_slice_handle(
-		input.engine_handle(),
+		input.runtime(),
 		keep_shape.to_vec(),
 		&vec![1.0_f32; keep_shape.iter().product()],
 	)?;

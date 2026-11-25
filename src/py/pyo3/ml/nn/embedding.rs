@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::super::autograd::PythonParameter;
 
@@ -18,10 +18,10 @@ impl PythonEmbedding {
 		num_embeddings: usize,
 		embedding_dim: usize,
 		seed: u64,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::nn::Embedding::new_with_seed_on(&engine, num_embeddings, embedding_dim, seed)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::nn::Embedding::new_with_seed_on(&runtime, num_embeddings, embedding_dim, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

@@ -68,7 +68,7 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 	}
 }
 
-test_vk!(lstm_forward_matches_the_host_reference, engine, {
+test_vk!(lstm_forward_matches_the_host_reference, runtime, {
 	let input = oa::Matrix::new_from_f32(
 		[2, 3, 2],
 		&[
@@ -131,7 +131,7 @@ test_vk!(lstm_forward_matches_the_host_reference, engine, {
 	Ok(())
 });
 
-test_vk!(lstm_backward_produces_all_parameter_gradients, engine, {
+test_vk!(lstm_backward_produces_all_parameter_gradients, runtime, {
 	let layer = oa::ml::nn::Lstm::new_with_seed(2, 3, 1, true, 0x4c53_544d_0001)?;
 	let input = oa::Matrix::new_from_f32([2, 4, 2], &[0.3; 16])?;
 	let tape = oa::ml::GradientTape::new();
@@ -152,7 +152,7 @@ test_vk!(lstm_backward_produces_all_parameter_gradients, engine, {
 	Ok(())
 });
 
-test_vk!(lstm_cell_step_matches_the_scan_first_state, engine, {
+test_vk!(lstm_cell_step_matches_the_scan_first_state, runtime, {
 	let weight_ih = oa::Matrix::new_from_f32([8, 2], &[0.1; 16])?;
 	let weight_hh = oa::Matrix::new_from_f32([8, 2], &[0.05; 16])?;
 	let bias_ih = oa::Matrix::new_from_f32([8], &[0.02; 8])?;

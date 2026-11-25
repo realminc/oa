@@ -22,7 +22,7 @@ struct ContinuousRange {
 ///
 /// Returns an error when logits are not FP32 `[E,A]` with `E > 0` and `A > 1`,
 /// actions are not I32 `[E]`, values are not FP32 `[E]`, inputs do not share
-/// one engine, or composite lowering fails.
+/// one runtime, or composite lowering fails.
 pub fn evaluate_categorical(
 	logits: &Matrix,
 	action: &Matrix,
@@ -34,7 +34,7 @@ pub fn evaluate_categorical(
 		Some(action),
 		value,
 	)?;
-	let lowering = logits.engine_handle().begin_semantic_lowering()?;
+	let lowering = logits.runtime().begin_semantic_lowering()?;
 	let result = evaluate_categorical_lowering(logits, action, value)?;
 	let inputs = [logits, action, value];
 	let outputs = [
@@ -61,7 +61,7 @@ pub fn evaluate_categorical(
 /// # Errors
 ///
 /// Returns an error when logits are not FP32 `[E,A]` with `E > 0` and `A > 1`,
-/// values are not FP32 `[E]` on the same engine, or composite lowering fails.
+/// values are not FP32 `[E]` on the same runtime, or composite lowering fails.
 pub fn sample_categorical(logits: &Matrix, value: &Matrix, seed: u64) -> Result<PolicyResult> {
 	validate_categorical(
 		crate::core::operation::ml::SAMPLE_CATEGORICAL.name(),
@@ -69,7 +69,7 @@ pub fn sample_categorical(logits: &Matrix, value: &Matrix, seed: u64) -> Result<
 		None,
 		value,
 	)?;
-	let lowering = logits.engine_handle().begin_semantic_lowering()?;
+	let lowering = logits.runtime().begin_semantic_lowering()?;
 	let action = matrix::sample_logits(logits, 1.0, 0, 1.0, seed)?;
 	let result = evaluate_categorical(logits, &action, value)?;
 	let inputs = [logits, value];
@@ -103,7 +103,7 @@ pub fn sample_categorical(logits: &Matrix, value: &Matrix, seed: u64) -> Result<
 ///
 /// Returns an error when mean, log-standard-deviation, and raw-action are not
 /// matching nonempty FP32 `[E,A]` matrices, value is not FP32 `[E]`, inputs do
-/// not share one engine, bounds/epsilon are invalid, a size exceeds the shader
+/// not share one runtime, bounds/epsilon are invalid, a size exceeds the shader
 /// ABI, or composite lowering fails.
 pub fn evaluate_tanh_normal(
 	mean: &Matrix,
@@ -128,7 +128,7 @@ pub fn evaluate_tanh_normal(
 		value,
 		range,
 	)?;
-	let lowering = mean.engine_handle().begin_semantic_lowering()?;
+	let lowering = mean.runtime().begin_semantic_lowering()?;
 	let result = evaluate_tanh_normal_lowering(mean, log_stddev, raw_action, value, range)?;
 	let inputs = [mean, log_stddev, raw_action, value];
 	let outputs = [
@@ -158,7 +158,7 @@ pub fn evaluate_tanh_normal(
 /// # Errors
 ///
 /// Returns an error when mean/log-standard-deviation are not matching nonempty
-/// FP32 `[E,A]` matrices, value is not FP32 `[E]` on the same engine,
+/// FP32 `[E,A]` matrices, value is not FP32 `[E]` on the same runtime,
 /// bounds/epsilon are invalid, a size exceeds the shader ABI, or composite
 /// lowering fails.
 pub fn sample_tanh_normal(
@@ -177,7 +177,7 @@ pub fn sample_tanh_normal(
 		epsilon,
 	};
 	validate_continuous(CONTRACT.name(), mean, log_stddev, None, value, range)?;
-	let lowering = mean.engine_handle().begin_semantic_lowering()?;
+	let lowering = mean.runtime().begin_semantic_lowering()?;
 	let clamped_log_stddev = matrix::clamp_max(&matrix::clamp_min(log_stddev, -20.0)?, 2.0)?;
 	let noise = matrix::philox_normal(mean, 0.0, 1.0, seed)?;
 	let raw_action = matrix::add(
@@ -319,10 +319,10 @@ fn validate_categorical(
 		|| *actions <= 1
 		|| value.dtype() != DType::F32
 		|| value.shape() != [*environments]
-		|| !logits.engine_handle().same_as(value.engine_handle())
+		|| !logits.runtime().same_as(value.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} expects FP32 logits [E,A] and values [E] on one engine"
+			"{operation} expects FP32 logits [E,A] and values [E] on one runtime"
 		)));
 	}
 	u32::try_from(*environments)
@@ -330,10 +330,10 @@ fn validate_categorical(
 	if let Some(action) = action
 		&& (action.dtype() != DType::I32
 			|| action.shape() != [*environments]
-			|| !logits.engine_handle().same_as(action.engine_handle()))
+			|| !logits.runtime().same_as(action.runtime()))
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} expects I32 actions [E] on the logits engine"
+			"{operation} expects I32 actions [E] on the logits runtime"
 		)));
 	}
 	Ok(())
@@ -352,9 +352,9 @@ fn validate_continuous(
 			"{operation} expects FP32 mean [E,A]"
 		)));
 	};
-	let same_engine = mean.engine_handle().same_as(log_stddev.engine_handle())
-		&& mean.engine_handle().same_as(value.engine_handle())
-		&& raw_action.is_none_or(|raw| mean.engine_handle().same_as(raw.engine_handle()));
+	let same_runtime = mean.runtime().same_as(log_stddev.runtime())
+		&& mean.runtime().same_as(value.runtime())
+		&& raw_action.is_none_or(|raw| mean.runtime().same_as(raw.runtime()));
 	if mean.dtype() != DType::F32
 		|| *environments == 0
 		|| *actions == 0
@@ -363,7 +363,7 @@ fn validate_continuous(
 		|| value.dtype() != DType::F32
 		|| value.shape() != [*environments]
 		|| raw_action.is_some_and(|raw| raw.dtype() != DType::F32 || raw.shape() != mean.shape())
-		|| !same_engine
+		|| !same_runtime
 		|| !range.minimum.is_finite()
 		|| !range.maximum.is_finite()
 		|| range.minimum >= range.maximum
@@ -372,7 +372,7 @@ fn validate_continuous(
 		|| range.epsilon == 0.0
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} expects matching FP32 [E,A] inputs, FP32 values [E], finite ordered bounds, and epsilon in (0,1) on one engine"
+			"{operation} expects matching FP32 [E,A] inputs, FP32 values [E], finite ordered bounds, and epsilon in (0,1) on one runtime"
 		)));
 	}
 	u32::try_from(*environments)

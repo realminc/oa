@@ -7,7 +7,7 @@ use oa::ml::nn::{
 };
 use oa::ml::{GradientTape, Module};
 
-test_vk!(prelu_learns_slope_and_matches_piecewise_oracle, engine, {
+test_vk!(prelu_learns_slope_and_matches_piecewise_oracle, runtime, {
 	// per-channel slopes [C=2]: slope[0]=0.25, slope[1]=0.25 (init)
 	let prelu = Prelu::new(2)?;
 	assert_eq!(prelu.num_parameters()?, 2);
@@ -29,7 +29,7 @@ test_vk!(prelu_learns_slope_and_matches_piecewise_oracle, engine, {
 	Ok(())
 });
 
-test_vk!(elu_matches_the_alpha_oracle, engine, {
+test_vk!(elu_matches_the_alpha_oracle, runtime, {
 	let elu = Elu::new(1.5)?;
 	let input = oa::Matrix::new_from_f32([4], &[2.0, -1.0, 0.0, -3.0])?;
 	let output = elu.forward(&input)?.read_f32()?;
@@ -48,7 +48,7 @@ test_vk!(elu_matches_the_alpha_oracle, engine, {
 
 test_vk!(
 	group_and_instance_norm_normalize_like_the_host_oracle,
-	engine,
+	runtime,
 	{
 		// [N=1, C=4, S=2], groups=2 → two groups of 2 channels.
 		let values = [1.0_f32, 3.0, 10.0, 20.0, -5.0, 5.0, 0.0, 8.0];
@@ -83,13 +83,13 @@ test_vk!(
 	}
 );
 
-test_vk!(batch_norm_1d_and_3d_match_the_2d_path, engine, {
-	let bn1 = BatchNorm1d::new_on(&engine, 2)?;
+test_vk!(batch_norm_1d_and_3d_match_the_2d_path, runtime, {
+	let bn1 = BatchNorm1d::new_on(&runtime, 2)?;
 	let input1 = oa::Matrix::new_from_f32([2, 2, 4], &[0.0; 16])?;
 	let out1 = bn1.forward(&input1)?;
 	assert_eq!(out1.shape(), &[2, 2, 4]);
 	assert_eq!(bn1.num_parameters()?, 4); // weight + bias
-	let bn3 = BatchNorm3d::new_on(&engine, 2)?;
+	let bn3 = BatchNorm3d::new_on(&runtime, 2)?;
 	let input3 = oa::Matrix::new_from_f32([1, 2, 2, 2, 2], &[1.0; 16])?;
 	let out3 = bn3.forward(&input3)?;
 	assert_eq!(out3.shape(), &[1, 2, 2, 2, 2]);
@@ -109,7 +109,7 @@ test_vk!(batch_norm_1d_and_3d_match_the_2d_path, engine, {
 	Ok(())
 });
 
-test_vk!(avg_pool_1d_matches_the_window_oracle, engine, {
+test_vk!(avg_pool_1d_matches_the_window_oracle, runtime, {
 	let input = oa::Matrix::new_from_f32([1, 1, 6], &[1.0, 5.0, 2.0, 8.0, 3.0, 4.0])?;
 	let avg1 = AvgPool1d::new(2)?;
 	let out = avg1.forward(&input)?.read_f32()?;
@@ -117,7 +117,7 @@ test_vk!(avg_pool_1d_matches_the_window_oracle, engine, {
 	Ok(())
 });
 
-test_vk!(pixel_shuffle_rearranges_channels_into_space, engine, {
+test_vk!(pixel_shuffle_rearranges_channels_into_space, runtime, {
 	// C=1, r=2: packed channels [N,4,H,W] = values 1..8
 	let input = oa::Matrix::new_from_f32(
 		[1, 4, 2, 2],
@@ -152,8 +152,8 @@ test_vk!(pixel_shuffle_rearranges_channels_into_space, engine, {
 	Ok(())
 });
 
-test_vk!(attention_pool_pools_sequence_with_learned_query, engine, {
-	let pool = AttentionPool::new_with_seed_on(&engine, 8, 2, 0xCAFE)?;
+test_vk!(attention_pool_pools_sequence_with_learned_query, runtime, {
+	let pool = AttentionPool::new_with_seed_on(&runtime, 8, 2, 0xCAFE)?;
 	// query + attention projections are parameters
 	assert!(pool.num_parameters()? > 0);
 	let input = oa::Matrix::new_from_f32(
@@ -172,7 +172,7 @@ test_vk!(attention_pool_pools_sequence_with_learned_query, engine, {
 	Ok(())
 });
 
-test_vk!(max_pool_1d_uses_the_kernel_with_argmax_backward, engine, {
+test_vk!(max_pool_1d_uses_the_kernel_with_argmax_backward, runtime, {
 	let pool = MaxPool1d::new_with_options(3, 2, 1)?;
 	// input routed through an embedding so reverse mode lands on a parameter
 	let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
@@ -211,7 +211,7 @@ test_vk!(max_pool_1d_uses_the_kernel_with_argmax_backward, engine, {
 	Ok(())
 });
 
-test_vk!(adaptive_max_pool_1d_pools_to_exact_bins, engine, {
+test_vk!(adaptive_max_pool_1d_pools_to_exact_bins, runtime, {
 	let pool = AdaptiveMaxPool1d::new(3)?;
 	// L=5, out=3: bins [0,2), [1,4), [3,5)
 	let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
@@ -244,7 +244,7 @@ test_vk!(adaptive_max_pool_1d_pools_to_exact_bins, engine, {
 
 test_vk!(
 	pixel_unshuffle_inverts_pixel_shuffle_channel_ordering,
-	engine,
+	runtime,
 	{
 		// C=1, r=2 round trip: shuffle packs C*r^2 spatial blocks, unshuffle
 		// must restore the exact source element order.

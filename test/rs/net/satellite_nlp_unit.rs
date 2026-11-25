@@ -2,21 +2,23 @@
 //! named-work surface: the frozen byte-Transformer step and split-batch
 //! gradient executors, the deterministic batch builder, and the wire result
 //! decoders. The server serves on the test thread because
-//! [`SatelliteServerSession`] borrows a `!Send` engine; the client runs on a
+//! [`SatelliteServerSession`] borrows a `!Send` runtime; the client runs on a
 //! spawned thread.
 
 use std::cell::Cell;
 use std::rc::Rc;
 use std::thread;
 
-use super::super::SatelliteProtocol;
-use super::super::session::*;
-use super::*;
+use super::SatelliteProtocol;
+use super::nlp_step::*;
+use super::session::*;
 
-use super::{CONTEXT_LENGTH, CORPUS, RNG_SEED, TRAINING_STEPS, satellite_byte_transformer};
+use super::nlp_step::{
+	CONTEXT_LENGTH, CORPUS, RNG_SEED, TRAINING_STEPS, satellite_byte_transformer,
+};
 use crate::TcpListener;
 use crate::ml::{AdamW, GradientTape, Module, loss};
-use crate::{DType, Engine, Error, ErrorKind, Matrix, Result};
+use crate::{DType, Error, ErrorKind, Matrix, Result, Runtime};
 
 const BATCH_SIZE: usize = 64;
 
@@ -52,19 +54,19 @@ fn make_config(seed: u8, device_name: String) -> SatelliteSessionConfig {
 
 fn nlp_config(seed: u8, device_name: String, calls: Rc<Cell<u32>>) -> SatelliteSessionConfig {
 	let mut config = make_config(seed, device_name);
-	config.named_work = Some(Box::new(move |engine, request| {
+	config.named_work = Some(Box::new(move |runtime, request| {
 		calls.set(calls.get() + 1);
-		satellite_execute_nlp_work(engine, request)
+		satellite_execute_nlp_work(runtime, request)
 	}));
 	config
 }
 
-fn test_engine() -> Result<Engine> {
-	Engine::builder()
+fn test_runtime() -> Result<Runtime> {
+	Runtime::builder()
 		.devices(crate::DeviceSelection::Index(0))
 		.build()
-		.inspect(|engine| {
-			Engine::set_default(engine.clone());
+		.inspect(|runtime| {
+			Runtime::set_default(runtime.clone());
 		})
 }
 
@@ -119,16 +121,16 @@ fn hash_is_zero(hash: &[u8; 32]) -> bool {
 }
 
 /// Deterministic frozen recipe inputs: canonical initial parameters and the
-/// step-0 batch. Model construction is eager work; `Engine::checkpoint`
+/// step-0 batch. Model construction is eager work; `Runtime::checkpoint`
 /// submits it exactly once, matching the donor's ambient submit.
-fn build_frozen_inputs(engine: &Engine) -> Result<(Vec<f32>, Vec<u32>, Vec<u32>)> {
-	let model = satellite_byte_transformer(engine)?;
+fn build_frozen_inputs(runtime: &Runtime) -> Result<(Vec<f32>, Vec<u32>, Vec<u32>)> {
+	let model = satellite_byte_transformer(runtime)?;
 	let parameters: Vec<Matrix> = model
 		.all_parameters()?
 		.iter()
 		.map(|parameter| parameter.data())
 		.collect();
-	let event = engine.checkpoint()?;
+	let event = runtime.checkpoint()?;
 	event.wait()?;
 	let mut flat = Vec::new();
 	for parameter in &parameters {
@@ -154,18 +156,18 @@ struct LocalStepResult {
 /// Local full-batch optimizer-step oracle mirroring the donor's
 /// `runLocalOracle`.
 fn run_local_oracle(
-	engine: &Engine,
+	runtime: &Runtime,
 	parameters: &[f32],
 	inputs: &[u32],
 	targets: &[u32],
 ) -> Result<LocalStepResult> {
 	let batch_count = inputs.len() / CONTEXT_LENGTH;
 	type OracleCapture = ([u8; 32], Matrix, Matrix, Vec<Matrix>, Vec<Matrix>);
-	let (plan, captured) = engine.capture(|| -> Result<OracleCapture> {
-		let model = satellite_byte_transformer(engine)?;
+	let (plan, captured) = runtime.capture(|| -> Result<OracleCapture> {
+		let model = satellite_byte_transformer(runtime)?;
 		let named = model.all_named_parameters()?;
 		let layout_hash = parameter_layout_hash(&named);
-		load_parameters(engine, &named, parameters)?;
+		load_parameters(runtime, &named, parameters)?;
 		let parameters_ref = model.all_parameters()?;
 		let mut optimizer = AdamW::new(parameters_ref.clone(), 0.01)?;
 		optimizer.zero_grad();
@@ -193,9 +195,9 @@ fn run_local_oracle(
 			data_matrices,
 		))
 	})?;
-	let event = engine.submit(&plan)?;
+	let event = runtime.submit(&plan)?;
 	event.wait()?;
-	if !engine.handle().owns_event(&event) || !event.is_complete().unwrap_or(false) {
+	if !runtime.handle().owns_event(&event) || !event.is_complete().unwrap_or(false) {
 		return Err(Error::internal(
 			"satellite NLP oracle: completion provenance failed",
 		));
@@ -237,7 +239,7 @@ fn run_local_oracle(
 
 /// Local microbatch gradient oracle mirroring the donor's `runLocalGradient`.
 fn run_local_gradient(
-	engine: &Engine,
+	runtime: &Runtime,
 	parameters: &[f32],
 	inputs: &[u32],
 	targets: &[u32],
@@ -251,11 +253,11 @@ fn run_local_gradient(
 		));
 	}
 	let batch_count = inputs.len() / CONTEXT_LENGTH;
-	let (plan, captured) = engine.capture(|| -> Result<([u8; 32], Matrix, Vec<Matrix>)> {
-		let model = satellite_byte_transformer(engine)?;
+	let (plan, captured) = runtime.capture(|| -> Result<([u8; 32], Matrix, Vec<Matrix>)> {
+		let model = satellite_byte_transformer(runtime)?;
 		let named = model.all_named_parameters()?;
 		let layout_hash = parameter_layout_hash(&named);
-		load_parameters(engine, &named, parameters)?;
+		load_parameters(runtime, &named, parameters)?;
 		let parameters_ref = model.all_parameters()?;
 		let input = Matrix::new_from_slice([batch_count, CONTEXT_LENGTH], inputs)?;
 		let target = Matrix::new_from_slice([inputs.len()], targets)?;
@@ -272,7 +274,7 @@ fn run_local_gradient(
 		}
 		Ok((layout_hash, step_loss, gradient_matrices))
 	})?;
-	let event = engine.submit(&plan)?;
+	let event = runtime.submit(&plan)?;
 	event.wait()?;
 	let (layout_hash, loss_matrix, gradient_matrices) = captured;
 	let mut gradients = Vec::with_capacity(NLP_STEP_PARAMETER_COUNT);
@@ -295,14 +297,14 @@ fn run_local_gradient(
 /// Authoritative optimizer update against a supplied reduced gradient,
 /// mirroring the donor's `applyAuthoritativeGradient`.
 fn apply_authoritative_gradient(
-	engine: &Engine,
+	runtime: &Runtime,
 	parameters: &[f32],
 	gradient_values: &[f32],
 ) -> Result<Vec<f32>> {
-	let (plan, updated) = engine.capture(|| -> Result<Vec<Matrix>> {
-		let model = satellite_byte_transformer(engine)?;
+	let (plan, updated) = runtime.capture(|| -> Result<Vec<Matrix>> {
+		let model = satellite_byte_transformer(runtime)?;
 		let named = model.all_named_parameters()?;
-		load_parameters(engine, &named, parameters)?;
+		load_parameters(runtime, &named, parameters)?;
 		let parameters_ref = model.all_parameters()?;
 		let mut offset = 0_usize;
 		for parameter in &parameters_ref {
@@ -334,7 +336,7 @@ fn apply_authoritative_gradient(
 				.collect(),
 		)
 	})?;
-	let event = engine.submit(&plan)?;
+	let event = runtime.submit(&plan)?;
 	event.wait()?;
 	let mut values = Vec::with_capacity(NLP_STEP_PARAMETER_COUNT);
 	for matrix in &updated {
@@ -367,8 +369,8 @@ fn batch_builder_matches_the_frozen_sampler() -> Result<()> {
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn satellite_nlp_replicated_step_matches_local_oracle() -> Result<()> {
-	let engine = test_engine()?;
-	let (initial_parameters, inputs, targets) = build_frozen_inputs(&engine)?;
+	let runtime = test_runtime()?;
+	let (initial_parameters, inputs, targets) = build_frozen_inputs(&runtime)?;
 	let initial_hash = satellite_hash_f32(&initial_parameters);
 	let initial_version = 7_u64;
 	let limit = CORPUS.len() - CONTEXT_LENGTH - 1;
@@ -426,16 +428,16 @@ fn satellite_nlp_replicated_step_matches_local_oracle() -> Result<()> {
 		expected_version: 0,
 		expected_hash: initial_hash,
 	};
-	let invalid = satellite_execute_nlp_step(&engine, &invalid_batch);
+	let invalid = satellite_execute_nlp_step(&runtime, &invalid_batch);
 	assert_eq!(invalid.err().unwrap().kind(), ErrorKind::FailedPrecondition);
 
-	let local = run_local_oracle(&engine, &initial_parameters, &inputs, &targets)?;
+	let local = run_local_oracle(&runtime, &initial_parameters, &inputs, &targets)?;
 
 	let listener = TcpListener::bind("127.0.0.1", 0, 8)?;
 	let calls = Rc::new(Cell::new(0_u32));
-	let device_name = engine.device_info().name().to_owned();
-	let server = SatelliteServerSession::new_with_engine(
-		&engine,
+	let device_name = runtime.device_info().name().to_owned();
+	let server = SatelliteServerSession::new_with_runtime(
+		&runtime,
 		nlp_config(0xa0, device_name.clone(), Rc::clone(&calls)),
 	);
 	let expected_parameters = initial_parameters.clone();
@@ -612,17 +614,17 @@ fn satellite_nlp_replicated_step_matches_local_oracle() -> Result<()> {
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn satellite_nlp_split_batch_gradient_and_authoritative_update_match_full_batch() -> Result<()> {
-	let engine = test_engine()?;
-	let (initial_parameters, inputs, targets) = build_frozen_inputs(&engine)?;
+	let runtime = test_runtime()?;
+	let (initial_parameters, inputs, targets) = build_frozen_inputs(&runtime)?;
 	let initial_hash = satellite_hash_f32(&initial_parameters);
-	let full = run_local_oracle(&engine, &initial_parameters, &inputs, &targets)?;
+	let full = run_local_oracle(&runtime, &initial_parameters, &inputs, &targets)?;
 
 	let local_count = BATCH_SIZE / 2;
 	let remote_count = BATCH_SIZE - local_count;
 	let local_elements = local_count * CONTEXT_LENGTH;
 	let remote_elements = remote_count * CONTEXT_LENGTH;
 	let local = run_local_gradient(
-		&engine,
+		&runtime,
 		&initial_parameters,
 		&inputs[..local_elements],
 		&targets[..local_elements],
@@ -638,9 +640,9 @@ fn satellite_nlp_split_batch_gradient_and_authoritative_update_match_full_batch(
 
 	let listener = TcpListener::bind("127.0.0.1", 0, 8)?;
 	let calls = Rc::new(Cell::new(0_u32));
-	let device_name = engine.device_info().name().to_owned();
-	let server = SatelliteServerSession::new_with_engine(
-		&engine,
+	let device_name = runtime.device_info().name().to_owned();
+	let server = SatelliteServerSession::new_with_runtime(
+		&runtime,
 		nlp_config(0xa0, device_name.clone(), Rc::clone(&calls)),
 	);
 	let expected_parameters = initial_parameters.clone();
@@ -744,9 +746,9 @@ fn satellite_nlp_split_batch_gradient_and_authoritative_update_match_full_batch(
 	}
 	expect_vector_near(&reduced, &full.gradients, 2e-6, 2e-4);
 
-	let authoritative = apply_authoritative_gradient(&engine, &initial_parameters, &reduced)?;
+	let authoritative = apply_authoritative_gradient(&runtime, &initial_parameters, &reduced)?;
 	let full_authoritative =
-		apply_authoritative_gradient(&engine, &initial_parameters, &full.gradients)?;
+		apply_authoritative_gradient(&runtime, &initial_parameters, &full.gradients)?;
 	expect_vector_near(&full_authoritative, &full.updated_parameters, 2e-6, 2e-4);
 
 	// A split reduction changes FP32 summation order; the first-step AdamW
@@ -770,9 +772,9 @@ fn satellite_nlp_split_batch_gradient_and_authoritative_update_match_full_batch(
 	let authoritative_hash = satellite_hash_f32(&authoritative);
 	let listener = TcpListener::bind("127.0.0.1", 0, 8)?;
 	let calls = Rc::new(Cell::new(0_u32));
-	let device_name = engine.device_info().name().to_owned();
-	let server = SatelliteServerSession::new_with_engine(
-		&engine,
+	let device_name = runtime.device_info().name().to_owned();
+	let server = SatelliteServerSession::new_with_runtime(
+		&runtime,
 		nlp_config(0xa0, device_name.clone(), Rc::clone(&calls)),
 	);
 	let stale_inputs = remote_inputs.to_vec();

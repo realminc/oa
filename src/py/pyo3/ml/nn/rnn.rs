@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::super::autograd::PythonParameter;
 
@@ -16,16 +16,16 @@ pub(crate) struct PythonRnnCell {
 impl PythonRnnCell {
 	/// Construct a deterministically initialized RNN cell.
 	#[new]
-	#[pyo3(signature = (input_size, hidden_size, bias=true, seed=0, engine=None))]
+	#[pyo3(signature = (input_size, hidden_size, bias=true, seed=0, runtime=None))]
 	pub fn new(
 		input_size: usize,
 		hidden_size: usize,
 		bias: bool,
 		seed: u64,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::nn::RnnCell::new_with_seed_on(&engine, input_size, hidden_size, bias, seed)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::nn::RnnCell::new_with_seed_on(&runtime, input_size, hidden_size, bias, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -102,18 +102,18 @@ pub(crate) struct PythonRnn {
 impl PythonRnn {
 	/// Construct a deterministically initialized stacked RNN.
 	#[new]
-	#[pyo3(signature = (input_size, hidden_size, num_layers=1, bias=true, seed=0, engine=None))]
+	#[pyo3(signature = (input_size, hidden_size, num_layers=1, bias=true, seed=0, runtime=None))]
 	pub fn new(
 		input_size: usize,
 		hidden_size: usize,
 		num_layers: usize,
 		bias: bool,
 		seed: u64,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		oa::ml::nn::Rnn::new_with_seed_and_bias_on(
-			&engine,
+			&runtime,
 			input_size,
 			hidden_size,
 			num_layers,

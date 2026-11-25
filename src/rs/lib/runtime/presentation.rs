@@ -25,8 +25,11 @@ pub struct PresentationSurface<'window> {
 }
 
 impl<'window> PresentationSurface<'window> {
-	pub(in crate::runtime) fn validate_ui_engine(&self, engine: &super::EngineHandle) -> Result<()> {
-		engine.validate_ui_presentation(&self._device)
+	pub(in crate::runtime) fn validate_ui_runtime(
+		&self,
+		runtime: &super::RuntimeHandle,
+	) -> Result<()> {
+		runtime.validate_ui_presentation(&self._device)
 	}
 
 	pub(in crate::runtime) fn create(
@@ -165,7 +168,7 @@ impl<'window> PresentationSurface<'window> {
 					drawable_extent[1].clamp(raw.min_image_extent.height, raw.max_image_extent.height),
 				)
 		};
-		// Donor: oa/runtime/engine/presenter.cpp::recreateSwapchain.
+		// Donor: oa/runtime/runtime/presenter.cpp::recreateSwapchain.
 		// Texture/UI pixels are already sRGB-encoded RGBA8. A blit into an
 		// *_SRGB image would apply the transfer function again (128 → ~188).
 		// UNORM preserves encoded values; SRGB_NONLINEAR tells WSI how to

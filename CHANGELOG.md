@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.17.0
+
+- Rename `oa::Engine` to `oa::Runtime` across the public API (Python
+  `oa.Engine` -> `oa.Runtime`).
+- Rename the `mat_mul` operation family to `matmul`; the NT-layout GEMM
+  is now `matrix::matmul` / `Matrix::matmul` / `oa.matrix.matmul`.
+- Remove the `oa.ml.nlp`/`oa.ml.audio` bindings and the `sdk/` source
+  tree; SDK workloads move to the standalone oasdk repository.
+- Move the satellite NLP recipe out of the shipped library into the SDK.
+- Publish the v0.16.1 vision milestones (never released publicly):
+  Canny/CCL/distance-transform/Hough/contours (CV-1), ORB + Hamming kNN
+  (CV-3), `pyr_down`/`pyr_up`/auto-threshold/`integral` (CV-6), and
+  CLAHE/`calc_back_project`/HSV-Lab color/statistics breadth (CV-7).
+
+## 0.16.1
+
+- OpenCV-parity vision milestones CV-1, CV-3, CV-6, CV-7 (private tag;
+  first published as part of 0.17.0).
+
 ## 0.16.0
 
 - Complete the `nn` module surface: 3-D and transposed convolutions, the

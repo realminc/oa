@@ -55,9 +55,9 @@ fn trading_configuration_rejects_invalid_costs() {
 }
 test_vk!(
 	trading_fee_change_preserves_reset_state_and_rejects_active_episodes,
-	engine,
+	runtime,
 	{
-		let mut e = TradingEnvironment::new(&engine, config(), &[data()])?;
+		let mut e = TradingEnvironment::new(&runtime, config(), &[data()])?;
 		e.set_taker_fee(0.00015)?;
 		e.reset(config().seed)?;
 		assert!(e.set_taker_fee(0.0005).is_err());
@@ -104,9 +104,9 @@ test_vk!(
 );
 test_vk!(
 	trading_lifecycle_costs_final_observation_and_rollback,
-	engine,
+	runtime,
 	{
-		let mut e = TradingEnvironment::new(&engine, config(), &[data()])?;
+		let mut e = TradingEnvironment::new(&runtime, config(), &[data()])?;
 		assert!(e.check_status().is_err());
 		e.reset(config().seed)?;
 		let event = e.submit()?;
@@ -171,7 +171,7 @@ test_vk!(
 );
 test_vk!(
 	trading_truncation_bootstraps_and_spot_rejects_short_category,
-	engine,
+	runtime,
 	{
 		let mut c = config();
 		c.liquidate_at_horizon = false;
@@ -179,7 +179,7 @@ test_vk!(
 		c.perpetual = false;
 		let mut source = data();
 		source.market.fill([100.0, 110.0, 0.0]);
-		let mut e = TradingEnvironment::new(&engine, c, &[source])?;
+		let mut e = TradingEnvironment::new(&runtime, c, &[source])?;
 		e.reset(c.seed)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
@@ -207,7 +207,7 @@ test_vk!(
 
 test_vk!(
 	trading_resets_only_risk_stopped_lanes_and_closes_collection_boundary,
-	engine,
+	runtime,
 	{
 		let mut c = config();
 		c.max_drawdown = 0.05;
@@ -216,7 +216,7 @@ test_vk!(
 		d.market[2] = [100.0, 80.0, 0.0];
 		d.timestamps.truncate(5);
 		d.features.truncate(5);
-		let mut e = TradingEnvironment::new(&engine, c, &[d])?;
+		let mut e = TradingEnvironment::new(&runtime, c, &[d])?;
 		e.reset(c.seed)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
@@ -247,7 +247,7 @@ test_vk!(
 // New execution and position-state branch: independent exact scalar expectations.
 test_vk!(
 	trading_contract_fees_quantization_and_position_observations,
-	engine,
+	runtime,
 	{
 		use oa::ml::environment::TradingExecution;
 		let mut c = config();
@@ -262,7 +262,7 @@ test_vk!(
 			fee_per_unit: 0.04,
 			..Default::default()
 		};
-		let mut e = TradingEnvironment::new(&engine, c, &[source])?;
+		let mut e = TradingEnvironment::new(&runtime, c, &[source])?;
 		e.reset(c.seed)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
@@ -306,7 +306,7 @@ test_vk!(
 // but never survives closing, reversing or resetting the position.
 test_vk!(
 	trading_position_peak_is_causal_and_resets_per_position,
-	engine,
+	runtime,
 	{
 		let mut c = config();
 		c.capital = 1000.0;
@@ -331,7 +331,7 @@ test_vk!(
 			execution: Default::default(),
 			books: Vec::new(),
 		};
-		let mut e = TradingEnvironment::new(&engine, c, &[source])?;
+		let mut e = TradingEnvironment::new(&runtime, c, &[source])?;
 		e.reset(c.seed)?;
 		let event = e.submit()?;
 		e.wait(&event)?;
@@ -443,7 +443,7 @@ fn event_series(horizon: u32) -> TradingSeries {
 
 test_vk!(
 	trading_visible_depth_partial_reversal_and_exact_leg_costs,
-	engine,
+	runtime,
 	{
 		use oa::ml::environment::TradingBook;
 		let mut c = event_config(5);
@@ -459,7 +459,7 @@ test_vk!(
 			};
 			7
 		];
-		let mut env = TradingEnvironment::new(&engine, c, &[source])?;
+		let mut env = TradingEnvironment::new(&runtime, c, &[source])?;
 		env.reset(c.seed)?;
 		let event = env.submit()?;
 		env.wait(&event)?;
@@ -489,13 +489,13 @@ test_vk!(
 	}
 );
 
-test_vk!(trading_delayed_target_and_portable_state_resume, engine, {
+test_vk!(trading_delayed_target_and_portable_state_resume, runtime, {
 	use oa::ml::environment::TradingState;
 	let c = event_config(5);
 	let mut source = event_series(c.horizon);
 	source.execution.latency_steps = 1;
 	source.execution.quantity_step = 1.0;
-	let mut first = TradingEnvironment::new(&engine, c, &[source.clone()])?;
+	let mut first = TradingEnvironment::new(&runtime, c, &[source.clone()])?;
 	first.reset(c.seed)?;
 	let event = first.submit()?;
 	first.wait(&event)?;
@@ -514,7 +514,7 @@ test_vk!(trading_delayed_target_and_portable_state_resume, engine, {
 	corrupt[100] ^= 1;
 	assert!(TradingState::new_from_bytes(&corrupt).is_err());
 	assert!(first.replace_series(&[source.clone()]).is_err());
-	let mut resumed = TradingEnvironment::new(&engine, c, &[source.clone()])?;
+	let mut resumed = TradingEnvironment::new(&runtime, c, &[source.clone()])?;
 	resumed.restore(&decoded)?;
 	for env in [&mut first, &mut resumed] {
 		// A newer flat suggestion cannot retroactively cancel an already pending IOC.
@@ -533,7 +533,7 @@ test_vk!(trading_delayed_target_and_portable_state_resume, engine, {
 		resumed.observation().read_f32()?
 	);
 	source.market[0][0] = 101.0;
-	let mut changed = TradingEnvironment::new(&engine, c, &[source])?;
+	let mut changed = TradingEnvironment::new(&runtime, c, &[source])?;
 	assert!(changed.restore(&decoded).is_err());
 	first.close()?;
 	resumed.close()?;
@@ -541,7 +541,7 @@ test_vk!(trading_delayed_target_and_portable_state_resume, engine, {
 	Ok(())
 });
 
-test_vk!(trading_mark_margin_liquidation_and_commission, engine, {
+test_vk!(trading_mark_margin_liquidation_and_commission, runtime, {
 	use oa::ml::environment::TradingMarginTier;
 	let c = event_config(5);
 	let mut source = event_series(c.horizon);
@@ -556,7 +556,7 @@ test_vk!(trading_mark_margin_liquidation_and_commission, engine, {
 	}];
 	source.market[3] = [98.0, 98.0, 0.0];
 	source.market[4] = [97.4, 97.4, 0.0];
-	let mut env = TradingEnvironment::new(&engine, c, &[source])?;
+	let mut env = TradingEnvironment::new(&runtime, c, &[source])?;
 	env.reset(c.seed)?;
 	let event = env.submit()?;
 	env.wait(&event)?;
@@ -587,7 +587,7 @@ test_vk!(trading_mark_margin_liquidation_and_commission, engine, {
 	Ok(())
 });
 
-test_vk!(trading_required_close_cannot_invent_liquidity, engine, {
+test_vk!(trading_required_close_cannot_invent_liquidity, runtime, {
 	use oa::ml::environment::TradingBook;
 	let c = event_config(1);
 	let mut source = event_series(c.horizon);
@@ -600,7 +600,7 @@ test_vk!(trading_required_close_cannot_invent_liquidity, engine, {
 		};
 		3
 	];
-	let mut env = TradingEnvironment::new(&engine, c, &[source])?;
+	let mut env = TradingEnvironment::new(&runtime, c, &[source])?;
 	env.reset(c.seed)?;
 	let event = env.submit()?;
 	env.wait(&event)?;
@@ -618,70 +618,74 @@ test_vk!(trading_required_close_cannot_invent_liquidity, engine, {
 
 // Decimal oracle: 0.012 opened, 0.011 partially closed, then 0.001 closed.
 // FP32 subtraction used to leave 0.0009999992, which a second floor erased.
-test_vk!(trading_fractional_lot_partial_close_reaches_flat, engine, {
-	use oa::ml::environment::TradingBook;
-	for action in [0_i32, 2] {
-		let mut c = event_config(3);
-		c.capital = 1.25;
-		c.taker_fee = 0.001;
-		let mut source = event_series(c.horizon);
-		source.execution.quantity_step = 0.001;
-		source.books = vec![
-			TradingBook {
-				bids: vec![[99.0, 1.0]],
-				asks: vec![[101.0, 1.0]],
-				mark_price: 100.0,
-			};
-			5
-		];
-		// Eleven whole lots fit; the half-lot of excess capacity must not fill.
-		source.books[3].bids[0][1] = 0.0115;
-		source.books[3].asks[0][1] = 0.0115;
-		let mut env = TradingEnvironment::new(&engine, c, std::slice::from_ref(&source))?;
-		env.reset(c.seed)?;
-		let event = env.submit()?;
-		env.wait(&event)?;
-		for (index, selected) in [action, 1, 1].into_iter().enumerate() {
-			env.step(&Matrix::new_from_slice([1], &[selected])?)?;
+test_vk!(
+	trading_fractional_lot_partial_close_reaches_flat,
+	runtime,
+	{
+		use oa::ml::environment::TradingBook;
+		for action in [0_i32, 2] {
+			let mut c = event_config(3);
+			c.capital = 1.25;
+			c.taker_fee = 0.001;
+			let mut source = event_series(c.horizon);
+			source.execution.quantity_step = 0.001;
+			source.books = vec![
+				TradingBook {
+					bids: vec![[99.0, 1.0]],
+					asks: vec![[101.0, 1.0]],
+					mark_price: 100.0,
+				};
+				5
+			];
+			// Eleven whole lots fit; the half-lot of excess capacity must not fill.
+			source.books[3].bids[0][1] = 0.0115;
+			source.books[3].asks[0][1] = 0.0115;
+			let mut env = TradingEnvironment::new(&runtime, c, std::slice::from_ref(&source))?;
+			env.reset(c.seed)?;
 			let event = env.submit()?;
 			env.wait(&event)?;
-			env.check_status()?;
-			let state = env.ledger().read_f32()?;
-			if index == 0 {
-				assert!((state[1].abs() - 0.012).abs() < 1e-8, "opened {}", state[1]);
-			} else if index == 1 {
-				assert!(
-					(state[1].abs() - 0.001).abs() < 1e-8,
-					"remaining {}",
-					state[1]
-				);
-				let snapshot =
-					oa::ml::environment::TradingState::new_from_bytes(&env.snapshot()?.to_bytes())?;
-				let mut restored = TradingEnvironment::new(&engine, c, std::slice::from_ref(&source))?;
-				restored.restore(&snapshot)?;
-				env.close()?;
-				env = restored;
-			} else {
-				assert_eq!(state[1], 0.0);
-				assert_eq!(state[7], 3.0);
-				assert!((state[0] - 1.2236).abs() < 1e-6);
-				assert!((state[4] - 0.0024).abs() < 1e-7);
-				assert!((state[6] - 0.024).abs() < 1e-6);
+			for (index, selected) in [action, 1, 1].into_iter().enumerate() {
+				env.step(&Matrix::new_from_slice([1], &[selected])?)?;
+				let event = env.submit()?;
+				env.wait(&event)?;
+				env.check_status()?;
+				let state = env.ledger().read_f32()?;
+				if index == 0 {
+					assert!((state[1].abs() - 0.012).abs() < 1e-8, "opened {}", state[1]);
+				} else if index == 1 {
+					assert!(
+						(state[1].abs() - 0.001).abs() < 1e-8,
+						"remaining {}",
+						state[1]
+					);
+					let snapshot =
+						oa::ml::environment::TradingState::new_from_bytes(&env.snapshot()?.to_bytes())?;
+					let mut restored = TradingEnvironment::new(&runtime, c, std::slice::from_ref(&source))?;
+					restored.restore(&snapshot)?;
+					env.close()?;
+					env = restored;
+				} else {
+					assert_eq!(state[1], 0.0);
+					assert_eq!(state[7], 3.0);
+					assert!((state[0] - 1.2236).abs() < 1e-6);
+					assert!((state[4] - 0.0024).abs() < 1e-7);
+					assert!((state[6] - 0.024).abs() < 1e-6);
+				}
 			}
+			env.close()?;
 		}
-		env.close()?;
+		Ok(())
 	}
-	Ok(())
-});
+);
 
-test_vk!(trading_copies_a_packed_market_history_row, engine, {
+test_vk!(trading_copies_a_packed_market_history_row, runtime, {
 	let mut source = data();
 	let width = 4992;
 	source.feature_width = width;
 	source.features = (0..source.market.len() * width).map(|i| i as f32).collect();
 	let mut settings = config();
 	settings.window = 1;
-	let mut env = TradingEnvironment::new(&engine, settings, &[source])?;
+	let mut env = TradingEnvironment::new(&runtime, settings, &[source])?;
 	env.reset(settings.seed)?;
 	let event = env.submit()?;
 	env.wait(&event)?;

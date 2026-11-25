@@ -1,13 +1,13 @@
 //! SDL3-backed Vulkan presentation session.
 
-use crate::{Engine, Result, Texture};
+use crate::{Result, Runtime, Texture};
 
 use super::{PresentationCapabilities, PresentationSurface, SdlWindow};
 
-/// Engine-borrowing presentation session.
+/// Runtime-borrowing presentation session.
 ///
 /// Construction creates and owns the SDL3 Vulkan surface, then records whether
-/// the Engine's retained graphics queue can present to that exact surface.
+/// the Runtime's retained graphics queue can present to that exact surface.
 /// Swapchain acquire/present is intentionally the next lifecycle phase rather
 /// than a fabricated method on this real surface session.
 pub struct Presenter<'window> {
@@ -17,18 +17,18 @@ pub struct Presenter<'window> {
 }
 
 impl<'window> Presenter<'window> {
-	pub(crate) fn validate_ui_engine(&self, engine: &super::EngineHandle) -> Result<()> {
-		self.surface().validate_ui_engine(engine)
+	pub(crate) fn validate_ui_runtime(&self, runtime: &super::RuntimeHandle) -> Result<()> {
+		self.surface().validate_ui_runtime(runtime)
 	}
 
 	/// Create a presentation session for one SDL3 window.
 	///
-	/// The Engine must have been built using `EngineRequirements::presentation()`
+	/// The Runtime must have been built using `RuntimeRequirements::presentation()`
 	/// and `window.required_instance_extensions()`.
-	pub fn new(engine: &Engine, window: &'window SdlWindow) -> Result<Self> {
+	pub fn new(runtime: &Runtime, window: &'window SdlWindow) -> Result<Self> {
 		Ok(Self {
 			swapchain: None,
-			surface: Some(engine.new_presentation_surface(window)?),
+			surface: Some(runtime.new_presentation_surface(window)?),
 			pending_drawable_extent: None,
 		})
 	}
@@ -41,7 +41,7 @@ impl<'window> Presenter<'window> {
 			.is_some_and(super::PresentationSwapchain::is_transparent)
 	}
 
-	/// Return whether the Engine retained a graphics-capable queue.
+	/// Return whether the Runtime retained a graphics-capable queue.
 	///
 	/// A surface can exist without this capability; swapchain allocation will
 	/// require a graphics queue that can also present to this exact surface.
@@ -250,7 +250,7 @@ impl Drop for Presenter<'_> {
 			.as_ref()
 			.is_some_and(super::PresentationSwapchain::has_submitted_frames)
 		{
-			// Drop cannot wait for the presentation engine. Retain the complete WSI
+			// Drop cannot wait for the presentation runtime. Retain the complete WSI
 			// ownership graph rather than destroying a swapchain, semaphores, or its
 			// surface while presentation may still reference them. `close_swapchain`
 			// is the normal explicit, failure-bearing retirement boundary.

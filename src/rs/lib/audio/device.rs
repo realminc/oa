@@ -12,7 +12,7 @@ use cpal::{
 };
 
 use super::player::{cpal_error, select_config};
-use crate::{Engine, Error, LogComponent, LogLevel, Result};
+use crate::{Error, LogComponent, LogLevel, Result, Runtime};
 
 #[derive(Clone, Copy)]
 pub(super) enum Direction {
@@ -22,7 +22,7 @@ pub(super) enum Direction {
 
 /// Choose an exact PCM configuration without opening a callback stream.
 pub(super) fn select_device(
-	engine: &Engine,
+	runtime: &Runtime,
 	host: &Host,
 	direction: Direction,
 	sample_rate: u32,
@@ -56,7 +56,7 @@ pub(super) fn select_device(
 	if let Ok(id) = selected.0.id()
 		&& bridge_names(host.id()).contains(&id.id())
 	{
-		engine.log(
+		runtime.log(
 			LogLevel::Warn,
 			LogComponent::AUDIO,
 			format!(

@@ -12,7 +12,7 @@ use super::super::physical::DeviceLimits;
 #[cfg(oa_profile = "compatibility")]
 use crate::runtime::Device;
 
-/// Engine-owned bindings for the compiled execution profile.
+/// Runtime-owned bindings for the compiled execution profile.
 ///
 /// Core heap layout (set=0); Compatibility retains fixed layouts instead:
 /// - binding=0: STORAGE_BUFFER array (`heap[]`) — compute shader backing

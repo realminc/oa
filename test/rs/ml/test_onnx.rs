@@ -87,7 +87,7 @@ fn onnx_model(nodes: &[Vec<u8>], initializers: &[Vec<u8>], input: &str, output: 
 
 test_vk!(
 	onnx_imported_mlp_reproduces_reference_logits_on_device,
-	engine,
+	runtime,
 	{
 		// MLP: Relu(x @ W1 + b1) @ W2 + b2 — MatMul/Add/Relu nodes.
 		let w1 = vec![
@@ -122,7 +122,7 @@ test_vk!(
 			onnx_tensor("b2", &[3], &b2),
 		];
 		let model = onnx_model(&nodes, &initializers, "x", "y");
-		let graph = oa::ml::OnnxGraph::from_bytes_on(&engine, &model)?;
+		let graph = oa::ml::OnnxGraph::from_bytes_on(&runtime, &model)?;
 		assert_eq!(graph.input_name(), "x");
 		assert_eq!(graph.output_name(), "y");
 		assert_eq!(graph.num_nodes(), 5);
@@ -164,7 +164,7 @@ test_vk!(
 	}
 );
 
-test_vk!(onnx_gemm_and_softmax_nodes_evaluate_in_order, engine, {
+test_vk!(onnx_gemm_and_softmax_nodes_evaluate_in_order, runtime, {
 	// Gemm(x, W[2,3] transB=0) + bias[3] -> Softmax(axis=-1).
 	let w = vec![0.3, -0.1, 0.2, -0.2, 0.4, 0.1];
 	let bias = vec![0.1, 0.0, -0.1];
@@ -182,7 +182,7 @@ test_vk!(onnx_gemm_and_softmax_nodes_evaluate_in_order, engine, {
 		onnx_tensor("bias", &[3], &bias),
 	];
 	let model = onnx_model(&nodes, &initializers, "x", "y");
-	let graph = oa::ml::OnnxGraph::from_bytes_on(&engine, &model)?;
+	let graph = oa::ml::OnnxGraph::from_bytes_on(&runtime, &model)?;
 	let input = oa::Matrix::new_from_f32([2, 2], &[1.0, -0.5, 0.3, 0.7])?;
 	let probabilities = graph.forward(&input)?.read_f32()?;
 	for row in probabilities.as_chunks::<3>().0 {
@@ -204,13 +204,13 @@ test_vk!(onnx_gemm_and_softmax_nodes_evaluate_in_order, engine, {
 
 test_vk!(
 	onnx_import_rejects_unsupported_operators_and_bad_dtype,
-	engine,
+	runtime,
 	{
 		let nodes = vec![onnx_node("Conv", &["x", "w"], "y", &[])];
 		let initializers = vec![onnx_tensor("w", &[1, 1], &[0.5])];
 		let model = onnx_model(&nodes, &initializers, "x", "y");
 		assert_eq!(
-			oa::ml::OnnxGraph::from_bytes_on(&engine, &model)
+			oa::ml::OnnxGraph::from_bytes_on(&runtime, &model)
 				.err()
 				.expect("import accepted an unsupported operator")
 				.kind(),
@@ -222,7 +222,7 @@ test_vk!(
 
 test_vk!(
 	transformer_named_state_roundtrip_reproduces_logits,
-	engine,
+	runtime,
 	{
 		use oa::ml::{Module, nn::Transformer};
 

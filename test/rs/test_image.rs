@@ -21,3 +21,6 @@ mod codec;
 
 #[path = "image/test_statistics.rs"]
 mod statistics;
+
+#[path = "image/test_transform.rs"]
+mod transform;

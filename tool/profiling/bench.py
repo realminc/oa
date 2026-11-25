@@ -247,7 +247,7 @@ def frequency_snapshot(
 			}.items()
 		}
 		gpu_engines.append({
-			"engine": str(root),
+			"runtime": str(root),
 			**{key: value for key, value in fields.items() if value is not None},
 		})
 
@@ -322,33 +322,33 @@ def clock_contract_violations(snapshot: dict[str, Any]) -> list[str]:
 		integer(contract["gpu_fixed_mhz"], "GPU fixed-clock contract")
 		if "gpu_fixed_mhz" in contract else None
 	)
-	engines = snapshot.get("gpu_engines", [])
+	runtimes = snapshot.get("gpu_engines", [])
 	if fixed_gpu is not None:
-		if not engines:
-			violations.append("GPU frequency engines are unavailable")
-		for engine in engines:
-			name = engine.get("engine", "unknown")
+		if not runtimes:
+			violations.append("GPU frequency runtimes are unavailable")
+		for runtime in runtimes:
+			name = runtime.get("runtime", "unknown")
 			for field in ("requested_minimum_mhz", "requested_maximum_mhz"):
-				observed = integer(engine.get(field), f"GPU {name} {field}")
+				observed = integer(runtime.get(field), f"GPU {name} {field}")
 				if observed is not None and observed != fixed_gpu:
 					violations.append(
 						f"GPU {name} {field} is {observed}, expected {fixed_gpu}"
 					)
 			for field in ("current_mhz", "actual_mhz"):
-				observed = integer(engine.get(field), f"GPU {name} {field}")
+				observed = integer(runtime.get(field), f"GPU {name} {field}")
 				if observed is not None and abs(observed - fixed_gpu) > fixed_gpu * 0.02:
 					violations.append(
 						f"GPU {name} {field} is {observed}, expected {fixed_gpu} +/- 2%"
 					)
-			if engine.get("throttle_status") != "0":
+			if runtime.get("throttle_status") != "0":
 				violations.append(
 					f"GPU {name} throttle status is "
-					f"{engine.get('throttle_status', 'unavailable')}"
+					f"{runtime.get('throttle_status', 'unavailable')}"
 				)
-			if engine.get("throttle_reasons") != "none":
+			if runtime.get("throttle_reasons") != "none":
 				violations.append(
 					f"GPU {name} throttle reasons are "
-					f"{engine.get('throttle_reasons', 'unavailable')}"
+					f"{runtime.get('throttle_reasons', 'unavailable')}"
 				)
 
 	power = snapshot.get("power", {})

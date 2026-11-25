@@ -18,7 +18,7 @@ fn image_metadata_has_exact_rank_and_channel_contracts() {
 
 test_vk!(
 	image_layouts_preserve_dense_storage_and_semantics,
-	engine,
+	runtime,
 	{
 		let cases = [
 			(
@@ -72,7 +72,7 @@ test_vk!(
 	}
 );
 
-test_vk!(image_rejects_inconsistent_metadata, engine, {
+test_vk!(image_rejects_inconsistent_metadata, runtime, {
 	let rank_three = Matrix::new_from_slice([3, 4, 5], &[0_u32; 60])?;
 	let error = Image::new(rank_three, ImageLayout::Nchw, ImageFormat::Rgb)
 		.err()

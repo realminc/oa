@@ -321,28 +321,28 @@ fn rejects_invalid_contract_edges_transactionally() -> oa::Result<()> {
 
 #[test]
 fn preserves_lowering_and_generation_contracts() -> oa::Result<()> {
-	const MAT_MUL_NT: OperationContract = OperationContract::new(
-		"oa::FnMatrix::matMulNt",
+	const MATMUL: OperationContract = OperationContract::new(
+		"oa::FnMatrix::matmulNt",
 		0x4309_b836_dbcb_8f84,
 		TWO_MATRICES,
 		MATRIX,
 	)
 	.with_differentiation(OpDifferentiation::Reverse)
 	.with_lowering(OpLowering::Gemm)
-	.with_shape_rule(OpShapeRule::MatMulNt)
+	.with_shape_rule(OpShapeRule::MatmulNt)
 	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
 
 	let mut source = SemanticGraph::new();
 	let left = source.add_value(matrix("left", &[2, 3], true))?;
 	let right = source.add_value(matrix("right", &[4, 3], true))?;
 	let output = source.add_value(matrix("output", &[2, 4], false))?;
-	source.add_operation(MAT_MUL_NT, &[Some(left), Some(right)], &[output], &[], &[])?;
+	source.add_operation(MATMUL, &[Some(left), Some(right)], &[output], &[], &[])?;
 	assert_eq!(source.operations()[0].lowering(), OpLowering::Gemm);
 
 	let mut copy = SemanticGraph::new();
 	copy.copy_from(&source)?;
 	copy.validate()?;
-	assert_eq!(copy.operations()[0].contract_hash(), MAT_MUL_NT.hash());
+	assert_eq!(copy.operations()[0].contract_hash(), MATMUL.hash());
 	copy.reset();
 	assert_eq!(copy.generation(), 2);
 	assert!(copy.values().is_empty());
@@ -361,7 +361,7 @@ fn generated_contracts_carry_schema_fusion_classes() {
 	assert_eq!(video_ops::TO_MATRIX.fusion_class(), OpFusionClass::Gather);
 	assert_eq!(video_ops::BLEND.fusion_class(), OpFusionClass::Pointwise);
 	assert_eq!(matrix_ops::ADD.fusion_class(), OpFusionClass::Pointwise);
-	assert_eq!(matrix_ops::MAT_MUL_NT.fusion_class(), OpFusionClass::Gemm);
+	assert_eq!(matrix_ops::MATMUL.fusion_class(), OpFusionClass::Gemm);
 	assert_eq!(
 		matrix_ops::PHILOX_UNIFORM.fusion_class(),
 		OpFusionClass::Effect

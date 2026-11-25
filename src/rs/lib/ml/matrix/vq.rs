@@ -6,7 +6,7 @@ use crate::{
 	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
 };
 
-use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::ml::validation::{shader_u32, validate_f32_same_runtime};
 
 /// Functionally updated persistent EMA state.
 pub struct VqEmaState {
@@ -37,7 +37,7 @@ pub fn detach(input: &Matrix) -> Result<Matrix> {
 ///
 /// # Errors
 ///
-/// Returns an error unless inputs are nonempty same-engine FP32 `[N,D]` and
+/// Returns an error unless inputs are nonempty same-runtime FP32 `[N,D]` and
 /// `[K,D]` matrices or recording/allocation fails.
 pub fn vq_assign(latent: &Matrix, codebook: &Matrix) -> Result<VqAssignResult> {
 	let contract = crate::core::operation::ml::VQ_ASSIGN;
@@ -57,13 +57,13 @@ pub fn vq_assign(latent: &Matrix, codebook: &Matrix) -> Result<VqAssignResult> {
 			"{operation} requires nonempty latent [N,D] and codebook [K,D]"
 		)));
 	}
-	validate_f32_same_engine(operation, &[latent, codebook])?;
+	validate_f32_same_runtime(operation, &[latent, codebook])?;
 	let rows_u32 = shader_u32(*rows, "row count", operation)?;
 	let code_dim_u32 = shader_u32(*code_dim, "code dimension", operation)?;
 	let num_codes_u32 = shader_u32(*num_codes, "code count", operation)?;
-	let indices = Matrix::allocate(latent.engine_handle(), vec![*rows], *rows, DType::I32)?;
+	let indices = Matrix::allocate(latent.runtime(), vec![*rows], *rows, DType::I32)?;
 	let quantized = Matrix::allocate(
-		latent.engine_handle(),
+		latent.runtime(),
 		latent.shape().to_vec(),
 		latent.num_elements(),
 		DType::F32,
@@ -81,7 +81,7 @@ pub fn vq_assign(latent: &Matrix, codebook: &Matrix) -> Result<VqAssignResult> {
 	];
 	let inputs = [latent, codebook];
 	let outputs = [&indices, &quantized];
-	latent.engine_handle().record_semantic(
+	latent.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlVqAssignF32,
 			buffers: &buffers,
@@ -108,7 +108,7 @@ pub fn vq_assign(latent: &Matrix, codebook: &Matrix) -> Result<VqAssignResult> {
 /// # Errors
 ///
 /// Returns an error unless the codebook is FP32 `[K,D]`, indices are I32 `[N]`,
-/// both belong to one engine, or recording/allocation fails.
+/// both belong to one runtime, or recording/allocation fails.
 pub fn vq_lookup(codebook: &Matrix, indices: &Matrix) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::VQ_LOOKUP;
 	let operation = contract.name();
@@ -126,10 +126,10 @@ pub fn vq_lookup(codebook: &Matrix, indices: &Matrix) -> Result<Matrix> {
 		|| *code_dim == 0
 		|| codebook.dtype() != DType::F32
 		|| indices.dtype() != DType::I32
-		|| !codebook.engine_handle().same_as(indices.engine_handle())
+		|| !codebook.runtime().same_as(indices.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} requires same-engine F32 codebook [K,D] and I32 indices [N]"
+			"{operation} requires same-runtime F32 codebook [K,D] and I32 indices [N]"
 		)));
 	}
 	let output_count = index_count
@@ -139,7 +139,7 @@ pub fn vq_lookup(codebook: &Matrix, indices: &Matrix) -> Result<Matrix> {
 	let num_codes_u32 = shader_u32(*num_codes, "code count", operation)?;
 	let code_dim_u32 = shader_u32(*code_dim, "code dimension", operation)?;
 	let output = Matrix::allocate(
-		codebook.engine_handle(),
+		codebook.runtime(),
 		vec![*index_count, *code_dim],
 		output_count,
 		DType::F32,
@@ -176,11 +176,11 @@ pub fn vq_lookup(codebook: &Matrix, indices: &Matrix) -> Result<Matrix> {
 					dispatch.kernel.report_name()
 				))
 			})?;
-			let engine = inputs
+			let runtime = inputs
 				.first()
 				.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-				.engine_handle();
-			engine.record_semantic(
+				.runtime();
+			runtime.record_semantic(
 				dispatch,
 				SemanticDispatch {
 					contract,
@@ -202,7 +202,7 @@ pub fn vq_lookup(codebook: &Matrix, indices: &Matrix) -> Result<Matrix> {
 ///
 /// # Errors
 ///
-/// Returns an error for incompatible shapes, dtypes, engines, invalid numerical
+/// Returns an error for incompatible shapes, dtypes, runtimes, invalid numerical
 /// options, ABI overflow, allocation failure, or runtime recording failure.
 #[allow(
 	clippy::too_many_arguments,
@@ -251,29 +251,29 @@ pub fn vq_ema_update(
 			"{operation} received invalid VQ state or options"
 		)));
 	}
-	validate_f32_same_engine(operation, &[latent, embed_sum, cluster_size, codebook])?;
-	if !latent.engine_handle().same_as(indices.engine_handle()) {
+	validate_f32_same_runtime(operation, &[latent, embed_sum, cluster_size, codebook])?;
+	if !latent.runtime().same_as(indices.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to one engine"
+			"{operation} inputs must belong to one runtime"
 		)));
 	}
 	let rows_u32 = shader_u32(*rows, "row count", operation)?;
 	let code_dim_u32 = shader_u32(*code_dim, "code dimension", operation)?;
 	let num_codes_u32 = shader_u32(*num_codes, "code count", operation)?;
 	let next_embed_sum = Matrix::allocate(
-		latent.engine_handle(),
+		latent.runtime(),
 		embed_sum.shape().to_vec(),
 		embed_sum.num_elements(),
 		DType::F32,
 	)?;
 	let next_cluster_size = Matrix::allocate(
-		latent.engine_handle(),
+		latent.runtime(),
 		cluster_size.shape().to_vec(),
 		cluster_size.num_elements(),
 		DType::F32,
 	)?;
 	let next_codebook = Matrix::allocate(
-		latent.engine_handle(),
+		latent.runtime(),
 		codebook.shape().to_vec(),
 		codebook.num_elements(),
 		DType::F32,
@@ -337,11 +337,11 @@ pub fn vq_ema_update(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,

@@ -21,7 +21,7 @@ use crate::ui::{
 	UiSplitConfig, UiTabItem, UiTooltipConfig, UiTreeRowConfig,
 };
 pub use crate::viewer::types::TrainingViewerConfig;
-use crate::{Color, Engine, Error, Event, Result, Texture};
+use crate::{Color, Error, Event, Result, Runtime, Texture};
 
 use super::{ViewerLiveCapabilities, ViewerLiveSource};
 
@@ -348,7 +348,7 @@ impl ViewerLiveSource for TrainingViewerSource {
 		}
 	}
 
-	fn open(&mut self, _engine: &Engine) -> Result<()> {
+	fn open(&mut self, _runtime: &Runtime) -> Result<()> {
 		if let Some(snapshot) = self.session.latest_snapshot() {
 			self.append_snapshot(&snapshot);
 		}

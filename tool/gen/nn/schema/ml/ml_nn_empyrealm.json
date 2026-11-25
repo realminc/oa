@@ -3,7 +3,7 @@
 	"family": "empyrealm",
 	"imports": [
 		"use std::rc::Rc;",
-		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use crate::{DType, Runtime, Error, Matrix, Result};",
 		"use super::{AttentionCache, Embedding, Ffn, Mamba3, Mamba3Config, Mamba3State, Moe, MultiHeadAttention, RmsNorm};",
 		"use crate::ml::{autograd, Module, ModuleRegistry};"
 	],

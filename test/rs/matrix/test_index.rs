@@ -7,7 +7,7 @@ fn rejected<T>(result: oa::Result<T>, message: &str) -> oa::Error {
 	}
 }
 
-test_vk!(equal_matches_fp32_scalar_mask_oracle, engine, {
+test_vk!(equal_matches_fp32_scalar_mask_oracle, runtime, {
 	let input = oa::Matrix::new_from_f32([6], &[-1.0, 0.0, -0.0, 1.0, f32::NAN, f32::INFINITY])?;
 	assert_eq!(
 		oa::matrix::equal(&input, 0.0)?.read_f32()?,
@@ -27,7 +27,7 @@ test_vk!(equal_matches_fp32_scalar_mask_oracle, engine, {
 
 test_vk!(
 	causal_mask_matches_additive_last_axis_oracle_and_rejects_rank,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
 		assert_eq!(
@@ -64,7 +64,7 @@ test_vk!(
 	}
 );
 
-test_vk!(greater_equal_matches_fp32_scalar_mask_oracle, engine, {
+test_vk!(greater_equal_matches_fp32_scalar_mask_oracle, runtime, {
 	let input = oa::Matrix::new_from_f32([6], &[-1.0, 0.0, 1.0, 0.5, f32::NAN, f32::INFINITY])?;
 	assert_eq!(
 		oa::matrix::greater_equal(&input, 0.5)?.read_f32()?,
@@ -84,7 +84,7 @@ test_vk!(greater_equal_matches_fp32_scalar_mask_oracle, engine, {
 
 test_vk!(
 	split_returns_independent_segment_copies_and_rejects_bad_contracts,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32(
 			[2, 6],
@@ -133,7 +133,7 @@ test_vk!(
 	}
 );
 
-test_vk!(top_k_matches_deterministic_last_axis_oracle, engine, {
+test_vk!(top_k_matches_deterministic_last_axis_oracle, runtime, {
 	let input = oa::Matrix::new_from_f32(
 		[3, 5],
 		&[
@@ -165,7 +165,7 @@ test_vk!(top_k_matches_deterministic_last_axis_oracle, engine, {
 
 test_vk!(
 	transpose_matches_tiled_rank_two_rank_three_and_adjoint_oracles,
-	engine,
+	runtime,
 	{
 		let rank_two = oa::Matrix::new_from_f32([2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
 		let transposed = oa::matrix::transpose(&rank_two, -2, -1)?;
@@ -207,7 +207,7 @@ test_vk!(
 
 test_vk!(
 	gather_matches_i32_bounds_and_repeated_row_adjoint,
-	engine,
+	runtime,
 	{
 		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 			[4, 3],
@@ -243,7 +243,7 @@ test_vk!(
 	}
 );
 
-test_vk!(top_k_mask_matches_exact_membership_oracle, engine, {
+test_vk!(top_k_mask_matches_exact_membership_oracle, runtime, {
 	let indices = oa::Matrix::new_from_slice([3, 2], &[2_i32, 0, 1, 2, 0, 1])?;
 	let mask = oa::matrix::top_k_mask(&indices, 4)?;
 	assert_eq!(mask.shape(), [3, 4]);
@@ -254,34 +254,38 @@ test_vk!(top_k_mask_matches_exact_membership_oracle, engine, {
 	Ok(())
 });
 
-test_vk!(gather_last_dim_matches_donor_and_reverse_oracles, engine, {
-	let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
-		[2, 4],
-		&[1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0],
-	)?)?;
-	let rows = oa::Matrix::new_from_slice([2], &[0_u32, 1])?;
-	let indices = oa::Matrix::new_from_slice([2, 3], &[1_i32, 1, 3, 0, 2, 9])?;
-	let tape = oa::ml::GradientTape::new();
-	let input = embedding.forward(&rows)?;
-	let gathered = oa::matrix::gather_last_dim(&input, &indices)?;
-	assert_eq!(gathered.shape(), [2, 3]);
-	assert_eq!(gathered.read_f32()?, vec![2.0, 2.0, 4.0, -1.0, -3.0, 0.0]);
-	let target = oa::Matrix::new_from_f32([2, 3], &[0.0; 6])?;
-	let loss = oa::ml::loss::mse(&gathered, &target)?;
-	tape.backward(&loss)?;
-	let gradient = embedding
-		.weight()
-		.gradient()
-		.expect("gather input gradient is missing")
-		.read_f32()?;
-	let expected = [0.0, 4.0 / 3.0, 0.0, 4.0 / 3.0, -1.0 / 3.0, 0.0, -1.0, 0.0];
-	for (actual, expected) in gradient.iter().zip(expected) {
-		assert!((actual - expected).abs() <= 1.0e-6);
+test_vk!(
+	gather_last_dim_matches_donor_and_reverse_oracles,
+	runtime,
+	{
+		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
+			[2, 4],
+			&[1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0],
+		)?)?;
+		let rows = oa::Matrix::new_from_slice([2], &[0_u32, 1])?;
+		let indices = oa::Matrix::new_from_slice([2, 3], &[1_i32, 1, 3, 0, 2, 9])?;
+		let tape = oa::ml::GradientTape::new();
+		let input = embedding.forward(&rows)?;
+		let gathered = oa::matrix::gather_last_dim(&input, &indices)?;
+		assert_eq!(gathered.shape(), [2, 3]);
+		assert_eq!(gathered.read_f32()?, vec![2.0, 2.0, 4.0, -1.0, -3.0, 0.0]);
+		let target = oa::Matrix::new_from_f32([2, 3], &[0.0; 6])?;
+		let loss = oa::ml::loss::mse(&gathered, &target)?;
+		tape.backward(&loss)?;
+		let gradient = embedding
+			.weight()
+			.gradient()
+			.expect("gather input gradient is missing")
+			.read_f32()?;
+		let expected = [0.0, 4.0 / 3.0, 0.0, 4.0 / 3.0, -1.0 / 3.0, 0.0, -1.0, 0.0];
+		for (actual, expected) in gradient.iter().zip(expected) {
+			assert!((actual - expected).abs() <= 1.0e-6);
+		}
+		Ok(())
 	}
-	Ok(())
-});
+);
 
-test_vk!(moe_routing_bias_update_matches_cpp_oracle, engine, {
+test_vk!(moe_routing_bias_update_matches_cpp_oracle, runtime, {
 	let mask = oa::Matrix::new_from_f32(
 		[4, 4],
 		&[
@@ -300,7 +304,7 @@ test_vk!(moe_routing_bias_update_matches_cpp_oracle, engine, {
 
 test_vk!(
 	slice_matches_copy_region_and_zero_padded_adjoint_oracles,
-	engine,
+	runtime,
 	{
 		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 			[2, 4],
@@ -329,13 +333,13 @@ test_vk!(
 
 test_vk!(
 	captured_slice_adjoint_preserves_padding_after_transient_reuse,
-	engine,
+	runtime,
 	{
 		let weights = oa::Matrix::new_from_f32([2, 4], &[1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0])?;
 		let embedding = oa::ml::nn::Embedding::new_from_matrix(weights.clone())?;
 		let rows = oa::Matrix::new_from_slice([2], &[0_u32, 1])?;
 		let target = oa::Matrix::new_from_f32([2, 2], &[0.0; 4])?;
-		let (plan, (earlier, gradient)) = engine.capture(|| {
+		let (plan, (earlier, gradient)) = runtime.capture(|| {
 			let earlier = oa::matrix::sum(&oa::matrix::scale(&weights, 4.0)?, 1)?;
 			let tape = oa::ml::GradientTape::new();
 			let slice = oa::matrix::slice(&embedding.forward(&rows)?, 1, 1, 3)?;
@@ -346,7 +350,7 @@ test_vk!(
 			))
 		})?;
 		for _ in 0..3 {
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			assert_eq!(earlier.read_f32()?, vec![40.0, -40.0]);
 			assert_eq!(
 				gradient.read_f32()?,
@@ -359,7 +363,7 @@ test_vk!(
 
 test_vk!(
 	repeat_interleave_matches_axis_oracles_and_nonleading_axis_adjoint,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
 		let rows = oa::matrix::repeat_interleave(&input, 2, 0)?;
@@ -400,7 +404,7 @@ test_vk!(
 	}
 );
 
-test_vk!(concat_matches_variadic_copy_and_reverse_oracles, engine, {
+test_vk!(concat_matches_variadic_copy_and_reverse_oracles, runtime, {
 	let left = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, 3.0, 4.0])?;
 	let right = oa::Matrix::new_from_f32([2, 1], &[5.0, 6.0])?;
 	let columns = oa::matrix::concat(&[left, right], 1)?;
@@ -443,7 +447,7 @@ test_vk!(concat_matches_variadic_copy_and_reverse_oracles, engine, {
 	Ok(())
 });
 
-test_vk!(concat_preserves_admitted_integer_and_byte_bits, engine, {
+test_vk!(concat_preserves_admitted_integer_and_byte_bits, runtime, {
 	let left = oa::Matrix::new_from_slice([2, 3], &[1_u8, 2, 3, 4, 5, 6])?;
 	let right = oa::Matrix::new_from_slice([2, 2], &[7_u8, 8, 9, 10])?;
 	let bytes = oa::matrix::concat(&[left, right], 1)?;
@@ -475,7 +479,7 @@ test_vk!(concat_preserves_admitted_integer_and_byte_bits, engine, {
 
 test_vk!(
 	moe_expert_plan_matches_stable_expert_major_oracle,
-	engine,
+	runtime,
 	{
 		let indices = oa::Matrix::new_from_slice([3, 2], &[2_i32, 0, 1, 2, 0, 1])?;
 		let plan = oa::matrix::moe_expert_plan(&indices, 3)?;
@@ -491,55 +495,56 @@ test_vk!(
 
 test_vk!(
 	matrix_index_capture_preserves_one_semantic_operation_per_call,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([2, 3], &[1.0, 3.0, 2.0, 6.0, 4.0, 5.0])?;
-		let (top_k_plan, selected) = engine.capture(|| oa::matrix::top_k(&input, 2, -1))?;
+		let (top_k_plan, selected) = runtime.capture(|| oa::matrix::top_k(&input, 2, -1))?;
 		assert_eq!(top_k_plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			top_k_plan.semantic_graph().operations()[0].name(),
 			"oa::FnMatrix::topK"
 		);
-		engine.submit(&top_k_plan)?.wait()?;
+		runtime.submit(&top_k_plan)?.wait()?;
 		assert_eq!(selected.indices.read::<i32>()?, vec![1, 2, 0, 2]);
 
 		let (route_plan, packed) =
-			engine.capture(|| oa::matrix::moe_expert_plan(&selected.indices, 3))?;
+			runtime.capture(|| oa::matrix::moe_expert_plan(&selected.indices, 3))?;
 		assert_eq!(route_plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			route_plan.semantic_graph().operations()[0].name(),
 			"oa::FnMatrix::moeExpertPlan"
 		);
-		engine.submit(&route_plan)?.wait()?;
+		runtime.submit(&route_plan)?.wait()?;
 		assert_eq!(packed.offsets.read::<u32>()?, vec![0, 1, 2, 4]);
 
 		let mask = oa::Matrix::new_from_f32([2, 3], &[0.0, 1.0, 1.0, 1.0, 0.0, 1.0])?;
 		let bias = oa::Matrix::new_from_f32([3], &[0.0, 0.0, 0.0])?;
 		let (bias_plan, ()) =
-			engine.capture(|| oa::matrix::moe_routing_bias_update(&mask, &bias, 2, 0.01))?;
+			runtime.capture(|| oa::matrix::moe_routing_bias_update(&mask, &bias, 2, 0.01))?;
 		assert_eq!(bias_plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			bias_plan.semantic_graph().operations()[0].name(),
 			"oa::matrix::moe_routing_bias_update"
 		);
-		engine.submit(&bias_plan)?.wait()?;
+		runtime.submit(&bias_plan)?.wait()?;
 
-		let (slice_plan, slice) = engine.capture(|| oa::matrix::slice(&input, 1, 1, 3))?;
+		let (slice_plan, slice) = runtime.capture(|| oa::matrix::slice(&input, 1, 1, 3))?;
 		assert_eq!(slice_plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			slice_plan.semantic_graph().operations()[0].name(),
 			"oa::FnMatrix::slice"
 		);
-		engine.submit(&slice_plan)?.wait()?;
+		runtime.submit(&slice_plan)?.wait()?;
 		assert_eq!(slice.read_f32()?, vec![3.0, 2.0, 4.0, 5.0]);
 
-		let (repeat_plan, repeated) = engine.capture(|| oa::matrix::repeat_interleave(&input, 2, 1))?;
+		let (repeat_plan, repeated) =
+			runtime.capture(|| oa::matrix::repeat_interleave(&input, 2, 1))?;
 		assert_eq!(repeat_plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			repeat_plan.semantic_graph().operations()[0].name(),
 			"oa::FnMatrix::repeatInterleave"
 		);
-		engine.submit(&repeat_plan)?.wait()?;
+		runtime.submit(&repeat_plan)?.wait()?;
 		assert_eq!(
 			repeated.read_f32()?,
 			vec![1.0, 1.0, 3.0, 3.0, 2.0, 2.0, 6.0, 6.0, 4.0, 4.0, 5.0, 5.0]
@@ -547,13 +552,13 @@ test_vk!(
 
 		let tail = oa::Matrix::new_from_f32([2, 1], &[7.0, 8.0])?;
 		let (concat_plan, concatenated) =
-			engine.capture(|| oa::matrix::concat(&[input.clone(), tail.clone()], 1))?;
+			runtime.capture(|| oa::matrix::concat(&[input.clone(), tail.clone()], 1))?;
 		assert_eq!(concat_plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			concat_plan.semantic_graph().operations()[0].name(),
 			"oa::FnMatrix::concat"
 		);
-		engine.submit(&concat_plan)?.wait()?;
+		runtime.submit(&concat_plan)?.wait()?;
 		assert_eq!(
 			concatenated.read_f32()?,
 			vec![1.0, 3.0, 2.0, 7.0, 6.0, 4.0, 5.0, 8.0]
@@ -562,7 +567,7 @@ test_vk!(
 	}
 );
 
-test_vk!(matrix_index_rejects_invalid_public_contracts, engine, {
+test_vk!(matrix_index_rejects_invalid_public_contracts, runtime, {
 	let f32_rank_two = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, 3.0, 4.0])?;
 	let i32_rank_two = oa::Matrix::new_from_slice([2, 1], &[0_i32, 1])?;
 	let f32_rank_three = oa::Matrix::new_from_f32([1, 1, 1], &[1.0])?;
@@ -651,7 +656,7 @@ test_vk!(matrix_index_rejects_invalid_public_contracts, engine, {
 
 test_vk!(
 	compact_rows_packs_selected_rows_and_publishes_device_metadata,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([4, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])?;
 		let mask = oa::Matrix::new_from_f32([4], &[1.0, 0.0, 1.0, 0.0])?;
@@ -689,7 +694,7 @@ test_vk!(
 
 test_vk!(
 	scatter_rows_adds_mapped_source_rows_and_leaves_unmapped_rows,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([4, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])?;
 		let mask = oa::Matrix::new_from_f32([4], &[1.0, 0.0, 1.0, 0.0])?;
@@ -741,7 +746,7 @@ test_vk!(
 
 test_vk!(
 	scatter_rows_indirect_matches_the_direct_variant_and_tolerates_empty_plans,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([4, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])?;
 		let mask = oa::Matrix::new_from_f32([4], &[1.0, 0.0, 1.0, 0.0])?;
@@ -778,8 +783,8 @@ test_vk!(
 		Ok(())
 	}
 );
-test_vk!(pad_matches_all_border_mode_oracles, engine, {
-	let _ = engine;
+test_vk!(pad_matches_all_border_mode_oracles, runtime, {
+	let _ = runtime;
 	let input = oa::Matrix::new_from_f32([2, 3], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?;
 	let padded = oa::matrix::pad(&input, &[0, 0, 1, 2], oa::matrix::PadMode::Constant, 9.0)?;
 	assert_eq!(padded.shape(), [2, 6]);
@@ -820,8 +825,8 @@ test_vk!(pad_matches_all_border_mode_oracles, engine, {
 	Ok(())
 });
 
-test_vk!(pad_backward_matches_border_preimage_oracles, engine, {
-	let _ = engine;
+test_vk!(pad_backward_matches_border_preimage_oracles, runtime, {
+	let _ = runtime;
 	for (mode, pads, expected) in [
 		(
 			oa::matrix::PadMode::Replicate,
@@ -859,8 +864,8 @@ test_vk!(pad_backward_matches_border_preimage_oracles, engine, {
 	Ok(())
 });
 
-test_vk!(cast_f32_i32_truncates_and_cast_i32_f32_lifts, engine, {
-	let _ = engine;
+test_vk!(cast_f32_i32_truncates_and_cast_i32_f32_lifts, runtime, {
+	let _ = runtime;
 	let floats = oa::Matrix::new_from_f32([4], &[2.9, -1.7, 0.0, 42.5])?;
 	let ints = oa::matrix::cast_f32_i32(&floats)?;
 	assert_eq!(ints.dtype(), oa::DType::I32);

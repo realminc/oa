@@ -47,10 +47,10 @@ def levels_of(leaves, algorithm):
 	return levels
 
 
-def matrix(engine, rows, algorithm):
+def matrix(runtime, rows, algorithm):
 	if algorithm.startswith("poseidon2_"):
-		return oa.Matrix.new_from_u32([len(rows), 8], [n for row in rows for n in struct.unpack("<8I", row)], engine=engine)
-	return oa.Matrix.new_from_u8([len(rows), len(rows[0])], list(b"".join(rows)), engine=engine)
+		return oa.Matrix.new_from_u32([len(rows), 8], [n for row in rows for n in struct.unpack("<8I", row)], runtime=runtime)
+	return oa.Matrix.new_from_u8([len(rows), len(rows[0])], list(b"".join(rows)), runtime=runtime)
 
 
 def read(matrix_, algorithm):
@@ -63,7 +63,7 @@ def read(matrix_, algorithm):
 @unittest.skipUnless("OA_TEST_DEVICE_INDEX" in os.environ, "explicit Vulkan test device required")
 class GeneralMerkleVulkanTest(unittest.TestCase):
 	def test_roots_exact_frames_and_fail_closed_verification(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		for algorithm_id, algorithm in enumerate(ALGORITHMS):
 			bytes_ = 64 if algorithm in ("sha512", "sha3_512") else 32
 			for count in (1, 2, 5, 33):
@@ -72,12 +72,12 @@ class GeneralMerkleVulkanTest(unittest.TestCase):
 					prime = PROFILES[algorithm.removeprefix("poseidon2_")]["prime"]
 					leaves = [struct.pack("<8I", *((i * 937 + j * 91) % prime for j in range(8))) for i in range(count)]
 				levels = levels_of(leaves, algorithm)
-				input_ = matrix(engine, leaves, algorithm)
+				input_ = matrix(runtime, leaves, algorithm)
 				tree = oa.crypto.merkle_build(input_, algorithm)
 				self.assertEqual(read(tree.root, algorithm), levels[-1][0], (algorithm, count))
 				indices = list(range(count)) + [count, 0xFFFFFFFF]
-				selected = matrix(engine, leaves + [leaves[0], leaves[0]], algorithm)
-				index_matrix = oa.Matrix.new_from_u32([len(indices)], indices, engine=engine)
+				selected = matrix(runtime, leaves + [leaves[0], leaves[0]], algorithm)
+				index_matrix = oa.Matrix.new_from_u32([len(indices)], indices, runtime=runtime)
 				proofs = oa.crypto.merkle_proofs(tree, index_matrix)
 				expected = b""
 				for index in indices:
@@ -98,18 +98,18 @@ class GeneralMerkleVulkanTest(unittest.TestCase):
 					for position in (0, 4, 8, 12, 16, 20):
 						bad = bytearray(expected)
 						bad[position] ^= 1
-						bad_frames = oa.Matrix.new_from_u8([len(indices), frame_bytes], list(bad), engine=engine)
+						bad_frames = oa.Matrix.new_from_u8([len(indices), frame_bytes], list(bad), runtime=runtime)
 						result = oa.crypto.merkle_verify(selected, bad_frames, tree.root, algorithm, count)
 						self.assertEqual(result.read_u32()[0], 0, (algorithm, position))
 
 	def test_hierarchical_subtrees_preserve_the_root(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		for algorithm in ALGORITHMS:
 			bytes_ = 64 if algorithm in ("sha512", "sha3_512") else 32
 			leaves = [bytes((i + j) % 256 for j in range(bytes_)) for i in range(16)]
 			if algorithm.startswith("poseidon2_"):
 				leaves = [struct.pack("<8I", *(i * 8 + j for j in range(8))) for i in range(16)]
-			input_ = matrix(engine, leaves, algorithm)
+			input_ = matrix(runtime, leaves, algorithm)
 			for width in (1, 2, 4, 16):
 				subtrees = oa.crypto.merkle_subtree_roots(input_, algorithm, width)
 				composed = oa.crypto.merkle_build(subtrees, algorithm)

@@ -485,7 +485,7 @@ impl CommandPool {
 		}
 		// Cross-family hazards consuming this run's output release buffer
 		// ownership here; the consumer run records the matching acquire in
-		// `barriers_before` at its destination node. The engine timeline
+		// `barriers_before` at its destination node. The runtime timeline
 		// orders the two submissions.
 		let releases = (nodes.end..graph.nodes().len())
 			.flat_map(|index| graph.barriers_before(index).iter())
@@ -885,7 +885,7 @@ fn record_buffer_barriers(
 	// SAFETY: every barrier names a live retained buffer. Same-family
 	// hazards carry both ordering scopes with QUEUE_FAMILY_IGNORED; a
 	// cross-family hazard carries the scopes for its side of the ownership
-	// transfer and names both resolved families. The engine timeline
+	// transfer and names both resolved families. The runtime timeline
 	// submission ordering pairs each release with the consumer's acquire.
 	// The full logical buffer range is valid and no image layout exists.
 	unsafe {

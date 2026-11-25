@@ -215,7 +215,7 @@ class NnGenerationTests(unittest.TestCase):
 			self.assertEqual(step.count(f"&mut state.{buffer},"), 2)
 		for provider in ("matrix::mamba3_siso", "matrix::mamba3_mimo", "matrix::mamba3_siso_step", "matrix::mamba3_mimo_step"):
 			self.assertIn(provider + "(", text)
-		for evidence in ("weight.snapshot()", "autograd::record_linear(", "autograd::record_parameter_leaf(", "Matrix::allocate(owner.engine_handle()", "dt + (-(-dt).exp_m1()).ln()", "config.state_size > 128", "!(1..=8).contains(&config.mimo_rank)"):
+		for evidence in ("weight.snapshot()", "autograd::record_linear(", "autograd::record_parameter_leaf(", "Matrix::allocate(owner.runtime()", "dt + (-(-dt).exp_m1()).ln()", "config.state_size > 128", "!(1..=8).contains(&config.mimo_rank)"):
 			self.assertIn(evidence, text)
 		self.assertNotIn(".wait()", text)
 		self.assertNotIn(".checkpoint(", text)
@@ -336,7 +336,7 @@ class NnGenerationTests(unittest.TestCase):
 		self.assertIn("!config.ema_epsilon.is_finite()", text)
 		self.assertIn("!(0.0..=1.0).contains(&config.ema_decay)", text)
 		self.assertIn("Rc::new(VectorQuantizer::new_with_seed_on(", text)
-		self.assertIn("codebook.engine_handle().same_as(embed_sum.engine_handle())", text)
+		self.assertIn("codebook.runtime().same_as(embed_sum.runtime())", text)
 
 	def test_malformed_metadata_is_rejected(self):
 		original = self.schema("activation")
@@ -768,7 +768,7 @@ class NnGenerationTests(unittest.TestCase):
 		text = GEN.expected_outputs(ROOT, ROOT)[ROOT / "src/rs/lib/ml/nn/ffn.gen.rs"]
 		positions = [text.index(f'registry.register_module("{name}"') for name in ("norm", "gate", "up", "down")]
 		self.assertEqual(positions, sorted(positions))
-		self.assertIn("RmsNorm::new_on(engine, model_width, epsilon)", text)
+		self.assertIn("RmsNorm::new_on(runtime, model_width, epsilon)", text)
 		self.assertEqual(text.count("Linear::new_with_seed_on("), 3)
 		self.assertIn("seed.wrapping_add(1)", text)
 		self.assertIn("seed.wrapping_add(2)", text)

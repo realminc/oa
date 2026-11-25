@@ -13,7 +13,7 @@ impl {{time_type}} {
 		max_period: f32,
 		time_scale: f32,
 	) -> Result<Self> {
-		Self::new_on(&Engine::current()?, embedding_dim, max_period, time_scale)	}
+		Self::new_on(&Runtime::current()?, embedding_dim, max_period, time_scale)	}
 
 	/// Construct the donor sinusoidal time embedding.
 	///
@@ -23,7 +23,7 @@ impl {{time_type}} {
 	/// `max_period` is finite and greater than one, and `time_scale` is finite
 	/// and positive.
 	pub fn new_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		embedding_dim: usize,
 		max_period: f32,
 		time_scale: f32,
@@ -44,7 +44,7 @@ impl {{time_type}} {
 		let frequencies = (0..half)
 			.map(|index| time_scale * (-log_period * index as f32 / half as f32).exp())
 			.collect::<Vec<_>>();
-		let frequencies = Matrix::new_from_f32_on(engine, [1, half], &frequencies)?;
+		let frequencies = Matrix::new_from_f32_on(runtime, [1, half], &frequencies)?;
 		let mut registry = ModuleRegistry::new();
 		registry.register_buffer("{{frequency_name}}", frequencies.clone(), false)?;
 		Ok(Self {
@@ -60,7 +60,7 @@ impl {{time_type}} {
 	///
 	/// # Errors
 	///
-	/// Returns an error for any other shape or dtype, another engine, or a
+	/// Returns an error for any other shape or dtype, another runtime, or a
 	/// failed Matrix operation.
 	pub fn forward(&self, time: &Matrix) -> Result<Matrix> {
 		let batch = match time.shape() {
@@ -74,11 +74,11 @@ impl {{time_type}} {
 		};
 		if time.dtype() != DType::F32
 			|| !time
-				.engine_handle()
-				.same_as(self.frequencies.engine_handle())
+				.runtime()
+				.same_as(self.frequencies.runtime())
 		{
 			return Err(Error::invalid_argument(
-				"{{time_type}} expects same-engine F32 [B] or [B, 1]",
+				"{{time_type}} expects same-runtime F32 [B] or [B, 1]",
 			));
 		}
 		let time = {{reshape_operation}}(time, [batch, 1])?;
@@ -154,7 +154,7 @@ pub struct {{transformer_type}} {
 impl {{transformer_type}} {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_seed(config: {{transformer_config_type}}, seed: u64) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, config, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, config, seed)	}
 
 	/// Construct a deterministic dense or dropless-MoE flow Transformer.
 	///
@@ -162,7 +162,7 @@ impl {{transformer_type}} {
 	///
 	/// Returns an error for invalid geometry, expert routing, epsilon, or failed
 	/// child construction and registration.
-	pub fn new_with_seed_on(engine: &Engine, config: {{transformer_config_type}}, seed: u64) -> Result<Self> {
+	pub fn new_with_seed_on(runtime: &Runtime, config: {{transformer_config_type}}, seed: u64) -> Result<Self> {
 		validate_config(config)?;
 		let mut registry = ModuleRegistry::new();
 		let mut blocks = Vec::with_capacity(config.num_layers);
@@ -171,7 +171,7 @@ impl {{transformer_type}} {
 			let block = if config.num_experts == 0 {
 				if config.adaptive_conditioning {
 					{{dense_conditioned_constructor}}(
-						engine,
+						runtime,
 						config.model_width,
 						config.hidden_width,
 						config.sequence_length,
@@ -182,7 +182,7 @@ impl {{transformer_type}} {
 					)?
 				} else {
 					{{dense_constructor}}(
-						engine,
+						runtime,
 						config.model_width,
 						config.hidden_width,
 						config.sequence_length,
@@ -193,7 +193,7 @@ impl {{transformer_type}} {
 				}
 			} else if config.adaptive_conditioning {
 				{{moe_conditioned_constructor}}(
-					engine,
+					runtime,
 					config.model_width,
 					config.hidden_width,
 					config.sequence_length,
@@ -206,7 +206,7 @@ impl {{transformer_type}} {
 				)?
 			} else {
 				{{moe_constructor}}(
-					engine,
+					runtime,
 					config.model_width,
 					config.hidden_width,
 					config.sequence_length,
@@ -222,7 +222,7 @@ impl {{transformer_type}} {
 			registry.register_module(format!("{{block_prefix}}{index}"), block.clone())?;
 			blocks.push(block);
 		}
-		let output_norm = Rc::new({{norm_constructor}}(engine, config.model_width, config.epsilon)?);
+		let output_norm = Rc::new({{norm_constructor}}(runtime, config.model_width, config.epsilon)?);
 		registry.register_module("{{output_norm_name}}", output_norm.clone())?;
 		Ok(Self {
 			config: Cell::new(config),
@@ -295,10 +295,10 @@ impl {{transformer_type}} {
 			&& (!config.adaptive_conditioning
 				|| condition.shape() != [batch, config.model_width]
 				|| condition.dtype() != DType::F32
-				|| !tokens.engine_handle().same_as(condition.engine_handle()))
+				|| !tokens.runtime().same_as(condition.runtime()))
 		{
 			return Err(Error::invalid_argument(
-				"{{transformer_type}} condition requires enabled same-engine F32 [B,D] adaptive conditioning",
+				"{{transformer_type}} condition requires enabled same-runtime F32 [B,D] adaptive conditioning",
 			));
 		}
 
@@ -339,10 +339,10 @@ impl {{transformer_type}} {
 			|| mask.shape() == [batch, config.sequence_length, 1];
 		if !valid_shape
 			|| mask.dtype() != DType::F32
-			|| !tokens.engine_handle().same_as(mask.engine_handle())
+			|| !tokens.runtime().same_as(mask.runtime())
 		{
 			return Err(Error::invalid_argument(
-				"{{transformer_type}} token mask must be same-engine F32 [B,S] or [B,S,1]",
+				"{{transformer_type}} token mask must be same-runtime F32 [B,S] or [B,S,1]",
 			));
 		}
 		let key_mask = {{reshape_operation}}(mask, [batch, 1, config.sequence_length])?;
@@ -464,7 +464,7 @@ pub struct {{name}} {
 impl {{name}} {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_seed(config: {{config_type}}, seed: u64) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, config, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, config, seed)	}
 
 	/// Construct a deterministic dense or MoE denoiser.
 	///
@@ -472,7 +472,7 @@ impl {{name}} {
 	///
 	/// Returns an error for invalid model/time/dropout geometry or failed child,
 	/// parameter, and buffer construction.
-	pub fn new_with_seed_on(engine: &Engine, config: {{config_type}}, seed: u64) -> Result<Self> {
+	pub fn new_with_seed_on(runtime: &Runtime, config: {{config_type}}, seed: u64) -> Result<Self> {
 		if config.input_dim == 0
 			|| config.backbone.model_width == 0
 			|| config.backbone.sequence_length == 0
@@ -494,13 +494,13 @@ impl {{name}} {
 		}
 
 		let input_projection = Rc::new({{projection_constructor}}(
-			engine,
+			runtime,
 			config.input_dim,
 			config.backbone.model_width,
 			seed,
 		)?);
 		let time_embedding = Rc::new({{time_type}}::new_on(
-			engine,
+			runtime,
 			config.backbone.model_width,
 			config.time_max_period,
 			config.time_scale,
@@ -509,19 +509,19 @@ impl {{name}} {
 			None
 		} else {
 			Some(Rc::new({{projection_constructor}}(
-				engine,
+				runtime,
 				config.condition_dim,
 				config.backbone.model_width,
 				seed.wrapping_add(1),
 			)?))
 		};
 		let backbone = Rc::new({{transformer_type}}::new_with_seed_on(
-			engine,
+			runtime,
 			config.backbone,
 			seed.wrapping_add(2),
 		)?);
 		let output_projection = Rc::new({{projection_constructor}}(
-			engine,
+			runtime,
 			config.backbone.model_width,
 			config.input_dim,
 			seed.wrapping_add(3),
@@ -532,7 +532,7 @@ impl {{name}} {
 			.checked_mul(config.backbone.model_width)
 			.ok_or_else(|| Error::invalid_argument("{{name}} position size overflows usize"))?;
 		let position_template = Matrix::allocate(
-			&engine.handle(),
+			&runtime.handle(),
 			vec![config.backbone.sequence_length, config.backbone.model_width],
 			position_count,
 			DType::F32,
@@ -577,7 +577,7 @@ impl {{name}} {
 	///
 	/// # Errors
 	///
-	/// Returns an error unless inputs match the configured same-engine F32
+	/// Returns an error unless inputs match the configured same-runtime F32
 	/// contracts or a recorded child operation fails.
 	pub fn forward_conditioned(
 		&self,
@@ -591,10 +591,10 @@ impl {{name}} {
 			matches!(time.shape(), [value] if *value == batch) || time.shape() == [batch, 1];
 		if !time_valid
 			|| time.dtype() != DType::F32
-			|| !sample.engine_handle().same_as(time.engine_handle())
+			|| !sample.runtime().same_as(time.runtime())
 		{
 			return Err(Error::invalid_argument(
-				"{{name}} time must be same-engine F32 [B] or [B,1]",
+				"{{name}} time must be same-runtime F32 [B] or [B,1]",
 			));
 		}
 		match (self.config.condition_dim, condition) {
@@ -607,10 +607,10 @@ impl {{name}} {
 			(width, Some(value))
 				if value.shape() == [batch, width]
 					&& value.dtype() == DType::F32
-					&& sample.engine_handle().same_as(value.engine_handle()) => {}
+					&& sample.runtime().same_as(value.runtime()) => {}
 			_ => {
 				return Err(Error::invalid_argument(
-					"{{name}} condition must be same-engine F32 [B,condition_dim]",
+					"{{name}} condition must be same-runtime F32 [B,condition_dim]",
 				));
 			}
 		}
@@ -737,5 +737,5 @@ fn zero_matrix(reference: &Matrix, shape: Vec<usize>) -> Result<Matrix> {
 			.checked_mul(*extent)
 			.ok_or_else(|| Error::invalid_argument("zero Matrix shape overflows usize"))
 	})?;
-	Matrix::allocate(reference.engine_handle(), shape, count, DType::F32)
+	Matrix::allocate(reference.runtime(), shape, count, DType::F32)
 }

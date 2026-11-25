@@ -6,18 +6,18 @@
 //! machinery. Production code reads the cache but never writes it.
 //!
 //! The tuner measures candidates through the exact production path —
-//! `plan` with a required-variant pin, `lower_mat_mul_nt_plan`, and
+//! `plan` with a required-variant pin, `lower_matmul_nt_plan`, and
 //! `record_semantic` + `checkpoint_timed` — and publishes a winner only
 //! after the deterministic host oracle re-validates its numerics. Timing
 //! alone never authorizes route publication.
 
 use super::{
 	GemmEpilogue, GemmKernel, MatmulPreference, MatmulProblem, MatmulRouteValue, MatmulVariant,
-	VARIANTS, calculate_workspace_bytes, find_variant, lower_mat_mul_nt_plan,
-	lower_mat_mul_nt_reduction, plan, resolve_precision, route_key, variant_legal,
+	VARIANTS, calculate_workspace_bytes, find_variant, lower_matmul_nt_plan,
+	lower_matmul_nt_reduction, plan, resolve_precision, route_key, variant_legal,
 };
-use crate::runtime::{ComputeDispatch, EngineHandle, LogComponent, SemanticDispatch};
-use crate::{Engine, Error, Result};
+use crate::runtime::{ComputeDispatch, LogComponent, RuntimeHandle, SemanticDispatch};
+use crate::{Error, Result, Runtime};
 
 /// Sentinel returned by `benchmark_candidate` for any failed or invalid
 /// measurement — the donor's `kInvalidMeasurementMs`.
@@ -412,7 +412,7 @@ fn collect_candidates(
 /// checkpoint, and one device-timestamp duration. Returns mean GPU
 /// milliseconds or the invalid-measurement sentinel.
 fn benchmark_candidate(
-	engine: &Engine,
+	runtime: &Runtime,
 	problem: &MatmulProblem,
 	variant_id: u64,
 	max_workspace_bytes: u64,
@@ -437,7 +437,7 @@ fn benchmark_candidate(
 		return INVALID_MEASUREMENT_MS;
 	};
 	let Ok(output) = crate::Matrix::allocate(
-		&engine.handle(),
+		&runtime.handle(),
 		vec![m as usize, n as usize],
 		m as usize * n as usize,
 		crate::DType::F32,
@@ -458,14 +458,14 @@ fn benchmark_candidate(
 		max_workspace_bytes,
 		..MatmulPreference::default()
 	};
-	let contract = engine.handle().matmul_device_contract();
+	let contract = runtime.handle().matmul_device_contract();
 	let Ok(candidate_plan) = plan(&contract, problem, &pinned, None) else {
 		return INVALID_MEASUREMENT_MS;
 	};
-	let Ok(launch) = lower_mat_mul_nt_plan(&candidate_plan, problem) else {
+	let Ok(launch) = lower_matmul_nt_plan(&candidate_plan, problem) else {
 		return INVALID_MEASUREMENT_MS;
 	};
-	let Ok(reduction) = lower_mat_mul_nt_reduction(&candidate_plan, problem) else {
+	let Ok(reduction) = lower_matmul_nt_reduction(&candidate_plan, problem) else {
 		return INVALID_MEASUREMENT_MS;
 	};
 	// Problem-buffer slots [A, B, C, workspace, epilogue]; unused slots repeat
@@ -475,7 +475,7 @@ fn benchmark_candidate(
 			.map_err(|_| Error::invalid_argument("split-K workspace extent overflows usize"));
 		elements.and_then(|elements| {
 			crate::Matrix::allocate(
-				&engine.handle(),
+				&runtime.handle(),
 				vec![elements],
 				elements,
 				crate::DType::F32,
@@ -507,13 +507,13 @@ fn benchmark_candidate(
 
 	let record_once = || -> Result<()> {
 		let semantic = SemanticDispatch {
-			contract: crate::core::operation::matrix::MAT_MUL_NT,
+			contract: crate::core::operation::matrix::MATMUL,
 			inputs: &[&a, &b],
 			outputs: &[&output],
 			attributes: &[],
 		};
 		if let (Some(reduction), Some(reduce_buffers)) = (&reduction, &reduce_buffers) {
-			return engine.handle().record_split_semantic(
+			return runtime.handle().record_split_semantic(
 				&[
 					ComputeDispatch {
 						kernel: launch.kernel_id,
@@ -533,7 +533,7 @@ fn benchmark_candidate(
 				semantic,
 			);
 		}
-		engine.handle().record_semantic(
+		runtime.handle().record_semantic(
 			ComputeDispatch {
 				kernel: launch.kernel_id,
 				buffers: &buffers,
@@ -547,7 +547,7 @@ fn benchmark_candidate(
 
 	for _ in 0..warm_iterations {
 		if record_once()
-			.and_then(|()| engine.checkpoint().and_then(|event| event.wait()))
+			.and_then(|()| runtime.checkpoint().and_then(|event| event.wait()))
 			.is_err()
 		{
 			return INVALID_MEASUREMENT_MS;
@@ -556,7 +556,7 @@ fn benchmark_candidate(
 
 	let mut total_gpu_ms = 0.0_f64;
 	for _ in 0..bench_iterations {
-		let Ok(event) = record_once().and_then(|()| engine.checkpoint_timed()) else {
+		let Ok(event) = record_once().and_then(|()| runtime.checkpoint_timed()) else {
 			return INVALID_MEASUREMENT_MS;
 		};
 		let Ok(duration) = event.device_duration() else {
@@ -575,7 +575,7 @@ fn benchmark_candidate(
 /// oracle — the donor's `validateCandidate`. A mismatch leaves the prior
 /// route cache untouched.
 fn validate_candidate(
-	engine: &Engine,
+	runtime: &Runtime,
 	problem: &MatmulProblem,
 	variant_id: u64,
 	shape: &GemmTunerShape,
@@ -597,7 +597,7 @@ fn validate_candidate(
 		Some(crate::matrix::from_f32([n as usize], &bias_data)?)
 	};
 	let output = crate::Matrix::allocate(
-		&engine.handle(),
+		&runtime.handle(),
 		vec![m as usize, n as usize],
 		m as usize * n as usize,
 		crate::DType::F32,
@@ -608,17 +608,17 @@ fn validate_candidate(
 		max_workspace_bytes,
 		..MatmulPreference::default()
 	};
-	let contract = engine.handle().matmul_device_contract();
+	let contract = runtime.handle().matmul_device_contract();
 	let candidate_plan = plan(&contract, problem, &pinned, None)?;
-	let launch = lower_mat_mul_nt_plan(&candidate_plan, problem)?;
-	let reduction = lower_mat_mul_nt_reduction(&candidate_plan, problem)?;
+	let launch = lower_matmul_nt_plan(&candidate_plan, problem)?;
+	let reduction = lower_matmul_nt_reduction(&candidate_plan, problem)?;
 	// Problem-buffer slots [A, B, C, workspace, epilogue]; unused slots repeat
 	// the output so the epilogue launch can bind bias at index 4.
 	let workspace = reduction.as_ref().map_or(Ok(None), |_| {
 		let elements = usize::try_from(candidate_plan.workspace_bytes / 4)
 			.map_err(|_| Error::invalid_argument("split-K workspace extent overflows usize"))?;
 		crate::Matrix::allocate(
-			&engine.handle(),
+			&runtime.handle(),
 			vec![elements],
 			elements,
 			crate::DType::F32,
@@ -640,14 +640,14 @@ fn validate_candidate(
 	];
 	let buffers = launch.bindings(&problem_buffers)?;
 	let semantic = SemanticDispatch {
-		contract: crate::core::operation::matrix::MAT_MUL_NT,
+		contract: crate::core::operation::matrix::MATMUL,
 		inputs: &[&a, &b],
 		outputs: &[&output],
 		attributes: &[],
 	};
 	if let Some(reduction) = &reduction {
 		let reduce_buffers = reduction.bindings(&problem_buffers)?;
-		engine.handle().record_split_semantic(
+		runtime.handle().record_split_semantic(
 			&[
 				ComputeDispatch {
 					kernel: launch.kernel_id,
@@ -667,7 +667,7 @@ fn validate_candidate(
 			semantic,
 		)?;
 	} else {
-		engine.handle().record_semantic(
+		runtime.handle().record_semantic(
 			ComputeDispatch {
 				kernel: launch.kernel_id,
 				buffers: &buffers,
@@ -678,7 +678,7 @@ fn validate_candidate(
 			semantic,
 		)?;
 	}
-	engine.checkpoint()?.wait()?;
+	runtime.checkpoint()?.wait()?;
 	let output_data = output.read_f32()?;
 	validate_numerical_output(shape, &a_data, &b_data, &bias_data, &output_data)
 }
@@ -690,7 +690,7 @@ fn validate_candidate(
 /// excursion without hiding stable changes. The measured winner is
 /// published only after the deterministic host oracle confirms it.
 pub(super) fn benchmark_shape(
-	engine: &Engine,
+	runtime: &Runtime,
 	shape: &GemmTunerShape,
 	warm_iterations: u32,
 	bench_iterations: u32,
@@ -703,7 +703,7 @@ pub(super) fn benchmark_shape(
 	let mut problem = MatmulProblem::contiguous(shape.m, shape.n, shape.k);
 	problem.epilogue = shape.epilogue;
 
-	let contract = engine.handle().matmul_device_contract();
+	let contract = runtime.handle().matmul_device_contract();
 	let candidates = collect_candidates(&contract, &problem, shape.max_workspace_bytes);
 	if candidates.is_empty() {
 		return Err(Error::failed_precondition(format!(
@@ -723,7 +723,7 @@ pub(super) fn benchmark_shape(
 				candidates.len() - 1 - order
 			};
 			block_means[index].push(benchmark_candidate(
-				engine,
+				runtime,
 				&problem,
 				candidates[index].id,
 				shape.max_workspace_bytes,
@@ -798,7 +798,7 @@ pub(super) fn benchmark_shape(
 	// Timing alone never authorizes route publication: the exact winner is
 	// re-run on deterministic data and must match the independent oracle.
 	if let Err(error) = validate_candidate(
-		engine,
+		runtime,
 		&problem,
 		best_variant,
 		shape,
@@ -815,7 +815,7 @@ pub(super) fn benchmark_shape(
 	}
 
 	record_measured_matmul_route(
-		&engine.handle(),
+		&runtime.handle(),
 		&problem,
 		MatmulRouteValue {
 			winner_variant: best_variant,
@@ -853,7 +853,7 @@ pub(super) fn benchmark_shape(
 /// cache is explicitly persisted after the sweep, matching the donor's
 /// `saveCache` call.
 pub(super) fn run(
-	engine: &Engine,
+	runtime: &Runtime,
 	warm_iterations: u32,
 	bench_iterations: u32,
 ) -> Result<Vec<GemmTunerResult>> {
@@ -863,7 +863,7 @@ pub(super) fn run(
 	);
 	let mut results = Vec::new();
 	for shape in default_shapes() {
-		match benchmark_shape(engine, shape, warm_iterations, bench_iterations) {
+		match benchmark_shape(runtime, shape, warm_iterations, bench_iterations) {
 			Ok(result) => {
 				crate::log_info!(
 					LogComponent::COMPUTE,
@@ -889,7 +889,7 @@ pub(super) fn run(
 			}
 		}
 	}
-	engine.handle().save_matmul_route_cache()?;
+	runtime.handle().save_matmul_route_cache()?;
 	crate::log_info!(
 		LogComponent::COMPUTE,
 		"gemm tuner: benchmark complete ({} shapes qualified)",
@@ -901,7 +901,7 @@ pub(super) fn run(
 #[test]
 #[ignore = "requires a Vulkan device; pinned SmallM numerical qualification"]
 fn small_m_pinned_candidate_matches_host_oracle() {
-	let engine = Engine::new().expect("SmallM qualification requires an admitted Vulkan device");
+	let runtime = Runtime::new().expect("SmallM qualification requires an admitted Vulkan device");
 	for (m, n, k) in [
 		(1, 1, 1),
 		(1, 65, 33),
@@ -918,7 +918,7 @@ fn small_m_pinned_candidate_matches_host_oracle() {
 			max_workspace_bytes: 0,
 		};
 		validate_candidate(
-			&engine,
+			&runtime,
 			&MatmulProblem::contiguous(m, n, k),
 			super::matmul_variant_id_from_name("GemmSmallM"),
 			&shape,
@@ -928,16 +928,16 @@ fn small_m_pinned_candidate_matches_host_oracle() {
 	}
 }
 
-/// Record one measured qualification result into the engine's route cache.
+/// Record one measured qualification result into the runtime's route cache.
 ///
 /// The winner must be registered and legal for the complete problem on this
 /// device — measured evidence never admits an illegal route.
 fn record_measured_matmul_route(
-	engine: &EngineHandle,
+	runtime: &RuntimeHandle,
 	problem: &MatmulProblem,
 	value: MatmulRouteValue,
 ) -> Result<()> {
-	let contract = engine.matmul_device_contract();
+	let contract = runtime.matmul_device_contract();
 	let variant = find_variant(value.winner_variant).ok_or_else(|| {
 		Error::invalid_argument(format!(
 			"measured matmul route records an unregistered variant {:#x}",
@@ -951,6 +951,6 @@ fn record_measured_matmul_route(
 			variant.name
 		)));
 	}
-	engine.record_matmul_route(route_key(&contract, problem), value);
+	runtime.record_matmul_route(route_key(&contract, problem), value);
 	Ok(())
 }

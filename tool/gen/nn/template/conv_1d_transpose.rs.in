@@ -31,11 +31,11 @@ impl {{name}} {
 		padding: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, input_channels, output_channels, kernel_size, stride, padding, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, input_channels, output_channels, kernel_size, stride, padding, seed)	}
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		input_channels: usize,
 		output_channels: usize,
 		kernel_size: usize,
@@ -57,7 +57,7 @@ impl {{name}} {
 		let limit = 1.0_f32 / (fan_in as f32).sqrt();
 		let values = random::symmetric_uniform(weight_count, limit, seed);
 		let weight = Matrix::new_from_f32_on(
-			engine,
+			runtime,
 			[input_channels, output_channels, kernel_size],
 			&values,
 		)?;

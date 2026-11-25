@@ -1,7 +1,7 @@
 //! ComposeImage — R8G8B8A8_UNORM color-attachment image for the UI raster pass.
 //!
-//! Created through `EngineHandle::create_compose_image`. Owns the image and
-//! its retained view; releases both through the engine registry on drop.
+//! Created through `RuntimeHandle::create_compose_image`. Owns the image and
+//! its retained view; releases both through the runtime registry on drop.
 
 use std::cell::Cell;
 
@@ -11,7 +11,7 @@ use crate::Result;
 pub(super) struct ComposeImage {
 	pub(super) width: u32,
 	pub(super) height: u32,
-	engine_handle: crate::runtime::EngineHandle,
+	runtime: crate::runtime::RuntimeHandle,
 	/// Raw Vulkan image handle retained for barrier commands.
 	raw_image: vk::Image,
 	/// Color-attachment view retained for dynamic rendering.
@@ -21,15 +21,15 @@ pub(super) struct ComposeImage {
 
 impl ComposeImage {
 	pub(super) fn new(
-		engine: &crate::runtime::EngineHandle,
+		runtime: &crate::runtime::RuntimeHandle,
 		width: u32,
 		height: u32,
 	) -> Result<Self> {
-		let (raw_image, raw_view) = engine.create_compose_image(width, height)?;
+		let (raw_image, raw_view) = runtime.create_compose_image(width, height)?;
 		Ok(Self {
 			width,
 			height,
-			engine_handle: engine.clone(),
+			runtime: runtime.clone(),
 			raw_image,
 			raw_view,
 			layout: Cell::new(vk::ImageLayout::UNDEFINED),
@@ -55,6 +55,6 @@ impl ComposeImage {
 
 impl Drop for ComposeImage {
 	fn drop(&mut self) {
-		self.engine_handle.destroy_compose_image(self.raw_image);
+		self.runtime.destroy_compose_image(self.raw_image);
 	}
 }

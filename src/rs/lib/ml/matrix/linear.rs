@@ -1,7 +1,7 @@
 //! Linear Matrix operation implementations.
 
 use crate::OpAttribute;
-use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::ml::validation::{shader_u32, validate_f32_same_runtime};
 use crate::runtime::ComputeDispatch;
 use crate::runtime::SemanticDispatch;
 use crate::{
@@ -35,7 +35,7 @@ pub(in crate::ml) fn linear(input: &Matrix, weight: &Matrix, bias: &Matrix) -> R
 			bias.shape()
 		)));
 	}
-	validate_f32_same_engine(OPERATION, &[input, weight, bias])?;
+	validate_f32_same_runtime(OPERATION, &[input, weight, bias])?;
 	let batch = input.shape()[..input.shape().len() - 1]
 		.iter()
 		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
@@ -56,18 +56,13 @@ pub(in crate::ml) fn linear(input: &Matrix, weight: &Matrix, bias: &Matrix) -> R
 			"{OPERATION} feature dimensions must be nonzero"
 		)));
 	}
-	let output = Matrix::allocate(
-		input.engine_handle(),
-		output_shape,
-		output_count,
-		DType::F32,
-	)?;
+	let output = Matrix::allocate(input.runtime(), output_shape, output_count, DType::F32)?;
 	if output_count != 0 {
 		let contract = KernelId::MlLinearF32
 			.semantic_contract()
 			.ok_or_else(|| Error::internal("MlLinearF32 cannot own one semantic ML operation"))?;
 		if crate::runtime::record_linear_f16(
-			input.engine_handle(),
+			input.runtime(),
 			input,
 			weight,
 			bias,
@@ -106,11 +101,11 @@ pub(in crate::ml) fn linear(input: &Matrix, weight: &Matrix, bias: &Matrix) -> R
 					dispatch.kernel.report_name()
 				))
 			})?;
-			let engine = inputs
+			let runtime = inputs
 				.first()
 				.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-				.engine_handle();
-			engine.record_semantic(
+				.runtime();
+			runtime.record_semantic(
 				dispatch,
 				SemanticDispatch {
 					contract,
@@ -157,7 +152,7 @@ pub(in crate::ml) fn linear_backward(
 			output_gradient.shape()
 		)));
 	}
-	validate_f32_same_engine(OPERATION, &[input, weight, output_gradient])?;
+	validate_f32_same_runtime(OPERATION, &[input, weight, output_gradient])?;
 	let batch = input.shape()[..input.shape().len() - 1]
 		.iter()
 		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
@@ -166,19 +161,19 @@ pub(in crate::ml) fn linear_backward(
 	let input_features_u32 = shader_u32(input_features, "input feature count", OPERATION)?;
 	let output_features_u32 = shader_u32(*output_features, "output feature count", OPERATION)?;
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		weight.num_elements(),
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![*output_features],
 		*output_features,
 		DType::F32,
@@ -212,11 +207,11 @@ pub(in crate::ml) fn linear_backward(
 					dispatch.kernel.report_name()
 				))
 			})?;
-			let engine = inputs
+			let runtime = inputs
 				.first()
 				.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-				.engine_handle();
-			engine.record_semantic(
+				.runtime();
+			runtime.record_semantic(
 				dispatch,
 				SemanticDispatch {
 					contract,
@@ -250,11 +245,11 @@ pub(in crate::ml) fn linear_backward(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,

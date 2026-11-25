@@ -3,7 +3,7 @@ use oa::ml::{
 	training::{PpoTrainer, PpoTrainerConfig, RolloutTrainingPhase},
 };
 
-fn model(_engine: &oa::Engine, seed: u64) -> oa::Result<CategoricalActorCritic> {
+fn model(_runtime: &oa::Runtime, seed: u64) -> oa::Result<CategoricalActorCritic> {
 	CategoricalActorCritic::new(CategoricalActorCriticConfig {
 		observation_size: 2,
 		action_count: 2,
@@ -24,7 +24,7 @@ fn config(seed: u64) -> PpoTrainerConfig {
 	}
 }
 
-fn collect_one(_engine: &oa::Engine, trainer: &mut PpoTrainer<'_, '_>) -> oa::Result<()> {
+fn collect_one(_runtime: &oa::Runtime, trainer: &mut PpoTrainer<'_, '_>) -> oa::Result<()> {
 	trainer.begin_collection()?;
 	for _ in 0..trainer.config().horizon {
 		let observation = oa::Matrix::new_from_f32([2, 2], &[0.1, -0.2, 0.3, 0.4])?;
@@ -50,13 +50,13 @@ fn collect_one(_engine: &oa::Engine, trainer: &mut PpoTrainer<'_, '_>) -> oa::Re
 
 test_vk!(
 	ppo_trainer_completes_the_donor_environment_neutral_gate,
-	engine,
+	runtime,
 	{
-		let model = model(&engine, 17)?;
+		let model = model(&runtime, 17)?;
 		let mut optimizer = Adam::new(model.all_parameters()?, 1.0e-3)?;
-		let mut trainer = PpoTrainer::new(&engine, &model, &mut optimizer, config(123))?;
+		let mut trainer = PpoTrainer::new(&runtime, &model, &mut optimizer, config(123))?;
 		assert!(trainer.needs_collection());
-		collect_one(&engine, &mut trainer)?;
+		collect_one(&runtime, &mut trainer)?;
 		assert_eq!(trainer.phase(), RolloutTrainingPhase::Update);
 		assert!(trainer.update()?);
 		assert!(trainer.is_done());
@@ -83,15 +83,15 @@ test_vk!(
 
 test_vk!(
 	ppo_collection_abort_restores_capture_and_collect_phase,
-	engine,
+	runtime,
 	{
-		let model = model(&engine, 29)?;
+		let model = model(&runtime, 29)?;
 		let mut optimizer = Adam::new(model.all_parameters()?, 1.0e-3)?;
-		let mut trainer = PpoTrainer::new(&engine, &model, &mut optimizer, config(321))?;
+		let mut trainer = PpoTrainer::new(&runtime, &model, &mut optimizer, config(321))?;
 		assert!(trainer.abort_collection().is_err());
-		let result: oa::Result<()> = engine
+		let result: oa::Result<()> = runtime
 			.capture(|| {
-				collect_one(&engine, &mut trainer)?;
+				collect_one(&runtime, &mut trainer)?;
 				let integer = oa::Matrix::new_from_slice([1], &[1_i32])?;
 				oa::matrix::add(trainer.batch().reward(), &integer).map(|_| ())
 			})
@@ -100,7 +100,7 @@ test_vk!(
 		trainer.abort_collection()?;
 		assert!(trainer.needs_collection());
 		assert_eq!(trainer.phase(), RolloutTrainingPhase::Collect);
-		collect_one(&engine, &mut trainer)?;
+		collect_one(&runtime, &mut trainer)?;
 		assert!(trainer.update()?);
 		let snapshot = trainer.finish()?;
 		assert_eq!(snapshot.step_count(), 1);
@@ -111,7 +111,7 @@ test_vk!(
 
 test_vk!(
 	ppo_model_auxiliary_loss_is_composed_under_the_update_tape,
-	engine,
+	runtime,
 	{
 		struct WithAuxiliary {
 			base: CategoricalActorCritic,
@@ -135,14 +135,14 @@ test_vk!(
 			}
 		}
 		let model = WithAuxiliary {
-			base: model(&engine, 17)?,
+			base: model(&runtime, 17)?,
 			calls: std::cell::Cell::new(0),
 		};
 		let mut optimizer = Adam::new(model.all_parameters()?, 1.0e-3)?;
 		let c = config(123);
 		let coefficients = c.loss;
-		let mut trainer = PpoTrainer::new(&engine, &model, &mut optimizer, c)?;
-		collect_one(&engine, &mut trainer)?;
+		let mut trainer = PpoTrainer::new(&runtime, &model, &mut optimizer, c)?;
+		collect_one(&runtime, &mut trainer)?;
 		trainer.update()?;
 		let metrics = trainer.metrics();
 		let expected = metrics.policy_loss + coefficients.value_coefficient * metrics.value_loss
@@ -158,19 +158,19 @@ test_vk!(
 
 test_vk!(
 	ppo_minibatch_accumulation_matches_full_batch_with_tail,
-	engine,
+	runtime,
 	{
 		use oa::ml::Sgd;
 		let mut outcomes = Vec::new();
 		for minibatch in [0, 1, 4, 6] {
-			let model = model(&engine, 72)?;
+			let model = model(&runtime, 72)?;
 			let mut optimizer = Sgd::new(model.all_parameters()?, 0.005, 0.0, 0.0)?;
 			let mut c = config(431);
 			c.horizon = 3;
 			c.update_epochs = 2;
 			c.update_minibatch_size = minibatch;
-			let mut trainer = PpoTrainer::new(&engine, &model, &mut optimizer, c)?;
-			collect_one(&engine, &mut trainer)?;
+			let mut trainer = PpoTrainer::new(&runtime, &model, &mut optimizer, c)?;
+			collect_one(&runtime, &mut trainer)?;
 			while !trainer.is_done() {
 				trainer.update()?;
 			}
@@ -196,18 +196,18 @@ test_vk!(
 	}
 );
 
-test_vk!(ppo_rejects_oversized_minibatch, engine, {
-	let model = model(&engine, 17)?;
+test_vk!(ppo_rejects_oversized_minibatch, runtime, {
+	let model = model(&runtime, 17)?;
 	let mut optimizer = Adam::new(model.all_parameters()?, 0.001)?;
 	let mut c = config(7);
 	c.update_minibatch_size = 3;
-	assert!(PpoTrainer::new(&engine, &model, &mut optimizer, c.clone()).is_err());
+	assert!(PpoTrainer::new(&runtime, &model, &mut optimizer, c.clone()).is_err());
 	Ok(())
 });
 
 test_vk!(
 	ppo_late_minibatch_failure_never_advances_optimizer,
-	engine,
+	runtime,
 	{
 		struct RejectTail {
 			model: CategoricalActorCritic,
@@ -234,7 +234,7 @@ test_vk!(
 			}
 		}
 		let model = RejectTail {
-			model: model(&engine, 19)?,
+			model: model(&runtime, 19)?,
 			reject: std::cell::Cell::new(false),
 			completed_prefix: std::cell::Cell::new(0),
 		};
@@ -248,8 +248,8 @@ test_vk!(
 		c.horizon = 3;
 		c.update_minibatch_size = 4;
 		c.enable_gpu_timing = true;
-		let mut trainer = PpoTrainer::new(&engine, &model, &mut optimizer, c)?;
-		collect_one(&engine, &mut trainer)?;
+		let mut trainer = PpoTrainer::new(&runtime, &model, &mut optimizer, c)?;
+		collect_one(&runtime, &mut trainer)?;
 		model.reject.set(true);
 		assert!(trainer.update().is_err());
 		assert!(trainer.is_done());
@@ -269,7 +269,7 @@ test_vk!(
 
 test_vk!(
 	ppo_timed_minibatches_preserve_updates_and_publish_complete_epoch_samples,
-	engine,
+	runtime,
 	{
 		struct Times(Vec<std::time::Duration>);
 		impl oa::ml::TrainingCallback for Times {
@@ -289,7 +289,7 @@ test_vk!(
 		let mut reference: Option<Vec<f32>> = None;
 		for timed in [false, true] {
 			for minibatch in [0, 1, 4, 6] {
-				let model = model(&engine, 72)?;
+				let model = model(&runtime, 72)?;
 				let mut optimizer = oa::ml::Sgd::new(model.all_parameters()?, 0.005, 0.0, 0.0)?;
 				let mut c = config(431);
 				c.horizon = 3;
@@ -298,13 +298,13 @@ test_vk!(
 				c.update_minibatch_size = minibatch;
 				c.enable_gpu_timing = timed;
 				let mut times = Times(Vec::new());
-				let mut trainer = PpoTrainer::new(&engine, &model, &mut optimizer, c)?;
+				let mut trainer = PpoTrainer::new(&runtime, &model, &mut optimizer, c)?;
 				if timed {
 					trainer.add_callback(&mut times);
 				}
 				while !trainer.is_done() {
 					if trainer.needs_collection() {
-						collect_one(&engine, &mut trainer)?;
+						collect_one(&runtime, &mut trainer)?;
 					}
 					trainer.update()?;
 				}
@@ -343,7 +343,7 @@ test_vk!(
 
 test_vk!(
 	ppo_bootstrap_batches_only_row_independent_critics,
-	engine,
+	runtime,
 	{
 		use oa::ml::{ActorCritic, ActorCriticOutput, ModuleRegistry};
 		// Each row's value is the batch-wide sum of all observation features.
@@ -351,7 +351,7 @@ test_vk!(
 		// rollout into one batch would put the rollout-wide total everywhere.
 		struct BatchSum<'a> {
 			inner: CategoricalActorCritic,
-			engine: &'a oa::Engine,
+			runtime: &'a oa::Runtime,
 		}
 		impl Module for BatchSum<'_> {
 			fn registry(&self) -> &ModuleRegistry {
@@ -367,8 +367,8 @@ test_vk!(
 					return Err(oa::Error::callback("batch-sum critic requires rank two"));
 				};
 				let row_sums = oa::matrix::reshape(&oa::matrix::sum(x, 1)?, [1, batch])?;
-				let total = oa::matrix::mat_mul_nt(
-					&oa::matrix::ones_on(self.engine, [batch, batch])?,
+				let total = oa::matrix::matmul(
+					&oa::matrix::ones_on(self.runtime, [batch, batch])?,
 					&row_sums,
 				)?;
 				Ok(ActorCriticOutput {
@@ -399,12 +399,12 @@ test_vk!(
 		};
 
 		let dependent = BatchSum {
-			inner: model(&engine, 31)?,
-			engine: &engine,
+			inner: model(&runtime, 31)?,
+			runtime: &runtime,
 		};
 		assert!(!dependent.evaluates_rows_independently());
 		let mut optimizer = Adam::new(dependent.all_parameters()?, 1.0e-3)?;
-		let mut trainer = PpoTrainer::new(&engine, &dependent, &mut optimizer, c.clone())?;
+		let mut trainer = PpoTrainer::new(&runtime, &dependent, &mut optimizer, c.clone())?;
 		collect(&mut trainer)?;
 		// Step totals: 1 + 0.5 - 0.25 + 1 = 2.25 and 2 + 0.5 - 0.25 + 2 = 4.25.
 		assert_eq!(
@@ -414,10 +414,10 @@ test_vk!(
 		);
 		drop(trainer);
 
-		let independent = model(&engine, 32)?;
+		let independent = model(&runtime, 32)?;
 		assert!(ActorCritic::evaluates_rows_independently(&independent));
 		let mut optimizer = Adam::new(independent.all_parameters()?, 1.0e-3)?;
-		let mut trainer = PpoTrainer::new(&engine, &independent, &mut optimizer, c)?;
+		let mut trainer = PpoTrainer::new(&runtime, &independent, &mut optimizer, c)?;
 		let successors = collect(&mut trainer)?;
 		let batched = trainer.batch().next_value().read_f32()?;
 		drop(trainer);
@@ -438,7 +438,7 @@ test_vk!(
 
 test_vk!(
 	ppo_compiled_updates_match_eager_with_tail_across_rollout_boundaries,
-	engine,
+	runtime,
 	{
 		use oa::ml::{ActorCritic, ActorCriticOutput, AdamW, ModuleRegistry, PpoUpdateProgram};
 		use std::cell::Cell;
@@ -466,7 +466,7 @@ test_vk!(
 		let mut results = Vec::new();
 		for compiled in [false, true] {
 			let model = Counted {
-				inner: model(&engine, 72)?,
+				inner: model(&runtime, 72)?,
 				updates: Cell::new(0),
 			};
 			let mut optimizer = AdamW::new(model.all_parameters()?, 0.001)?;
@@ -481,11 +481,11 @@ test_vk!(
 					..config(123 + rollout * 4)
 				};
 				let mut trainer = if compiled {
-					PpoTrainer::new_compiled(&engine, &model, &mut optimizer, &mut program, c)?
+					PpoTrainer::new_compiled(&runtime, &model, &mut optimizer, &mut program, c)?
 				} else {
-					PpoTrainer::new(&engine, &model, &mut optimizer, c)?
+					PpoTrainer::new(&runtime, &model, &mut optimizer, c)?
 				};
-				collect_one(&engine, &mut trainer)?;
+				collect_one(&runtime, &mut trainer)?;
 				while !trainer.is_done() {
 					trainer.update()?;
 					metrics.push(trainer.metrics());
@@ -529,7 +529,7 @@ test_vk!(
 
 test_vk!(
 	ppo_complete_compiled_trading_matches_eager_and_reuses_all_phases,
-	engine,
+	runtime,
 	{
 		use oa::ml::environment::{Environment, TradingConfig, TradingEnvironment, TradingSeries};
 		use oa::ml::{AdamW, PpoUpdateProgram, TradingRolloutProgram};
@@ -579,7 +579,7 @@ test_vk!(
 			let mut update = PpoUpdateProgram::default();
 			let mut collection = TradingRolloutProgram::default();
 			let mut env =
-				TradingEnvironment::new_with_row_capacity(&engine, config, &[make_series(24, 0.)], 32)?;
+				TradingEnvironment::new_with_row_capacity(&runtime, config, &[make_series(24, 0.)], 32)?;
 			let mut rollouts = Vec::new();
 			for rollout in 0..2 {
 				if rollout > 0 {
@@ -599,9 +599,9 @@ test_vk!(
 					..PpoTrainerConfig::default()
 				};
 				let mut trainer = if compiled {
-					PpoTrainer::new_compiled(&engine, &model, &mut optimizer, &mut update, c)?
+					PpoTrainer::new_compiled(&runtime, &model, &mut optimizer, &mut update, c)?
 				} else {
-					PpoTrainer::new(&engine, &model, &mut optimizer, c)?
+					PpoTrainer::new(&runtime, &model, &mut optimizer, c)?
 				};
 				if compiled {
 					assert!(
@@ -611,7 +611,7 @@ test_vk!(
 					);
 				} else {
 					trainer.begin_collection()?;
-					engine.checkpoint()?.wait()?;
+					runtime.checkpoint()?.wait()?;
 					env.reset(seed)?;
 					for step in 0..3 {
 						let observation = env.observation().clone();
@@ -696,7 +696,7 @@ test_vk!(
 
 test_vk!(
 	ppo_continuing_trading_retains_position_bootstrap_and_restores_state,
-	engine,
+	runtime,
 	{
 		use oa::ml::environment::{
 			Environment, TRADING_ACCOUNT_FEATURES, TradingConfig, TradingEnvironment, TradingSeries,
@@ -771,7 +771,7 @@ test_vk!(
 			registry,
 		};
 		let mut optimizer = AdamW::new(model.all_parameters()?, 0.0001)?;
-		let mut env = TradingEnvironment::new(&engine, c, std::slice::from_ref(&source))?;
+		let mut env = TradingEnvironment::new(&runtime, c, std::slice::from_ref(&source))?;
 		let mut updates = PpoUpdateProgram::default();
 		let mut collection = TradingRolloutProgram::default();
 		let mut previous_cursor = 0;
@@ -800,7 +800,7 @@ test_vk!(
 			};
 			let gamma = config.gae.gamma;
 			let mut trainer =
-				PpoTrainer::new_compiled(&engine, &model, &mut optimizer, &mut updates, config)?;
+				PpoTrainer::new_compiled(&runtime, &model, &mut optimizer, &mut updates, config)?;
 			trainer.restore_action_index(previous_cursor)?;
 			trainer.collect_trading_continuing(&mut env, &mut collection, 3, 2, 0.0)?;
 			previous_cursor = trainer.action_index();
@@ -826,7 +826,7 @@ test_vk!(
 			trainer.finish()?;
 			if chunk == 1 {
 				let state = TradingState::new_from_bytes(&env.snapshot()?.to_bytes())?;
-				let mut restored = TradingEnvironment::new(&engine, c, std::slice::from_ref(&source))?;
+				let mut restored = TradingEnvironment::new(&runtime, c, std::slice::from_ref(&source))?;
 				restored.restore(&state)?;
 				env.close()?;
 				env = restored;

@@ -1,12 +1,12 @@
 fn test_log_directory() -> std::path::PathBuf {
-	std::env::temp_dir().join(format!("oars-engine-log-{}", std::process::id()))
+	std::env::temp_dir().join(format!("oars-runtime-log-{}", std::process::id()))
 }
 
 #[test]
 #[ignore = "requires a hardware Vulkan 1.3 compute device"]
-fn creates_and_drops_engine_on_hardware_vulkan() -> oa::Result<()> {
-	let engine = oa::Engine::new()?;
-	let info = engine.device_info();
+fn creates_and_drops_runtime_on_hardware_vulkan() -> oa::Result<()> {
+	let runtime = oa::Runtime::new()?;
+	let info = runtime.device_info();
 	assert!(!info.name().is_empty());
 	assert!(!info.api_version().is_empty());
 	assert_ne!(info.capability_identity(), 0);
@@ -18,10 +18,10 @@ fn creates_and_drops_engine_on_hardware_vulkan() -> oa::Result<()> {
 
 #[test]
 #[ignore = "requires a hardware Vulkan 1.3 compute device"]
-fn engine_owns_flushes_and_closes_its_logging_session() -> Result<(), Box<dyn std::error::Error>> {
+fn runtime_owns_flushes_and_closes_its_logging_session() -> Result<(), Box<dyn std::error::Error>> {
 	let directory = test_log_directory();
 	let _ = std::fs::remove_dir_all(&directory);
-	let engine = oa::Engine::builder()
+	let runtime = oa::Runtime::builder()
 		.logging(
 			oa::LogOptions::new()
 				.directory(&directory)
@@ -31,14 +31,14 @@ fn engine_owns_flushes_and_closes_its_logging_session() -> Result<(), Box<dyn st
 				.file_output(true),
 		)
 		.build()?;
-	oa::Engine::set_default(engine.clone());
-	oa::log_info!(oa::LogComponent::RUNTIME, "selected engine logger");
-	engine.flush_log()?;
-	let path = engine
+	oa::Runtime::set_default(runtime.clone());
+	oa::log_info!(oa::LogComponent::RUNTIME, "selected runtime logger");
+	runtime.flush_log()?;
+	let path = runtime
 		.log_path()
-		.ok_or_else(|| std::io::Error::other("engine did not expose its log path"))?;
+		.ok_or_else(|| std::io::Error::other("runtime did not expose its log path"))?;
 	let contents = std::fs::read_to_string(&path)?;
-	assert!(contents.contains("[ENGN] oa::Engine · v"));
+	assert!(contents.contains("[OWNR] oa::Runtime · v"));
 	assert!(contents.contains("Vulkan · 1 device"));
 	assert!(contents.contains("oa::Device ["));
 	assert!(contents.contains("driver {"));
@@ -48,8 +48,8 @@ fn engine_owns_flushes_and_closes_its_logging_session() -> Result<(), Box<dyn st
 	assert!(contents.contains("precision {"));
 	assert!(contents.contains("features {"));
 	assert!(contents.contains("f16:  "));
-	assert!(contents.contains("[RT  ] selected engine logger"));
-	engine.close()?;
+	assert!(contents.contains("[RT  ] selected runtime logger"));
+	runtime.close()?;
 	std::fs::remove_dir_all(directory)?;
 	Ok(())
 }
@@ -57,16 +57,16 @@ fn engine_owns_flushes_and_closes_its_logging_session() -> Result<(), Box<dyn st
 #[test]
 #[ignore = "requires a hardware Vulkan 1.3 compute device"]
 fn builder_selects_automatic_and_exact_devices() -> oa::Result<()> {
-	let automatic = oa::Engine::builder()
+	let automatic = oa::Runtime::builder()
 		.devices(oa::DeviceSelection::Automatic)
 		.build()?;
-	oa::Engine::set_default(automatic.clone());
+	oa::Runtime::set_default(automatic.clone());
 	drop(automatic);
 
-	let exact = oa::Engine::builder()
+	let exact = oa::Runtime::builder()
 		.devices(oa::DeviceSelection::Index(0))
 		.build()?;
-	oa::Engine::set_default(exact.clone());
+	oa::Runtime::set_default(exact.clone());
 	drop(exact);
 	Ok(())
 }
@@ -74,7 +74,7 @@ fn builder_selects_automatic_and_exact_devices() -> oa::Result<()> {
 #[test]
 #[ignore = "requires a Vulkan loader"]
 fn builder_rejects_an_out_of_range_device_index() {
-	let result = oa::Engine::builder()
+	let result = oa::Runtime::builder()
 		.devices(oa::DeviceSelection::Index(usize::MAX))
 		.build();
 	let error = match result {
@@ -89,8 +89,8 @@ fn builder_rejects_an_out_of_range_device_index() {
 #[test]
 #[ignore = "requires a Vulkan 1.3 loader"]
 fn presentation_requirement_rejects_missing_surface_extensions() {
-	let result = oa::Engine::builder()
-		.requirements(oa::EngineRequirements::default().presentation())
+	let result = oa::Runtime::builder()
+		.requirements(oa::RuntimeRequirements::default().presentation())
 		.build();
 	let error = match result {
 		Ok(_) => panic!("presentation requirement accepted an instance without surface extensions"),
@@ -102,10 +102,10 @@ fn presentation_requirement_rejects_missing_surface_extensions() {
 
 #[test]
 #[ignore = "requires a hardware Vulkan 1.3 compute device"]
-fn default_matrix_source_reuses_its_thread_engine_and_rejects_foreign_values() -> oa::Result<()> {
-	oa::Engine::init_default()?;
+fn default_matrix_source_reuses_its_thread_runtime_and_rejects_foreign_values() -> oa::Result<()> {
+	oa::Runtime::init_default()?;
 	let first = oa::matrix::from_f32([2], &[1.0, 2.0])?;
-	let second = oa::Engine::with_default(|default| {
+	let second = oa::Runtime::with_default(|default| {
 		// Reentrant use of the default selector must not hold an exclusive borrow.
 		let nested = oa::matrix::from_f32([2], &[3.0, 4.0])?;
 		let explicit = oa::matrix::from_f32_on(default, [2], &[5.0, 6.0])?;
@@ -115,18 +115,18 @@ fn default_matrix_source_reuses_its_thread_engine_and_rejects_foreign_values() -
 	})?;
 	assert_eq!(oa::matrix::add(&first, &second)?.read_f32()?, [4.0, 6.0]);
 
-	let foreign_engine = oa::Engine::new()?;
-	let foreign = oa::matrix::from_f32_on(&foreign_engine, [2], &[1.0, 1.0])?;
+	let foreign_runtime = oa::Runtime::new()?;
+	let foreign = oa::matrix::from_f32_on(&foreign_runtime, [2], &[1.0, 1.0])?;
 	let error = match oa::matrix::add(&first, &foreign) {
-		Ok(_) => panic!("mixed-engine operands were accepted"),
+		Ok(_) => panic!("mixed-runtime operands were accepted"),
 		Err(error) => error,
 	};
 	assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
 	Ok(())
 }
 
-test_vk!(checkpoint_event_waits_for_its_exact_epoch, engine, {
-	let event = engine.checkpoint()?;
+test_vk!(checkpoint_event_waits_for_its_exact_epoch, runtime, {
+	let event = runtime.checkpoint()?;
 	event.wait()?;
 	assert!(event.is_complete()?);
 	Ok(())
@@ -134,10 +134,10 @@ test_vk!(checkpoint_event_waits_for_its_exact_epoch, engine, {
 
 #[test]
 #[ignore = "requires a hardware Vulkan 1.3 compute device"]
-fn event_remains_valid_after_engine_drop() -> oa::Result<()> {
+fn event_remains_valid_after_runtime_drop() -> oa::Result<()> {
 	let event = {
-		let engine = oa::Engine::new()?;
-		engine.checkpoint()?
+		let runtime = oa::Runtime::new()?;
+		runtime.checkpoint()?
 	};
 
 	event.wait()?;
@@ -145,17 +145,17 @@ fn event_remains_valid_after_engine_drop() -> oa::Result<()> {
 	Ok(())
 }
 
-test_vk!(dropped_event_does_not_abandon_retirement, engine, {
-	let abandoned_handle = engine.checkpoint()?;
+test_vk!(dropped_event_does_not_abandon_retirement, runtime, {
+	let abandoned_handle = runtime.checkpoint()?;
 	drop(abandoned_handle);
 
-	let following = engine.checkpoint()?;
+	let following = runtime.checkpoint()?;
 	following.wait()?;
 	assert!(following.is_complete()?);
 	Ok(())
 });
 
-test_vk!(fp32_storage_round_trips_through_vma, engine, {
+test_vk!(fp32_storage_round_trips_through_vma, runtime, {
 	let expected = [1.25_f32, -2.5, 0.0, 128.75, f32::INFINITY, -0.0];
 	let matrix = oa::Matrix::new_from_f32([2, 3], &expected)?;
 
@@ -175,7 +175,7 @@ test_vk!(fp32_storage_round_trips_through_vma, engine, {
 	Ok(())
 });
 
-test_vk!(zero_extent_matrix_needs_no_vulkan_buffer, engine, {
+test_vk!(zero_extent_matrix_needs_no_vulkan_buffer, runtime, {
 	let matrix = oa::Matrix::new_from_f32([3, 0, usize::MAX], &[])?;
 
 	assert_eq!(matrix.shape(), [3, 0, usize::MAX]);
@@ -187,8 +187,8 @@ test_vk!(zero_extent_matrix_needs_no_vulkan_buffer, engine, {
 #[ignore = "requires a hardware Vulkan 1.3 compute device"]
 fn matrix_keeps_its_destruction_services_alive() -> oa::Result<()> {
 	let matrix = {
-		let engine = oa::Engine::new()?;
-		oa::Matrix::new_from_f32_on(&engine, [2], &[3.5, -7.0])?
+		let runtime = oa::Runtime::new()?;
+		oa::Matrix::new_from_f32_on(&runtime, [2], &[3.5, -7.0])?
 	};
 
 	assert_eq!(matrix.read_f32()?, [3.5, -7.0]);
@@ -197,7 +197,7 @@ fn matrix_keeps_its_destruction_services_alive() -> oa::Result<()> {
 
 test_vk!(
 	matrix_add_matches_an_independent_host_oracle_for_boundary_sizes,
-	engine,
+	runtime,
 	{
 		for element_count in [1_usize, 255, 256, 257, 513] {
 			let left_values = (0..element_count)
@@ -234,7 +234,7 @@ test_vk!(
 
 test_vk!(
 	matrix_add_handles_zero_extent_and_rejects_invalid_ownership,
-	engine,
+	runtime,
 	{
 		let left = oa::Matrix::new_from_f32([2, 0, usize::MAX], &[])?;
 		let right = oa::Matrix::new_from_f32([2, 0, usize::MAX], &[])?;
@@ -242,11 +242,11 @@ test_vk!(
 		assert_eq!(output.shape(), [2, 0, usize::MAX]);
 		assert!(output.read_f32()?.is_empty());
 
-		let other_engine = oa::Engine::new()?;
-		let foreign = oa::Matrix::new_from_f32_on(&other_engine, [1], &[1.0])?;
+		let other_runtime = oa::Runtime::new()?;
+		let foreign = oa::Matrix::new_from_f32_on(&other_runtime, [1], &[1.0])?;
 		let local = oa::Matrix::new_from_f32([1], &[2.0])?;
 		let error = match oa::matrix::add(&local, &foreign) {
-			Ok(_) => panic!("cross-engine matrix add was accepted"),
+			Ok(_) => panic!("cross-runtime matrix add was accepted"),
 			Err(error) => error,
 		};
 		assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
@@ -256,7 +256,7 @@ test_vk!(
 
 test_vk!(
 	matrix_add_rejects_shape_mismatch_without_submission,
-	engine,
+	runtime,
 	{
 		let left = oa::Matrix::new_from_f32([2], &[1.0, 2.0])?;
 		// [2] and [1,2] broadcast legally; [2] and [3] do not.
@@ -272,7 +272,7 @@ test_vk!(
 
 test_vk!(
 	matrix_add_supports_input_aliasing_and_batched_outputs,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([5], &[1.0, -2.0, 3.5, 0.0, 8.0])?;
 
@@ -290,17 +290,17 @@ test_vk!(
 	}
 );
 
-test_vk!(fused_eager_chain_matches_unfused_oracle, engine, {
+test_vk!(fused_eager_chain_matches_unfused_oracle, runtime, {
 	let one = oa::matrix::ones([4])?;
 	let two = oa::matrix::full([4], 2.0)?;
 	let six = oa::matrix::add(&oa::matrix::add(&one, &two)?, &oa::matrix::add(&one, &two)?)?;
-	let submitted = engine.checkpoint()?;
+	let submitted = runtime.checkpoint()?;
 	submitted.wait()?;
 	assert_eq!(six.read_f32()?, [6.0; 4]);
 	Ok(())
 });
 
-test_vk!(checkpoint_submits_the_pending_eager_batch, engine, {
+test_vk!(checkpoint_submits_the_pending_eager_batch, runtime, {
 	let one = oa::matrix::ones([4])?;
 	let two = oa::matrix::full([4], 2.0)?;
 	let three = oa::matrix::add(&one, &two)?;
@@ -310,7 +310,7 @@ test_vk!(checkpoint_submits_the_pending_eager_batch, engine, {
 		six.try_read_f32().unwrap_err().kind(),
 		oa::ErrorKind::NotReady
 	);
-	let submitted = engine.checkpoint()?;
+	let submitted = runtime.checkpoint()?;
 	submitted.wait()?;
 	assert_eq!(three.read_f32()?, [3.0; 4]);
 	assert_eq!(six.read_f32()?, [6.0; 4]);
@@ -319,7 +319,7 @@ test_vk!(checkpoint_submits_the_pending_eager_batch, engine, {
 
 test_vk!(
 	empty_and_invalid_observation_do_not_flush_unrelated_eager_work,
-	engine,
+	runtime,
 	{
 		let left = oa::Matrix::new_from_slice([2], &[1_i32, 2])?;
 		let right = oa::Matrix::new_from_slice([2], &[3_i32, 4])?;
@@ -349,11 +349,11 @@ test_vk!(
 
 #[test]
 #[ignore = "requires a hardware Vulkan 1.3 compute device"]
-fn matrix_add_resources_survive_public_engine_drop() -> oa::Result<()> {
+fn matrix_add_resources_survive_public_runtime_drop() -> oa::Result<()> {
 	let output = {
-		let engine = oa::Engine::new()?;
-		let left = oa::Matrix::new_from_f32_on(&engine, [3], &[1.0, 2.0, 3.0])?;
-		let right = oa::Matrix::new_from_f32_on(&engine, [3], &[4.0, 5.0, 6.0])?;
+		let runtime = oa::Runtime::new()?;
+		let left = oa::Matrix::new_from_f32_on(&runtime, [3], &[1.0, 2.0, 3.0])?;
+		let right = oa::Matrix::new_from_f32_on(&runtime, [3], &[4.0, 5.0, 6.0])?;
 		oa::matrix::add(&left, &right)?
 	};
 
@@ -363,7 +363,7 @@ fn matrix_add_resources_survive_public_engine_drop() -> oa::Result<()> {
 
 test_vk!(
 	matrix_constructors_and_chained_add_need_no_manual_submission,
-	engine,
+	runtime,
 	{
 		let one = oa::matrix::ones([2, 3])?;
 		let two = oa::matrix::full([2, 3], 2.0)?;
@@ -379,18 +379,18 @@ test_vk!(
 #[test]
 #[ignore = "requires a software Vulkan CPU ICD"]
 fn software_vulkan_index_executes_compute_and_crypto() -> oa::Result<()> {
-	let devices = oa::Engine::available_devices()?;
+	let devices = oa::Runtime::available_devices()?;
 	let cpu = devices
 		.iter()
 		.find(|device| device.kind() == oa::DeviceKind::Cpu)
 		.expect("software Vulkan CPU device was not enumerated");
-	let engine = oa::Engine::builder()
+	let runtime = oa::Runtime::builder()
 		.devices(oa::DeviceSelection::Index(cpu.index()))
 		.build()?;
-	oa::Engine::set_default(engine.clone());
-	assert_eq!(engine.device_info().index(), cpu.index());
-	assert_eq!(engine.device_info().name(), cpu.name());
-	assert_eq!(engine.device_info().kind(), oa::DeviceKind::Cpu);
+	oa::Runtime::set_default(runtime.clone());
+	assert_eq!(runtime.device_info().index(), cpu.index());
+	assert_eq!(runtime.device_info().name(), cpu.name());
+	assert_eq!(runtime.device_info().kind(), oa::DeviceKind::Cpu);
 	let a = oa::Matrix::new_from_f32([3], &[1.0, -2.0, 0.5])?;
 	let sum = oa::matrix::add(&a, &a)?;
 	assert_eq!(sum.read_f32()?, [2.0, -4.0, 1.0]);
@@ -408,7 +408,7 @@ fn software_vulkan_index_executes_compute_and_crypto() -> oa::Result<()> {
 		.iter()
 		.all(|device| device.kind() == oa::DeviceKind::Cpu)
 	{
-		let error = match oa::Engine::new() {
+		let error = match oa::Runtime::new() {
 			Ok(_) => panic!("automatic election silently selected software Vulkan"),
 			Err(error) => error,
 		};
@@ -421,11 +421,11 @@ fn software_vulkan_index_executes_compute_and_crypto() -> oa::Result<()> {
 #[test]
 #[ignore = "requires an explicitly available Vulkan 1.2 device"]
 fn core_build_rejects_a_vulkan_1_2_device() -> oa::Result<()> {
-	let device = oa::Engine::available_devices()?
+	let device = oa::Runtime::available_devices()?
 		.into_iter()
 		.find(|device| device.api_version().starts_with("1.2."))
 		.expect("this admission proof requires a Vulkan 1.2 device");
-	let error = match oa::Engine::builder()
+	let error = match oa::Runtime::builder()
 		.devices(oa::DeviceSelection::Index(device.index()))
 		.build()
 	{

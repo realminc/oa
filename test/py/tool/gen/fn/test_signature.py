@@ -61,7 +61,7 @@ class SignatureModelTests(unittest.TestCase):
 		signature = self.signature("matrix", operation)
 		self.assertEqual(
 			oa_signature.signature_header(signature),
-			"pub fn mat_mul_nt(left: &Matrix, right: &Matrix) -> Result<Matrix>",
+			"pub fn matmul(left: &Matrix, right: &Matrix) -> Result<Matrix>",
 		)
 		self.assertEqual(signature["receiver"], "left")
 

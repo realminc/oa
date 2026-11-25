@@ -27,7 +27,7 @@ fn flatten(value: &serde_json::Value) -> Vec<u8> {
 
 test_vk!(
 	merkle_proof_selected_indices_match_independent_oracle_and_replay,
-	engine,
+	runtime,
 	{
 		for case in fixture()["cases"].as_array().unwrap() {
 			let count = case["leaves"].as_array().unwrap().len();
@@ -41,7 +41,7 @@ test_vk!(
 				.collect::<Vec<_>>();
 			let indices = Matrix::new_from_slice([5], &indices)?;
 			let root = Matrix::new_from_slice([1, 32], &unhex(case["root"].as_str().unwrap()))?;
-			let (plan, (proofs, valid)) = engine.capture(|| {
+			let (plan, (proofs, valid)) = runtime.capture(|| {
 				let proofs = hash::merkle_proofs(&leaves, &indices)?;
 				let valid =
 					hash::verify_merkle_proofs(&selected, &proofs, &root, u32::try_from(count).unwrap())?;
@@ -53,7 +53,7 @@ test_vk!(
 				oa::ErrorKind::NotReady
 			);
 			for _ in 0..2 {
-				engine.submit(&plan)?.wait()?;
+				runtime.submit(&plan)?.wait()?;
 				assert_eq!(
 					proofs.read::<u8>()?,
 					flatten(&case["frames"]),
@@ -68,7 +68,7 @@ test_vk!(
 
 test_vk!(
 	merkle_proof_headers_paths_leaves_and_roots_reject_tampering,
-	engine,
+	runtime,
 	{
 		let fixture = fixture();
 		let case = &fixture["cases"][3]; // five leaves, including duplicate-last paths
@@ -111,7 +111,7 @@ test_vk!(
 
 test_vk!(
 	merkle_proof_empty_selections_and_invalid_metadata,
-	engine,
+	runtime,
 	{
 		let leaves = Matrix::new_from_slice([1, 32], &[1_u8; 32])?;
 		let empty_indices = Matrix::new_from_slice([0], &[] as &[u32])?;
@@ -147,7 +147,7 @@ test_vk!(
 // Two workgroups, an odd final invocation and a device-produced flag vector.
 test_vk!(
 	merkle_proof_workgroup_tail_chains_and_rebinds_device_indices,
-	engine,
+	runtime,
 	{
 		let fixture = fixture();
 		let case = &fixture["cases"][3];
@@ -156,17 +156,17 @@ test_vk!(
 		let indices = Matrix::new_from_slice([33], &[0_u32; 33])?;
 		let selected = Matrix::new_from_slice([33, 32], &leaves_bytes[..32].repeat(33))?;
 		let root = Matrix::new_from_slice([1, 32], &unhex(case["root"].as_str().unwrap()))?;
-		let (mut plan, valid) = engine.capture(|| {
+		let (mut plan, valid) = runtime.capture(|| {
 			let frames = hash::merkle_proofs(&leaves, &indices)?;
 			hash::verify_merkle_proofs(&selected, &frames, &root, 5)
 		})?;
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(valid.read::<u32>()?, [1; 33]);
 		let mut replacements = [0_u32; 33];
 		replacements[32] = 5;
 		let replacement = Matrix::new_from_slice([33], &replacements)?;
 		plan.bind_matrix_input(&indices, &replacement)?;
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let mut expected = [1_u32; 33];
 		expected[32] = 0;
 		assert_eq!(valid.read::<u32>()?, expected);
@@ -176,7 +176,7 @@ test_vk!(
 
 test_vk!(
 	merkle_subtree_roots_match_independent_subtrees_across_routes,
-	engine,
+	runtime,
 	{
 		use oa::crypto::merkle::{self, MerkleAlgorithm};
 		let make_leaves = |count: usize| -> (Matrix, Vec<oa::crypto::Hash>) {

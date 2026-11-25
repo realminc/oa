@@ -7,14 +7,14 @@
 			.map_err(|_| Error::invalid_argument(format!("{operation} output count exceeds usize")))?
 	};
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape,
 		output_count,
 		DType::F32,
 	)?;
 	if dim == -1
 		&& crate::runtime::record_sum_f16(
-			input.engine_handle(),
+			input.runtime(),
 			input,
 			&output,
 			axis.dim_size,
@@ -49,7 +49,7 @@
 	}];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,

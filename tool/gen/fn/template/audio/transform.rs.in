@@ -4,7 +4,7 @@
 	let shape = validate_stft(input, config)?;
 	let elements = shape.channels * shape.frames * shape.freq_bins;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			shape.channels as usize,
 			shape.frames as usize,
@@ -28,7 +28,7 @@
 	{{push:0}}
 	let attributes = [{{attributes}}];
 	let outputs = [AudioSemanticOutput::Matrix(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -49,7 +49,7 @@
 	let shape = validate_stft(input, stft_config)?;
 	let elements = shape.channels * shape.frames * shape.freq_bins;
 	let spectrum = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			shape.channels as usize,
 			shape.frames as usize,
@@ -86,7 +86,7 @@
 
 	let output = if config.normalize {
 		let raw = Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			vec![
 				shape.channels as usize,
 				config.num_mels as usize,
@@ -96,7 +96,7 @@
 			DType::F32,
 		)?;
 		let output = Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			raw.shape().to_vec(),
 			raw.num_elements(),
 			DType::F32,
@@ -110,7 +110,7 @@
 			{{dispatch:2}},
 		];
 		let outputs = [AudioSemanticOutput::Matrix(&output)];
-		input.engine_handle().record_audio_split_semantic(
+		input.runtime().record_audio_split_semantic(
 			&dispatches,
 			AudioSemanticDispatch {
 				contract: {{contract}},
@@ -122,7 +122,7 @@
 		output
 	} else {
 		let output = Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			vec![
 				shape.channels as usize,
 				config.num_mels as usize,
@@ -137,7 +137,7 @@
 			{{dispatch:4}},
 		];
 		let outputs = [AudioSemanticOutput::Matrix(&output)];
-		input.engine_handle().record_audio_split_semantic(
+		input.runtime().record_audio_split_semantic(
 			&dispatches,
 			AudioSemanticDispatch {
 				contract: {{contract}},
@@ -165,7 +165,7 @@
 	let shape = validate_stft(input, stft_config)?;
 	let elements = shape.channels * shape.frames * shape.freq_bins;
 	let spectrum = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			shape.channels as usize,
 			shape.frames as usize,
@@ -181,7 +181,7 @@
 		.and_then(|value| value.checked_mul(shape.frames))
 		.ok_or_else(|| Error::out_of_range("audio::mfcc mel workspace exceeds u32"))?;
 	let mel = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			shape.channels as usize,
 			config.mel.num_mels as usize,
@@ -196,7 +196,7 @@
 		.and_then(|value| value.checked_mul(shape.frames))
 		.ok_or_else(|| Error::out_of_range("audio::mfcc output exceeds u32"))?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			shape.channels as usize,
 			config.num_coeffs as usize,
@@ -232,7 +232,7 @@
 	];
 	let attributes = [{{attributes}}];
 	let outputs = [AudioSemanticOutput::Matrix(&output)];
-	input.engine_handle().record_audio_split_semantic(
+	input.runtime().record_audio_split_semantic(
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -246,7 +246,7 @@
 	let shape = validate_stft(input, config)?;
 	let elements = shape.channels * shape.frames * shape.freq_bins * 2;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			shape.channels as usize,
 			shape.frames as usize,
@@ -271,7 +271,7 @@
 	{{push:0}}
 	let attributes = [{{attributes}}];
 	let outputs = [AudioSemanticOutput::Matrix(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -294,19 +294,19 @@
 // @operation istft
 	let shape = validate_istft(input, config)?;
 	let scratch = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![shape.channels as usize, shape.padded_samples as usize],
 		(shape.channels * shape.padded_samples) as usize,
 		DType::F32,
 	)?;
 	let norm = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![shape.channels as usize, shape.padded_samples as usize],
 		(shape.channels * shape.padded_samples) as usize,
 		DType::F32,
 	)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![shape.channels as usize, shape.out_samples as usize],
 		(shape.channels * shape.out_samples) as usize,
 		DType::F32,
@@ -337,7 +337,7 @@
 		AudioChannelLayout::for_channel_count(shape.channels as usize),
 	)?;
 	let outputs = [AudioSemanticOutput::Audio(&audio)];
-	input.engine_handle().record_audio_split_semantic(
+	input.runtime().record_audio_split_semantic(
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: {{contract}},

@@ -3,7 +3,7 @@ use oa::ml::{
 	training::{ItRolloutTraining, ItRolloutTrainingConfig, RolloutTrainingPhase},
 };
 
-fn transition(_engine: &oa::Engine, value: f32) -> oa::Result<RolloutTransition> {
+fn transition(_runtime: &oa::Runtime, value: f32) -> oa::Result<RolloutTransition> {
 	Ok(RolloutTransition::new(
 		oa::Matrix::new_from_f32([1, 1], &[value])?,
 		oa::Matrix::new_from_slice([1], &[0_i32])?,
@@ -18,11 +18,11 @@ fn transition(_engine: &oa::Engine, value: f32) -> oa::Result<RolloutTransition>
 
 test_vk!(
 	rollout_training_alternates_collection_and_update_epochs,
-	engine,
+	runtime,
 	{
 		let mut optimizer = NoOpOptimizer::default();
 		let mut training = ItRolloutTraining::new(
-			&engine,
+			&runtime,
 			&mut optimizer,
 			ItRolloutTrainingConfig {
 				rollouts: 1,
@@ -34,7 +34,7 @@ test_vk!(
 			},
 		)?;
 		let mut rollout = RolloutBuffer::new(
-			&engine,
+			&runtime,
 			RolloutConfig {
 				time: 1,
 				environments: 1,
@@ -43,7 +43,7 @@ test_vk!(
 		)?;
 		assert_eq!(training.phase(), RolloutTrainingPhase::Collect);
 		training.begin_rollout(&mut rollout)?;
-		rollout.append(&transition(&engine, 1.0)?)?;
+		rollout.append(&transition(&runtime, 1.0)?)?;
 		training.finalize_rollout(&mut rollout, oa::ml::advantage::GaeConfig::default())?;
 		assert_eq!(training.phase(), RolloutTrainingPhase::Update);
 		let loss = oa::Matrix::new_from_f32([], &[0.25])?;
@@ -63,11 +63,11 @@ test_vk!(
 
 test_vk!(
 	rollout_training_abort_restores_host_collection_state,
-	engine,
+	runtime,
 	{
 		let mut optimizer = NoOpOptimizer::default();
 		let mut training = ItRolloutTraining::new(
-			&engine,
+			&runtime,
 			&mut optimizer,
 			ItRolloutTrainingConfig {
 				rollouts: 1,
@@ -79,17 +79,17 @@ test_vk!(
 			},
 		)?;
 		let mut rollout = RolloutBuffer::new(
-			&engine,
+			&runtime,
 			RolloutConfig {
 				time: 1,
 				environments: 1,
 				observation_shape: vec![1],
 			},
 		)?;
-		let result: oa::Result<()> = engine
+		let result: oa::Result<()> = runtime
 			.capture(|| {
 				training.begin_rollout(&mut rollout)?;
-				rollout.append(&transition(&engine, 1.0)?)?;
+				rollout.append(&transition(&runtime, 1.0)?)?;
 				let integer = oa::Matrix::new_from_slice([1], &[1_i32])?;
 				oa::matrix::add(rollout.batch().reward(), &integer).map(|_| ())
 			})

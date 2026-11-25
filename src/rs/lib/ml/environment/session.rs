@@ -1,8 +1,8 @@
 //! Explicit execution lifecycle shared by native OA environments.
 
 use crate::{
-	Engine, Error, Event, Matrix, Result,
-	runtime::{EngineHandle, RecordingTransaction},
+	Error, Event, Matrix, Result, Runtime,
+	runtime::{RecordingTransaction, RuntimeHandle},
 };
 
 use super::{EnvironmentSpec, EnvironmentTransition};
@@ -10,11 +10,11 @@ use super::{EnvironmentSpec, EnvironmentTransition};
 /// Private command transaction and exact completion state for one environment.
 ///
 /// Native environments embed this value and expose it through [`Environment`].
-/// It borrows the canonical Engine recorder for each active transaction; it
+/// It borrows the canonical Runtime recorder for each active transaction; it
 /// does not own another queue, allocator, scheduler, or execution graph.
 #[must_use]
 pub struct EnvironmentExecution {
-	engine: EngineHandle,
+	runtime: RuntimeHandle,
 	recording: Option<RecordingTransaction>,
 	pending: Option<Event>,
 	closed: bool,
@@ -22,10 +22,10 @@ pub struct EnvironmentExecution {
 }
 
 impl EnvironmentExecution {
-	/// Construct an idle execution lifecycle over one Engine.
-	pub fn new(engine: &Engine) -> Self {
+	/// Construct an idle execution lifecycle over one Runtime.
+	pub fn new(runtime: &Runtime) -> Self {
 		Self {
-			engine: engine.handle(),
+			runtime: runtime.handle(),
 			recording: None,
 			pending: None,
 			closed: false,
@@ -45,7 +45,7 @@ impl EnvironmentExecution {
 			));
 		}
 		if self.recording.is_none() {
-			self.recording = Some(RecordingTransaction::begin(self.engine.clone())?);
+			self.recording = Some(RecordingTransaction::begin(self.runtime.clone())?);
 		}
 		Ok(())
 	}
@@ -133,8 +133,8 @@ impl EnvironmentExecution {
 /// validation boundaries, submission, and rollback; implementations only
 /// author reset/step/reset-completed commands and transactional host metadata.
 pub trait Environment {
-	/// Return the sole Engine borrowed by this session.
-	fn engine(&self) -> &Engine;
+	/// Return the sole Runtime borrowed by this session.
+	fn runtime(&self) -> &Runtime;
 
 	/// Return the structural environment contract.
 	fn spec(&self) -> &EnvironmentSpec;
@@ -170,7 +170,7 @@ pub trait Environment {
 	///
 	/// # Errors
 	///
-	/// Returns an error when closed, awaiting completion, or the Engine recorder
+	/// Returns an error when closed, awaiting completion, or the Runtime recorder
 	/// is unavailable.
 	fn begin(&mut self) -> Result<()> {
 		self.execution_mut().begin()

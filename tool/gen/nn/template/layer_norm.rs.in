@@ -9,7 +9,7 @@ pub struct {{name}} {
 
 impl {{name}} {
 	pub fn new(normalized_shape: usize, epsilon: f32) -> Result<Self> {
-		Self::new_on(&Engine::current()?, normalized_shape, epsilon)	}
+		Self::new_on(&Runtime::current()?, normalized_shape, epsilon)	}
 
 	/// Construct a {{name}} with unit weight and zero bias.
 	///
@@ -17,7 +17,7 @@ impl {{name}} {
 	///
 	/// Returns an error when `normalized_shape` is zero, `epsilon` is not finite
 	/// and positive, or parameter allocation/upload fails.
-	pub fn new_on(engine: &Engine, normalized_shape: usize, epsilon: f32) -> Result<Self> {
+	pub fn new_on(runtime: &Runtime, normalized_shape: usize, epsilon: f32) -> Result<Self> {
 		if normalized_shape == 0 {
 			return Err(Error::invalid_argument(
 				"layer norm normalized shape must be nonzero",
@@ -28,8 +28,8 @@ impl {{name}} {
 				"layer norm epsilon must be finite and positive",
 			));
 		}
-		let weight = Matrix::new_from_f32_on(engine, [normalized_shape], &vec![1.0; normalized_shape])?;
-		let bias = Matrix::new_from_f32_on(engine, [normalized_shape], &vec![0.0; normalized_shape])?;
+		let weight = Matrix::new_from_f32_on(runtime, [normalized_shape], &vec![1.0; normalized_shape])?;
+		let bias = Matrix::new_from_f32_on(runtime, [normalized_shape], &vec![0.0; normalized_shape])?;
 		Self::new_from_matrices(weight, bias, epsilon)
 	}
 
@@ -37,7 +37,7 @@ impl {{name}} {
 	///
 	/// # Errors
 	///
-	/// Returns an error unless weight and bias are equal, nonempty, same-engine
+	/// Returns an error unless weight and bias are equal, nonempty, same-runtime
 	/// FP32 vectors and `epsilon` is finite and positive.
 	pub fn new_from_matrices(weight: Matrix, bias: Matrix, epsilon: f32) -> Result<Self> {
 		let [normalized_shape] = weight.shape() else {
@@ -49,12 +49,12 @@ impl {{name}} {
 			|| bias.shape() != [*normalized_shape]
 			|| weight.dtype() != DType::F32
 			|| bias.dtype() != DType::F32
-			|| !weight.engine_handle().same_as(bias.engine_handle())
+			|| !weight.runtime().same_as(bias.runtime())
 			|| !epsilon.is_finite()
 			|| epsilon <= 0.0
 		{
 			return Err(Error::invalid_argument(
-				"layer norm requires nonempty same-engine FP32 weight/bias vectors and finite positive epsilon",
+				"layer norm requires nonempty same-runtime FP32 weight/bias vectors and finite positive epsilon",
 			));
 		}
 		let normalized_shape = *normalized_shape;
@@ -77,7 +77,7 @@ impl {{name}} {
 	/// # Errors
 	///
 	/// Returns an error when the input is empty, is not FP32, its final dimension
-	/// differs from the normalized shape, it belongs to another engine, or runtime
+	/// differs from the normalized shape, it belongs to another runtime, or runtime
 	/// recording fails.
 	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
 		let (weight, weight_version, weight_requires_grad) = self.weight.snapshot();

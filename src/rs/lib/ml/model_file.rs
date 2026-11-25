@@ -2,7 +2,7 @@
 //!
 //! This module is deliberately host-only. It validates and owns persisted
 //! bytes; `checkpoint` remains responsible for translating those bytes to and
-//! from engine-owned values.
+//! from runtime-owned values.
 
 use std::{
 	collections::HashSet,

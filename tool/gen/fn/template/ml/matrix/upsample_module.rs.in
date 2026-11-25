@@ -5,7 +5,7 @@ use crate::{DType, Error, Matrix, OpAttribute, Result};
 
 use crate::ml::{
 	autograd,
-	validation::{shader_u32, validate_f32_same_engine},
+	validation::{shader_u32, validate_f32_same_runtime},
 };
 
 /// Spatial interpolation mode for NCHW upsampling.

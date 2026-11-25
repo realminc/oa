@@ -839,10 +839,20 @@ pub(crate) fn satellite_schema_hash() -> [u8; 32] {
 	SatelliteProtocol::stable_digest(schema_manifest_string().as_bytes(), &[])
 }
 
+#[cfg(test)]
+#[path = "../../../../test/rs/net/satellite_nlp_coordinator.rs"]
 pub(crate) mod nlp_coordinator;
+#[cfg(test)]
+#[path = "../../../../test/rs/net/satellite_nlp_step.rs"]
 pub(crate) mod nlp_step;
 pub(crate) mod session;
 
+#[cfg(test)]
+#[path = "../../../../test/rs/net/satellite_nlp_coordinator_unit.rs"]
+mod nlp_coordinator_tests;
+#[cfg(test)]
+#[path = "../../../../test/rs/net/satellite_nlp_unit.rs"]
+mod nlp_tests;
 #[cfg(test)]
 #[path = "../../../../test/rs/net/satellite_unit.rs"]
 mod tests;

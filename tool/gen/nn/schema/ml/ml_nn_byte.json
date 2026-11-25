@@ -2,7 +2,7 @@
 	"version": 1,
 	"family": "byte",
 	"imports": [
-		"use crate::{Engine, Error, Matrix, Result};",
+		"use crate::{Runtime, Error, Matrix, Result};",
 		"use super::{Embedding, Linear};",
 		"use crate::ml::{Module, ModuleRegistry, Parameter, byte};"
 	],

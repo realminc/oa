@@ -1,6 +1,6 @@
 //! Experimental device-secret PQC operations. No private value is a Matrix.
-//! The originating Engine owns execution; Drop never submits or waits.
-use crate::{Engine, Error, Matrix, Result};
+//! The originating Runtime owns execution; Drop never submits or waits.
+use crate::{Runtime, Error, Matrix, Result};
 use crate::crypto::entropy::Entropy;
 use crate::crypto::pqc::MlDsaParameters;
 use crate::runtime::{MlDsaDeviceKey, MlKemDeviceKey, MlKemSharedSecret, SecretErasure};
@@ -138,9 +138,9 @@ pub struct DeviceEncapsulation {
 	pub cleanup: DeviceErasure,
 }
 
-/// Deferred secret-execution batch owned by one Engine.
+/// Deferred secret-execution batch owned by one Runtime.
 ///
-/// While a scope is active, every engine submission — secret or ordinary —
+/// While a scope is active, every runtime submission — secret or ordinary —
 /// records without queueing; `commit` submits the ordered batch once.
 /// Operation events and erasure tickets issued inside the scope stay pending
 /// until commit and fail on abandonment. The batch carries only secret
@@ -150,11 +150,11 @@ pub struct PqcSecretScope {
 	inner: crate::runtime::SecretLoweringScope,
 }
 
-/// Begin a deferred secret-execution batch on `engine`.
+/// Begin a deferred secret-execution batch on `runtime`.
 /// # Errors
 /// Rejects an active capture or a second concurrent scope.
-pub fn begin_secret_scope(engine: &Engine) -> Result<PqcSecretScope> {
-	Ok(PqcSecretScope { inner: engine.handle().begin_secret_lowering()? })
+pub fn begin_secret_scope(runtime: &Runtime) -> Result<PqcSecretScope> {
+	Ok(PqcSecretScope { inner: runtime.handle().begin_secret_lowering()? })
 }
 
 /// Classification snapshot of one deferred scope node. Diagnostics observe
@@ -216,21 +216,21 @@ pub struct DeviceDerivation {
 /// Generate a retained ML-DSA-44/65/87 key from fresh OS entropy.
 /// # Errors
 /// Rejects unsupported kernels, capture, allocation, entropy, or submission errors.
-pub fn mldsa_keygen(engine: &Engine, parameters: MlDsaParameters) -> Result<DeviceMlDsaKey> {
+pub fn mldsa_keygen(runtime: &Runtime, parameters: MlDsaParameters) -> Result<DeviceMlDsaKey> {
 	let parameter = match parameters {
 		MlDsaParameters::MlDsa44 => 44,
 		MlDsaParameters::MlDsa65 => 65,
 		MlDsaParameters::MlDsa87 => 87,
 	};
-	let (inner, public_key, cleanup) = engine.handle().pqc_mldsa_keygen(parameter, Entropy::generate()?)?;
+	let (inner, public_key, cleanup) = runtime.handle().pqc_mldsa_keygen(parameter, Entropy::generate()?)?;
 	Ok(DeviceMlDsaKey { inner, parameters, public_key, cleanup: DeviceErasure { inner: cleanup } })
 }
 
 /// Generate a retained ML-KEM-512/768/1024 key from fresh OS entropy.
 /// # Errors
 /// Rejects unsupported kernels, capture, allocation, entropy, or submission errors.
-pub fn mlkem_keygen(engine: &Engine, parameters: MlKemParameters) -> Result<DeviceMlKemKey> {
-	let (inner, public_key, cleanup) = engine.handle().pqc_mlkem_keygen(parameters.k(), Entropy::generate()?)?;
+pub fn mlkem_keygen(runtime: &Runtime, parameters: MlKemParameters) -> Result<DeviceMlKemKey> {
+	let (inner, public_key, cleanup) = runtime.handle().pqc_mlkem_keygen(parameters.k(), Entropy::generate()?)?;
 	Ok(DeviceMlKemKey { inner, parameters, public_key, cleanup: DeviceErasure { inner: cleanup } })
 }
 
@@ -240,14 +240,14 @@ pub fn mlkem_keygen(engine: &Engine, parameters: MlKemParameters) -> Result<Devi
 /// secret and public halves form a consistent key pair.
 /// # Errors
 /// Rejects extent/ownership mismatches, capture, or submission errors.
-pub fn mldsa_import_key(engine: &Engine, parameters: MlDsaParameters, secret_key: &mut [u8], public_key: &Matrix) -> Result<DeviceMlDsaKey> {
+pub fn mldsa_import_key(runtime: &Runtime, parameters: MlDsaParameters, secret_key: &mut [u8], public_key: &Matrix) -> Result<DeviceMlDsaKey> {
 	let parameter = match parameters {
 		MlDsaParameters::MlDsa44 => 44,
 		MlDsaParameters::MlDsa65 => 65,
 		MlDsaParameters::MlDsa87 => 87,
 	};
 	let secret = crate::crypto::SecureBuffer::new(secret_key);
-	let (inner, public_key, cleanup) = engine.handle().pqc_mldsa_import(parameter, secret.as_slice(), public_key)?;
+	let (inner, public_key, cleanup) = runtime.handle().pqc_mldsa_import(parameter, secret.as_slice(), public_key)?;
 	Ok(DeviceMlDsaKey { inner, parameters, public_key, cleanup: DeviceErasure { inner: cleanup } })
 }
 
@@ -257,20 +257,20 @@ pub fn mldsa_import_key(engine: &Engine, parameters: MlDsaParameters, secret_key
 /// decapsulation key is well-formed.
 /// # Errors
 /// Rejects extent mismatches, capture, or submission errors.
-pub fn mlkem_import_key(engine: &Engine, parameters: MlKemParameters, decapsulation_key: &mut [u8]) -> Result<DeviceMlKemKey> {
+pub fn mlkem_import_key(runtime: &Runtime, parameters: MlKemParameters, decapsulation_key: &mut [u8]) -> Result<DeviceMlKemKey> {
 	let secret = crate::crypto::SecureBuffer::new(decapsulation_key);
-	let (inner, public_key, cleanup) = engine.handle().pqc_mlkem_import(parameters.k(), secret.as_slice())?;
+	let (inner, public_key, cleanup) = runtime.handle().pqc_mlkem_import(parameters.k(), secret.as_slice())?;
 	Ok(DeviceMlKemKey { inner, parameters, public_key, cleanup: DeviceErasure { inner: cleanup } })
 }
 
 /// Sign public U8 message bytes with the FIPS 204 context (at most 255 bytes).
-/// Inputs retain the key's Engine; neither input is copied to host.
+/// Inputs retain the key's Runtime; neither input is copied to host.
 /// # Errors
 /// Rejects dtype/ownership/alias/context errors, capture, or execution failure.
 pub fn mldsa_sign(key: &DeviceMlDsaKey, message: &Matrix, context: &Matrix, mode: SigningMode) -> Result<DeviceSignature> {
 	if context.num_elements() > 255 { return Err(Error::invalid_argument("ML-DSA context exceeds 255 bytes")); }
 	let entropy = match mode { SigningMode::Randomized => Entropy::generate()?, SigningMode::Deterministic => Entropy::deterministic_signing()? };
-	let (signature, status, cleanup) = key.inner.engine().pqc_mldsa_sign(&key.inner, message, context, None, entropy)?;
+	let (signature, status, cleanup) = key.inner.runtime().pqc_mldsa_sign(&key.inner, message, context, None, entropy)?;
 	Ok(DeviceSignature { signature, status, cleanup: DeviceErasure { inner: cleanup } })
 }
 
@@ -280,7 +280,7 @@ pub fn mldsa_sign(key: &DeviceMlDsaKey, message: &Matrix, context: &Matrix, mode
 pub fn mldsa_sign_hash_message(key: &DeviceMlDsaKey, message: &Matrix, context: &Matrix, algorithm: MlDsaPrehash, mode: SigningMode) -> Result<DeviceSignature> {
 	if context.num_elements() > 255 { return Err(Error::invalid_argument("ML-DSA context exceeds 255 bytes")); }
 	let entropy = match mode { SigningMode::Randomized => Entropy::generate()?, SigningMode::Deterministic => Entropy::deterministic_signing()? };
-	let (signature, status, cleanup) = key.inner.engine().pqc_mldsa_sign(&key.inner, message, context, Some(algorithm.id()), entropy)?;
+	let (signature, status, cleanup) = key.inner.runtime().pqc_mldsa_sign(&key.inner, message, context, Some(algorithm.id()), entropy)?;
 	Ok(DeviceSignature { signature, status, cleanup: DeviceErasure { inner: cleanup } })
 }
 
@@ -292,7 +292,7 @@ pub fn mldsa_sign_prehashed(key: &DeviceMlDsaKey, digest: &Matrix, context: &Mat
 		return Err(Error::invalid_argument("HashML-DSA digest or context extent mismatch"));
 	}
 	let entropy = match mode { SigningMode::Randomized => Entropy::generate()?, SigningMode::Deterministic => Entropy::deterministic_signing()? };
-	let (signature, status, cleanup) = key.inner.engine().pqc_mldsa_sign_prehashed(&key.inner, digest, context, algorithm.id(), entropy)?;
+	let (signature, status, cleanup) = key.inner.runtime().pqc_mldsa_sign_prehashed(&key.inner, digest, context, algorithm.id(), entropy)?;
 	Ok(DeviceSignature { signature, status, cleanup: DeviceErasure { inner: cleanup } })
 }
 
@@ -303,7 +303,7 @@ pub fn mlkem_encapsulate(public_key: &Matrix, parameters: MlKemParameters) -> Re
 	if public_key.num_elements() != parameters.public_key_size() {
 		return Err(Error::invalid_argument("ML-KEM public key extent mismatch"));
 	}
-	let (inner, ciphertext, status, cleanup) = public_key.engine_handle().pqc_mlkem_encapsulate(parameters.k(), public_key, Entropy::generate()?)?;
+	let (inner, ciphertext, status, cleanup) = public_key.runtime().pqc_mlkem_encapsulate(parameters.k(), public_key, Entropy::generate()?)?;
 	Ok(DeviceEncapsulation { shared_secret: DeviceSharedSecret { inner }, ciphertext, status, cleanup: DeviceErasure { inner: cleanup } })
 }
 
@@ -315,7 +315,7 @@ pub fn mlkem_decapsulate(key: &DeviceMlKemKey, ciphertext: &Matrix) -> Result<De
 	if ciphertext.num_elements() != key.parameters.ciphertext_size() {
 		return Err(Error::invalid_argument("ML-KEM ciphertext extent mismatch"));
 	}
-	let (inner, cleanup) = key.inner.engine().pqc_mlkem_decapsulate(&key.inner, ciphertext)?;
+	let (inner, cleanup) = key.inner.runtime().pqc_mlkem_decapsulate(&key.inner, ciphertext)?;
 	Ok(DeviceDecapsulation { shared_secret: DeviceSharedSecret { inner }, cleanup: DeviceErasure { inner: cleanup } })
 }
 
@@ -327,7 +327,7 @@ pub fn mlkem_decapsulate(key: &DeviceMlKemKey, ciphertext: &Matrix) -> Result<De
 /// Rejects dtype/owner/extent errors, capture, or execution failure.
 pub fn mlkem_shared_derive(secret: &DeviceSharedSecret, info: &Matrix, length: usize) -> Result<DeviceDerivation> {
 	let output_len = u32::try_from(length).map_err(|_| Error::invalid_argument("shared-secret derivation extent exceeds u32"))?;
-	let (derived, cleanup) = secret.inner.engine().pqc_mlkem_derive(&secret.inner, info, output_len)?;
+	let (derived, cleanup) = secret.inner.runtime().pqc_mlkem_derive(&secret.inner, info, output_len)?;
 	Ok(DeviceDerivation { derived, cleanup: DeviceErasure { inner: cleanup } })
 }
 

@@ -8,16 +8,16 @@ use super::{
 };
 use crate::audio::AudioPlayerConfig;
 use crate::ui::{Ui, types::PixelRect};
-use crate::{AudioPlayer, Engine, Result};
+use crate::{AudioPlayer, Result, Runtime};
 
 /// Open an AudioPlayer for the path in config.
-pub fn open(engine: &Engine, config: &ViewerConfig) -> Result<AudioPlayer> {
+pub fn open(runtime: &Runtime, config: &ViewerConfig) -> Result<AudioPlayer> {
 	let cfg = AudioPlayerConfig {
 		uri: config.path.as_str().into(),
 		loop_playback: config.loop_media,
 		ring_milliseconds: config.audio_ring_ms,
 	};
-	let mut player = AudioPlayer::open(engine, cfg)?;
+	let mut player = AudioPlayer::open(runtime, cfg)?;
 	// Donor openAudio honors the viewer's initial transport state.
 	if config.start_playing
 		&& let Err(error) = player.play()

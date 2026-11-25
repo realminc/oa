@@ -5,7 +5,7 @@ use std::{
 	sync::atomic::{AtomicU64, Ordering},
 };
 
-use crate::runtime::{EngineHandle, Storage};
+use crate::runtime::{RuntimeHandle, Storage};
 
 use crate::{DType, Error, Matrix, Result};
 
@@ -192,8 +192,8 @@ impl Image {
 		self.data.dtype()
 	}
 
-	pub(crate) const fn engine_handle(&self) -> &EngineHandle {
-		self.data.engine_handle()
+	pub(crate) const fn runtime(&self) -> &RuntimeHandle {
+		self.data.runtime()
 	}
 
 	pub(crate) fn storage(&self) -> &Storage {

@@ -53,7 +53,7 @@ class BenchTests(unittest.TestCase):
 		# The profiler prints the caller-selected candidate route first and its
 		# in-process structural-off reference second; every entry measures the
 		# candidate, whose route its env selects.
-		profiler = PROFILING.parents[1] / "sdk/rs/benchmarks/ml/nlp/profile_char_transformer.rs"
+		profiler = PROFILING.parents[1].parent / "oasdk-dev/src/rs/benchmarks/ml/nlp/profile_char_transformer.rs"
 		source = profiler.read_text(encoding="utf-8")
 		template = "forward + backward GPU median: fused {:.3} ms · unfused {:.3} ms"
 		self.assertIn(f'"{template}"', source)
@@ -129,7 +129,7 @@ class BenchTests(unittest.TestCase):
 				"governor": "performance",
 			}],
 			"gpu_engines": [{
-				"engine": "freq0",
+				"runtime": "freq0",
 				"requested_minimum_mhz": "1000",
 				"requested_maximum_mhz": "1000",
 				"current_mhz": "1000",
@@ -161,7 +161,7 @@ class BenchTests(unittest.TestCase):
 				"governor": "powersave",
 			}],
 			"gpu_engines": [{
-				"engine": "freq0",
+				"runtime": "freq0",
 				"requested_minimum_mhz": "500",
 				"requested_maximum_mhz": "1000",
 				"current_mhz": "800",

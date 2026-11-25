@@ -152,7 +152,7 @@ fn ohlcv_window_extents_are_checked_and_short_sources_are_empty() -> oa::Result<
 	Ok(())
 }
 
-test_vk!(ohlcv_dataset_packs_features_and_future_labels, engine, {
+test_vk!(ohlcv_dataset_packs_features_and_future_labels, runtime, {
 	use oa::Dataset;
 	let mut frame = candles()?;
 	frame.set_column(
@@ -172,7 +172,7 @@ test_vk!(ohlcv_dataset_packs_features_and_future_labels, engine, {
 			stride: 1,
 		},
 	)?;
-	let dataset = oa::OhlcvDataset::new(&engine, windows);
+	let dataset = oa::OhlcvDataset::new(&runtime, windows);
 	assert_eq!(dataset.len(), 9);
 	let sample = dataset.get_sample(0)?;
 	assert_eq!(sample.x.shape(), &[2, 5]);
@@ -205,7 +205,7 @@ test_vk!(ohlcv_dataset_packs_features_and_future_labels, engine, {
 			stride: 1,
 		},
 	)?;
-	let overflow_dataset = oa::OhlcvDataset::new(&engine, windows);
+	let overflow_dataset = oa::OhlcvDataset::new(&runtime, windows);
 	assert!(overflow_dataset.get_sample(0).is_err());
 
 	Ok(())

@@ -104,7 +104,7 @@ fn host_gru_cell(case: HostGruCellCase<'_>) -> Vec<f32> {
 		.collect()
 }
 
-test_vk!(gru_matches_independent_host_scan, engine, {
+test_vk!(gru_matches_independent_host_scan, runtime, {
 	let input_values = [0.2, -0.4, 0.7, 0.1, -0.3, 0.5, 0.8, -0.2];
 	let weight_ih = [
 		0.1, -0.2, 0.3, 0.4, -0.5, 0.2, 0.6, -0.1, 0.2, 0.5, -0.4, 0.3,
@@ -138,50 +138,54 @@ test_vk!(gru_matches_independent_host_scan, engine, {
 	Ok(())
 });
 
-test_vk!(gru_canonical_width_matches_independent_host_scan, engine, {
-	const BATCH: usize = 64;
-	const SEQUENCE: usize = 16;
-	const INPUT: usize = 32;
-	const HIDDEN: usize = 64;
-	let input_values = (0..BATCH * SEQUENCE * INPUT)
-		.map(|index| ((index * 17 % 97) as f32 - 48.0) / 64.0)
-		.collect::<Vec<_>>();
-	let weight_ih = (0..3 * HIDDEN * INPUT)
-		.map(|index| ((index * 11 % 53) as f32 - 26.0) / 256.0)
-		.collect::<Vec<_>>();
-	let weight_hh = (0..3 * HIDDEN * HIDDEN)
-		.map(|index| ((index * 13 % 59) as f32 - 29.0) / 384.0)
-		.collect::<Vec<_>>();
-	let bias_ih = (0..3 * HIDDEN)
-		.map(|index| ((index * 7 % 23) as f32 - 11.0) / 128.0)
-		.collect::<Vec<_>>();
-	let bias_hh = (0..3 * HIDDEN)
-		.map(|index| ((index * 5 % 19) as f32 - 9.0) / 128.0)
-		.collect::<Vec<_>>();
-	let expected = host_gru(HostGruCase {
-		input: &input_values,
-		batch: BATCH,
-		sequence: SEQUENCE,
-		input_size: INPUT,
-		hidden_size: HIDDEN,
-		weight_ih: &weight_ih,
-		weight_hh: &weight_hh,
-		bias_ih: &bias_ih,
-		bias_hh: &bias_hh,
-	});
-	let gru = oa::ml::nn::Gru::new_from_matrices(
-		oa::Matrix::new_from_f32([3 * HIDDEN, INPUT], &weight_ih)?,
-		oa::Matrix::new_from_f32([3 * HIDDEN, HIDDEN], &weight_hh)?,
-		oa::Matrix::new_from_f32([3 * HIDDEN], &bias_ih)?,
-		oa::Matrix::new_from_f32([3 * HIDDEN], &bias_hh)?,
-	)?;
-	let input = oa::Matrix::new_from_f32([BATCH, SEQUENCE, INPUT], &input_values)?;
-	let output = gru.forward(&input)?;
-	assert_close(&output.read_f32()?, &expected, 3.0e-4);
-	Ok(())
-});
+test_vk!(
+	gru_canonical_width_matches_independent_host_scan,
+	runtime,
+	{
+		const BATCH: usize = 64;
+		const SEQUENCE: usize = 16;
+		const INPUT: usize = 32;
+		const HIDDEN: usize = 64;
+		let input_values = (0..BATCH * SEQUENCE * INPUT)
+			.map(|index| ((index * 17 % 97) as f32 - 48.0) / 64.0)
+			.collect::<Vec<_>>();
+		let weight_ih = (0..3 * HIDDEN * INPUT)
+			.map(|index| ((index * 11 % 53) as f32 - 26.0) / 256.0)
+			.collect::<Vec<_>>();
+		let weight_hh = (0..3 * HIDDEN * HIDDEN)
+			.map(|index| ((index * 13 % 59) as f32 - 29.0) / 384.0)
+			.collect::<Vec<_>>();
+		let bias_ih = (0..3 * HIDDEN)
+			.map(|index| ((index * 7 % 23) as f32 - 11.0) / 128.0)
+			.collect::<Vec<_>>();
+		let bias_hh = (0..3 * HIDDEN)
+			.map(|index| ((index * 5 % 19) as f32 - 9.0) / 128.0)
+			.collect::<Vec<_>>();
+		let expected = host_gru(HostGruCase {
+			input: &input_values,
+			batch: BATCH,
+			sequence: SEQUENCE,
+			input_size: INPUT,
+			hidden_size: HIDDEN,
+			weight_ih: &weight_ih,
+			weight_hh: &weight_hh,
+			bias_ih: &bias_ih,
+			bias_hh: &bias_hh,
+		});
+		let gru = oa::ml::nn::Gru::new_from_matrices(
+			oa::Matrix::new_from_f32([3 * HIDDEN, INPUT], &weight_ih)?,
+			oa::Matrix::new_from_f32([3 * HIDDEN, HIDDEN], &weight_hh)?,
+			oa::Matrix::new_from_f32([3 * HIDDEN], &bias_ih)?,
+			oa::Matrix::new_from_f32([3 * HIDDEN], &bias_hh)?,
+		)?;
+		let input = oa::Matrix::new_from_f32([BATCH, SEQUENCE, INPUT], &input_values)?;
+		let output = gru.forward(&input)?;
+		assert_close(&output.read_f32()?, &expected, 3.0e-4);
+		Ok(())
+	}
+);
 
-test_vk!(gru_cell_matches_nonzero_hidden_state_oracle, engine, {
+test_vk!(gru_cell_matches_nonzero_hidden_state_oracle, runtime, {
 	let input = [0.2, -0.4];
 	let hidden = [0.3, -0.25];
 	let weight_ih = [
@@ -222,7 +226,7 @@ test_vk!(gru_cell_matches_nonzero_hidden_state_oracle, engine, {
 });
 
 fn gpu_loss_and_gradients(
-	_engine: &oa::Engine,
+	_runtime: &oa::Runtime,
 	input: &[f32],
 	weight_ih: &[f32],
 	weight_hh: &[f32],
@@ -263,7 +267,7 @@ fn gpu_loss_and_gradients(
 }
 
 fn gpu_cell_loss_and_gradients(
-	_engine: &oa::Engine,
+	_runtime: &oa::Runtime,
 	input: f32,
 	hidden: f32,
 	values: &[Vec<f32>; 4],
@@ -303,7 +307,7 @@ fn gpu_cell_loss_and_gradients(
 	Ok((loss_value, gradients))
 }
 
-test_vk!(gru_parameter_gradients_match_finite_differences, engine, {
+test_vk!(gru_parameter_gradients_match_finite_differences, runtime, {
 	let input = [0.25, -0.4];
 	let mut values = [
 		vec![0.2, -0.1, 0.35],
@@ -312,19 +316,19 @@ test_vk!(gru_parameter_gradients_match_finite_differences, engine, {
 		vec![-0.03, 0.02, 0.05],
 	];
 	let (_, gradients) = gpu_loss_and_gradients(
-		&engine, &input, &values[0], &values[1], &values[2], &values[3], true,
+		&runtime, &input, &values[0], &values[1], &values[2], &values[3], true,
 	)?;
 	let epsilon = 1.0e-3_f32;
 	for parameter_index in 0..values.len() {
 		for value_index in 0..values[parameter_index].len() {
 			values[parameter_index][value_index] += epsilon;
 			let plus = gpu_loss_and_gradients(
-				&engine, &input, &values[0], &values[1], &values[2], &values[3], false,
+				&runtime, &input, &values[0], &values[1], &values[2], &values[3], false,
 			)?
 			.0;
 			values[parameter_index][value_index] -= 2.0 * epsilon;
 			let minus = gpu_loss_and_gradients(
-				&engine, &input, &values[0], &values[1], &values[2], &values[3], false,
+				&runtime, &input, &values[0], &values[1], &values[2], &values[3], false,
 			)?
 			.0;
 			values[parameter_index][value_index] += epsilon;
@@ -341,7 +345,7 @@ test_vk!(gru_parameter_gradients_match_finite_differences, engine, {
 
 test_vk!(
 	gru_cell_parameter_gradients_match_finite_differences,
-	engine,
+	runtime,
 	{
 		let mut values = [
 			vec![0.2, -0.1, 0.35],
@@ -349,14 +353,14 @@ test_vk!(
 			vec![0.01, -0.02, 0.04],
 			vec![-0.03, 0.02, 0.05],
 		];
-		let (_, gradients) = gpu_cell_loss_and_gradients(&engine, 0.25, -0.4, &values, true)?;
+		let (_, gradients) = gpu_cell_loss_and_gradients(&runtime, 0.25, -0.4, &values, true)?;
 		let epsilon = 1.0e-3_f32;
 		for parameter_index in 0..values.len() {
 			for value_index in 0..values[parameter_index].len() {
 				values[parameter_index][value_index] += epsilon;
-				let plus = gpu_cell_loss_and_gradients(&engine, 0.25, -0.4, &values, false)?.0;
+				let plus = gpu_cell_loss_and_gradients(&runtime, 0.25, -0.4, &values, false)?.0;
 				values[parameter_index][value_index] -= 2.0 * epsilon;
-				let minus = gpu_cell_loss_and_gradients(&engine, 0.25, -0.4, &values, false)?.0;
+				let minus = gpu_cell_loss_and_gradients(&runtime, 0.25, -0.4, &values, false)?.0;
 				values[parameter_index][value_index] += epsilon;
 				let numerical = (plus - minus) / (2.0 * epsilon);
 				let actual = gradients[parameter_index][value_index];
@@ -372,7 +376,7 @@ test_vk!(
 
 test_vk!(
 	stacked_and_bias_free_gru_preserve_module_contract,
-	engine,
+	runtime,
 	{
 		let biased = oa::ml::nn::Gru::new_with_seed(2, 3, 2, true, 0x4752_5501)?;
 		assert_eq!(biased.input_size(), 2);

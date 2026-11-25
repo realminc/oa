@@ -22,7 +22,7 @@ fn geometric_api_exposes_the_complete_donor_family() {
 
 test_vk!(
 	crop_flip_rotate_and_center_crop_match_exact_oracles,
-	engine,
+	runtime,
 	{
 		let values = (0..12).map(|value| value as f32).collect::<Vec<_>>();
 		let image = Image::new(
@@ -64,7 +64,7 @@ test_vk!(
 
 test_vk!(
 	pad_matches_all_five_border_mode_oracles_on_odd_padding,
-	engine,
+	runtime,
 	{
 		let source = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
 		let image = Image::new(
@@ -90,7 +90,7 @@ test_vk!(
 
 test_vk!(
 	remap_affine_and_perspective_match_coordinate_oracles,
-	engine,
+	runtime,
 	{
 		let source = (0..9).map(|value| value as f32).collect::<Vec<_>>();
 		let image = Image::new(
@@ -127,7 +127,7 @@ test_vk!(
 			source
 		);
 		let perspective = Matrix::new_from_f32([3, 3], &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0])?;
-		let (plan, warped) = engine.capture(|| {
+		let (plan, warped) = runtime.capture(|| {
 			oa::image::warp_perspective(
 				&image,
 				&perspective,
@@ -151,7 +151,7 @@ test_vk!(
 			plan.semantic_graph().operations()[0].name(),
 			"oa::image::warp_perspective"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(warped.as_matrix().read_f32()?, source);
 		Ok(())
 	}
@@ -159,7 +159,7 @@ test_vk!(
 
 test_vk!(
 	geometric_operations_reject_invalid_structural_contracts,
-	engine,
+	runtime,
 	{
 		let image = Image::new(
 			Matrix::new_from_f32([1, 1, 2, 2], &[0.0; 4])?,
@@ -269,7 +269,7 @@ fn border_coordinate(coordinate: isize, extent: usize, mode: BorderMode) -> Opti
 
 test_vk!(
 	resize_matches_independent_nearest_and_bilinear_oracles,
-	engine,
+	runtime,
 	{
 		let shape = [2_usize, 3, 3, 4];
 		let values = (0..shape.iter().product::<usize>())
@@ -328,7 +328,7 @@ test_vk!(
 
 test_vk!(
 	resize_preserves_chw_metadata_and_semantic_graph_identity,
-	engine,
+	runtime,
 	{
 		let values = (0..12).map(|value| value as f32 * 0.25).collect::<Vec<_>>();
 		let image = Image::new(
@@ -337,7 +337,7 @@ test_vk!(
 			ImageFormat::Gray,
 		)?;
 		let (plan, resized) =
-			engine.capture(|| oa::image::resize(&image, 5, 7, InterpolationMode::Nearest))?;
+			runtime.capture(|| oa::image::resize(&image, 5, 7, InterpolationMode::Nearest))?;
 		assert_eq!(resized.as_matrix().shape(), [1, 7, 5]);
 		assert_eq!(resized.layout(), ImageLayout::Chw);
 		assert_eq!(resized.format(), ImageFormat::Gray);
@@ -376,7 +376,7 @@ test_vk!(
 			]
 		);
 		assert_eq!(plan.semantic_lowering().direct_op_count(), 1);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(resized.as_matrix().read_f32()?.len(), 35);
 		Ok(())
 	}
@@ -384,7 +384,7 @@ test_vk!(
 
 test_vk!(
 	resize_rejects_unadmitted_layout_dtype_and_empty_extents,
-	engine,
+	runtime,
 	{
 		let chw_i32 = Image::new(
 			Matrix::new_from_slice([1, 2, 2], &[0_i32; 4])?,
@@ -459,6 +459,9 @@ fn resize_reference(
 						output_height,
 						output_width,
 					),
+					InterpolationMode::Area | InterpolationMode::Cubic | InterpolationMode::Lanczos => {
+						unreachable!("resize_reference only covers nearest and bilinear")
+					}
 				};
 				output[(plane * output_height + output_y) * output_width + output_x] = value;
 			}
@@ -497,3 +500,401 @@ fn bilinear_reference(
 	let bottom = bottom_left + (bottom_right - bottom_left) * x_weight;
 	top + (bottom - top) * y_weight
 }
+
+const PYR_KERNEL: [f32; 5] = [1.0, 4.0, 6.0, 4.0, 1.0];
+
+fn reflect101(coordinate: i64, extent: i64) -> usize {
+	if extent <= 1 {
+		return 0;
+	}
+	let period = 2 * (extent - 1);
+	let folded = coordinate.abs() % period;
+	if folded < extent {
+		folded as usize
+	} else {
+		(period - folded) as usize
+	}
+}
+
+fn pyr_down_oracle(input: &[f32], height: usize, width: usize) -> Vec<f32> {
+	let out_height = height.div_ceil(2);
+	let out_width = width.div_ceil(2);
+	let mut output = vec![0.0; out_height * out_width];
+	for y in 0..out_height {
+		for x in 0..out_width {
+			let mut sum = 0.0;
+			for dy in -2i64..=2 {
+				let sy = reflect101(2 * y as i64 + dy, height as i64);
+				for dx in -2i64..=2 {
+					let sx = reflect101(2 * x as i64 + dx, width as i64);
+					sum +=
+						PYR_KERNEL[(dy + 2) as usize] * PYR_KERNEL[(dx + 2) as usize] * input[sy * width + sx];
+				}
+			}
+			output[y * out_width + x] = sum / 256.0;
+		}
+	}
+	output
+}
+
+fn pyr_up_oracle(input: &[f32], height: usize, width: usize) -> Vec<f32> {
+	let out_height = height * 2;
+	let out_width = width * 2;
+	let mut output = vec![0.0; out_height * out_width];
+	for y in 0..out_height {
+		for x in 0..out_width {
+			let mut sum = 0.0;
+			for dy in -2i64..=2 {
+				let uy = y as i64 + dy;
+				if uy % 2 != 0 {
+					continue;
+				}
+				let sy = reflect101(uy / 2, height as i64);
+				for dx in -2i64..=2 {
+					let ux = x as i64 + dx;
+					if ux % 2 != 0 {
+						continue;
+					}
+					let sx = reflect101(ux / 2, width as i64);
+					sum +=
+						PYR_KERNEL[(dy + 2) as usize] * PYR_KERNEL[(dx + 2) as usize] * input[sy * width + sx];
+				}
+			}
+			output[y * out_width + x] = sum * (4.0 / 256.0);
+		}
+	}
+	output
+}
+
+test_vk!(pyr_down_matches_the_five_tap_gaussian_oracle, runtime, {
+	let height = 5;
+	let width = 7;
+	let values = (0..height * width)
+		.map(|value| ((value * 37) % 19) as f32 / 19.0)
+		.collect::<Vec<_>>();
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, height, width], &values)?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	let output = image.pyr_down()?;
+	assert_eq!(
+		output.as_matrix().shape(),
+		[1, 1, height.div_ceil(2), width.div_ceil(2)]
+	);
+	let oracle = pyr_down_oracle(&values, height, width);
+	let result = output.as_matrix().read_f32()?;
+	for (actual, expected) in result.iter().zip(oracle.iter()) {
+		assert!((actual - expected).abs() < 1e-5, "{actual} != {expected}");
+	}
+	Ok(())
+});
+
+test_vk!(pyr_up_matches_the_upsampled_gaussian_oracle, runtime, {
+	let height = 3;
+	let width = 4;
+	let values = (0..height * width)
+		.map(|value| ((value * 23) % 17) as f32 / 17.0)
+		.collect::<Vec<_>>();
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, height, width], &values)?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	let output = image.pyr_up()?;
+	assert_eq!(output.as_matrix().shape(), [1, 1, 2 * height, 2 * width]);
+	let oracle = pyr_up_oracle(&values, height, width);
+	let result = output.as_matrix().read_f32()?;
+	for (actual, expected) in result.iter().zip(oracle.iter()) {
+		assert!((actual - expected).abs() < 1e-5, "{actual} != {expected}");
+	}
+	Ok(())
+});
+
+test_vk!(pyr_down_then_up_preserves_resolution_and_blurs, runtime, {
+	let height = 4;
+	let width = 6;
+	let values = (0..height * width)
+		.map(|value| ((value * 29) % 13) as f32 / 13.0)
+		.collect::<Vec<_>>();
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, height, width], &values)?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	let roundtrip = image.pyr_down()?.pyr_up()?;
+	assert_eq!(roundtrip.as_matrix().shape(), [1, 1, height, width]);
+	let oracle = pyr_up_oracle(&pyr_down_oracle(&values, height, width), 2, 3);
+	let result = roundtrip.as_matrix().read_f32()?;
+	for (actual, expected) in result.iter().zip(oracle.iter()) {
+		assert!((actual - expected).abs() < 1e-5, "{actual} != {expected}");
+	}
+	Ok(())
+});
+
+test_vk!(warp_polar_linear_maps_radius_and_angle, runtime, {
+	// 4x4 plane with a distinct value at (row 2, col 2).
+	let mut values = [0.0f32; 16];
+	values[2 * 4 + 2] = 1.0;
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, 4, 4], &values)?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	// Center (1.5, 1.5): the hot pixel sits at radius sqrt(0.5) ~ 0.7071,
+	// angle 45 degrees -> row = h/8 with nearest sampling.
+	let output = oa::image::warp_polar(
+		&image,
+		1.5,
+		1.5,
+		1.0,
+		8,
+		8,
+		oa::image::PolarMode::Linear,
+		oa::image::InterpolationMode::Nearest,
+		oa::image::BorderMode::Constant,
+		0.0,
+	)?;
+	assert_eq!(output.as_matrix().shape(), &[1, 1, 8, 8]);
+	let result = output.as_matrix().read_f32()?;
+	// radius column: nearest of x/8*1.0 to 0.7071 -> x=6 (0.75) closest.
+	// angle row: nearest of y/8*2pi to pi/4 -> y=1 (pi/4 exactly).
+	assert!((result[8 + 6] - 1.0).abs() < 1e-4, "{:?}", result);
+	Ok(())
+});
+
+test_vk!(warp_polar_semi_log_concentrates_small_radii, runtime, {
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, 4, 4], &[0.5f32; 16])?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	let output = oa::image::warp_polar(
+		&image,
+		1.5,
+		1.5,
+		1.5,
+		4,
+		4,
+		oa::image::PolarMode::SemiLog,
+		oa::image::InterpolationMode::Nearest,
+		oa::image::BorderMode::Constant,
+		0.0,
+	)?;
+	// Constant plane stays constant when every gathered radius
+	// lands in bounds — semi-log radii span [1, max_radius].
+	assert_eq!(output.as_matrix().read_f32()?, vec![0.5; 16]);
+	Ok(())
+});
+
+test_vk!(warp_polar_rejects_invalid_parameters, runtime, {
+	let _ = runtime;
+	let image = Image::new(
+		Matrix::new_from_f32([1, 1, 2, 2], &[0.5; 4])?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	for (cx, cy, radius, w, h) in [
+		(f32::NAN, 0.0, 1.0, 4, 4),
+		(0.0, 0.0, 0.0, 4, 4),
+		(0.0, 0.0, -1.0, 4, 4),
+		(0.0, 0.0, 1.0, 0, 4),
+		(0.0, 0.0, 1.0, 4, 0),
+	] {
+		let error = oa::image::warp_polar(
+			&image,
+			cx,
+			cy,
+			radius,
+			w,
+			h,
+			oa::image::PolarMode::Linear,
+			oa::image::InterpolationMode::Nearest,
+			oa::image::BorderMode::Constant,
+			0.0,
+		)
+		.err()
+		.unwrap();
+		assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+	}
+	Ok(())
+});
+
+#[allow(clippy::too_many_arguments)]
+fn host_resize_kernel(
+	plane: &[f32],
+	in_w: usize,
+	in_h: usize,
+	out_w: usize,
+	out_h: usize,
+	weight: impl Fn(f32) -> f32,
+	radius: f32,
+	widen: bool,
+) -> Vec<f32> {
+	let mut out = vec![0.0f32; out_w * out_h];
+	let sx_scale = out_w as f32 / in_w as f32;
+	let sy_scale = out_h as f32 / in_h as f32;
+	let widen_x = if widen {
+		(1.0f32 / sx_scale).max(1.0)
+	} else {
+		1.0
+	};
+	let widen_y = if widen {
+		(1.0f32 / sy_scale).max(1.0)
+	} else {
+		1.0
+	};
+	for oy in 0..out_h {
+		for ox in 0..out_w {
+			let ix = (ox as f32 + 0.5) / sx_scale - 0.5;
+			let iy = (oy as f32 + 0.5) / sy_scale - 0.5;
+			let (lo_x, hi_x) = (
+				(ix - radius * widen_x).ceil() as i32,
+				(ix + radius * widen_x).floor() as i32,
+			);
+			let (lo_y, hi_y) = (
+				(iy - radius * widen_y).ceil() as i32,
+				(iy + radius * widen_y).floor() as i32,
+			);
+			let (mut sum, mut norm) = (0.0f32, 0.0f32);
+			for sy in lo_y..=hi_y {
+				let cy = sy.clamp(0, in_h as i32 - 1);
+				let wy = weight((sy as f32 - iy) / widen_y);
+				for sx in lo_x..=hi_x {
+					let cx = sx.clamp(0, in_w as i32 - 1);
+					let w = wy * weight((sx as f32 - ix) / widen_x);
+					sum += w * plane[cy as usize * in_w + cx as usize];
+					norm += w;
+				}
+			}
+			out[oy * out_w + ox] = if norm != 0.0 { sum / norm } else { 0.0 };
+		}
+	}
+	out
+}
+
+fn cubic_weight(t: f32) -> f32 {
+	let a = -0.75f32;
+	let x = t.abs();
+	if x <= 1.0 {
+		(a + 2.0) * x * x * x - (a + 3.0) * x * x + 1.0
+	} else if x < 2.0 {
+		a * x * x * x - 5.0 * a * x * x + 8.0 * a * x - 4.0 * a
+	} else {
+		0.0
+	}
+}
+
+fn lanczos_weight(t: f32) -> f32 {
+	let x = t.abs();
+	if x >= 4.0 {
+		return 0.0;
+	}
+	let sinc = |v: f32| {
+		if v.abs() < 1e-5 {
+			1.0
+		} else {
+			(std::f32::consts::PI * v).sin() / (std::f32::consts::PI * v)
+		}
+	};
+	sinc(x) * sinc(x / 4.0)
+}
+
+test_vk!(resize_area_matches_host_box_oracle, runtime, {
+	// 8x6 -> 4x3 downscale: each output is the coverage-weighted mean of a 2x2 box.
+	let in_w = 8;
+	let in_h = 6;
+	let plane: Vec<f32> = (0..in_w * in_h).map(|i| (i % 13) as f32 * 0.25).collect();
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, in_h, in_w], &plane)?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	let out = oa::image::resize(&image, 4, 3, oa::image::InterpolationMode::Area)?;
+	let values = out.as_matrix().read_f32()?;
+	for oy in 0..3usize {
+		for ox in 0..4usize {
+			let expected: f32 = (0..2)
+				.flat_map(|dy| (0..2).map(move |dx| (oy * 2 + dy) * in_w + ox * 2 + dx))
+				.map(|i| plane[i])
+				.sum::<f32>()
+				/ 4.0;
+			assert!(
+				(values[oy * 4 + ox] - expected).abs() < 1e-5,
+				"({ox},{oy}) got {} want {expected}",
+				values[oy * 4 + ox]
+			);
+		}
+	}
+	// 4x3 -> 8x6 upscale replicates pixels like INTER_AREA.
+	let small: Vec<f32> = (0..12).map(|i| i as f32).collect();
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, 3, 4], &small)?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	let out = oa::image::resize(&image, 8, 6, oa::image::InterpolationMode::Area)?;
+	let values = out.as_matrix().read_f32()?;
+	for oy in 0..6usize {
+		for ox in 0..8usize {
+			let sx = ((ox as f32 + 0.5) * 0.5) as usize;
+			let sy = ((oy as f32 + 0.5) * 0.5) as usize;
+			assert_eq!(values[oy * 8 + ox], small[sy * 4 + sx], "({ox},{oy})");
+		}
+	}
+	Ok(())
+});
+
+test_vk!(resize_cubic_matches_host_oracle, runtime, {
+	let in_w = 7;
+	let in_h = 5;
+	let plane: Vec<f32> = (0..in_w * in_h)
+		.map(|i| ((i * 7) % 11) as f32 * 0.3 - 1.0)
+		.collect();
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, in_h, in_w], &plane)?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	for (ow, oh) in [(5usize, 4usize), (10, 8)] {
+		let out = oa::image::resize(
+			&image,
+			ow as u32,
+			oh as u32,
+			oa::image::InterpolationMode::Cubic,
+		)?;
+		let values = out.as_matrix().read_f32()?;
+		let oracle = host_resize_kernel(&plane, in_w, in_h, ow, oh, cubic_weight, 2.0, false);
+		for (i, (got, want)) in values.iter().zip(oracle.iter()).enumerate() {
+			assert!((got - want).abs() < 1e-5, "element {i}: {got} vs {want}");
+		}
+	}
+	Ok(())
+});
+
+test_vk!(resize_lanczos_matches_host_oracle, runtime, {
+	let in_w = 7;
+	let in_h = 5;
+	let plane: Vec<f32> = (0..in_w * in_h)
+		.map(|i| ((i * 5) % 9) as f32 * 0.2)
+		.collect();
+	let image = Image::new(
+		Matrix::new_from_f32_on(&runtime, [1, 1, in_h, in_w], &plane)?,
+		ImageLayout::Nchw,
+		ImageFormat::Gray,
+	)?;
+	for (ow, oh) in [(4usize, 3usize), (10, 9)] {
+		let out = oa::image::resize(
+			&image,
+			ow as u32,
+			oh as u32,
+			oa::image::InterpolationMode::Lanczos,
+		)?;
+		let values = out.as_matrix().read_f32()?;
+		let oracle = host_resize_kernel(&plane, in_w, in_h, ow, oh, lanczos_weight, 4.0, true);
+		for (i, (got, want)) in values.iter().zip(oracle.iter()).enumerate() {
+			assert!((got - want).abs() < 1e-5, "element {i}: {got} vs {want}");
+		}
+	}
+	Ok(())
+});

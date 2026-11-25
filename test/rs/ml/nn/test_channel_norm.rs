@@ -116,7 +116,7 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 	}
 }
 
-test_vk!(channel_norm_forward_and_relu_match_host_oracle, engine, {
+test_vk!(channel_norm_forward_and_relu_match_host_oracle, runtime, {
 	let shape = [2, 5, 3];
 	let input_values = (0..30)
 		.map(|index| index as f32 * 0.13 - 1.7)
@@ -127,13 +127,13 @@ test_vk!(channel_norm_forward_and_relu_match_host_oracle, engine, {
 	let weight = oa::Matrix::new_from_f32([5], &weight_values)?;
 	let bias = oa::Matrix::new_from_f32([5], &bias_values)?;
 	let (plan, output) =
-		engine.capture(|| oa::ml::matrix::channel_norm(&input, &weight, &bias, EPSILON))?;
+		runtime.capture(|| oa::ml::matrix::channel_norm(&input, &weight, &bias, EPSILON))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		plan.semantic_graph().operations()[0].name(),
 		"oa::FnMatrix::channelNorm"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_close(
 		&output.read_f32()?,
 		&host_forward(
@@ -162,7 +162,7 @@ test_vk!(channel_norm_forward_and_relu_match_host_oracle, engine, {
 	Ok(())
 });
 
-test_vk!(channel_norm_explicit_adjoints_match_host_oracle, engine, {
+test_vk!(channel_norm_explicit_adjoints_match_host_oracle, runtime, {
 	let shape = [1, 5, 3];
 	let input_values = [
 		-1.1_f32, 0.2, 0.7, 1.4, -0.8, 0.3, 0.9, -0.4, 1.7, -0.3, 0.6, -1.5, 0.5, 1.1, -0.2,
@@ -213,7 +213,7 @@ test_vk!(channel_norm_explicit_adjoints_match_host_oracle, engine, {
 	Ok(())
 });
 
-test_vk!(channel_norm_module_accumulates_complete_adjoint, engine, {
+test_vk!(channel_norm_module_accumulates_complete_adjoint, runtime, {
 	let shape = [1, 3, 2];
 	let input_values = [-1.1_f32, 0.2, 1.4, -0.8, 0.9, -0.4];
 	let weight_values = [0.7_f32, -1.2, 0.4];
@@ -279,7 +279,7 @@ test_vk!(channel_norm_module_accumulates_complete_adjoint, engine, {
 	Ok(())
 });
 
-test_vk!(channel_norm_rejects_unadmitted_geometry, engine, {
+test_vk!(channel_norm_rejects_unadmitted_geometry, runtime, {
 	let input = oa::Matrix::new_from_f32([1, 3, 2], &[0.0; 6])?;
 	let weight = oa::Matrix::new_from_f32([3], &[1.0; 3])?;
 	let bias = oa::Matrix::new_from_f32([3], &[0.0; 3])?;

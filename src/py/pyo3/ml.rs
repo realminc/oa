@@ -1,13 +1,11 @@
 use pyo3::prelude::*;
 
 mod actor_critic;
-mod audio;
 mod autograd;
 mod checkpoint;
 mod checkpoint_fns;
 mod environment;
 mod iterator;
-mod nlp;
 mod nn;
 mod ops;
 mod optim;
@@ -25,7 +23,6 @@ pub(crate) use optim::{PythonAdam, PythonAdamW, PythonMuon, PythonSgd};
 
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	ops::register(module)?;
-	audio::register(module)?;
 	tokenizer::register(module)?;
 	autograd::register(module)?;
 	optim::register(module)?;
@@ -33,7 +30,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	checkpoint_fns::register(module)?;
 	training_schedule::register(module)?;
 	training_session::register(module)?;
-	nlp::register(module)?;
 	trainer_data::register(module)?;
 	iterator::register(module)?;
 	trainer::register(module)?;

@@ -4,7 +4,7 @@
 //! Donor: `source/cpp/include/oa/vision/videoEncoder.h` and
 //! `source/cpp/lib/oa/vision/video/encoder/videoEncoder.cpp`.
 
-use crate::{Engine, Error, Result, runtime::VideoEncoderBackend};
+use crate::{Error, Result, Runtime, runtime::VideoEncoderBackend};
 
 use super::{
 	VideoChromaSubsampling, VideoComponentBitDepth, VideoEncodeCapabilities,
@@ -284,7 +284,7 @@ fn align_up(value: u32, granularity: u32) -> Result<u32> {
 /// Stateful hardware encoder session for H.264 High or H.265 Main.
 ///
 /// One encoder owns a private Vulkan Video encode session, per-slot NV12 input
-/// pictures, and the RGBA→NV12 conversion on the selected [`Engine`]'s queues.
+/// pictures, and the RGBA→NV12 conversion on the selected [`Runtime`]'s queues.
 /// Frames enter as packed RGBA8 bytes sized exactly
 /// `visible_extent().width * visible_extent().height * 4`; conversion, GOP
 /// cadence, rate control, DPB management, and Annex-B framing stay private.
@@ -304,18 +304,18 @@ pub struct VideoEncoder {
 impl VideoEncoder {
 	/// Create a session admitted by exact capability preflight.
 	///
-	/// Settings are validated against the engine's queried encode capabilities;
+	/// Settings are validated against the runtime's queried encode capabilities;
 	/// session creation then performs the Vulkan-level admission a second time.
 	/// A device without an encode queue family for the requested codec profile
 	/// fails here, not on the first `encode` call.
 	///
 	/// # Errors
 	///
-	/// Returns an error when settings fail preflight or the engine's device
+	/// Returns an error when settings fail preflight or the runtime's device
 	/// does not admit a hardware encode session for the profile.
-	pub fn new(engine: &Engine, settings: VideoEncodeConfig) -> Result<Self> {
+	pub fn new(runtime: &Runtime, settings: VideoEncodeConfig) -> Result<Self> {
 		Ok(Self {
-			state: Some(VideoEncoderBackend::create(engine, settings)?),
+			state: Some(VideoEncoderBackend::create(runtime, settings)?),
 		})
 	}
 
@@ -445,7 +445,7 @@ impl VideoEncoder {
 
 	/// Record RGBA8 frame encodes into an active execution capture.
 	///
-	/// Inside [`Engine::capture`] this opens a retained session, records each
+	/// Inside [`Runtime::capture`] this opens a retained session, records each
 	/// frame's RGBA→native conversion on the compute family and its
 	/// `vkCmdEncodeVideoKHR` picture on the encode family as execution-graph
 	/// nodes, and restores this encoder's live session afterwards. The
@@ -473,11 +473,11 @@ impl VideoEncoder {
 		recording.finish_encode_capture()
 	}
 
-	/// Record one frame whose input planes are already engine matrices.
+	/// Record one frame whose input planes are already runtime matrices.
 	///
 	/// Each entry supplies the session's native-format planes in order (Y
 	/// then UV for NV12/P010) plus a presentation timestamp in microseconds.
-	/// Inside [`Engine::capture`], each frame's buffer→image staging records
+	/// Inside [`Runtime::capture`], each frame's buffer→image staging records
 	/// on the compute family and its `vkCmdEncodeVideoKHR` picture on the
 	/// encode family, so a decoded-and-transformed `oa::Matrix` plane can be
 	/// re-encoded without a host round trip.

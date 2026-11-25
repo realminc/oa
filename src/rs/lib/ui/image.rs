@@ -10,8 +10,8 @@
 //!
 //! Typical flows:
 //! ```ignore
-//! let planes = ImagePlanes::load_file(&engine, "frame.png")?;       // planar U8
-//! let planes = ImagePlanes::from_planes(&engine, &[&r, &d],         // RGB + U16 depth
+//! let planes = ImagePlanes::load_file(&runtime, "frame.png")?;       // planar U8
+//! let planes = ImagePlanes::from_planes(&runtime, &[&r, &d],         // RGB + U16 depth
 //!     &[ImageDtype::U8, ImageDtype::U16], 640, 480)?;
 //! ui.image_planar(&planes, 0, 0)?;
 //! ui.image_plane(&planes, 1, 0, 0)?; // depth channel as grayscale
@@ -19,8 +19,8 @@
 
 use std::path::Path;
 
-use crate::runtime::EngineHandle;
-use crate::{Engine, Error, Matrix, Result};
+use crate::runtime::RuntimeHandle;
+use crate::{Error, Matrix, Result, Runtime};
 
 /// Per-channel storage type; selects the `blit_planar` normalization path.
 ///
@@ -63,7 +63,7 @@ pub const IMAGE_MAX_PLANES: usize = 4;
 ///
 /// Donor: `oa::ImagePlanes`.
 pub struct ImagePlanes {
-	engine: EngineHandle,
+	runtime: RuntimeHandle,
 	planes: Vec<Matrix>,
 	dtypes: Vec<ImageDtype>,
 	width: i32,
@@ -107,12 +107,12 @@ impl ImagePlanes {
 			return Ok(u32::MAX);
 		}
 		self
-			.engine
+			.runtime
 			.storage_descriptor_index(self.planes[channel].storage())
 	}
 
-	pub(crate) const fn engine_handle(&self) -> &EngineHandle {
-		&self.engine
+	pub(crate) const fn runtime(&self) -> &RuntimeHandle {
+		&self.runtime
 	}
 
 	/// Clone the retained plane storages for frame-scope retention.
@@ -132,21 +132,21 @@ impl ImagePlanes {
 	/// Returns an error for an unreadable, unsupported, or malformed file,
 	/// checked-size overflow, or device upload failure.
 	///
-	/// This variant loads on this thread's default engine. An engine
+	/// This variant loads on this thread's default runtime. An runtime
 	/// initialization failure is returned before decoding starts.
 	pub fn load_file(path: impl AsRef<Path>) -> Result<Self> {
 		let path = path.as_ref();
-		Self::load_file_on(&Engine::current()?, path)
+		Self::load_file_on(&Runtime::current()?, path)
 	}
-	/// Load an image file into device-uploaded planes on a particular engine.
+	/// Load an image file into device-uploaded planes on a particular runtime.
 	///
 	/// This is the [`load_file`](Self::load_file) contract evaluated on
-	/// `engine` instead of this thread's default engine.
+	/// `runtime` instead of this thread's default runtime.
 	///
 	/// # Errors
 	///
 	/// Returns the same errors as [`load_file`](Self::load_file).
-	pub fn load_file_on(engine: &Engine, path: impl AsRef<Path>) -> Result<Self> {
+	pub fn load_file_on(runtime: &Runtime, path: impl AsRef<Path>) -> Result<Self> {
 		let path = path.as_ref();
 		if path.as_os_str().is_empty() {
 			return Err(Error::invalid_argument(
@@ -197,7 +197,7 @@ impl ImagePlanes {
 		let spans = plane_bytes.iter().map(Vec::as_slice).collect::<Vec<_>>();
 		let dtypes = vec![dtype; channels];
 		Self::from_planes_on(
-			engine,
+			runtime,
 			&spans,
 			&dtypes,
 			i32::try_from(width).map_err(|_| Error::out_of_range("image width exceeds i32"))?,
@@ -216,7 +216,7 @@ impl ImagePlanes {
 	/// length mismatch, non-positive or overflowing dimensions, a plane byte
 	/// size that does not match its dtype, or device upload failure.
 	///
-	/// This variant uploads on this thread's default engine. An engine
+	/// This variant uploads on this thread's default runtime. An runtime
 	/// initialization failure is returned before the upload starts.
 	pub fn from_planes(
 		planes: &[&[u8]],
@@ -224,19 +224,19 @@ impl ImagePlanes {
 		width: i32,
 		height: i32,
 	) -> Result<Self> {
-		Self::from_planes_on(&Engine::current()?, planes, dtypes, width, height)
+		Self::from_planes_on(&Runtime::current()?, planes, dtypes, width, height)
 	}
 
-	/// Upload caller-provided planes on a particular engine.
+	/// Upload caller-provided planes on a particular runtime.
 	///
 	/// This is the [`from_planes`](Self::from_planes) contract evaluated on
-	/// `engine` instead of this thread's default engine.
+	/// `runtime` instead of this thread's default runtime.
 	///
 	/// # Errors
 	///
 	/// Returns the same errors as [`from_planes`](Self::from_planes).
 	pub fn from_planes_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		planes: &[&[u8]],
 		dtypes: &[ImageDtype],
 		width: i32,
@@ -271,10 +271,10 @@ impl ImagePlanes {
 					"ImagePlanes::from_planes plane {index} byte size does not match dimensions and dtype",
 				)));
 			}
-			uploaded.push(Matrix::new_from_slice_on(engine, [expected], plane)?);
+			uploaded.push(Matrix::new_from_slice_on(runtime, [expected], plane)?);
 		}
 		Ok(Self {
-			engine: engine.handle(),
+			runtime: runtime.handle(),
 			planes: uploaded,
 			dtypes: dtypes.to_vec(),
 			width,

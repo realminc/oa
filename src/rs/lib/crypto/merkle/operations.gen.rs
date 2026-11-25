@@ -134,7 +134,7 @@ pub fn build(leaves: &Matrix, algorithm: MerkleAlgorithm) -> Result<DeviceMerkle
 		.ok_or_else(|| Error::invalid_argument("Merkle input bytes overflow usize"))?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument("Merkle input bytes exceed u32"))?;
-	let engine = leaves.engine_handle();
+	let runtime = leaves.runtime();
 	let leaf_count = rows as u32;
 	let mut levels = vec![leaves.clone()];
 	let mut current = leaves.clone();
@@ -145,12 +145,12 @@ pub fn build(leaves: &Matrix, algorithm: MerkleAlgorithm) -> Result<DeviceMerkle
 			.checked_mul(elements)
 			.ok_or_else(|| Error::invalid_argument("Merkle output extent overflows usize"))?;
 		let output = Matrix::allocate_output(
-			engine,
+			runtime,
 			vec![count as usize, elements],
 			elements_count,
 			algorithm.dtype(),
 		)?;
-		let groups = engine.linear_dispatch_grid(count, 128)?;
+		let groups = runtime.linear_dispatch_grid(count, 128)?;
 		let kernel = if algorithm.is_poseidon2() {
 			KernelId::CryptographyMerkleTreeReducePoseidon2U32
 		} else {
@@ -176,7 +176,7 @@ pub fn build(leaves: &Matrix, algorithm: MerkleAlgorithm) -> Result<DeviceMerkle
 				value: algorithm as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -239,8 +239,8 @@ pub fn subtree_roots(
 		.ok_or_else(|| Error::invalid_argument("Merkle subtree bytes overflow usize"))?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument("Merkle subtree bytes exceed u32"))?;
-	let engine = leaves.engine_handle();
-	let shared_bytes = engine.compute_shared_memory_bytes() as usize;
+	let runtime = leaves.runtime();
+	let shared_bytes = runtime.compute_shared_memory_bytes() as usize;
 	// A shared-capacity subtree reduces in one dispatch per subtree; larger
 	// partitions keep the per-level route. The cooperative provider is
 	// experimental: it is only routed on the Strict profile, where the
@@ -255,19 +255,19 @@ pub fn subtree_roots(
 	]
 	.into_iter()
 	.find(|(capacity, _)| {
-		!engine.uses_compatibility_profile()
+		!runtime.uses_compatibility_profile()
 			&& (2..=*capacity).contains(&subtree_leaves)
 			&& capacity * 64 <= shared_bytes
 	});
 	if let Some((_, kernel)) = cooperative {
 		let count = rows / subtree_leaves;
 		let output = Matrix::allocate_output(
-			engine,
+			runtime,
 			vec![count, elements],
 			count * elements,
 			algorithm.dtype(),
 		)?;
-		let groups = engine.linear_dispatch_grid(count as u32, 1)?;
+		let groups = runtime.linear_dispatch_grid(count as u32, 1)?;
 		let buffers = [
 			BufferBinding::read(leaves.storage()),
 			BufferBinding::write(output.storage()),
@@ -288,7 +288,7 @@ pub fn subtree_roots(
 				value: algorithm as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -310,12 +310,12 @@ pub fn subtree_roots(
 	for _ in 0..subtree_leaves.trailing_zeros() {
 		let count = source_count / 2;
 		let output = Matrix::allocate_output(
-			engine,
+			runtime,
 			vec![count as usize, elements],
 			count as usize * elements,
 			algorithm.dtype(),
 		)?;
-		let groups = engine.linear_dispatch_grid(count, 128)?;
+		let groups = runtime.linear_dispatch_grid(count, 128)?;
 		let kernel = if algorithm.is_poseidon2() {
 			KernelId::CryptographyMerkleTreeReducePoseidon2U32
 		} else {
@@ -341,7 +341,7 @@ pub fn subtree_roots(
 				value: algorithm as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -379,9 +379,9 @@ pub fn proofs(tree: &DeviceMerkleTree, indices: &Matrix) -> Result<Matrix> {
 		}
 	};
 	let source = &tree.levels[0];
-	if indices.dtype() != DType::U32 || !indices.engine_handle().same_as(source.engine_handle()) {
+	if indices.dtype() != DType::U32 || !indices.runtime().same_as(source.runtime()) {
 		return Err(Error::invalid_argument(
-			"Merkle proof indices require matching Engine ownership",
+			"Merkle proof indices require matching Runtime ownership",
 		));
 	}
 	let depth = tree.levels.len() - 1;
@@ -393,12 +393,12 @@ pub fn proofs(tree: &DeviceMerkleTree, indices: &Matrix) -> Result<Matrix> {
 	u32::try_from(elements).map_err(|_| Error::invalid_argument("Merkle proof bytes exceed u32"))?;
 	let count =
 		u32::try_from(rows).map_err(|_| Error::invalid_argument("Merkle proof batch exceeds u32"))?;
-	let engine = source.engine_handle();
-	let mut frames = Matrix::allocate_output(engine, vec![rows, frame_bytes], elements, DType::U8)?;
+	let runtime = source.runtime();
+	let mut frames = Matrix::allocate_output(runtime, vec![rows, frame_bytes], elements, DType::U8)?;
 	if rows == 0 {
 		return Ok(frames);
 	}
-	let groups = engine.linear_dispatch_grid(count, 128)?;
+	let groups = runtime.linear_dispatch_grid(count, 128)?;
 	let kernel = KernelId::CryptographyMerkleFrameInitU32;
 	let buffers = [
 		BufferBinding::read(indices.storage()),
@@ -421,7 +421,7 @@ pub fn proofs(tree: &DeviceMerkleTree, indices: &Matrix) -> Result<Matrix> {
 			value: tree.algorithm as u64,
 		},
 	];
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -469,7 +469,7 @@ pub fn proofs(tree: &DeviceMerkleTree, indices: &Matrix) -> Result<Matrix> {
 				value: level as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -526,11 +526,11 @@ pub fn verify(
 		|| roots.shape().len() != 2
 		|| roots.shape()[1] != elements
 		|| (roots.shape()[0] != 1 && roots.shape()[0] != rows)
-		|| !leaves.engine_handle().same_as(frames.engine_handle())
-		|| !leaves.engine_handle().same_as(roots.engine_handle())
+		|| !leaves.runtime().same_as(frames.runtime())
+		|| !leaves.runtime().same_as(roots.runtime())
 	{
 		return Err(Error::invalid_argument(
-			"Merkle verify requires matching hash extents, version-two frames and Engine ownership",
+			"Merkle verify requires matching hash extents, version-two frames and Runtime ownership",
 		));
 	}
 	let count =
@@ -540,10 +540,10 @@ pub fn verify(
 		.ok_or_else(|| Error::invalid_argument("Merkle verify byte extent overflows usize"))?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument("Merkle verify bytes exceed u32"))?;
-	let engine = leaves.engine_handle();
-	let output = Matrix::allocate_output(engine, vec![rows], rows, DType::U32)?;
+	let runtime = leaves.runtime();
+	let output = Matrix::allocate_output(runtime, vec![rows], rows, DType::U32)?;
 	if count != 0 {
-		let groups = engine.linear_dispatch_grid(count, 128)?;
+		let groups = runtime.linear_dispatch_grid(count, 128)?;
 		let kernel = if algorithm.is_poseidon2() {
 			KernelId::CryptographyMerkleFrameVerifyPoseidon2U32
 		} else {
@@ -573,7 +573,7 @@ pub fn verify(
 				value: algorithm as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,

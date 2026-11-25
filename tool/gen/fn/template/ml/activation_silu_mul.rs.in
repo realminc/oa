@@ -7,7 +7,7 @@
 pub fn {{name}}(input: &Matrix, intermediate_size: usize) -> Result<Matrix> {
 	let contract = {{contract}};
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires F32 matrices; found {}",
@@ -35,7 +35,7 @@ pub fn {{name}}(input: &Matrix, intermediate_size: usize) -> Result<Matrix> {
 		.map_err(|_| Error::invalid_argument(format!("{operation} intermediate size exceeds u32")))?;
 	let mut output_shape = input.shape().to_vec();
 	*output_shape.last_mut().expect("validated nonempty shape") = intermediate_size;
-	let output = Matrix::allocate(engine, output_shape, output_count, DType::F32)?;
+	let output = Matrix::allocate(runtime, output_shape, output_count, DType::F32)?;
 	let buffers = [
 		BufferBinding::read(input.storage()),
 		BufferBinding::write(output.storage()),
@@ -49,7 +49,7 @@ pub fn {{name}}(input: &Matrix, intermediate_size: usize) -> Result<Matrix> {
 		PushConstant::U32(output_count_u32),
 		PushConstant::U32(intermediate_u32),
 	];
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::{{kernel}},
 			buffers: &buffers,

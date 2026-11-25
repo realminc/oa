@@ -1,7 +1,7 @@
 	let operation = contract.name();
 	let axis = resolve_axis(input, dim, operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -21,7 +21,7 @@
 	}];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,

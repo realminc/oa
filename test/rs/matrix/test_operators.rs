@@ -11,7 +11,7 @@ fn operator_outputs_preserve_result_contract() {
 
 test_vk!(
 	operators_match_named_operations_and_propagate_errors,
-	engine,
+	runtime,
 	{
 		let a = oa::Matrix::new_from_f32([2], &[2.0, 4.0])?;
 		let b = oa::Matrix::new_from_f32([2], &[1.0, 2.0])?;

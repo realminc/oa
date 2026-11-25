@@ -7,7 +7,7 @@ use crate::{
 
 use crate::ml::autograd;
 
-use super::super::validation::{shader_u32, validate_f32_same_engine};
+use super::super::validation::{shader_u32, validate_f32_same_runtime};
 
 #[derive(Clone, Copy)]
 struct FoldGeometry {
@@ -211,7 +211,7 @@ pub fn unfold(
 	padding: usize,
 	dilation: usize,
 ) -> Result<Matrix> {
-	validate_f32_same_engine(crate::core::operation::ml::UNFOLD.name(), &[input])?;
+	validate_f32_same_runtime(crate::core::operation::ml::UNFOLD.name(), &[input])?;
 	let output = unfold_dispatch(input, kernel_size, stride, padding, dilation)?;
 	autograd::record_unfold(input, kernel_size, stride, padding, dilation, &output)?;
 	Ok(output)
@@ -263,7 +263,7 @@ pub(in crate::ml) fn unfold_backward(
 	dilation: usize,
 ) -> Result<Matrix> {
 	let operation = crate::core::operation::ml::FOLD.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	let [_, _, input_height, input_width] = input.shape() else {
 		return Err(Error::invalid_argument(format!(
 			"{operation} adjoint requires NCHW rank-four saved input; found {:?}",
@@ -298,7 +298,7 @@ pub(in crate::ml) fn fold_backward(
 	dilation: usize,
 ) -> Result<Matrix> {
 	let operation = crate::core::operation::ml::UNFOLD.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	if output_gradient.shape().len() != 4 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} output gradient must be NCHW rank four; found {:?}",
@@ -350,7 +350,7 @@ fn unfold_dispatch(
 			Error::invalid_argument(format!("{operation} column element count overflows usize"))
 		})?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![*batch_size, column_size, geometry.output_length()],
 		element_count,
 		DType::F32,
@@ -377,7 +377,7 @@ fn unfold_dispatch(
 			)?),
 			indirect: None,
 		};
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -401,7 +401,7 @@ fn fold_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::FOLD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let [batch_size, column_size, output_length] = input.shape() else {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires [N, C * kernel², L] rank-three input; found {:?}",
@@ -439,7 +439,7 @@ fn fold_dispatch(
 			Error::invalid_argument(format!("{operation} image element count overflows usize"))
 		})?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![*batch_size, input_channels, output_height, output_width],
 		element_count,
 		DType::F32,
@@ -466,7 +466,7 @@ fn fold_dispatch(
 			)?),
 			indirect: None,
 		};
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,

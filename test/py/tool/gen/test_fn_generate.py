@@ -74,7 +74,7 @@ class MlSchemaTests(unittest.TestCase):
 				"muon",
 				"muon_vector",
 				"muon_normalize",
-				"muon_mat_mul_axpby",
+				"muon_matmul_axpby",
 				"muon_linear_combination",
 				"muon_transpose",
 				"muon_apply",
@@ -281,8 +281,8 @@ class MlSchemaTests(unittest.TestCase):
 				"compute_scale_q8",
 				"quantize_q8",
 				"dequantize_q8",
-				"mat_mul_nt_q4",
-				"mat_mul_nt_q8",
+				"matmul_nt_q4",
+				"matmul_nt_q8",
 				"moe_router_select",
 				"linear_concat",
 				"small_causal_sdpa",
@@ -329,7 +329,9 @@ class MlSchemaTests(unittest.TestCase):
 			self.assertNotIn(name, operations)
 			self.assertIn(stable_id, self.schema["retired_stable_ids"])
 		# Numerical vector/reset coverage moved with the SDK-owned environment.
-		self.assertTrue((ROOT / "test/rs/sdk/ml/test_lunar_lander.rs").is_file())
+		self.assertTrue(
+			(ROOT.parent / "oasdk-dev/test/rs/sdk/ml/test_lunar_lander.rs").is_file()
+		)
 
 	def test_channel_norm_preserves_fused_donor_family(self) -> None:
 		operations = {
@@ -535,7 +537,7 @@ class MlSchemaTests(unittest.TestCase):
 			for record in self.schema["port_provenance"]
 			if record["family"] == "conv_1d"
 		)
-		self.assertIn("64x64x16 tiled MatMulNt", provenance["reason"])
+		self.assertIn("64x64x16 tiled MatmulNt", provenance["reason"])
 
 	def test_conv_1d_transpose_reuses_the_conv_1d_adjoint_and_gemm(self) -> None:
 		operations = {
@@ -557,7 +559,7 @@ class MlSchemaTests(unittest.TestCase):
 			for record in self.schema["port_provenance"]
 			if record["family"] == "conv_1d_transpose"
 		)
-		self.assertIn("64x64x16 tiled MatMulNt", provenance["reason"])
+		self.assertIn("64x64x16 tiled MatmulNt", provenance["reason"])
 		self.assertIn("rather than introducing a second", provenance["reason"])
 
 	def test_conv_2d_transpose_preserves_data_adjoint_and_bias_lowering(self) -> None:
@@ -1015,7 +1017,7 @@ class MlSchemaTests(unittest.TestCase):
 				text = oa_ml.generate_ml_matrix_family(self.schema, self.digest, family)
 				for name in names:
 					self.assertIn(f"fn {name}(", text)
-				self.assertIn("engine.record_semantic(", text)
+				self.assertIn("runtime.record_semantic(", text)
 				self.assertNotIn("{{items}}", text)
 				self.assertNotIn("include!", text)
 				self.assertNotIn("_impl(", text)

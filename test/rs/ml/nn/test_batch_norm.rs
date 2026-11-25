@@ -92,58 +92,62 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 	}
 }
 
-test_vk!(batch_norm_2d_training_matches_independent_oracle, engine, {
-	let shape = [2, 2, 2, 3];
-	let input_values = [
-		0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, 1.2, -0.1, 0.5, -0.8, 0.6, 0.9, -0.3, 0.4, 1.5, -1.0, 0.7,
-		0.1, 0.25, -0.55, 0.35, 1.25, -0.2, 0.75,
-	];
-	let weight_values = [0.75_f32, -1.25];
-	let bias_values = [0.1_f32, -0.2];
-	let (expected_mean, expected_variance) = host_statistics(&input_values, shape);
-	let expected = host_batch_norm(
-		&input_values,
-		shape,
-		&weight_values,
-		&bias_values,
-		&expected_mean,
-		&expected_variance,
-		EPSILON,
-	);
-	let input = oa::Matrix::new_from_f32(shape, &input_values)?;
-	let weight = oa::Matrix::new_from_f32([2], &weight_values)?;
-	let bias = oa::Matrix::new_from_f32([2], &bias_values)?;
-	let (plan, result) =
-		engine.capture(|| oa::ml::matrix::batch_norm_2d(&input, &weight, &bias, EPSILON))?;
-	assert_eq!(plan.semantic_graph().operations().len(), 1);
-	assert_eq!(
-		plan.semantic_graph().operations()[0].name(),
-		"oa::ml::matrix::batch_norm_2d"
-	);
-	assert_eq!(plan.semantic_lowering().maximum_nodes_per_op(), 2);
-	engine.submit(&plan)?.wait()?;
-	assert_close(&result.mean.read_f32()?, &expected_mean, 2.0e-6);
-	assert_close(&result.variance.read_f32()?, &expected_variance, 2.0e-6);
-	assert_close(&result.output.read_f32()?, &expected, 2.0e-5);
+test_vk!(
+	batch_norm_2d_training_matches_independent_oracle,
+	runtime,
+	{
+		let shape = [2, 2, 2, 3];
+		let input_values = [
+			0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, 1.2, -0.1, 0.5, -0.8, 0.6, 0.9, -0.3, 0.4, 1.5, -1.0,
+			0.7, 0.1, 0.25, -0.55, 0.35, 1.25, -0.2, 0.75,
+		];
+		let weight_values = [0.75_f32, -1.25];
+		let bias_values = [0.1_f32, -0.2];
+		let (expected_mean, expected_variance) = host_statistics(&input_values, shape);
+		let expected = host_batch_norm(
+			&input_values,
+			shape,
+			&weight_values,
+			&bias_values,
+			&expected_mean,
+			&expected_variance,
+			EPSILON,
+		);
+		let input = oa::Matrix::new_from_f32(shape, &input_values)?;
+		let weight = oa::Matrix::new_from_f32([2], &weight_values)?;
+		let bias = oa::Matrix::new_from_f32([2], &bias_values)?;
+		let (plan, result) =
+			runtime.capture(|| oa::ml::matrix::batch_norm_2d(&input, &weight, &bias, EPSILON))?;
+		assert_eq!(plan.semantic_graph().operations().len(), 1);
+		assert_eq!(
+			plan.semantic_graph().operations()[0].name(),
+			"oa::ml::matrix::batch_norm_2d"
+		);
+		assert_eq!(plan.semantic_lowering().maximum_nodes_per_op(), 2);
+		runtime.submit(&plan)?.wait()?;
+		assert_close(&result.mean.read_f32()?, &expected_mean, 2.0e-6);
+		assert_close(&result.variance.read_f32()?, &expected_variance, 2.0e-6);
+		assert_close(&result.output.read_f32()?, &expected, 2.0e-5);
 
-	let large = oa::Matrix::new_from_f32([1, 1, 1, 513], &[10_000.0; 513])?;
-	let unit = oa::Matrix::new_from_f32([1], &[1.0])?;
-	let zero = oa::Matrix::new_from_f32([1], &[0.0])?;
-	let stable = oa::ml::matrix::batch_norm_2d(&large, &unit, &zero, EPSILON)?;
-	assert!(stable.variance.read_f32()?[0].is_finite());
-	assert!(
-		stable
-			.output
-			.read_f32()?
-			.iter()
-			.all(|value| value.is_finite())
-	);
-	Ok(())
-});
+		let large = oa::Matrix::new_from_f32([1, 1, 1, 513], &[10_000.0; 513])?;
+		let unit = oa::Matrix::new_from_f32([1], &[1.0])?;
+		let zero = oa::Matrix::new_from_f32([1], &[0.0])?;
+		let stable = oa::ml::matrix::batch_norm_2d(&large, &unit, &zero, EPSILON)?;
+		assert!(stable.variance.read_f32()?[0].is_finite());
+		assert!(
+			stable
+				.output
+				.read_f32()?
+				.iter()
+				.all(|value| value.is_finite())
+		);
+		Ok(())
+	}
+);
 
 test_vk!(
 	batch_norm_2d_module_updates_and_uses_persistent_state,
-	engine,
+	runtime,
 	{
 		let module = oa::ml::nn::BatchNorm2d::new_with_options(1, EPSILON, 0.1)?;
 		let input = oa::Matrix::new_from_f32([1, 1, 2, 2], &[1.0, 2.0, 3.0, 4.0])?;
@@ -206,7 +210,7 @@ test_vk!(
 
 test_vk!(
 	batch_norm_2d_training_adjoint_matches_finite_differences,
-	engine,
+	runtime,
 	{
 		let shape = [1, 2, 2, 3];
 		let input_values = [
@@ -283,7 +287,7 @@ test_vk!(
 
 test_vk!(
 	batch_norm_2d_eval_input_adjoint_uses_fixed_statistics,
-	engine,
+	runtime,
 	{
 		let shape = [1, 1, 1, 4];
 		let input_values = [0.2_f32, -0.7, 1.1, 0.8];

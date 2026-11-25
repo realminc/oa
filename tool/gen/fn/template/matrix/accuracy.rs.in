@@ -26,10 +26,10 @@
 			)));
 		}
 	};
-	let engine = logits.engine_handle();
-	if !engine.same_as(labels.engine_handle()) {
+	let runtime = logits.runtime();
+	if !runtime.same_as(labels.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	if let Some(mask) = mask {
@@ -41,9 +41,9 @@
 				label_shape
 			)));
 		}
-		if !engine.same_as(mask.engine_handle()) {
+		if !runtime.same_as(mask.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -70,7 +70,7 @@
 		.map_err(|_| Error::invalid_argument(format!("{operation} row count exceeds u32")))?;
 	let classes = u32::try_from(classes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} class count exceeds u32")))?;
-	let output = Matrix::allocate(engine, vec![1], 1, DType::U32)?;
+	let output = Matrix::allocate(runtime, vec![1], 1, DType::U32)?;
 	let push_constants = [
 		PushConstant::U32(rows),
 		PushConstant::U32(classes),
@@ -85,7 +85,7 @@
 			BufferBinding::write(output.storage()),
 		];
 		let inputs = [logits, labels, mask];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixMaskedCategoricalAccuracyCountF32,
 				buffers: &buffers,
@@ -107,7 +107,7 @@
 			BufferBinding::write(output.storage()),
 		];
 		let inputs = [logits, labels];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixCategoricalAccuracyCountF32,
 				buffers: &buffers,

@@ -77,7 +77,7 @@ impl oa::ml::TrainingCallback for FailingCallback {
 
 test_vk!(
 	training_session_applies_revisioned_commands_at_safe_points,
-	engine,
+	runtime,
 	{
 		use oa::ml::Optimizer as _;
 		use std::{
@@ -118,7 +118,7 @@ test_vk!(
 		let loss = oa::Matrix::new_from_f32([], &[0.5])?;
 		let summary = {
 			let mut training = oa::ml::ItTraining::new_eager(
-				&engine,
+				&runtime,
 				&mut optimizer,
 				oa::ml::ItTrainingConfig {
 					total_steps: 2,
@@ -217,7 +217,7 @@ test_vk!(
 
 test_vk!(
 	eager_it_training_owns_exact_completion_metrics_and_callbacks,
-	engine,
+	runtime,
 	{
 		let weight = oa::Matrix::new_from_f32([2, 2], &[0.2, -0.1, -0.3, 0.4])?;
 		let bias = oa::Matrix::new_from_f32([2], &[0.0, 0.0])?;
@@ -238,7 +238,7 @@ test_vk!(
 		let mut callback = LifecycleRecorder::new();
 		let mut loss_metric = oa::ml::LossMetric::default();
 		let summary = {
-			let mut training = oa::ml::ItTraining::new(&engine, &mut optimizer, config)?;
+			let mut training = oa::ml::ItTraining::new(&runtime, &mut optimizer, config)?;
 			training.add_callback(&mut callback);
 			training.add_metric(&mut loss_metric);
 			while training.begin_step()? {
@@ -291,7 +291,7 @@ test_vk!(
 		let mut failing = FailingCallback;
 		let error = {
 			let mut training = oa::ml::ItTraining::new(
-				&engine,
+				&runtime,
 				&mut optimizer,
 				oa::ml::ItTrainingConfig {
 					total_steps: 1,
@@ -309,7 +309,7 @@ test_vk!(
 
 test_vk!(
 	captured_it_training_replays_one_program_without_reauthoring_the_graph,
-	engine,
+	runtime,
 	{
 		let weight = oa::Matrix::new_from_f32([2, 2], &[0.2, -0.1, -0.3, 0.4])?;
 		let bias = oa::Matrix::new_from_f32([2], &[0.0, 0.0])?;
@@ -317,7 +317,7 @@ test_vk!(
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.01)?;
 		let input = oa::Matrix::new_from_f32([2, 2], &[1.0, 0.0, 0.0, 1.0])?;
 		let targets = oa::Matrix::new_from_slice([2], &[0_u32, 1])?;
-		let mut program = oa::ml::TrainingProgram::capture(&engine, &mut optimizer, || {
+		let mut program = oa::ml::TrainingProgram::capture(&runtime, &mut optimizer, || {
 			let tape = oa::ml::GradientTape::new();
 			let logits = layer.forward(&input)?;
 			let loss = oa::ml::loss::cross_entropy(&logits, &targets)?;
@@ -349,7 +349,7 @@ test_vk!(
 				enable_gpu_timing: true,
 				..oa::ml::ItTrainingConfig::default()
 			};
-			let mut training = oa::ml::ItTraining::new(&engine, &mut optimizer, config)?;
+			let mut training = oa::ml::ItTraining::new(&runtime, &mut optimizer, config)?;
 			training.add_metric(&mut metric);
 			while training.begin_step()? {
 				training.complete_program_step(&mut program)?;
@@ -373,7 +373,7 @@ test_vk!(
 
 test_vk!(
 	automatic_it_training_prepares_every_step_and_records_only_capture_boundaries,
-	engine,
+	runtime,
 	{
 		let weight = oa::Matrix::new_from_f32([2, 2], &[0.2, -0.1, -0.3, 0.4])?;
 		let bias = oa::Matrix::new_from_f32([2], &[0.0, 0.0])?;
@@ -387,7 +387,7 @@ test_vk!(
 		let mut prepare_count = 0_u32;
 		let mut record_count = 0_u32;
 		let summary = {
-			let mut training = oa::ml::ItTraining::new(&engine, &mut optimizer, config)?;
+			let mut training = oa::ml::ItTraining::new(&runtime, &mut optimizer, config)?;
 			loop {
 				let ran = training.step(
 					|| {
@@ -524,7 +524,7 @@ test_vk!(
 
 test_vk!(
 	automatic_it_training_rejects_executable_work_during_preparation,
-	engine,
+	runtime,
 	{
 		let weight = oa::Matrix::new_from_f32([1, 1], &[1.0])?;
 		let bias = oa::Matrix::new_from_f32([1], &[0.0])?;
@@ -532,7 +532,7 @@ test_vk!(
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.01)?;
 		let error = {
 			let mut training = oa::ml::ItTraining::new(
-				&engine,
+				&runtime,
 				&mut optimizer,
 				oa::ml::ItTrainingConfig {
 					total_steps: 1,
@@ -566,7 +566,7 @@ test_vk!(
 
 test_vk!(
 	learning_rate_and_early_stop_callbacks_share_the_one_training_lifecycle,
-	engine,
+	runtime,
 	{
 		use oa::ml::LrScheduler as _;
 
@@ -580,7 +580,7 @@ test_vk!(
 		let loss = oa::Matrix::new_from_f32([], &[1.0])?;
 		let summary = {
 			let mut training = oa::ml::ItTraining::new(
-				&engine,
+				&runtime,
 				&mut optimizer,
 				oa::ml::ItTrainingConfig {
 					total_steps: 5,
@@ -614,7 +614,7 @@ test_vk!(
 
 test_vk!(
 	captured_learning_rate_schedule_matches_eager_parameter_updates,
-	engine,
+	runtime,
 	{
 		fn assert_close(left: &[f32], right: &[f32]) {
 			assert_eq!(left.len(), right.len());
@@ -641,7 +641,7 @@ test_vk!(
 			let input = oa::Matrix::new_from_f32([2, 2], &[1.0, 0.0, 0.0, 1.0])?;
 			let targets = oa::Matrix::new_from_slice([2], &[0_u32, 1])?;
 			let mut training = oa::ml::ItTraining::new(
-				&engine,
+				&runtime,
 				&mut eager_optimizer,
 				oa::ml::ItTrainingConfig {
 					total_steps: 4,
@@ -674,7 +674,7 @@ test_vk!(
 		let mut captured_scheduler = oa::ml::LearningRateScheduler::new(&captured_schedule);
 		{
 			let mut training = oa::ml::ItTraining::new(
-				&engine,
+				&runtime,
 				&mut captured_optimizer,
 				oa::ml::ItTrainingConfig {
 					total_steps: 4,
@@ -727,7 +727,7 @@ test_vk!(
 
 test_vk!(
 	csv_callback_writes_one_exact_row_per_completed_step,
-	engine,
+	runtime,
 	{
 		use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -746,7 +746,7 @@ test_vk!(
 		let loss = oa::Matrix::new_from_f32([], &[0.5])?;
 		{
 			let mut training = oa::ml::ItTraining::new(
-				&engine,
+				&runtime,
 				&mut optimizer,
 				oa::ml::ItTrainingConfig {
 					total_steps: 2,

@@ -2,7 +2,7 @@
 //!
 //! Donor: oacpp/source/cpp/include/oa/runtime/clockCalibration.h.
 //! Adaptation: Rust naming; device-side sampling lives in
-//! `runtime::device` behind `Engine::calibrate_clock`.
+//! `runtime::device` behind `Runtime::calibrate_clock`.
 
 /// Host clock paired with the Vulkan device timestamp domain. Host timestamps
 /// are nanoseconds in the corresponding POSIX clock domain; device timestamps

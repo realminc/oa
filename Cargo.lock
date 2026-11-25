@@ -965,16 +965,15 @@ dependencies = [
 
 [[package]]
 name = "oa-python"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "oarust",
  "pyo3",
- "sdk",
 ]
 
 [[package]]
 name = "oarust"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -1381,18 +1380,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "sdk"
-version = "0.16.0"
-dependencies = [
- "anyhow",
- "libc",
- "oarust",
- "serde_json",
- "unicode-general-category",
- "unicode-normalization",
 ]
 
 [[package]]

@@ -17,7 +17,7 @@ use super::common::{pointwise_loss_backward, validate_pointwise_loss_inputs};
 ///
 /// # Errors
 ///
-/// Returns an error for empty, mismatched, non-FP32, or cross-engine inputs, or
+/// Returns an error for empty, mismatched, non-FP32, or cross-runtime inputs, or
 /// when allocation or runtime recording fails.
 pub fn smooth_l1(prediction: &Matrix, target: &Matrix) -> Result<Matrix> {
 	let element_count = validate_pointwise_loss_inputs(
@@ -25,7 +25,7 @@ pub fn smooth_l1(prediction: &Matrix, target: &Matrix) -> Result<Matrix> {
 		target,
 		crate::core::operation::ml::SMOOTH_L1.name(),
 	)?;
-	let output = Matrix::allocate(prediction.engine_handle(), Vec::new(), 1, DType::F32)?;
+	let output = Matrix::allocate(prediction.runtime(), Vec::new(), 1, DType::F32)?;
 	let buffers = [
 		BufferBinding::read(prediction.storage()),
 		BufferBinding::read(target.storage()),
@@ -50,11 +50,11 @@ pub fn smooth_l1(prediction: &Matrix, target: &Matrix) -> Result<Matrix> {
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,

@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 // ── CategoricalActorCriticConfig ──────────────────────────────────────────────
 
@@ -95,10 +95,10 @@ impl PythonCategoricalActorCritic {
 	#[new]
 	pub fn new(
 		config: &PythonCategoricalActorCriticConfig,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::CategoricalActorCritic::new_on(&engine, config.inner)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::CategoricalActorCritic::new_on(&runtime, config.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

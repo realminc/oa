@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::super::autograd::PythonParameter;
 
@@ -14,15 +14,15 @@ pub(crate) struct PythonBatchNorm2d {
 impl PythonBatchNorm2d {
 	/// Construct with epsilon `1e-5` and momentum `0.1`, or explicit options.
 	#[new]
-	#[pyo3(signature = (num_features, epsilon = 1e-5, momentum = 0.1, engine=None))]
+	#[pyo3(signature = (num_features, epsilon = 1e-5, momentum = 0.1, runtime=None))]
 	pub fn new(
 		num_features: usize,
 		epsilon: f32,
 		momentum: f32,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::nn::BatchNorm2d::new_with_options_on(&engine, num_features, epsilon, momentum)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::nn::BatchNorm2d::new_with_options_on(&runtime, num_features, epsilon, momentum)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

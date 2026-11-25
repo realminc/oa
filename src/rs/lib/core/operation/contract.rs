@@ -59,7 +59,7 @@ pub enum OpShapeRule {
 	/// Inputs use multidirectional broadcasting.
 	Broadcast,
 	/// Right input uses OA's `[N, K]` transposed-weight convention.
-	MatMulNt,
+	MatmulNt,
 	/// Operation-specific validation and inference is required.
 	Explicit,
 }
@@ -105,7 +105,7 @@ pub enum OpLowering {
 	/// Lower through the generic compute-dispatch path.
 	#[default]
 	Dispatch,
-	/// Lower through the engine's GEMM service.
+	/// Lower through the runtime's GEMM service.
 	Gemm,
 }
 
@@ -354,7 +354,7 @@ impl OperationContract {
 	/// Maximum number of fixed logical inputs or outputs.
 	pub const MAX_VALUES: usize = 8;
 	/// Maximum number of semantic attributes.
-	pub const MAX_ATTRIBUTES: usize = 8;
+	pub const MAX_ATTRIBUTES: usize = 16;
 
 	/// Construct the fixed-arity portion of an operation contract.
 	pub const fn new(

@@ -1,6 +1,6 @@
 //! Donor libportal CreateSession → Start → OpenPipeWireRemote protocol.
 //! Mechanical C ABI adaptation. Libraries remain optional at runtime; no
-//! permission request occurs during Engine initialization or capability queries.
+//! permission request occurs during Runtime initialization or capability queries.
 //! The process-lifetime function table keeps registered GTypes/callback code
 //! loaded after sessions close; unloading a GObject library would be unsound.
 
@@ -252,7 +252,7 @@ extern "C" fn closed(_: Ptr, data: Ptr) {
 }
 unsafe extern "C" fn release_closed(data: Ptr, _: Ptr) {
 	// SAFETY: GObject invokes destroy_notify once for the one Arc transferred
-	// to this signal handler. It never contains Engine or GPU state.
+	// to this signal handler. It never contains Runtime or GPU state.
 	unsafe {
 		drop(std::sync::Arc::from_raw(
 			data.cast::<std::sync::atomic::AtomicBool>(),

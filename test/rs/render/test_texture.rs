@@ -7,7 +7,7 @@ use oa::{ErrorKind, Texture};
 
 test_vk!(
 	host_texture_upload_preserves_unrelated_eager_batch,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([2], &[3.0, 7.0])?;
 		let pending = oa::matrix::add(&input, &input)?;
@@ -39,7 +39,7 @@ fn root_texture_export_is_the_render_value_identity() {
 
 test_vk!(
 	packed_texture_upload_readback_and_file_sink_are_exact,
-	engine,
+	runtime,
 	{
 		let rgba = [
 			255, 0, 0, 255, 0, 255, 0, 128, // row zero
@@ -65,7 +65,7 @@ test_vk!(
 	}
 );
 
-test_vk!(packed_texture_rejects_invalid_host_ranges, engine, {
+test_vk!(packed_texture_rejects_invalid_host_ranges, runtime, {
 	for error in [
 		oa::render::texture_from_rgba8(&[], 0, 1)
 			.err()
@@ -81,7 +81,7 @@ test_vk!(packed_texture_rejects_invalid_host_ranges, engine, {
 
 test_vk!(
 	packed_texture_clear_and_whole_surface_blit_are_exact,
-	engine,
+	runtime,
 	{
 		let source = oa::render::texture_from_rgba8(&[1, 2, 3, 4, 5, 6, 7, 8], 2, 1)?;
 		let copy = oa::render::blit(&source)?;
@@ -123,7 +123,7 @@ test_vk!(
 
 test_vk!(
 	packed_rgba_image_conversion_preserves_texture_semantics,
-	engine,
+	runtime,
 	{
 		let image = oa::Image::new(
 			oa::Matrix::new_from_slice([1, 2, 4], &[9_u8, 8, 7, 6, 5, 4, 3, 2])?,
@@ -139,10 +139,10 @@ test_vk!(
 
 test_vk!(
 	headless_renderer_uses_explicit_target_ring_leases,
-	engine,
+	runtime,
 	{
 		let renderer = oa::render::Renderer::new(
-			&engine,
+			&runtime,
 			oa::render::RendererConfig {
 				width: 2,
 				height: 1,
@@ -171,11 +171,11 @@ test_vk!(
 
 test_vk!(
 	headless_renderer_draws_flat_color_geometry,
-	engine,
+	runtime,
 	"requires a hardware Vulkan graphics device",
 	{
 		let renderer = oa::render::Renderer::new(
-			&engine,
+			&runtime,
 			oa::render::RendererConfig {
 				width: 32,
 				height: 32,
@@ -206,7 +206,7 @@ test_vk!(
 		let video_frame =
 			oa::video::from_texture_with_ready(frame.color(), timing, color, frame.producer())?;
 		assert!(video_frame.ready_event().is_some());
-		let consumer = engine.checkpoint()?;
+		let consumer = runtime.checkpoint()?;
 		video_frame.mark_consumed(&consumer)?;
 		let stale = video_frame
 			.mark_consumed(frame.producer())
@@ -252,11 +252,11 @@ test_vk!(
 
 test_vk!(
 	headless_renderer_samples_registered_unlit_texture,
-	engine,
+	runtime,
 	"requires a hardware Vulkan graphics device",
 	{
 		let renderer = oa::render::Renderer::new(
-			&engine,
+			&runtime,
 			oa::render::RendererConfig {
 				width: 32,
 				height: 32,
@@ -296,11 +296,11 @@ test_vk!(
 
 test_vk!(
 	headless_renderer_draws_surface_scene,
-	engine,
+	runtime,
 	"requires a hardware Vulkan graphics device",
 	{
 		let renderer = oa::render::Renderer::new(
-			&engine,
+			&runtime,
 			oa::render::RendererConfig {
 				width: 32,
 				height: 32,
@@ -358,14 +358,14 @@ test_vk!(
 
 test_vk!(
 	headless_renderer_draws_heterogeneous_two_material_scene,
-	engine,
+	runtime,
 	"requires a hardware Vulkan graphics device",
 	{
 		// Two quads with two distinct materials: one emissive red, one emissive blue.
 		// The renderer must submit both draws in one render pass and produce pixels
 		// from both materials.
 		let renderer = oa::render::Renderer::new(
-			&engine,
+			&runtime,
 			oa::render::RendererConfig {
 				width: 64,
 				height: 32,
@@ -685,11 +685,11 @@ fn quad_geometry_has_donor_winding_and_top_origin_uvs() {
 
 test_vk!(
 	headless_renderer_draws_procedural_canvas_grid,
-	engine,
+	runtime,
 	"requires a hardware Vulkan graphics device",
 	{
 		let renderer = oa::render::Renderer::new(
-			&engine,
+			&runtime,
 			oa::render::RendererConfig {
 				width: 64,
 				height: 64,

@@ -13,7 +13,7 @@
 use crate::ml::matrix::detach;
 use crate::ml::{Optimizer, Parameter};
 use crate::runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch};
-use crate::{DType, Engine, Error, Matrix, OpAttribute, Result};
+use crate::{DType, Error, Matrix, OpAttribute, Result, Runtime};
 
 const DEFAULT_INIT_SCALE: f32 = 65_536.0;
 const DEFAULT_GROWTH_FACTOR: f32 = 2.0;
@@ -108,7 +108,7 @@ impl GradScaler {
 		self.scale
 	}
 
-	/// Allocate device-resident scaler state on `engine` for captured replay.
+	/// Allocate device-resident scaler state on `runtime` for captured replay.
 	///
 	/// After this call, `scale_loss`, `unscale_gradients`, and
 	/// `record_finite_gate` all reference the device buffers instead of the
@@ -120,11 +120,11 @@ impl GradScaler {
 	/// # Errors
 	///
 	/// Returns an error when buffer allocation or upload fails.
-	pub fn prepare_captured(&mut self, engine: &Engine) -> Result<()> {
+	pub fn prepare_captured(&mut self, runtime: &Runtime) -> Result<()> {
 		let device_state = ScalerDeviceState {
-			scale: Matrix::new_from_slice_on(engine, vec![], &[self.scale])?,
-			counter: Matrix::new_from_slice_on(engine, vec![], &[0.0])?,
-			flag: Matrix::new_from_slice_on(engine, vec![], &[1.0])?,
+			scale: Matrix::new_from_slice_on(runtime, vec![], &[self.scale])?,
+			counter: Matrix::new_from_slice_on(runtime, vec![], &[0.0])?,
+			flag: Matrix::new_from_slice_on(runtime, vec![], &[1.0])?,
 		};
 		self.device_state = Some(device_state);
 		Ok(())
@@ -159,7 +159,7 @@ impl GradScaler {
 	/// # Errors
 	///
 	/// Returns an error when `prepare_captured` has not run, `check` is not a
-	/// same-engine single-element F32 matrix, or recording fails.
+	/// same-runtime single-element F32 matrix, or recording fails.
 	pub fn record_finite_gate(&mut self, check: &Matrix) -> Result<()> {
 		const OPERATION: &str = crate::core::operation::ml::GRAD_SCALER_ADVANCE.name();
 		let Some(state) = &self.device_state else {
@@ -172,9 +172,9 @@ impl GradScaler {
 				"{OPERATION} requires a single-element F32 check"
 			)));
 		}
-		if !check.engine_handle().same_as(state.scale.engine_handle()) {
+		if !check.runtime().same_as(state.scale.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{OPERATION} requires the check on the scaler engine"
+				"{OPERATION} requires the check on the scaler runtime"
 			)));
 		}
 		let buffers = [
@@ -206,7 +206,7 @@ impl GradScaler {
 				dispatch.kernel.report_name()
 			))
 		})?;
-		check.engine_handle().record_semantic(
+		check.runtime().record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,

@@ -1,4 +1,4 @@
-//! Private PQC recording through the Engine-owned pipeline registry.
+//! Private PQC recording through the Runtime-owned pipeline registry.
 //! FIPS 203/204 formulas are imported unchanged; C++ oaPqc.md has no live donor.
 
 use std::sync::Arc;
@@ -111,7 +111,7 @@ impl<'a> SecretKeygenOperands<'a> {
 		} = layout;
 		if !seed.belongs_to(device) || !private.belongs_to(device) || !public.belongs_to(device) {
 			return Err(Error::invalid_argument(
-				"PQC operands require their originating Engine",
+				"PQC operands require their originating Runtime",
 			));
 		}
 		if seed.raw() == private.raw() || seed.raw() == public.raw() || private.raw() == public.raw() {
@@ -233,7 +233,7 @@ impl PreparedSecretKeygen<'_> {
 			.map_or_else(|| self.device.descriptor_set(), |sets| sets.set(0));
 		#[cfg(oa_profile = "core")]
 		let set = self.device.descriptor_set();
-		// SAFETY: the Engine owns this recording command, admitted pipeline and
+		// SAFETY: the Runtime owns this recording command, admitted pipeline and
 		// descriptor layout. Preflight proved ownership, disjoint exact ranges,
 		// the parameter-family push ABI and [1,1,1] dispatch limits. Borrowed secrets and
 		// retained public storage keep every descriptor live. The upload recorder
@@ -270,7 +270,7 @@ impl PreparedSecretKeygen<'_> {
 			.set_dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
 			.set_buffer(self.public.raw())
 			.set_size(self.public.size());
-		// SAFETY: public encoding is the only host-readable result. Exact Engine
+		// SAFETY: public encoding is the only host-readable result. Exact Runtime
 		// completion and Buffer::read invalidation precede host observation.
 		unsafe {
 			self.device.pipeline_barrier(

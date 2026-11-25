@@ -24,7 +24,7 @@ impl Default for SacLossConfig {
 /// # Errors
 ///
 /// Returns an error unless all numerical fields are matching nonempty
-/// same-engine F32 vectors, both boundary masks are matching U8 vectors,
+/// same-runtime F32 vectors, both boundary masks are matching U8 vectors,
 /// discount is finite in `[0, 1]`, entropy coefficient is non-negative and
 /// finite, the batch fits the shader ABI, and lowering succeeds.
 #[allow(
@@ -54,24 +54,24 @@ pub fn sac_critic(
 		&& numerical.into_iter().all(|input| {
 			input.shape() == q1.shape()
 				&& input.dtype() == DType::F32
-				&& q1.engine_handle().same_as(input.engine_handle())
+				&& q1.runtime().same_as(input.runtime())
 		}) && [terminated, truncated].into_iter().all(|input| {
 		input.shape() == q1.shape()
 			&& input.dtype() == DType::U8
-			&& q1.engine_handle().same_as(input.engine_handle())
+			&& q1.runtime().same_as(input.runtime())
 	}) && config.discount.is_finite()
 		&& (0.0..=1.0).contains(&config.discount)
 		&& config.entropy_coefficient.is_finite()
 		&& config.entropy_coefficient >= 0.0;
 	if !valid {
 		return Err(Error::invalid_argument(format!(
-			"{} requires matching same-engine F32 vectors, U8 boundaries, discount in [0, 1], and a non-negative entropy coefficient",
+			"{} requires matching same-runtime F32 vectors, U8 boundaries, discount in [0, 1], and a non-negative entropy coefficient",
 			CONTRACT.name()
 		)));
 	}
 	let batch_u32 = u32::try_from(*batch)
 		.map_err(|_| Error::invalid_argument(format!("{} batch exceeds u32", CONTRACT.name())))?;
-	let lowering = q1.engine_handle().begin_semantic_lowering()?;
+	let lowering = q1.runtime().begin_semantic_lowering()?;
 	let target_q = sac_target_impl(
 		&lowering,
 		reward,
@@ -133,7 +133,7 @@ pub fn sac_critic(
 ///
 /// # Errors
 ///
-/// Returns an error unless inputs are matching nonempty same-engine F32 vectors,
+/// Returns an error unless inputs are matching nonempty same-runtime F32 vectors,
 /// entropy coefficient is finite and non-negative, and lowering succeeds.
 pub fn sac_actor(
 	q1: &Matrix,
@@ -152,16 +152,16 @@ pub fn sac_actor(
 		&& [q1, q2, log_probability].into_iter().all(|input| {
 			input.shape() == q1.shape()
 				&& input.dtype() == DType::F32
-				&& q1.engine_handle().same_as(input.engine_handle())
+				&& q1.runtime().same_as(input.runtime())
 		}) && entropy_coefficient.is_finite()
 		&& entropy_coefficient >= 0.0;
 	if !valid {
 		return Err(Error::invalid_argument(format!(
-			"{} requires matching nonempty same-engine F32 vectors and a non-negative entropy coefficient",
+			"{} requires matching nonempty same-runtime F32 vectors and a non-negative entropy coefficient",
 			CONTRACT.name()
 		)));
 	}
-	let lowering = q1.engine_handle().begin_semantic_lowering()?;
+	let lowering = q1.runtime().begin_semantic_lowering()?;
 	let difference = matrix::sub(q1, q2)?;
 	let minimum = matrix::scale(
 		&matrix::sub(&matrix::add(q1, q2)?, &matrix::abs(&difference)?)?,
@@ -209,7 +209,7 @@ fn sac_target_impl(
 	entropy_coefficient: f32,
 ) -> Result<Matrix> {
 	let output = Matrix::allocate(
-		reward.engine_handle(),
+		reward.runtime(),
 		reward.shape().to_vec(),
 		reward.num_elements(),
 		DType::F32,

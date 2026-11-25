@@ -280,7 +280,7 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 	}
 }
 
-test_vk!(conv_1d_gemm_forward_matches_independent_oracle, engine, {
+test_vk!(conv_1d_gemm_forward_matches_independent_oracle, runtime, {
 	let input_shape = [2, 3, 9];
 	let weight_shape = [4, 3, 3];
 	let input_values = (0..54)
@@ -304,7 +304,7 @@ test_vk!(conv_1d_gemm_forward_matches_independent_oracle, engine, {
 	let weight = oa::Matrix::new_from_f32(weight_shape, &weight_values)?;
 	let bias = oa::Matrix::new_from_f32([4], &bias_values)?;
 	let (plan, output) =
-		engine.capture(|| oa::ml::matrix::conv_1d(&input, &weight, &bias, 2, 2, 2))?;
+		runtime.capture(|| oa::ml::matrix::conv_1d(&input, &weight, &bias, 2, 2, 2))?;
 	assert_eq!(output.shape(), [2, 4, 5]);
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
@@ -312,14 +312,14 @@ test_vk!(conv_1d_gemm_forward_matches_independent_oracle, engine, {
 		"oa::ml::matrix::conv_1d"
 	);
 	assert_eq!(plan.semantic_lowering().maximum_nodes_per_op(), 3);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_close(&output.read_f32()?, &expected, 3.0e-5);
 	Ok(())
 });
 
 test_vk!(
 	conv_1d_dilated_adjoint_matches_finite_differences,
-	engine,
+	runtime,
 	{
 		let input_shape = [1, 2, 6];
 		let weight_shape = [2, 2, 3];
@@ -394,7 +394,7 @@ test_vk!(
 
 test_vk!(
 	conv_1d_module_contract_and_validation_are_explicit,
-	engine,
+	runtime,
 	{
 		let module = oa::ml::nn::Conv1d::new_with_seed(3, 5, 3, 2, 1, 2, 0x434f_4e31)?;
 		assert_eq!(module.input_channels(), 3);
@@ -424,7 +424,7 @@ test_vk!(
 
 test_vk!(
 	conv_1d_transpose_forward_matches_independent_oracle,
-	engine,
+	runtime,
 	{
 		let input_shape = [2, 2, 4];
 		let weight_shape = [2, 3, 3];
@@ -446,14 +446,14 @@ test_vk!(
 		let input = oa::Matrix::new_from_f32(input_shape, &input_values)?;
 		let weight = oa::Matrix::new_from_f32(weight_shape, &weight_values)?;
 		let (plan, output) =
-			engine.capture(|| oa::ml::matrix::conv_1d_transpose(&input, &weight, 2, 1, 2))?;
+			runtime.capture(|| oa::ml::matrix::conv_1d_transpose(&input, &weight, 2, 1, 2))?;
 		assert_eq!(output.shape(), [2, 3, 9]);
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
 			"oa::ml::matrix::conv_1d_transpose"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_close(&output.read_f32()?, &expected, 3.0e-5);
 		Ok(())
 	}
@@ -461,7 +461,7 @@ test_vk!(
 
 test_vk!(
 	conv_1d_transpose_adjoint_matches_finite_differences,
-	engine,
+	runtime,
 	{
 		let input_shape = [1, 2, 3];
 		let weight_shape = [2, 2, 3];
@@ -517,7 +517,7 @@ test_vk!(
 
 test_vk!(
 	conv_1d_transpose_module_contract_and_validation_are_explicit,
-	engine,
+	runtime,
 	{
 		let module = oa::ml::nn::ConvTranspose1d::new_with_seed(3, 5, 3, 2, 1, 0x4354_4e31)?;
 		assert_eq!(module.input_channels(), 3);
@@ -544,7 +544,7 @@ test_vk!(
 
 test_vk!(
 	conv_2d_transpose_forward_matches_independent_oracle,
-	engine,
+	runtime,
 	{
 		let input_shape = [1, 2, 2, 3];
 		let weight_shape = [2, 3, 2, 2];
@@ -568,7 +568,7 @@ test_vk!(
 		let weight = oa::Matrix::new_from_f32(weight_shape, &weight_values)?;
 		let bias = oa::Matrix::new_from_f32([3], &bias_values)?;
 		let (plan, output) =
-			engine.capture(|| oa::ml::matrix::conv_2d_transpose(&input, &weight, &bias, 2, 1))?;
+			runtime.capture(|| oa::ml::matrix::conv_2d_transpose(&input, &weight, &bias, 2, 1))?;
 		assert_eq!(output.shape(), [1, 3, 2, 4]);
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
@@ -576,7 +576,7 @@ test_vk!(
 			"oa::ml::matrix::conv_2d_transpose"
 		);
 		assert_eq!(plan.semantic_lowering().maximum_nodes_per_op(), 2);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_close(&output.read_f32()?, &expected, 3.0e-5);
 		Ok(())
 	}
@@ -584,7 +584,7 @@ test_vk!(
 
 test_vk!(
 	conv_2d_transpose_adjoint_matches_finite_differences,
-	engine,
+	runtime,
 	{
 		let input_shape = [1, 2, 2, 2];
 		let weight_shape = [2, 2, 2, 2];
@@ -658,7 +658,7 @@ test_vk!(
 
 test_vk!(
 	conv_2d_transpose_module_contract_and_validation_are_explicit,
-	engine,
+	runtime,
 	{
 		let module = oa::ml::nn::ConvTranspose2d::new_with_seed(3, 5, 3, 2, 1, 0x4354_4e32)?;
 		assert_eq!(module.input_channels(), 3);
@@ -687,7 +687,7 @@ test_vk!(
 
 test_vk!(
 	conv_2d_grouped_forward_matches_independent_oracle,
-	engine,
+	runtime,
 	{
 		let input_shape = [1, 4, 3, 4];
 		let weight_shape = [4, 2, 2, 2];
@@ -712,14 +712,14 @@ test_vk!(
 		let weight = oa::Matrix::new_from_f32(weight_shape, &weight_values)?;
 		let bias = oa::Matrix::new_from_f32([4], &bias_values)?;
 		let (plan, output) =
-			engine.capture(|| oa::ml::matrix::conv_2d(&input, &weight, &bias, 2, 1, 2))?;
+			runtime.capture(|| oa::ml::matrix::conv_2d(&input, &weight, &bias, 2, 1, 2))?;
 		assert_eq!(output.shape(), [1, 4, 2, 3]);
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
 			"oa::ml::matrix::conv_2d"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_close(&output.read_f32()?, &expected, 2.0e-5);
 		Ok(())
 	}
@@ -727,7 +727,7 @@ test_vk!(
 
 test_vk!(
 	conv_2d_depthwise_adjoint_matches_finite_differences,
-	engine,
+	runtime,
 	{
 		let input_shape = [1, 2, 3, 3];
 		let weight_shape = [2, 1, 2, 2];
@@ -802,7 +802,7 @@ test_vk!(
 
 test_vk!(
 	conv_2d_module_contract_and_validation_are_explicit,
-	engine,
+	runtime,
 	{
 		let module = oa::ml::nn::Conv2d::new_with_seed(4, 6, 3, 2, 1, 2, 0x434f_4e56)?;
 		assert_eq!(module.input_channels(), 4);
@@ -923,7 +923,7 @@ fn host_conv_3d(
 
 test_vk!(
 	conv_3d_grouped_forward_matches_independent_oracle,
-	engine,
+	runtime,
 	{
 		let input_shape = [1, 4, 3, 4, 4];
 		let weight_shape = [4, 2, 2, 2, 2];
@@ -948,14 +948,14 @@ test_vk!(
 		let weight = oa::Matrix::new_from_f32(weight_shape, &weight_values)?;
 		let bias = oa::Matrix::new_from_f32([4], &bias_values)?;
 		let (plan, output) =
-			engine.capture(|| oa::ml::matrix::conv_3d(&input, &weight, &bias, 2, 1, 2))?;
+			runtime.capture(|| oa::ml::matrix::conv_3d(&input, &weight, &bias, 2, 1, 2))?;
 		assert_eq!(output.shape(), [1, 4, 2, 3, 3]);
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
 			"oa::ml::matrix::conv_3d"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_close(&output.read_f32()?, &expected, 2.0e-5);
 		Ok(())
 	}
@@ -963,7 +963,7 @@ test_vk!(
 
 test_vk!(
 	conv_3d_depthwise_adjoint_matches_finite_differences,
-	engine,
+	runtime,
 	{
 		let input_shape = [1, 2, 3, 3, 3];
 		let weight_shape = [2, 1, 2, 2, 2];
@@ -1041,7 +1041,7 @@ test_vk!(
 
 test_vk!(
 	conv_3d_module_contract_and_validation_are_explicit,
-	engine,
+	runtime,
 	{
 		let module = oa::ml::nn::Conv3d::new_with_seed(4, 6, 3, 2, 1, 2, 0x434f_4e56)?;
 		assert_eq!(module.input_channels(), 4);
@@ -1170,7 +1170,7 @@ fn host_fold(
 
 test_vk!(
 	unfold_matches_independent_oracle_and_records_semantic_op,
-	engine,
+	runtime,
 	{
 		let input_shape = [1, 2, 4, 5];
 		let input_values = (0..40)
@@ -1180,13 +1180,13 @@ test_vk!(
 			host_unfold(&input_values, input_shape, 3, 2, 1, 1);
 		assert_eq!((positions_height, positions_width), (2, 3));
 		let input = oa::Matrix::new_from_f32(input_shape, &input_values)?;
-		let (plan, output) = engine.capture(|| oa::ml::matrix::unfold(&input, 3, 2, 1, 1))?;
+		let (plan, output) = runtime.capture(|| oa::ml::matrix::unfold(&input, 3, 2, 1, 1))?;
 		assert_eq!(output.shape(), [1, 18, 6]);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
 			"oa::ml::matrix::unfold"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_close(&output.read_f32()?, &expected, 0.0);
 		Ok(())
 	}
@@ -1194,7 +1194,7 @@ test_vk!(
 
 test_vk!(
 	fold_reconstructs_unfolded_windows_with_overlap_sums,
-	engine,
+	runtime,
 	{
 		let input_shape = [1, 1, 5, 5];
 		let input_values = (0..25)
@@ -1210,7 +1210,7 @@ test_vk!(
 	}
 );
 
-test_vk!(unfold_fold_adjoints_match_host_oracles, engine, {
+test_vk!(unfold_fold_adjoints_match_host_oracles, runtime, {
 	let input_shape = [1, 1, 4, 4];
 	let input_values = [
 		0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, 1.2, -0.1, 0.5, -0.8, 0.6, 0.9, -0.3, 0.4, 1.5, -1.0,
@@ -1248,48 +1248,52 @@ test_vk!(unfold_fold_adjoints_match_host_oracles, engine, {
 	Ok(())
 });
 
-test_vk!(fold_adjoint_is_unfold_and_contracts_are_explicit, engine, {
-	let column_shape = [1, 4, 9];
-	let column_values = (0..36)
-		.map(|index| ((index * 5 % 17) as f32 - 8.0) * 0.08)
-		.collect::<Vec<_>>();
-	let target_image = (0..16)
-		.map(|index| (index as f32 - 7.0) * 0.13)
-		.collect::<Vec<_>>();
-	let embedding =
-		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([4, 9], &column_values)?)?;
-	let indices = oa::Matrix::new_from_slice([1, 4], &[0_u32, 1, 2, 3])?;
-	let module = oa::ml::nn::Fold::new(4, 4, 2, 1, 0, 1)?;
-	let target = oa::Matrix::new_from_f32([1, 1, 4, 4], &target_image)?;
-	let tape = oa::ml::GradientTape::new();
-	let image = module.forward(&embedding.forward(&indices)?)?;
-	let loss = oa::ml::loss::mse(&image, &target)?;
-	tape.backward(&loss)?;
-	// dL/dcolumns = unfold(2 * (image - target) / n).
-	let expected_image = host_fold(&column_values, column_shape, 4, 4, 2, 1, 0, 1);
-	let grad_image: Vec<f32> = expected_image
-		.iter()
-		.zip(&target_image)
-		.map(|(actual, target)| 2.0 * (actual - target) / 16.0)
-		.collect();
-	let (expected_columns, _, _) = host_unfold(&grad_image, [1, 1, 4, 4], 2, 1, 0, 1);
-	assert_close(
-		&embedding
-			.weight()
-			.gradient()
-			.expect("Fold input adjoint is missing")
-			.read_f32()?,
-		&expected_columns,
-		1.0e-5,
-	);
-	assert!(oa::ml::nn::Unfold::new(0, 1, 0, 1).is_err());
-	assert!(oa::ml::nn::Fold::new(4, 4, 2, 0, 0, 1).is_err());
-	let bad = oa::Matrix::new_from_f32([1, 5, 9], &[0.0; 45])?;
-	assert!(oa::ml::matrix::fold(&bad, 4, 4, 2, 1, 0, 1).is_err());
-	let short = oa::Matrix::new_from_f32([1, 4, 8], &[0.0; 32])?;
-	assert!(oa::ml::matrix::fold(&short, 4, 4, 2, 1, 0, 1).is_err());
-	Ok(())
-});
+test_vk!(
+	fold_adjoint_is_unfold_and_contracts_are_explicit,
+	runtime,
+	{
+		let column_shape = [1, 4, 9];
+		let column_values = (0..36)
+			.map(|index| ((index * 5 % 17) as f32 - 8.0) * 0.08)
+			.collect::<Vec<_>>();
+		let target_image = (0..16)
+			.map(|index| (index as f32 - 7.0) * 0.13)
+			.collect::<Vec<_>>();
+		let embedding =
+			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([4, 9], &column_values)?)?;
+		let indices = oa::Matrix::new_from_slice([1, 4], &[0_u32, 1, 2, 3])?;
+		let module = oa::ml::nn::Fold::new(4, 4, 2, 1, 0, 1)?;
+		let target = oa::Matrix::new_from_f32([1, 1, 4, 4], &target_image)?;
+		let tape = oa::ml::GradientTape::new();
+		let image = module.forward(&embedding.forward(&indices)?)?;
+		let loss = oa::ml::loss::mse(&image, &target)?;
+		tape.backward(&loss)?;
+		// dL/dcolumns = unfold(2 * (image - target) / n).
+		let expected_image = host_fold(&column_values, column_shape, 4, 4, 2, 1, 0, 1);
+		let grad_image: Vec<f32> = expected_image
+			.iter()
+			.zip(&target_image)
+			.map(|(actual, target)| 2.0 * (actual - target) / 16.0)
+			.collect();
+		let (expected_columns, _, _) = host_unfold(&grad_image, [1, 1, 4, 4], 2, 1, 0, 1);
+		assert_close(
+			&embedding
+				.weight()
+				.gradient()
+				.expect("Fold input adjoint is missing")
+				.read_f32()?,
+			&expected_columns,
+			1.0e-5,
+		);
+		assert!(oa::ml::nn::Unfold::new(0, 1, 0, 1).is_err());
+		assert!(oa::ml::nn::Fold::new(4, 4, 2, 0, 0, 1).is_err());
+		let bad = oa::Matrix::new_from_f32([1, 5, 9], &[0.0; 45])?;
+		assert!(oa::ml::matrix::fold(&bad, 4, 4, 2, 1, 0, 1).is_err());
+		let short = oa::Matrix::new_from_f32([1, 4, 8], &[0.0; 32])?;
+		assert!(oa::ml::matrix::fold(&short, 4, 4, 2, 1, 0, 1).is_err());
+		Ok(())
+	}
+);
 
 #[allow(
 	clippy::too_many_arguments,
@@ -1396,7 +1400,7 @@ fn host_conv_3d_transpose(
 
 test_vk!(
 	conv_3d_transpose_forward_matches_independent_oracle,
-	engine,
+	runtime,
 	{
 		let input_shape = [1, 2, 2, 2, 3];
 		let weight_shape = [2, 3, 2, 2, 2];
@@ -1420,14 +1424,14 @@ test_vk!(
 		let weight = oa::Matrix::new_from_f32(weight_shape, &weight_values)?;
 		let bias = oa::Matrix::new_from_f32([3], &bias_values)?;
 		let (plan, output) =
-			engine.capture(|| oa::ml::matrix::conv_3d_transpose(&input, &weight, &bias, 2, 1))?;
+			runtime.capture(|| oa::ml::matrix::conv_3d_transpose(&input, &weight, &bias, 2, 1))?;
 		assert_eq!(output.shape(), [1, 3, 2, 2, 4]);
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
 			"oa::ml::matrix::conv_3d_transpose"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_close(&output.read_f32()?, &expected, 3.0e-5);
 		Ok(())
 	}
@@ -1435,7 +1439,7 @@ test_vk!(
 
 test_vk!(
 	conv_3d_transpose_adjoint_matches_finite_differences,
-	engine,
+	runtime,
 	{
 		let input_shape = [1, 2, 2, 2, 2];
 		let weight_shape = [2, 2, 2, 2, 2];
@@ -1511,7 +1515,7 @@ test_vk!(
 
 test_vk!(
 	conv_3d_transpose_module_contract_and_validation_are_explicit,
-	engine,
+	runtime,
 	{
 		let module = oa::ml::nn::ConvTranspose3d::new_with_seed(3, 5, 3, 2, 1, 0x4354_4e33)?;
 		assert_eq!(module.input_channels(), 3);

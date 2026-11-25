@@ -453,7 +453,7 @@ pub fn normalize_observation(
 			CONTRACT.name()
 		)));
 	}
-	let lowering = observation.engine_handle().begin_semantic_lowering()?;
+	let lowering = observation.runtime().begin_semantic_lowering()?;
 	let centered = matrix::sub(observation, mean)?;
 	let denominator = matrix::add_scalar(stddev, epsilon)?;
 	let normalized = matrix::div(&centered, &denominator)?;
@@ -506,7 +506,7 @@ pub fn scale_action(
 			CONTRACT.name()
 		)));
 	}
-	let lowering = action.engine_handle().begin_semantic_lowering()?;
+	let lowering = action.runtime().begin_semantic_lowering()?;
 	let source = if clamp_source {
 		clamp(action, source_minimum, source_maximum)?
 	} else {
@@ -567,7 +567,7 @@ pub fn clip_reward(reward: &Matrix, minimum: f32, maximum: f32) -> Result<Matrix
 			CONTRACT.name()
 		)));
 	}
-	let lowering = reward.engine_handle().begin_semantic_lowering()?;
+	let lowering = reward.runtime().begin_semantic_lowering()?;
 	let result = clamp(reward, minimum, maximum)?;
 	let attributes = [
 		OpAttribute::Float {

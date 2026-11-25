@@ -1,6 +1,6 @@
 use pyo3::{prelude::*, types::PyBytes};
 
-use crate::{error::python_error, image::PythonImage, runtime::PythonEngine};
+use crate::{error::python_error, image::PythonImage, runtime::PythonRuntime};
 
 // ── VideoColorMatrix ──────────────────────────────────────────────────────────
 
@@ -425,9 +425,9 @@ pub(crate) struct PythonVideoDecoder {
 impl PythonVideoDecoder {
 	/// Create a hardware decoder for the given container info.
 	#[new]
-	pub fn new(info: &PythonVideoContainerInfo, engine: Option<&PythonEngine>) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::VideoDecoder::new(&engine, info.inner)
+	pub fn new(info: &PythonVideoContainerInfo, runtime: Option<&PythonRuntime>) -> PyResult<Self> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::VideoDecoder::new(&runtime, info.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -588,15 +588,15 @@ pub(crate) struct PythonVideoPlayer {
 impl PythonVideoPlayer {
 	/// Open a local MP4 file for playback.
 	#[new]
-	#[pyo3(signature = (path, config=None, engine=None))]
+	#[pyo3(signature = (path, config=None, runtime=None))]
 	pub fn new(
 		path: &str,
 		config: Option<&PythonVideoPlayerConfig>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		let cfg = config.map_or_else(oa::video::VideoPlayerConfig::default, |c| c.inner);
-		oa::VideoPlayer::open(&engine, path, cfg)
+		oa::VideoPlayer::open(&runtime, path, cfg)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -2125,9 +2125,9 @@ pub(crate) struct PythonVideoEncoder {
 impl PythonVideoEncoder {
 	/// Create a session admitted by exact capability preflight.
 	#[new]
-	pub fn new(config: &PythonVideoEncodeConfig, engine: Option<&PythonEngine>) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::video::VideoEncoder::new(&engine, config.inner)
+	pub fn new(config: &PythonVideoEncodeConfig, runtime: Option<&PythonRuntime>) -> PyResult<Self> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::video::VideoEncoder::new(&runtime, config.inner)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -2249,9 +2249,12 @@ pub(crate) struct PythonVideoRecorder {
 impl PythonVideoRecorder {
 	/// Open the output container and create the admitted encode session.
 	#[new]
-	pub fn new(config: &PythonVideoRecorderConfig, engine: Option<&PythonEngine>) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::video::VideoRecorder::new(&engine, config.inner.clone())
+	pub fn new(
+		config: &PythonVideoRecorderConfig,
+		runtime: Option<&PythonRuntime>,
+	) -> PyResult<Self> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::video::VideoRecorder::new(&runtime, config.inner.clone())
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -2325,10 +2328,10 @@ impl PythonVideoRecorder {
 /// Query the selected device's video queue and codec admission summary.
 #[pyfunction]
 pub fn query_device_capabilities(
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonVideoDeviceCapabilities> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::video::query_device_capabilities(&engine)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::video::query_device_capabilities(&runtime)
 		.map(|inner| PythonVideoDeviceCapabilities { inner })
 		.map_err(python_error)
 }
@@ -2337,10 +2340,10 @@ pub fn query_device_capabilities(
 #[pyfunction]
 pub fn query_decode_capabilities(
 	profile: &PythonVideoDecodeProfile,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonVideoDecodeCapabilities> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::video::query_decode_capabilities(&engine, profile.inner)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::video::query_decode_capabilities(&runtime, profile.inner)
 		.map(|inner| PythonVideoDecodeCapabilities { inner })
 		.map_err(python_error)
 }
@@ -2349,10 +2352,10 @@ pub fn query_decode_capabilities(
 #[pyfunction]
 pub fn query_decode_formats(
 	profile: &PythonVideoDecodeProfile,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonVideoDecodeFormats> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::video::query_decode_formats(&engine, profile.inner)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::video::query_decode_formats(&runtime, profile.inner)
 		.map(|inner| PythonVideoDecodeFormats { inner })
 		.map_err(python_error)
 }
@@ -2361,10 +2364,10 @@ pub fn query_decode_formats(
 #[pyfunction]
 pub fn query_encode_capabilities(
 	profile: &PythonVideoEncodeProfile,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonVideoEncodeCapabilities> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::video::query_encode_capabilities(&engine, profile.inner)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::video::query_encode_capabilities(&runtime, profile.inner)
 		.map(|inner| PythonVideoEncodeCapabilities { inner })
 		.map_err(python_error)
 }
@@ -2373,10 +2376,10 @@ pub fn query_encode_capabilities(
 #[pyfunction]
 pub fn query_encode_formats(
 	profile: &PythonVideoEncodeProfile,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonVideoEncodeFormats> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::video::query_encode_formats(&engine, profile.inner)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::video::query_encode_formats(&runtime, profile.inner)
 		.map(|inner| PythonVideoEncodeFormats { inner })
 		.map_err(python_error)
 }

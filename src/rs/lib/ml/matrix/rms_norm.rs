@@ -1,7 +1,7 @@
 //! Rms norm Matrix operation implementations.
 
 use crate::ml::autograd;
-use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::ml::validation::{shader_u32, validate_f32_same_runtime};
 use crate::{
 	DType, Error, Matrix, OpAttribute, Result,
 	runtime::{
@@ -26,7 +26,7 @@ pub struct RmsNormGatedBackward {
 /// # Errors
 ///
 /// Returns an error unless `input` is a nonempty F32 Matrix, `weight` is a
-/// same-engine F32 vector matching its final dimension, `epsilon` is finite and
+/// same-runtime F32 vector matching its final dimension, `epsilon` is finite and
 /// positive, or runtime recording fails.
 pub fn rms_norm(input: &Matrix, weight: &Matrix, epsilon: f32) -> Result<Matrix> {
 	let output = rms_norm_forward(input, weight, epsilon)?;
@@ -42,7 +42,7 @@ pub fn rms_norm(input: &Matrix, weight: &Matrix, epsilon: f32) -> Result<Matrix>
 ///
 /// # Errors
 ///
-/// Returns an error for incompatible shape, dtype, Engine ownership or
+/// Returns an error for incompatible shape, dtype, Runtime ownership or
 /// epsilon, or when runtime recording fails.
 pub fn rms_norm_gated(
 	input: &Matrix,
@@ -72,7 +72,7 @@ pub(in crate::ml) fn rms_norm_forward(
 	const OPERATION: &str = crate::core::operation::ml::RMS_NORM.name();
 	let (rows, columns) = validate_rms_norm_inputs(input, weight, epsilon, OPERATION)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -108,11 +108,11 @@ pub(in crate::ml) fn rms_norm_forward(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -133,7 +133,7 @@ pub(in crate::ml) fn rms_norm_backward(
 ) -> Result<(Matrix, Matrix)> {
 	const OPERATION: &str = crate::core::operation::ml::RMS_NORM_BACKWARD.name();
 	let (rows, columns) = validate_rms_norm_inputs(input, weight, epsilon, OPERATION)?;
-	validate_f32_same_engine(OPERATION, &[input, weight, output_gradient])?;
+	validate_f32_same_runtime(OPERATION, &[input, weight, output_gradient])?;
 	if output_gradient.shape() != input.shape() {
 		return Err(Error::invalid_argument(format!(
 			"{OPERATION} output gradient must match input shape; found {:?} and {:?}",
@@ -142,19 +142,19 @@ pub(in crate::ml) fn rms_norm_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let weight_contribution = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		weight.num_elements(),
 		DType::F32,
@@ -202,7 +202,7 @@ pub(in crate::ml) fn rms_norm_backward(
 		name: "epsilon".into(),
 		value: f64::from(epsilon),
 	}];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: crate::core::operation::ml::RMS_NORM_BACKWARD,
@@ -224,7 +224,7 @@ pub(in crate::ml) fn rms_norm_gated_forward(
 	let (rows, columns, groups, _) =
 		validate_rms_norm_gated_inputs(input, weight, bias, gate, epsilon, OPERATION)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -255,7 +255,7 @@ pub(in crate::ml) fn rms_norm_gated_forward(
 		},
 	];
 	let semantic_inputs = [Some(input), Some(weight), bias, Some(gate)];
-	input.engine_handle().record_optional_semantic(
+	input.runtime().record_optional_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlRmsNormGatedF32,
 			buffers: &buffers,
@@ -290,7 +290,7 @@ pub fn rms_norm_gated_backward(
 	const OPERATION: &str = crate::core::operation::ml::RMS_NORM_GATED_BACKWARD.name();
 	let (rows, columns, groups, outer_rows) =
 		validate_rms_norm_gated_inputs(input, weight, bias, gate, epsilon, OPERATION)?;
-	validate_f32_same_engine(OPERATION, &[input, weight, gate, output_gradient])?;
+	validate_f32_same_runtime(OPERATION, &[input, weight, gate, output_gradient])?;
 	if output_gradient.shape() != input.shape() {
 		return Err(Error::invalid_argument(format!(
 			"{OPERATION} output gradient must match input shape; found {:?} and {:?}",
@@ -299,42 +299,42 @@ pub fn rms_norm_gated_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let gate_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		gate.shape().to_vec(),
 		gate.num_elements(),
 		DType::F32,
 	)?;
 	let weight_contribution = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		weight.num_elements(),
 		DType::F32,
 	)?;
 	let bias_contribution = if bias.is_some() {
 		Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			input.shape().to_vec(),
 			input.num_elements(),
 			DType::F32,
 		)?
 	} else {
-		Matrix::new_from_slice_handle(input.engine_handle(), vec![1], &[0.0_f32])?
+		Matrix::new_from_slice_handle(input.runtime(), vec![1], &[0.0_f32])?
 	};
 	let bias_gradient = match bias {
 		Some(value) => Some(Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			value.shape().to_vec(),
 			value.num_elements(),
 			DType::F32,
@@ -422,7 +422,7 @@ pub fn rms_norm_gated_backward(
 			workgroups: KernelId::MlSumAxisPairF32.linear_workgroups(affine_elements),
 			indirect: None,
 		};
-		input.engine_handle().record_split_optional_semantic(
+		input.runtime().record_split_optional_semantic(
 			&[backward_dispatch, parameter_dispatch],
 			OptionalSemanticDispatch {
 				contract: crate::core::operation::ml::RMS_NORM_GATED_BACKWARD,
@@ -432,7 +432,7 @@ pub fn rms_norm_gated_backward(
 			},
 		)?;
 	} else {
-		input.engine_handle().record_split_optional_semantic(
+		input.runtime().record_split_optional_semantic(
 			&[backward_dispatch, weight_dispatch],
 			OptionalSemanticDispatch {
 				contract: crate::core::operation::ml::RMS_NORM_GATED_BACKWARD,
@@ -491,7 +491,7 @@ fn validate_rms_norm_gated_inputs(
 	if let Some(bias) = bias {
 		matrices.push(bias);
 	}
-	validate_f32_same_engine(operation, &matrices)?;
+	validate_f32_same_runtime(operation, &matrices)?;
 	Ok((
 		shader_u32(rows, "row count", operation)?,
 		shader_u32(columns, "normalized dimension", operation)?,
@@ -521,7 +521,7 @@ fn validate_rms_norm_inputs(
 			"{operation} epsilon must be finite and positive"
 		)));
 	}
-	validate_f32_same_engine(operation, &[input, weight])?;
+	validate_f32_same_runtime(operation, &[input, weight])?;
 	let rows = shader_u32(input.num_elements() / columns, "row count", operation)?;
 	let columns = shader_u32(columns, "normalized dimension", operation)?;
 	Ok((rows, columns))

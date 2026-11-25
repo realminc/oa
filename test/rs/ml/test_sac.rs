@@ -11,7 +11,7 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 }
 
 fn parameter_vector(
-	_engine: &oa::Engine,
+	_runtime: &oa::Runtime,
 	values: &[f32],
 ) -> oa::Result<(oa::ml::nn::Embedding, oa::Matrix)> {
 	let parameter =
@@ -26,21 +26,21 @@ fn parameter_vector(
 
 test_vk!(
 	sac_critic_matches_donor_target_and_detached_adjoint,
-	engine,
+	runtime,
 	{
 		let tape = oa::ml::GradientTape::new();
-		let (q1_parameter, q1) = parameter_vector(&engine, &[1.0, 2.0, 3.0])?;
-		let (q2_parameter, q2) = parameter_vector(&engine, &[1.5, 1.0, 4.0])?;
-		let (next_q1_parameter, next_q1) = parameter_vector(&engine, &[10.0, 30.0, 50.0])?;
-		let (next_q2_parameter, next_q2) = parameter_vector(&engine, &[20.0, 40.0, 60.0])?;
+		let (q1_parameter, q1) = parameter_vector(&runtime, &[1.0, 2.0, 3.0])?;
+		let (q2_parameter, q2) = parameter_vector(&runtime, &[1.5, 1.0, 4.0])?;
+		let (next_q1_parameter, next_q1) = parameter_vector(&runtime, &[10.0, 30.0, 50.0])?;
+		let (next_q2_parameter, next_q2) = parameter_vector(&runtime, &[20.0, 40.0, 60.0])?;
 		let (next_log_parameter, next_log_probability) =
-			parameter_vector(&engine, &[-1.0, -2.0, -3.0])?;
+			parameter_vector(&runtime, &[-1.0, -2.0, -3.0])?;
 		let reward = oa::Matrix::new_from_f32([3], &[1.0, 2.0, 3.0])?;
 		let terminated = oa::Matrix::new_from_slice([3], &[0_u8, 1, 0])?;
 		let truncated = oa::Matrix::new_from_slice([3], &[0_u8, 0, 1])?;
-		engine.checkpoint()?.wait()?;
+		runtime.checkpoint()?.wait()?;
 
-		let (plan, result) = engine.capture(|| {
+		let (plan, result) = runtime.capture(|| {
 			sac_critic(
 				&q1,
 				&q2,
@@ -65,7 +65,7 @@ test_vk!(
 		let operation = &plan.semantic_graph().operations()[0];
 		assert_eq!(operation.name(), "oa::FnLoss::sacCritic");
 		assert_eq!(operation.attributes().len(), 2);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 
 		assert_close(&result.target_q.read_f32()?, &[6.1, 2.0, 28.3], 1.0e-5);
 		assert_close(&result.q1_loss.read_f32()?, &[666.1 / 3.0], 2.0e-5);
@@ -103,14 +103,14 @@ test_vk!(
 
 test_vk!(
 	sac_actor_matches_donor_value_and_complete_adjoint,
-	engine,
+	runtime,
 	{
 		let tape = oa::ml::GradientTape::new();
-		let (q1_parameter, q1) = parameter_vector(&engine, &[2.0, 4.0])?;
-		let (q2_parameter, q2) = parameter_vector(&engine, &[3.0, 1.0])?;
-		let (log_parameter, log_probability) = parameter_vector(&engine, &[-0.5, -1.0])?;
-		engine.checkpoint()?.wait()?;
-		let (plan, loss) = engine.capture(|| sac_actor(&q1, &q2, &log_probability, 0.2))?;
+		let (q1_parameter, q1) = parameter_vector(&runtime, &[2.0, 4.0])?;
+		let (q2_parameter, q2) = parameter_vector(&runtime, &[3.0, 1.0])?;
+		let (log_parameter, log_probability) = parameter_vector(&runtime, &[-0.5, -1.0])?;
+		runtime.checkpoint()?.wait()?;
+		let (plan, loss) = runtime.capture(|| sac_actor(&q1, &q2, &log_probability, 0.2))?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
 		assert!(plan.diagnostics().node_count() > 1);
 		assert_eq!(
@@ -121,7 +121,7 @@ test_vk!(
 			plan.semantic_graph().operations()[0].name(),
 			"oa::FnLoss::sacActor"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_close(&loss.read_f32()?, &[-1.65], 1.0e-6);
 
 		tape.backward(&loss)?;
@@ -156,7 +156,7 @@ test_vk!(
 	}
 );
 
-test_vk!(sac_losses_reject_invalid_contracts, engine, {
+test_vk!(sac_losses_reject_invalid_contracts, runtime, {
 	let vector = oa::Matrix::new_from_f32([2], &[1.0, 2.0])?;
 	let short = oa::Matrix::new_from_f32([1], &[1.0])?;
 	let boundary = oa::Matrix::new_from_slice([2], &[0_u8, 0])?;

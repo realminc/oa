@@ -1,7 +1,7 @@
 //! Audio analysis cache. Donor: `oa::Viewer::openAudio` analysis section.
 
 use super::config::ViewerConfig;
-use crate::{Engine, Error, Matrix};
+use crate::{Error, Matrix, Runtime};
 
 /// Pre-computed offline audio analysis matrices.
 pub struct AudioAnalysis {
@@ -15,7 +15,7 @@ pub struct AudioAnalysis {
 /// Uses the viewer's execution owner; analysis failures remain visible.
 /// Donor: `oa/ui/viewer.cpp::openAudio` and `validateAudioAnalysisConfig`.
 pub fn analyze(
-	engine: &Engine,
+	runtime: &Runtime,
 	path: &str,
 	config: &ViewerConfig,
 ) -> crate::Result<Option<AudioAnalysis>> {
@@ -30,7 +30,7 @@ pub fn analyze(
 			"invalid Viewer audio analysis configuration",
 		));
 	}
-	let decoded = crate::audio::decode_file_on(engine, path)?;
+	let decoded = crate::audio::decode_file_on(runtime, path)?;
 	let samples = u32::try_from(decoded.samples())
 		.map_err(|_| Error::out_of_range("Viewer audio sample count exceeds u32"))?;
 	if samples == 0 {

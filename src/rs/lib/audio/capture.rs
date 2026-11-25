@@ -17,7 +17,7 @@ use cpal::{
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 
 use super::player::{cpal_error, ring_capacity};
-use crate::{Engine, Error, Result, runtime::EngineHandle};
+use crate::{Error, Result, Runtime, runtime::RuntimeHandle};
 
 static MONOTONIC_EPOCH: OnceLock<Instant> = OnceLock::new();
 
@@ -45,7 +45,7 @@ pub struct AudioCaptureChunk {
 
 /// Stateful default-device audio capture session.
 pub struct AudioCapture {
-	_engine: EngineHandle,
+	_runtime: RuntimeHandle,
 	service: Option<CaptureService>,
 	shared: Arc<CaptureShared>,
 	consumer: Consumer<CaptureFrame>,
@@ -75,7 +75,7 @@ struct CaptureFrame {
 
 impl AudioCapture {
 	/// Open the default input device. The returned session is initially stopped.
-	pub fn open(engine: &Engine, config: AudioCaptureConfig) -> Result<Self> {
+	pub fn open(runtime: &Runtime, config: AudioCaptureConfig) -> Result<Self> {
 		if config.sample_rate == 0
 			|| !(1..=8).contains(&config.channel_count)
 			|| config.ring_milliseconds < 20
@@ -100,7 +100,7 @@ impl AudioCapture {
 
 		let host = cpal::default_host();
 		let (device, stream_config) = super::device::select_device(
-			engine,
+			runtime,
 			&host,
 			super::device::Direction::Input,
 			config.sample_rate,
@@ -129,7 +129,7 @@ impl AudioCapture {
 			)
 			.map_err(|error| cpal_error("capture stream creation", error))?;
 		Ok(Self {
-			_engine: engine.handle(),
+			_runtime: runtime.handle(),
 			service: Some(CaptureService { stream }),
 			shared,
 			consumer,

@@ -40,7 +40,7 @@ fn flatten(value: &serde_json::Value) -> Vec<u8> {
 
 test_vk!(
 	fixed_digest_batch_boundaries_match_independent_oracle,
-	engine,
+	runtime,
 	{
 		for case in fixture()["cases"].as_array().unwrap() {
 			let length = usize::try_from(case["length"].as_u64().unwrap()).unwrap();
@@ -63,7 +63,7 @@ test_vk!(
 
 test_vk!(
 	fixed_digest_batch_contracts_reject_invalid_inputs,
-	engine,
+	runtime,
 	{
 		let wrong_dtype = Matrix::new_from_f32([1, 3], &[0.0; 3])?;
 		let rank_one = Matrix::new_from_slice([3], b"abc")?;
@@ -82,12 +82,12 @@ test_vk!(
 
 test_vk!(
 	fixed_digest_chain_replays_and_rebinds_without_host_intermediates,
-	engine,
+	runtime,
 	{
 		let fixture = fixture();
 		let chains = fixture["chains"].as_array().unwrap();
 		let input = Matrix::new_from_slice([3, 3], &unhex(chains[0]["messages"].as_str().unwrap()))?;
-		let (mut plan, output) = engine.capture(|| {
+		let (mut plan, output) = runtime.capture(|| {
 			let digest = hash::sha256(&input)?;
 			hash::sha3_256(&digest)
 		})?;
@@ -104,8 +104,8 @@ test_vk!(
 					Matrix::new_from_slice([3, 3], &unhex(chain["messages"].as_str().unwrap()))?;
 				plan.bind_matrix_input(&input, &replacement)?;
 			}
-			let first = engine.submit(&plan)?;
-			let second = engine.submit(&plan)?;
+			let first = runtime.submit(&plan)?;
+			let second = runtime.submit(&plan)?;
 			first.wait()?;
 			second.wait()?;
 			assert_eq!(output.read::<u8>()?, flatten(&chain["sha256_sha3_256"]));
@@ -120,13 +120,13 @@ test_vk!(
 // beyond two workgroups. Every level stays on the device during capture/replay.
 test_vk!(
 	general_merkle_roots_match_independent_oracle_and_replay,
-	engine,
+	runtime,
 	{
 		for case in fixture()["merkle_cases"].as_array().unwrap() {
 			let rows = case["leaves"].as_array().unwrap().len();
 			let bytes = flatten(&case["leaves"]);
 			let input = Matrix::new_from_slice([rows, 32], &bytes)?;
-			let (plan, root) = engine.capture(|| hash::merkle_root(&input))?;
+			let (plan, root) = runtime.capture(|| hash::merkle_root(&input))?;
 			assert_eq!(plan.semantic_graph().operations().len(), 1);
 			assert_eq!(
 				root.try_read::<u8>().unwrap_err().kind(),
@@ -134,7 +134,7 @@ test_vk!(
 			);
 			let expected = unhex(case["root"].as_str().unwrap());
 			for _ in 0..2 {
-				engine.submit(&plan)?.wait()?;
+				runtime.submit(&plan)?.wait()?;
 				assert_eq!(root.read::<u8>()?, expected, "Merkle leaf count {rows}");
 			}
 			assert_eq!(input.read::<u8>()?, bytes);
@@ -147,7 +147,7 @@ test_vk!(
 // tails; host observation also proves that output writes did not alias input.
 test_vk!(
 	fixed_digest_batch_crosses_workgroup_tails_without_aliasing,
-	engine,
+	runtime,
 	{
 		let fixture = fixture();
 		let case = &fixture["cases"][2];

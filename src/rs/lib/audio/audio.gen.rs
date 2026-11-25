@@ -134,39 +134,75 @@ impl Audio {
 	}
 }
 
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, NormalizeAudioConfig) -> Result<Audio> = crate::audio::normalize;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, NormalizeAudioConfig) -> Result<Audio> = Audio::normalize;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, ResampleConfig) -> Result<Audio> = crate::audio::resample;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, ResampleConfig) -> Result<Audio> = Audio::resample;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, f32) -> Result<Audio> = crate::audio::gain;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, f32) -> Result<Audio> = Audio::gain;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, f32, f32) -> Result<Audio> = crate::audio::clip;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, f32, f32) -> Result<Audio> = Audio::clip;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, f32, f32) -> Result<Audio> = crate::audio::saturate;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, f32, f32) -> Result<Audio> = Audio::saturate;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, BiquadCoefficients) -> Result<Audio> = crate::audio::biquad;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, BiquadCoefficients) -> Result<Audio> = Audio::biquad;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, f32, f32) -> Result<Audio> = crate::audio::reverb;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, f32, f32) -> Result<Audio> = Audio::reverb;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, &[BiquadCoefficients]) -> Result<Audio> = crate::audio::sos_filter;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, &[BiquadCoefficients]) -> Result<Audio> = Audio::sos_filter;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, f32) -> Result<Audio> = crate::audio::pre_emphasis;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, f32) -> Result<Audio> = Audio::pre_emphasis;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio) -> Result<Audio> = crate::audio::to_mono;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio) -> Result<Audio> = Audio::to_mono;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, u64, u64) -> Result<Audio> = crate::audio::fade;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, u64, u64) -> Result<Audio> = Audio::fade;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, &Audio, f32, f32) -> Result<Audio> = crate::audio::mix;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, &Audio, f32, f32) -> Result<Audio> = Audio::mix;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, f32) -> Result<Matrix> = crate::audio::amplitude_to_db;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, f32) -> Result<Matrix> = Audio::amplitude_to_db;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, u32) -> Result<Matrix> = crate::audio::waveform_envelope;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, u32) -> Result<Matrix> = Audio::waveform_envelope;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, StftConfig) -> Result<Matrix> = crate::audio::stft;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, StftConfig) -> Result<Matrix> = Audio::stft;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, StftConfig) -> Result<Matrix> = crate::audio::stft_complex;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, StftConfig) -> Result<Matrix> = Audio::stft_complex;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, MelConfig) -> Result<Matrix> = crate::audio::mel_spectrogram;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, MelConfig) -> Result<Matrix> = Audio::mel_spectrogram;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, MfccConfig) -> Result<Matrix> = crate::audio::mfcc;
+#[allow(clippy::type_complexity)]
 const _: fn(&Audio, MfccConfig) -> Result<Matrix> = Audio::mfcc;

@@ -43,8 +43,8 @@ fn preview_records_source(
 		fn capabilities(&self) -> ViewerLiveCapabilities {
 			self.source.capabilities()
 		}
-		fn open(&mut self, engine: &Engine) -> Result<()> {
-			self.source.open(engine)?;
+		fn open(&mut self, runtime: &Runtime) -> Result<()> {
+			self.source.open(runtime)?;
 			self.opened = Some(Instant::now());
 			Ok(())
 		}
@@ -59,7 +59,7 @@ fn preview_records_source(
 		}
 		fn render(&mut self, ui: &mut Ui<'_>, width: u32, height: u32) -> Result<()> {
 			if !self.started && self.source.texture.is_some() {
-				self.source.start_to(ui.engine(), self.path.clone())?;
+				self.source.start_to(ui.runtime(), self.path.clone())?;
 				self.started = true;
 			}
 			self.source.render(ui, width, height)?;
@@ -182,16 +182,16 @@ fn preview_records_source(
 #[test]
 #[ignore = "requires camera access and hardware H.264 encode"]
 fn camera_recording_finalizes_playable_mp4() -> Result<()> {
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.requirements(
-			oa::EngineRequirements::default().video_encode(VideoEncodeProfile::h264_high_420_8bit()),
+			oa::RuntimeRequirements::default().video_encode(VideoEncodeProfile::h264_high_420_8bit()),
 		)
 		.build()?;
-	Engine::set_default(engine.clone());
+	Runtime::set_default(runtime.clone());
 	let mut source = RecordingSource::new(0);
-	source.open(&engine)?;
+	source.open(&runtime)?;
 	let path = std::env::temp_dir().join(format!("oa-record-hardware-{}.mp4", std::process::id()));
-	source.start_to(&engine, path.clone())?;
+	source.start_to(&runtime, path.clone())?;
 	let result = (|| -> Result<()> {
 		let deadline = Instant::now() + std::time::Duration::from_secs(10);
 		while source

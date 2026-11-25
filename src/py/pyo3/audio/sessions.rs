@@ -1,6 +1,6 @@
 use pyo3::{prelude::*, types::PyBytes};
 
-use crate::{error::python_error, runtime::PythonEngine};
+use crate::{error::python_error, runtime::PythonRuntime};
 
 use super::PythonAudio;
 
@@ -114,14 +114,14 @@ pub(crate) struct PythonAudioCapture {
 impl PythonAudioCapture {
 	/// Open the default input device. The session is initially stopped.
 	#[new]
-	#[pyo3(signature = (config = None, engine=None))]
+	#[pyo3(signature = (config = None, runtime=None))]
 	pub fn new(
 		config: Option<&PythonAudioCaptureConfig>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		let cfg = config.map(|c| c.inner).unwrap_or_default();
-		oa::audio::AudioCapture::open(&engine, cfg)
+		oa::audio::AudioCapture::open(&runtime, cfg)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -233,18 +233,18 @@ pub(crate) struct PythonAudioPlayer {
 impl PythonAudioPlayer {
 	/// Open the source and default output device with decoding initially paused.
 	#[new]
-	pub fn new(config: &PythonAudioPlayerConfig, engine: Option<&PythonEngine>) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::audio::AudioPlayer::open(&engine, config.inner.clone())
+	pub fn new(config: &PythonAudioPlayerConfig, runtime: Option<&PythonRuntime>) -> PyResult<Self> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::audio::AudioPlayer::open(&runtime, config.inner.clone())
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
 
 	/// Open a file URI with default playback configuration.
 	#[staticmethod]
-	pub fn new_from_uri(uri: &str, engine: Option<&PythonEngine>) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::audio::AudioPlayer::new_from_uri(&engine, uri)
+	pub fn new_from_uri(uri: &str, runtime: Option<&PythonRuntime>) -> PyResult<Self> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::audio::AudioPlayer::new_from_uri(&runtime, uri)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -492,9 +492,9 @@ impl PythonAudioEncoder {
 #[pyfunction]
 pub(crate) fn audio_player_from_audio(
 	audio: &PythonAudio,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonAudioPlayer> {
-	let engine = PythonEngine::resolve(engine)?;
+	let runtime = PythonRuntime::resolve(runtime)?;
 	// Re-encode in-memory as WAV and open via the streaming decoder.
 	let wav = oa::audio::encode_wav_f32(&audio.inner).map_err(python_error)?;
 	// Write to a temporary file and open with the player.
@@ -506,7 +506,7 @@ pub(crate) fn audio_player_from_audio(
 			.unwrap_or(0)
 	));
 	std::fs::write(&tmp, &wav).map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
-	let result = oa::audio::AudioPlayer::new_from_uri(&engine, &tmp)
+	let result = oa::audio::AudioPlayer::new_from_uri(&runtime, &tmp)
 		.map(|inner| PythonAudioPlayer { inner })
 		.map_err(python_error);
 	let _ = std::fs::remove_file(&tmp);

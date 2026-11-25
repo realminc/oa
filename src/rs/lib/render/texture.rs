@@ -15,7 +15,7 @@ pub(super) struct RenderTargetLease {
 	pub(super) generation: u64,
 }
 
-use crate::{Color, DType, Engine, Error, Image, ImageFormat, ImageLayout, Matrix, Result};
+use crate::{Color, DType, Error, Image, ImageFormat, ImageLayout, Matrix, Result, Runtime};
 
 /// Internal backing for a `Texture` value.
 #[derive(Clone)]
@@ -30,7 +30,7 @@ enum TextureBacking {
 	/// Readback is not available through this backing; use the owning
 	/// `RenderFrame::consume_readback` instead.
 	RenderTarget {
-		engine_handle: crate::runtime::EngineHandle,
+		runtime: crate::runtime::RuntimeHandle,
 		owner: Rc<std::cell::RefCell<super::renderer::RendererState>>,
 		lease: RenderTargetLease,
 		image: vk::Image,
@@ -81,10 +81,10 @@ impl Texture {
 		self.semantic.id
 	}
 
-	pub(crate) fn engine_handle(&self) -> &crate::runtime::EngineHandle {
+	pub(crate) fn runtime(&self) -> &crate::runtime::RuntimeHandle {
 		match &self.backing {
-			TextureBacking::BufferBacked { data, .. } => data.engine_handle(),
-			TextureBacking::RenderTarget { engine_handle, .. } => engine_handle,
+			TextureBacking::BufferBacked { data, .. } => data.runtime(),
+			TextureBacking::RenderTarget { runtime, .. } => runtime,
 		}
 	}
 
@@ -145,14 +145,14 @@ impl Texture {
 	pub(crate) fn mark_consumed(&self, event: &crate::Event) -> Result<()> {
 		match &self.backing {
 			TextureBacking::RenderTarget {
-				engine_handle,
+				runtime,
 				owner,
 				lease,
 				..
 			} => {
-				if !engine_handle.owns_event(event) {
+				if !runtime.owns_event(event) {
 					return Err(Error::invalid_argument(
-						"render target consumer event belongs to another Engine",
+						"render target consumer event belongs to another Runtime",
 					));
 				}
 				owner
@@ -196,20 +196,20 @@ impl Texture {
 /// Returns an error for zero or overflowing dimensions, a mismatched byte
 /// count, exhausted semantic identity, or device allocation/upload failure.
 ///
-/// This variant uploads on this thread's default engine. An engine
+/// This variant uploads on this thread's default runtime. An runtime
 /// initialization failure is returned before the upload starts.
 pub fn texture_from_rgba8(rgba: &[u8], width: usize, height: usize) -> Result<Texture> {
-	texture_from_rgba8_on(&Engine::current()?, rgba, width, height)
+	texture_from_rgba8_on(&Runtime::current()?, rgba, width, height)
 }
 
 /// Upload one exact packed row-major RGBA8 host image as a Texture on a
-/// particular engine.
+/// particular runtime.
 ///
 /// # Errors
 ///
 /// Returns the same errors as [`texture_from_rgba8`].
 pub fn texture_from_rgba8_on(
-	engine: &Engine,
+	runtime: &Runtime,
 	rgba: &[u8],
 	width: usize,
 	height: usize,
@@ -228,7 +228,7 @@ pub fn texture_from_rgba8_on(
 			"render::texture_from_rgba8 requires exactly width * height * 4 bytes",
 		));
 	}
-	let data = Matrix::new_from_slice_on(engine, [height, width, 4], rgba)?;
+	let data = Matrix::new_from_slice_on(runtime, [height, width, 4], rgba)?;
 	texture_from_matrix(data, width, height)
 }
 
@@ -269,19 +269,19 @@ pub fn texture_from_image(image: &Image) -> Result<Texture> {
 /// Returns an error for inaccessible, unsupported or malformed media, or failed
 /// checked texture allocation/upload.
 ///
-/// This variant uploads on this thread's default engine. An engine
+/// This variant uploads on this thread's default runtime. An runtime
 /// initialization failure is returned before decoding starts.
 pub fn texture_from_file(path: impl AsRef<Path>) -> Result<Texture> {
 	let path = path.as_ref();
-	texture_from_file_on(&Engine::current()?, path)
+	texture_from_file_on(&Runtime::current()?, path)
 }
 /// Decode a still-image file directly into a packed RGBA8 Texture on a
-/// particular engine.
+/// particular runtime.
 ///
 /// # Errors
 ///
 /// Returns the same errors as [`texture_from_file`].
-pub fn texture_from_file_on(engine: &Engine, path: impl AsRef<Path>) -> Result<Texture> {
+pub fn texture_from_file_on(runtime: &Runtime, path: impl AsRef<Path>) -> Result<Texture> {
 	let decoded = image_codec::ImageReader::open(path)
 		.map_err(|source| Error::io("texture image file open", source))?
 		.with_guessed_format()
@@ -290,7 +290,7 @@ pub fn texture_from_file_on(engine: &Engine, path: impl AsRef<Path>) -> Result<T
 		.map_err(|source| Error::backend_failure("image", "texture decode", source))?
 		.to_rgba8();
 	texture_from_rgba8_on(
-		engine,
+		runtime,
 		decoded.as_raw(),
 		decoded.width() as usize,
 		decoded.height() as usize,
@@ -342,14 +342,14 @@ pub fn clear(texture: &Texture, color: Color) -> Result<Texture> {
 	for pixel in pixels.chunks_mut(4) {
 		pixel.copy_from_slice(&rgba);
 	}
-	texture_from_rgba8_from_engine(texture, &pixels)
+	texture_from_rgba8_from_runtime(texture, &pixels)
 }
 
-fn texture_from_rgba8_from_engine(texture: &Texture, rgba: &[u8]) -> Result<Texture> {
-	let engine_handle = texture.engine_handle().clone();
+fn texture_from_rgba8_from_runtime(texture: &Texture, rgba: &[u8]) -> Result<Texture> {
+	let runtime = texture.runtime().clone();
 	let element_count = rgba.len();
 	let data = Matrix::allocate(
-		&engine_handle,
+		&runtime,
 		vec![texture.height(), texture.width(), 4],
 		element_count,
 		DType::U8,
@@ -364,7 +364,7 @@ pub(crate) fn texture_from_matrix(data: Matrix, width: usize, height: usize) -> 
 	let h32 = u32::try_from(height)
 		.map_err(|_| Error::out_of_range("texture height exceeds Vulkan limits"))?;
 	let native = data
-		.engine_handle()
+		.runtime()
 		.upload_native_rgba_image(data.storage(), w32, h32)?;
 	let semantic = Rc::new(TextureSemantic::new()?);
 	// Keep value metadata on the Texture itself. Like Matrix constructors,
@@ -382,7 +382,7 @@ pub(crate) fn texture_from_matrix(data: Matrix, width: usize, height: usize) -> 
 /// The caller is responsible for ensuring the backing image remains live
 /// (via the `RenderFrame`'s `Weak` reference to `RendererState`).
 pub(super) fn texture_from_render_target(
-	engine_handle: crate::runtime::EngineHandle,
+	runtime: crate::runtime::RuntimeHandle,
 	owner: Rc<std::cell::RefCell<super::renderer::RendererState>>,
 	lease: RenderTargetLease,
 	image: vk::Image,
@@ -395,7 +395,7 @@ pub(super) fn texture_from_render_target(
 	let semantic = TextureSemantic::new().unwrap_or(TextureSemantic { id: 0 });
 	Texture {
 		backing: TextureBacking::RenderTarget {
-			engine_handle,
+			runtime,
 			owner,
 			lease,
 			image,

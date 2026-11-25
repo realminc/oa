@@ -27,9 +27,9 @@ pub(in crate::ml) fn embedding(weight: &Matrix, indices: &Matrix) -> Result<Matr
 			indices.dtype().token()
 		)));
 	}
-	if !weight.engine_handle().same_as(indices.engine_handle()) {
+	if !weight.runtime().same_as(indices.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{OPERATION} inputs must belong to the same engine"
+			"{OPERATION} inputs must belong to the same runtime"
 		)));
 	}
 	let output_count = indices
@@ -38,12 +38,7 @@ pub(in crate::ml) fn embedding(weight: &Matrix, indices: &Matrix) -> Result<Matr
 		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} output size overflows usize")))?;
 	let mut output_shape = indices.shape().to_vec();
 	output_shape.push(*embedding_dim);
-	let output = Matrix::allocate(
-		weight.engine_handle(),
-		output_shape,
-		output_count,
-		DType::F32,
-	)?;
+	let output = Matrix::allocate(weight.runtime(), output_shape, output_count, DType::F32)?;
 	let output_count = shader_u32(output_count, "output element count", OPERATION)?;
 	let index_count = shader_u32(indices.num_elements(), "index count", OPERATION)?;
 	let num_embeddings = shader_u32(*num_embeddings, "vocabulary size", OPERATION)?;
@@ -81,11 +76,11 @@ pub(in crate::ml) fn embedding(weight: &Matrix, indices: &Matrix) -> Result<Matr
 					dispatch.kernel.report_name()
 				))
 			})?;
-			let engine = inputs
+			let runtime = inputs
 				.first()
 				.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-				.engine_handle();
-			engine.record_semantic(
+				.runtime();
+			runtime.record_semantic(
 				dispatch,
 				SemanticDispatch {
 					contract,
@@ -116,17 +111,15 @@ pub(in crate::ml) fn embedding_backward(
 		|| weight.dtype() != DType::F32
 		|| output_gradient.dtype() != DType::F32
 		|| output_gradient.shape() != expected_gradient_shape
-		|| !indices.engine_handle().same_as(weight.engine_handle())
-		|| !indices
-			.engine_handle()
-			.same_as(output_gradient.engine_handle())
+		|| !indices.runtime().same_as(weight.runtime())
+		|| !indices.runtime().same_as(output_gradient.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{OPERATION} requires same-engine U8, U32, or I32 indices, FP32 gradient [..., D], and FP32 weight [V, D]"
+			"{OPERATION} requires same-runtime U8, U32, or I32 indices, FP32 gradient [..., D], and FP32 weight [V, D]"
 		)));
 	}
 	let gradient = Matrix::allocate(
-		weight.engine_handle(),
+		weight.runtime(),
 		weight.shape().to_vec(),
 		weight.num_elements(),
 		DType::F32,
@@ -168,11 +161,11 @@ pub(in crate::ml) fn embedding_backward(
 					dispatch.kernel.report_name()
 				))
 			})?;
-			let engine = inputs
+			let runtime = inputs
 				.first()
 				.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-				.engine_handle();
-			engine.record_semantic(
+				.runtime();
+			runtime.record_semantic(
 				dispatch,
 				SemanticDispatch {
 					contract,

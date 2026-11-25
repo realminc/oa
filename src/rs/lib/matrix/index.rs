@@ -4,8 +4,8 @@ use crate::{
 	DType, Error, Matrix, OpAttribute, OperationContract, Result,
 	matrix::autograd,
 	runtime::{
-		BufferBinding, ComputeDispatch, EngineHandle, IndirectDispatch, KernelId,
-		OptionalSemanticDispatch, PushConstant, SemanticDispatch,
+		BufferBinding, ComputeDispatch, IndirectDispatch, KernelId, OptionalSemanticDispatch,
+		PushConstant, RuntimeHandle, SemanticDispatch,
 	},
 };
 
@@ -21,7 +21,7 @@ const EXPERT_LIMIT: usize = 256;
 ///
 /// # Errors
 ///
-/// Returns an error for incompatible rank, dtype, Engine ownership, shader ABI,
+/// Returns an error for incompatible rank, dtype, Runtime ownership, shader ABI,
 /// allocation, or recording.
 pub fn gather(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
 	const CONTRACT: OperationContract = crate::core::operation::matrix::GATHER;
@@ -36,10 +36,10 @@ pub fn gather(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
 		|| input.dtype() != DType::F32
 		|| indices.shape().is_empty()
 		|| !matches!(indices.dtype(), DType::U8 | DType::U32 | DType::I32)
-		|| !input.engine_handle().same_as(indices.engine_handle())
+		|| !input.runtime().same_as(indices.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} requires a nonempty FP32 [rows,width] table and same-engine U8/U32/I32 indices"
+			"{operation} requires a nonempty FP32 [rows,width] table and same-runtime U8/U32/I32 indices"
 		)));
 	}
 	let count = indices.num_elements();
@@ -47,7 +47,7 @@ pub fn gather(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
 		.checked_mul(*width)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![count, *width],
 		output_count,
 		DType::F32,
@@ -65,7 +65,7 @@ pub fn gather(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
 			PushConstant::U32(as_u32(*width, operation, "table row width")?),
 			PushConstant::U32(u32::from(indices.dtype() != DType::U8)),
 		];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixGatherF32,
 				buffers: &buffers,
@@ -104,16 +104,14 @@ pub(crate) fn gather_backward(
 		|| !matches!(indices.dtype(), DType::U8 | DType::U32 | DType::I32)
 		|| output_gradient.dtype() != DType::F32
 		|| output_gradient.shape() != [count, *width]
-		|| !indices
-			.engine_handle()
-			.same_as(output_gradient.engine_handle())
+		|| !indices.runtime().same_as(output_gradient.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires integer indices and matching FP32 [num_indices,width] gradient"
 		)));
 	}
 	let gradient = Matrix::allocate(
-		output_gradient.engine_handle(),
+		output_gradient.runtime(),
 		input_shape.to_vec(),
 		rows
 			.checked_mul(*width)
@@ -136,7 +134,7 @@ pub(crate) fn gather_backward(
 		name: "input_shape".into(),
 		value: input_shape.to_vec(),
 	}];
-	output_gradient.engine_handle().record_semantic(
+	output_gradient.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixGatherBackwardF32,
 			buffers: &buffers,
@@ -220,7 +218,7 @@ pub fn equal(input: &Matrix, value: f32) -> Result<Matrix> {
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.element_count(),
 		DType::F32,
@@ -237,7 +235,7 @@ pub fn equal(input: &Matrix, value: f32) -> Result<Matrix> {
 			name: "value".into(),
 			value: f64::from(value),
 		}];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixEqualF32,
 				buffers: &buffers,
@@ -274,7 +272,7 @@ pub fn causal_mask(input: &Matrix) -> Result<Matrix> {
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.element_count(),
 		DType::F32,
@@ -290,7 +288,7 @@ pub fn causal_mask(input: &Matrix) -> Result<Matrix> {
 	];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixCausalMaskF32,
 			buffers: &buffers,
@@ -324,7 +322,7 @@ pub(crate) fn causal_mask_backward(output_gradient: &Matrix) -> Result<Matrix> {
 	let element_count = u32::try_from(output_gradient.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let input_gradient = Matrix::allocate(
-		output_gradient.engine_handle(),
+		output_gradient.runtime(),
 		output_gradient.shape().to_vec(),
 		output_gradient.element_count(),
 		DType::F32,
@@ -340,7 +338,7 @@ pub(crate) fn causal_mask_backward(output_gradient: &Matrix) -> Result<Matrix> {
 	];
 	let inputs = [output_gradient];
 	let outputs = [&input_gradient];
-	output_gradient.engine_handle().record_semantic(
+	output_gradient.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixCausalMaskBackwardF32,
 			buffers: &buffers,
@@ -379,7 +377,7 @@ pub fn greater_equal(input: &Matrix, value: f32) -> Result<Matrix> {
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.element_count(),
 		DType::F32,
@@ -396,7 +394,7 @@ pub fn greater_equal(input: &Matrix, value: f32) -> Result<Matrix> {
 			name: "value".into(),
 			value: f64::from(value),
 		}];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixGreaterEqualF32,
 				buffers: &buffers,
@@ -435,7 +433,7 @@ pub fn cast_f32_i32(input: &Matrix) -> Result<Matrix> {
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.element_count(),
 		DType::I32,
@@ -448,7 +446,7 @@ pub fn cast_f32_i32(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(element_count)];
 		let inputs = [input];
 		let outputs = [&output];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixCastF32I32F32,
 				buffers: &buffers,
@@ -487,7 +485,7 @@ pub fn cast_i32_f32(input: &Matrix) -> Result<Matrix> {
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.element_count(),
 		DType::F32,
@@ -504,7 +502,7 @@ pub fn cast_i32_f32(input: &Matrix) -> Result<Matrix> {
 		];
 		let inputs = [input];
 		let outputs = [&output];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixCastI32F32F32,
 				buffers: &buffers,
@@ -593,17 +591,12 @@ pub fn top_k(input: &Matrix, k: i32, dim: i32) -> Result<TopKResult> {
 	let mut output_shape = input.shape().to_vec();
 	*output_shape.last_mut().expect("validated nonempty rank") = selected;
 	let values = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.clone(),
 		output_count,
 		DType::F32,
 	)?;
-	let indices = Matrix::allocate(
-		input.engine_handle(),
-		output_shape,
-		output_count,
-		DType::I32,
-	)?;
+	let indices = Matrix::allocate(input.runtime(), output_shape, output_count, DType::I32)?;
 	if selected != 0 && rows != 0 {
 		let rows = as_u32(rows, operation, "row count")?;
 		let row_width = as_u32(row_width, operation, "last-axis extent")?;
@@ -630,7 +623,7 @@ pub fn top_k(input: &Matrix, k: i32, dim: i32) -> Result<TopKResult> {
 				value: i64::from(dim),
 			},
 		];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixTopKF32,
 				buffers: &buffers,
@@ -681,7 +674,7 @@ pub fn top_k_mask(indices: &Matrix, num_experts: usize) -> Result<Matrix> {
 	let routes_u32 = as_u32(*routes_per_token, operation, "routes per token")?;
 	let output_count_u32 = as_u32(output_count, operation, "output element count")?;
 	let output = Matrix::allocate(
-		indices.engine_handle(),
+		indices.runtime(),
 		vec![*tokens, num_experts],
 		output_count,
 		DType::F32,
@@ -702,7 +695,7 @@ pub fn top_k_mask(indices: &Matrix, num_experts: usize) -> Result<Matrix> {
 		value: i64::try_from(num_experts)
 			.map_err(|_| Error::invalid_argument(format!("{operation} expert count exceeds i64")))?,
 	}];
-	indices.engine_handle().record_semantic(
+	indices.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixTopKMaskF32,
 			buffers: &buffers,
@@ -758,13 +751,13 @@ pub fn moe_expert_plan(indices: &Matrix, num_experts: usize) -> Result<MoeExpert
 	let routes_per_token_u32 = as_u32(*routes_per_token, operation, "routes per token")?;
 	let experts_u32 = as_u32(num_experts, operation, "expert count")?;
 	let route_count_u32 = as_u32(route_count, operation, "route count")?;
-	let engine = indices.engine_handle();
-	let counts = Matrix::allocate(engine, vec![num_experts], num_experts, DType::U32)?;
-	let offsets = Matrix::allocate(engine, vec![offsets_count], offsets_count, DType::U32)?;
-	let packed_token = Matrix::allocate(engine, vec![route_count], route_count, DType::U32)?;
-	let packed_expert = Matrix::allocate(engine, vec![route_count], route_count, DType::U32)?;
-	let packed_slot = Matrix::allocate(engine, vec![route_count], route_count, DType::U32)?;
-	let inverse = Matrix::allocate(engine, vec![route_count], route_count, DType::U32)?;
+	let runtime = indices.runtime();
+	let counts = Matrix::allocate(runtime, vec![num_experts], num_experts, DType::U32)?;
+	let offsets = Matrix::allocate(runtime, vec![offsets_count], offsets_count, DType::U32)?;
+	let packed_token = Matrix::allocate(runtime, vec![route_count], route_count, DType::U32)?;
+	let packed_expert = Matrix::allocate(runtime, vec![route_count], route_count, DType::U32)?;
+	let packed_slot = Matrix::allocate(runtime, vec![route_count], route_count, DType::U32)?;
+	let inverse = Matrix::allocate(runtime, vec![route_count], route_count, DType::U32)?;
 	let buffers = [
 		BufferBinding::read(indices.storage()),
 		BufferBinding::write(counts.storage()),
@@ -793,7 +786,7 @@ pub fn moe_expert_plan(indices: &Matrix, num_experts: usize) -> Result<MoeExpert
 		name: "numExperts".into(),
 		value: i64::try_from(num_experts).expect("expert limit fits i64"),
 	}];
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixMoeExpertPlanU32,
 			buffers: &buffers,
@@ -827,7 +820,7 @@ pub fn moe_expert_plan(indices: &Matrix, num_experts: usize) -> Result<MoeExpert
 ///
 /// # Errors
 ///
-/// Returns an error unless both matrices are FP32 on the same engine, the mask
+/// Returns an error unless both matrices are FP32 on the same runtime, the mask
 /// and bias shapes agree, `experts_per_token` is in `1..=E`, `gamma` is finite
 /// and positive, dimensions fit the shader ABI, or runtime recording fails.
 pub fn moe_routing_bias_update(
@@ -870,10 +863,10 @@ pub fn moe_routing_bias_update(
 			"{operation} gamma must be finite and positive"
 		)));
 	}
-	let engine = selection_mask.engine_handle();
-	if !engine.same_as(bias.engine_handle()) {
+	let runtime = selection_mask.runtime();
+	if !runtime.same_as(bias.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let tokens_u32 = as_u32(*tokens, operation, "token count")?;
@@ -903,7 +896,7 @@ pub fn moe_routing_bias_update(
 			value: f64::from(gamma),
 		},
 	];
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixMoeRoutingBiasUpdateF32,
 			buffers: &buffers,
@@ -962,12 +955,7 @@ pub fn repeat_interleave(input: &Matrix, repeats: usize, dim: i32) -> Result<Mat
 			.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))
 	})?;
 	let count = as_u32(output_count, operation, "output element count")?;
-	let output = Matrix::allocate(
-		input.engine_handle(),
-		output_shape,
-		output_count,
-		DType::F32,
-	)?;
+	let output = Matrix::allocate(input.runtime(), output_shape, output_count, DType::F32)?;
 	if count != 0 {
 		let input_dims = shape_u32(input.shape(), operation)?;
 		let input_strides = row_major_strides_u32(input.shape(), operation)?;
@@ -995,7 +983,7 @@ pub fn repeat_interleave(input: &Matrix, repeats: usize, dim: i32) -> Result<Mat
 				value: dim as i64,
 			},
 		];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixRepeatInterleaveF32,
 				buffers: &buffers,
@@ -1050,7 +1038,7 @@ pub(crate) fn repeat_interleave_backward(
 	})?;
 	let count = as_u32(input_count, operation, "input element count")?;
 	let output = Matrix::allocate(
-		output_gradient.engine_handle(),
+		output_gradient.runtime(),
 		input_shape.to_vec(),
 		input_count,
 		DType::F32,
@@ -1086,7 +1074,7 @@ pub(crate) fn repeat_interleave_backward(
 				value: dim as i64,
 			},
 		];
-		output_gradient.engine_handle().record_semantic(
+		output_gradient.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixRepeatInterleaveBackwardF32,
 				buffers: &buffers,
@@ -1113,7 +1101,7 @@ pub(crate) fn repeat_interleave_backward(
 ///
 /// # Errors
 ///
-/// Returns an error unless both inputs are rank two on the same engine, row
+/// Returns an error unless both inputs are rank two on the same runtime, row
 /// counts agree, dtypes match the contract, the input width is positive, sizes
 /// fit the shader ABI, allocation fails, or runtime recording fails.
 pub fn gather_last_dim(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
@@ -1133,10 +1121,10 @@ pub fn gather_last_dim(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
 		|| indices.dtype() != DType::I32
 		|| rows != index_rows
 		|| *input_width == 0
-		|| !input.engine_handle().same_as(indices.engine_handle())
+		|| !input.runtime().same_as(indices.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} requires same-engine F32 [R,C] and I32 [R,K] with C > 0"
+			"{operation} requires same-runtime F32 [R,C] and I32 [R,K] with C > 0"
 		)));
 	}
 	let output_count = rows
@@ -1147,7 +1135,7 @@ pub fn gather_last_dim(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
 	let selected_width_u32 = as_u32(*selected_width, operation, "selected width")?;
 	let output_count_u32 = as_u32(output_count, operation, "output element count")?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![*rows, *selected_width],
 		output_count,
 		DType::F32,
@@ -1165,7 +1153,7 @@ pub fn gather_last_dim(input: &Matrix, indices: &Matrix) -> Result<Matrix> {
 		];
 		let inputs = [input, indices];
 		let outputs = [&output];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixGatherLastDimF32,
 				buffers: &buffers,
@@ -1201,9 +1189,7 @@ pub(crate) fn gather_last_dim_backward(
 		|| indices.dtype() != DType::I32
 		|| indices.shape() != output_gradient.shape()
 		|| input_width == 0
-		|| !output_gradient
-			.engine_handle()
-			.same_as(indices.engine_handle())
+		|| !output_gradient.runtime().same_as(indices.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} received invalid saved gather geometry"
@@ -1217,7 +1203,7 @@ pub(crate) fn gather_last_dim_backward(
 	let selected_width_u32 = as_u32(*selected_width, operation, "selected width")?;
 	let output_count_u32 = as_u32(output_count, operation, "output element count")?;
 	let output = Matrix::allocate(
-		output_gradient.engine_handle(),
+		output_gradient.runtime(),
 		vec![*rows, input_width],
 		output_count,
 		DType::F32,
@@ -1239,7 +1225,7 @@ pub(crate) fn gather_last_dim_backward(
 			name: "input_width".into(),
 			value: i64::from(input_width_u32),
 		}];
-		output_gradient.engine_handle().record_semantic(
+		output_gradient.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixGatherLastDimBackwardF32,
 				buffers: &buffers,
@@ -1266,7 +1252,7 @@ pub(crate) fn gather_last_dim_backward(
 /// # Errors
 ///
 /// Returns an error when there are no inputs, rank is outside one through four,
-/// dtype, engine, rank, or non-concatenated extents differ, the axis is invalid,
+/// dtype, runtime, rank, or non-concatenated extents differ, the axis is invalid,
 /// shape or shader-ABI arithmetic overflows, allocation fails, or recording
 /// fails.
 pub fn concat(inputs: &[Matrix], dim: i32) -> Result<Matrix> {
@@ -1290,13 +1276,13 @@ pub fn concat(inputs: &[Matrix], dim: i32) -> Result<Matrix> {
 			"{operation} dim {dim} is outside rank {rank}"
 		)));
 	}
-	let engine = first.engine_handle();
+	let runtime = first.runtime();
 	let mut total_extent = 0_usize;
 	let mut sizes = Vec::with_capacity(inputs.len());
 	for input in inputs {
 		if input.dtype() != first.dtype()
 			|| input.shape().len() != rank
-			|| !engine.same_as(input.engine_handle())
+			|| !runtime.same_as(input.runtime())
 			|| input
 				.shape()
 				.iter()
@@ -1305,7 +1291,7 @@ pub fn concat(inputs: &[Matrix], dim: i32) -> Result<Matrix> {
 				.any(|(axis, (actual, expected))| axis != dim && actual != expected)
 		{
 			return Err(Error::invalid_argument(format!(
-				"{operation} requires same-engine, same-dtype inputs with matching non-concatenated extents"
+				"{operation} requires same-runtime, same-dtype inputs with matching non-concatenated extents"
 			)));
 		}
 		let extent = input.shape()[dim];
@@ -1324,7 +1310,7 @@ pub fn concat(inputs: &[Matrix], dim: i32) -> Result<Matrix> {
 	as_u32(output_count, operation, "output element count")?;
 	i64::try_from(total_extent)
 		.map_err(|_| Error::invalid_argument(format!("{operation} axis extent exceeds i64")))?;
-	let output = Matrix::allocate_output(engine, output_shape.clone(), output_count, first.dtype())?;
+	let output = Matrix::allocate_output(runtime, output_shape.clone(), output_count, first.dtype())?;
 
 	let mut bindings = Vec::with_capacity(inputs.len());
 	let mut payloads = Vec::with_capacity(inputs.len());
@@ -1382,12 +1368,12 @@ pub fn concat(inputs: &[Matrix], dim: i32) -> Result<Matrix> {
 			attributes: &attributes,
 		};
 		if dispatches.len() == 1 {
-			engine.record_semantic(
+			runtime.record_semantic(
 				dispatches.into_iter().next().expect("one dispatch"),
 				semantic,
 			)?;
 		} else {
-			engine.record_split_semantic(&dispatches, semantic)?;
+			runtime.record_split_semantic(&dispatches, semantic)?;
 		}
 	}
 	if first.dtype() == DType::F32 {
@@ -1448,7 +1434,7 @@ pub fn transpose(input: &Matrix, dim0: i32, dim1: i32) -> Result<Matrix> {
 	let mut output_shape = input.shape().to_vec();
 	output_shape.swap(rank - 2, rank - 1);
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape,
 		input.element_count(),
 		DType::F32,
@@ -1480,7 +1466,7 @@ pub fn transpose(input: &Matrix, dim0: i32, dim1: i32) -> Result<Matrix> {
 					.map_err(|_| Error::invalid_argument("transpose dim1 exceeds i64"))?,
 			},
 		];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixTransposeF32,
 				buffers: &buffers,
@@ -1543,7 +1529,7 @@ pub fn slice(input: &Matrix, dim: i32, start: i64, end: i64) -> Result<Matrix> {
 	})?;
 	let count = as_u32(output_count, operation, "output element count")?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.clone(),
 		output_count,
 		DType::F32,
@@ -1580,7 +1566,7 @@ pub fn slice(input: &Matrix, dim: i32, start: i64, end: i64) -> Result<Matrix> {
 				value: end as i64,
 			},
 		];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixSliceF32,
 				buffers: &buffers,
@@ -1638,7 +1624,7 @@ pub(crate) fn slice_backward(
 		"copy element count",
 	)?;
 	let output = Matrix::allocate(
-		output_gradient.engine_handle(),
+		output_gradient.runtime(),
 		input_shape.to_vec(),
 		output_count,
 		DType::F32,
@@ -1680,7 +1666,7 @@ pub(crate) fn slice_backward(
 				value: end as i64,
 			},
 		];
-		output_gradient.engine_handle().record_semantic(
+		output_gradient.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixSliceBackwardF32,
 				buffers: &buffers,
@@ -1764,7 +1750,7 @@ pub fn pad(input: &Matrix, pads: &[usize], mode: PadMode, fill: f32) -> Result<M
 	})?;
 	let count = as_u32(output_count, operation, "output element count")?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.clone(),
 		output_count,
 		DType::F32,
@@ -1803,7 +1789,7 @@ pub fn pad(input: &Matrix, pads: &[usize], mode: PadMode, fill: f32) -> Result<M
 				value: fill as f64,
 			},
 		];
-		input.engine_handle().record_semantic(
+		input.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixPadF32,
 				buffers: &buffers,
@@ -1853,7 +1839,7 @@ pub(crate) fn pad_backward(
 	})?;
 	let count = as_u32(output_count, operation, "output element count")?;
 	let output = Matrix::allocate(
-		output_gradient.engine_handle(),
+		output_gradient.runtime(),
 		input_shape.to_vec(),
 		output_count,
 		DType::F32,
@@ -1898,7 +1884,7 @@ pub(crate) fn pad_backward(
 				value: mode as u64,
 			},
 		];
-		output_gradient.engine_handle().record_semantic(
+		output_gradient.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixPadBackwardF32,
 				buffers: &buffers,
@@ -2017,8 +2003,8 @@ pub fn split(input: &Matrix, sizes: &[i64], dim: i32) -> Result<Vec<Matrix>> {
 			"{operation} sizes must sum to the dim extent"
 		)));
 	}
-	let engine = input.engine_handle();
-	let lowering = engine.begin_semantic_lowering()?;
+	let runtime = input.runtime();
+	let lowering = runtime.begin_semantic_lowering()?;
 	let mut outputs = Vec::with_capacity(extents.len());
 	let mut offset = 0usize;
 	for &extent in &extents {
@@ -2030,7 +2016,7 @@ pub fn split(input: &Matrix, sizes: &[i64], dim: i32) -> Result<Vec<Matrix>> {
 				.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))
 		})?;
 		let count = as_u32(output_count, operation, "output element count")?;
-		let output = Matrix::allocate(engine, output_shape.clone(), output_count, DType::F32)?;
+		let output = Matrix::allocate(runtime, output_shape.clone(), output_count, DType::F32)?;
 		if count != 0 {
 			let buffers = [
 				BufferBinding::read(input.storage()),
@@ -2101,18 +2087,18 @@ pub fn compact_rows(input: &Matrix, mask: &Matrix) -> Result<CompactRowsResult> 
 	if input.dtype() != DType::F32
 		|| mask.dtype() != DType::F32
 		|| mask.num_elements() != *t
-		|| !input.engine_handle().same_as(mask.engine_handle())
+		|| !input.runtime().same_as(mask.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} requires an FP32 [T,D] input and same-engine FP32 [T] mask"
+			"{operation} requires an FP32 [T,D] input and same-runtime FP32 [T] mask"
 		)));
 	}
 	let element_count = t
 		.checked_mul(*d)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} element count overflows usize")))?;
-	let engine = input.engine_handle();
-	let values = Matrix::allocate(engine, input.shape().to_vec(), element_count, DType::F32)?;
-	let row_map = Matrix::allocate(engine, vec![*t], *t, DType::U32)?;
+	let runtime = input.runtime();
+	let values = Matrix::allocate(runtime, input.shape().to_vec(), element_count, DType::F32)?;
+	let row_map = Matrix::allocate(runtime, vec![*t], *t, DType::U32)?;
 	let t = as_u32(*t, operation, "row count")?;
 	let d = as_u32(*d, operation, "row width")?;
 	// Producer-side bound proof: the emitted X group count cannot be inspected
@@ -2122,13 +2108,13 @@ pub fn compact_rows(input: &Matrix, mask: &Matrix) -> Result<CompactRowsResult> 
 		operation,
 		"element count",
 	)?)[0];
-	if emitted_groups > engine.max_compute_work_group_count()[0] {
+	if emitted_groups > runtime.max_compute_work_group_count()[0] {
 		return Err(Error::invalid_argument(format!(
 			"{operation} indirect group count {emitted_groups} exceeds the device limit"
 		)));
 	}
-	let count = Matrix::allocate(engine, vec![1], 1, DType::U32)?;
-	let dispatch_args = Matrix::allocate(engine, vec![3], 3, DType::U32)?;
+	let count = Matrix::allocate(runtime, vec![1], 1, DType::U32)?;
+	let dispatch_args = Matrix::allocate(runtime, vec![3], 3, DType::U32)?;
 	let buffers = [
 		BufferBinding::read(input.storage()),
 		BufferBinding::read(mask.storage()),
@@ -2140,7 +2126,7 @@ pub fn compact_rows(input: &Matrix, mask: &Matrix) -> Result<CompactRowsResult> 
 	let push_constants = [PushConstant::U32(t), PushConstant::U32(d)];
 	let inputs = [input, mask];
 	let outputs = [&values, &row_map, &count, &dispatch_args];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixCompactRowsF32,
 			buffers: &buffers,
@@ -2209,15 +2195,15 @@ pub(crate) fn compact_rows_backward(
 	let d = as_u32(*d, operation, "row width")?;
 	let element_count = output_gradient.num_elements();
 	let element_count_u32 = as_u32(element_count, operation, "element count")?;
-	let engine = output_gradient.engine_handle();
+	let runtime = output_gradient.runtime();
 	let indirect = indirect_plan(
 		dispatch_args,
-		engine,
+		runtime,
 		element_count_u32,
 		KernelId::MatrixCompactRowsBackwardIndirectF32,
 		operation,
 	)?;
-	let input_gradient = Matrix::allocate(engine, input_shape.to_vec(), element_count, DType::F32)?;
+	let input_gradient = Matrix::allocate(runtime, input_shape.to_vec(), element_count, DType::F32)?;
 	let direct_buffers = [
 		BufferBinding::read(output_gradient.storage()),
 		BufferBinding::read(row_map.storage()),
@@ -2258,7 +2244,7 @@ pub(crate) fn compact_rows_backward(
 		name: "inputShape".into(),
 		value: input_shape.to_vec(),
 	}];
-	engine.record_optional_semantic(
+	runtime.record_optional_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers,
@@ -2317,9 +2303,9 @@ pub fn scatter_rows(
 		)));
 	}
 	for auxiliary in [source, row_map, count] {
-		if !auxiliary.engine_handle().same_as(input.engine_handle()) {
+		if !auxiliary.runtime().same_as(input.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must share one engine"
+				"{operation} inputs must share one runtime"
 			)));
 		}
 	}
@@ -2327,7 +2313,7 @@ pub fn scatter_rows(
 	let d = as_u32(*d, operation, "row width")?;
 	let element_count = input.num_elements();
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		element_count,
 		DType::F32,
@@ -2342,7 +2328,7 @@ pub fn scatter_rows(
 	let push_constants = [PushConstant::U32(t), PushConstant::U32(d)];
 	let inputs = [Some(input), Some(source), Some(row_map), Some(count), None];
 	let outputs = [&output];
-	input.engine_handle().record_optional_semantic(
+	input.runtime().record_optional_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixScatterRowsF32,
 			buffers: &buffers,
@@ -2412,11 +2398,11 @@ pub fn scatter_rows_indirect(
 			"{operation} requires a U32 [1] count"
 		)));
 	}
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	for auxiliary in [source, row_map, count, dispatch_args] {
-		if !auxiliary.engine_handle().same_as(engine) {
+		if !auxiliary.runtime().same_as(runtime) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must share one engine"
+				"{operation} inputs must share one runtime"
 			)));
 		}
 	}
@@ -2425,12 +2411,12 @@ pub fn scatter_rows_indirect(
 	let element_count_u32 = as_u32(input.num_elements(), operation, "element count")?;
 	let indirect = indirect_plan(
 		Some(dispatch_args),
-		engine,
+		runtime,
 		element_count_u32,
 		KernelId::MatrixScatterRowsIndirectF32,
 		operation,
 	)?;
-	let scope = engine.begin_semantic_lowering()?;
+	let scope = runtime.begin_semantic_lowering()?;
 	// Preserve every unselected row first, then touch only count*D selected
 	// values through the GPU-authored indirect launch dimensions.
 	let output = input.copy()?;
@@ -2514,16 +2500,16 @@ pub(crate) fn scatter_rows_backward_source(
 	let d = as_u32(*d, operation, "row width")?;
 	let element_count = output_gradient.num_elements();
 	let element_count_u32 = as_u32(element_count, operation, "element count")?;
-	let engine = output_gradient.engine_handle();
+	let runtime = output_gradient.runtime();
 	let indirect = indirect_plan(
 		dispatch_args,
-		engine,
+		runtime,
 		element_count_u32,
 		KernelId::MatrixScatterRowsBackwardSourceIndirectF32,
 		operation,
 	)?;
 	let source_gradient = Matrix::allocate(
-		engine,
+		runtime,
 		output_gradient.shape().to_vec(),
 		element_count,
 		DType::F32,
@@ -2564,7 +2550,7 @@ pub(crate) fn scatter_rows_backward_source(
 		dispatch_args,
 	];
 	let outputs = [&source_gradient];
-	engine.record_optional_semantic(
+	runtime.record_optional_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers,
@@ -2640,7 +2626,7 @@ fn region_push_constants(
 /// limit proof is re-asserted here from the admitted `[T,D]` extent.
 fn indirect_plan<'a>(
 	dispatch_args: Option<&'a Matrix>,
-	engine: &EngineHandle,
+	runtime: &RuntimeHandle,
 	element_count: u32,
 	kernel: KernelId,
 	operation: &'static str,
@@ -2653,13 +2639,13 @@ fn indirect_plan<'a>(
 			"{operation} requires a U32 [3] dispatch-args plan"
 		)));
 	}
-	if !dispatch_args.engine_handle().same_as(engine) {
+	if !dispatch_args.runtime().same_as(runtime) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must share one engine"
+			"{operation} inputs must share one runtime"
 		)));
 	}
 	let emitted_groups = kernel.linear_workgroups(element_count)[0];
-	if emitted_groups > engine.max_compute_work_group_count()[0] {
+	if emitted_groups > runtime.max_compute_work_group_count()[0] {
 		return Err(Error::invalid_argument(format!(
 			"{operation} indirect group count {emitted_groups} exceeds the device limit"
 		)));

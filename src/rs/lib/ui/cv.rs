@@ -13,12 +13,12 @@
 //! frame.w = 1280;
 //! frame.h = 720;
 //! frame.add_bboxes(detections, &CvBboxesConfig { show_labels: true, ..Default::default() });
-//! let annotated = frame.render_on(&engine)?;
+//! let annotated = frame.render_on(&runtime)?;
 //! ```
 
 use crate::render::{Texture, texture_from_rgba8_on};
 pub use crate::ui::type_gen::CvBboxesConfig;
-use crate::{Color, Engine, Error, Result};
+use crate::{Color, Error, Result, Runtime};
 
 /// One normalized-coordinate bounding box with optional label metadata.
 ///
@@ -100,7 +100,7 @@ impl<'a> CvFrame<'a> {
 	}
 
 	pub fn render(&self) -> Result<Texture> {
-		self.render_on(&Engine::current()?)
+		self.render_on(&Runtime::current()?)
 	}
 
 	/// Composite overlays over the borrowed base and upload the result.
@@ -109,12 +109,12 @@ impl<'a> CvFrame<'a> {
 	///
 	/// Returns an error for a non-positive extent, an undersized or
 	/// unreadable base, or an invalid overlay config or box.
-	pub fn render_on(&self, engine: &Engine) -> Result<Texture> {
-		self.render_with_rgba_on(engine, &[])
+	pub fn render_on(&self, runtime: &Runtime) -> Result<Texture> {
+		self.render_with_rgba_on(runtime, &[])
 	}
 
 	pub fn render_with_rgba(&self, base_rgba: &[u8]) -> Result<Texture> {
-		self.render_with_rgba_on(&Engine::current()?, base_rgba)
+		self.render_with_rgba_on(&Runtime::current()?, base_rgba)
 	}
 
 	/// Composite overlays over explicit host RGBA8 pixels (or the borrowed
@@ -124,8 +124,8 @@ impl<'a> CvFrame<'a> {
 	///
 	/// Returns an error for a non-positive extent, an undersized base, or an
 	/// invalid overlay config or box.
-	pub fn render_with_rgba_on(&self, engine: &Engine, base_rgba: &[u8]) -> Result<Texture> {
-		render_frame(self, engine, base_rgba)
+	pub fn render_with_rgba_on(&self, runtime: &Runtime, base_rgba: &[u8]) -> Result<Texture> {
+		render_frame(self, runtime, base_rgba)
 	}
 }
 
@@ -401,7 +401,7 @@ fn draw_string(
 	}
 }
 
-fn render_frame(frame: &CvFrame<'_>, engine: &Engine, base_rgba: &[u8]) -> Result<Texture> {
+fn render_frame(frame: &CvFrame<'_>, runtime: &Runtime, base_rgba: &[u8]) -> Result<Texture> {
 	let w = frame.w;
 	let h = frame.h;
 	if w <= 0 || h <= 0 {
@@ -528,5 +528,5 @@ fn render_frame(frame: &CvFrame<'_>, engine: &Engine, base_rgba: &[u8]) -> Resul
 		}
 	}
 
-	texture_from_rgba8_on(engine, &pixels, w as usize, h as usize)
+	texture_from_rgba8_on(runtime, &pixels, w as usize, h as usize)
 }

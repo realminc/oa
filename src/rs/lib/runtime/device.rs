@@ -78,7 +78,7 @@ use logical::{
 };
 pub(in crate::runtime) use physical::DevicePhysical;
 
-/// Engine-private execution domain, retained by resources through `Arc<Device>`.
+/// Runtime-private execution domain, retained by resources through `Arc<Device>`.
 /// Queried facts and executor resources each have one authoritative owner.
 /// Owned executor fields never retain this Arc, preventing ownership cycles.
 pub(crate) struct Device {
@@ -163,7 +163,7 @@ impl Device {
 	}
 
 	/// Sample paired device/host timestamps and retain the lowest-deviation
-	/// pair, matching the donor `oa::Engine::calibrateClock`.
+	/// pair, matching the donor `oa::Runtime::calibrateClock`.
 	pub(in crate::runtime) fn calibrate_clock(
 		&self,
 		sample_count: u32,
@@ -339,8 +339,8 @@ impl Device {
 		// Currently always 1 device; the outer block is structured to
 		// accept multiple devices (`,`-separated) when multi-device is added.
 		crate::log_info!(
-			crate::LogComponent::ENGINE,
-			"oa::Engine · v{} · Vulkan · 1 device {{",
+			crate::LogComponent::OWNERSHIP,
+			"oa::Runtime · v{} · Vulkan · 1 device {{",
 			env!("CARGO_PKG_VERSION")
 		);
 		log_compute_device(self, "  ", /* is_last */ true);
@@ -632,7 +632,7 @@ impl Device {
 		&self.physical
 	}
 
-	/// Merged driver cache bytes for the Engine persistence coordinator, or
+	/// Merged driver cache bytes for the Runtime persistence coordinator, or
 	/// `None` when no cache exists or the query fails — the coordinator keeps
 	/// the previously committed section in that case.
 	pub(in crate::runtime) fn pipeline_cache_data(&self) -> Option<Vec<u8>> {
@@ -1018,7 +1018,7 @@ impl Device {
 	}
 
 	/// Whether the opt-in `OA_TILE_GEMM_BIAS` route for the
-	/// `mat_mul_nt_bias*` epilogue donors is enabled.
+	/// `matmul_nt_bias*` epilogue donors is enabled.
 	pub(in crate::runtime) fn tile_gemm_bias_enabled(&self) -> bool {
 		crate::EnvFlag::is_set("OA_TILE_GEMM_BIAS")
 	}
@@ -1631,7 +1631,7 @@ impl Device {
 	}
 
 	/// Retained shared ownership of the native device. Consumers that keep
-	/// `vk::Device` references across Engine borrows clone this Arc; teardown
+	/// `vk::Device` references across Runtime borrows clone this Arc; teardown
 	/// order remains owned by DeviceLogical's ManuallyDrop.
 	pub(in crate::runtime) fn raw_arc(&self) -> Arc<vk::Device> {
 		(*self.logical().handle).clone()
@@ -2950,7 +2950,7 @@ impl Device {
 
 		// SAFETY: synchronization2 and timeline semaphores were enabled; the recorded
 		// primary command buffer belongs to the selected queue family and is not pending.
-		// The previous signal's first scope covers every earlier engine submission;
+		// The previous signal's first scope covers every earlier runtime submission;
 		// this submission waits on that exact timeline value at ALL_COMMANDS,
 		// making writes to any Matrix input buffer available and visible before its
 		// consumer dispatch. Buffer/image ownership transfers remain the recording

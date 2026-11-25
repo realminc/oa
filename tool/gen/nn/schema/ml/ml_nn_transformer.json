@@ -3,7 +3,7 @@
 	"family": "transformer",
 	"imports": [
 		"use std::{cell::Cell, rc::Rc};",
-		"use crate::{DType, Engine, Error, Matrix, Result, matrix};",
+		"use crate::{DType, Runtime, Error, Matrix, Result, matrix};",
 		"use super::super::{Module, ModuleRegistry, matrix::gelu};",
 		"use super::{AttentionCache, AttentionMode, LayerNorm, Linear, Moe, MultiHeadAttention};"
 	],

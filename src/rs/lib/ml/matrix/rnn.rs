@@ -7,7 +7,7 @@ use crate::{
 
 use crate::ml::{Parameter, autograd};
 
-use super::super::validation::{shader_u32, validate_f32_same_engine};
+use super::super::validation::{shader_u32, validate_f32_same_runtime};
 
 use super::recurrent::{MAX_HIDDEN_SIZE, optional_bias};
 
@@ -18,7 +18,7 @@ use super::recurrent::{MAX_HIDDEN_SIZE, optional_bias};
 ///
 /// # Errors
 ///
-/// Returns an error unless all values are nonempty same-engine F32 matrices,
+/// Returns an error unless all values are nonempty same-runtime F32 matrices,
 /// shapes agree, hidden size is at most 1024, or runtime recording fails.
 pub fn rnn_cell(
 	gates_i: &Matrix,
@@ -99,7 +99,7 @@ pub(in crate::ml) fn rnn_cell_backward(
 			"{OPERATION} saved values and output gradient do not match the RNN cell contract"
 		)));
 	}
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		OPERATION,
 		&[
 			gates_i,
@@ -111,31 +111,31 @@ pub(in crate::ml) fn rnn_cell_backward(
 		],
 	)?;
 	let gates_i_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
 	)?;
 	let gates_h_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
 	)?;
 	let hidden_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		hidden.shape().to_vec(),
 		hidden.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		weight_hh.shape().to_vec(),
 		weight_hh.num_elements(),
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		bias_hh.shape().to_vec(),
 		bias_hh.num_elements(),
 		DType::F32,
@@ -208,7 +208,7 @@ pub(in crate::ml) fn rnn_cell_backward(
 		name: "has_bias".into(),
 		value: has_bias,
 	}];
-	gates_i.engine_handle().record_split_semantic(
+	gates_i.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: crate::core::operation::ml::RNN_CELL_BACKWARD,
@@ -232,7 +232,7 @@ pub(in crate::ml) fn rnn_cell_backward(
 ///
 /// # Errors
 ///
-/// Returns an error unless all values are nonempty same-engine F32 matrices,
+/// Returns an error unless all values are nonempty same-runtime F32 matrices,
 /// shapes agree, hidden size is at most 1024, or runtime recording fails.
 pub fn rnn_scan(gates_i: &Matrix, weight_hh: &Matrix, bias_hh: Option<&Matrix>) -> Result<Matrix> {
 	let bias_value = optional_bias(weight_hh, bias_hh, "oa::FnMatrix::rnnScan")?;
@@ -300,7 +300,7 @@ pub(in crate::ml) fn rnn_scan_backward(
 			"{OPERATION} saved values and output gradient do not match the RNN scan contract"
 		)));
 	}
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		OPERATION,
 		&[
 			output_gradient,
@@ -311,25 +311,25 @@ pub(in crate::ml) fn rnn_scan_backward(
 		],
 	)?;
 	let gates_i_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
 	)?;
 	let gates_h_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		weight_hh.shape().to_vec(),
 		weight_hh.num_elements(),
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		bias_hh.shape().to_vec(),
 		bias_hh.num_elements(),
 		DType::F32,
@@ -395,7 +395,7 @@ pub(in crate::ml) fn rnn_scan_backward(
 		name: "has_bias".into(),
 		value: has_bias,
 	}];
-	gates_i.engine_handle().record_split_semantic(
+	gates_i.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: crate::core::operation::ml::RNN_SCAN_BACKWARD,
@@ -431,15 +431,15 @@ fn rnn_cell_dispatch(
 			"{OPERATION} requires gates and hidden [B, H], recurrent weight [H, H], bias storage [H], and H <= {MAX_HIDDEN_SIZE}"
 		)));
 	}
-	validate_f32_same_engine(OPERATION, &[gates_i, hidden, weight_hh, bias_hh])?;
+	validate_f32_same_runtime(OPERATION, &[gates_i, hidden, weight_hh, bias_hh])?;
 	let output = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
 	)?;
 	let gates_h = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
@@ -480,11 +480,11 @@ fn rnn_cell_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -520,15 +520,15 @@ fn rnn_scan_dispatch(
 			"{OPERATION} requires nonempty gates [B, S, H], recurrent weight [H, H], bias storage [H], and H <= {MAX_HIDDEN_SIZE}"
 		)));
 	}
-	validate_f32_same_engine(OPERATION, &[gates_i, weight_hh, bias_hh])?;
+	validate_f32_same_runtime(OPERATION, &[gates_i, weight_hh, bias_hh])?;
 	let output = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
 	)?;
 	let hidden_previous = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
@@ -580,11 +580,11 @@ fn rnn_scan_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,

@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{DType, Engine, Error, Matrix, Result, matrix};
+use crate::{DType, Error, Matrix, Result, Runtime, matrix};
 
 use super::super::random;
 use super::super::{Module, ModuleRegistry};
@@ -43,13 +43,13 @@ impl EmbeddingBag {
 	///
 	/// Returns an error for zero dimensions or table allocation failure.
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		num_embeddings: usize,
 		embedding_dim: usize,
 		mode: EmbeddingBagMode,
 		seed: u64,
 	) -> Result<Self> {
-		let embedding = Embedding::new_with_seed_on(engine, num_embeddings, embedding_dim, seed)?;
+		let embedding = Embedding::new_with_seed_on(runtime, num_embeddings, embedding_dim, seed)?;
 		Self::new_from_embedding(embedding, mode)
 	}
 
@@ -60,7 +60,7 @@ impl EmbeddingBag {
 	/// Returns an error for zero dimensions, non-finite or negative `stddev`,
 	/// or table allocation failure.
 	pub fn new_with_seed_normal_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		num_embeddings: usize,
 		embedding_dim: usize,
 		stddev: f32,
@@ -81,7 +81,7 @@ impl EmbeddingBag {
 			));
 		}
 		let values = random::normal(count, stddev, seed);
-		let weight = Matrix::new_from_f32_on(engine, [num_embeddings, embedding_dim], &values)?;
+		let weight = Matrix::new_from_f32_on(runtime, [num_embeddings, embedding_dim], &values)?;
 		Self::new_from_embedding(Embedding::new_from_matrix(weight)?, mode)
 	}
 

@@ -11,7 +11,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use crate::{Engine, Error, Result, runtime::EngineHandle};
+use crate::{Error, Result, Runtime, runtime::RuntimeHandle};
 use cpal::{
 	Data, FromSample, OutputCallbackInfo, SampleFormat, SizedSample, Stream, SupportedStreamConfig,
 	SupportedStreamConfigRange,
@@ -33,7 +33,7 @@ impl AudioPlayerConfig {
 
 /// Incremental decoded PCM playback through the default output device.
 pub struct AudioPlayer {
-	_engine: EngineHandle,
+	_runtime: RuntimeHandle,
 	service: Option<PlayerService>,
 	shared: Arc<PlayerShared>,
 	sample_rate: u32,
@@ -127,22 +127,25 @@ impl AudioPlayer {
 	///
 	/// Returns an error for an empty URI, a ring outside 40–5000 ms, or when
 	/// the selected audio track and output device cannot be opened.
-	pub fn open(engine: &Engine, config: AudioPlayerConfig) -> Result<Self> {
+	pub fn open(runtime: &Runtime, config: AudioPlayerConfig) -> Result<Self> {
 		validate_config(&config)?;
 		let (decoder, duration_us) = StreamingDecoder::open(&config.uri, false)?
 			.ok_or_else(|| Error::invalid_argument("AudioPlayer source has no audio track"))?;
-		Self::open_decoder(engine, config, decoder, duration_us)
+		Self::open_decoder(runtime, config, decoder, duration_us)
 	}
 
-	pub(crate) fn open_embedded(engine: &Engine, config: AudioPlayerConfig) -> Result<Option<Self>> {
+	pub(crate) fn open_embedded(
+		runtime: &Runtime,
+		config: AudioPlayerConfig,
+	) -> Result<Option<Self>> {
 		validate_config(&config)?;
 		StreamingDecoder::open(&config.uri, true)?
-			.map(|(decoder, duration)| Self::open_decoder(engine, config, decoder, duration))
+			.map(|(decoder, duration)| Self::open_decoder(runtime, config, decoder, duration))
 			.transpose()
 	}
 
 	fn open_decoder(
-		engine: &Engine,
+		runtime: &Runtime,
 		config: AudioPlayerConfig,
 		decoder: StreamingDecoder,
 		duration_us: u64,
@@ -183,7 +186,7 @@ impl AudioPlayer {
 
 		let host = cpal::default_host();
 		let (device, stream_config) = super::device::select_device(
-			engine,
+			runtime,
 			&host,
 			super::device::Direction::Output,
 			sample_rate,
@@ -220,7 +223,7 @@ impl AudioPlayer {
 			.spawn(move || decode_loop(decoder, sender, capacity, thread_shared))
 			.map_err(|source| Error::backend_failure("host", "AudioPlayer decoder thread", source))?;
 		Ok(Self {
-			_engine: engine.handle(),
+			_runtime: runtime.handle(),
 			service: Some(PlayerService {
 				stream,
 				decoder_thread: Some(decoder_thread),
@@ -234,8 +237,8 @@ impl AudioPlayer {
 	}
 
 	/// Open a URI using the default playback configuration.
-	pub fn new_from_uri(engine: &Engine, uri: impl AsRef<Path>) -> Result<Self> {
-		Self::open(engine, AudioPlayerConfig::new(uri.as_ref()))
+	pub fn new_from_uri(runtime: &Runtime, uri: impl AsRef<Path>) -> Result<Self> {
+		Self::open(runtime, AudioPlayerConfig::new(uri.as_ref()))
 	}
 
 	/// Start or resume playback, rewinding after end-of-stream.

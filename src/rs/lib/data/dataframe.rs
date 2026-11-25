@@ -16,7 +16,7 @@ pub enum Series {
 	F64(Vec<f64>),
 }
 
-/// Borrowed contiguous column; independent of an Engine.
+/// Borrowed contiguous column; independent of an Runtime.
 #[derive(Clone, Copy, Debug)]
 pub enum SeriesView<'a> {
 	/// Signed integers.

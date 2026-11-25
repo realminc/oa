@@ -3,11 +3,11 @@ use super::*;
 #[test]
 #[ignore = "requires an admitted Vulkan device"]
 fn partial_batch_submission_retires_accepted_work_and_releases_the_tail() -> Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let owner = Arc::new(());
 	let accepted;
 	{
-		let mut state = engine.handle.state.borrow_mut();
+		let mut state = runtime.handle.state.borrow_mut();
 		let start = state.next_epoch;
 		let mut batch = RecordedBatch::new(&state.device);
 		for _ in 0..3 {

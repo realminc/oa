@@ -1,11 +1,11 @@
-//! Camera capture sessions producing engine-owned RGBA8 video frames.
+//! Camera capture sessions producing runtime-owned RGBA8 video frames.
 //!
 //! Donor: `source/cpp/include/oa/vision/cameraCapture.h` and
 //! `source/cpp/lib/oa/vision/capture/cameraCapture.cpp`.
 //!
 //! This slice owns the donor's SDL capture route: frames arrive as SDL
 //! surfaces, are repacked into RGBA8, and upload into packed textures through
-//! the session's Engine. The V4L2 MMAP/DMA-BUF zero-copy ring and reconnect
+//! the session's Runtime. The V4L2 MMAP/DMA-BUF zero-copy ring and reconnect
 //! policy remain a later slice gated on external-memory admission.
 
 use std::ptr::NonNull;
@@ -20,11 +20,11 @@ use sdl3::sys::pixels::SDL_PixelFormat;
 use sdl3::sys::stdinc::SDL_free;
 use sdl3::sys::surface::SDL_Surface;
 
-use crate::runtime::EngineHandle;
+use crate::runtime::RuntimeHandle;
 use crate::video::{
 	self, VideoColorInfo, VideoColorMatrix, VideoColorRange, VideoFrame, VideoFrameTiming,
 };
-use crate::{DType, Engine, Error, Matrix, Result};
+use crate::{DType, Error, Matrix, Result, Runtime};
 
 // RGBA32 names byte order; RGBA8888 names a packed integer and reverses the
 // channels on little-endian hosts. Match the donor's SDL_PIXELFORMAT_RGBA32.
@@ -50,7 +50,7 @@ impl Default for CameraCaptureConfig {
 /// timestamp in microseconds and its duration follows the negotiated frame
 /// rate.
 pub struct CameraCapture {
-	engine: EngineHandle,
+	runtime: RuntimeHandle,
 	// SDL lifetime owners: dropping the subsystem deinitializes the camera
 	// backend, and dropping the context runs SDL_Quit when it is the last.
 	_sdl: sdl3::Sdl,
@@ -76,7 +76,7 @@ impl CameraCapture {
 	/// `device_index`, or when SDL cannot open or describe the device.
 	///
 	/// [`ErrorKind::MissingCapability`]: crate::ErrorKind::MissingCapability
-	pub fn open(engine: &Engine, config: &CameraCaptureConfig) -> Result<Self> {
+	pub fn open(runtime: &Runtime, config: &CameraCaptureConfig) -> Result<Self> {
 		if config.width == 0 || config.height == 0 {
 			return Err(Error::invalid_argument(
 				"camera capture extent must be non-zero",
@@ -121,7 +121,7 @@ impl CameraCapture {
 		let fps_numerator = actual.framerate_numerator.max(0) as u32;
 		let fps_denominator = actual.framerate_denominator.max(0) as u32;
 		Ok(Self {
-			engine: engine.handle().clone(),
+			runtime: runtime.handle().clone(),
 			_sdl: sdl,
 			_camera_subsystem: subsystem,
 			camera: Some(camera),
@@ -251,7 +251,7 @@ impl CameraCapture {
 			.and_then(|pixels| pixels.checked_mul(4))
 			.ok_or_else(|| Error::out_of_range("camera frame byte count overflows"))?;
 		let data = Matrix::allocate(
-			&self.engine,
+			&self.runtime,
 			vec![height, width, 4],
 			element_count,
 			DType::U8,

@@ -2,7 +2,7 @@
 
 use std::{rc::Rc, sync::Arc, time::Duration};
 
-use crate::{Engine, Error, Event, Image, Matrix, Result, Texture, runtime::NativeDecodedFrame};
+use crate::{Error, Event, Image, Matrix, Result, Runtime, Texture, runtime::NativeDecodedFrame};
 
 use super::{
 	VideoPixelFormat,
@@ -239,7 +239,7 @@ impl VideoFrame {
 	/// plane sizes, a bit depth that has no admitted storage, or a storage
 	/// allocation or upload failure.
 	///
-	/// This variant uploads on this thread's default engine. An engine
+	/// This variant uploads on this thread's default runtime. An runtime
 	/// initialization failure is returned before the upload starts.
 	pub fn upload_planes(
 		format: VideoPixelFormat,
@@ -250,7 +250,7 @@ impl VideoFrame {
 		color: VideoColorInfo,
 	) -> Result<Self> {
 		Self::upload_planes_on(
-			&Engine::current()?,
+			&Runtime::current()?,
 			format,
 			planes,
 			width,
@@ -261,16 +261,16 @@ impl VideoFrame {
 	}
 
 	/// Upload tightly packed planes to device-resident planar frame storage on
-	/// a particular engine.
+	/// a particular runtime.
 	///
 	/// This is the [`upload_planes`](Self::upload_planes) contract evaluated on
-	/// `engine` instead of this thread's default engine.
+	/// `runtime` instead of this thread's default runtime.
 	///
 	/// # Errors
 	///
 	/// Returns the same errors as [`upload_planes`](Self::upload_planes).
 	pub fn upload_planes_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		format: VideoPixelFormat,
 		planes: Vec<Vec<u8>>,
 		width: usize,
@@ -299,7 +299,7 @@ impl VideoFrame {
 				)));
 			}
 			matrices.push(Matrix::new_from_slice_on(
-				engine,
+				runtime,
 				[extent.height, extent.width],
 				bytes,
 			)?);
@@ -325,22 +325,22 @@ impl VideoFrame {
 	///
 	/// Returns an error for an ineligible backing or an upload failure.
 	///
-	/// This variant uploads on this thread's default engine. An engine
+	/// This variant uploads on this thread's default runtime. An runtime
 	/// initialization failure is returned before the upload starts.
 	pub fn upload(&self) -> Result<VideoFrame> {
-		self.upload_on(&Engine::current()?)
+		self.upload_on(&Runtime::current()?)
 	}
 
 	/// Stage a host-planar frame into device-resident planar storage on a
-	/// particular engine.
+	/// particular runtime.
 	///
-	/// This is the [`upload`](Self::upload) contract evaluated on `engine`
-	/// instead of this thread's default engine.
+	/// This is the [`upload`](Self::upload) contract evaluated on `runtime`
+	/// instead of this thread's default runtime.
 	///
 	/// # Errors
 	///
 	/// Returns an error for an ineligible backing or an upload failure.
-	pub fn upload_on(&self, engine: &Engine) -> Result<VideoFrame> {
+	pub fn upload_on(&self, runtime: &Runtime) -> Result<VideoFrame> {
 		match &self.backing {
 			VideoFrameBacking::DevicePlanar(_) => Ok(self.clone()),
 			VideoFrameBacking::PlanarYuv420 {
@@ -358,7 +358,7 @@ impl VideoFrame {
 					bytes[luma + chroma..].to_vec(),
 				];
 				Self::upload_planes_on(
-					engine,
+					runtime,
 					VideoPixelFormat::Yuv420Planar8,
 					planes,
 					width,
@@ -627,7 +627,7 @@ impl VideoFrame {
 
 	/// Retain a native decoded or render-target frame until a GPU consumer completes.
 	///
-	/// Multiple consumers may register events from the same Engine; the latest
+	/// Multiple consumers may register events from the same Runtime; the latest
 	/// timeline point controls slot reuse. Dropping every frame clone declares
 	/// immediate reuse only when no consumer event was registered.
 	///

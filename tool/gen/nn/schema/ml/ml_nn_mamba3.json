@@ -2,7 +2,7 @@
 	"version": 1,
 	"family": "mamba3",
 	"imports": [
-		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use crate::{DType, Runtime, Error, Matrix, Result};",
 		"use super::super::{Module, ModuleRegistry, Parameter, autograd, matrix, random};"
 	],
 	"helper": "",

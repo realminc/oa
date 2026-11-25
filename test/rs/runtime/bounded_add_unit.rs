@@ -5,7 +5,7 @@ use super::Instance;
 const SHADER: &[u8] = include_bytes!(concat!(env!("OA_SHADER_DIR"), "/matrix_add_f32.spv"));
 
 /// A direct Vulkan 1.2 execution proof for the bounded descriptor ABI,
-/// independent of Engine admission and graph recording.
+/// independent of Runtime admission and graph recording.
 #[test]
 fn bounded_matrix_add_executes_on_vulkan_1_2() {
 	let Ok(instance) = Instance::new(&[]) else {

@@ -4,7 +4,7 @@
 //! replay, modules, reverse mode, an optimizer, and [`ItTraining`]; it owns no
 //! second scheduler or execution runtime.
 
-use crate::{DType, Engine, Error, Result, matrix};
+use crate::{DType, Error, Result, Runtime, matrix};
 
 use super::{ItTraining, ItTrainingConfig, Optimizer, TrainingCallback, TrainingMetric, target};
 pub use crate::ml::types::DqnTrainerConfig;
@@ -34,23 +34,23 @@ pub struct DqnTrainerMetrics {
 
 /// Stateful DQN training coordinator over caller-owned components.
 ///
-/// The online module, target module, optimizer, replay storage, and engine
+/// The online module, target module, optimizer, replay storage, and runtime
 /// remain caller-owned and must outlive this coordinator. Dropping the trainer
 /// does not submit, wait, synchronize targets, or fire terminal callbacks; use
 /// [`DqnTrainer::finish`] for the explicit terminal boundary.
 #[must_use]
-pub struct DqnTrainer<'engine, 'hooks> {
-	engine: &'engine Engine,
-	online: &'engine dyn Module,
-	target: &'engine dyn Module,
-	replay: &'engine ReplayBuffer,
+pub struct DqnTrainer<'runtime, 'hooks> {
+	runtime: &'runtime Runtime,
+	online: &'runtime dyn Module,
+	target: &'runtime dyn Module,
+	replay: &'runtime ReplayBuffer,
 	config: DqnTrainerConfig,
 	observation_elements: usize,
-	training: ItTraining<'engine, 'hooks>,
+	training: ItTraining<'runtime, 'hooks>,
 	metrics: DqnTrainerMetrics,
 }
 
-impl<'engine, 'hooks> DqnTrainer<'engine, 'hooks> {
+impl<'runtime, 'hooks> DqnTrainer<'runtime, 'hooks> {
 	/// Validate and construct a trainer, then deep-copy the online model into the target.
 	///
 	/// # Errors
@@ -59,20 +59,20 @@ impl<'engine, 'hooks> DqnTrainer<'engine, 'hooks> {
 	/// incompatible module schemas, optimizer ownership failure, overflow, or
 	/// device-copy failure.
 	pub fn new(
-		engine: &'engine Engine,
-		online: &'engine dyn Module,
-		target: &'engine dyn Module,
-		optimizer: &'engine mut dyn Optimizer,
-		replay: &'engine ReplayBuffer,
+		runtime: &'runtime Runtime,
+		online: &'runtime dyn Module,
+		target: &'runtime dyn Module,
+		optimizer: &'runtime mut dyn Optimizer,
+		replay: &'runtime ReplayBuffer,
 		config: DqnTrainerConfig,
 	) -> Result<Self> {
 		validate_config(replay, &config)?;
 		let observation_elements = observation_elements(&config.observation_shape)?;
-		target::sync_exact(engine, &[(online, target)], "DQN")?;
+		target::sync_exact(runtime, &[(online, target)], "DQN")?;
 		let batch_size = u64::try_from(config.batch_size)
 			.map_err(|_| Error::resource_exhausted("DQN batch size exceeds u64"))?;
 		let training = ItTraining::new_eager(
-			engine,
+			runtime,
 			optimizer,
 			ItTrainingConfig {
 				total_steps: config.updates,
@@ -82,7 +82,7 @@ impl<'engine, 'hooks> DqnTrainer<'engine, 'hooks> {
 			},
 		)?;
 		Ok(Self {
-			engine,
+			runtime,
 			online,
 			target,
 			replay,
@@ -128,7 +128,7 @@ impl<'engine, 'hooks> DqnTrainer<'engine, 'hooks> {
 
 		let result = self.record_update();
 		if let Err(error) = result {
-			self.engine.abort_pending_work();
+			self.runtime.abort_pending_work();
 			return self.training.fail_composed_step(error);
 		}
 
@@ -178,7 +178,7 @@ impl<'engine, 'hooks> DqnTrainer<'engine, 'hooks> {
 	///
 	/// Returns an error for schema drift, copy submission, or completion failure.
 	pub fn sync_target(&self) -> Result<()> {
-		target::sync_exact(self.engine, &[(self.online, self.target)], "DQN")
+		target::sync_exact(self.runtime, &[(self.online, self.target)], "DQN")
 	}
 
 	/// Return whether the configured budget or a callback stop has been reached.
@@ -193,12 +193,12 @@ impl<'engine, 'hooks> DqnTrainer<'engine, 'hooks> {
 	}
 
 	/// Borrow the composed lifecycle for callbacks, sessions, and diagnostics.
-	pub const fn training_loop(&self) -> &ItTraining<'engine, 'hooks> {
+	pub const fn training_loop(&self) -> &ItTraining<'runtime, 'hooks> {
 		&self.training
 	}
 
 	/// Mutably borrow the composed lifecycle before or between steps.
-	pub fn training_loop_mut(&mut self) -> &mut ItTraining<'engine, 'hooks> {
+	pub fn training_loop_mut(&mut self) -> &mut ItTraining<'runtime, 'hooks> {
 		&mut self.training
 	}
 

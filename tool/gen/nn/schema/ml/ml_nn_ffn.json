@@ -3,7 +3,7 @@
 	"family": "ffn",
 	"imports": [
 		"use std::rc::Rc;",
-		"use crate::{Engine, Matrix, Result, matrix as core_matrix};",
+		"use crate::{Runtime, Matrix, Result, matrix as core_matrix};",
 		"use super::super::{Module, ModuleRegistry, matrix::swiglu};",
 		"use super::{Linear, RmsNorm};"
 	],

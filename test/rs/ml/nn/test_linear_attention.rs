@@ -117,7 +117,7 @@ fn model_oracle(
 		.collect::<Vec<_>>();
 	project(&merged, batch * seq, width, "out_proj", w)
 }
-fn model_forward_gate(_engine: &oa::Engine, causal: bool) -> oa::Result<()> {
+fn model_forward_gate(_runtime: &oa::Runtime, causal: bool) -> oa::Result<()> {
 	use oa::ml::nn::{CausalLinearAttention, LinearAttentionMode};
 	for (batch, seq, width, heads) in [(2, 5, 6, 2), (1, 1, 4, 2), (1, 3, 65, 1)] {
 		let vals = (0..batch * seq * width)
@@ -135,7 +135,7 @@ fn model_forward_gate(_engine: &oa::Engine, causal: bool) -> oa::Result<()> {
 	}
 	Ok(())
 }
-fn model_gradient_gate(_engine: &oa::Engine, causal: bool) -> oa::Result<()> {
+fn model_gradient_gate(_runtime: &oa::Runtime, causal: bool) -> oa::Result<()> {
 	use oa::ml::nn::{CausalLinearAttention, LinearAttentionMode};
 	let (seq, width, heads) = (3, 4, 2);
 	let vals = (0..seq * width)
@@ -181,7 +181,7 @@ fn model_gradient_gate(_engine: &oa::Engine, causal: bool) -> oa::Result<()> {
 
 // ── geometry validation ───────────────────────────────────────────────────────
 
-test_vk!(linear_attention_rejects_invalid_construction, engine, {
+test_vk!(linear_attention_rejects_invalid_construction, runtime, {
 	use oa::ml::nn::CausalLinearAttention;
 
 	// zero model_width
@@ -219,7 +219,7 @@ test_vk!(linear_attention_rejects_invalid_construction, engine, {
 	Ok(())
 });
 
-test_vk!(linear_attention_rejects_wrong_input_shape, engine, {
+test_vk!(linear_attention_rejects_wrong_input_shape, runtime, {
 	use oa::ml::nn::CausalLinearAttention;
 
 	let attn = CausalLinearAttention::new_with_seed(8, 2, 4, 0x4c41)?;
@@ -250,13 +250,13 @@ test_vk!(linear_attention_rejects_wrong_input_shape, engine, {
 
 test_vk!(
 	bidirectional_linear_attention_matches_host_oracle,
-	engine,
-	{ model_forward_gate(&engine, false) }
+	runtime,
+	{ model_forward_gate(&runtime, false) }
 );
 
 // ── causal forward is strictly causal (position i ignores i+1..S-1) ──────────
 
-test_vk!(causal_linear_attention_is_strictly_causal, engine, {
+test_vk!(causal_linear_attention_is_strictly_causal, runtime, {
 	use oa::ml::nn::CausalLinearAttention;
 
 	// S=4, D=4, H=1, d_head=4, B=1
@@ -304,29 +304,29 @@ test_vk!(causal_linear_attention_is_strictly_causal, engine, {
 
 test_vk!(
 	linear_attention_forward_matches_host_oracle_on_known_projections,
-	engine,
-	{ model_forward_gate(&engine, true) }
+	runtime,
+	{ model_forward_gate(&runtime, true) }
 );
 
 // ── autograd: gradients match finite differences ──────────────────────────────
 
 test_vk!(
 	linear_attention_causal_reverse_matches_finite_differences,
-	engine,
-	{ model_gradient_gate(&engine, true) }
+	runtime,
+	{ model_gradient_gate(&runtime, true) }
 );
 
 test_vk!(
 	linear_attention_bidirectional_reverse_matches_finite_differences,
-	engine,
-	{ model_gradient_gate(&engine, false) }
+	runtime,
+	{ model_gradient_gate(&runtime, false) }
 );
 
 // ── parameter layout ──────────────────────────────────────────────────────────
 
 test_vk!(
 	linear_attention_parameter_layout_matches_multi_head_attention,
-	engine,
+	runtime,
 	{
 		use oa::ml::{Module, nn::CausalLinearAttention};
 
@@ -359,7 +359,7 @@ test_vk!(
 
 // ── API surface ───────────────────────────────────────────────────────────────
 
-test_vk!(linear_attention_accessors_and_mode_switch, engine, {
+test_vk!(linear_attention_accessors_and_mode_switch, runtime, {
 	use oa::ml::nn::{CausalLinearAttention, LinearAttentionMode};
 
 	let attn = CausalLinearAttention::new_with_seed(8, 4, 6, 0x4150_4953)?;
@@ -387,7 +387,7 @@ test_vk!(linear_attention_accessors_and_mode_switch, engine, {
 
 // ── AttentionBackend::Linear guard on MultiHeadAttention ─────────────────────
 
-test_vk!(multi_head_attention_rejects_linear_backend, engine, {
+test_vk!(multi_head_attention_rejects_linear_backend, runtime, {
 	use oa::ml::nn::{AttentionBackend, MultiHeadAttention};
 
 	let attn = MultiHeadAttention::new_with_seed(8, 2, 4, 0x4c49_4e45)?;
@@ -404,77 +404,81 @@ test_vk!(multi_head_attention_rejects_linear_backend, engine, {
 	Ok(())
 });
 
-test_vk!(fused_linear_attention_extremes_tails_and_capture, engine, {
-	use oa::ml::matrix::causal_linear_attention;
-	for (h, s, d) in [(2, 5, 3), (1, 1, 1), (1, 3, 24), (1, 2, 64)] {
-		for extreme in [false, true] {
-			let n = h * s * d;
-			let q = (0..n)
-				.map(|i| {
+test_vk!(
+	fused_linear_attention_extremes_tails_and_capture,
+	runtime,
+	{
+		use oa::ml::matrix::causal_linear_attention;
+		for (h, s, d) in [(2, 5, 3), (1, 1, 1), (1, 3, 24), (1, 2, 64)] {
+			for extreme in [false, true] {
+				let n = h * s * d;
+				let q = (0..n)
+					.map(|i| {
+						if extreme {
+							-20.0 - (i % 3) as f32 * 30.0
+						} else {
+							((i * 7 % 19) as f32 - 9.0) / 8.0
+						}
+					})
+					.collect::<Vec<_>>();
+				let k = (0..n)
+					.map(|i| {
+						if extreme {
+							-20.0
+						} else {
+							((i * 13 % 23) as f32 - 11.0) / 9.0
+						}
+					})
+					.collect::<Vec<_>>();
+				let v = (0..n)
+					.map(|i| ((i * 11 % 29) as f32 - 14.0) / 7.0)
+					.collect::<Vec<_>>();
+				let q = oa::Matrix::new_from_f32([h, s, d], &q)?;
+				let k = oa::Matrix::new_from_f32([h, s, d], &k)?;
+				let v = oa::Matrix::new_from_f32([h, s, d], &v)?;
+				let expected = oracle(
+					&q.read_f32()?,
+					&k.read_f32()?,
+					&v.read_f32()?,
+					h,
+					s,
+					d,
+					true,
+					1e-6,
+				);
+				let (plan, out) = runtime.capture(|| causal_linear_attention(&q, &k, &v, 1e-6))?;
+				for _ in 0..2 {
+					runtime.submit(&plan)?.wait()?;
+					let actual = out.read_f32()?;
+					assert_close(&actual, &expected, 4e-5);
 					if extreme {
-						-20.0 - (i % 3) as f32 * 30.0
-					} else {
-						((i * 7 % 19) as f32 - 9.0) / 8.0
-					}
-				})
-				.collect::<Vec<_>>();
-			let k = (0..n)
-				.map(|i| {
-					if extreme {
-						-20.0
-					} else {
-						((i * 13 % 23) as f32 - 11.0) / 9.0
-					}
-				})
-				.collect::<Vec<_>>();
-			let v = (0..n)
-				.map(|i| ((i * 11 % 29) as f32 - 14.0) / 7.0)
-				.collect::<Vec<_>>();
-			let q = oa::Matrix::new_from_f32([h, s, d], &q)?;
-			let k = oa::Matrix::new_from_f32([h, s, d], &k)?;
-			let v = oa::Matrix::new_from_f32([h, s, d], &v)?;
-			let expected = oracle(
-				&q.read_f32()?,
-				&k.read_f32()?,
-				&v.read_f32()?,
-				h,
-				s,
-				d,
-				true,
-				1e-6,
-			);
-			let (plan, out) = engine.capture(|| causal_linear_attention(&q, &k, &v, 1e-6))?;
-			for _ in 0..2 {
-				engine.submit(&plan)?.wait()?;
-				let actual = out.read_f32()?;
-				assert_close(&actual, &expected, 4e-5);
-				if extreme {
-					assert!(
-						actual.iter().any(|x| *x != 0.0),
-						"negative feature branch cancelled to zero"
-					);
-					for (a, b) in actual.iter().zip(&expected) {
 						assert!(
-							(a - b).abs() <= 1e-4 * b.abs() + 1e-16,
-							"extreme feature value: {a} != {b}"
+							actual.iter().any(|x| *x != 0.0),
+							"negative feature branch cancelled to zero"
 						);
+						for (a, b) in actual.iter().zip(&expected) {
+							assert!(
+								(a - b).abs() <= 1e-4 * b.abs() + 1e-16,
+								"extreme feature value: {a} != {b}"
+							);
+						}
 					}
 				}
 			}
 		}
+		let q = oa::Matrix::new_from_f32([1, 2, 3], &[0.0; 6])?;
+		for eps in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+			assert!(causal_linear_attention(&q, &q, &q, eps).is_err());
+		}
+		let too_wide = oa::Matrix::new_from_f32([1, 1, 65], &[0.0; 65])?;
+		assert!(causal_linear_attention(&too_wide, &too_wide, &too_wide, 1e-6).is_err());
+		Ok(())
 	}
-	let q = oa::Matrix::new_from_f32([1, 2, 3], &[0.0; 6])?;
-	for eps in [0.0, -1.0, f32::NAN, f32::INFINITY] {
-		assert!(causal_linear_attention(&q, &q, &q, eps).is_err());
-	}
-	let too_wide = oa::Matrix::new_from_f32([1, 1, 65], &[0.0; 65])?;
-	assert!(causal_linear_attention(&too_wide, &too_wide, &too_wide, 1e-6).is_err());
-	Ok(())
-});
+);
 
 test_vk!(
 	fused_linear_attention_qkv_gradients_floor_and_alias,
-	engine,
+	runtime,
 	{
 		use oa::ml::nn::Embedding;
 		for (extreme, alias) in [(false, false), (true, false), (false, true)] {
@@ -510,8 +514,8 @@ test_vk!(
 				.collect::<oa::Result<Vec<_>>>()?;
 			let indices = oa::Matrix::new_from_slice([h * s], &(0..(h * s) as u32).collect::<Vec<_>>())?;
 			let target_device = oa::Matrix::new_from_f32([h, s, d], &target)?;
-			engine.checkpoint()?.wait()?;
-			let (plan, loss) = engine.capture(|| {
+			runtime.checkpoint()?.wait()?;
+			let (plan, loss) = runtime.capture(|| {
 				let tape = oa::ml::GradientTape::new();
 				let q = tables[0].forward(&indices)?.reshape([h, s, d])?;
 				let k = if alias {
@@ -537,7 +541,7 @@ test_vk!(
 					.any(|op| op.name() == "oa::ml::matrix::causal_linear_attention_backward")
 			);
 			for _ in 0..2 {
-				engine.submit(&plan)?.wait()?;
+				runtime.submit(&plan)?.wait()?;
 				assert!(loss.read_f32()?[0].is_finite());
 			}
 			let mut raw = [q, k, v];

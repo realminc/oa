@@ -49,12 +49,12 @@ fn clock_calibration_rejects_unusable_samples() {
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn clock_calibration_calibrates_device_and_host_clocks() -> crate::Result<()> {
-	let engine = match crate::Engine::new() {
-		Ok(engine) => engine,
+	let runtime = match crate::Runtime::new() {
+		Ok(runtime) => runtime,
 		Err(_) => return Ok(()),
 	};
-	let calibration = engine.calibrate_clock(16);
-	if !engine.supports_clock_calibration() {
+	let calibration = runtime.calibrate_clock(16);
+	if !runtime.supports_clock_calibration() {
 		let error = calibration.expect_err("unsupported device must reject calibration");
 		assert_eq!(error.kind(), crate::ErrorKind::Unavailable);
 		return Ok(());

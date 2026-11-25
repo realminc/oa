@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 // ── VectorQuantizerConfig ─────────────────────────────────────────────────────
 
@@ -185,14 +185,14 @@ pub(crate) struct PythonVectorQuantizer {
 impl PythonVectorQuantizer {
 	/// Construct a deterministically initialized quantizer.
 	#[new]
-	#[pyo3(signature = (config, seed = 0, engine=None))]
+	#[pyo3(signature = (config, seed = 0, runtime=None))]
 	pub fn new(
 		config: &PythonVectorQuantizerConfig,
 		seed: u64,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::nn::VectorQuantizer::new_with_seed_on(&engine, config.inner, seed)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::nn::VectorQuantizer::new_with_seed_on(&runtime, config.inner, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -269,15 +269,15 @@ pub(crate) struct PythonResidualVectorQuantizer {
 impl PythonResidualVectorQuantizer {
 	/// Construct `num_levels` deterministically initialized quantizers.
 	#[new]
-	#[pyo3(signature = (config, num_levels, seed = 0, engine=None))]
+	#[pyo3(signature = (config, num_levels, seed = 0, runtime=None))]
 	pub fn new(
 		config: &PythonVectorQuantizerConfig,
 		num_levels: usize,
 		seed: u64,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::nn::ResidualVectorQuantizer::new_with_seed_on(&engine, config.inner, num_levels, seed)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::nn::ResidualVectorQuantizer::new_with_seed_on(&runtime, config.inner, num_levels, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

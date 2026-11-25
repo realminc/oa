@@ -147,7 +147,7 @@ const CASES: [ActivationCase; 8] = [
 
 test_vk!(
 	donor_activation_family_matches_forward_and_reverse_oracles,
-	engine,
+	runtime,
 	{
 		let forward_values = [-100.0_f32, -3.0, -0.25, 0.0, 0.5, 4.0, 100.0];
 		let forward_input = oa::Matrix::new_from_f32([forward_values.len()], &forward_values)?;
@@ -192,7 +192,7 @@ test_vk!(
 
 test_vk!(
 	donor_activation_modules_are_parameterless_operation_adapters,
-	engine,
+	runtime,
 	{
 		use oa::ml::Module as _;
 

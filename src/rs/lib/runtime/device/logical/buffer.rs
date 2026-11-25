@@ -560,5 +560,5 @@ impl Drop for MeshBuffer {
 }
 
 // SAFETY: MeshBuffer is not Send/Sync by default because of the raw pointer,
-// but EngineHandle and all of our render types are already !Send (they use Rc).
+// but RuntimeHandle and all of our render types are already !Send (they use Rc).
 // Mark it explicitly so the compiler doesn't warn.

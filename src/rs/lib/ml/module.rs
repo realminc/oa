@@ -79,7 +79,7 @@ impl NamedBuffer {
 		let current = self.data.borrow();
 		if current.shape() != data.shape()
 			|| current.dtype() != data.dtype()
-			|| !current.engine_handle().same_as(data.engine_handle())
+			|| !current.runtime().same_as(data.runtime())
 		{
 			return Err(Error::invalid_argument(format!(
 				"replacement data does not match module buffer {}",

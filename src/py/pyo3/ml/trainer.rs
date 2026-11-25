@@ -2,7 +2,7 @@
 //!
 //! # Lifetime adapter
 //!
-//! `ItTraining<'engine, 'hooks>` stores `&'hooks mut dyn TrainingCallback` and
+//! `ItTraining<'runtime, 'hooks>` stores `&'hooks mut dyn TrainingCallback` and
 //! `&'hooks mut dyn TrainingMetric` slices. PyO3 cannot express those borrows
 //! directly. The solution:
 //!
@@ -22,7 +22,7 @@
 
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::{
 	autograd::PythonParameter,
@@ -218,97 +218,24 @@ fn with_actor_critic<R>(
 /// the inner `*const dyn Module` raw pointer remains valid until this is dropped.
 enum ModuleBorrow<'py> {
 	Actor(PyRef<'py, super::actor_critic::PythonCategoricalActorCritic>),
-	CharRnn(PyRef<'py, super::nlp::PythonCharRnn>),
-	CharGru(PyRef<'py, super::nlp::PythonCharGru>),
-	CharTransformer(PyRef<'py, super::nlp::PythonCharTransformer>),
-	CharMoeTransformer(PyRef<'py, super::nlp::PythonCharMoeTransformer>),
-	CharMamba3(PyRef<'py, super::nlp::PythonCharMamba3>),
-	ByteRnn(PyRef<'py, super::nlp::PythonByteRnn>),
-	ByteGru(PyRef<'py, super::nlp::PythonByteGru>),
-	ByteTransformer(PyRef<'py, super::nlp::PythonByteTransformer>),
-	ByteMoeTransformer(PyRef<'py, super::nlp::PythonByteMoeTransformer>),
-	ByteMamba3(PyRef<'py, super::nlp::PythonByteMamba3>),
-	ByteEmpyrealm(PyRef<'py, super::nlp::PythonByteEmpyrealm>),
-	BpeRnn(PyRef<'py, super::nlp::PythonBpeRnn>),
-	BpeGru(PyRef<'py, super::nlp::PythonBpeGru>),
-	BpeTransformer(PyRef<'py, super::nlp::PythonBpeTransformer>),
-	BpeMoeTransformer(PyRef<'py, super::nlp::PythonBpeMoeTransformer>),
-	BpeMamba3(PyRef<'py, super::nlp::PythonBpeMamba3>),
 }
 
 impl<'py> ModuleBorrow<'py> {
 	fn as_module_ptr(&self) -> *const dyn oa::ml::Module {
 		match self {
 			Self::Actor(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::CharRnn(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::CharGru(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::CharTransformer(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::CharMoeTransformer(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::CharMamba3(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::ByteRnn(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::ByteGru(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::ByteTransformer(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::ByteMoeTransformer(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::ByteMamba3(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::ByteEmpyrealm(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::BpeRnn(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::BpeGru(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::BpeTransformer(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::BpeMoeTransformer(m) => &m.inner as *const dyn oa::ml::Module,
-			Self::BpeMamba3(m) => &m.inner as *const dyn oa::ml::Module,
 		}
 	}
 }
 
 fn extract_module_borrow<'py>(model: &Bound<'py, PyAny>) -> PyResult<ModuleBorrow<'py>> {
 	use super::actor_critic::PythonCategoricalActorCritic;
-	use super::nlp::{
-		PythonBpeGru, PythonBpeMamba3, PythonBpeMoeTransformer, PythonBpeRnn, PythonBpeTransformer,
-		PythonByteEmpyrealm, PythonByteGru, PythonByteMamba3, PythonByteMoeTransformer, PythonByteRnn,
-		PythonByteTransformer, PythonCharGru, PythonCharMamba3, PythonCharMoeTransformer,
-		PythonCharRnn, PythonCharTransformer,
-	};
 	macro_rules! try_m {
 		($($ty:ty, $variant:ident),+ $(,)?) => {
 			$(if let Ok(b) = model.extract::<PyRef<$ty>>() { return Ok(ModuleBorrow::$variant(b)); })+
 		};
 	}
-	try_m!(
-		PythonCategoricalActorCritic,
-		Actor,
-		PythonCharRnn,
-		CharRnn,
-		PythonCharGru,
-		CharGru,
-		PythonCharTransformer,
-		CharTransformer,
-		PythonCharMoeTransformer,
-		CharMoeTransformer,
-		PythonCharMamba3,
-		CharMamba3,
-		PythonByteRnn,
-		ByteRnn,
-		PythonByteGru,
-		ByteGru,
-		PythonByteTransformer,
-		ByteTransformer,
-		PythonByteMoeTransformer,
-		ByteMoeTransformer,
-		PythonByteMamba3,
-		ByteMamba3,
-		PythonByteEmpyrealm,
-		ByteEmpyrealm,
-		PythonBpeRnn,
-		BpeRnn,
-		PythonBpeGru,
-		BpeGru,
-		PythonBpeTransformer,
-		BpeTransformer,
-		PythonBpeMoeTransformer,
-		BpeMoeTransformer,
-		PythonBpeMamba3,
-		BpeMamba3,
-	);
+	try_m!(PythonCategoricalActorCritic, Actor,);
 	Err(pyo3::exceptions::PyTypeError::new_err(
 		"model must be a recognized Module type",
 	))
@@ -318,7 +245,7 @@ fn extract_module_borrow<'py>(model: &Bound<'py, PyAny>) -> PyResult<ModuleBorro
 
 /// Complete caller-driven categorical PPO lifecycle.
 ///
-/// The engine, model, and optimizer remain Python-owned; the trainer borrows
+/// The runtime, model, and optimizer remain Python-owned; the trainer borrows
 /// them through raw pointers pinned by the struct's field storage. All three
 /// must outlive the `PpoTrainer` instance (i.e. not be garbage-collected while
 /// this object is alive — normal Python reference counting ensures this when
@@ -326,7 +253,7 @@ fn extract_module_borrow<'py>(model: &Bound<'py, PyAny>) -> PyResult<ModuleBorro
 #[pyclass(name = "PpoTrainer", unsendable)]
 pub(crate) struct PythonPpoTrainer {
 	// Python-owned objects keep the underlying Rust values alive.
-	_engine: Py<PythonEngine>,
+	_runtime: Py<PythonRuntime>,
 	_model: Py<PyAny>,
 	_optimizer: Py<PyAny>,
 	// Boxed hook adapters — MUST be before `inner` in field order so they drop
@@ -345,26 +272,26 @@ impl PythonPpoTrainer {
 	/// `model` must be a `CategoricalActorCritic`.
 	/// `optimizer` must be `Sgd`, `Adam`, `AdamW`, or `Muon`.
 	#[new]
-	#[pyo3(signature = (model, optimizer, config, engine=None))]
+	#[pyo3(signature = (model, optimizer, config, runtime=None))]
 	pub fn new(
 		py: Python<'_>,
 		model: Py<PyAny>,
 		optimizer: Py<PyAny>,
 		config: &PythonPpoTrainerConfig,
-		engine: Option<Py<PythonEngine>>,
+		runtime: Option<Py<PythonRuntime>>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve_owned(py, engine)?;
+		let runtime = PythonRuntime::resolve_owned(py, runtime)?;
 		let cfg = config.inner.clone();
 		// Build the trainer while we hold borrows on the Python objects.
 		// The raw pointers remain valid as long as the Py<T> handles are alive,
 		// which they are — they live in the returned struct.
 		let inner = {
-			let eng = engine.bind(py).borrow();
+			let eng = runtime.bind(py).borrow();
 			// SAFETY: &eng.inner lives as long as the Python object pointed to by
-			// `engine`. We store `engine` in the returned struct, so it lives at
+			// `runtime`. We store `runtime` in the returned struct, so it lives at
 			// least as long as `inner`.
-			let engine_ptr: *const oa::Engine = &eng.inner as *const oa::Engine;
-			// Use a type-erased closure return to let Rust unify the 'engine lifetime
+			let runtime_ptr: *const oa::Runtime = &eng.inner as *const oa::Runtime;
+			// Use a type-erased closure return to let Rust unify the 'runtime lifetime
 			// with the raw-pointer based 'static. The trainer's invariant lifetimes
 			// are satisfied by the Py<T> handles stored in the returned struct.
 			let result: oa::ml::PpoTrainer<'static, 'static> = {
@@ -386,14 +313,14 @@ impl PythonPpoTrainer {
 
 				with_optimizer_mut(optimizer.bind(py), |opt| {
 					let opt_ptr: *mut dyn oa::ml::Optimizer = opt as *mut dyn oa::ml::Optimizer;
-					// SAFETY: engine_ptr, m_ptr, opt_ptr are valid for the lifetime of
+					// SAFETY: runtime_ptr, m_ptr, opt_ptr are valid for the lifetime of
 					// the returned struct (Py<T> handles keep them alive).
 					unsafe {
 						std::mem::transmute::<
 							oa::Result<oa::ml::PpoTrainer<'_, '_>>,
 							oa::Result<oa::ml::PpoTrainer<'static, 'static>>,
 						>(oa::ml::PpoTrainer::new(
-							&*engine_ptr,
+							&*runtime_ptr,
 							&*m_ptr,
 							&mut *opt_ptr,
 							cfg.clone(),
@@ -404,7 +331,7 @@ impl PythonPpoTrainer {
 			result
 		};
 		Ok(Self {
-			_engine: engine,
+			_runtime: runtime,
 			_model: model,
 			_optimizer: optimizer,
 			_callbacks: Vec::new(),
@@ -481,7 +408,7 @@ impl PythonPpoTrainer {
 		self.trainer_mut()?.end_collection().map_err(python_error)
 	}
 
-	/// Rewind collection state after a rejected engine transaction.
+	/// Rewind collection state after a rejected runtime transaction.
 	pub fn abort_collection(&mut self) -> PyResult<()> {
 		self.trainer_mut()?.abort_collection().map_err(python_error)
 	}
@@ -553,7 +480,7 @@ impl PythonPpoTrainer {
 /// Stateful DQN training coordinator.
 #[pyclass(name = "DqnTrainer", unsendable)]
 pub(crate) struct PythonDqnTrainer {
-	_engine: Py<PythonEngine>,
+	_runtime: Py<PythonRuntime>,
 	_online: Py<PyAny>,
 	_target: Py<PyAny>,
 	_optimizer: Py<PyAny>,
@@ -570,7 +497,7 @@ impl PythonDqnTrainer {
 	///
 	/// Both `online` and `target` must be recognized Module types.
 	#[new]
-	#[pyo3(signature = (online, target, optimizer, replay, config, engine=None))]
+	#[pyo3(signature = (online, target, optimizer, replay, config, runtime=None))]
 	pub fn new(
 		py: Python<'_>,
 		online: Py<PyAny>,
@@ -578,13 +505,13 @@ impl PythonDqnTrainer {
 		optimizer: Py<PyAny>,
 		replay: Py<PythonReplayBuffer>,
 		config: &PythonDqnTrainerConfig,
-		engine: Option<Py<PythonEngine>>,
+		runtime: Option<Py<PythonRuntime>>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve_owned(py, engine)?;
+		let runtime = PythonRuntime::resolve_owned(py, runtime)?;
 		let cfg = config.inner.clone();
 		let inner = {
-			let eng = engine.bind(py).borrow();
-			let engine_ptr: *const oa::Engine = &eng.inner as *const oa::Engine;
+			let eng = runtime.bind(py).borrow();
+			let runtime_ptr: *const oa::Runtime = &eng.inner as *const oa::Runtime;
 			let replay_ref = replay.bind(py).borrow();
 			let replay_ptr: *const oa::ml::ReplayBuffer =
 				&replay_ref.inner as *const oa::ml::ReplayBuffer;
@@ -600,7 +527,7 @@ impl PythonDqnTrainer {
 							oa::Result<oa::ml::DqnTrainer<'_, '_>>,
 							oa::Result<oa::ml::DqnTrainer<'static, 'static>>,
 						>(oa::ml::DqnTrainer::new(
-							&*engine_ptr,
+							&*runtime_ptr,
 							&*on_ptr,
 							&*tgt_ptr,
 							&mut *opt_ptr,
@@ -613,7 +540,7 @@ impl PythonDqnTrainer {
 			result
 		};
 		Ok(Self {
-			_engine: engine,
+			_runtime: runtime,
 			_online: online,
 			_target: target,
 			_optimizer: optimizer,
@@ -698,7 +625,7 @@ impl PythonDqnTrainer {
 /// Stateful fixed-temperature SAC coordinator.
 #[pyclass(name = "SacTrainer", unsendable)]
 pub(crate) struct PythonSacTrainer {
-	_engine: Py<PythonEngine>,
+	_runtime: Py<PythonRuntime>,
 	_actor: Py<PyAny>,
 	_critic1: Py<PyAny>,
 	_critic2: Py<PyAny>,
@@ -721,7 +648,7 @@ impl PythonSacTrainer {
 	/// Both `actor_optimizer` and `critic_optimizer` must be standard optimizer types.
 	#[new]
 	#[allow(clippy::too_many_arguments)]
-	#[pyo3(signature = (actor, critic1, critic2, target_critic1, target_critic2, actor_optimizer, critic_optimizer, replay, config, engine=None))]
+	#[pyo3(signature = (actor, critic1, critic2, target_critic1, target_critic2, actor_optimizer, critic_optimizer, replay, config, runtime=None))]
 	pub fn new(
 		py: Python<'_>,
 		actor: Py<PyAny>,
@@ -733,13 +660,13 @@ impl PythonSacTrainer {
 		critic_optimizer: Py<PyAny>,
 		replay: Py<PythonReplayBuffer>,
 		config: &PythonSacTrainerConfig,
-		engine: Option<Py<PythonEngine>>,
+		runtime: Option<Py<PythonRuntime>>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve_owned(py, engine)?;
+		let runtime = PythonRuntime::resolve_owned(py, runtime)?;
 		let cfg = config.inner.clone();
 		let inner = {
-			let eng = engine.bind(py).borrow();
-			let engine_ptr: *const oa::Engine = &eng.inner as *const oa::Engine;
+			let eng = runtime.bind(py).borrow();
+			let runtime_ptr: *const oa::Runtime = &eng.inner as *const oa::Runtime;
 			let replay_ref = replay.bind(py).borrow();
 			let replay_ptr: *const oa::ml::ReplayBuffer =
 				&replay_ref.inner as *const oa::ml::ReplayBuffer;
@@ -764,7 +691,7 @@ impl PythonSacTrainer {
 								oa::Result<oa::ml::SacTrainer<'_, '_>>,
 								oa::Result<oa::ml::SacTrainer<'static, 'static>>,
 							>(oa::ml::SacTrainer::new(
-								&*engine_ptr,
+								&*runtime_ptr,
 								&*a_ptr,
 								&*c1_ptr,
 								&*c2_ptr,
@@ -783,7 +710,7 @@ impl PythonSacTrainer {
 			result
 		};
 		Ok(Self {
-			_engine: engine,
+			_runtime: runtime,
 			_actor: actor,
 			_critic1: critic1,
 			_critic2: critic2,

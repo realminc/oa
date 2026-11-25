@@ -23,7 +23,7 @@ pub fn {{name}}({{arguments}}) -> Result<{{return_type}}> {
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} input byte extent overflows usize")))?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 {{allocations}}
 	if rows != 0 {
 		let kernel = KernelId::{{kernel_id}};
@@ -42,7 +42,7 @@ pub fn {{name}}({{arguments}}) -> Result<{{return_type}}> {
 			OpAttribute::UnsignedInteger { name: "width_bits".into(), value: (words * 32) as u64 },
 {{attributes}}
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel, buffers: &buffers, push_constants: &push_constants,
 				workgroups: kernel.linear_workgroups(count),

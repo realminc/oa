@@ -272,7 +272,7 @@ def generate_mldsa_prehash_digest_shader(schema: dict[str, Any], digest: str) ->
 // schema_sha256={digest}
 // FIPS 204 hash selector/OID/extent authority: crypto_pqc.json.
 // No OA C++ HashML-DSA composition donor exists. Reuses checked digest formulas.
-// Private public-data composition; not Engine or secret-operation admission.
+// Private public-data composition; not Runtime or secret-operation admission.
 import mldsa_prehash_layout;
 import sha2_u32;
 import sha2_u32_pair;

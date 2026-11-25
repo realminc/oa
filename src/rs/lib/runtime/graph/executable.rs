@@ -86,7 +86,7 @@ impl QueueAffinity {
 
 /// Queue families a captured plan's node affinities resolve to on its
 /// device. Video roles resolve to enabled video families. Transfer work uses
-/// the compute family when the engine has no dedicated transfer lane.
+/// the compute family when the runtime has no dedicated transfer lane.
 #[derive(Clone, Copy)]
 pub(in crate::runtime) struct QueueFamilies {
 	compute: u32,
@@ -526,7 +526,7 @@ fn resolve_buffers(
 	for binding in bindings {
 		if !binding.storage.belongs_to(device) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} buffers must belong to the submitting engine"
+				"{operation} buffers must belong to the submitting runtime"
 			)));
 		}
 		let buffer = match binding.storage.buffer() {
@@ -563,7 +563,7 @@ impl ExecutableGraph {
 				.map(|arguments| {
 					if !arguments.storage.belongs_to(device) {
 						return Err(Error::invalid_argument(format!(
-							"{operation} indirect dispatch arguments must belong to the submitting engine"
+							"{operation} indirect dispatch arguments must belong to the submitting runtime"
 						)));
 					}
 					arguments

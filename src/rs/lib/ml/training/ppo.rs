@@ -4,7 +4,7 @@
 //! remains caller-owned; this trainer composes one retained rollout, the
 //! Actor-Critic behavior contract, reverse mode, and [`ItRolloutTraining`].
 
-use crate::{DType, Engine, Error, Matrix, Result, matrix};
+use crate::{DType, Error, Matrix, Result, Runtime, matrix};
 
 use super::{
 	ItRolloutTraining, ItRolloutTrainingConfig, Optimizer, RolloutTrainingPhase, TrainingCallback,
@@ -35,17 +35,17 @@ pub struct PpoTrainerMetrics {
 
 /// Complete caller-driven categorical PPO lifecycle.
 ///
-/// The Engine, model, and optimizer remain caller-owned. The trainer owns only
+/// The Runtime, model, and optimizer remain caller-owned. The trainer owns only
 /// its fixed-capacity rollout and lifecycle state. Drop performs no submission,
 /// waiting, or terminal callbacks; call [`PpoTrainer::finish`] explicitly.
 #[must_use]
-pub struct PpoTrainer<'engine, 'hooks> {
-	engine: &'engine Engine,
-	model: &'engine dyn ActorCritic,
+pub struct PpoTrainer<'runtime, 'hooks> {
+	runtime: &'runtime Runtime,
+	model: &'runtime dyn ActorCritic,
 	config: PpoTrainerConfig,
 	observation_elements: usize,
 	rollout: RolloutBuffer,
-	training: ItRolloutTraining<'engine, 'hooks>,
+	training: ItRolloutTraining<'runtime, 'hooks>,
 	metrics: PpoTrainerMetrics,
 	action_index: u64,
 	collection_action_index: u64,
@@ -66,7 +66,7 @@ struct DeferredBootstrap {
 	cursor: Matrix,
 }
 
-impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
+impl<'runtime, 'hooks> PpoTrainer<'runtime, 'hooks> {
 	/// Construct a checked PPO trainer and its retained rollout storage.
 	///
 	/// # Errors
@@ -74,13 +74,13 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 	/// Returns an error for invalid schedule/observation/loss policy, model
 	/// ownership mismatch, rollout allocation, or optimizer ownership failure.
 	pub fn new(
-		engine: &'engine Engine,
-		model: &'engine dyn ActorCritic,
-		optimizer: &'engine mut dyn Optimizer,
+		runtime: &'runtime Runtime,
+		model: &'runtime dyn ActorCritic,
+		optimizer: &'runtime mut dyn Optimizer,
 		config: PpoTrainerConfig,
 	) -> Result<Self> {
-		let training = ItRolloutTraining::new(engine, optimizer, rollout_training_config(&config))?;
-		Self::new_with_training(engine, model, config, training, None)
+		let training = ItRolloutTraining::new(runtime, optimizer, rollout_training_config(&config))?;
+		Self::new_with_training(runtime, model, config, training, None)
 	}
 
 	/// Construct PPO with a reusable bounded AdamW update program.
@@ -89,29 +89,29 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 	/// # Errors
 	/// Returns the errors of `new`; update capture failures are reported by `update`.
 	pub fn new_compiled(
-		engine: &'engine Engine,
-		model: &'engine dyn ActorCritic,
-		optimizer: &'engine mut super::AdamW,
+		runtime: &'runtime Runtime,
+		model: &'runtime dyn ActorCritic,
+		optimizer: &'runtime mut super::AdamW,
 		program: &'hooks mut super::PpoUpdateProgram,
 		config: PpoTrainerConfig,
 	) -> Result<Self> {
 		let training =
-			ItRolloutTraining::new_compiled(engine, optimizer, rollout_training_config(&config))?;
-		Self::new_with_training(engine, model, config, training, Some(program))
+			ItRolloutTraining::new_compiled(runtime, optimizer, rollout_training_config(&config))?;
+		Self::new_with_training(runtime, model, config, training, Some(program))
 	}
 
 	fn new_with_training(
-		engine: &'engine Engine,
-		model: &'engine dyn ActorCritic,
+		runtime: &'runtime Runtime,
+		model: &'runtime dyn ActorCritic,
 		config: PpoTrainerConfig,
-		mut training: ItRolloutTraining<'engine, 'hooks>,
+		mut training: ItRolloutTraining<'runtime, 'hooks>,
 		mut compiled: Option<&'hooks mut super::PpoUpdateProgram>,
 	) -> Result<Self> {
 		let observation_elements = validate_config(&config)?;
 		for parameter in model.all_parameters()? {
-			if !engine.owns_matrix(&parameter.data()) {
+			if !runtime.owns_matrix(&parameter.data()) {
 				return Err(Error::invalid_argument(
-					"PPO model must belong to selected engine",
+					"PPO model must belong to selected runtime",
 				));
 			}
 		}
@@ -134,9 +134,9 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 						"compiled PPO trainer must finish before reuse",
 					));
 				}
-				None => RolloutBuffer::new(engine, expected)?,
+				None => RolloutBuffer::new(runtime, expected)?,
 			},
-			None => RolloutBuffer::new(engine, expected)?,
+			None => RolloutBuffer::new(runtime, expected)?,
 		};
 		if compiled.is_some()
 			|| (config.update_minibatch_size != 0
@@ -154,18 +154,18 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 				.ok_or_else(|| Error::resource_exhausted("PPO next_observation storage overflows usize"))?;
 			Some(DeferredBootstrap {
 				observations: Matrix::allocate(
-					&engine.handle(),
+					&runtime.handle(),
 					vec![rows, observation_elements],
 					count,
 					DType::F32,
 				)?,
-				cursor: Matrix::new_from_slice_on(engine, [2], &[0_u32, 1])?,
+				cursor: Matrix::new_from_slice_on(runtime, [2], &[0_u32, 1])?,
 			})
 		} else {
 			None
 		};
 		Ok(Self {
-			engine,
+			runtime,
 			model,
 			config,
 			observation_elements,
@@ -338,7 +338,7 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 			.checked_add(self.action_index)
 			.ok_or_else(|| Error::resource_exhausted("PPO action seed exhausted"))?;
 		let elapsed = program.collect(
-			self.engine,
+			self.runtime,
 			self.model,
 			environment,
 			&mut self.rollout,
@@ -377,7 +377,7 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 			.checked_add(self.action_index)
 			.ok_or_else(|| Error::resource_exhausted("PPO action seed exhausted"))?;
 		let elapsed = program.collect(
-			self.engine,
+			self.runtime,
 			self.model,
 			environment,
 			&mut self.rollout,
@@ -560,7 +560,7 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 		Ok(())
 	}
 
-	/// Rewind collection state after the enclosing Engine transaction rejects.
+	/// Rewind collection state after the enclosing Runtime transaction rejects.
 	///
 	/// This remains valid after finalization until the first update begins.
 	///
@@ -601,10 +601,10 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 		// begin_update opens the next stable resource frame. This keeps it out
 		// of update timestamps without submitting an unsealed training frame.
 		if self.config.enable_gpu_timing
-			&& self.engine.has_pending_work()
-			&& let Err(error) = self.engine.checkpoint().and_then(|event| event.wait())
+			&& self.runtime.has_pending_work()
+			&& let Err(error) = self.runtime.checkpoint().and_then(|event| event.wait())
 		{
-			self.engine.abort_pending_work();
+			self.runtime.abort_pending_work();
 			return self.training.fail_update(error);
 		}
 		if !self.training.begin_update()? {
@@ -613,7 +613,7 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 		self.collection_abortable = false;
 		let result = self.record_update();
 		if let Err(error) = result {
-			self.engine.abort_pending_work();
+			self.runtime.abort_pending_work();
 			return self.training.fail_update(error);
 		}
 		Ok(true)
@@ -622,7 +622,7 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 	fn record_update(&mut self) -> Result<()> {
 		if let Some(program) = self.compiled.as_deref_mut() {
 			self.metrics = program.update(
-				self.engine,
+				self.runtime,
 				self.model,
 				&self.config,
 				self.rollout.batch(),
@@ -692,16 +692,16 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 			let weighted = matrix::scale(&total_loss, weight as f32)?;
 			tape.backward(&weighted)?;
 			// Exact completion releases the preceding tape's transient storage.
-			// Without this boundary Engine would retain every minibatch at once.
+			// Without this boundary Runtime would retain every minibatch at once.
 			if minibatch == batch {
 				self.training.complete_update(&total_loss)?;
 			} else if self.config.enable_gpu_timing {
-				let elapsed = self.engine.checkpoint_timed()?.device_duration()?;
+				let elapsed = self.runtime.checkpoint_timed()?.device_duration()?;
 				device_prefix = device_prefix
 					.checked_add(elapsed)
 					.ok_or_else(|| Error::resource_exhausted("PPO minibatch device time overflow"))?;
 			} else {
-				self.engine.checkpoint()?.wait()?;
+				self.runtime.checkpoint()?.wait()?;
 			}
 			for (sum, value) in metrics.iter_mut().zip([
 				&total_loss,
@@ -719,7 +719,7 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 			}
 		}
 		if minibatch < batch {
-			let total_loss = Matrix::new_from_f32_on(self.engine, [], &[metrics[0] as f32])?;
+			let total_loss = Matrix::new_from_f32_on(self.runtime, [], &[metrics[0] as f32])?;
 			self
 				.training
 				.complete_update_with_device_prefix(&total_loss, device_prefix)?;
@@ -766,7 +766,7 @@ impl<'engine, 'hooks> PpoTrainer<'engine, 'hooks> {
 	}
 
 	/// Borrow the shared optimizer/update lifecycle.
-	pub const fn training_loop(&self) -> &super::ItTraining<'engine, 'hooks> {
+	pub const fn training_loop(&self) -> &super::ItTraining<'runtime, 'hooks> {
 		self.training.update_loop()
 	}
 

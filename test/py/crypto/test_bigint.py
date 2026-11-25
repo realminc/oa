@@ -41,11 +41,11 @@ class BigIntFixtureTest(unittest.TestCase):
 @unittest.skipUnless("OA_TEST_DEVICE_INDEX" in os.environ, "explicit Vulkan test device required")
 class BigIntVulkanTest(unittest.TestCase):
 	def test_selected_device_arithmetic(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		for case in json.loads(FIXTURE.read_text())["cases"]:
 			shape = [case["rows"], case["words"]]
-			left = oa.Matrix.new_from_u32(shape, case["left"], engine=engine)
-			right = oa.Matrix.new_from_u32(shape, case["right"], engine=engine)
+			left = oa.Matrix.new_from_u32(shape, case["left"], runtime=runtime)
+			right = oa.Matrix.new_from_u32(shape, case["right"], runtime=runtime)
 			for name in ("add", "subtract", "multiply_low", "multiply_wide", "bit_and", "bit_or", "bit_xor", "compare"):
 				op = getattr(oa.crypto, f"bigint_{name}")
 				self.assertEqual(op(left, right).read_u32(), case["results"][name], name)

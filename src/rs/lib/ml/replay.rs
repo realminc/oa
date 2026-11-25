@@ -3,7 +3,7 @@
 use crate::runtime::ComputeDispatch;
 use crate::runtime::SemanticDispatch;
 use crate::runtime::{BufferBinding, KernelId, PushConstant};
-use crate::{DType, Engine, Error, Matrix, OpAttribute, Result};
+use crate::{DType, Error, Matrix, OpAttribute, Result, Runtime};
 
 pub use super::types::ReplayConfig;
 use super::validation::shader_u32;
@@ -123,7 +123,7 @@ impl ReplayBatch {
 /// Circular fixed-capacity owner for off-policy transitions.
 ///
 /// Batched append and deterministic uniform sampling are recorded on the one
-/// owning engine. Cursor and size are host control metadata and never require a
+/// owning runtime. Cursor and size are host control metadata and never require a
 /// Matrix readback.
 pub struct ReplayBuffer {
 	config: ReplayConfig,
@@ -135,13 +135,13 @@ pub struct ReplayBuffer {
 }
 
 impl ReplayBuffer {
-	/// Allocate empty circular replay storage on `engine`.
+	/// Allocate empty circular replay storage on `runtime`.
 	///
 	/// # Errors
 	///
 	/// Returns an error for zero capacity, non-F32/I32 actions, invalid field
 	/// ranks or extents, GPU-index overflow, or allocation failure.
-	pub fn new(engine: &Engine, config: ReplayConfig) -> Result<Self> {
+	pub fn new(runtime: &Runtime, config: ReplayConfig) -> Result<Self> {
 		if config.capacity == 0 || !matches!(config.action_dtype, DType::F32 | DType::I32) {
 			return Err(Error::invalid_argument(
 				"ReplayBuffer requires positive capacity and F32 or I32 actions",
@@ -174,7 +174,7 @@ impl ReplayBuffer {
 		observation_shape.extend_from_slice(&config.observation_shape);
 		let mut action_shape = vec![config.capacity];
 		action_shape.extend_from_slice(&config.action_shape);
-		let handle = engine.handle();
+		let handle = runtime.handle();
 		let storage = ReplayBatch {
 			observation: Matrix::allocate(
 				&handle,
@@ -209,7 +209,7 @@ impl ReplayBuffer {
 	/// # Errors
 	///
 	/// Returns an error unless the batch is nonempty, no larger than capacity,
-	/// all fields match the configured shape/dtype/engine contract, source and
+	/// all fields match the configured shape/dtype/runtime contract, source and
 	/// retained storage do not alias, and GPU recording succeeds.
 	pub fn append(&mut self, transition: &ReplayTransition) -> Result<()> {
 		let batch = append_dispatch(
@@ -343,13 +343,9 @@ fn append_dispatch(
 				"{OPERATION} transition does not match the configured replay schema"
 			)));
 		}
-		if !transition
-			.observation()
-			.engine_handle()
-			.same_as(matrix.engine_handle())
-		{
+		if !transition.observation().runtime().same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{OPERATION} transition fields must belong to one engine"
+				"{OPERATION} transition fields must belong to one runtime"
 			)));
 		}
 	}
@@ -357,11 +353,11 @@ fn append_dispatch(
 	for destination in destinations {
 		if !transition
 			.observation()
-			.engine_handle()
-			.same_as(destination.engine_handle())
+			.runtime()
+			.same_as(destination.runtime())
 		{
 			return Err(Error::invalid_argument(format!(
-				"{OPERATION} transition and replay buffer must belong to one engine"
+				"{OPERATION} transition and replay buffer must belong to one runtime"
 			)));
 		}
 		if fields
@@ -443,11 +439,11 @@ fn append_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -488,20 +484,20 @@ fn sample_dispatch(
 	observation_shape.extend_from_slice(&config.observation_shape);
 	let mut action_shape = vec![batch];
 	action_shape.extend_from_slice(&config.action_shape);
-	let engine = storage.observation().engine_handle();
+	let runtime = storage.observation().runtime();
 	let result = ReplayBatch {
 		observation: Matrix::allocate(
-			engine,
+			runtime,
 			observation_shape.clone(),
 			observation_count,
 			DType::F32,
 		)?,
-		action: Matrix::allocate(engine, action_shape, action_count, config.action_dtype)?,
-		next_observation: Matrix::allocate(engine, observation_shape, observation_count, DType::F32)?,
-		reward: Matrix::allocate(engine, vec![batch], batch, DType::F32)?,
-		terminated: Matrix::allocate(engine, vec![batch], batch, DType::U8)?,
-		truncated: Matrix::allocate(engine, vec![batch], batch, DType::U8)?,
-		index: Matrix::allocate(engine, vec![batch], batch, DType::U32)?,
+		action: Matrix::allocate(runtime, action_shape, action_count, config.action_dtype)?,
+		next_observation: Matrix::allocate(runtime, observation_shape, observation_count, DType::F32)?,
+		reward: Matrix::allocate(runtime, vec![batch], batch, DType::F32)?,
+		terminated: Matrix::allocate(runtime, vec![batch], batch, DType::U8)?,
+		truncated: Matrix::allocate(runtime, vec![batch], batch, DType::U8)?,
+		index: Matrix::allocate(runtime, vec![batch], batch, DType::U32)?,
 	};
 	let inputs = storage_fields(storage);
 	let outputs = [
@@ -577,11 +573,11 @@ fn sample_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,

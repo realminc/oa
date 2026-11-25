@@ -157,7 +157,7 @@ fn run_resample(
 	} = op;
 	let first = require_device_planar(frames[0], operation)?;
 	let format = first.format;
-	let engine = first.planes[0].engine_handle();
+	let runtime = first.planes[0].runtime();
 	let timing = frames[0].timing();
 	let color = frames[0].color_info();
 	let mut planars = Vec::with_capacity(frames.len());
@@ -168,9 +168,9 @@ fn run_resample(
 				"{operation} requires frames of one pixel format"
 			)));
 		}
-		if !planar.planes[0].engine_handle().same_as(engine) {
+		if !planar.planes[0].runtime().same_as(runtime) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} requires frames from one engine"
+				"{operation} requires frames from one runtime"
 			)));
 		}
 		planars.push(planar);
@@ -183,7 +183,7 @@ fn run_resample(
 			.checked_mul(extent.height)
 			.ok_or_else(|| Error::out_of_range(format!("{operation} plane extent overflows")))?;
 		output_planes.push(Matrix::allocate(
-			engine,
+			runtime,
 			vec![extent.height, extent.width],
 			elements,
 			DType::U8,
@@ -294,7 +294,7 @@ fn run_resample(
 			value: params,
 		},
 	];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatch_list,
 		SemanticDispatch {
 			contract: crate::core::operation::video::RESAMPLE,
@@ -593,7 +593,7 @@ pub fn convert_format(frame: &VideoFrame, format: VideoPixelFormat) -> Result<Vi
 			)));
 		}
 	};
-	let engine = planar.planes[0].engine_handle();
+	let runtime = planar.planes[0].runtime();
 	let extents = plane_extents(format, planar.width, planar.height)?;
 	let mut output_planes = Vec::with_capacity(extents.len());
 	for extent in &extents {
@@ -602,7 +602,7 @@ pub fn convert_format(frame: &VideoFrame, format: VideoPixelFormat) -> Result<Vi
 			.checked_mul(extent.height)
 			.ok_or_else(|| Error::out_of_range(format!("{OPERATION} plane extent overflows")))?;
 		output_planes.push(Matrix::allocate(
-			engine,
+			runtime,
 			vec![extent.height, extent.width],
 			elements,
 			DType::U8,
@@ -731,7 +731,7 @@ pub fn convert_format(frame: &VideoFrame, format: VideoPixelFormat) -> Result<Vi
 			value: format!("{format:?}"),
 		},
 	];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatch_list,
 		SemanticDispatch {
 			contract: crate::core::operation::video::RESAMPLE,
@@ -779,7 +779,7 @@ pub fn overlay_boxes(
 ) -> Result<VideoFrame> {
 	const OPERATION: &str = "video::overlay_boxes";
 	let planar = require_device_planar(frame, OPERATION)?;
-	let engine = planar.planes[0].engine_handle();
+	let runtime = planar.planes[0].runtime();
 	for b in boxes {
 		let right = u64::from(b.region.x) + u64::from(b.region.width);
 		let bottom = u64::from(b.region.y) + u64::from(b.region.height);
@@ -802,7 +802,7 @@ pub fn overlay_boxes(
 			.checked_mul(extent.height)
 			.ok_or_else(|| Error::out_of_range(format!("{OPERATION} plane extent overflows")))?;
 		output_planes.push(Matrix::allocate(
-			engine,
+			runtime,
 			vec![extent.height, extent.width],
 			elements,
 			DType::U8,
@@ -958,7 +958,7 @@ pub fn overlay_boxes(
 			value: String::new(),
 		},
 	];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatch_list,
 		SemanticDispatch {
 			contract: crate::core::operation::video::OVERLAY,
@@ -1060,7 +1060,7 @@ fn alloc_output(
 	format: VideoPixelFormat,
 	operation: &str,
 ) -> Result<(Rc<Vec<Matrix>>, Vec<super::plane::PlaneExtent>)> {
-	let engine = planar.planes[0].engine_handle();
+	let runtime = planar.planes[0].runtime();
 	let extents = plane_extents(format, planar.width, planar.height)?;
 	let mut planes = Vec::with_capacity(extents.len());
 	for extent in &extents {
@@ -1069,7 +1069,7 @@ fn alloc_output(
 			.checked_mul(extent.height)
 			.ok_or_else(|| Error::out_of_range(format!("{operation} plane extent overflows")))?;
 		planes.push(Matrix::allocate(
-			engine,
+			runtime,
 			vec![extent.height, extent.width],
 			elements,
 			DType::U8,
@@ -1087,8 +1087,8 @@ fn record_frame(
 	timing: super::VideoFrameTiming,
 	color: super::VideoColorInfo,
 ) -> Result<VideoFrame> {
-	let engine = planar.planes[0].engine_handle();
-	engine.record_split_semantic(dispatch_list, semantic)?;
+	let runtime = planar.planes[0].runtime();
+	runtime.record_split_semantic(dispatch_list, semantic)?;
 	Ok(VideoFrame::from_device_planar(
 		DevicePlanar {
 			planes,
@@ -1120,10 +1120,10 @@ pub fn overlay_mask(frame: &VideoFrame, mask: &VideoFrame, fill: [u8; 3]) -> Res
 			"{OPERATION} requires a mask of matching luma extent"
 		)));
 	}
-	let engine = planar.planes[0].engine_handle();
-	if !mask_planar.planes[0].engine_handle().same_as(engine) {
+	let runtime = planar.planes[0].runtime();
+	if !mask_planar.planes[0].runtime().same_as(runtime) {
 		return Err(Error::invalid_argument(format!(
-			"{OPERATION} requires one engine"
+			"{OPERATION} requires one runtime"
 		)));
 	}
 	let (output_planes, _) = alloc_output(planar, planar.format, OPERATION)?;
@@ -1234,7 +1234,7 @@ pub fn overlay_mask(frame: &VideoFrame, mask: &VideoFrame, fill: [u8; 3]) -> Res
 /// # Errors
 ///
 /// Returns an error if the frame is not device-planar, if the score matrix
-/// is not F32 or does not match the luma extent, if the engines differ, or
+/// is not F32 or does not match the luma extent, if the runtimes differ, or
 /// if the region arithmetic overflows.
 pub fn overlay_scores(
 	frame: &VideoFrame,
@@ -1258,10 +1258,10 @@ pub fn overlay_scores(
 			"{OPERATION} requires exactly width * height score elements"
 		)));
 	}
-	let engine = planar.planes[0].engine_handle();
-	if !scores.engine_handle().same_as(engine) {
+	let runtime = planar.planes[0].runtime();
+	if !scores.runtime().same_as(runtime) {
 		return Err(Error::invalid_argument(format!(
-			"{OPERATION} requires one engine"
+			"{OPERATION} requires one runtime"
 		)));
 	}
 	let (output_planes, _) = alloc_output(planar, planar.format, OPERATION)?;
@@ -1360,7 +1360,7 @@ pub fn overlay_scores(
 
 /// Alpha-composite `front` over `back` plane-by-plane; `alpha` is 0-255.
 ///
-/// Both frames must share format, extent, and engine. Each component blends
+/// Both frames must share format, extent, and runtime. Each component blends
 /// with rounding `(front*a + back*(255-a) + 127) / 255`.
 ///
 /// # Errors
@@ -1379,10 +1379,10 @@ pub fn composite(back: &VideoFrame, front: &VideoFrame, alpha: u8) -> Result<Vid
 			"{OPERATION} requires matching format and extent"
 		)));
 	}
-	let engine = planar.planes[0].engine_handle();
-	if !front_planar.planes[0].engine_handle().same_as(engine) {
+	let runtime = planar.planes[0].runtime();
+	if !front_planar.planes[0].runtime().same_as(runtime) {
 		return Err(Error::invalid_argument(format!(
-			"{OPERATION} requires one engine"
+			"{OPERATION} requires one runtime"
 		)));
 	}
 	let (output_planes, _) = alloc_output(planar, planar.format, OPERATION)?;

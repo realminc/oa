@@ -1,11 +1,11 @@
 //! Adam optimizer.
 
 use crate::ml::Parameter;
-use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::ml::validation::{shader_u32, validate_f32_same_runtime};
 use crate::runtime::ComputeDispatch;
 use crate::runtime::SemanticDispatch;
 use crate::runtime::{BufferBinding, KernelId, PushConstant};
-use crate::{DType, Engine, Error, Matrix, OpAttribute, Result};
+use crate::{DType, Error, Matrix, OpAttribute, Result, Runtime};
 
 use super::optimizer::{
 	MomentParameterState, Optimizer, OptimizerCheckpoint, OptimizerRestore, checkpoint_capability,
@@ -28,7 +28,7 @@ fn adam(
 	scalars: AdamScalars,
 ) -> Result<()> {
 	const OPERATION: &str = crate::core::operation::ml::ADAM.name();
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		OPERATION,
 		&[parameter, gradient, first_moment, second_moment],
 	)?;
@@ -97,11 +97,11 @@ fn adam(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -139,7 +139,7 @@ impl Adam {
 	/// # Errors
 	///
 	/// Returns an error for non-finite or out-of-range scalars, an empty or
-	/// duplicate parameter set, mixed-engine ownership, or moment allocation.
+	/// duplicate parameter set, mixed-runtime ownership, or moment allocation.
 	pub fn new_with_hyperparameters(
 		parameters: impl IntoIterator<Item = Parameter>,
 		learning_rate: f32,
@@ -179,26 +179,26 @@ impl Adam {
 				));
 			}
 		}
-		let engine = parameters[0].data().engine_handle().clone();
+		let runtime = parameters[0].data().runtime().clone();
 		if parameters
 			.iter()
-			.any(|parameter| !engine.same_as(parameter.data().engine_handle()))
+			.any(|parameter| !runtime.same_as(parameter.data().runtime()))
 		{
 			return Err(Error::invalid_argument(
-				"Adam parameters must belong to one engine",
+				"Adam parameters must belong to one runtime",
 			));
 		}
 		let mut states = Vec::with_capacity(parameters.len());
 		for parameter in parameters {
 			let data = parameter.data();
 			let first_moment = Matrix::allocate(
-				data.engine_handle(),
+				data.runtime(),
 				data.shape().to_vec(),
 				data.num_elements(),
 				DType::F32,
 			)?;
 			let second_moment = Matrix::allocate(
-				data.engine_handle(),
+				data.runtime(),
 				data.shape().to_vec(),
 				data.num_elements(),
 				DType::F32,
@@ -298,8 +298,8 @@ impl Adam {
 		self.step
 	}
 
-	pub(super) fn belongs_to_engine(&self, engine: &Engine) -> bool {
-		engine.same_as_handle(self.parameters[0].parameter.data().engine_handle())
+	pub(super) fn belongs_to_runtime(&self, runtime: &Runtime) -> bool {
+		runtime.same_as_handle(self.parameters[0].parameter.data().runtime())
 	}
 
 	pub(super) fn checkpoint(&self) -> Result<OptimizerCheckpoint> {
@@ -355,7 +355,7 @@ impl Adam {
 			for moment in [first, second] {
 				if moment.shape() != data.shape()
 					|| moment.dtype() != DType::F32
-					|| !moment.engine_handle().same_as(data.engine_handle())
+					|| !moment.runtime().same_as(data.runtime())
 				{
 					return Err(Error::invalid_argument(
 						"Adam checkpoint moment contract mismatch",
@@ -407,8 +407,8 @@ impl Optimizer for Adam {
 		u64::from(Self::step_count(self))
 	}
 
-	fn belongs_to(&self, engine: &Engine) -> bool {
-		self.belongs_to_engine(engine)
+	fn belongs_to(&self, runtime: &Runtime) -> bool {
+		self.belongs_to_runtime(runtime)
 	}
 }
 

@@ -3,7 +3,7 @@
 //!
 //! This namespace intentionally exposes no placeholder renderer or presenter.
 //! Stateful rendering and presentation types are admitted only with explicit
-//! engine ownership, synchronization, failure, and lifecycle behavior.
+//! runtime ownership, synchronization, failure, and lifecycle behavior.
 
 mod camera;
 mod material;

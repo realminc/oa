@@ -9,15 +9,15 @@ import oa
 @unittest.skipUnless("OA_TEST_DEVICE_INDEX" in os.environ, "explicit software Vulkan qualification required")
 class PqcDeviceVulkanTest(unittest.TestCase):
 	def test_mldsa_public_routes_and_consumed_key(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		message_bytes, context_bytes = b"public input", b"OA"
-		message = oa.Matrix.new_from_u8([len(message_bytes)], list(message_bytes), engine=engine)
-		context = oa.Matrix.new_from_u8([len(context_bytes)], list(context_bytes), engine=engine)
-		combined = oa.Matrix.new_from_u8([len(message_bytes) + len(context_bytes)], list(message_bytes + context_bytes), engine=engine)
-		offsets = oa.Matrix.new_from_u32([1], [0], engine=engine)
-		lengths = oa.Matrix.new_from_u32([1], [len(message_bytes)], engine=engine)
+		message = oa.Matrix.new_from_u8([len(message_bytes)], list(message_bytes), runtime=runtime)
+		context = oa.Matrix.new_from_u8([len(context_bytes)], list(context_bytes), runtime=runtime)
+		combined = oa.Matrix.new_from_u8([len(message_bytes) + len(context_bytes)], list(message_bytes + context_bytes), runtime=runtime)
+		offsets = oa.Matrix.new_from_u32([1], [0], runtime=runtime)
+		lengths = oa.Matrix.new_from_u32([1], [len(message_bytes)], runtime=runtime)
 		for parameter, public_size, signature_size in ((44, 1312, 2420), (65, 1952, 3309), (87, 2592, 4627)):
-			key = oa.crypto.device_mldsa_keygen(parameter, engine=engine)
+			key = oa.crypto.device_mldsa_keygen(parameter, runtime=runtime)
 			public = key.public_key
 			self.assertEqual(len(public.read_u8()), public_size)
 			first = oa.crypto.device_mldsa_sign(key, message, context, True)
@@ -34,7 +34,7 @@ class PqcDeviceVulkanTest(unittest.TestCase):
 			self.assertEqual(flags.read_u32(), [1])
 			for name, digest_bytes in (("SHA2-256", hashlib.sha256(message_bytes).digest()),
 				("SHAKE-256", hashlib.shake_256(message_bytes).digest(64))):
-				digest = oa.Matrix.new_from_u8([len(digest_bytes)], list(digest_bytes), engine=engine)
+				digest = oa.Matrix.new_from_u8([len(digest_bytes)], list(digest_bytes), runtime=runtime)
 				hashed = oa.crypto.device_mldsa_sign_hash_message(key, message, context, name, True)
 				prehashed = oa.crypto.device_mldsa_sign_prehashed(key, digest, context, name, True)
 				hashed.wait_cleanup()
@@ -51,9 +51,9 @@ class PqcDeviceVulkanTest(unittest.TestCase):
 				oa.crypto.device_mldsa_sign(key, message, context)
 
 	def test_mlkem_public_lifecycle_and_no_secret_export(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		for parameter, public_size, ciphertext_size in ((512, 800, 768), (768, 1184, 1088), (1024, 1568, 1568)):
-			key = oa.crypto.device_mlkem_keygen(parameter, engine=engine)
+			key = oa.crypto.device_mlkem_keygen(parameter, runtime=runtime)
 			encapsulation = oa.crypto.device_mlkem_encapsulate(key.public_key, parameter)
 			decapsulation = oa.crypto.device_mlkem_decapsulate(key, encapsulation.ciphertext)
 			key.erase().wait()
@@ -69,7 +69,7 @@ class PqcDeviceVulkanTest(unittest.TestCase):
 					secret.erase()
 				with self.assertRaises(Exception):
 					operation.take_shared_secret()
-			bad_key = oa.Matrix.new_from_u8([public_size], [255] * public_size, engine=engine)
+			bad_key = oa.Matrix.new_from_u8([public_size], [255] * public_size, runtime=runtime)
 			invalid = oa.crypto.device_mlkem_encapsulate(bad_key, parameter)
 			self.assertEqual(invalid.status.read_u32(), [0])
 			self.assertEqual(invalid.ciphertext.read_u8(), [0] * ciphertext_size)

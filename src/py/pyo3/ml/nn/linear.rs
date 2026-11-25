@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::super::autograd::PythonParameter;
 
@@ -17,7 +17,7 @@ impl PythonLinear {
 	/// Accepts `in_features`/`out_features` as aliases for
 	/// `input_features`/`output_features`.
 	#[new]
-	#[pyo3(signature = (input_features=None, output_features=None, seed=0, bias=true, in_features=None, out_features=None, engine=None))]
+	#[pyo3(signature = (input_features=None, output_features=None, seed=0, bias=true, in_features=None, out_features=None, runtime=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		input_features: Option<usize>,
@@ -26,16 +26,16 @@ impl PythonLinear {
 		bias: bool,
 		in_features: Option<usize>,
 		out_features: Option<usize>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		let in_f = input_features.or(in_features).ok_or_else(|| {
 			pyo3::exceptions::PyTypeError::new_err("Linear requires in_features or input_features")
 		})?;
 		let out_f = output_features.or(out_features).ok_or_else(|| {
 			pyo3::exceptions::PyTypeError::new_err("Linear requires out_features or output_features")
 		})?;
-		oa::ml::nn::Linear::new_with_seed_and_bias_on(&engine, in_f, out_f, bias, seed)
+		oa::ml::nn::Linear::new_with_seed_and_bias_on(&runtime, in_f, out_f, bias, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

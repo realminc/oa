@@ -4,7 +4,7 @@
 
 pub use super::types::OhlcvWindowConfig;
 use super::{DataFrame, DataFrameView, Dataset, Sample, SeriesView};
-use crate::{Engine, Error, Matrix, Result};
+use crate::{Error, Matrix, Result, Runtime};
 use std::ops::Range;
 
 /// Unit of exact signed Unix timestamps; negative values precede the epoch.
@@ -225,21 +225,21 @@ impl<'a> OhlcvWindows<'a> {
 	}
 }
 
-/// Engine-borrowing adapter for the existing Dataset/DataLoader contract.
+/// Runtime-borrowing adapter for the existing Dataset/DataLoader contract.
 ///
 /// Host windows borrow columns. `get_sample` packs row-major FP32 [lookback, 5]
 /// input and `horizon` future-close labels and uploads each once. Timestamps
 /// remain metadata, never float features. No normalization or readback occurs.
 /// Host windowing is zero-copy; packing and device upload are explicit copies.
 pub struct OhlcvDataset<'a> {
-	engine: &'a Engine,
+	runtime: &'a Runtime,
 	windows: OhlcvWindows<'a>,
 }
 
 impl<'a> OhlcvDataset<'a> {
-	/// Attach an existing checked host window set to a borrowed Engine.
-	pub fn new(engine: &'a Engine, windows: OhlcvWindows<'a>) -> Self {
-		Self { engine, windows }
+	/// Attach an existing checked host window set to a borrowed Runtime.
+	pub fn new(runtime: &'a Runtime, windows: OhlcvWindows<'a>) -> Self {
+		Self { runtime, windows }
 	}
 
 	/// Borrow the host windows without triggering device work.
@@ -268,7 +268,7 @@ impl Dataset for OhlcvDataset<'_> {
 				values.push(value);
 			}
 		}
-		Matrix::new_from_slice_on(self.engine, vec![input.len(), 5], &values)
+		Matrix::new_from_slice_on(self.runtime, vec![input.len(), 5], &values)
 	}
 
 	fn get_sample(&self, index: i64) -> Result<Sample> {
@@ -287,7 +287,7 @@ impl Dataset for OhlcvDataset<'_> {
 			labels.push(value);
 		}
 		let x = self.get_item(index)?;
-		let y = Matrix::new_from_slice_on(self.engine, vec![future.len()], &labels)?;
+		let y = Matrix::new_from_slice_on(self.runtime, vec![future.len()], &labels)?;
 		Ok(Sample::new_with_label(x, y))
 	}
 }

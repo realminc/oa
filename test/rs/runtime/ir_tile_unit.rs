@@ -63,13 +63,13 @@ fn lowering_rejects_empty_program() {
 }
 
 fn gemm() -> BlockProgram {
-	// Donor geometry: src/slang/matrix/blas/mat_mul_nt_tiled.gen.slang
+	// Donor geometry: src/slang/matrix/blas/matmul_nt_tiled.gen.slang
 	// (BM=64, BN=64, BK=16, TM=4, TN=4, LOAD_WIDTH=4, 256 lanes).
-	BlockProgram::mat_mul_nt(64, 64, 16, 4, 4, 4).unwrap()
+	BlockProgram::matmul(64, 64, 16, 4, 4, 4).unwrap()
 }
 
 #[test]
-fn mat_mul_nt_template_lowers_to_tiled_gemm() {
+fn matmul_nt_template_lowers_to_tiled_gemm() {
 	let program = gemm();
 	assert_eq!(program.bindings.len(), 3);
 	assert_eq!(program.shape.lanes, 256);
@@ -100,7 +100,7 @@ fn mat_mul_nt_template_lowers_to_tiled_gemm() {
 }
 
 #[test]
-fn mat_mul_nt_emission_is_deterministic_and_masked() {
+fn matmul_nt_emission_is_deterministic_and_masked() {
 	let program = gemm();
 	let source = program.slang_source(true).unwrap();
 	assert!(source.contains("groupshared float shared0[64u * 17u]"));
@@ -125,7 +125,7 @@ fn mat_mul_nt_emission_is_deterministic_and_masked() {
 }
 
 #[test]
-fn mat_mul_nt_rejects_invalid_geometry() {
+fn matmul_nt_rejects_invalid_geometry() {
 	for args in [
 		(64, 64, 18, 4, 4, 4),   // staging width does not divide tile_k
 		(64, 64, 16, 3, 4, 4),   // fragment rows do not divide tile_rows
@@ -134,7 +134,7 @@ fn mat_mul_nt_rejects_invalid_geometry() {
 		(64, 64, 16, 4, 4, 8),   // vec over the 16B load ceiling
 	] {
 		assert!(
-			BlockProgram::mat_mul_nt(args.0, args.1, args.2, args.3, args.4, args.5).is_err(),
+			BlockProgram::matmul(args.0, args.1, args.2, args.3, args.4, args.5).is_err(),
 			"accepts invalid geometry {args:?}"
 		);
 	}
@@ -191,8 +191,8 @@ fn mat_mul_nt_rejects_invalid_geometry() {
 }
 
 #[test]
-fn mat_mul_nt_bias_templates_emit_donor_epilogues() {
-	// Donor geometry and ABI: src/slang/matrix/blas/mat_mul_nt_bias*.gen.slang
+fn matmul_nt_bias_templates_emit_donor_epilogues() {
+	// Donor geometry and ABI: src/slang/matrix/blas/matmul_nt_bias*.gen.slang
 	// — `[left, right, bias, output]` bindings, `[m, n, k]` push scalars,
 	// and a fixed inline activation on the single output store.
 	for (act, store) in [
@@ -207,7 +207,7 @@ fn mat_mul_nt_bias_templates_emit_donor_epilogues() {
 			"asuint(linear_value * (1.0f / (1.0f + exp(-linear_value))))",
 		),
 	] {
-		let program = BlockProgram::mat_mul_nt_bias(64, 64, 16, 4, 4, 4, act).expect("donor geometry");
+		let program = BlockProgram::matmul_nt_bias(64, 64, 16, 4, 4, 4, act).expect("donor geometry");
 		assert_eq!(program.bindings.len(), 4);
 		assert_eq!(program.push_scalars, ["m", "n", "k"]);
 		assert!(matches!(

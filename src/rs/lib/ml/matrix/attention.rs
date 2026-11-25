@@ -8,7 +8,7 @@ use crate::{
 
 use crate::ml::autograd;
 
-use super::super::validation::{shader_u32, validate_f32_same_engine};
+use super::super::validation::{shader_u32, validate_f32_same_runtime};
 
 // ── geometry helpers ─────────────────────────────────────────────────────────
 
@@ -100,7 +100,7 @@ impl BmmGeometry {
 				right.shape()
 			)));
 		}
-		validate_f32_same_engine(operation, &[left, right])?;
+		validate_f32_same_runtime(operation, &[left, right])?;
 		let output_count = left_batch
 			.checked_mul(rows)
 			.and_then(|count| count.checked_mul(columns))
@@ -136,7 +136,7 @@ impl BmmGeometry {
 ///
 /// # Errors
 ///
-/// Returns an error unless inputs are compatible nonempty same-engine F32
+/// Returns an error unless inputs are compatible nonempty same-runtime F32
 /// matrices, shape arithmetic fits the shader ABI, or runtime recording fails.
 pub fn bmm(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 	let output = bmm_dispatch(
@@ -157,7 +157,7 @@ pub fn bmm(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 ///
 /// # Errors
 ///
-/// Returns an error unless inputs are compatible nonempty same-engine F32
+/// Returns an error unless inputs are compatible nonempty same-runtime F32
 /// matrices, shape arithmetic fits the shader ABI, or runtime recording fails.
 pub fn bmm_nt(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 	let output = bmm_dispatch(
@@ -178,7 +178,7 @@ pub fn bmm_nt(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 ///
 /// # Errors
 ///
-/// Returns an error unless inputs are compatible nonempty same-engine F32
+/// Returns an error unless inputs are compatible nonempty same-runtime F32
 /// matrices, shape arithmetic fits the shader ABI, or runtime recording fails.
 pub fn bmm_tn(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 	let output = bmm_dispatch(
@@ -242,7 +242,7 @@ pub fn merge_heads(
 /// # Errors
 ///
 /// Returns an error unless both values are equal-shape, nonempty,
-/// same-engine F32 matrices, or runtime recording fails.
+/// same-runtime F32 matrices, or runtime recording fails.
 pub fn softmax_scaled_masked(scores: &Matrix, mask: &Matrix, scale: f32) -> Result<Matrix> {
 	let output = softmax_scaled_masked_dispatch(scores, mask, scale)?;
 	autograd::record_softmax_scaled_masked(scores, &output, scale)?;
@@ -256,7 +256,7 @@ pub fn softmax_scaled_masked(scores: &Matrix, mask: &Matrix, scale: f32) -> Resu
 ///
 /// # Errors
 ///
-/// Returns an error unless Q, K, and V are equal nonempty same-engine F32
+/// Returns an error unless Q, K, and V are equal nonempty same-runtime F32
 /// rank-three matrices, the optional mask matches their flattened score rows,
 /// or runtime recording fails.
 pub fn scaled_dot_product_attention(
@@ -281,7 +281,7 @@ pub fn scaled_dot_product_attention(
 ///
 /// # Errors
 ///
-/// Returns an error unless Q, K, and V are equal nonempty same-engine F32
+/// Returns an error unless Q, K, and V are equal nonempty same-runtime F32
 /// matrices, the sequence length is at most 1024, or runtime recording fails.
 pub fn flash_attention_causal(
 	query: &Matrix,
@@ -298,7 +298,7 @@ pub fn flash_attention_causal(
 ///
 /// # Errors
 ///
-/// Returns an error unless Q, K, and V are equal nonempty same-engine F32
+/// Returns an error unless Q, K, and V are equal nonempty same-runtime F32
 /// matrices, their row count is divisible by `sequence_length`, their width is
 /// divisible by `num_heads`, or runtime recording fails.
 pub fn scaled_dot_product_attention_causal(
@@ -346,7 +346,7 @@ pub(in crate::ml) fn softmax_scaled_masked_backward(
 	const OPERATION: &str = "oa::matrix::softmaxScaledMasked_backward";
 	let (rows, columns) = softmax_geometry(forward_output, output_gradient, OPERATION)?;
 	let input_gradient = Matrix::allocate(
-		forward_output.engine_handle(),
+		forward_output.runtime(),
 		forward_output.shape().to_vec(),
 		forward_output.element_count(),
 		DType::F32,
@@ -382,11 +382,11 @@ pub(in crate::ml) fn softmax_scaled_masked_backward(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -429,7 +429,7 @@ pub(in crate::ml) fn flash_attention_causal_backward(
 			"{OPERATION} received incompatible Flash provider state"
 		)));
 	}
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		OPERATION,
 		&[query, key, value, output, log_sum_exp, output_gradient],
 	)?;
@@ -440,19 +440,19 @@ pub(in crate::ml) fn flash_attention_causal_backward(
 		.checked_mul(sequence_length_u32)
 		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} row count exceeds u32")))?;
 	let query_gradient = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		query.shape().to_vec(),
 		query.element_count(),
 		DType::F32,
 	)?;
 	let key_gradient = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		key.shape().to_vec(),
 		key.element_count(),
 		DType::F32,
 	)?;
 	let value_gradient = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		value.shape().to_vec(),
 		value.element_count(),
 		DType::F32,
@@ -517,7 +517,7 @@ pub(in crate::ml) fn flash_attention_causal_backward(
 			value: true,
 		},
 	];
-	query.engine_handle().record_split_optional_semantic(
+	query.runtime().record_split_optional_semantic(
 		&dispatches,
 		OptionalSemanticDispatch {
 			contract: crate::core::operation::ml::SCALED_DOT_PRODUCT_ATTENTION_BACKWARD,
@@ -559,7 +559,7 @@ pub(in crate::ml) fn split_heads_dispatch(
 			"{OPERATION} requires nonzero B, S, H, [B*S, D] input, and D divisible by H"
 		)));
 	}
-	validate_f32_same_engine(OPERATION, &[input])?;
+	validate_f32_same_runtime(OPERATION, &[input])?;
 	let head_dim = model_width / num_heads;
 	if num_heads == 1 {
 		return Ok((input.reshape([batch, sequence_length, head_dim])?, false));
@@ -575,7 +575,7 @@ pub(in crate::ml) fn split_heads_dispatch(
 		element_count: shader_u32(input.element_count(), "element count", OPERATION)?,
 	};
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![batch_heads, sequence_length, head_dim],
 		input.element_count(),
 		DType::F32,
@@ -612,7 +612,7 @@ pub(in crate::ml) fn merge_heads_dispatch(
 			"{OPERATION} requires nonzero B, S, H and input [B*H, S, D/H]"
 		)));
 	}
-	validate_f32_same_engine(OPERATION, &[input])?;
+	validate_f32_same_runtime(OPERATION, &[input])?;
 	let model_width = num_heads
 		.checked_mul(*head_dim)
 		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} model width overflows usize")))?;
@@ -630,7 +630,7 @@ pub(in crate::ml) fn merge_heads_dispatch(
 		element_count: shader_u32(input.element_count(), "element count", OPERATION)?,
 	};
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![output_rows, model_width],
 		input.element_count(),
 		DType::F32,
@@ -651,7 +651,7 @@ fn bmm_dispatch(
 ) -> Result<Matrix> {
 	let geometry = BmmGeometry::resolve(left, right, layout, operation)?;
 	let output = Matrix::allocate(
-		left.engine_handle(),
+		left.runtime(),
 		vec![
 			geometry.batch as usize,
 			geometry.rows as usize,
@@ -684,11 +684,11 @@ fn bmm_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -725,7 +725,7 @@ fn scaled_dot_product_attention_dispatch(
 			"{OPERATION} requires equal nonempty Q/K/V [batch_heads, sequence, head_dim]"
 		)));
 	}
-	validate_f32_same_engine(OPERATION, &[query, key, value])?;
+	validate_f32_same_runtime(OPERATION, &[query, key, value])?;
 	let mask_rows = batch_heads.checked_mul(*sequence_length).ok_or_else(|| {
 		Error::invalid_argument(format!("{OPERATION} mask row count overflows usize"))
 	})?;
@@ -736,25 +736,25 @@ fn scaled_dot_product_attention_dispatch(
 				mask.shape()
 			)));
 		}
-		validate_f32_same_engine(OPERATION, &[query, mask])?;
+		validate_f32_same_runtime(OPERATION, &[query, mask])?;
 	}
 
 	let score_geometry = BmmGeometry::resolve(query, key, BmmLayout::Nt, OPERATION)?;
 	let scores = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		vec![*batch_heads, *sequence_length, *sequence_length],
 		score_geometry.output_count as usize,
 		DType::F32,
 	)?;
 	let probabilities = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		scores.shape().to_vec(),
 		scores.element_count(),
 		DType::F32,
 	)?;
 	let output_geometry = BmmGeometry::resolve(&probabilities, value, BmmLayout::Nn, OPERATION)?;
 	let output = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		query.shape().to_vec(),
 		output_geometry.output_count as usize,
 		DType::F32,
@@ -837,7 +837,7 @@ fn scaled_dot_product_attention_dispatch(
 			value: causal,
 		},
 	];
-	query.engine_handle().record_split_optional_semantic(
+	query.runtime().record_split_optional_semantic(
 		&dispatches,
 		OptionalSemanticDispatch {
 			contract: crate::core::operation::ml::SCALED_DOT_PRODUCT_ATTENTION,
@@ -872,7 +872,7 @@ fn flash_attention_causal_dispatch(
 			"{OPERATION} Flash provider requires equal nonempty Q/K/V and sequence length <= 1024"
 		)));
 	}
-	validate_f32_same_engine(OPERATION, &[query, key, value])?;
+	validate_f32_same_runtime(OPERATION, &[query, key, value])?;
 	let batch_heads_u32 = shader_u32(*batch_heads, "batch-head count", OPERATION)?;
 	let sequence_length_u32 = shader_u32(*sequence_length, "sequence length", OPERATION)?;
 	let head_dim_u32 = shader_u32(*head_dim, "head dimension", OPERATION)?;
@@ -880,13 +880,13 @@ fn flash_attention_causal_dispatch(
 		.checked_mul(sequence_length_u32)
 		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} row count exceeds u32")))?;
 	let output = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		query.shape().to_vec(),
 		query.element_count(),
 		DType::F32,
 	)?;
 	let log_sum_exp = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		vec![*batch_heads, *sequence_length],
 		usize::try_from(rows)
 			.map_err(|_| Error::invalid_argument(format!("{OPERATION} row count exceeds usize")))?,
@@ -917,7 +917,7 @@ fn flash_attention_causal_dispatch(
 	];
 	let semantic_inputs = [Some(query), Some(key), Some(value), None];
 	let semantic_outputs = [&output, &log_sum_exp];
-	query.engine_handle().record_optional_semantic(
+	query.runtime().record_optional_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlFlashAttentionCausalF32,
 			buffers: &buffers,
@@ -939,7 +939,7 @@ fn softmax_scaled_masked_dispatch(scores: &Matrix, mask: &Matrix, scale: f32) ->
 	const OPERATION: &str = "oa::FnMatrix::softmaxScaledMasked";
 	let (rows, columns) = softmax_geometry(scores, mask, OPERATION)?;
 	let output = Matrix::allocate(
-		scores.engine_handle(),
+		scores.runtime(),
 		scores.shape().to_vec(),
 		scores.element_count(),
 		DType::F32,
@@ -980,11 +980,11 @@ fn softmax_scaled_masked_dispatch(scores: &Matrix, mask: &Matrix, scale: f32) ->
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -1026,11 +1026,11 @@ fn record_head_transform(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -1050,7 +1050,7 @@ fn softmax_geometry(input: &Matrix, other: &Matrix, operation: &'static str) -> 
 			other.shape()
 		)));
 	}
-	validate_f32_same_engine(operation, &[input, other])?;
+	validate_f32_same_runtime(operation, &[input, other])?;
 	let (rows, columns) = match input.shape() {
 		[rows, columns] => (*rows, *columns),
 		_ => (1, input.element_count()),
@@ -1090,7 +1090,7 @@ fn select_bmm_provider(
 ///
 /// # Errors
 ///
-/// Returns an error for unequal/empty shapes, non-F32 or mixed-engine values,
+/// Returns an error for unequal/empty shapes, non-F32 or mixed-runtime values,
 /// head dimension above 64, nonpositive/nonfinite epsilon, shader ABI overflow,
 /// allocation or recording failure.
 pub fn causal_linear_attention(
@@ -1101,13 +1101,13 @@ pub fn causal_linear_attention(
 ) -> Result<Matrix> {
 	let (heads, sequence, dimension) = linear_attention_geometry(query, key, value, epsilon)?;
 	let output = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		query.shape().to_vec(),
 		query.element_count(),
 		DType::F32,
 	)?;
 	let denominator = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		vec![query.shape()[0], query.shape()[1]],
 		query.element_count() / query.shape()[2],
 		DType::F32,
@@ -1129,7 +1129,7 @@ pub fn causal_linear_attention(
 		name: "epsilon".into(),
 		value: f64::from(epsilon),
 	}];
-	query.engine_handle().record_semantic(
+	query.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlCausalLinearAttentionF32,
 			buffers: &buffers,
@@ -1172,7 +1172,7 @@ fn linear_attention_geometry(
 			"linear attention requires equal nonempty Q/K/V, Dh <= 64 and positive finite epsilon",
 		));
 	}
-	validate_f32_same_engine(OP, &[query, key, value])?;
+	validate_f32_same_runtime(OP, &[query, key, value])?;
 	shader_u32(query.element_count(), "element count", OP)?;
 	let dimension = shader_u32(*dimension, "head dimension", OP)?;
 	Ok((
@@ -1200,24 +1200,24 @@ pub(in crate::ml) fn causal_linear_attention_backward(
 			"linear attention backward saved-state geometry mismatch",
 		));
 	}
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		"linear attention backward",
 		&[query, output, denominator, output_gradient],
 	)?;
 	let dq = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		query.shape().to_vec(),
 		query.element_count(),
 		DType::F32,
 	)?;
 	let dk = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		query.shape().to_vec(),
 		query.element_count(),
 		DType::F32,
 	)?;
 	let dv = Matrix::allocate(
-		query.engine_handle(),
+		query.runtime(),
 		query.shape().to_vec(),
 		query.element_count(),
 		DType::F32,
@@ -1267,7 +1267,7 @@ pub(in crate::ml) fn causal_linear_attention_backward(
 		name: "epsilon".into(),
 		value: f64::from(epsilon),
 	}];
-	query.engine_handle().record_split_semantic(
+	query.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: crate::core::operation::ml::CAUSAL_LINEAR_ATTENTION_BACKWARD,

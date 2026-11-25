@@ -1,14 +1,14 @@
-use oa::{Engine, Presenter, SdlWindow};
+use oa::{Presenter, Runtime, SdlWindow};
 
 #[test]
 #[ignore = "requires a hardware Vulkan graphics device and live SDL display"]
 fn presenter_blits_a_native_texture_through_a_real_swapchain() -> oa::Result<()> {
 	let window = SdlWindow::new("OA Presenter qualification", 64, 64)?;
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.instance_extensions(window.required_instance_extensions()?)
 		.build()?;
-	Engine::set_default(engine.clone());
-	let mut presenter = Presenter::new(&engine, &window)?;
+	Runtime::set_default(runtime.clone());
+	let mut presenter = Presenter::new(&runtime, &window)?;
 
 	assert!(presenter.has_graphics());
 	assert!(presenter.has_present());
@@ -35,12 +35,12 @@ fn presenter_blits_a_native_texture_through_a_real_swapchain() -> oa::Result<()>
 #[ignore = "requires a hardware Vulkan graphics device and live SDL display"]
 fn presenter_displays_a_renderer_frame() -> oa::Result<()> {
 	let window = SdlWindow::new("OA 3D viewer qualification", 64, 64)?;
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.instance_extensions(window.required_instance_extensions()?)
 		.build()?;
-	Engine::set_default(engine.clone());
+	Runtime::set_default(runtime.clone());
 	let renderer = oa::render::Renderer::new(
-		&engine,
+		&runtime,
 		oa::render::RendererConfig {
 			width: 64,
 			height: 64,
@@ -60,7 +60,7 @@ fn presenter_displays_a_renderer_frame() -> oa::Result<()> {
 	renderer.begin_frame_flat_color(&mesh, &camera, &material)?;
 	let frame = renderer.submit_frame()?;
 
-	let mut presenter = Presenter::new(&engine, &window)?;
+	let mut presenter = Presenter::new(&runtime, &window)?;
 	assert!(presenter.init_swapchain(&window)?);
 	let _suboptimal = presenter.present_texture(frame.color())?;
 	presenter.close_swapchain()?;
@@ -85,15 +85,15 @@ fn presenter_retains_compositor_frames_across_resize_and_ui_close() -> oa::Resul
 		.ok()
 		.map(|index| oa::DeviceSelection::Index(index.parse().expect("device index")))
 		.unwrap_or_default();
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(selection)
-		.requirements(oa::EngineRequirements::default().presentation())
+		.requirements(oa::RuntimeRequirements::default().presentation())
 		.instance_extensions(window.required_instance_extensions()?)
 		.build()?;
-	Engine::set_default(engine.clone());
-	let mut presenter = Presenter::new(&engine, &window)?;
+	Runtime::set_default(runtime.clone());
+	let mut presenter = Presenter::new(&runtime, &window)?;
 	assert!(presenter.init_swapchain(&window)?);
-	let mut ui = oa::ui::Ui::init(&engine, 64, 64)?;
+	let mut ui = oa::ui::Ui::init(&runtime, 64, 64)?;
 	let source = oa::render::texture_from_rgba8(&[255_u8; 16], 2, 2)?;
 	for size in [64, 96, 64, 96] {
 		ui.resize(size, size)?;

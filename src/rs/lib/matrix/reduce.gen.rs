@@ -113,7 +113,7 @@ pub fn softmax(input: &Matrix, dim: i32) -> Result<Matrix> {
 	let operation = contract.name();
 	let axis = resolve_axis(input, dim, operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -133,7 +133,7 @@ pub fn softmax(input: &Matrix, dim: i32) -> Result<Matrix> {
 	}];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -167,17 +167,14 @@ pub(crate) fn softmax_backward(
 			"{operation} requires matching forward-output and output-gradient matrices"
 		)));
 	}
-	if !forward_output
-		.engine_handle()
-		.same_as(output_gradient.engine_handle())
-	{
+	if !forward_output.runtime().same_as(output_gradient.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let axis = resolve_axis(forward_output, dim, operation)?;
 	let input_gradient = Matrix::allocate(
-		forward_output.engine_handle(),
+		forward_output.runtime(),
 		forward_output.shape().to_vec(),
 		forward_output.num_elements(),
 		DType::F32,
@@ -198,7 +195,7 @@ pub(crate) fn softmax_backward(
 	}];
 	let inputs = [forward_output, output_gradient];
 	let outputs = [&input_gradient];
-	forward_output.engine_handle().record_semantic(
+	forward_output.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -231,7 +228,7 @@ pub fn log_softmax(input: &Matrix, dim: i32) -> Result<Matrix> {
 	let operation = contract.name();
 	let axis = resolve_axis(input, dim, operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -251,7 +248,7 @@ pub fn log_softmax(input: &Matrix, dim: i32) -> Result<Matrix> {
 	}];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -285,17 +282,14 @@ pub(crate) fn log_softmax_backward(
 			"{operation} requires matching forward-output and output-gradient matrices"
 		)));
 	}
-	if !forward_output
-		.engine_handle()
-		.same_as(output_gradient.engine_handle())
-	{
+	if !forward_output.runtime().same_as(output_gradient.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let axis = resolve_axis(forward_output, dim, operation)?;
 	let input_gradient = Matrix::allocate(
-		forward_output.engine_handle(),
+		forward_output.runtime(),
 		forward_output.shape().to_vec(),
 		forward_output.num_elements(),
 		DType::F32,
@@ -316,7 +310,7 @@ pub(crate) fn log_softmax_backward(
 	}];
 	let inputs = [forward_output, output_gradient];
 	let outputs = [&input_gradient];
-	forward_output.engine_handle().record_semantic(
+	forward_output.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -353,14 +347,9 @@ pub fn sum(input: &Matrix, dim: i32) -> Result<Matrix> {
 		usize::try_from(axis.group_count)
 			.map_err(|_| Error::invalid_argument(format!("{operation} output count exceeds usize")))?
 	};
-	let output = Matrix::allocate(
-		input.engine_handle(),
-		output_shape,
-		output_count,
-		DType::F32,
-	)?;
+	let output = Matrix::allocate(input.runtime(), output_shape, output_count, DType::F32)?;
 	if dim == -1
-		&& crate::runtime::record_sum_f16(input.engine_handle(), input, &output, axis.dim_size, dim)?
+		&& crate::runtime::record_sum_f16(input.runtime(), input, &output, axis.dim_size, dim)?
 	{
 		autograd::record_sum(input, &output, dim)?;
 		return Ok(output);
@@ -390,7 +379,7 @@ pub fn sum(input: &Matrix, dim: i32) -> Result<Matrix> {
 	}];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -421,16 +410,13 @@ pub(crate) fn sum_backward(input: &Matrix, output_gradient: &Matrix, dim: i32) -
 			output_shape
 		)));
 	}
-	if !input
-		.engine_handle()
-		.same_as(output_gradient.engine_handle())
-	{
+	if !input.runtime().same_as(output_gradient.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -450,7 +436,7 @@ pub(crate) fn sum_backward(input: &Matrix, output_gradient: &Matrix, dim: i32) -
 	}];
 	let inputs = [input, output_gradient];
 	let outputs = [&input_gradient];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixSumBackwardF32,
 			buffers: &buffers,
@@ -494,9 +480,9 @@ pub fn mean(input: &Matrix, dim: i32) -> Result<Matrix> {
 		usize::try_from(axis.group_count)
 			.map_err(|_| Error::invalid_argument(format!("{operation} output count exceeds usize")))?
 	};
-	let engine = input.engine_handle();
-	let partial = Matrix::allocate(engine, output_shape.clone(), output_count, DType::F32)?;
-	let output = Matrix::allocate(engine, output_shape, output_count, DType::F32)?;
+	let runtime = input.runtime();
+	let partial = Matrix::allocate(runtime, output_shape.clone(), output_count, DType::F32)?;
+	let output = Matrix::allocate(runtime, output_shape, output_count, DType::F32)?;
 	let sum_buffers = [
 		BufferBinding::read(input.storage()),
 		BufferBinding::write(partial.storage()),
@@ -516,7 +502,7 @@ pub fn mean(input: &Matrix, dim: i32) -> Result<Matrix> {
 			[axis.group_count.div_ceil(256), 1, 1],
 		)
 	};
-	let lowering = engine.begin_semantic_lowering()?;
+	let lowering = runtime.begin_semantic_lowering()?;
 	lowering.record_physical(ComputeDispatch {
 		kernel: sum_kernel,
 		buffers: &sum_buffers,
@@ -582,7 +568,7 @@ pub fn max(input: &Matrix, dim: i32) -> Result<Matrix> {
 	}
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
-	let output = Matrix::allocate(input.engine_handle(), vec![1], 1, DType::F32)?;
+	let output = Matrix::allocate(input.runtime(), vec![1], 1, DType::F32)?;
 	let buffers = [
 		BufferBinding::read(input.storage()),
 		BufferBinding::write(output.storage()),
@@ -590,7 +576,7 @@ pub fn max(input: &Matrix, dim: i32) -> Result<Matrix> {
 	let push_constants = [PushConstant::U32(element_count)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixMaxF32,
 			buffers: &buffers,
@@ -630,16 +616,16 @@ pub(crate) fn max_backward(
 			)));
 		}
 	}
-	let engine = input.engine_handle();
-	if !engine.same_as(maximum.engine_handle()) || !engine.same_as(output_gradient.engine_handle()) {
+	let runtime = input.runtime();
+	if !runtime.same_as(maximum.runtime()) || !runtime.same_as(output_gradient.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let input_gradient = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -653,7 +639,7 @@ pub(crate) fn max_backward(
 	let push_constants = [PushConstant::U32(element_count)];
 	let inputs = [input, maximum, output_gradient];
 	let outputs = [&input_gradient];
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixMaxBackwardF32,
 			buffers: &buffers,
@@ -697,7 +683,7 @@ pub fn argmax(input: &Matrix, dim: i32) -> Result<i64> {
 	}
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
-	let output = Matrix::allocate(input.engine_handle(), vec![1], 1, DType::U32)?;
+	let output = Matrix::allocate(input.runtime(), vec![1], 1, DType::U32)?;
 	let buffers = [
 		BufferBinding::read(input.storage()),
 		BufferBinding::write(output.storage()),
@@ -705,7 +691,7 @@ pub fn argmax(input: &Matrix, dim: i32) -> Result<i64> {
 	let push_constants = [PushConstant::U32(element_count)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixArgmaxF32,
 			buffers: &buffers,
@@ -733,7 +719,7 @@ pub fn argmax(input: &Matrix, dim: i32) -> Result<i64> {
 ///
 /// Returns an error when logits are not a nonempty rank-two-or-greater FP32
 /// Matrix, labels do not match the leading logits shape or use U8/U32/I32,
-/// inputs belong to different engines, a size exceeds the shader ABI,
+/// inputs belong to different runtimes, a size exceeds the shader ABI,
 /// allocation fails, or recording fails.
 pub fn categorical_accuracy_count(logits: &Matrix, labels: &Matrix) -> Result<Matrix> {
 	let contract = crate::core::operation::matrix::CATEGORICAL_ACCURACY_COUNT;
@@ -766,10 +752,10 @@ pub fn categorical_accuracy_count(logits: &Matrix, labels: &Matrix) -> Result<Ma
 			)));
 		}
 	};
-	let engine = logits.engine_handle();
-	if !engine.same_as(labels.engine_handle()) {
+	let runtime = logits.runtime();
+	if !runtime.same_as(labels.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	if let Some(mask) = mask {
@@ -781,9 +767,9 @@ pub fn categorical_accuracy_count(logits: &Matrix, labels: &Matrix) -> Result<Ma
 				label_shape
 			)));
 		}
-		if !engine.same_as(mask.engine_handle()) {
+		if !runtime.same_as(mask.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -810,7 +796,7 @@ pub fn categorical_accuracy_count(logits: &Matrix, labels: &Matrix) -> Result<Ma
 		.map_err(|_| Error::invalid_argument(format!("{operation} row count exceeds u32")))?;
 	let classes = u32::try_from(classes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} class count exceeds u32")))?;
-	let output = Matrix::allocate(engine, vec![1], 1, DType::U32)?;
+	let output = Matrix::allocate(runtime, vec![1], 1, DType::U32)?;
 	let push_constants = [
 		PushConstant::U32(rows),
 		PushConstant::U32(classes),
@@ -825,7 +811,7 @@ pub fn categorical_accuracy_count(logits: &Matrix, labels: &Matrix) -> Result<Ma
 			BufferBinding::write(output.storage()),
 		];
 		let inputs = [logits, labels, mask];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixMaskedCategoricalAccuracyCountF32,
 				buffers: &buffers,
@@ -847,7 +833,7 @@ pub fn categorical_accuracy_count(logits: &Matrix, labels: &Matrix) -> Result<Ma
 			BufferBinding::write(output.storage()),
 		];
 		let inputs = [logits, labels];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixCategoricalAccuracyCountF32,
 				buffers: &buffers,
@@ -875,7 +861,7 @@ pub fn categorical_accuracy_count(logits: &Matrix, labels: &Matrix) -> Result<Ma
 ///
 /// Returns an error under the same conditions as
 /// [`categorical_accuracy_count`], or when the mask is not FP32, does not match
-/// the labels shape, or belongs to another engine.
+/// the labels shape, or belongs to another runtime.
 pub fn masked_categorical_accuracy_count(
 	logits: &Matrix,
 	labels: &Matrix,
@@ -911,10 +897,10 @@ pub fn masked_categorical_accuracy_count(
 			)));
 		}
 	};
-	let engine = logits.engine_handle();
-	if !engine.same_as(labels.engine_handle()) {
+	let runtime = logits.runtime();
+	if !runtime.same_as(labels.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	if let Some(mask) = mask {
@@ -926,9 +912,9 @@ pub fn masked_categorical_accuracy_count(
 				label_shape
 			)));
 		}
-		if !engine.same_as(mask.engine_handle()) {
+		if !runtime.same_as(mask.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -955,7 +941,7 @@ pub fn masked_categorical_accuracy_count(
 		.map_err(|_| Error::invalid_argument(format!("{operation} row count exceeds u32")))?;
 	let classes = u32::try_from(classes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} class count exceeds u32")))?;
-	let output = Matrix::allocate(engine, vec![1], 1, DType::U32)?;
+	let output = Matrix::allocate(runtime, vec![1], 1, DType::U32)?;
 	let push_constants = [
 		PushConstant::U32(rows),
 		PushConstant::U32(classes),
@@ -970,7 +956,7 @@ pub fn masked_categorical_accuracy_count(
 			BufferBinding::write(output.storage()),
 		];
 		let inputs = [logits, labels, mask];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixMaskedCategoricalAccuracyCountF32,
 				buffers: &buffers,
@@ -992,7 +978,7 @@ pub fn masked_categorical_accuracy_count(
 			BufferBinding::write(output.storage()),
 		];
 		let inputs = [logits, labels];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixCategoricalAccuracyCountF32,
 				buffers: &buffers,

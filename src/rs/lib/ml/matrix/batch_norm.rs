@@ -2,7 +2,7 @@
 
 use crate::ml::autograd;
 pub use crate::ml::types::BatchNorm2dResult;
-use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::ml::validation::{shader_u32, validate_f32_same_runtime};
 use crate::{
 	DType, Error, Matrix, OpAttribute, Result,
 	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
@@ -13,7 +13,7 @@ use crate::{
 /// # Errors
 ///
 /// Returns an error unless `input` is nonempty rank-four F32, `weight` and
-/// `bias` are same-engine F32 channel vectors, `epsilon` is finite and
+/// `bias` are same-runtime F32 channel vectors, `epsilon` is finite and
 /// positive, or runtime recording fails.
 pub fn batch_norm_2d(
 	input: &Matrix,
@@ -43,7 +43,7 @@ pub fn batch_norm_2d(
 ///
 /// # Errors
 ///
-/// Returns an error unless every value is same-engine F32, the channel-vector
+/// Returns an error unless every value is same-runtime F32, the channel-vector
 /// shapes match the input, `epsilon` is finite and positive, or runtime
 /// recording fails.
 pub fn batch_norm_2d_with_stats(
@@ -151,7 +151,7 @@ fn validate_batch_norm_affine(
 			"{operation} epsilon must be finite and positive"
 		)));
 	}
-	validate_f32_same_engine(operation, &[input, weight, bias])?;
+	validate_f32_same_runtime(operation, &[input, weight, bias])?;
 	Ok(geometry)
 }
 
@@ -165,20 +165,20 @@ pub(in crate::ml) fn batch_norm_2d_forward(
 	let operation = contract.name();
 	let geometry = validate_batch_norm_affine(input, weight, bias, epsilon, operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let channel_shape = vec![geometry.channels as usize];
 	let mean = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		channel_shape.clone(),
 		geometry.channels as usize,
 		DType::F32,
 	)?;
 	let variance = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		channel_shape,
 		geometry.channels as usize,
 		DType::F32,
@@ -226,7 +226,7 @@ pub(in crate::ml) fn batch_norm_2d_forward(
 		name: "epsilon".into(),
 		value: f64::from(epsilon),
 	}];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -263,9 +263,9 @@ pub(in crate::ml) fn batch_norm_2d_with_stats_forward(
 			variance.shape()
 		)));
 	}
-	validate_f32_same_engine(operation, &[input, mean, variance, weight, bias])?;
+	validate_f32_same_runtime(operation, &[input, mean, variance, weight, bias])?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -306,11 +306,11 @@ pub(in crate::ml) fn batch_norm_2d_with_stats_forward(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -351,19 +351,19 @@ pub(in crate::ml) fn batch_norm_2d_running_update(
 			"{operation} momentum must be finite and in [0, 1]"
 		)));
 	}
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		operation,
 		&[running_mean, running_variance, batch_mean, batch_variance],
 	)?;
 	let channels = shader_u32(*channels, "channel count", operation)?;
 	let updated_mean = Matrix::allocate(
-		running_mean.engine_handle(),
+		running_mean.runtime(),
 		running_mean.shape().to_vec(),
 		running_mean.num_elements(),
 		DType::F32,
 	)?;
 	let updated_variance = Matrix::allocate(
-		running_mean.engine_handle(),
+		running_mean.runtime(),
 		running_mean.shape().to_vec(),
 		running_mean.num_elements(),
 		DType::F32,
@@ -398,11 +398,11 @@ pub(in crate::ml) fn batch_norm_2d_running_update(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -445,22 +445,22 @@ pub(in crate::ml) fn batch_norm_2d_backward(
 			"{operation} epsilon must be finite and positive"
 		)));
 	}
-	validate_f32_same_engine(operation, &[input, weight, mean, variance, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, weight, mean, variance, output_gradient])?;
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let channel_shape = vec![geometry.channels as usize];
 	let weight_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		channel_shape.clone(),
 		geometry.channels as usize,
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		channel_shape,
 		geometry.channels as usize,
 		DType::F32,
@@ -526,7 +526,7 @@ pub(in crate::ml) fn batch_norm_2d_backward(
 			value: training,
 		},
 	];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,

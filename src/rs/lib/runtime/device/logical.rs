@@ -397,7 +397,7 @@ impl DeviceLogical {
 			}
 			// Admission is metadata-only. Compile exactly the requested artifact
 			// through require_kernel before recording its first dispatch. Optional
-			// domains must not enter a driver compiler during Engine construction.
+			// domains must not enter a driver compiler during Runtime construction.
 			logical.pipelines.push(Some(OnceLock::new()));
 		}
 
@@ -450,7 +450,7 @@ impl Drop for DeviceLogical {
 				pipeline.destroy(&self.handle);
 			}
 		}
-		// The merged driver blob was already handed to the Engine persistence
+		// The merged driver blob was already handed to the Runtime persistence
 		// coordinator while the device was live; here the cache handle is just
 		// destroyed before the device.
 		let creation = match self.pipeline_creation.get_mut() {

@@ -8,8 +8,8 @@ use std::{
 };
 
 use crate::{
-	Engine, Error, Result,
-	runtime::{EngineHandle, Storage},
+	Error, Result, Runtime,
+	runtime::{RuntimeHandle, Storage},
 };
 
 use crate::core::{DType, Element};
@@ -19,10 +19,10 @@ use crate::core::{DType, Element};
 /// Arithmetic operators delegate to [`crate::matrix`] and return `Result<Matrix>`:
 /// use `let sum = (&left + &right)?;`. They preserve validation, allocation, and
 /// recording failures without panicking. Multiplication is elementwise; use
-/// [`crate::matrix::mat_mul_nt`] for matrix multiplication.
+/// [`crate::matrix::matmul`] for matrix multiplication.
 #[derive(Clone)]
 pub struct Matrix {
-	engine: EngineHandle,
+	runtime: RuntimeHandle,
 	storage: Storage,
 	shape: Vec<usize>,
 	dtype: DType,
@@ -73,30 +73,30 @@ impl Matrix {
 	/// Returns an error when the shape overflows, its element count differs from
 	/// `values`, or storage allocation/upload fails.
 	///
-	/// This variant uploads on this thread's default engine. An engine
+	/// This variant uploads on this thread's default runtime. An runtime
 	/// initialization failure is returned before the upload starts.
 	pub fn new_from_slice<T: Element>(shape: impl Into<Vec<usize>>, values: &[T]) -> Result<Self> {
 		let shape = shape.into();
-		Self::new_from_slice_on(&Engine::current()?, shape, values)
+		Self::new_from_slice_on(&Runtime::current()?, shape, values)
 	}
 
-	/// Create a dense matrix on a particular engine.
+	/// Create a dense matrix on a particular runtime.
 	///
 	/// This is the [`new_from_slice`](Self::new_from_slice) contract evaluated
-	/// on `engine` instead of this thread's default engine.
+	/// on `runtime` instead of this thread's default runtime.
 	///
 	/// # Errors
 	///
 	/// Returns the same errors as [`new_from_slice`](Self::new_from_slice).
 	pub fn new_from_slice_on<T: Element>(
-		engine: &Engine,
+		runtime: &Runtime,
 		shape: impl Into<Vec<usize>>,
 		values: &[T],
 	) -> Result<Self> {
-		Self::new_from_slice_handle(&engine.handle(), shape.into(), values)
+		Self::new_from_slice_handle(&runtime.handle(), shape.into(), values)
 	}
 
-	/// Create a dense matrix on the engine that owns `self`.
+	/// Create a dense matrix on the runtime that owns `self`.
 	///
 	/// The element type selects the matrix dtype exactly; this function performs
 	/// no numeric conversion.
@@ -105,21 +105,21 @@ impl Matrix {
 	///
 	/// Returns an error when the shape overflows, its element count differs from
 	/// `values`, or storage allocation/upload fails.
-	pub fn new_from_slice_on_same_engine<T: Element>(
+	pub fn new_from_slice_on_same_runtime<T: Element>(
 		&self,
 		shape: impl Into<Vec<usize>>,
 		values: &[T],
 	) -> Result<Self> {
-		Self::new_from_slice_handle(self.engine_handle(), shape.into(), values)
+		Self::new_from_slice_handle(self.runtime(), shape.into(), values)
 	}
 
-	/// Return whether `other` is owned by the same engine as `self`.
-	pub fn same_engine(&self, other: &Matrix) -> bool {
-		self.engine_handle().same_as(other.engine_handle())
+	/// Return whether `other` is owned by the same runtime as `self`.
+	pub fn same_runtime(&self, other: &Matrix) -> bool {
+		self.runtime().same_as(other.runtime())
 	}
 
 	pub(crate) fn new_from_slice_handle<T: Element>(
-		engine: &EngineHandle,
+		runtime: &RuntimeHandle,
 		shape: Vec<usize>,
 		values: &[T],
 	) -> Result<Self> {
@@ -143,14 +143,14 @@ impl Matrix {
 		let storage = if T::DTYPE == DType::U8 {
 			let mut padded = vec![0_u8; byte_storage_len(byte_len, T::DTYPE)?];
 			padded[..byte_len].copy_from_slice(bytes);
-			engine.create_storage(&padded)?
+			runtime.create_storage(&padded)?
 		} else {
-			engine.create_storage(bytes)?
+			runtime.create_storage(bytes)?
 		};
 
 		let semantic = matrix_semantic(&shape, T::DTYPE, None)?;
 		Ok(Self {
-			engine: engine.clone(),
+			runtime: runtime.clone(),
 			storage,
 			shape,
 			dtype: T::DTYPE,
@@ -167,38 +167,38 @@ impl Matrix {
 	/// Returns an error when the shape overflows, its element count differs from
 	/// `values`, or storage allocation/upload fails.
 	///
-	/// This variant uploads on this thread's default engine. An engine
+	/// This variant uploads on this thread's default runtime. An runtime
 	/// initialization failure is returned before the upload starts.
 	pub fn new_from_f32(shape: impl Into<Vec<usize>>, values: &[f32]) -> Result<Self> {
 		let shape = shape.into();
-		Self::new_from_f32_on(&Engine::current()?, shape, values)
+		Self::new_from_f32_on(&Runtime::current()?, shape, values)
 	}
 	/// Create an FP32 matrix and initialize its device-visible storage on a
-	/// particular engine.
+	/// particular runtime.
 	///
 	/// This is the [`new_from_f32`](Self::new_from_f32) contract evaluated on
-	/// `engine` instead of this thread's default engine.
+	/// `runtime` instead of this thread's default runtime.
 	///
 	/// # Errors
 	///
 	/// Returns an error when the shape overflows, its element count differs from
 	/// `values`, or storage allocation/upload fails.
 	pub fn new_from_f32_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		shape: impl Into<Vec<usize>>,
 		values: &[f32],
 	) -> Result<Self> {
-		Self::new_from_slice_on(engine, shape, values)
+		Self::new_from_slice_on(runtime, shape, values)
 	}
 
 	pub(crate) fn filled_f32(
-		engine: &Engine,
+		runtime: &Runtime,
 		shape: impl Into<Vec<usize>>,
 		value: f32,
 	) -> Result<Self> {
 		let shape = shape.into();
 		let element_count = checked_element_count(&shape)?;
-		Self::new_from_f32_on(engine, shape, &vec![value; element_count])
+		Self::new_from_f32_on(runtime, shape, &vec![value; element_count])
 	}
 
 	/// Return the matrix shape.
@@ -310,7 +310,7 @@ impl Matrix {
 	pub fn read<T: Element>(&self) -> Result<Vec<T>> {
 		self.validate_element::<T>()?;
 		if self.storage.needs_flush() {
-			self.engine.flush()?;
+			self.runtime.flush()?;
 		}
 		self.storage.wait_ready()?;
 		self.read_ready::<T>()
@@ -357,8 +357,8 @@ impl Matrix {
 		Ok(output)
 	}
 
-	pub(crate) const fn engine_handle(&self) -> &EngineHandle {
-		&self.engine
+	pub(crate) const fn runtime(&self) -> &RuntimeHandle {
+		&self.runtime
 	}
 
 	pub(crate) const fn element_count(&self) -> usize {
@@ -433,7 +433,7 @@ impl Matrix {
 		}
 		let semantic = matrix_semantic(&shape, self.dtype, Some(self.semantic.clone()))?;
 		Ok(Self {
-			engine: self.engine.clone(),
+			runtime: self.runtime.clone(),
 			storage: self.storage.clone(),
 			shape,
 			dtype: self.dtype,
@@ -453,7 +453,7 @@ impl Matrix {
 		}
 		let semantic = matrix_semantic(&shape, self.dtype, None)?;
 		Ok(Self {
-			engine: self.engine.clone(),
+			runtime: self.runtime.clone(),
 			storage: self.storage.clone(),
 			shape,
 			dtype: self.dtype,
@@ -466,7 +466,7 @@ impl Matrix {
 	/// Allocate initialized zero storage for persistent state or producers that
 	/// intentionally depend on a zeroed destination.
 	pub(crate) fn allocate(
-		engine: &EngineHandle,
+		runtime: &RuntimeHandle,
 		shape: Vec<usize>,
 		element_count: usize,
 		dtype: DType,
@@ -475,10 +475,10 @@ impl Matrix {
 			.checked_mul(dtype.size_bytes())
 			.ok_or_else(|| Error::invalid_argument("matrix byte size overflows usize"))?;
 		let byte_len = byte_storage_len(logical_byte_len, dtype)?;
-		let storage = engine.create_storage(&vec![0_u8; byte_len])?;
+		let storage = runtime.create_storage(&vec![0_u8; byte_len])?;
 		let semantic = matrix_semantic(&shape, dtype, None)?;
 		Ok(Self {
-			engine: engine.clone(),
+			runtime: runtime.clone(),
 			storage,
 			shape,
 			dtype,
@@ -492,7 +492,7 @@ impl Matrix {
 	/// No host placeholder is uploaded; readiness rejects observation and GPU
 	/// reads until a producer dispatch has been recorded and completed.
 	pub(crate) fn allocate_output(
-		engine: &EngineHandle,
+		runtime: &RuntimeHandle,
 		shape: Vec<usize>,
 		element_count: usize,
 		dtype: DType,
@@ -501,14 +501,14 @@ impl Matrix {
 			.checked_mul(dtype.size_bytes())
 			.ok_or_else(|| Error::invalid_argument("matrix byte size overflows usize"))?;
 		let storage = if logical_byte_len == 0 {
-			engine.create_storage(&[])?
+			runtime.create_storage(&[])?
 		} else {
 			let byte_len = byte_storage_len(logical_byte_len, dtype)?;
-			engine.create_output_storage(byte_len)?
+			runtime.create_output_storage(byte_len)?
 		};
 		let semantic = matrix_semantic(&shape, dtype, None)?;
 		Ok(Self {
-			engine: engine.clone(),
+			runtime: runtime.clone(),
 			storage,
 			shape,
 			dtype,
@@ -520,12 +520,12 @@ impl Matrix {
 
 	/// Construct a semantic value over checked, retained runtime storage.
 	pub(crate) fn from_runtime_storage(
-		engine: &EngineHandle,
+		runtime: &RuntimeHandle,
 		storage: Storage,
 		shape: Vec<usize>,
 		dtype: DType,
 	) -> Result<Self> {
-		engine.validate_storage_owner(&storage)?;
+		runtime.validate_storage_owner(&storage)?;
 		let element_count = checked_element_count(&shape)?;
 		let logical_bytes = element_count
 			.checked_mul(dtype.size_bytes())
@@ -537,7 +537,7 @@ impl Matrix {
 		}
 		let semantic = matrix_semantic(&shape, dtype, None)?;
 		Ok(Self {
-			engine: engine.clone(),
+			runtime: runtime.clone(),
 			storage,
 			shape,
 			dtype,

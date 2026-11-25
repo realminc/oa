@@ -9,9 +9,9 @@ use super::{
 	device::logical::video::{DecodeStatus, EncodeReceipt},
 };
 
-/// Exact completion point for work submitted to an OA engine.
+/// Exact completion point for work submitted to an OA runtime.
 ///
-/// Dropping an event never waits. The originating engine's retirement service
+/// Dropping an event never waits. The originating runtime's retirement service
 /// keeps submitted resources and their Vulkan device alive through completion.
 #[derive(Clone)]
 #[must_use]
@@ -51,7 +51,7 @@ impl Event {
 		}
 	}
 
-	/// Engine supplies the first chunk of the same ordered timed plan. Keep
+	/// Runtime supplies the first chunk of the same ordered timed plan. Keep
 	/// its query pool alive while completion still names the final submission.
 	pub(super) fn set_timing_start(&mut self, first: &Self) {
 		self.timing_start = first.timing.clone();

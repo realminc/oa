@@ -2,11 +2,11 @@
 
 use std::time::Instant;
 
-use oa::{Engine, Error, ErrorKind, Event, ExecutionPlan, Result};
+use oa::{Error, ErrorKind, Event, ExecutionPlan, Result, Runtime};
 use serde_json::{Value, json};
 
 pub(crate) fn record(
-	engine: &Engine,
+	runtime: &Runtime,
 	plan: &ExecutionPlan,
 	workload: Value,
 	observe: impl Fn(Event) -> Result<()>,
@@ -31,12 +31,12 @@ pub(crate) fn record(
 	};
 
 	for _ in 0..WARMUP {
-		observe(engine.submit(plan)?)?;
+		observe(runtime.submit(plan)?)?;
 	}
 	let mut wall_ms = Vec::with_capacity(replays);
 	let mut device_ms = Vec::new();
 	let device_timing_unavailable = if mode == "timing" {
-		match engine
+		match runtime
 			.submit_timed(plan)
 			.and_then(|event| event.device_duration())
 		{
@@ -49,13 +49,13 @@ pub(crate) fn record(
 	};
 	for _ in 0..replays {
 		let start = Instant::now();
-		let event = engine.submit(plan)?;
+		let event = runtime.submit(plan)?;
 		let wall = observe(event);
 		let elapsed = start.elapsed();
 		wall?;
 		wall_ms.push(elapsed.as_secs_f64() * 1_000.0);
 		if mode == "timing" && device_timing_unavailable.is_none() {
-			let duration = engine.submit_timed(plan)?.device_duration()?;
+			let duration = runtime.submit_timed(plan)?.device_duration()?;
 			device_ms.push(duration.as_secs_f64() * 1_000.0);
 		}
 	}

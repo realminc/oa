@@ -76,7 +76,7 @@ fn continuous_oracle(
 
 test_vk!(
 	categorical_policy_matches_donor_and_owns_one_semantic_operation,
-	engine,
+	runtime,
 	{
 		let logits_host = [1.0_f32, 2.0, -1.0, 0.5, 0.5, 0.5];
 		let action_host = [1_i32, 0];
@@ -85,7 +85,7 @@ test_vk!(
 		let action = oa::Matrix::new_from_slice([2], &action_host)?;
 		let value = oa::Matrix::new_from_f32([2], &value_host)?;
 		let (plan, result) =
-			engine.capture(|| oa::ml::policy::evaluate_categorical(&logits, &action, &value))?;
+			runtime.capture(|| oa::ml::policy::evaluate_categorical(&logits, &action, &value))?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
 		assert!(plan.diagnostics().node_count() > 1);
 		assert_eq!(
@@ -96,7 +96,7 @@ test_vk!(
 		assert_eq!(operation.name(), "oa::FnPolicy::evaluateCategorical");
 		assert_eq!(operation.aliases().len(), 2);
 		assert!(operation.mutated_inputs().is_empty());
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 
 		let (expected_log_probability, expected_entropy) =
 			categorical_oracle(&logits_host, 2, 3, &action_host);
@@ -114,7 +114,7 @@ test_vk!(
 
 test_vk!(
 	categorical_policy_sampling_is_seeded_and_self_consistent,
-	engine,
+	runtime,
 	{
 		let logits = oa::Matrix::new_from_f32(
 			[4, 3],
@@ -136,7 +136,7 @@ test_vk!(
 	}
 );
 
-test_vk!(categorical_policy_entropy_adjoint_matches_cpu, engine, {
+test_vk!(categorical_policy_entropy_adjoint_matches_cpu, runtime, {
 	let logits_host = [1.0_f32, 2.0, -1.0];
 	let embedding =
 		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([1, 3], &logits_host)?)?;
@@ -181,7 +181,7 @@ test_vk!(categorical_policy_entropy_adjoint_matches_cpu, engine, {
 	Ok(())
 });
 
-test_vk!(categorical_policy_rejects_invalid_shapes, engine, {
+test_vk!(categorical_policy_rejects_invalid_shapes, runtime, {
 	let logits = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, 3.0, 4.0])?;
 	let short_action = oa::Matrix::new_from_slice([1], &[0_i32])?;
 	let short_value = oa::Matrix::new_from_f32([1], &[0.0])?;
@@ -192,7 +192,7 @@ test_vk!(categorical_policy_rejects_invalid_shapes, engine, {
 
 test_vk!(
 	tanh_normal_policy_matches_donor_and_one_semantic_operation,
-	engine,
+	runtime,
 	{
 		let mean_host = [0.1_f32, -0.4, 1.2, 0.0];
 		let log_stddev_host = [-0.7_f32, 0.2, -30.0, 3.0];
@@ -202,7 +202,7 @@ test_vk!(
 		let log_stddev = oa::Matrix::new_from_f32([2, 2], &log_stddev_host)?;
 		let raw_action = oa::Matrix::new_from_f32([2, 2], &raw_action_host)?;
 		let value = oa::Matrix::new_from_f32([2], &value_host)?;
-		let (plan, result) = engine.capture(|| {
+		let (plan, result) = runtime.capture(|| {
 			oa::ml::policy::evaluate_tanh_normal(
 				&mean,
 				&log_stddev,
@@ -223,7 +223,7 @@ test_vk!(
 		assert_eq!(operation.name(), "oa::FnPolicy::evaluateTanhNormal");
 		assert_eq!(operation.aliases().len(), 2);
 		assert_eq!(operation.attributes().len(), 3);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 
 		let (expected_action, expected_log_probability, expected_entropy) = continuous_oracle(
 			&mean_host,
@@ -247,12 +247,12 @@ test_vk!(
 
 test_vk!(
 	tanh_normal_sampling_is_seeded_and_self_consistent,
-	engine,
+	runtime,
 	{
 		let mean = oa::Matrix::new_from_f32([3, 2], &[0.1, -0.2, 0.4, 0.7, -0.5, 0.3])?;
 		let log_stddev = oa::Matrix::new_from_f32([3, 2], &[-0.5, 0.1, -1.0, 0.3, 0.0, -0.2])?;
 		let value = oa::Matrix::new_from_f32([3], &[1.0, 2.0, 3.0])?;
-		let (plan, first) = engine.capture(|| {
+		let (plan, first) = runtime.capture(|| {
 			oa::ml::policy::sample_tanh_normal(&mean, &log_stddev, &value, -1.5, 2.5, 918_273, 1.0e-6)
 		})?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
@@ -261,7 +261,7 @@ test_vk!(
 			"oa::FnPolicy::sampleTanhNormal"
 		);
 		assert_eq!(plan.semantic_graph().operations()[0].attributes().len(), 4);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let second =
 			oa::ml::policy::sample_tanh_normal(&mean, &log_stddev, &value, -1.5, 2.5, 918_273, 1.0e-6)?;
 		assert_eq!(first.raw_action.read_f32()?, second.raw_action.read_f32()?);
@@ -291,7 +291,7 @@ test_vk!(
 
 test_vk!(
 	tanh_normal_clamp_adjoint_matches_donor_boundaries,
-	engine,
+	runtime,
 	{
 		let log_stddev = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 			[1, 4],
@@ -324,7 +324,7 @@ test_vk!(
 	}
 );
 
-test_vk!(tanh_normal_policy_rejects_invalid_contracts, engine, {
+test_vk!(tanh_normal_policy_rejects_invalid_contracts, runtime, {
 	let mean = oa::Matrix::new_from_f32([1, 2], &[0.0, 0.0])?;
 	let log_stddev = oa::Matrix::new_from_f32([1, 2], &[0.0, 0.0])?;
 	let raw_action = oa::Matrix::new_from_f32([1, 1], &[0.0])?;
@@ -349,7 +349,7 @@ test_vk!(tanh_normal_policy_rejects_invalid_contracts, engine, {
 
 test_vk!(
 	tanh_normal_sampling_reparameterization_has_exact_adjoint,
-	engine,
+	runtime,
 	{
 		let mean =
 			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([1, 3], &[0.2, -0.3, 0.7])?)?;

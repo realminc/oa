@@ -181,11 +181,11 @@ fn compute_copy_compute_resolves_to_one_run_on_the_compute_family() {
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn a_run_resolving_to_an_unenabled_family_fails_at_recording() -> Result<()> {
-	let engine = match crate::Engine::new() {
-		Ok(engine) => engine,
+	let runtime = match crate::Runtime::new() {
+		Ok(runtime) => runtime,
 		Err(_) => return Ok(()),
 	};
-	let device = engine.handle().device();
+	let device = runtime.handle().device();
 	let source = Buffer::host_visible_storage(&device, 64)?;
 	let destination = Buffer::host_visible_storage(&device, 64)?;
 	// No device enables a queue family 0xffffffff.

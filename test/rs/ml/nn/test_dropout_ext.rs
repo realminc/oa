@@ -2,8 +2,8 @@
 
 use oa::ml::Module as _;
 
-test_vk!(channel_dropout_shares_one_mask_per_channel, engine, {
-	let _ = engine;
+test_vk!(channel_dropout_shares_one_mask_per_channel, runtime, {
+	let _ = runtime;
 	let input = oa::Matrix::new_from_f32(
 		[2, 3, 2, 2],
 		&(0..24).map(|v| v as f32 + 1.0).collect::<Vec<_>>(),
@@ -35,8 +35,8 @@ test_vk!(channel_dropout_shares_one_mask_per_channel, engine, {
 	Ok(())
 });
 
-test_vk!(alpha_dropouts_apply_the_selu_affine_contract, engine, {
-	let _ = engine;
+test_vk!(alpha_dropouts_apply_the_selu_affine_contract, runtime, {
+	let _ = runtime;
 	let input = oa::Matrix::new_from_f32([2, 4], &[0.5; 8])?;
 	let alpha = oa::ml::nn::AlphaDropout::new_with_seed(0.4, 11)?;
 	let output = alpha.forward(&input)?.read_f32()?;
@@ -66,9 +66,9 @@ test_vk!(alpha_dropouts_apply_the_selu_affine_contract, engine, {
 
 test_vk!(
 	dropout_variants_identity_in_eval_and_train_mode_contracts,
-	engine,
+	runtime,
 	{
-		let _ = engine;
+		let _ = runtime;
 		let input =
 			oa::Matrix::new_from_f32([2, 3, 2, 2], &(0..24).map(|v| v as f32).collect::<Vec<_>>())?;
 		let module = oa::ml::nn::Dropout2d::new_with_seed(0.9, 3)?;

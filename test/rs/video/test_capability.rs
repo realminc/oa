@@ -1,8 +1,8 @@
 test_vk!(
 	video_capability_query_separates_hardware_from_enabled_sessions,
-	engine,
+	runtime,
 	{
-		let capabilities = oa::video::query_device_capabilities(&engine)?;
+		let capabilities = oa::video::query_device_capabilities(&runtime)?;
 		assert_eq!(
 			capabilities.video_queues_enabled(),
 			capabilities.decode_queue_family().is_some() || capabilities.encode_queue_family().is_some()
@@ -122,32 +122,32 @@ fn assert_encode_formats(formats: &oa::video::VideoEncodeFormats) {
 
 test_vk!(
 	exact_encode_profile_queries_return_codec_specific_limits,
-	engine,
+	runtime,
 	{
-		let advertised = oa::video::query_device_capabilities(&engine)?;
+		let advertised = oa::video::query_device_capabilities(&runtime)?;
 		if advertised.supports_h264_encode() {
 			let profile = oa::video::VideoEncodeProfile::h264_high_420_8bit();
-			let capabilities = oa::video::query_encode_capabilities(&engine, profile)?;
+			let capabilities = oa::video::query_encode_capabilities(&runtime, profile)?;
 			assert_eq!(capabilities.profile(), profile);
 			assert!(matches!(
 				capabilities.codec(),
 				oa::video::VideoEncodeCodecCapabilities::H264 { .. }
 			));
 			assert_encode_limits(capabilities);
-			let formats = oa::video::query_encode_formats(&engine, profile)?;
+			let formats = oa::video::query_encode_formats(&runtime, profile)?;
 			assert_eq!(formats.profile(), profile);
 			assert_encode_formats(&formats);
 		}
 		if advertised.supports_h265_encode() {
 			let profile = oa::video::VideoEncodeProfile::h265_main_420_8bit();
-			let capabilities = oa::video::query_encode_capabilities(&engine, profile)?;
+			let capabilities = oa::video::query_encode_capabilities(&runtime, profile)?;
 			assert_eq!(capabilities.profile(), profile);
 			assert!(matches!(
 				capabilities.codec(),
 				oa::video::VideoEncodeCodecCapabilities::H265 { .. }
 			));
 			assert_encode_limits(capabilities);
-			let formats = oa::video::query_encode_formats(&engine, profile)?;
+			let formats = oa::video::query_encode_formats(&runtime, profile)?;
 			assert_eq!(formats.profile(), profile);
 			assert_encode_formats(&formats);
 		}
@@ -157,12 +157,12 @@ test_vk!(
 
 test_vk!(
 	exact_decode_profile_queries_return_codec_specific_limits,
-	engine,
+	runtime,
 	{
-		let advertised = oa::video::query_device_capabilities(&engine)?;
+		let advertised = oa::video::query_device_capabilities(&runtime)?;
 		if advertised.supports_h264_decode() {
 			let profile = oa::video::VideoDecodeProfile::h264_420_8bit(oa::video::H264Profile::High);
-			let capabilities = oa::video::query_decode_capabilities(&engine, profile)?;
+			let capabilities = oa::video::query_decode_capabilities(&runtime, profile)?;
 			assert_eq!(capabilities.profile(), profile);
 			assert!(matches!(
 				capabilities.level(),
@@ -170,7 +170,7 @@ test_vk!(
 			));
 			assert!(capabilities.field_offset_granularity().is_some());
 			assert_profile_limits(capabilities);
-			let formats = oa::video::query_decode_formats(&engine, profile)?;
+			let formats = oa::video::query_decode_formats(&runtime, profile)?;
 			assert_eq!(formats.profile(), profile);
 			assert_profile_formats(&formats);
 		}
@@ -179,7 +179,7 @@ test_vk!(
 				oa::video::H265Profile::Main,
 				oa::video::VideoComponentBitDepth::Eight,
 			);
-			let capabilities = oa::video::query_decode_capabilities(&engine, profile)?;
+			let capabilities = oa::video::query_decode_capabilities(&runtime, profile)?;
 			assert_eq!(capabilities.profile(), profile);
 			assert!(matches!(
 				capabilities.level(),
@@ -187,7 +187,7 @@ test_vk!(
 			));
 			assert_eq!(capabilities.field_offset_granularity(), None);
 			assert_profile_limits(capabilities);
-			let formats = oa::video::query_decode_formats(&engine, profile)?;
+			let formats = oa::video::query_decode_formats(&runtime, profile)?;
 			assert_eq!(formats.profile(), profile);
 			assert_profile_formats(&formats);
 		}
@@ -197,7 +197,7 @@ test_vk!(
 				oa::video::VideoComponentBitDepth::Eight,
 				false,
 			);
-			let capabilities = oa::video::query_decode_capabilities(&engine, profile)?;
+			let capabilities = oa::video::query_decode_capabilities(&runtime, profile)?;
 			assert_eq!(capabilities.profile(), profile);
 			assert!(matches!(
 				capabilities.level(),
@@ -205,7 +205,7 @@ test_vk!(
 			));
 			assert_eq!(capabilities.field_offset_granularity(), None);
 			assert_profile_limits(capabilities);
-			let formats = oa::video::query_decode_formats(&engine, profile)?;
+			let formats = oa::video::query_decode_formats(&runtime, profile)?;
 			assert_eq!(formats.profile(), profile);
 			assert_profile_formats(&formats);
 		}
@@ -214,7 +214,7 @@ test_vk!(
 				oa::video::Vp9Profile::Profile0,
 				oa::video::VideoComponentBitDepth::Eight,
 			);
-			let capabilities = oa::video::query_decode_capabilities(&engine, profile)?;
+			let capabilities = oa::video::query_decode_capabilities(&runtime, profile)?;
 			assert_eq!(capabilities.profile(), profile);
 			assert!(matches!(
 				capabilities.level(),
@@ -222,7 +222,7 @@ test_vk!(
 			));
 			assert_eq!(capabilities.field_offset_granularity(), None);
 			assert_profile_limits(capabilities);
-			let formats = oa::video::query_decode_formats(&engine, profile)?;
+			let formats = oa::video::query_decode_formats(&runtime, profile)?;
 			assert_eq!(formats.profile(), profile);
 			assert_profile_formats(&formats);
 		}
@@ -232,9 +232,9 @@ test_vk!(
 
 test_vk!(
 	video_decode_profiles_report_exact_support_across_codecs,
-	engine,
+	runtime,
 	{
-		let capabilities = oa::video::query_device_capabilities(&engine)?;
+		let capabilities = oa::video::query_device_capabilities(&runtime)?;
 		if !capabilities.video_queues_enabled() {
 			return Ok(());
 		}
@@ -311,10 +311,10 @@ test_vk!(
 				VideoDecodeProfile::Vp9 { .. } => 3,
 			};
 			let _ = codec;
-			match oa::video::query_decode_capabilities(&engine, *profile) {
+			match oa::video::query_decode_capabilities(&runtime, *profile) {
 				Ok(capability) => {
 					assert_profile_limits(capability);
-					let formats = oa::video::query_decode_formats(&engine, *profile)?;
+					let formats = oa::video::query_decode_formats(&runtime, *profile)?;
 					assert_profile_formats(&formats);
 					supported_per_codec[codec_index] += 1;
 				}
@@ -358,9 +358,9 @@ test_vk!(
 
 test_vk!(
 	video_encode_profiles_report_exact_support_and_rate_control,
-	engine,
+	runtime,
 	{
-		let capabilities = oa::video::query_device_capabilities(&engine)?;
+		let capabilities = oa::video::query_device_capabilities(&runtime)?;
 		if !capabilities.video_queues_enabled() {
 			return Ok(());
 		}
@@ -397,10 +397,10 @@ test_vk!(
 		let mut supported_per_codec = [0_usize; 2];
 		let mut rate_modes = (false, false, false);
 		for (profile, is_h264) in &profiles {
-			match oa::video::query_encode_capabilities(&engine, *profile) {
+			match oa::video::query_encode_capabilities(&runtime, *profile) {
 				Ok(capability) => {
 					assert_encode_limits(capability);
-					let formats = oa::video::query_encode_formats(&engine, *profile)?;
+					let formats = oa::video::query_encode_formats(&runtime, *profile)?;
 					assert_encode_formats(&formats);
 					supported_per_codec[usize::from(!is_h264)] += 1;
 					rate_modes.0 |= capability.supports_constant_qp();
@@ -440,7 +440,7 @@ test_vk!(
 				..oa::video::VideoEncodeConfig::new(VideoEncodeProfile::h264_high_420_8bit(), 320, 240)
 			};
 			let capability =
-				oa::video::query_encode_capabilities(&engine, VideoEncodeProfile::h264_high_420_8bit());
+				oa::video::query_encode_capabilities(&runtime, VideoEncodeProfile::h264_high_420_8bit());
 			if let Ok(capability) = capability {
 				let supported = match mode {
 					oa::video::VideoRateControl::ConstantQp => capability.supports_constant_qp(),

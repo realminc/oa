@@ -1,10 +1,10 @@
-//! Screen capture sessions producing engine-owned video frames.
+//! Screen capture sessions producing runtime-owned video frames.
 //!
 //! Donor: `source/cpp/include/oa/vision/screenCapture.h` and
 //! `source/cpp/lib/oa/vision/capture/screenCapture.cpp`.
 //!
 //! Donor mapped-memory route, with portal consent and nonblocking PipeWire
-//! polling on the Engine-owning thread. Returned textures own their pixels;
+//! polling on the Runtime-owning thread. Returned textures own their pixels;
 //! producer buffers are copied and released before `poll` returns. DMA-BUF
 //! import remains separate, unimplemented qualification work.
 
@@ -14,14 +14,14 @@ mod pipewire;
 mod portal;
 
 #[cfg(all(target_os = "linux", feature = "pipewire"))]
-use crate::runtime::EngineHandle;
+use crate::runtime::RuntimeHandle;
 use crate::video::VideoFrame;
 #[cfg(all(target_os = "linux", feature = "pipewire"))]
 use crate::video::{VideoColorInfo, VideoColorMatrix, VideoColorRange, VideoFrameTiming};
 pub use crate::vision::types::ScreenCaptureConfig;
 #[cfg(all(target_os = "linux", feature = "pipewire"))]
 use crate::{DType, Matrix};
-use crate::{Engine, Error, Result};
+use crate::{Error, Result, Runtime};
 
 /// Whether the capture targets whatever the compositor offers, an entire
 /// monitor, or an individual window.
@@ -66,7 +66,7 @@ impl Default for ScreenCaptureConfig {
 /// `close` explicitly disconnects the stream and reports a disconnect failure.
 pub struct ScreenCapture {
 	#[cfg(all(target_os = "linux", feature = "pipewire"))]
-	engine: EngineHandle,
+	runtime: RuntimeHandle,
 	#[cfg(all(target_os = "linux", feature = "pipewire"))]
 	fps: u32,
 	width: u32,
@@ -96,7 +96,7 @@ impl ScreenCapture {
 	/// # Errors
 	/// Rejects invalid extent, FPS or ring hints, missing platform support,
 	/// cancelled/denied permission, and portal/PipeWire setup failures.
-	pub fn open(engine: &Engine, config: &ScreenCaptureConfig) -> Result<Self> {
+	pub fn open(runtime: &Runtime, config: &ScreenCaptureConfig) -> Result<Self> {
 		if config.preferred_width == 0
 			|| config.preferred_height == 0
 			|| config.preferred_width > 16384
@@ -124,7 +124,7 @@ impl ScreenCapture {
 		#[cfg(all(target_os = "linux", feature = "pipewire"))]
 		{
 			Ok(Self {
-				engine: engine.handle().clone(),
+				runtime: runtime.handle().clone(),
 				fps: config.preferred_fps,
 				width: 0,
 				height: 0,
@@ -133,7 +133,7 @@ impl ScreenCapture {
 		}
 		#[cfg(not(all(target_os = "linux", feature = "pipewire")))]
 		{
-			let _ = engine;
+			let _ = runtime;
 			Err(Error::missing_capability(
 				"screen capture requires the Linux portal/PipeWire adapter",
 			))
@@ -157,7 +157,7 @@ impl ScreenCapture {
 			let width = frame.width as usize;
 			let height = frame.height as usize;
 			let data = Matrix::allocate(
-				&self.engine,
+				&self.runtime,
 				vec![height, width, 4],
 				frame.rgba.len(),
 				DType::U8,

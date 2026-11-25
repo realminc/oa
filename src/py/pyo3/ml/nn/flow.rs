@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::super::autograd::PythonParameter;
 
@@ -16,15 +16,15 @@ pub(crate) struct PythonFlowTimeEmbedding {
 impl PythonFlowTimeEmbedding {
 	/// Construct the donor sinusoidal time embedding.
 	#[new]
-	#[pyo3(signature = (embedding_dim, max_period = 10_000.0, time_scale = 1_000.0, engine=None))]
+	#[pyo3(signature = (embedding_dim, max_period = 10_000.0, time_scale = 1_000.0, runtime=None))]
 	pub fn new(
 		embedding_dim: usize,
 		max_period: f32,
 		time_scale: f32,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::nn::FlowTimeEmbedding::new_on(&engine, embedding_dim, max_period, time_scale)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::nn::FlowTimeEmbedding::new_on(&runtime, embedding_dim, max_period, time_scale)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -184,10 +184,10 @@ impl PythonFlowTransformer {
 	pub fn new(
 		config: &PythonFlowTransformerConfig,
 		seed: u64,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::nn::FlowTransformer::new_with_seed_on(&engine, config.inner, seed)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::nn::FlowTransformer::new_with_seed_on(&runtime, config.inner, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -381,10 +381,10 @@ impl PythonFlowDenoiser {
 	pub fn new(
 		config: &PythonFlowDenoiserConfig,
 		seed: u64,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::nn::FlowDenoiser::new_with_seed_on(&engine, config.inner, seed)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::nn::FlowDenoiser::new_with_seed_on(&runtime, config.inner, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

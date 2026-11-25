@@ -7,16 +7,16 @@
 		)));
 	}
 	if !forward_output
-		.engine_handle()
-		.same_as(output_gradient.engine_handle())
+		.runtime()
+		.same_as(output_gradient.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let axis = resolve_axis(forward_output, dim, operation)?;
 	let input_gradient = Matrix::allocate(
-		forward_output.engine_handle(),
+		forward_output.runtime(),
 		forward_output.shape().to_vec(),
 		forward_output.num_elements(),
 		DType::F32,
@@ -37,7 +37,7 @@
 	}];
 	let inputs = [forward_output, output_gradient];
 	let outputs = [&input_gradient];
-	forward_output.engine_handle().record_semantic(
+	forward_output.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,

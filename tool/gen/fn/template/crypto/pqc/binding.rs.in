@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 use oa::crypto::pqc::device;
 
 fn kem_parameters(parameter: u32) -> PyResult<device::MlKemParameters> {
@@ -143,34 +143,34 @@ impl PythonDeviceDecapsulation {
 }
 
 #[pyfunction]
-fn crypto_device_begin_secret_scope(engine: Option<&PythonEngine>) -> PyResult<PythonDeviceSecretScope> {
-		let engine = PythonEngine::resolve(engine)?;
-	let inner = device::begin_secret_scope(&engine).map_err(python_error)?;
+fn crypto_device_begin_secret_scope(runtime: Option<&PythonRuntime>) -> PyResult<PythonDeviceSecretScope> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+	let inner = device::begin_secret_scope(&runtime).map_err(python_error)?;
 	Ok(PythonDeviceSecretScope { inner: Some(inner) })
 }
 
 #[pyfunction]
 fn crypto_device_mldsa_keygen(parameters: u32,
-	engine: Option<&PythonEngine>,) -> PyResult<PythonDeviceMlDsaKey> {
-		let engine = PythonEngine::resolve(engine)?;
-	let inner = device::mldsa_keygen(&engine, dsa_parameters(parameters)?).map_err(python_error)?;
+	runtime: Option<&PythonRuntime>,) -> PyResult<PythonDeviceMlDsaKey> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+	let inner = device::mldsa_keygen(&runtime, dsa_parameters(parameters)?).map_err(python_error)?;
 	Ok(PythonDeviceMlDsaKey { inner: Some(inner) })
 }
 
 #[pyfunction]
 fn crypto_device_mlkem_keygen(parameters: u32,
-	engine: Option<&PythonEngine>,) -> PyResult<PythonDeviceMlKemKey> {
-		let engine = PythonEngine::resolve(engine)?;
-	let inner = device::mlkem_keygen(&engine, kem_parameters(parameters)?).map_err(python_error)?;
+	runtime: Option<&PythonRuntime>,) -> PyResult<PythonDeviceMlKemKey> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+	let inner = device::mlkem_keygen(&runtime, kem_parameters(parameters)?).map_err(python_error)?;
 	Ok(PythonDeviceMlKemKey { inner: Some(inner) })
 }
 
 #[pyfunction]
 fn crypto_device_mldsa_import_key(parameters: u32, secret_key: &[u8], public_key: &PythonMatrix,
-	engine: Option<&PythonEngine>,) -> PyResult<PythonDeviceMlDsaKey> {
-		let engine = PythonEngine::resolve(engine)?;
+	runtime: Option<&PythonRuntime>,) -> PyResult<PythonDeviceMlDsaKey> {
+		let runtime = PythonRuntime::resolve(runtime)?;
 	let mut secret = secret_key.to_vec();
-	let result = device::mldsa_import_key(&engine, dsa_parameters(parameters)?, &mut secret, &public_key.inner);
+	let result = device::mldsa_import_key(&runtime, dsa_parameters(parameters)?, &mut secret, &public_key.inner);
 	oa::core::memory::zero_secure(&mut secret);
 	let inner = result.map_err(python_error)?;
 	Ok(PythonDeviceMlDsaKey { inner: Some(inner) })
@@ -178,10 +178,10 @@ fn crypto_device_mldsa_import_key(parameters: u32, secret_key: &[u8], public_key
 
 #[pyfunction]
 fn crypto_device_mlkem_import_key(parameters: u32, decapsulation_key: &[u8],
-	engine: Option<&PythonEngine>,) -> PyResult<PythonDeviceMlKemKey> {
-		let engine = PythonEngine::resolve(engine)?;
+	runtime: Option<&PythonRuntime>,) -> PyResult<PythonDeviceMlKemKey> {
+		let runtime = PythonRuntime::resolve(runtime)?;
 	let mut secret = decapsulation_key.to_vec();
-	let result = device::mlkem_import_key(&engine, kem_parameters(parameters)?, &mut secret);
+	let result = device::mlkem_import_key(&runtime, kem_parameters(parameters)?, &mut secret);
 	oa::core::memory::zero_secure(&mut secret);
 	let inner = result.map_err(python_error)?;
 	Ok(PythonDeviceMlKemKey { inner: Some(inner) })

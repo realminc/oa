@@ -45,7 +45,7 @@ fn allocate(input: &Image, shape: Vec<usize>, format: crate::ImageFormat) -> Res
 	})?;
 	u32::try_from(elements).map_err(|_| Error::out_of_range("image output size exceeds u32"))?;
 	Image::new(
-		Matrix::allocate(input.engine_handle(), shape, elements, DType::F32)?,
+		Matrix::allocate(input.runtime(), shape, elements, DType::F32)?,
 		input.layout(),
 		format,
 	)

@@ -2,9 +2,9 @@
 //!
 //! Port provenance: OA C++ `oa/ml/sacTrainer.{h,cpp}`. Actor and twin-critic
 //! optimizer units remain separate [`ItTraining`] lifecycles while sharing the
-//! caller's one Engine and replay owner.
+//! caller's one Runtime and replay owner.
 
-use crate::{DType, Engine, Error, Matrix, Result, matrix};
+use crate::{DType, Error, Matrix, Result, Runtime, matrix};
 
 use super::{ItTraining, ItTrainingConfig, Optimizer, target};
 pub use crate::ml::types::SacTrainerConfig;
@@ -39,22 +39,22 @@ pub struct SacTrainerMetrics {
 
 /// Stateful fixed-temperature SAC coordinator over caller-owned components.
 #[must_use]
-pub struct SacTrainer<'engine, 'hooks> {
-	engine: &'engine Engine,
-	actor: &'engine dyn Module,
-	critic1: &'engine dyn Module,
-	critic2: &'engine dyn Module,
-	target_critic1: &'engine dyn Module,
-	target_critic2: &'engine dyn Module,
-	replay: &'engine ReplayBuffer,
+pub struct SacTrainer<'runtime, 'hooks> {
+	runtime: &'runtime Runtime,
+	actor: &'runtime dyn Module,
+	critic1: &'runtime dyn Module,
+	critic2: &'runtime dyn Module,
+	target_critic1: &'runtime dyn Module,
+	target_critic2: &'runtime dyn Module,
+	replay: &'runtime ReplayBuffer,
 	config: SacTrainerConfig,
 	observation_elements: usize,
-	critic_training: ItTraining<'engine, 'hooks>,
-	actor_training: ItTraining<'engine, 'hooks>,
+	critic_training: ItTraining<'runtime, 'hooks>,
+	actor_training: ItTraining<'runtime, 'hooks>,
 	metrics: SacTrainerMetrics,
 }
 
-impl<'engine, 'hooks> SacTrainer<'engine, 'hooks> {
+impl<'runtime, 'hooks> SacTrainer<'runtime, 'hooks> {
 	/// Validate all owners, construct two training lifecycles, and synchronize targets.
 	///
 	/// # Errors
@@ -66,28 +66,28 @@ impl<'engine, 'hooks> SacTrainer<'engine, 'hooks> {
 		reason = "the SAC owner contract keeps actor, twin critics, twin targets, and optimizers explicit"
 	)]
 	pub fn new(
-		engine: &'engine Engine,
-		actor: &'engine dyn Module,
-		critic1: &'engine dyn Module,
-		critic2: &'engine dyn Module,
-		target_critic1: &'engine dyn Module,
-		target_critic2: &'engine dyn Module,
-		actor_optimizer: &'engine mut dyn Optimizer,
-		critic_optimizer: &'engine mut dyn Optimizer,
-		replay: &'engine ReplayBuffer,
+		runtime: &'runtime Runtime,
+		actor: &'runtime dyn Module,
+		critic1: &'runtime dyn Module,
+		critic2: &'runtime dyn Module,
+		target_critic1: &'runtime dyn Module,
+		target_critic2: &'runtime dyn Module,
+		actor_optimizer: &'runtime mut dyn Optimizer,
+		critic_optimizer: &'runtime mut dyn Optimizer,
+		replay: &'runtime ReplayBuffer,
 		config: SacTrainerConfig,
 	) -> Result<Self> {
 		validate_config(replay, &config)?;
 		let observation_elements = shape_elements(&config.observation_shape, "observation")?;
 		target::sync_exact(
-			engine,
+			runtime,
 			&[(critic1, target_critic1), (critic2, target_critic2)],
 			"SAC critic",
 		)?;
 		let batch_size = u64::try_from(config.batch_size)
 			.map_err(|_| Error::resource_exhausted("SAC batch size exceeds u64"))?;
 		let critic_training = ItTraining::new_eager(
-			engine,
+			runtime,
 			critic_optimizer,
 			ItTrainingConfig {
 				total_steps: config.updates,
@@ -97,7 +97,7 @@ impl<'engine, 'hooks> SacTrainer<'engine, 'hooks> {
 			},
 		)?;
 		let actor_training = ItTraining::new_eager(
-			engine,
+			runtime,
 			actor_optimizer,
 			ItTrainingConfig {
 				total_steps: config.updates,
@@ -107,7 +107,7 @@ impl<'engine, 'hooks> SacTrainer<'engine, 'hooks> {
 			},
 		)?;
 		Ok(Self {
-			engine,
+			runtime,
 			actor,
 			critic1,
 			critic2,
@@ -151,7 +151,7 @@ impl<'engine, 'hooks> SacTrainer<'engine, 'hooks> {
 		}
 
 		if let Err(error) = self.record_update() {
-			self.engine.abort_pending_work();
+			self.runtime.abort_pending_work();
 			self.actor_training.cancel_composed_step();
 			return self.critic_training.fail_composed_step(error);
 		}
@@ -249,7 +249,7 @@ impl<'engine, 'hooks> SacTrainer<'engine, 'hooks> {
 			.map_err(|_| Error::resource_exhausted("SAC actor width exceeds i64"))?;
 		let mean = matrix::slice(&output, 1, 0, split)?;
 		let log_stddev = matrix::slice(&output, 1, split, end)?;
-		let value = matrix::full_on(self.engine, [self.config.batch_size], 0.0)?;
+		let value = matrix::full_on(self.runtime, [self.config.batch_size], 0.0)?;
 		policy::sample_tanh_normal(
 			&mean,
 			&log_stddev,
@@ -264,7 +264,7 @@ impl<'engine, 'hooks> SacTrainer<'engine, 'hooks> {
 	/// Exactly synchronize both online critics into their target peers.
 	pub fn sync_targets(&self) -> Result<()> {
 		target::sync_exact(
-			self.engine,
+			self.runtime,
 			&[
 				(self.critic1, self.target_critic1),
 				(self.critic2, self.target_critic2),
@@ -289,22 +289,22 @@ impl<'engine, 'hooks> SacTrainer<'engine, 'hooks> {
 	}
 
 	/// Borrow the primary critic update lifecycle.
-	pub const fn training_loop(&self) -> &ItTraining<'engine, 'hooks> {
+	pub const fn training_loop(&self) -> &ItTraining<'runtime, 'hooks> {
 		&self.critic_training
 	}
 
 	/// Mutably borrow the primary critic update lifecycle.
-	pub fn training_loop_mut(&mut self) -> &mut ItTraining<'engine, 'hooks> {
+	pub fn training_loop_mut(&mut self) -> &mut ItTraining<'runtime, 'hooks> {
 		&mut self.critic_training
 	}
 
 	/// Borrow the independently observable actor update lifecycle.
-	pub const fn actor_training_loop(&self) -> &ItTraining<'engine, 'hooks> {
+	pub const fn actor_training_loop(&self) -> &ItTraining<'runtime, 'hooks> {
 		&self.actor_training
 	}
 
 	/// Mutably borrow the actor update lifecycle.
-	pub fn actor_training_loop_mut(&mut self) -> &mut ItTraining<'engine, 'hooks> {
+	pub fn actor_training_loop_mut(&mut self) -> &mut ItTraining<'runtime, 'hooks> {
 		&mut self.actor_training
 	}
 

@@ -11,7 +11,7 @@ fn box_iou_has_the_direct_vision_signature() {
 	assert_eq!(NmsConfig::default().max_detections, 100);
 }
 
-test_vk!(box_iou_matches_independent_pairwise_oracle, engine, {
+test_vk!(box_iou_matches_independent_pairwise_oracle, runtime, {
 	let boxes_a = vec![0.5, 0.5, 1.0, 1.0, 0.0, 0.0, 2.0, 2.0];
 	let boxes_b = vec![0.5, 0.5, 1.0, 1.0, 1.0, 0.5, 1.0, 1.0];
 	let left = Matrix::new_from_f32([2, 4], &boxes_a)?;
@@ -40,7 +40,7 @@ test_vk!(box_iou_matches_independent_pairwise_oracle, engine, {
 
 test_vk!(
 	box_iou_covers_odd_rows_and_malformed_values_without_aliasing,
-	engine,
+	runtime,
 	{
 		let boxes_a = vec![
 			0.0,
@@ -80,7 +80,7 @@ test_vk!(
 		];
 		let left = Matrix::new_from_f32([3, 4], &boxes_a)?;
 		let right = Matrix::new_from_f32([5, 4], &boxes_b)?;
-		let (plan, output) = engine.capture(|| oa::vision::box_iou(&left, &right))?;
+		let (plan, output) = runtime.capture(|| oa::vision::box_iou(&left, &right))?;
 		assert_eq!(output.shape(), [3, 5]);
 		let graph = plan.semantic_graph();
 		assert_eq!(graph.operations().len(), 1);
@@ -105,7 +105,7 @@ test_vk!(
 			report["nodes"][0]["physical_write"]["writes"][0]["binding"],
 			2
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let expected = pairwise_iou_reference(&boxes_a, &boxes_b);
 		for (actual, expected) in output.read_f32()?.iter().zip(expected) {
 			assert!((actual - expected).abs() <= 1.0e-6);
@@ -114,14 +114,14 @@ test_vk!(
 	}
 );
 
-test_vk!(box_iou_rejects_invalid_structural_contracts, engine, {
-	let other_engine = oa::Engine::new()?;
+test_vk!(box_iou_rejects_invalid_structural_contracts, runtime, {
+	let other_runtime = oa::Runtime::new()?;
 	let valid = Matrix::new_from_f32([1, 4], &[0.0, 0.0, 1.0, 1.0])?;
 	let rank_one = Matrix::new_from_f32([4], &[0.0, 0.0, 1.0, 1.0])?;
 	let wrong_columns = Matrix::new_from_f32([1, 3], &[0.0, 0.0, 1.0])?;
 	let empty = Matrix::new_from_f32([0, 4], &[])?;
 	let integer = Matrix::new_from_slice([1, 4], &[0_i32, 0, 1, 1])?;
-	let foreign = Matrix::new_from_f32_on(&other_engine, [1, 4], &[0.0, 0.0, 1.0, 1.0])?;
+	let foreign = Matrix::new_from_f32_on(&other_runtime, [1, 4], &[0.0, 0.0, 1.0, 1.0])?;
 	for error in [
 		oa::vision::box_iou(&rank_one, &valid)
 			.err()
@@ -137,58 +137,62 @@ test_vk!(box_iou_rejects_invalid_structural_contracts, engine, {
 			.expect("I32 input was accepted"),
 		oa::vision::box_iou(&valid, &foreign)
 			.err()
-			.expect("cross-engine input was accepted"),
+			.expect("cross-runtime input was accepted"),
 	] {
 		assert_eq!(error.kind(), ErrorKind::InvalidArgument);
 	}
 	Ok(())
 });
 
-test_vk!(nms_is_class_aware_score_ranked_and_deterministic, engine, {
-	let boxes = Matrix::new_from_f32(
-		[5, 4],
-		&[
-			0.50, 0.50, 0.40, 0.40, 0.51, 0.50, 0.40, 0.40, 0.50, 0.50, 0.40, 0.40, 0.10, 0.10, 0.10,
-			0.10, 0.90, 0.90, 0.10, 0.10,
-		],
-	)?;
-	let scores = Matrix::new_from_f32([5], &[0.90, 0.80, 0.85, 0.70, 0.70])?;
-	let classes = Matrix::new_from_slice([5], &[0_i32, 0, 1, 0, 0])?;
-	let config = NmsConfig {
-		iou_threshold: 0.5,
-		max_detections: 5,
-		..NmsConfig::default()
-	};
-	let result = oa::vision::nms(&boxes, &scores, &classes, config)?;
-	assert_eq!(result.indices.shape(), [5]);
-	assert_eq!(result.indices.dtype(), DType::I32);
-	assert_eq!(result.count.dtype(), DType::U32);
-	assert_eq!(result.count.read::<u32>()?, vec![4]);
-	assert_eq!(result.indices.read::<i32>()?, vec![0, 2, 3, 4, -1]);
+test_vk!(
+	nms_is_class_aware_score_ranked_and_deterministic,
+	runtime,
+	{
+		let boxes = Matrix::new_from_f32(
+			[5, 4],
+			&[
+				0.50, 0.50, 0.40, 0.40, 0.51, 0.50, 0.40, 0.40, 0.50, 0.50, 0.40, 0.40, 0.10, 0.10, 0.10,
+				0.10, 0.90, 0.90, 0.10, 0.10,
+			],
+		)?;
+		let scores = Matrix::new_from_f32([5], &[0.90, 0.80, 0.85, 0.70, 0.70])?;
+		let classes = Matrix::new_from_slice([5], &[0_i32, 0, 1, 0, 0])?;
+		let config = NmsConfig {
+			iou_threshold: 0.5,
+			max_detections: 5,
+			..NmsConfig::default()
+		};
+		let result = oa::vision::nms(&boxes, &scores, &classes, config)?;
+		assert_eq!(result.indices.shape(), [5]);
+		assert_eq!(result.indices.dtype(), DType::I32);
+		assert_eq!(result.count.dtype(), DType::U32);
+		assert_eq!(result.count.read::<u32>()?, vec![4]);
+		assert_eq!(result.indices.read::<i32>()?, vec![0, 2, 3, 4, -1]);
 
-	let class_agnostic = oa::vision::nms(
-		&boxes,
-		&scores,
-		&classes,
-		NmsConfig {
-			class_agnostic: true,
-			max_detections: 3,
-			..config
-		},
-	)?;
-	assert_eq!(class_agnostic.count.read::<u32>()?, vec![3]);
-	assert_eq!(class_agnostic.indices.read::<i32>()?, vec![0, 3, 4]);
-	Ok(())
-});
+		let class_agnostic = oa::vision::nms(
+			&boxes,
+			&scores,
+			&classes,
+			NmsConfig {
+				class_agnostic: true,
+				max_detections: 3,
+				..config
+			},
+		)?;
+		assert_eq!(class_agnostic.count.read::<u32>()?, vec![3]);
+		assert_eq!(class_agnostic.indices.read::<i32>()?, vec![0, 3, 4]);
+		Ok(())
+	}
+);
 
 test_vk!(
 	confusion_and_binary_counts_match_host_oracles_and_atomic_contract,
-	engine,
+	runtime,
 	{
 		let predicted = Matrix::new_from_slice([7], &[0_i32, 1, 2, 1, -1, 3, 2])?;
 		let target = Matrix::new_from_slice([7], &[0_i32, 2, 2, 1, 0, 0, 7])?;
 		let (plan, confusion) =
-			engine.capture(|| oa::vision::confusion_matrix(&predicted, &target, 3))?;
+			runtime.capture(|| oa::vision::confusion_matrix(&predicted, &target, 3))?;
 		assert_eq!(confusion.shape(), [3, 3]);
 		let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("confusion"))
 			.expect("execution report must be valid JSON");
@@ -205,18 +209,18 @@ test_vk!(
 			report["nodes"][1]["physical_write"]["writes"][0]["collision"],
 			"atomic_u32"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(confusion.read::<u32>()?, vec![1, 0, 0, 0, 1, 0, 0, 1, 1]);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(confusion.read::<u32>()?, vec![1, 0, 0, 0, 1, 0, 0, 1, 1]);
 
 		let mask_predicted = Matrix::new_from_slice([7], &[1_u8, 1, 0, 0, 3, 0, 1])?;
 		let mask_target = Matrix::new_from_slice([7], &[1_u8, 0, 1, 0, 1, 0, 0])?;
 		let (mask_plan, mask_counts) =
-			engine.capture(|| oa::vision::binary_mask_counts(&mask_predicted, &mask_target))?;
-		engine.submit(&mask_plan)?.wait()?;
+			runtime.capture(|| oa::vision::binary_mask_counts(&mask_predicted, &mask_target))?;
+		runtime.submit(&mask_plan)?.wait()?;
 		assert_eq!(mask_counts.read::<u32>()?, vec![2, 2, 1, 2]);
-		engine.submit(&mask_plan)?.wait()?;
+		runtime.submit(&mask_plan)?.wait()?;
 		assert_eq!(mask_counts.read::<u32>()?, vec![2, 2, 1, 2]);
 		Ok(())
 	}
@@ -224,7 +228,7 @@ test_vk!(
 
 test_vk!(
 	detection_evaluation_matches_donor_dataset_oracle_and_split_graph,
-	engine,
+	runtime,
 	{
 		let predicted_boxes = Matrix::new_from_f32(
 			[4, 4],
@@ -245,7 +249,7 @@ test_vk!(
 		let target_classes = Matrix::new_from_slice([3], &[0_i32, 0, 1])?;
 		let target_images = Matrix::new_from_slice([3], &[0_i32, 1, 0])?;
 		let thresholds = Matrix::new_from_f32([2], &[0.50, 0.75])?;
-		let (plan, result) = engine.capture(|| {
+		let (plan, result) = runtime.capture(|| {
 			oa::vision::evaluate(
 				&predicted_boxes,
 				&predicted_scores,
@@ -281,7 +285,7 @@ test_vk!(
 				"vision.detection_mean_average_precision.f32",
 			]
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(result.counts.shape(), [2, 2, 3]);
 		assert_eq!(
 			result.counts.read::<u32>()?,
@@ -301,7 +305,7 @@ test_vk!(
 			assert!((value - 0.917_491_7).abs() <= 1.0e-5);
 		}
 		assert!((result.mean_average_precision.read_f32()?[0] - 0.917_491_7).abs() <= 1.0e-5);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert!((result.mean_average_precision.read_f32()?[0] - 0.917_491_7).abs() <= 1.0e-5);
 		Ok(())
 	}
@@ -309,19 +313,19 @@ test_vk!(
 
 test_vk!(
 	segmentation_evaluation_matches_oracle_and_ignores_invalid_labels,
-	engine,
+	runtime,
 	{
 		let predicted = Matrix::new_from_slice([2, 3], &[0_i32, 1, 2, 1, 8, 0])?;
 		let target = Matrix::new_from_slice([2, 3], &[0_i32, 2, 2, 1, 0, -1])?;
 		let (plan, result) =
-			engine.capture(|| oa::vision::evaluate_segmentation(&predicted, &target, 3))?;
+			runtime.capture(|| oa::vision::evaluate_segmentation(&predicted, &target, 3))?;
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
 			"oa::FnDetection::evaluateSegmentation"
 		);
 		assert_eq!(plan.semantic_lowering().decomposed_op_count(), 1);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(
 			result.confusion.read::<u32>()?,
 			vec![1, 0, 0, 0, 1, 0, 0, 1, 1]
@@ -345,7 +349,7 @@ test_vk!(
 		}
 		assert!((result.mean_iou.read_f32()?[0] - 2.0 / 3.0).abs() <= 1.0e-6);
 		assert!((result.pixel_accuracy.read_f32()?[0] - 0.75).abs() <= 1.0e-6);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(
 			result.confusion.read::<u32>()?,
 			vec![1, 0, 0, 0, 1, 0, 0, 1, 1]
@@ -356,15 +360,15 @@ test_vk!(
 
 test_vk!(
 	complete_detection_surface_rejects_invalid_contracts,
-	engine,
+	runtime,
 	{
-		let other_engine = oa::Engine::new()?;
+		let other_runtime = oa::Runtime::new()?;
 		let boxes = Matrix::new_from_f32([1, 4], &[0.0, 0.0, 1.0, 1.0])?;
 		let scores = Matrix::new_from_f32([1], &[1.0])?;
 		let classes = Matrix::new_from_slice([1], &[0_i32])?;
 		let images = Matrix::new_from_slice([1], &[0_i32])?;
 		let thresholds = Matrix::new_from_f32([1], &[0.5])?;
-		let foreign_scores = Matrix::new_from_f32_on(&other_engine, [1], &[1.0])?;
+		let foreign_scores = Matrix::new_from_f32_on(&other_runtime, [1], &[1.0])?;
 		let labels = Matrix::new_from_slice([2], &[0_i32, 1])?;
 		let short_labels = Matrix::new_from_slice([1], &[0_i32])?;
 		let masks = Matrix::new_from_slice([2], &[0_u8, 1])?;
@@ -373,7 +377,7 @@ test_vk!(
 		for error in [
 			oa::vision::nms(&boxes, &foreign_scores, &classes, NmsConfig::default())
 				.err()
-				.expect("cross-engine NMS was accepted"),
+				.expect("cross-runtime NMS was accepted"),
 			oa::vision::nms(
 				&boxes,
 				&scores,
@@ -521,7 +525,7 @@ fn detection_record_has_the_donor_32_byte_abi() {
 
 test_vk!(
 	detection_buffer_enforces_capacity_and_consumer_readiness,
-	engine,
+	runtime,
 	{
 		use oa::{ErrorKind, vision::Detection, vision::DetectionBuffer};
 
@@ -567,24 +571,24 @@ test_vk!(
 		])?;
 		assert_eq!(buffer.count(), 2);
 
-		let other_engine = oa::Engine::new()?;
+		let other_runtime = oa::Runtime::new()?;
 		let source = Matrix::new_from_f32([4], &[1.0; 4])?;
-		let (plan, _) = engine.capture(|| source.add(&source))?;
-		let foreign = other_engine.submit(&{
-			let foreign_source = Matrix::new_from_f32_on(&other_engine, [4], &[1.0; 4])?;
-			let (foreign_plan, _) = other_engine.capture(|| foreign_source.add(&foreign_source))?;
+		let (plan, _) = runtime.capture(|| source.add(&source))?;
+		let foreign = other_runtime.submit(&{
+			let foreign_source = Matrix::new_from_f32_on(&other_runtime, [4], &[1.0; 4])?;
+			let (foreign_plan, _) = other_runtime.capture(|| foreign_source.add(&foreign_source))?;
 			foreign_plan
 		})?;
 		assert_eq!(
 			buffer
 				.mark_consumed(&foreign)
-				.expect_err("a foreign-engine event must be rejected")
+				.expect_err("a foreign-runtime event must be rejected")
 				.kind(),
 			ErrorKind::InvalidArgument
 		);
 		foreign.wait()?;
 
-		let event = engine.submit(&plan)?;
+		let event = runtime.submit(&plan)?;
 		buffer.mark_consumed(&event)?;
 		assert!(!buffer.is_ready()?);
 		assert_eq!(

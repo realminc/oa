@@ -158,7 +158,7 @@ rather than separating each dispatch into another lowering chain.
 
 Donor authority is the three `source/cpp/lib/oa/ml/nn/flow/flow*.cpp` files,
 their headers and `test/cpp/ml/generative/testFlow.cpp`. Existing Rust adaptations
-remain explicit: FP32 inputs and same-engine checks, deterministic constructor
+remain explicit: FP32 inputs and same-runtime checks, deterministic constructor
 seeds, `block_0` checkpoint names instead of donor `block0`, nonpersistent
 frequency storage and a registered learned position parameter. Per-sample binary
 conditioning dropout still uses replay-safe inverted Dropout with its scale

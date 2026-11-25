@@ -30,10 +30,10 @@ class BigIntBreadthFixtureTest(unittest.TestCase):
 @unittest.skipUnless("OA_TEST_DEVICE_INDEX" in os.environ, "explicit Vulkan test device required")
 class BigIntBreadthVulkanTest(unittest.TestCase):
 	def test_selected_device_breadth(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		for case in json.loads(FIXTURE.read_text())["cases"]:
-			left = oa.Matrix.new_from_u32([case["rows"], case["words"]], case["left"], engine=engine)
-			right = oa.Matrix.new_from_u32([case["rows"], case["words"]], case["right"], engine=engine)
+			left = oa.Matrix.new_from_u32([case["rows"], case["words"]], case["left"], runtime=runtime)
+			right = oa.Matrix.new_from_u32([case["rows"], case["words"]], case["right"], runtime=runtime)
 			self.assertEqual(oa.crypto.bigint_multiply_high(left, right).read_u32(), case["results"]["multiply_high"])
 			for name in ("square_wide", "bit_not", "leading_zeros"):
 				self.assertEqual(getattr(oa.crypto, f"bigint_{name}")(left).read_u32(), case["results"][name], name)

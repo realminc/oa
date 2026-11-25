@@ -396,7 +396,7 @@ impl EncodePlaneCopy {
 	/// handling). Consumer: the encode command's internal acquire barrier
 	/// (`VIDEO_ENCODE` stage, `VIDEO_ENCODE_READ` access). The input image is
 	/// `CONCURRENT` between compute and encode families, so the release side
-	/// carries no queue-family transfer — the engine timeline orders the
+	/// carries no queue-family transfer — the runtime timeline orders the
 	/// compute and encode submissions.
 	pub(in crate::runtime) fn record(
 		&self,

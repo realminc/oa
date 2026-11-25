@@ -148,7 +148,7 @@ impl SecretBuffer {
 			} else {
 				vk::MemoryPropertyFlagBits::DEVICE_LOCAL_BIT
 			});
-		// SAFETY: this live engine device owns the allocator. Device-local secrets have
+		// SAFETY: this live runtime device owns the allocator. Device-local secrets have
 		// no host access; the separate staging allocation requests host visibility.
 		// Dedicated memory avoids pools. Neither allocation requests export flags.
 		let (handle, allocation) = unsafe {
@@ -466,7 +466,7 @@ impl SecretBuffer {
 		Ok((command, witness))
 	}
 
-	/// Retain the generated key for later Engine operations, erasing only entropy.
+	/// Retain the generated key for later Runtime operations, erasing only entropy.
 	pub(in crate::runtime) fn record_mldsa_retained_keygen(
 		self,
 		bytes: &[u8],
@@ -768,7 +768,7 @@ impl SecretBuffer {
 			.set_buffer(self.handle)
 			.set_offset(0)
 			.set_size(self.size);
-		// SAFETY: Engine submits this compute-only allocation after the final
+		// SAFETY: Runtime submits this compute-only allocation after the final
 		// consumer on its ordered timeline. The barrier covers the entire range,
 		// including padding. No family transfer or protected memory is involved.
 		unsafe {

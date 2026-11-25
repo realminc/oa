@@ -51,12 +51,12 @@ class BigIntModularFixtureTest(unittest.TestCase):
 @unittest.skipUnless("OA_TEST_DEVICE_INDEX" in os.environ, "explicit Vulkan test device required")
 class BigIntModularVulkanTest(unittest.TestCase):
 	def test_selected_device_values_and_status(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		for case in json.loads(FIXTURE.read_text())["cases"]:
 			shape = [case["rows"], case["words"]]
-			left = oa.Matrix.new_from_u32(shape, case["left"], engine=engine)
-			right = oa.Matrix.new_from_u32(shape, case["right"], engine=engine)
-			modulus = oa.Matrix.new_from_u32(shape, case["modulus"], engine=engine)
+			left = oa.Matrix.new_from_u32(shape, case["left"], runtime=runtime)
+			right = oa.Matrix.new_from_u32(shape, case["right"], runtime=runtime)
+			modulus = oa.Matrix.new_from_u32(shape, case["modulus"], runtime=runtime)
 			for name in UNARY + BINARY:
 				op = getattr(oa.crypto, f"bigint_{name}")
 				output, status = op(left, modulus) if name in UNARY else op(left, right, modulus)

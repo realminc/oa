@@ -14,7 +14,7 @@ use symphonia::core::{
 	units::{Time, TimeBase},
 };
 
-use crate::{Engine, Error, Result};
+use crate::{Error, Result, Runtime};
 
 use super::{Audio, AudioChannelLayout, codec::ac3, demux, validate_sample_buffer};
 
@@ -31,53 +31,53 @@ use super::{Audio, AudioChannelLayout, codec::ac3, demux, validate_sample_buffer
 /// media, changing stream parameters, empty decoded audio, checked-size overflow,
 /// or device allocation/upload failure.
 ///
-/// This variant decodes on this thread's default engine. An engine
+/// This variant decodes on this thread's default runtime. An runtime
 /// initialization failure is returned before decoding starts.
 pub fn decode_file(path: impl AsRef<Path>) -> Result<Audio> {
 	let path = path.as_ref();
-	decode_file_on(&Engine::current()?, path)
+	decode_file_on(&Runtime::current()?, path)
 }
 /// Decode one supported file and upload planar FP32 samples on a particular
-/// engine.
+/// runtime.
 ///
-/// This is the [`decode_file`] contract evaluated on `engine` instead of this
-/// thread's default engine.
+/// This is the [`decode_file`] contract evaluated on `runtime` instead of this
+/// thread's default runtime.
 ///
 /// # Errors
 ///
 /// Returns the same errors as [`decode_file`].
-pub fn decode_file_on(engine: &Engine, path: impl AsRef<Path>) -> Result<Audio> {
+pub fn decode_file_on(runtime: &Runtime, path: impl AsRef<Path>) -> Result<Audio> {
 	let path = path.as_ref();
 	if path.as_os_str().is_empty() {
 		return Err(Error::invalid_argument("audio::decode_file path is empty"));
 	}
 	decode_source(
-		engine,
+		runtime,
 		demux::probe_file(path, "audio file open", "audio format probe")?,
 	)
 }
 
 /// Decode one supported in-memory media stream and upload planar FP32 samples
-/// on this thread's default engine.
+/// on this thread's default runtime.
 ///
 /// # Errors
 ///
-/// Returns an error when the default engine cannot be initialized or for
+/// Returns an error when the default runtime cannot be initialized or for
 /// empty, unsupported, malformed, or parameter-changing media, empty decoded
 /// audio, checked-size overflow, or device allocation/upload failure.
 pub fn decode_memory(encoded: &[u8]) -> Result<Audio> {
-	decode_memory_on(&Engine::current()?, encoded)
+	decode_memory_on(&Runtime::current()?, encoded)
 }
 
 /// Decode one supported in-memory media stream and upload planar FP32 samples
-/// on a particular engine.
+/// on a particular runtime.
 ///
 /// # Errors
 ///
 /// Returns an error for empty, unsupported, malformed, or parameter-changing
 /// media, empty decoded audio, checked-size overflow, or device
 /// allocation/upload failure.
-pub fn decode_memory_on(engine: &Engine, encoded: &[u8]) -> Result<Audio> {
+pub fn decode_memory_on(runtime: &Runtime, encoded: &[u8]) -> Result<Audio> {
 	if encoded.is_empty() {
 		return Err(Error::invalid_argument(
 			"audio::decode_memory input buffer is empty",
@@ -85,12 +85,12 @@ pub fn decode_memory_on(engine: &Engine, encoded: &[u8]) -> Result<Audio> {
 	}
 	let source = Box::new(Cursor::new(encoded.to_vec()));
 	decode_source(
-		engine,
+		runtime,
 		demux::probe(source, &Hint::new(), "audio format probe")?,
 	)
 }
 
-fn decode_source(engine: &Engine, mut format: Box<dyn FormatReader>) -> Result<Audio> {
+fn decode_source(runtime: &Runtime, mut format: Box<dyn FormatReader>) -> Result<Audio> {
 	let track = format.default_track(TrackType::Audio).ok_or_else(|| {
 		Error::invalid_argument("audio stream does not contain a decodable audio track")
 	})?;
@@ -142,11 +142,11 @@ fn decode_source(engine: &Engine, mut format: Box<dyn FormatReader>) -> Result<A
 
 	let (channels, sample_rate) = stream_spec
 		.ok_or_else(|| Error::invalid_argument("audio stream did not produce any decoded samples"))?;
-	upload_interleaved(engine, &interleaved, channels, sample_rate)
+	upload_interleaved(runtime, &interleaved, channels, sample_rate)
 }
 
 fn upload_interleaved(
-	engine: &Engine,
+	runtime: &Runtime,
 	interleaved: &[f32],
 	channel_count: usize,
 	sample_rate: u32,
@@ -164,7 +164,7 @@ fn upload_interleaved(
 		}
 	}
 	Audio::new_from_planar_f32(
-		engine,
+		runtime,
 		&planar,
 		channel_count,
 		sample_rate,

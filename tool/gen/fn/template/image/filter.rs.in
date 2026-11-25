@@ -8,7 +8,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -36,7 +36,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -63,7 +63,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -86,7 +86,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -109,7 +109,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -131,7 +131,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -159,7 +159,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -188,7 +188,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -217,7 +217,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -246,7 +246,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -275,7 +275,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -304,7 +304,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -333,7 +333,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -362,7 +362,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -395,7 +395,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -429,7 +429,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -452,7 +452,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -482,7 +482,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -507,7 +507,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -543,7 +543,7 @@
 	let output = allocate_like(input, contract.name())?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
-	input.engine_handle().record_image_semantic(
+	input.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &{{binding_name:0}},
@@ -556,6 +556,118 @@
 			inputs: &[ImageSemanticInput::Image(input)],
 			outputs: &[ImageSemanticOutput::Image(&output)],
 			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation canny
+	finite(low_threshold, "image::canny low_threshold")?;
+	finite(high_threshold, "image::canny high_threshold")?;
+	if low_threshold < 0.0 || low_threshold > high_threshold {
+		return Err(Error::invalid_argument(
+			"image::canny requires 0 <= low_threshold <= high_threshold",
+		));
+	}
+	let contract = {{contract}};
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::canny plane count exceeds u32"))?;
+	let plane_elements = plane_count
+		.checked_mul(image_height)
+		.and_then(|count| count.checked_mul(image_width))
+		.ok_or_else(|| Error::out_of_range("image::canny plane element count exceeds u32"))?;
+	let relax_passes = if hysteresis_passes == 0 {
+		image_height
+			.checked_add(image_width)
+			.ok_or_else(|| Error::out_of_range("image::canny hysteresis bound exceeds u32"))?
+	} else {
+		hysteresis_passes
+	};
+	let runtime = input.runtime();
+	let magnitude = Matrix::allocate(
+		runtime,
+		vec![plane_elements as usize],
+		plane_elements as usize,
+		DType::F32,
+	)?;
+	let direction = Matrix::allocate(
+		runtime,
+		vec![plane_elements as usize],
+		plane_elements as usize,
+		DType::U32,
+	)?;
+	let suppressed = Matrix::allocate(
+		runtime,
+		vec![plane_elements as usize],
+		plane_elements as usize,
+		DType::F32,
+	)?;
+	let mask = Matrix::allocate(
+		runtime,
+		vec![plane_elements as usize],
+		plane_elements as usize,
+		DType::U32,
+	)?;
+	let output = allocate_like(input, contract.name())?;
+	let mut workgroups =
+		KernelId::ImageCannyGradientF32.output_workgroups(image_width, image_height);
+	workgroups[2] = plane_count;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let {{binding_name:2}} = [{{bindings:2}}];
+	let {{push_name:2}} = [{{push:2}}];
+	let {{binding_name:3}} = [{{bindings:3}}];
+	let {{push_name:3}} = [{{push:3}}];
+	let {{binding_name:4}} = [{{bindings:4}}];
+	let {{push_name:4}} = [{{push:4}}];
+	let mut dispatches = Vec::with_capacity(5 + relax_passes as usize);
+	dispatches.push(ComputeDispatch {
+		kernel: {{kernel:0}},
+		buffers: &{{binding_name:0}},
+		push_constants: &{{push_name:0}},
+		workgroups,
+		indirect: None,
+	});
+	dispatches.push(ComputeDispatch {
+		kernel: {{kernel:1}},
+		buffers: &{{binding_name:1}},
+		push_constants: &{{push_name:1}},
+		workgroups,
+		indirect: None,
+	});
+	dispatches.push(ComputeDispatch {
+		kernel: {{kernel:2}},
+		buffers: &{{binding_name:2}},
+		push_constants: &{{push_name:2}},
+		workgroups,
+		indirect: None,
+	});
+	for _ in 0..relax_passes {
+		dispatches.push(ComputeDispatch {
+			kernel: {{kernel:3}},
+			buffers: &{{binding_name:3}},
+			push_constants: &{{push_name:3}},
+			workgroups,
+			indirect: None,
+		});
+	}
+	dispatches.push(ComputeDispatch {
+		kernel: {{kernel:4}},
+		buffers: &{{binding_name:4}},
+		push_constants: &{{push_name:4}},
+		workgroups,
+		indirect: None,
+	});
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &attributes,
 		},
 	)?;
 	Ok(output)

@@ -1,7 +1,7 @@
 //! Rotary position embedding Matrix operations.
 
 use crate::ml::autograd;
-use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::ml::validation::{shader_u32, validate_f32_same_runtime};
 use crate::runtime::ComputeDispatch;
 use crate::runtime::SemanticDispatch;
 use crate::{
@@ -43,7 +43,7 @@ fn validate_rope(
 			"{operation} theta base must be finite and positive"
 		)));
 	}
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let pair_count = tokens
 		.checked_mul(num_heads)
 		.and_then(|count| count.checked_mul(head_dim / 2))

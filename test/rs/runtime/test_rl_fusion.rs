@@ -31,7 +31,7 @@ fn has_kernel(plan: &oa::ExecutionPlan, suffix: &str) -> bool {
 
 test_vk!(
 	rl_fusion_router_materializes_unbiased_probabilities_and_biased_selection,
-	engine,
+	runtime,
 	{
 		for (rows, experts, k) in [(1, 1, 1), (3, 7, 2), (2, 8, 8), (2, 256, 3)] {
 			let logits = Matrix::new_from_f32([rows, experts], &vec![0.0; rows * experts])?;
@@ -52,7 +52,7 @@ test_vk!(
 				let reference_values = reference_top.values.read_f32()?;
 				let reference_indices = reference_top.indices.read::<i32>()?;
 				let reference_mask = matrix::top_k_mask(&reference_top.indices, experts)?.read_f32()?;
-				let (mut plan, (probability, selection, top, mask)) = engine.capture(|| {
+				let (mut plan, (probability, selection, top, mask)) = runtime.capture(|| {
 					let p = matrix::softmax(&logits, 1)?;
 					let s = if biased {
 						matrix::add(&logits, &bias)?
@@ -65,7 +65,7 @@ test_vk!(
 				})?;
 				assert!(has_kernel(&plan, "moe_router_select.f32"));
 				for _ in 0..3 {
-					engine.submit(&plan)?.wait()?;
+					runtime.submit(&plan)?.wait()?;
 					close(&probability.read_f32()?, &reference_probability, 1e-7);
 					assert_eq!(top.values.read_f32()?, reference_values);
 					assert_eq!(top.indices.read::<i32>()?, reference_indices);
@@ -77,7 +77,7 @@ test_vk!(
 				if !biased {
 					let replacement = Matrix::new_from_f32([rows, experts], &vec![2.0; rows * experts])?;
 					plan.bind_matrix_input(&logits, &replacement)?;
-					engine.submit(&plan)?.wait()?;
+					runtime.submit(&plan)?.wait()?;
 					close(&probability.read_f32()?, &reference_probability, 1e-7);
 					assert_eq!(top.values.read_f32()?, vec![2.0; rows * k]);
 				}
@@ -89,16 +89,16 @@ test_vk!(
 
 test_vk!(
 	rl_fusion_router_keeps_unqualified_route_counts_on_source,
-	engine,
+	runtime,
 	{
 		let logits = Matrix::new_from_f32([1, 33], &values(33, 0))?;
-		let (plan, mask) = engine.capture(|| {
+		let (plan, mask) = runtime.capture(|| {
 			let _p = matrix::softmax(&logits, 1)?;
 			let top = matrix::top_k(&logits, 33, 1)?;
 			matrix::top_k_mask(&top.indices, 33)
 		})?;
 		assert!(!has_kernel(&plan, "moe_router_select.f32"));
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(mask.read_f32()?, vec![1.0; 33]);
 		Ok(())
 	}
@@ -106,7 +106,7 @@ test_vk!(
 
 test_vk!(
 	rl_fusion_gated_linear_preserves_both_halves_and_backward,
-	engine,
+	runtime,
 	{
 		for hidden in [7, 65] {
 			let input = Matrix::new_from_f32([3, 5], &values(15, 1))?;
@@ -125,7 +125,7 @@ test_vk!(
 				.iter()
 				.map(|p| p.gradient().unwrap().read_f32())
 				.collect::<Result<Vec<_>>>()?;
-			let (plan, (raw, output)) = engine.capture(|| {
+			let (plan, (raw, output)) = runtime.capture(|| {
 				let tape = GradientTape::new();
 				let raw = candidate.forward(&input)?;
 				let output = oa::ml::matrix::silu_mul(&raw, hidden)?;
@@ -134,7 +134,7 @@ test_vk!(
 				Ok((raw, output))
 			})?;
 			assert!(has_kernel(&plan, "linear_gated_act.f32"));
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			close(&raw.read_f32()?, &expected_raw, 1e-6);
 			close(&output.read_f32()?, &expected, 1e-6);
 			for (p, g) in candidate.all_parameters()?.iter().zip(&gradients) {
@@ -147,7 +147,7 @@ test_vk!(
 
 test_vk!(
 	rl_fusion_grouped_gate_up_preserves_boundary_and_homogeneous_tiles,
-	engine,
+	runtime,
 	{
 		let rows = 70;
 		let inner = 5;
@@ -163,14 +163,14 @@ test_vk!(
 		let raw = oa::ml::matrix::grouped_linear_m(&input, &weight, &bias, &offsets)?;
 		let expected_raw = raw.read_f32()?;
 		let expected = oa::ml::matrix::silu_mul(&raw, hidden)?.read_f32()?;
-		let (plan, (raw, output)) = engine.capture(|| {
+		let (plan, (raw, output)) = runtime.capture(|| {
 			let raw = oa::ml::matrix::grouped_linear_m(&input, &weight, &bias, &offsets)?;
 			let output = oa::ml::matrix::silu_mul(&raw, hidden)?;
 			Ok((raw, output))
 		})?;
 		assert!(has_kernel(&plan, "grouped_linear_m_act.f32"));
 		for _ in 0..3 {
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			close(&raw.read_f32()?, &expected_raw, 1e-6);
 			close(&output.read_f32()?, &expected, 1e-6);
 		}
@@ -180,7 +180,7 @@ test_vk!(
 
 test_vk!(
 	rl_fusion_concat_linear_keeps_observed_input_and_gradients,
-	engine,
+	runtime,
 	{
 		for parts in [2, 3] {
 			let inputs = (0..parts)
@@ -201,7 +201,7 @@ test_vk!(
 				.iter()
 				.map(|p| p.gradient().unwrap().read_f32())
 				.collect::<Result<Vec<_>>>()?;
-			let (plan, (combined, output)) = engine.capture(|| {
+			let (plan, (combined, output)) = runtime.capture(|| {
 				let tape = GradientTape::new();
 				let combined = matrix::concat(&inputs, 1)?;
 				let output = candidate.forward(&combined)?;
@@ -209,7 +209,7 @@ test_vk!(
 				Ok((combined, output))
 			})?;
 			assert!(has_kernel(&plan, "linear_concat.f32"));
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			assert_eq!(combined.read_f32()?, expected_combined);
 			close(&output.read_f32()?, &expected, 1e-6);
 			for (p, g) in candidate.all_parameters()?.iter().zip(&gradients) {
@@ -260,7 +260,7 @@ fn attention_reference(
 
 test_vk!(
 	rl_fusion_small_causal_attention_preserves_heads_and_source_saves,
-	engine,
+	runtime,
 	{
 		for (sequence, dim) in [(3, 5), (16, 32), (31, 17), (32, 8), (128, 16)] {
 			let batch = 2;
@@ -273,7 +273,7 @@ test_vk!(
 			let k = Matrix::new_from_f32([batch * sequence, heads * dim], &kv)?;
 			let v = Matrix::new_from_f32([batch * sequence, heads * dim], &vv)?;
 			let expected = attention_reference(&qv, &kv, &vv, batch, sequence, heads, dim);
-			let (plan, (sq, sk, sv, context, output)) = engine.capture(|| {
+			let (plan, (sq, sk, sv, context, output)) = runtime.capture(|| {
 				let sq = oa::ml::matrix::split_heads(&q, batch, sequence, heads)?;
 				let sk = oa::ml::matrix::split_heads(&k, batch, sequence, heads)?;
 				let sv = oa::ml::matrix::split_heads(&v, batch, sequence, heads)?;
@@ -293,7 +293,7 @@ test_vk!(
 				"{sequence} {dim}"
 			);
 			for _ in 0..2 {
-				engine.submit(&plan)?.wait()?;
+				runtime.submit(&plan)?.wait()?;
 				close(&output.read_f32()?, &expected, 2e-5);
 				for (split, source) in [(&sq, &qv), (&sk, &kv), (&sv, &vv), (&context, &expected)] {
 					let actual = split.read_f32()?;
@@ -319,7 +319,7 @@ test_vk!(
 
 test_vk!(
 	rl_fusion_small_causal_attention_supports_single_head_rows,
-	engine,
+	runtime,
 	{
 		let _small_sdpa = SmallSdpaFlag::enter();
 		for (sequence, dim) in [(3, 5), (16, 32), (31, 17), (32, 8), (128, 16)] {
@@ -333,7 +333,7 @@ test_vk!(
 			let k = Matrix::new_from_f32([batch * sequence, dim], &kv)?;
 			let v = Matrix::new_from_f32([batch * sequence, dim], &vv)?;
 			let expected = attention_reference(&qv, &kv, &vv, batch, sequence, heads, dim);
-			let (plan, output) = engine.capture(|| {
+			let (plan, output) = runtime.capture(|| {
 				oa::ml::matrix::scaled_dot_product_attention_causal(&q, &k, &v, sequence, heads)
 			})?;
 			assert!(
@@ -341,7 +341,7 @@ test_vk!(
 				"{sequence} {dim}"
 			);
 			for _ in 0..2 {
-				engine.submit(&plan)?.wait()?;
+				runtime.submit(&plan)?.wait()?;
 				close(&output.read_f32()?, &expected, 2e-5);
 			}
 		}
@@ -351,7 +351,7 @@ test_vk!(
 
 test_vk!(
 	rl_fusion_tape_supports_broadcast_and_typed_gather_leaves,
-	engine,
+	runtime,
 	{
 		let input = Matrix::new_from_f32([3, 7], &values(21, 1))?;
 		let column = Matrix::new_from_f32([3, 1], &[1.0, 2.0, 3.0])?;
@@ -361,14 +361,14 @@ test_vk!(
 		let b = matrix::add(&a, &row)?;
 		let eb = b.read_f32()?;
 		let ec = matrix::reciprocal(&b)?.read_f32()?;
-		let (plan, (a, b, c)) = engine.capture(|| {
+		let (plan, (a, b, c)) = runtime.capture(|| {
 			let a = matrix::mul(&input, &column)?;
 			let b = matrix::add(&a, &row)?;
 			let c = matrix::reciprocal(&b)?;
 			Ok((a, b, c))
 		})?;
 		assert_eq!(plan.semantic_lowering().fused_op_count(), 3);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		close(&a.read_f32()?, &ea, 1e-6);
 		close(&b.read_f32()?, &eb, 1e-6);
 		close(&c.read_f32()?, &ec, 1e-5);
@@ -381,13 +381,13 @@ test_vk!(
 			let gathered = matrix::gather(&input, &indices)?;
 			let expected = gathered.read_f32()?;
 			let expected_scaled = matrix::scale(&gathered, 2.0)?.read_f32()?;
-			let (plan, (gathered, scaled)) = engine.capture(|| {
+			let (plan, (gathered, scaled)) = runtime.capture(|| {
 				let g = matrix::gather(&input, &indices)?;
 				let s = matrix::scale(&g, 2.0)?;
 				Ok((g, s))
 			})?;
 			assert_eq!(plan.semantic_lowering().fused_op_count(), 2);
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			close(&gathered.read_f32()?, &expected, 0.0);
 			close(&scaled.read_f32()?, &expected_scaled, 0.0);
 		}
@@ -397,7 +397,7 @@ test_vk!(
 
 test_vk!(
 	rl_fusion_tape_activation_adjoint_preserves_parameter_gradients,
-	engine,
+	runtime,
 	{
 		let input = Matrix::new_from_f32([3, 5], &values(15, 7))?;
 		let target = Matrix::new_from_f32([3, 7], &[0.0; 21])?;
@@ -416,7 +416,7 @@ test_vk!(
 			.iter()
 			.map(|p| p.gradient().unwrap().read_f32())
 			.collect::<Result<Vec<_>>>()?;
-		let (plan, ()) = engine.capture(|| {
+		let (plan, ()) = runtime.capture(|| {
 			let tape = GradientTape::new();
 			let raw = candidate.forward(&input)?;
 			let activated = oa::ml::matrix::gelu(&raw)?;
@@ -424,7 +424,7 @@ test_vk!(
 			tape.backward(&oa::ml::loss::mse(&scaled, &target)?)
 		})?;
 		assert!(has_kernel(&plan, "fused_chain.f32"));
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		for (p, g) in candidate.all_parameters()?.iter().zip(&gradients) {
 			close(&p.gradient().unwrap().read_f32()?, g, 2e-6);
 		}
@@ -435,11 +435,11 @@ test_vk!(
 // Fresh-process differential timing: run this one test with fusion enabled,
 // then with OA_DISABLE_RL_FUSION=1, retaining the pre-existing fusion passes.
 // Timings exclude capture/preparation.
-test_vk!(rl_fusion_benchmark_static_workloads, engine, {
+test_vk!(rl_fusion_benchmark_static_workloads, runtime, {
 	let mut plans = Vec::new();
 	let logits = Matrix::new_from_f32([64, 8], &values(512, 1))?;
 	let bias = Matrix::new_from_f32([1, 8], &values(8, 2))?;
-	let (router, _) = engine.capture(|| {
+	let (router, _) = runtime.capture(|| {
 		let p = matrix::softmax(&logits, 1)?;
 		let s = matrix::add(&logits, &bias)?;
 		let t = matrix::top_k(&s, 2, 1)?;
@@ -449,17 +449,17 @@ test_vk!(rl_fusion_benchmark_static_workloads, engine, {
 	plans.push(("router64x8k2", router));
 	let input = Matrix::new_from_f32([64, 64], &values(4096, 3))?;
 	let linear = oa::ml::nn::Linear::new_with_seed(64, 128, 0x24)?;
-	let (gated, _) = engine.capture(|| oa::ml::matrix::silu_mul(&linear.forward(&input)?, 64))?;
+	let (gated, _) = runtime.capture(|| oa::ml::matrix::silu_mul(&linear.forward(&input)?, 64))?;
 	plans.push(("gate64x64x64", gated));
 	let odd_linear = oa::ml::nn::Linear::new_with_seed(64, 130, 0x24)?;
 	let (odd_gate, _) =
-		engine.capture(|| oa::ml::matrix::silu_mul(&odd_linear.forward(&input)?, 65))?;
+		runtime.capture(|| oa::ml::matrix::silu_mul(&odd_linear.forward(&input)?, 65))?;
 	plans.push(("gate64x64x65", odd_gate));
 	let grouped_input = Matrix::new_from_f32([70, 16], &values(70 * 16, 1))?;
 	let grouped_weight = Matrix::new_from_f32([3, 64, 16], &values(3 * 64 * 16, 2))?;
 	let grouped_bias = Matrix::new_from_f32([3, 64], &values(3 * 64, 3))?;
 	let grouped_offsets = Matrix::new_from_slice([4], &[0_u32, 3, 17, 70])?;
-	let (grouped_gate, _) = engine.capture(|| {
+	let (grouped_gate, _) = runtime.capture(|| {
 		oa::ml::matrix::silu_mul(
 			&oa::ml::matrix::grouped_linear_m(
 				&grouped_input,
@@ -474,13 +474,13 @@ test_vk!(rl_fusion_benchmark_static_workloads, engine, {
 	let query = Matrix::new_from_f32([64 * 16, 64], &values(64 * 16 * 64, 1))?;
 	let key = Matrix::new_from_f32([64 * 16, 64], &values(64 * 16 * 64, 2))?;
 	let value = Matrix::new_from_f32([64 * 16, 64], &values(64 * 16 * 64, 3))?;
-	let (attention, _) = engine
+	let (attention, _) = runtime
 		.capture(|| oa::ml::matrix::scaled_dot_product_attention_causal(&query, &key, &value, 16, 2))?;
 	plans.push(("sdpa64x16h2d32", attention));
 	let long_query = Matrix::new_from_f32([16 * 128, 32], &values(16 * 128 * 32, 1))?;
 	let long_key = Matrix::new_from_f32([16 * 128, 32], &values(16 * 128 * 32, 2))?;
 	let long_value = Matrix::new_from_f32([16 * 128, 32], &values(16 * 128 * 32, 3))?;
-	let (long_attention, _) = engine.capture(|| {
+	let (long_attention, _) = runtime.capture(|| {
 		oa::ml::matrix::scaled_dot_product_attention_causal(&long_query, &long_key, &long_value, 128, 2)
 	})?;
 	plans.push(("sdpa16x128h2d16", long_attention));
@@ -491,21 +491,27 @@ test_vk!(rl_fusion_benchmark_static_workloads, engine, {
 	];
 	let joint = oa::ml::nn::Linear::new_with_seed(16, 64, 0x25)?;
 	let (head, _) =
-		engine.capture(|| oa::ml::matrix::gelu(&joint.forward(&matrix::concat(&parts, 1)?)?))?;
+		runtime.capture(|| oa::ml::matrix::gelu(&joint.forward(&matrix::concat(&parts, 1)?)?))?;
 	plans.push(("head64x16x64", head));
 	let a = Matrix::new_from_f32([128, 8], &values(1024, 4))?;
 	let row = Matrix::new_from_f32([1, 8], &[1.0; 8])?;
 	let col = Matrix::new_from_f32([128, 1], &vec![0.5; 128])?;
 	let (broadcast, _) =
-		engine.capture(|| matrix::reciprocal(&matrix::add(&matrix::mul(&a, &col)?, &row)?))?;
+		runtime.capture(|| matrix::reciprocal(&matrix::add(&matrix::mul(&a, &col)?, &row)?))?;
 	plans.push(("broadcast128x8", broadcast));
 	for (name, plan) in plans {
 		for _ in 0..3 {
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 		}
 		let mut samples = Vec::new();
 		for _ in 0..11 {
-			samples.push(engine.submit_timed(&plan)?.device_duration()?.as_secs_f64() * 1000.0);
+			samples.push(
+				runtime
+					.submit_timed(&plan)?
+					.device_duration()?
+					.as_secs_f64()
+					* 1000.0,
+			);
 		}
 		samples.sort_by(f64::total_cmp);
 		eprintln!(
@@ -521,7 +527,7 @@ test_vk!(rl_fusion_benchmark_static_workloads, engine, {
 
 test_vk!(
 	rl_fusion_nine_activation_adjoints_match_host_finite_differences,
-	engine,
+	runtime,
 	{
 		let inputs = [-1.1_f32, 0.3, 0.8, -0.2, -0.7, 0.9, 0.4, 0.5, -0.6];
 		let initial = [0.4_f32, -0.3, 0.8, 0.12];
@@ -575,7 +581,7 @@ test_vk!(
 				Matrix::new_from_f32([1, 3], &initial[..3])?,
 				Matrix::new_from_f32([1], &initial[3..])?,
 			)?;
-			let (plan, ()) = engine.capture(|| {
+			let (plan, ()) = runtime.capture(|| {
 				let tape = GradientTape::new();
 				let raw = linear.forward(&input)?;
 				let activated = match kind {
@@ -593,7 +599,7 @@ test_vk!(
 				tape.backward(&oa::ml::loss::mse(&output, &target)?)
 			})?;
 			assert!(has_kernel(&plan, "fused_chain.f32"), "activation {kind}");
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			let mut actual = linear.weight().gradient().unwrap().read_f32()?;
 			actual.extend(linear.bias().unwrap().gradient().unwrap().read_f32()?);
 			close(&actual, &expected, 3e-4);
@@ -602,7 +608,7 @@ test_vk!(
 	}
 );
 
-test_vk!(rl_fusion_typed_gather_reverse_matches_host_rows, engine, {
+test_vk!(rl_fusion_typed_gather_reverse_matches_host_rows, runtime, {
 	let input = Matrix::new_from_f32([3, 1], &[1.0, 2.0, 3.0])?;
 	let weights = values(7, 1);
 	let biases = values(7, 2);
@@ -617,14 +623,14 @@ test_vk!(rl_fusion_typed_gather_reverse_matches_host_rows, engine, {
 			Matrix::new_from_f32([7, 1], &weights)?,
 			Matrix::new_from_f32([7], &biases)?,
 		)?;
-		let (plan, ()) = engine.capture(|| {
+		let (plan, ()) = runtime.capture(|| {
 			let tape = GradientTape::new();
 			let table = linear.forward(&input)?;
 			let selected = matrix::gather(&table, &indices)?;
 			let scaled = matrix::scale(&selected, 2.0)?;
 			tape.backward(&oa::ml::loss::mse(&scaled, &target)?)
 		})?;
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let mut expected_weight = Vec::new();
 		let mut expected_bias = Vec::new();
 		for (w, b) in weights.iter().zip(&biases) {

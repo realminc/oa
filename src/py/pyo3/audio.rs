@@ -1,6 +1,6 @@
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyBytes};
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 #[path = "audio/audio.gen.rs"]
 mod generated;
@@ -75,17 +75,17 @@ impl PythonAudio {
 #[pymethods]
 impl PythonAudio {
 	#[staticmethod]
-	#[pyo3(signature = (samples, channels, sample_rate, layout="unknown", engine=None))]
+	#[pyo3(signature = (samples, channels, sample_rate, layout="unknown", runtime=None))]
 	fn new_from_planar_f32(
 		samples: Vec<f32>,
 		channels: usize,
 		sample_rate: u32,
 		layout: &str,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		oa::Audio::new_from_planar_f32(
-			&engine,
+			&runtime,
 			&samples,
 			channels,
 			sample_rate,
@@ -198,10 +198,10 @@ pub(crate) fn audio_length_mask(
 #[pyfunction]
 pub(crate) fn audio_decode_file(
 	path: &str,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonAudio> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::audio::decode_file_on(&engine, path)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::audio::decode_file_on(&runtime, path)
 		.map(PythonAudio::wrap)
 		.map_err(python_error)
 }
@@ -209,10 +209,10 @@ pub(crate) fn audio_decode_file(
 #[pyfunction]
 pub(crate) fn audio_decode_memory(
 	encoded: Vec<u8>,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonAudio> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::audio::decode_memory_on(&engine, &encoded)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::audio::decode_memory_on(&runtime, &encoded)
 		.map(PythonAudio::wrap)
 		.map_err(python_error)
 }

@@ -302,7 +302,7 @@ impl NativeFrameLeases {
 		self.validate_ownership()?;
 		if !event.comes_from(&self.device) {
 			return Err(Error::invalid_argument(
-				"video consumer event belongs to another engine",
+				"video consumer event belongs to another runtime",
 			));
 		}
 		let index =

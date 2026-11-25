@@ -104,7 +104,7 @@ fn numerical_gradient(values: &[f32], loss: impl Fn(&[f32]) -> f32) -> Vec<f32> 
 
 test_vk!(
 	causal_multi_head_attention_matches_host_and_finite_difference_oracles,
-	engine,
+	runtime,
 	{
 		const S: usize = 3;
 		const D: usize = 4;
@@ -191,7 +191,7 @@ test_vk!(
 
 test_vk!(
 	causal_attention_accepts_sequence_lengths_beyond_the_retired_monolithic_limit,
-	engine,
+	runtime,
 	{
 		let values = vec![0.0_f32; 1025];
 		let query = oa::Matrix::new_from_f32([1025, 1], &values)?;
@@ -207,7 +207,7 @@ test_vk!(
 
 test_vk!(
 	gelu_forward_and_backward_match_independent_oracles,
-	engine,
+	runtime,
 	{
 		let values = [-2.0_f32, -1.0, -0.1, 0.0, 0.5, 1.0, 2.0];
 		let expected =
@@ -260,7 +260,7 @@ test_vk!(
 
 test_vk!(
 	swiglu_forward_and_adjoint_match_independent_oracles,
-	engine,
+	runtime,
 	{
 		let gate_values = [-2.0_f32, -0.5, 0.0, 0.25, 1.0, 2.0, 4.0];
 		let up_values = [0.3_f32, -0.7, 1.2, 0.5, -0.4, 0.8, -1.1];

@@ -7,7 +7,7 @@ use std::{
 
 pub use crate::media::types::MediaPlayerConfig;
 use crate::{
-	AudioPlayer, Engine, Error, LogComponent, LogLevel, Result, VideoFrame, VideoPlayer,
+	AudioPlayer, Error, LogComponent, LogLevel, Result, Runtime, VideoFrame, VideoPlayer,
 	audio::AudioPlayerConfig,
 	video::{
 		Mp4TrackEdit, VideoContainerInfo, VideoContainerKind, VideoPlayerConfig, mp4_track_edits,
@@ -34,7 +34,7 @@ impl MediaPlayerConfig {
 
 /// Synchronized playback session over independent audio and video owners.
 ///
-/// The caller ticks video on the Engine-owning thread. During the audio segment,
+/// The caller ticks video on the Runtime-owning thread. During the audio segment,
 /// the device output clock paces decoded video. The host clock covers silent
 /// lead-in and the tail after audio drains. A presented native frame retains its
 /// decoder backing until it is replaced and any external GPU consumers retire.
@@ -59,13 +59,13 @@ impl MediaPlayer {
 	///
 	/// Requires a supported video stream, both track sources, and an audio
 	/// output configuration that can play the selected PCM.
-	pub fn open(engine: &Engine, config: MediaPlayerConfig) -> Result<Self> {
+	pub fn open(runtime: &Runtime, config: MediaPlayerConfig) -> Result<Self> {
 		if config.video_path.as_os_str().is_empty() || config.audio_path.as_os_str().is_empty() {
 			return Err(Error::invalid_argument(
 				"MediaPlayer requires both track paths",
 			));
 		}
-		let video = open_video_track(engine, &config.video_path)?;
+		let video = open_video_track(runtime, &config.video_path)?;
 		let audio_config = AudioPlayerConfig {
 			uri: config.audio_path,
 			loop_playback: false,
@@ -73,16 +73,16 @@ impl MediaPlayer {
 		};
 		let embedded = audio_config.uri == config.video_path;
 		let audio = if embedded {
-			AudioPlayer::open_embedded(engine, audio_config)?
+			AudioPlayer::open_embedded(runtime, audio_config)?
 				.ok_or_else(|| Error::not_found("MediaPlayer source has no audio track"))?
 		} else {
-			AudioPlayer::open(engine, audio_config)?
+			AudioPlayer::open(runtime, audio_config)?
 		};
 		Self::compose(&config.video_path, video, Some(audio), embedded)
 	}
 
-	pub(crate) fn open_viewer(engine: &Engine, path: &Path) -> Result<Self> {
-		let mut video = open_video_track(engine, path)?;
+	pub(crate) fn open_viewer(runtime: &Runtime, path: &Path) -> Result<Self> {
+		let mut video = open_video_track(runtime, path)?;
 		if crate::EnvFlag::is_set("OA_VIEWER_YUV_CANVAS") {
 			video.enable_canvas_yuv()?;
 		}
@@ -94,10 +94,10 @@ impl MediaPlayer {
 		let audio = if info.kind() == VideoContainerKind::MpegTs {
 			None
 		} else {
-			match AudioPlayer::open_embedded(engine, AudioPlayerConfig::new(path)) {
+			match AudioPlayer::open_embedded(runtime, AudioPlayerConfig::new(path)) {
 				Ok(audio) => audio,
 				Err(error) => {
-					engine.log(
+					runtime.log(
 						LogLevel::Warn,
 						LogComponent::AUDIO,
 						format!("Viewer audio unavailable: {error}"),
@@ -432,9 +432,9 @@ impl MediaPlayer {
 	}
 }
 
-fn open_video_track(engine: &Engine, path: &Path) -> Result<VideoPlayer> {
+fn open_video_track(runtime: &Runtime, path: &Path) -> Result<VideoPlayer> {
 	VideoPlayer::new_native(
-		engine,
+		runtime,
 		path,
 		VideoPlayerConfig {
 			loop_playback: false,

@@ -46,7 +46,7 @@ fn parameter<'a>(parameters: &'a ParameterValues, path: &str) -> &'a [f32] {
 
 test_vk!(
 	categorical_actor_critic_matches_independent_cpu_towers,
-	engine,
+	runtime,
 	{
 		let config = CategoricalActorCriticConfig {
 			observation_size: 3,
@@ -147,7 +147,7 @@ test_vk!(
 
 test_vk!(
 	categorical_actor_critic_rejects_invalid_observations,
-	engine,
+	runtime,
 	{
 		assert!(
 			CategoricalActorCritic::new(CategoricalActorCriticConfig {

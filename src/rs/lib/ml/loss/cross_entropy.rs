@@ -21,12 +21,12 @@ pub fn cross_entropy(logits: &Matrix, targets: &Matrix) -> Result<Matrix> {
 	const OPERATION: &str = crate::core::operation::ml::CROSS_ENTROPY.name();
 	let (rows, classes) = validate_cross_entropy_inputs(logits, targets, OPERATION)?;
 	let per_row = Matrix::allocate(
-		logits.engine_handle(),
+		logits.runtime(),
 		vec![rows as usize],
 		rows as usize,
 		DType::F32,
 	)?;
-	let output = Matrix::allocate(logits.engine_handle(), Vec::new(), 1, DType::F32)?;
+	let output = Matrix::allocate(logits.runtime(), Vec::new(), 1, DType::F32)?;
 	let loss_buffers = [
 		BufferBinding::read(logits.storage()),
 		BufferBinding::read(targets.storage()),
@@ -62,7 +62,7 @@ pub fn cross_entropy(logits: &Matrix, targets: &Matrix) -> Result<Matrix> {
 			indirect: None,
 		},
 	];
-	logits.engine_handle().record_split_semantic(
+	logits.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: crate::core::operation::ml::CROSS_ENTROPY,
@@ -97,12 +97,12 @@ pub fn cross_entropy_masked(
 	let (rows, classes, valid_count) =
 		validate_cross_entropy_masked_inputs(logits, targets, mask, valid_count, CONTRACT.name())?;
 	let per_row = Matrix::allocate(
-		logits.engine_handle(),
+		logits.runtime(),
 		vec![rows as usize],
 		rows as usize,
 		DType::F32,
 	)?;
-	let output = Matrix::allocate(logits.engine_handle(), Vec::new(), 1, DType::F32)?;
+	let output = Matrix::allocate(logits.runtime(), Vec::new(), 1, DType::F32)?;
 	let loss_buffers = [
 		BufferBinding::read(logits.storage()),
 		BufferBinding::read(targets.storage()),
@@ -139,7 +139,7 @@ pub fn cross_entropy_masked(
 			indirect: None,
 		},
 	];
-	logits.engine_handle().record_split_semantic(
+	logits.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: CONTRACT,
@@ -160,7 +160,7 @@ pub(in crate::ml) fn cross_entropy_backward(logits: &Matrix, targets: &Matrix) -
 	const OPERATION: &str = crate::core::operation::ml::CROSS_ENTROPY_BACKWARD.name();
 	let (rows, classes) = validate_cross_entropy_inputs(logits, targets, OPERATION)?;
 	let gradient = Matrix::allocate(
-		logits.engine_handle(),
+		logits.runtime(),
 		logits.shape().to_vec(),
 		logits.num_elements(),
 		DType::F32,
@@ -193,11 +193,11 @@ pub(in crate::ml) fn cross_entropy_backward(logits: &Matrix, targets: &Matrix) -
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -220,7 +220,7 @@ pub(in crate::ml) fn cross_entropy_masked_backward(
 	let (rows, classes, valid_count) =
 		validate_cross_entropy_masked_inputs(logits, targets, mask, valid_count, OPERATION)?;
 	let gradient = Matrix::allocate(
-		logits.engine_handle(),
+		logits.runtime(),
 		logits.shape().to_vec(),
 		logits.num_elements(),
 		DType::F32,
@@ -256,11 +256,11 @@ pub(in crate::ml) fn cross_entropy_masked_backward(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -302,9 +302,9 @@ fn validate_cross_entropy_inputs(
 			targets.dtype().token()
 		)));
 	}
-	if !logits.engine_handle().same_as(targets.engine_handle()) {
+	if !logits.runtime().same_as(targets.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	Ok((
@@ -328,9 +328,9 @@ fn validate_cross_entropy_masked_inputs(
 			mask.dtype().token()
 		)));
 	}
-	if !logits.engine_handle().same_as(mask.engine_handle()) {
+	if !logits.runtime().same_as(mask.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let valid_count_u32 = shader_u32(valid_count, "valid count", operation)?;

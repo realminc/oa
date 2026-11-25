@@ -26,7 +26,7 @@ fn words(value: &serde_json::Value) -> Vec<u32> {
 		.collect()
 }
 
-test_vk!(bigint_batch_matches_integer_oracles_and_replay, engine, {
+test_vk!(bigint_batch_matches_integer_oracles_and_replay, runtime, {
 	for case in fixture()["cases"].as_array().unwrap() {
 		let width = usize::try_from(case["words"].as_u64().unwrap()).unwrap();
 		let rows = usize::try_from(case["rows"].as_u64().unwrap()).unwrap();
@@ -34,7 +34,7 @@ test_vk!(bigint_batch_matches_integer_oracles_and_replay, engine, {
 		let right_words = words(&case["right"]);
 		let left = Matrix::new_from_slice([rows, width], &left_words)?;
 		let right = Matrix::new_from_slice([rows, width], &right_words)?;
-		let (plan, outputs) = engine.capture(|| {
+		let (plan, outputs) = runtime.capture(|| {
 			let mut outputs = Vec::new();
 			for (name, op) in BINARY {
 				outputs.push((op(&left, &right)?, words(&case["results"][name])));
@@ -62,7 +62,7 @@ test_vk!(bigint_batch_matches_integer_oracles_and_replay, engine, {
 			);
 		}
 		for _ in 0..2 {
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			for (index, (output, expected)) in outputs.iter().enumerate() {
 				assert_eq!(
 					output.read::<u32>()?,
@@ -77,32 +77,32 @@ test_vk!(bigint_batch_matches_integer_oracles_and_replay, engine, {
 	Ok(())
 });
 
-test_vk!(bigint_chain_rebinds_and_crosses_workgroup_tail, engine, {
+test_vk!(bigint_chain_rebinds_and_crosses_workgroup_tail, runtime, {
 	let first = (0_u32..33)
 		.map(|i| i.wrapping_mul(0xFEDCBA98))
 		.collect::<Vec<_>>();
 	let second = first.iter().map(|v| !v).collect::<Vec<_>>();
 	let left = Matrix::new_from_slice([33, 1], &first)?;
 	let right = Matrix::new_from_slice([33, 1], &[u32::MAX; 33])?;
-	let (mut plan, output) = engine.capture(|| {
+	let (mut plan, output) = runtime.capture(|| {
 		let sum = bigint::add(&left, &right)?;
 		bigint::subtract(&sum, &right)
 	})?;
 	assert_eq!(plan.diagnostics().node_count(), 2);
 	assert_eq!(plan.diagnostics().barrier_count(), 1);
 	assert_eq!(plan.semantic_graph().operations().len(), 2);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_eq!(output.read::<u32>()?, first);
 	let replacement = Matrix::new_from_slice([33, 1], &second)?;
 	plan.bind_matrix_input(&left, &replacement)?;
 	for _ in 0..2 {
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(output.read::<u32>()?, second);
 	}
 	Ok(())
 });
 
-test_vk!(bigint_contracts_and_ready_empty_batches, engine, {
+test_vk!(bigint_contracts_and_ready_empty_batches, runtime, {
 	let empty = Matrix::new_from_slice([0, 2], &[] as &[u32])?;
 	for (_, op) in BINARY {
 		let output = op(&empty, &empty)?;

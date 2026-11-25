@@ -26,8 +26,6 @@ mod upsample;
 mod utility;
 mod vq;
 
-pub(crate) use sequential::PythonSequential;
-
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	linear::register(module)?;
 	embedding::register(module)?;

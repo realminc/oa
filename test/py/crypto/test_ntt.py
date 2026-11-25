@@ -17,7 +17,7 @@ def integers(words):
 @unittest.skipUnless("OA_TEST_DEVICE_INDEX" in os.environ, "explicit Vulkan device required")
 class NttVulkanTest(unittest.TestCase):
 	def test_dft_inverse_and_montgomery_composition(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		rng = random.Random(527)
 		for prime, generator in ((17, 3), (998244353, 3), (2013265921, 31), (2130706433, 3)):
 			for length in (4, 8, 16):
@@ -27,8 +27,8 @@ class NttVulkanTest(unittest.TestCase):
 				for representation in ("standard", "montgomery"):
 					factor = pow(2, 64, prime) if representation == "montgomery" else 1
 					config = oa.crypto.NttConfig(prime, root, length, representation)
-					parameters = oa.crypto.ntt_prepare(config, engine=engine)
-					input_ = oa.Matrix.new_from_u32([3, length, 2], pairs([v * factor % prime for v in values]), engine=engine)
+					parameters = oa.crypto.ntt_prepare(config, runtime=runtime)
+					input_ = oa.Matrix.new_from_u32([3, length, 2], pairs([v * factor % prime for v in values]), runtime=runtime)
 					transformed = oa.crypto.ntt_forward(input_, parameters)
 					self.assertEqual(integers(transformed.read_u32()), [v * factor % prime for v in expected])
 					restored = oa.crypto.ntt_inverse(transformed, parameters)
@@ -39,11 +39,11 @@ class NttVulkanTest(unittest.TestCase):
 					self.assertEqual(integers(convolution.read_u32()), oracle)
 
 	def test_large_staged_roundtrip(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		prime, length = 2013265921, 16384
 		config = oa.crypto.NttConfig(prime, pow(31, (prime - 1) // length, prime), length)
-		parameters = oa.crypto.ntt_prepare(config, engine=engine)
+		parameters = oa.crypto.ntt_prepare(config, runtime=runtime)
 		values = [(i * i + 3 * i + 1) % prime for i in range(length)]
-		input_ = oa.Matrix.new_from_u32([1, length, 2], pairs(values), engine=engine)
+		input_ = oa.Matrix.new_from_u32([1, length, 2], pairs(values), runtime=runtime)
 		transformed = oa.crypto.ntt_forward(input_, parameters)
 		self.assertEqual(integers(oa.crypto.ntt_inverse(transformed, parameters).read_u32()), values)

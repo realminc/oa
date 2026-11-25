@@ -4,7 +4,7 @@ fn rejected<T>(result: oa::Result<T>, message: &str) -> oa::Error {
 	result.err().unwrap_or_else(|| panic!("{message}"))
 }
 
-test_vk!(add_broadcast_matches_rank_aligned_fp32_oracle, engine, {
+test_vk!(add_broadcast_matches_rank_aligned_fp32_oracle, runtime, {
 	let left = oa::Matrix::new_from_f32([2, 1, 3], &[1.0, 2.0, 3.0, 10.0, 20.0, 30.0])?;
 	let right = oa::Matrix::new_from_f32([1, 4, 1], &[100.0, 200.0, 300.0, 400.0])?;
 	let output = oa::matrix::add(&left, &right)?;
@@ -19,7 +19,7 @@ test_vk!(add_broadcast_matches_rank_aligned_fp32_oracle, engine, {
 	Ok(())
 });
 
-test_vk!(add_broadcast_preserves_i32_wrapping_arithmetic, engine, {
+test_vk!(add_broadcast_preserves_i32_wrapping_arithmetic, runtime, {
 	let left = oa::Matrix::new_from_slice([2, 1], &[i32::MAX, -2_i32])?;
 	let right = oa::Matrix::new_from_slice([1, 2], &[1_i32, i32::MIN])?;
 	let output = oa::matrix::add(&left, &right)?;
@@ -28,7 +28,7 @@ test_vk!(add_broadcast_preserves_i32_wrapping_arithmetic, engine, {
 	Ok(())
 });
 
-test_vk!(mul_broadcast_matches_rank_aligned_fp32_oracle, engine, {
+test_vk!(mul_broadcast_matches_rank_aligned_fp32_oracle, runtime, {
 	let left = oa::Matrix::new_from_f32([2, 1], &[2.0, -1.0])?;
 	let right = oa::Matrix::new_from_f32([1, 3], &[3.0, 0.5, -2.0])?;
 	let output = oa::matrix::mul(&left, &right)?;
@@ -37,7 +37,7 @@ test_vk!(mul_broadcast_matches_rank_aligned_fp32_oracle, engine, {
 	Ok(())
 });
 
-test_vk!(sub_and_div_broadcast_match_donor_oracles, engine, {
+test_vk!(sub_and_div_broadcast_match_donor_oracles, runtime, {
 	let left = oa::Matrix::new_from_f32([2, 1], &[12.0, -6.0])?;
 	let right = oa::Matrix::new_from_f32([1, 3], &[3.0, 2.0, -4.0])?;
 	let difference = oa::matrix::sub(&left, &right)?;
@@ -52,23 +52,27 @@ test_vk!(sub_and_div_broadcast_match_donor_oracles, engine, {
 	Ok(())
 });
 
-test_vk!(add_broadcast_capture_keeps_add_semantic_identity, engine, {
-	let left = oa::Matrix::new_from_f32([2, 3], &[1.0; 6])?;
-	let right = oa::Matrix::new_from_f32([1, 3], &[2.0; 3])?;
-	let (plan, output) = engine.capture(|| oa::matrix::add(&left, &right))?;
-	assert_eq!(plan.semantic_graph().operations().len(), 1);
-	assert_eq!(
-		plan.semantic_graph().operations()[0].name(),
-		"oa::FnMatrix::add"
-	);
-	engine.submit(&plan)?.wait()?;
-	assert_eq!(output.read_f32()?, vec![3.0; 6]);
-	Ok(())
-});
+test_vk!(
+	add_broadcast_capture_keeps_add_semantic_identity,
+	runtime,
+	{
+		let left = oa::Matrix::new_from_f32([2, 3], &[1.0; 6])?;
+		let right = oa::Matrix::new_from_f32([1, 3], &[2.0; 3])?;
+		let (plan, output) = runtime.capture(|| oa::matrix::add(&left, &right))?;
+		assert_eq!(plan.semantic_graph().operations().len(), 1);
+		assert_eq!(
+			plan.semantic_graph().operations()[0].name(),
+			"oa::FnMatrix::add"
+		);
+		runtime.submit(&plan)?.wait()?;
+		assert_eq!(output.read_f32()?, vec![3.0; 6]);
+		Ok(())
+	}
+);
 
 test_vk!(
 	add_broadcast_rejects_incompatible_or_excessive_shapes,
-	engine,
+	runtime,
 	{
 		let left = oa::Matrix::new_from_f32([2, 3], &[0.0; 6])?;
 		let right = oa::Matrix::new_from_f32([4, 3], &[0.0; 12])?;

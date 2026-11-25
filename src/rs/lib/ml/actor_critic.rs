@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{DType, Engine, Error, Matrix, Result, matrix as core_matrix};
+use crate::{DType, Error, Matrix, Result, Runtime, matrix as core_matrix};
 
 use super::{Module, ModuleRegistry, matrix, nn::Linear};
 pub use crate::ml::types::CategoricalActorCriticConfig;
@@ -64,7 +64,7 @@ pub struct CategoricalActorCritic {
 
 impl CategoricalActorCritic {
 	pub fn new(config: CategoricalActorCriticConfig) -> Result<Self> {
-		Self::new_on(&Engine::current()?, config)
+		Self::new_on(&Runtime::current()?, config)
 	}
 
 	/// Construct the checked default categorical actor/critic.
@@ -74,44 +74,44 @@ impl CategoricalActorCritic {
 	/// Returns an error for zero observation/hidden width, fewer than two
 	/// actions, initializer overflow, allocation failure, or invalid child
 	/// registration.
-	pub fn new_on(engine: &Engine, config: CategoricalActorCriticConfig) -> Result<Self> {
+	pub fn new_on(runtime: &Runtime, config: CategoricalActorCriticConfig) -> Result<Self> {
 		if config.observation_size == 0 || config.action_count < 2 || config.hidden_size == 0 {
 			return Err(Error::invalid_argument(
 				"categorical actor-critic requires positive observation/hidden sizes and at least two actions",
 			));
 		}
 		let policy_0 = Rc::new(Linear::new_with_seed_on(
-			engine,
+			runtime,
 			config.observation_size,
 			config.hidden_size,
 			config.seed,
 		)?);
 		let policy_1 = Rc::new(Linear::new_with_seed_on(
-			engine,
+			runtime,
 			config.hidden_size,
 			config.hidden_size,
 			config.seed.wrapping_add(1),
 		)?);
 		let policy = Rc::new(Linear::new_with_seed_on(
-			engine,
+			runtime,
 			config.hidden_size,
 			config.action_count,
 			config.seed.wrapping_add(2),
 		)?);
 		let value_0 = Rc::new(Linear::new_with_seed_on(
-			engine,
+			runtime,
 			config.observation_size,
 			config.hidden_size,
 			config.seed.wrapping_add(3),
 		)?);
 		let value_1 = Rc::new(Linear::new_with_seed_on(
-			engine,
+			runtime,
 			config.hidden_size,
 			config.hidden_size,
 			config.seed.wrapping_add(4),
 		)?);
 		let value = Rc::new(Linear::new_with_seed_on(
-			engine,
+			runtime,
 			config.hidden_size,
 			1,
 			config.seed.wrapping_add(5),

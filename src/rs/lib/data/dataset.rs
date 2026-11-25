@@ -4,7 +4,7 @@
 
 pub use super::types::{DataLoaderConfig, SplitResult};
 pub use crate::data::types::Batch;
-use crate::{DType, Engine, Error, Matrix, Result, matrix};
+use crate::{DType, Error, Matrix, Result, Runtime, matrix};
 use std::sync::{Arc, mpsc};
 use std::thread::JoinHandle;
 
@@ -92,7 +92,7 @@ pub trait Dataset {
 /// Dense labeled feature/label pair implementing [`Dataset`].
 ///
 /// `x` is a rank-≥1 `[N, ...]` F32 feature matrix and `y` a `[N]` F32
-/// label vector on the same engine. `get_item` returns the rank-(N-1)
+/// label vector on the same runtime. `get_item` returns the rank-(N-1)
 /// feature slice; `get_sample` pairs it with the `[1]` label slice —
 /// the contract [`DataLoader`]/[`collate`] expect for labeled corpora.
 /// Dataset packs and synthetic benchmarks build their `Dataset` impl on
@@ -106,14 +106,14 @@ impl MatrixDataset {
 	/// Wrap caller-owned matrices as a labeled dataset.
 	///
 	/// `x` must have a leading sample dimension and `y` must be rank-1
-	/// with the same leading count; both must be F32 on one engine —
+	/// with the same leading count; both must be F32 on one runtime —
 	/// [`matrix::slice`] is F32-only.
 	///
 	/// # Errors
 	///
 	/// Returns an error for a rank-0 feature matrix, non-vector labels,
 	/// mismatched leading counts, non-F32 dtypes, or matrices owned by
-	/// different engines.
+	/// different runtimes.
 	pub fn new(x: Matrix, y: Matrix) -> Result<Self> {
 		if x.shape().is_empty() || y.shape().len() != 1 || x.shape()[0] != y.shape()[0] {
 			return Err(Error::invalid_argument(
@@ -125,21 +125,21 @@ impl MatrixDataset {
 				"matrix dataset requires F32 features and labels",
 			));
 		}
-		if !x.same_engine(&y) {
+		if !x.same_runtime(&y) {
 			return Err(Error::invalid_argument(
-				"matrix dataset features and labels must share one engine",
+				"matrix dataset features and labels must share one runtime",
 			));
 		}
 		Ok(Self { x, y })
 	}
 
-	/// Full `[N, ...]` feature matrix on the owning engine.
+	/// Full `[N, ...]` feature matrix on the owning runtime.
 	#[must_use]
 	pub const fn x(&self) -> &Matrix {
 		&self.x
 	}
 
-	/// Full `[N]` label matrix on the owning engine.
+	/// Full `[N]` label matrix on the owning runtime.
 	#[must_use]
 	pub const fn y(&self) -> &Matrix {
 		&self.y
@@ -418,8 +418,8 @@ pub fn random_split(
 /// Inputs must be nonempty matrices of rank at most three, with any admitted
 /// Matrix dtype (U8, F32, I32, or U32). Labels must be present on every sample or
 /// absent on every sample. Each component must have equal shapes, dtypes, and
-/// one engine owner. A one-sample batch reuses its Matrix storage through
-/// zero-copy views. No default Engine or host readback is used.
+/// one runtime owner. A one-sample batch reuses its Matrix storage through
+/// zero-copy views. No default Runtime or host readback is used.
 ///
 /// # Errors
 ///
@@ -434,9 +434,9 @@ pub fn collate(samples: &[Sample]) -> Result<Batch> {
 		match (&sample.y, &first.y) {
 			(Some(value), Some(reference)) => {
 				validate_component(value, reference)?;
-				if !value.engine_handle().same_as(first.x.engine_handle()) {
+				if !value.runtime().same_as(first.x.runtime()) {
 					return Err(Error::invalid_argument(
-						"collate inputs and labels must share one engine",
+						"collate inputs and labels must share one runtime",
 					));
 				}
 			}
@@ -485,10 +485,10 @@ fn validate_component(value: &Matrix, reference: &Matrix) -> Result<()> {
 	if value.num_elements() == 0
 		|| value.shape() != reference.shape()
 		|| value.dtype() != reference.dtype()
-		|| !value.engine_handle().same_as(reference.engine_handle())
+		|| !value.runtime().same_as(reference.runtime())
 	{
 		return Err(Error::invalid_argument(
-			"collate requires nonempty, same-shape, same-dtype, same-engine components",
+			"collate requires nonempty, same-shape, same-dtype, same-runtime components",
 		));
 	}
 	Ok(())
@@ -547,7 +547,7 @@ impl Pcg32 {
 
 /// Typed host values carried by worker-produced samples and batches.
 ///
-/// The engine and `Matrix` are `!Send`, so prefetch production happens on
+/// The runtime and `Matrix` are `!Send`, so prefetch production happens on
 /// host values; the consumer uploads a collated [`HostBatch`] on its own
 /// thread. Variants cover the admitted dataset element types; `F16` host
 /// staging is not admitted because host readback never produces half values.
@@ -695,18 +695,18 @@ impl HostTensor {
 		Ok(())
 	}
 
-	/// Upload to `engine`, producing a device `Matrix`.
+	/// Upload to `runtime`, producing a device `Matrix`.
 	///
 	/// # Errors
 	///
 	/// Returns an error when storage allocation or upload fails.
-	pub fn to_matrix_on(&self, engine: &Engine) -> Result<Matrix> {
+	pub fn to_matrix_on(&self, runtime: &Runtime) -> Result<Matrix> {
 		self.check_count()?;
 		match &self.values {
-			HostValues::F32(values) => Matrix::new_from_slice_on(engine, self.shape.clone(), values),
-			HostValues::U32(values) => Matrix::new_from_slice_on(engine, self.shape.clone(), values),
-			HostValues::I32(values) => Matrix::new_from_slice_on(engine, self.shape.clone(), values),
-			HostValues::U8(values) => Matrix::new_from_slice_on(engine, self.shape.clone(), values),
+			HostValues::F32(values) => Matrix::new_from_slice_on(runtime, self.shape.clone(), values),
+			HostValues::U32(values) => Matrix::new_from_slice_on(runtime, self.shape.clone(), values),
+			HostValues::I32(values) => Matrix::new_from_slice_on(runtime, self.shape.clone(), values),
+			HostValues::U8(values) => Matrix::new_from_slice_on(runtime, self.shape.clone(), values),
 		}
 	}
 }
@@ -731,18 +731,18 @@ pub struct HostBatch {
 }
 
 impl HostBatch {
-	/// Upload both components to `engine`, producing a device [`Batch`].
+	/// Upload both components to `runtime`, producing a device [`Batch`].
 	///
 	/// # Errors
 	///
 	/// Returns an error when storage allocation or upload fails.
-	pub fn upload_on(&self, engine: &Engine) -> Result<Batch> {
+	pub fn upload_on(&self, runtime: &Runtime) -> Result<Batch> {
 		Ok(Batch {
-			x: self.x.to_matrix_on(engine)?,
+			x: self.x.to_matrix_on(runtime)?,
 			y: self
 				.y
 				.as_ref()
-				.map(|label| label.to_matrix_on(engine))
+				.map(|label| label.to_matrix_on(runtime))
 				.transpose()?,
 		})
 	}
@@ -811,7 +811,7 @@ fn validate_host_component(value: &HostTensor, reference: &HostTensor) -> Result
 
 /// Thread-shareable host dataset contract for [`PrefetchDataLoader`].
 ///
-/// `Engine` is `!Send`, so async prefetch runs on host values: worker
+/// `Runtime` is `!Send`, so async prefetch runs on host values: worker
 /// threads index a `HostDataset`, collate host-side, and the consumer
 /// thread uploads each batch to the device — the same split as
 /// `DataLoader(num_workers>0, pin_memory=True)` in torch, where workers
@@ -863,7 +863,7 @@ impl HostTensorDataset {
 	///
 	/// Reads `x` and `y` back once on the calling thread; afterwards the
 	/// dataset is pure host data that prefetch workers may index without
-	/// touching the engine.
+	/// touching the runtime.
 	///
 	/// # Errors
 	///
@@ -913,7 +913,7 @@ impl HostDataset for HostTensorDataset {
 /// `get_host_sample`, collates, and pushes [`HostBatch`] values into a
 /// queue bounded at `prefetch_batches`. `next_batch` pops on the caller
 /// thread, so sample production overlaps consumption; `next_batch_on`
-/// additionally uploads the collated batch to the engine. Shuffle order,
+/// additionally uploads the collated batch to the runtime. Shuffle order,
 /// `drop_last`, and epoch resets share the [`DataLoader`] seed contract.
 ///
 /// One worker is the admitted contract: the queue depth already decouples
@@ -988,15 +988,15 @@ impl PrefetchDataLoader {
 		}
 	}
 
-	/// Pop the next batch and upload it to `engine`.
+	/// Pop the next batch and upload it to `runtime`.
 	///
 	/// # Errors
 	///
 	/// Returns worker errors plus upload failures.
-	pub fn next_batch_on(&mut self, engine: &Engine) -> Result<Option<Batch>> {
+	pub fn next_batch_on(&mut self, runtime: &Runtime) -> Result<Option<Batch>> {
 		self
 			.next_batch()?
-			.map(|batch| batch.upload_on(engine))
+			.map(|batch| batch.upload_on(runtime))
 			.transpose()
 	}
 

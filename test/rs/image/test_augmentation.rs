@@ -2,12 +2,12 @@
 
 use oa::{Image, ImageFormat, ImageLayout, Matrix, audio::NoiseDistribution};
 
-fn gradient(engine: &oa::Engine, width: usize, height: usize) -> oa::Result<Image> {
+fn gradient(runtime: &oa::Runtime, width: usize, height: usize) -> oa::Result<Image> {
 	let values = (0..width * height)
 		.map(|value| value as f32 / (width * height) as f32)
 		.collect::<Vec<_>>();
 	Image::new(
-		Matrix::new_from_f32_on(engine, [1, 1, height, width], &values)?,
+		Matrix::new_from_f32_on(runtime, [1, 1, height, width], &values)?,
 		ImageLayout::Nchw,
 		ImageFormat::Gray,
 	)
@@ -15,9 +15,9 @@ fn gradient(engine: &oa::Engine, width: usize, height: usize) -> oa::Result<Imag
 
 test_vk!(
 	augmentation_noise_like_is_deterministic_and_bounded,
-	engine,
+	runtime,
 	{
-		let image = gradient(&engine, 8, 8)?;
+		let image = gradient(&runtime, 8, 8)?;
 		let first = oa::image::noise_like(&image, NoiseDistribution::Gaussian, 0.1, 42)?;
 		let repeat = oa::image::noise_like(&image, NoiseDistribution::Gaussian, 0.1, 42)?;
 		let other = oa::image::noise_like(&image, NoiseDistribution::Gaussian, 0.1, 43)?;
@@ -42,9 +42,9 @@ test_vk!(
 
 test_vk!(
 	augmentation_recipes_are_deterministic_and_validated,
-	engine,
+	runtime,
 	{
-		let image = gradient(&engine, 8, 8)?;
+		let image = gradient(&runtime, 8, 8)?;
 
 		let flip_a = oa::image::random_flip(&image, 1.0, 0.0, 7)?;
 		let flip_b = oa::image::random_flip(&image, 1.0, 0.0, 7)?;

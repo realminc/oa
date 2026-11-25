@@ -93,7 +93,7 @@ pub struct {{name}} {
 impl {{name}} {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_seed(config: {{config_type}}, seed: u64) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, config, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, config, seed)	}
 
 	/// Construct a deterministically initialized Mamba-3 block.
 	///
@@ -106,7 +106,7 @@ impl {{name}} {
 	///
 	/// Returns an error for invalid or overflowing geometry, invalid numerical
 	/// bounds, or failed allocation/registration.
-	pub fn new_with_seed_on(engine: &Engine, config: {{config_type}}, seed: u64) -> Result<Self> {
+	pub fn new_with_seed_on(runtime: &Runtime, config: {{config_type}}, seed: u64) -> Result<Self> {
 		let inner_size = config
 			.model_width
 			.checked_mul(config.expand)
@@ -180,7 +180,7 @@ impl {{name}} {
 		let in_projection = Parameter::new(
 			"{{input_weight_name}}",
 			Matrix::new_from_f32_on(
-				engine,
+				runtime,
 				[projected_width, config.model_width],
 				&{{initializer}}(in_count, in_limit, seed),
 			)?,
@@ -199,7 +199,7 @@ impl {{name}} {
 			.collect::<Vec<_>>();
 		let dt_bias = Parameter::new(
 			"{{dt_bias_name}}",
-			Matrix::new_from_f32_on(engine, [num_heads], &dt_bias_values)?,
+			Matrix::new_from_f32_on(runtime, [num_heads], &dt_bias_values)?,
 		)?;
 		let bias_count = num_heads
 			.checked_mul(config.mimo_rank)
@@ -212,11 +212,11 @@ impl {{name}} {
 		};
 		let b_bias = Parameter::new(
 			"{{b_bias_name}}",
-			Matrix::new_from_f32_on(engine, bias_shape.clone(), &vec![1.0; bias_count])?,
+			Matrix::new_from_f32_on(runtime, bias_shape.clone(), &vec![1.0; bias_count])?,
 		)?;
 		let c_bias = Parameter::new(
 			"{{c_bias_name}}",
-			Matrix::new_from_f32_on(engine, bias_shape, &vec![1.0; bias_count])?,
+			Matrix::new_from_f32_on(runtime, bias_shape, &vec![1.0; bias_count])?,
 		)?;
 		let mimo_count = num_heads
 			.checked_mul(config.mimo_rank)
@@ -228,7 +228,7 @@ impl {{name}} {
 				Parameter::new(
 					"{{mimo_x_name}}",
 					Matrix::new_from_f32_on(
-						engine,
+						runtime,
 						mimo_shape,
 						&vec![1.0 / config.mimo_rank as f32; mimo_count],
 					)?,
@@ -239,7 +239,7 @@ impl {{name}} {
 			.then(|| {
 				Parameter::new(
 					"{{mimo_z_name}}",
-					Matrix::new_from_f32_on(engine, mimo_shape, &vec![1.0; mimo_count])?,
+					Matrix::new_from_f32_on(runtime, mimo_shape, &vec![1.0; mimo_count])?,
 				)
 			})
 			.transpose()?;
@@ -248,7 +248,7 @@ impl {{name}} {
 				Parameter::new(
 					"{{mimo_o_name}}",
 					Matrix::new_from_f32_on(
-						engine,
+						runtime,
 						mimo_shape,
 						&vec![1.0 / config.mimo_rank as f32; mimo_count],
 					)?,
@@ -257,7 +257,7 @@ impl {{name}} {
 			.transpose()?;
 		let d_skip = Parameter::new(
 			"{{skip_name}}",
-			Matrix::new_from_f32_on(engine, [num_heads], &vec![0.0; num_heads])?,
+			Matrix::new_from_f32_on(runtime, [num_heads], &vec![0.0; num_heads])?,
 		)?;
 		let out_count = config
 			.model_width
@@ -267,7 +267,7 @@ impl {{name}} {
 		let out_projection = Parameter::new(
 			"{{output_weight_name}}",
 			Matrix::new_from_f32_on(
-				engine,
+				runtime,
 				[config.model_width, inner_size],
 				&{{initializer}}(out_count, out_limit, seed.wrapping_add(2)),
 			)?,
@@ -277,16 +277,16 @@ impl {{name}} {
 			.then(|| {
 				Parameter::new(
 					"{{norm_weight_name}}",
-					Matrix::new_from_f32_on(engine, [num_heads, config.head_dim], &vec![1.0; inner_size])?,
+					Matrix::new_from_f32_on(runtime, [num_heads, config.head_dim], &vec![1.0; inner_size])?,
 				)
 			})
 			.transpose()?;
 		let norm_identity =
-			Matrix::new_from_f32_on(engine, [num_heads, config.head_dim], &vec![1.0; inner_size])?;
+			Matrix::new_from_f32_on(runtime, [num_heads, config.head_dim], &vec![1.0; inner_size])?;
 		let in_projection_bias =
-			Matrix::new_from_f32_on(engine, [projected_width], &vec![0.0; projected_width])?;
+			Matrix::new_from_f32_on(runtime, [projected_width], &vec![0.0; projected_width])?;
 		let out_projection_bias =
-			Matrix::new_from_f32_on(engine, [config.model_width], &vec![0.0; config.model_width])?;
+			Matrix::new_from_f32_on(runtime, [config.model_width], &vec![0.0; config.model_width])?;
 
 		let mut registry = ModuleRegistry::new();
 		for (name, parameter) in [
@@ -337,7 +337,7 @@ impl {{name}} {
 	///
 	/// # Errors
 	///
-	/// Returns an error unless `input` is a nonempty same-engine F32
+	/// Returns an error unless `input` is a nonempty same-runtime F32
 	/// `[batch, sequence, model_width]` value or an owned operation cannot be
 	/// recorded.
 	pub fn forward(&self, input: &Matrix) -> Result<Matrix> {
@@ -512,7 +512,7 @@ impl {{name}} {
 					.checked_mul(*extent)
 					.ok_or_else(|| Error::invalid_argument("{{name}} recurrent state size overflows usize"))
 			})?;
-			Matrix::allocate(owner.engine_handle(), shape, count, DType::F32)
+			Matrix::allocate(owner.runtime(), shape, count, DType::F32)
 		};
 		Ok({{state_type}} {
 			owner_id: owner.value_id(),
@@ -556,7 +556,7 @@ impl {{name}} {
 	/// # Errors
 	///
 	/// Returns an error for an active gradient tape, a cache owned by another
-	/// module, mismatched batch/shape/dtype/Engine ownership, or failed recording.
+	/// module, mismatched batch/shape/dtype/Runtime ownership, or failed recording.
 	pub fn step(&self, input: &Matrix, state: &mut {{state_type}}) -> Result<Matrix> {
 		if {{recording_active_operation}}() {
 			return Err(Error::failed_precondition(

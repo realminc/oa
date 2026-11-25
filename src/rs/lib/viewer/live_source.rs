@@ -3,7 +3,7 @@
 use crate::input::InputEvent;
 use crate::ui::{PixelRect, Ui};
 pub use crate::viewer::types::ViewerLiveCapabilities;
-use crate::{Engine, Result, Texture};
+use crate::{Result, Runtime, Texture};
 
 /// Non-owning live GPU producer attached to the Viewer lifecycle.
 ///
@@ -11,8 +11,8 @@ use crate::{Engine, Result, Texture};
 pub trait ViewerLiveSource {
 	fn capabilities(&self) -> ViewerLiveCapabilities;
 
-	/// Called once when the Viewer obtains an `Engine`.
-	fn open(&mut self, engine: &Engine) -> Result<()>;
+	/// Called once when the Viewer obtains an `Runtime`.
+	fn open(&mut self, runtime: &Runtime) -> Result<()>;
 
 	/// Per-frame update. `delta_ms` is the frame time in milliseconds.
 	fn update(&mut self, delta_ms: f32) -> Result<()>;

@@ -47,7 +47,7 @@ impl From<oa::LogLevel> for PythonLogLevel {
 
 // ── LogOptions ────────────────────────────────────────────────────────────────
 
-/// Configuration for the logging session owned by an Engine.
+/// Configuration for the logging session owned by an Runtime.
 #[pyclass(name = "LogOptions")]
 #[derive(Clone)]
 pub(crate) struct PythonLogOptions {
@@ -154,35 +154,35 @@ impl PythonEvent {
 	}
 }
 
-// ── Engine ────────────────────────────────────────────────────────────────────
+// ── Runtime ────────────────────────────────────────────────────────────────────
 
-#[pyclass(name = "Engine", unsendable)]
-pub(crate) struct PythonEngine {
-	pub(crate) inner: oa::Engine,
+#[pyclass(name = "Runtime", unsendable)]
+pub(crate) struct PythonRuntime {
+	pub(crate) inner: oa::Runtime,
 }
 
-impl PythonEngine {
-	/// Resolve an optional Python engine argument to the owning engine: an
-	/// explicit handle wins, otherwise the calling thread's default engine.
-	pub(crate) fn resolve(engine: Option<&PythonEngine>) -> PyResult<oa::Engine> {
-		match engine {
-			Some(engine) => Ok(engine.inner.clone()),
-			None => oa::Engine::current().map_err(python_error),
+impl PythonRuntime {
+	/// Resolve an optional Python runtime argument to the owning runtime: an
+	/// explicit handle wins, otherwise the calling thread's default runtime.
+	pub(crate) fn resolve(runtime: Option<&PythonRuntime>) -> PyResult<oa::Runtime> {
+		match runtime {
+			Some(runtime) => Ok(runtime.inner.clone()),
+			None => oa::Runtime::current().map_err(python_error),
 		}
 	}
 
-	/// Resolve an optional owned engine handle for owners that pin the engine
+	/// Resolve an optional owned runtime handle for owners that pin the runtime
 	/// allocation for their own lifetime.
 	pub(crate) fn resolve_owned(
 		py: Python<'_>,
-		engine: Option<Py<PythonEngine>>,
-	) -> PyResult<Py<PythonEngine>> {
-		match engine {
-			Some(engine) => Ok(engine),
+		runtime: Option<Py<PythonRuntime>>,
+	) -> PyResult<Py<PythonRuntime>> {
+		match runtime {
+			Some(runtime) => Ok(runtime),
 			None => Py::new(
 				py,
 				Self {
-					inner: oa::Engine::current().map_err(python_error)?,
+					inner: oa::Runtime::current().map_err(python_error)?,
 				},
 			),
 		}
@@ -190,20 +190,20 @@ impl PythonEngine {
 }
 
 #[pymethods]
-impl PythonEngine {
-	/// Install this engine as the calling thread's default. Defaulted
-	/// constructor forms resolve to it; explicit engine arguments still win.
+impl PythonRuntime {
+	/// Install this runtime as the calling thread's default. Defaulted
+	/// constructor forms resolve to it; explicit runtime arguments still win.
 	#[staticmethod]
-	fn set_default(engine: &PythonEngine) {
-		oa::Engine::set_default(engine.inner.clone());
+	fn set_default(runtime: &PythonRuntime) {
+		oa::Runtime::set_default(runtime.inner.clone());
 	}
 
-	/// Return a handle to the calling thread's default engine, lazily
+	/// Return a handle to the calling thread's default runtime, lazily
 	/// creating it on first use.
 	#[staticmethod]
 	fn current() -> PyResult<Self> {
 		Ok(Self {
-			inner: oa::Engine::current().map_err(python_error)?,
+			inner: oa::Runtime::current().map_err(python_error)?,
 		})
 	}
 
@@ -214,7 +214,7 @@ impl PythonEngine {
 		logging: Option<PyRef<'_, PythonLogOptions>>,
 		presentation: bool,
 	) -> PyResult<Self> {
-		let mut builder = oa::Engine::builder();
+		let mut builder = oa::Runtime::builder();
 		if let Some(index) = device {
 			builder = builder.devices(oa::DeviceSelection::Index(index));
 		}
@@ -225,7 +225,7 @@ impl PythonEngine {
 			let window =
 				oa::SdlWindow::new("OA Python presentation probe", 1, 1).map_err(python_error)?;
 			builder = builder
-				.requirements(oa::EngineRequirements::default().presentation())
+				.requirements(oa::RuntimeRequirements::default().presentation())
 				.instance_extensions(
 					window
 						.required_instance_extensions()
@@ -252,7 +252,7 @@ impl PythonEngine {
 			.map_err(python_error)
 	}
 
-	/// Set the minimum severity of records emitted by this Engine's logger.
+	/// Set the minimum severity of records emitted by this Runtime's logger.
 	fn set_log_level(&self, level: PythonLogLevel) {
 		self.inner.set_log_level(level.into());
 	}
@@ -276,7 +276,7 @@ impl PythonEngine {
 	}
 
 	fn __repr__(&self) -> &'static str {
-		"Engine(backend='vulkan')"
+		"Runtime(backend='vulkan')"
 	}
 }
 
@@ -284,6 +284,6 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 	module.add_class::<PythonLogLevel>()?;
 	module.add_class::<PythonLogOptions>()?;
 	module.add_class::<PythonEvent>()?;
-	module.add_class::<PythonEngine>()?;
+	module.add_class::<PythonRuntime>()?;
 	Ok(())
 }

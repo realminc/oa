@@ -107,7 +107,7 @@ impl Module for QuantizedLinear {
 				input.shape(),
 			)));
 		}
-		let output = ml_matrix::mat_mul_nt(input, &self.weight)?;
+		let output = ml_matrix::matmul(input, &self.weight)?;
 		if let Some(bias) = &self.bias {
 			return matrix::add(&output, bias);
 		}

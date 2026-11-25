@@ -13,7 +13,7 @@ impl {{name}} {
 		embedding_dim: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, num_embeddings, embedding_dim, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, num_embeddings, embedding_dim, seed)	}
 
 	/// Construct a deterministically initialized embedding table.
 	///
@@ -22,7 +22,7 @@ impl {{name}} {
 	/// Returns an error when either dimension is zero, shape arithmetic overflows,
 	/// or allocation/upload fails.
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		num_embeddings: usize,
 		embedding_dim: usize,
 		seed: u64,
@@ -37,7 +37,7 @@ impl {{name}} {
 			.ok_or_else(|| Error::invalid_argument("embedding weight size overflows usize"))?;
 		let limit = 1.0_f32 / (embedding_dim as f32).sqrt();
 		let values = random::symmetric_uniform(count, limit, seed);
-		let weight = Matrix::new_from_f32_on(engine, [num_embeddings, embedding_dim], &values)?;
+		let weight = Matrix::new_from_f32_on(runtime, [num_embeddings, embedding_dim], &values)?;
 		Self::new_from_matrix(weight)
 	}
 
@@ -77,7 +77,7 @@ impl {{name}} {
 	///
 	/// # Errors
 	///
-	/// Returns an error when indices are not U8/U32/I32, the engines differ, shape
+	/// Returns an error when indices are not U8/U32/I32, the runtimes differ, shape
 	/// or ABI arithmetic overflows, or runtime recording fails. Negative I32 and
 	/// other out-of-range indices produce NaN rows without an out-of-bounds read.
 	pub fn forward(&self, indices: &Matrix) -> Result<Matrix> {

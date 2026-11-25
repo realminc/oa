@@ -21,60 +21,64 @@ fn words(value: &serde_json::Value) -> Vec<u32> {
 		.collect()
 }
 
-test_vk!(bigint_breadth_matches_integer_oracles_and_replay, engine, {
-	for case in fixture()["cases"].as_array().unwrap() {
-		let width = usize::try_from(case["words"].as_u64().unwrap()).unwrap();
-		let rows = usize::try_from(case["rows"].as_u64().unwrap()).unwrap();
-		let left_words = words(&case["left"]);
-		let right_words = words(&case["right"]);
-		let left = Matrix::new_from_slice([rows, width], &left_words)?;
-		let right = Matrix::new_from_slice([rows, width], &right_words)?;
-		let (plan, outputs) = engine.capture(|| {
-			let mut outputs = vec![(
-				bigint::multiply_high(&left, &right)?,
-				words(&case["results"]["multiply_high"]),
-			)];
-			for (name, op) in UNARY {
-				outputs.push((op(&left)?, words(&case["results"][name])));
-			}
-			Ok(outputs)
-		})?;
-		assert_eq!(plan.semantic_graph().operations().len(), 4);
-		assert_eq!(outputs[0].0.shape(), [rows, width]);
-		assert_eq!(outputs[1].0.shape(), [rows, width * 2]);
-		assert_eq!(outputs[2].0.shape(), [rows, width]);
-		assert_eq!(outputs[3].0.shape(), [rows]);
-		for (output, _) in &outputs {
-			assert_eq!(output.dtype(), oa::DType::U32);
-			assert_eq!(
-				output.try_read::<u32>().unwrap_err().kind(),
-				oa::ErrorKind::NotReady
-			);
-		}
-		for _ in 0..2 {
-			engine.submit(&plan)?.wait()?;
-			for (index, (output, expected)) in outputs.iter().enumerate() {
+test_vk!(
+	bigint_breadth_matches_integer_oracles_and_replay,
+	runtime,
+	{
+		for case in fixture()["cases"].as_array().unwrap() {
+			let width = usize::try_from(case["words"].as_u64().unwrap()).unwrap();
+			let rows = usize::try_from(case["rows"].as_u64().unwrap()).unwrap();
+			let left_words = words(&case["left"]);
+			let right_words = words(&case["right"]);
+			let left = Matrix::new_from_slice([rows, width], &left_words)?;
+			let right = Matrix::new_from_slice([rows, width], &right_words)?;
+			let (plan, outputs) = runtime.capture(|| {
+				let mut outputs = vec![(
+					bigint::multiply_high(&left, &right)?,
+					words(&case["results"]["multiply_high"]),
+				)];
+				for (name, op) in UNARY {
+					outputs.push((op(&left)?, words(&case["results"][name])));
+				}
+				Ok(outputs)
+			})?;
+			assert_eq!(plan.semantic_graph().operations().len(), 4);
+			assert_eq!(outputs[0].0.shape(), [rows, width]);
+			assert_eq!(outputs[1].0.shape(), [rows, width * 2]);
+			assert_eq!(outputs[2].0.shape(), [rows, width]);
+			assert_eq!(outputs[3].0.shape(), [rows]);
+			for (output, _) in &outputs {
+				assert_eq!(output.dtype(), oa::DType::U32);
 				assert_eq!(
-					output.read::<u32>()?,
-					*expected,
-					"words={width}, output={index}"
+					output.try_read::<u32>().unwrap_err().kind(),
+					oa::ErrorKind::NotReady
 				);
 			}
+			for _ in 0..2 {
+				runtime.submit(&plan)?.wait()?;
+				for (index, (output, expected)) in outputs.iter().enumerate() {
+					assert_eq!(
+						output.read::<u32>()?,
+						*expected,
+						"words={width}, output={index}"
+					);
+				}
+			}
+			assert_eq!(left.read::<u32>()?, left_words);
+			assert_eq!(right.read::<u32>()?, right_words);
 		}
-		assert_eq!(left.read::<u32>()?, left_words);
-		assert_eq!(right.read::<u32>()?, right_words);
+		Ok(())
 	}
-	Ok(())
-});
+);
 
 test_vk!(
 	bigint_breadth_chain_rebinds_without_host_intermediates,
-	engine,
+	runtime,
 	{
 		let values = (0_u32..33).collect::<Vec<_>>();
 		let replacement_values = values.iter().map(|v| !v).collect::<Vec<_>>();
 		let input = Matrix::new_from_slice([33, 1], &values)?;
-		let (mut plan, (restored, zeros)) = engine.capture(|| {
+		let (mut plan, (restored, zeros)) = runtime.capture(|| {
 			let complement = bigint::bit_not(&input)?;
 			let restored = bigint::bit_not(&complement)?;
 			let zeros = bigint::leading_zeros(&restored)?;
@@ -82,7 +86,7 @@ test_vk!(
 		})?;
 		assert_eq!(plan.diagnostics().node_count(), 3);
 		assert_eq!(plan.diagnostics().barrier_count(), 2);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(restored.read::<u32>()?, values);
 		assert_eq!(
 			zeros.read::<u32>()?,
@@ -91,7 +95,7 @@ test_vk!(
 		let replacement = Matrix::new_from_slice([33, 1], &replacement_values)?;
 		plan.bind_matrix_input(&input, &replacement)?;
 		for _ in 0..2 {
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			assert_eq!(restored.read::<u32>()?, replacement_values);
 			assert_eq!(
 				zeros.read::<u32>()?,
@@ -107,7 +111,7 @@ test_vk!(
 
 test_vk!(
 	bigint_breadth_rejects_invalid_metadata_and_accepts_empty,
-	engine,
+	runtime,
 	{
 		let empty = Matrix::new_from_slice([0, 2], &[] as &[u32])?;
 		assert!(

@@ -32,7 +32,7 @@ pub fn pad_to(input: &Audio, samples: usize) -> Result<Audio> {
 		);
 	}
 	let zeros = Matrix::allocate(
-		input.as_matrix().engine_handle(),
+		input.as_matrix().runtime(),
 		vec![input.channels(), samples - current],
 		input.channels() * (samples - current),
 		crate::DType::F32,
@@ -136,7 +136,7 @@ pub fn length_mask(reference: &Audio, lengths: &[usize]) -> Result<Matrix> {
 		}
 	}
 	Matrix::new_from_slice_handle(
-		reference.as_matrix().engine_handle(),
+		reference.as_matrix().runtime(),
 		vec![lengths.len(), samples],
 		&values,
 	)

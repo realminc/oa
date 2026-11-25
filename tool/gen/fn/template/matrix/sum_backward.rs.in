@@ -9,15 +9,15 @@
 		)));
 	}
 	if !input
-		.engine_handle()
-		.same_as(output_gradient.engine_handle())
+		.runtime()
+		.same_as(output_gradient.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -37,7 +37,7 @@
 	}];
 	let inputs = [input, output_gradient];
 	let outputs = [&input_gradient];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixSumBackwardF32,
 			buffers: &buffers,

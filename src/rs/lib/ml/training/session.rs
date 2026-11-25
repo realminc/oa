@@ -1,7 +1,7 @@
 //! Thread-safe live control and bounded observation for [`super::ItTraining`].
 //!
 //! The public [`TrainingSession`] is a cloneable command and observation handle.
-//! The training iterator remains on its owning engine thread and applies queued
+//! The training iterator remains on its owning runtime thread and applies queued
 //! commands only at explicit safe points.
 
 pub use crate::ml::types::{TrainingCommandResult, TrainingSessionConfig};
@@ -238,7 +238,7 @@ impl Default for TrainingSessionConfig {
 	}
 }
 
-/// Engine-thread handlers invoked for application-owned commands.
+/// Runtime-thread handlers invoked for application-owned commands.
 #[derive(Default)]
 pub struct TrainingSessionHandlers<'a> {
 	checkpoint: Option<CommandHandler<'a>>,
@@ -266,7 +266,7 @@ impl<'a> TrainingSessionHandlers<'a> {
 	}
 }
 
-/// Engine-thread descriptor for one session-visible parameter.
+/// Runtime-thread descriptor for one session-visible parameter.
 pub struct TrainingParameterDesc<'a> {
 	name: String,
 	parameter_class: TrainingParameterClass,
@@ -278,7 +278,7 @@ pub struct TrainingParameterDesc<'a> {
 }
 
 impl<'a> TrainingParameterDesc<'a> {
-	/// Describe a mutable parameter and its engine-thread accessors.
+	/// Describe a mutable parameter and its runtime-thread accessors.
 	pub fn mutable(
 		name: impl Into<String>,
 		parameter_class: TrainingParameterClass,

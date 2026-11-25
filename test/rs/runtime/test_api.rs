@@ -3,8 +3,8 @@ use std::any::TypeId;
 #[test]
 fn root_exports_are_identities_of_runtime_contracts() -> oa::Result<()> {
 	assert_eq!(
-		TypeId::of::<oa::EngineBuilder>(),
-		TypeId::of::<oa::runtime::EngineBuilder>()
+		TypeId::of::<oa::RuntimeBuilder>(),
+		TypeId::of::<oa::runtime::RuntimeBuilder>()
 	);
 	assert_eq!(
 		TypeId::of::<oa::DeviceSelection>(),
@@ -23,8 +23,8 @@ fn root_exports_are_identities_of_runtime_contracts() -> oa::Result<()> {
 		TypeId::of::<oa::runtime::DeviceKind>()
 	);
 	assert_eq!(
-		TypeId::of::<oa::EngineRequirements>(),
-		TypeId::of::<oa::runtime::EngineRequirements>()
+		TypeId::of::<oa::RuntimeRequirements>(),
+		TypeId::of::<oa::runtime::RuntimeRequirements>()
 	);
 	assert_eq!(
 		TypeId::of::<oa::Event>(),
@@ -67,9 +67,9 @@ fn root_exports_are_identities_of_runtime_contracts() -> oa::Result<()> {
 		.minimum_level(oa::LogLevel::Warn)
 		.console_output(false);
 	assert_eq!(logging.level(), oa::LogLevel::Warn);
-	let _: oa::EngineBuilder = oa::Engine::builder()
+	let _: oa::RuntimeBuilder = oa::Runtime::builder()
 		.devices(oa::DeviceSelection::Automatic)
-		.requirements(oa::EngineRequirements::default().graphics())
+		.requirements(oa::RuntimeRequirements::default().graphics())
 		.logging(logging);
 	assert_eq!(oa::LogComponent::new("DNA")?.tag(), "DNA");
 	if false {
@@ -79,14 +79,14 @@ fn root_exports_are_identities_of_runtime_contracts() -> oa::Result<()> {
 }
 
 #[test]
-fn engine_requirements_are_composable_and_deduplicate_exact_profiles() {
+fn runtime_requirements_are_composable_and_deduplicate_exact_profiles() {
 	let decode = oa::video::VideoDecodeProfile::h264_420_8bit(oa::video::H264Profile::High);
 	let encode = oa::video::VideoEncodeProfile::h265_main_420_8bit();
-	let once = oa::EngineRequirements::default()
+	let once = oa::RuntimeRequirements::default()
 		.presentation()
 		.video_decode(decode)
 		.video_encode(encode);
-	let repeated = oa::EngineRequirements::default()
+	let repeated = oa::RuntimeRequirements::default()
 		.presentation()
 		.video_decode(decode)
 		.video_decode(decode)

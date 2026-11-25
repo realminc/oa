@@ -1,6 +1,6 @@
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyBytes};
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 #[path = "image/image.gen.rs"]
 mod generated;
@@ -72,6 +72,9 @@ fn interpolation(token: &str) -> PyResult<oa::image::InterpolationMode> {
 	match token {
 		"nearest" => Ok(oa::image::InterpolationMode::Nearest),
 		"bilinear" => Ok(oa::image::InterpolationMode::Bilinear),
+		"area" => Ok(oa::image::InterpolationMode::Area),
+		"cubic" => Ok(oa::image::InterpolationMode::Cubic),
+		"lanczos" => Ok(oa::image::InterpolationMode::Lanczos),
 		_ => Err(PyValueError::new_err(format!(
 			"unknown interpolation mode: {token}"
 		))),
@@ -100,6 +103,103 @@ fn histogram_comparison(token: &str) -> PyResult<oa::image::HistogramComparison>
 		_ => Err(PyValueError::new_err(format!(
 			"unknown histogram comparison: {token}"
 		))),
+	}
+}
+
+fn corner_score(token: &str) -> PyResult<oa::image::CornerScore> {
+	match token {
+		"harris" => Ok(oa::image::CornerScore::Harris),
+		"min_eigen" => Ok(oa::image::CornerScore::MinEigen),
+		_ => Err(PyValueError::new_err(format!(
+			"unknown corner score: {token}"
+		))),
+	}
+}
+
+fn auto_threshold(token: &str) -> PyResult<oa::image::AutoThreshold> {
+	match token {
+		"otsu" => Ok(oa::image::AutoThreshold::Otsu),
+		"triangle" => Ok(oa::image::AutoThreshold::Triangle),
+		_ => Err(PyValueError::new_err(format!(
+			"unknown auto threshold: {token}"
+		))),
+	}
+}
+
+fn color_conversion(token: &str) -> PyResult<oa::image::ColorConversion> {
+	match token {
+		"rgb_to_gray" => Ok(oa::image::ColorConversion::RgbToGray),
+		"bgr_to_gray" => Ok(oa::image::ColorConversion::BgrToGray),
+		"gray_to_rgb" => Ok(oa::image::ColorConversion::GrayToRgb),
+		"rgb_to_hsv" => Ok(oa::image::ColorConversion::RgbToHsv),
+		"bgr_to_hsv" => Ok(oa::image::ColorConversion::BgrToHsv),
+		"hsv_to_rgb" => Ok(oa::image::ColorConversion::HsvToRgb),
+		"hsv_to_bgr" => Ok(oa::image::ColorConversion::HsvToBgr),
+		"rgb_to_lab" => Ok(oa::image::ColorConversion::RgbToLab),
+		"bgr_to_lab" => Ok(oa::image::ColorConversion::BgrToLab),
+		"lab_to_rgb" => Ok(oa::image::ColorConversion::LabToRgb),
+		"lab_to_bgr" => Ok(oa::image::ColorConversion::LabToBgr),
+		"rgb_to_ycrcb" => Ok(oa::image::ColorConversion::RgbToYcrcb),
+		"bgr_to_ycrcb" => Ok(oa::image::ColorConversion::BgrToYcrcb),
+		"ycrcb_to_rgb" => Ok(oa::image::ColorConversion::YcrcbToRgb),
+		"ycrcb_to_bgr" => Ok(oa::image::ColorConversion::YcrcbToBgr),
+		_ => Err(PyValueError::new_err(format!(
+			"unknown color conversion: {token}"
+		))),
+	}
+}
+
+fn polar_mode(token: &str) -> PyResult<oa::image::PolarMode> {
+	match token {
+		"linear" => Ok(oa::image::PolarMode::Linear),
+		"semi_log" => Ok(oa::image::PolarMode::SemiLog),
+		_ => Err(PyValueError::new_err(format!(
+			"unknown polar mode: {token}"
+		))),
+	}
+}
+
+fn connectivity(token: &str) -> PyResult<oa::image::Connectivity> {
+	match token {
+		"four" => Ok(oa::image::Connectivity::Four),
+		"eight" => Ok(oa::image::Connectivity::Eight),
+		_ => Err(PyValueError::new_err(format!(
+			"unknown connectivity: {token}"
+		))),
+	}
+}
+
+fn distance_type(token: &str) -> PyResult<oa::image::DistanceType> {
+	match token {
+		"l1" => Ok(oa::image::DistanceType::L1),
+		"l2" => Ok(oa::image::DistanceType::L2),
+		_ => Err(PyValueError::new_err(format!(
+			"unknown distance type: {token}"
+		))),
+	}
+}
+
+fn match_template(token: &str) -> PyResult<oa::image::MatchTemplate> {
+	match token {
+		"sqdiff" => Ok(oa::image::MatchTemplate::Sqdiff),
+		"sqdiff_normed" => Ok(oa::image::MatchTemplate::SqdiffNormed),
+		"ccorr" => Ok(oa::image::MatchTemplate::Ccorr),
+		"ccorr_normed" => Ok(oa::image::MatchTemplate::CcorrNormed),
+		"ccoeff" => Ok(oa::image::MatchTemplate::Ccoeff),
+		"ccoeff_normed" => Ok(oa::image::MatchTemplate::CcoeffNormed),
+		_ => Err(PyValueError::new_err(format!(
+			"unknown match template method: {token}"
+		))),
+	}
+}
+
+fn color_map(token: &str) -> PyResult<oa::image::ColorMap> {
+	match token {
+		"jet" => Ok(oa::image::ColorMap::Jet),
+		"hot" => Ok(oa::image::ColorMap::Hot),
+		"hsv" => Ok(oa::image::ColorMap::Hsv),
+		"rainbow" => Ok(oa::image::ColorMap::Rainbow),
+		_ => Err(PyValueError::new_err(format!("unknown colormap: {token}"))),
 	}
 }
 
@@ -181,10 +281,10 @@ impl PythonImage {
 fn image_decode_file(
 	path: &str,
 	format_name: &str,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonImage> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::image::decode_file_on(&engine, path, format(format_name)?)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::image::decode_file_on(&runtime, path, format(format_name)?)
 		.map(PythonImage::wrap)
 		.map_err(python_error)
 }
@@ -193,10 +293,10 @@ fn image_decode_file(
 fn image_decode_memory(
 	encoded: Vec<u8>,
 	format_name: &str,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonImage> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::image::decode_memory_on(&engine, &encoded, format(format_name)?)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::image::decode_memory_on(&runtime, &encoded, format(format_name)?)
 		.map(PythonImage::wrap)
 		.map_err(python_error)
 }
@@ -320,6 +420,50 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
 		image_save_rgba_file,
 		image_can_decode,
 		image_can_encode,
+		// transform helpers
+		image_rotation_matrix_2d,
+		image_invert_affine,
+		image_perspective_transform,
+		image_estimate_affine_2d,
 	);
 	Ok(())
+}
+
+#[pyfunction]
+fn image_rotation_matrix_2d(
+	center_x: f32,
+	center_y: f32,
+	angle: f32,
+	scale: f32,
+) -> PyResult<PythonMatrix> {
+	oa::image::rotation_matrix_2d(center_x, center_y, angle, scale)
+		.map(PythonMatrix::wrap)
+		.map_err(python_error)
+}
+
+#[pyfunction]
+fn image_invert_affine(matrix: &PythonMatrix) -> PyResult<PythonMatrix> {
+	oa::image::invert_affine(&matrix.inner)
+		.map(PythonMatrix::wrap)
+		.map_err(python_error)
+}
+
+#[pyfunction]
+fn image_perspective_transform(
+	source: &PythonMatrix,
+	destination: &PythonMatrix,
+) -> PyResult<PythonMatrix> {
+	oa::image::perspective_transform(&source.inner, &destination.inner)
+		.map(PythonMatrix::wrap)
+		.map_err(python_error)
+}
+
+#[pyfunction]
+fn image_estimate_affine_2d(
+	source: &PythonMatrix,
+	destination: &PythonMatrix,
+) -> PyResult<PythonMatrix> {
+	oa::image::estimate_affine_2d(&source.inner, &destination.inner)
+		.map(PythonMatrix::wrap)
+		.map_err(python_error)
 }

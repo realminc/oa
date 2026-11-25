@@ -14,7 +14,7 @@ use crate::runtime::{
 		fusion,
 		ir::elementwise::Program,
 		kernel::KernelId,
-		provider::blas::{lower_mat_mul_nt_reduction, matmul_variant_id_from_name},
+		provider::blas::{lower_matmul_nt_reduction, matmul_variant_id_from_name},
 	},
 	graph::executable::{BufferUse, ComputeNode, ExecutableGraph},
 };
@@ -235,13 +235,13 @@ fn assert_equivalent(actual: f32, expected: f32, index: usize) {
 }
 
 fn submit_sample(
-	engine: &Engine,
+	runtime: &Runtime,
 	command: &super::super::ReusableCommandBuffer,
 ) -> Result<(f64, f64)> {
-	let device = engine.handle.state.borrow().device.clone();
+	let device = runtime.handle.state.borrow().device.clone();
 	let started = Instant::now();
 	let timed = device.time_reusable_command(command.submission())?;
-	let event = submit_recorded(&mut engine.handle.state.borrow_mut(), timed)?;
+	let event = submit_recorded(&mut runtime.handle.state.borrow_mut(), timed)?;
 	let gpu_ms = event.device_duration()?.as_secs_f64() * 1000.0;
 	Ok((gpu_ms, started.elapsed().as_secs_f64() * 1000.0))
 }
@@ -257,11 +257,11 @@ fn jit_chain_correctness_and_timings() -> Result<()> {
 		.expect("explicit device index")
 		.parse::<usize>()
 		.expect("device index");
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let bounded = device.physical().profile == ExecutionProfile::Compatibility;
 	let path = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit trusted Slang library");
 	let started = Instant::now();
@@ -269,7 +269,7 @@ fn jit_chain_correctness_and_timings() -> Result<()> {
 	let startup_ms = started.elapsed().as_secs_f64() * 1000.0;
 	let artifact = compiler.compile_chain(bounded)?;
 	let contract = ChainContract::fixed(3, 1);
-	let info = engine.device_info();
+	let info = runtime.device_info();
 	println!(
 		"OA_JIT_COMPILER version={} profile={} startup_ms={startup_ms:.6} compile_ms={:.6} validation_ms={:.6} spirv_bytes={} device={:?} driver={:?} driver_version={}",
 		compiler.version,
@@ -318,7 +318,7 @@ fn jit_chain_correctness_and_timings() -> Result<()> {
 			let mut short = fixture.jit_buffers();
 			short[3] = Buffer::host_visible_storage(&device, 4)?;
 			assert!(PreparedChain::new(&device, &artifact, &contract, short, fixture.count).is_err());
-			let other = Engine::builder()
+			let other = Runtime::builder()
 				.devices(DeviceSelection::Index(index))
 				.build()?;
 			let foreign_device = other.handle.state.borrow().device.clone();
@@ -343,7 +343,7 @@ fn jit_chain_correctness_and_timings() -> Result<()> {
 		let jit = device.record_jit_chain(&prepared)?;
 		// Drop caller-owned pipeline state before execution: command owns it.
 		drop(prepared);
-		submit_sample(&engine, &unfused)?;
+		submit_sample(&runtime, &unfused)?;
 		let reference = fixture.check(&fixture.output())?;
 		let mut routes = vec![(&jit, fixture.jit_output.clone())];
 		if let Some(tape) = &tape {
@@ -351,7 +351,7 @@ fn jit_chain_correctness_and_timings() -> Result<()> {
 		}
 		for (command, output) in routes {
 			for _ in 0..2 {
-				submit_sample(&engine, command)?;
+				submit_sample(&runtime, command)?;
 			}
 			let actual = fixture.check(&output)?;
 			for (i, (&actual, &expected)) in actual.iter().zip(&reference).enumerate() {
@@ -397,12 +397,12 @@ fn jit_chain_correctness_and_timings() -> Result<()> {
 			(&jit, fixture.jit_output.clone(), "specialized", 1),
 		];
 		for (command, output, _, _) in &routes {
-			submit_sample(&engine, command)?;
+			submit_sample(&runtime, command)?;
 			fixture.check(output)?;
 		}
 		for _ in 0..warmup {
 			for (command, _, _, _) in &routes {
-				submit_sample(&engine, command)?;
+				submit_sample(&runtime, command)?;
 			}
 		}
 		let mut measurements: [Vec<(f64, f64)>; 3] = std::array::from_fn(|_| Vec::new());
@@ -410,7 +410,7 @@ fn jit_chain_correctness_and_timings() -> Result<()> {
 			// Rotate order so one route does not always receive the first sample.
 			for offset in 0..3 {
 				let route = (sample + offset) % 3;
-				let (gpu, wall) = submit_sample(&engine, routes[route].0)?;
+				let (gpu, wall) = submit_sample(&runtime, routes[route].0)?;
 				println!(
 					"OA_JIT_SAMPLE elements={count} route={} sample={sample} gpu_ms={gpu:.9} wall_ms={wall:.9}",
 					routes[route].2
@@ -496,11 +496,11 @@ fn discovered_chains_correctness_and_timings() -> Result<()> {
 		.expect("explicit device")
 		.parse::<usize>()
 		.unwrap();
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let bounded = device.physical().profile == ExecutionProfile::Compatibility;
 	let library = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit compiler library");
 	let compiler = SlangCompiler::open(std::path::Path::new(&library))?;
@@ -607,7 +607,7 @@ fn discovered_chains_correctness_and_timings() -> Result<()> {
 					QueueFamilies::from_physical(device.physical()),
 				)?)?;
 				for command in [&unfused, &tape, &specialized] {
-					submit_sample(&engine, command)?;
+					submit_sample(&runtime, command)?;
 					let actual = if std::ptr::eq(command, &specialized) {
 						&generated
 					} else {
@@ -642,14 +642,14 @@ fn discovered_chains_correctness_and_timings() -> Result<()> {
 				];
 				for _ in 0..warmup {
 					for (_, command) in routes {
-						submit_sample(&engine, command)?;
+						submit_sample(&runtime, command)?;
 					}
 				}
 				let mut times: [Vec<f64>; 3] = std::array::from_fn(|_| vec![]);
 				for sample in 0..samples {
 					for offset in 0..3 {
 						let route = (sample + offset) % 3;
-						times[route].push(submit_sample(&engine, routes[route].1)?.0);
+						times[route].push(submit_sample(&runtime, routes[route].1)?.0);
 					}
 				}
 				for (route, (label, _)) in routes.iter().enumerate() {
@@ -720,11 +720,11 @@ fn jit_artifacts_persist_across_restarts() -> Result<()> {
 		.expect("explicit device index")
 		.parse::<usize>()
 		.expect("device index");
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let bounded = device.physical().profile == ExecutionProfile::Compatibility;
 	let path = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit trusted Slang library");
 	let compiler = SlangCompiler::open(std::path::Path::new(&path))?;
@@ -925,11 +925,11 @@ fn production_jit_route_matches_canonical_paths() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	// The flag contract is exercised in both directions: the guard is held
 	// for the whole test so no concurrent flag user can interleave.
 	let flag = JitFlag::hold();
@@ -1020,7 +1020,7 @@ fn production_jit_route_matches_canonical_paths() -> Result<()> {
 		"execution identity must include the dynamic artifact key"
 	);
 	let jit_command = device.record_reusable_compute_graph(&jit_graph)?;
-	submit_sample(&engine, &jit_command)?;
+	submit_sample(&runtime, &jit_command)?;
 	let jit_values = fixture.check(&fixture.output())?;
 	drop(tapes);
 
@@ -1028,7 +1028,7 @@ fn production_jit_route_matches_canonical_paths() -> Result<()> {
 	// specialized dispatch must match it element for element.
 	let (tape_graph, tape_tapes) = fixture.tape_graph(&device)?;
 	let tape_command = device.record_reusable_compute_graph(&tape_graph)?;
-	submit_sample(&engine, &tape_command)?;
+	submit_sample(&runtime, &tape_command)?;
 	let tape_values = fixture.check(&fixture.output())?;
 	drop(tape_tapes);
 	for (i, (&actual, &expected)) in jit_values.iter().zip(&tape_values).enumerate() {
@@ -1072,11 +1072,11 @@ fn production_jit_route_retains_observed_intermediates() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _flag = JitFlag::set();
 
 	// Above the tape cutoff the admitted specialization is the only fused
@@ -1092,7 +1092,7 @@ fn production_jit_route_retains_observed_intermediates() -> Result<()> {
 	// Canonical values first: the unfused graph writes every intermediate,
 	// including the buffer the fused run must still materialize.
 	let unfused = device.record_reusable_compute_graph(&fixture.graph)?;
-	submit_sample(&engine, &unfused)?;
+	submit_sample(&runtime, &unfused)?;
 	let mid = fixture.outputs[2].buffer().unwrap().clone();
 	let expected_mid = read_checked(&mid, count)?;
 	let expected_final = fixture.check(&fixture.output())?;
@@ -1137,7 +1137,7 @@ fn production_jit_route_retains_observed_intermediates() -> Result<()> {
 	let graph =
 		ExecutableGraph::from_compute_nodes(nodes, QueueFamilies::from_physical(device.physical()))?;
 	let command = device.record_compute_graph(&graph)?;
-	submit_recorded(&mut engine.handle.state.borrow_mut(), command)?.wait()?;
+	submit_recorded(&mut runtime.handle.state.borrow_mut(), command)?.wait()?;
 	drop(tapes);
 
 	// The retained store is the autograd-visible intermediate: it must hold
@@ -1175,11 +1175,11 @@ fn jit_route_override_forces_each_region_route() -> Result<()> {
 	let var_dir = std::env::temp_dir().join(format!("oa-jit-route-{}", std::process::id()));
 	std::fs::create_dir_all(&var_dir).expect("private var dir");
 	let _var = ScopedVar::set("OA_VAR", var_dir.as_os_str());
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _flag = JitFlag::set();
 	let route = ScopedVar::set("OA_JIT_ROUTE", "unfused".as_ref());
 	let fixture = Fixture::new(&device, [vec![0.25; 257], vec![0.5; 257], vec![0.75; 257]])?;
@@ -1245,7 +1245,7 @@ fn jit_route_override_forces_each_region_route() -> Result<()> {
 		"forced specialized route must attach the admitted pipeline"
 	);
 	drop(route);
-	drop(engine);
+	drop(runtime);
 	let _ = std::fs::remove_dir_all(&var_dir);
 
 	println!(
@@ -1265,11 +1265,11 @@ fn jit_admission_is_safe_across_threads() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _flag = JitFlag::set();
 
 	// Distinct discovered programs; fixtures stay on this thread — only
@@ -1414,11 +1414,11 @@ fn production_route_observation_measures_and_selects() -> Result<()> {
 	let var_dir = std::env::temp_dir().join(format!("oa-jit-observe-{}", std::process::id()));
 	std::fs::create_dir_all(&var_dir).expect("private var dir");
 	let _var = ScopedVar::set("OA_VAR", var_dir.as_os_str());
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _flag = JitFlag::set();
 
 	// A small tape-eligible chain: the hysteresis policy must gather
@@ -1453,7 +1453,7 @@ fn production_route_observation_measures_and_selects() -> Result<()> {
 		let graph =
 			ExecutableGraph::from_compute_nodes(nodes, QueueFamilies::from_physical(device.physical()))?;
 		let command = device.record_compute_graph(&graph)?;
-		submit_recorded(&mut engine.handle.state.borrow_mut(), command)?.wait()?;
+		submit_recorded(&mut runtime.handle.state.borrow_mut(), command)?.wait()?;
 		drop(tapes);
 	}
 	let observations = device.jit_observations();
@@ -1468,9 +1468,9 @@ fn production_route_observation_measures_and_selects() -> Result<()> {
 		"hysteresis must measure both routes: specialized={specialized} tape={tape}"
 	);
 	assert!(routes.0 > 0 && routes.1 > 0, "both routes must have run");
-	// Engine teardown publishes the observation section into the private
+	// Runtime teardown publishes the observation section into the private
 	// cache before it is removed.
-	drop(engine);
+	drop(runtime);
 	let _ = std::fs::remove_dir_all(&var_dir);
 	println!(
 		"OA_JIT_OBSERVE jit_routes={} tape_routes={} specialized_samples={specialized} tape_samples={tape} selected_specialized={selected} result=pass",
@@ -1495,8 +1495,8 @@ fn production_route_observations_persist_across_restart() -> Result<()> {
 	let _var = ScopedVar::set("OA_VAR", var_dir.as_os_str());
 	let _flag = JitFlag::set();
 
-	let run_dispatches = |engine: &Engine, rounds: usize| -> Result<(Arc<Device>, u64)> {
-		let device = engine.handle.state.borrow().device.clone();
+	let run_dispatches = |runtime: &Runtime, rounds: usize| -> Result<(Arc<Device>, u64)> {
+		let device = runtime.handle.state.borrow().device.clone();
 		let fixture = Fixture::new(
 			&device,
 			[vec![0.25; 1024], vec![0.5; 1024], vec![0.75; 1024]],
@@ -1521,19 +1521,19 @@ fn production_route_observations_persist_across_restart() -> Result<()> {
 				QueueFamilies::from_physical(device.physical()),
 			)?;
 			let command = device.record_compute_graph(&graph)?;
-			submit_recorded(&mut engine.handle.state.borrow_mut(), command)?.wait()?;
+			submit_recorded(&mut runtime.handle.state.borrow_mut(), command)?.wait()?;
 			drop(tapes);
 		}
 		Ok((device, signature.expect("observed signature")))
 	};
 
-	// Phase 1: populate the observation store, then let Engine teardown
+	// Phase 1: populate the observation store, then let Runtime teardown
 	// commit section 6 into the private cache.
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let (device, signature) = run_dispatches(&engine, 12)?;
+	Runtime::set_default(runtime.clone());
+	let (device, signature) = run_dispatches(&runtime, 12)?;
 	let before = device.jit_observations();
 	let first = before
 		.iter()
@@ -1541,16 +1541,16 @@ fn production_route_observations_persist_across_restart() -> Result<()> {
 		.copied()
 		.expect("signature observed before restart");
 	let expected_selected = first.3;
-	drop(engine);
+	drop(runtime);
 
 	// Phase 2: a fresh device restores section 6 on its first admission;
 	// the persisted medians must reproduce the earlier policy decision
 	// for the same signature instead of restarting the probe cycle.
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let (device, signature_after) = run_dispatches(&engine, 2)?;
+	Runtime::set_default(runtime.clone());
+	let (device, signature_after) = run_dispatches(&runtime, 2)?;
 	assert_eq!(signature_after, signature, "same chain keeps its signature");
 	let after = device.jit_observations();
 	let (.., selected) = after
@@ -1562,7 +1562,7 @@ fn production_route_observations_persist_across_restart() -> Result<()> {
 		selected, expected_selected,
 		"restored medians must reproduce the persisted policy decision"
 	);
-	drop(engine);
+	drop(runtime);
 	let _ = std::fs::remove_dir_all(&var_dir);
 	println!("OA_JIT_RESTART signature={signature:016x} selected={selected} result=pass");
 	Ok(())
@@ -1579,11 +1579,11 @@ fn production_route_observation_queue_stays_bounded() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _flag = JitFlag::set();
 
 	let fixture = Fixture::new(
@@ -1608,7 +1608,7 @@ fn production_route_observation_queue_stays_bounded() -> Result<()> {
 			ExecutableGraph::from_compute_nodes(nodes, QueueFamilies::from_physical(device.physical()))?;
 		let command = device.record_compute_graph(&graph)?;
 		events.push(submit_recorded(
-			&mut engine.handle.state.borrow_mut(),
+			&mut runtime.handle.state.borrow_mut(),
 			command,
 		)?);
 		drop(tapes);
@@ -1617,7 +1617,7 @@ fn production_route_observation_queue_stays_bounded() -> Result<()> {
 		event.wait()?;
 	}
 	// Other signatures may be present — restored section-6 records from
-	// earlier engine commits are part of the store by design.
+	// earlier runtime commits are part of the store by design.
 	let (_, specialized, tape, _) = device
 		.jit_observations()
 		.into_iter()
@@ -1652,11 +1652,11 @@ fn rejected_prefixes_do_not_consume_jit_artifacts() -> Result<()> {
 	let var_dir = std::env::temp_dir().join(format!("oa-jit-prefix-{}", std::process::id()));
 	std::fs::create_dir_all(&var_dir).unwrap();
 	let _var = ScopedVar::set("OA_VAR", var_dir.as_os_str());
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let fixture = Fixture::with_recipe(
 		&device,
 		[vec![0.25; 257], vec![0.5; 257], vec![0.75; 257]],
@@ -1702,13 +1702,13 @@ fn rejected_prefixes_do_not_consume_jit_artifacts() -> Result<()> {
 		nodes,
 		QueueFamilies::from_physical(device.physical()),
 	)?)?;
-	submit_sample(&engine, &command)?;
+	submit_sample(&runtime, &command)?;
 	assert!(
 		read_checked(&fixture.output(), 257)?
 			.iter()
 			.all(|&value| value == 0.25)
 	);
-	drop(engine);
+	drop(runtime);
 	let _ = std::fs::remove_dir_all(&var_dir);
 	println!("OA_JIT_PREFIX source_nodes=70 fused_nodes=2 compiled_artifacts=2 correctness=pass");
 	Ok(())
@@ -1743,11 +1743,11 @@ fn tile_gemm_route_matches_cpu_oracle() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	// The guard serializes every flag-sensitive phase in this file.
 	let _hold = JitFlag::hold();
 	let _tile = ScopedVar::set("OA_TILE_GEMM", std::ffi::OsStr::new("1"));
@@ -1773,7 +1773,7 @@ fn tile_gemm_route_matches_cpu_oracle() -> Result<()> {
 		let expected = gemm_cpu_oracle(&left_values, &right_values, m, n, k);
 		let left = crate::Matrix::new_from_f32([m, k], &left_values)?;
 		let right = crate::Matrix::new_from_f32([n, k], &right_values)?;
-		let output = crate::matrix::mat_mul_nt(&left, &right)?;
+		let output = crate::matrix::matmul(&left, &right)?;
 		let actual = output.read_f32()?;
 		for (index, (actual, expected)) in actual.iter().zip(expected.iter()).enumerate() {
 			let error = (actual - expected).abs();
@@ -1802,7 +1802,7 @@ fn tile_gemm_route_matches_cpu_oracle() -> Result<()> {
 		let left = crate::Matrix::new_from_f32([m, k], &left_values)?;
 		let right = crate::Matrix::new_from_f32([n, k], &right_values)?;
 		for _ in 0..12 {
-			let actual = crate::matrix::mat_mul_nt(&left, &right)?.read_f32()?;
+			let actual = crate::matrix::matmul(&left, &right)?.read_f32()?;
 			for (index, (actual, expected)) in actual.iter().zip(expected.iter()).enumerate() {
 				let error = (actual - expected).abs();
 				assert!(
@@ -1815,7 +1815,7 @@ fn tile_gemm_route_matches_cpu_oracle() -> Result<()> {
 		let mut probed = 0usize;
 		for tile_rows in [32u32, 64] {
 			for tile_columns in [32u32, 64] {
-				let program = crate::runtime::dna::ir::tile::BlockProgram::mat_mul_nt(
+				let program = crate::runtime::dna::ir::tile::BlockProgram::matmul(
 					tile_rows,
 					tile_columns,
 					16,
@@ -1846,11 +1846,11 @@ fn tile_softmax_route_matches_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	// (shape, dim): last-axis rows, an odd axis interior (inner > 1
 	// exercises the strided layout), a multi-iteration long row and the
@@ -1905,11 +1905,11 @@ fn tile_gemv_route_matches_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	// m=1 decode-class shapes select the GemmSmallM/GEMV variant; the
 	// tile route repeats the donor's strided fold + tree order so the
@@ -1919,11 +1919,11 @@ fn tile_gemv_route_matches_incumbent() -> Result<()> {
 		let right_values = gemm_values(n * k, 11);
 		let left = crate::Matrix::new_from_f32([m, k], &left_values)?;
 		let right = crate::Matrix::new_from_f32([n, k], &right_values)?;
-		let expected = crate::matrix::mat_mul_nt(&left, &right)?.read_f32()?;
+		let expected = crate::matrix::matmul(&left, &right)?.read_f32()?;
 		tile_route_bit_exact(
 			&device,
 			"OA_TILE_GEMV",
-			|| crate::matrix::mat_mul_nt(&left, &right)?.read_f32(),
+			|| crate::matrix::matmul(&left, &right)?.read_f32(),
 			&expected,
 			"gemv",
 		)?;
@@ -1975,11 +1975,11 @@ fn tile_reduce_norm_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b9u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -2057,11 +2057,11 @@ fn tile_softmax_backward_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x517cc1b727220a95u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -2114,11 +2114,11 @@ fn tile_linear_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b97f4a7c15u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -2416,11 +2416,11 @@ fn tile_sum_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x51ed270b16eb320bu64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -2607,11 +2607,11 @@ fn tile_dnn_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x85ebca6b9e3779b9u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -2625,20 +2625,20 @@ fn tile_dnn_routes_match_incumbent() -> Result<()> {
 			.collect()
 	};
 	let input = crate::Matrix::new_from_f32([1024, 32], &values(1024 * 32))?;
-	let mut projection = |_engine: &Engine| -> Result<crate::ml::nn::Linear> {
+	let mut projection = |_runtime: &Runtime| -> Result<crate::ml::nn::Linear> {
 		crate::ml::nn::Linear::new_from_matrices(
 			crate::Matrix::new_from_f32([32, 32], &values(32 * 32))?,
 			crate::Matrix::new_from_f32([32], &values(32))?,
 		)
 	};
-	let query = projection(&engine)?;
-	let key = projection(&engine)?;
-	let value = projection(&engine)?;
+	let query = projection(&runtime)?;
+	let key = projection(&runtime)?;
+	let value = projection(&runtime)?;
 	// The captured QKV partition only forms with epilogue fusion disabled —
 	// L1's `linear_triple` claims the three projections first otherwise.
 	let qkv = || -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
 		let disabled = crate::runtime::EpilogueFusionDisabled::enter();
-		let captured = engine.capture(|| {
+		let captured = runtime.capture(|| {
 			Ok((
 				query.forward(&input)?,
 				key.forward(&input)?,
@@ -2647,7 +2647,7 @@ fn tile_dnn_routes_match_incumbent() -> Result<()> {
 		});
 		drop(disabled);
 		let (plan, outputs) = captured?;
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		Ok((
 			outputs.0.read_f32()?,
 			outputs.1.read_f32()?,
@@ -2679,12 +2679,12 @@ fn tile_dnn_routes_match_incumbent() -> Result<()> {
 		crate::Matrix::new_from_f32([64], &values(64))?,
 	)?;
 	let gate_up = || -> Result<Vec<f32>> {
-		let (plan, output) = engine.capture(|| {
+		let (plan, output) = runtime.capture(|| {
 			let gate_output = gate.forward(&input)?;
 			let up_output = up.forward(&input)?;
 			crate::ml::matrix::swiglu(&gate_output, &up_output)
 		})?;
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		output.read_f32()
 	};
 	let expected_gate_up = gate_up()?;
@@ -2716,11 +2716,11 @@ fn tile_grouped_linear_act_route_matches_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x51f15eeda5u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -2819,11 +2819,11 @@ fn tile_grouped_data_backward_route_matches_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0xbac4_9a55u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -2858,19 +2858,19 @@ fn tile_grouped_data_backward_route_matches_incumbent() -> Result<()> {
 		// incumbent and anchors that the record itself is faithful.
 		let record = || -> Result<(Vec<f32>, Vec<f32>, Vec<f32>)> {
 			let input_gradient = crate::Matrix::allocate(
-				input.engine_handle(),
+				input.runtime(),
 				vec![rows, inputs],
 				rows * inputs,
 				crate::DType::F32,
 			)?;
 			let weight_gradient = crate::Matrix::allocate(
-				input.engine_handle(),
+				input.runtime(),
 				vec![experts, outputs, inputs],
 				experts * outputs * inputs,
 				crate::DType::F32,
 			)?;
 			let bias_gradient = crate::Matrix::allocate(
-				input.engine_handle(),
+				input.runtime(),
 				vec![experts, outputs],
 				experts * outputs,
 				crate::DType::F32,
@@ -2914,7 +2914,7 @@ fn tile_grouped_data_backward_route_matches_incumbent() -> Result<()> {
 					indirect: None,
 				},
 			];
-			input.engine_handle().record_split_semantic(
+			input.runtime().record_split_semantic(
 				&dispatches,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::ml::GROUPED_LINEAR_M_BACKWARD,
@@ -2935,13 +2935,13 @@ fn tile_grouped_data_backward_route_matches_incumbent() -> Result<()> {
 		// record path without the bias output.
 		let record_gemm = || -> Result<(Vec<f32>, Vec<f32>)> {
 			let input_gradient = crate::Matrix::allocate(
-				input.engine_handle(),
+				input.runtime(),
 				vec![rows, inputs],
 				rows * inputs,
 				crate::DType::F32,
 			)?;
 			let weight_gradient = crate::Matrix::allocate(
-				input.engine_handle(),
+				input.runtime(),
 				vec![experts, outputs, inputs],
 				experts * outputs * inputs,
 				crate::DType::F32,
@@ -2984,7 +2984,7 @@ fn tile_grouped_data_backward_route_matches_incumbent() -> Result<()> {
 					indirect: None,
 				},
 			];
-			input.engine_handle().record_split_semantic(
+			input.runtime().record_split_semantic(
 				&dispatches,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::ml::GROUPED_GEMM_M_BACKWARD,
@@ -3055,11 +3055,11 @@ fn tile_grouped_backward_prologue_route_matches_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0xf3ed_a11cu64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -3098,25 +3098,25 @@ fn tile_grouped_backward_prologue_route_matches_incumbent() -> Result<()> {
 		type Outputs = (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>);
 		let record = || -> Result<Outputs> {
 			let dy = crate::Matrix::allocate(
-				input.engine_handle(),
+				input.runtime(),
 				vec![rows, outputs],
 				rows * outputs,
 				crate::DType::F32,
 			)?;
 			let input_gradient = crate::Matrix::allocate(
-				input.engine_handle(),
+				input.runtime(),
 				vec![rows, inputs],
 				rows * inputs,
 				crate::DType::F32,
 			)?;
 			let weight_gradient = crate::Matrix::allocate(
-				input.engine_handle(),
+				input.runtime(),
 				vec![experts, outputs, inputs],
 				experts * outputs * inputs,
 				crate::DType::F32,
 			)?;
 			let bias_gradient = crate::Matrix::allocate(
-				input.engine_handle(),
+				input.runtime(),
 				vec![experts, outputs],
 				experts * outputs,
 				crate::DType::F32,
@@ -3173,7 +3173,7 @@ fn tile_grouped_backward_prologue_route_matches_incumbent() -> Result<()> {
 					indirect: None,
 				},
 			];
-			input.engine_handle().record_split_semantic(
+			input.runtime().record_split_semantic(
 				&dispatches,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::ml::GROUPED_LINEAR_M_BACKWARD,
@@ -3267,11 +3267,11 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x51f0_a3d7u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -3439,7 +3439,7 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 		let source = crate::Matrix::new_from_f32([routes, width], &values(routes * width))?;
 		let gather_backward = || -> Result<Vec<f32>> {
 			let output = crate::Matrix::allocate(
-				source.engine_handle(),
+				source.runtime(),
 				vec![tokens, width],
 				tokens * width,
 				crate::DType::F32,
@@ -3451,7 +3451,7 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 				PushConstant::U32(k as u32),
 			];
 			let kernel = KernelId::MlMoeGatherBackwardF32;
-			source.engine_handle().record_semantic(
+			source.runtime().record_semantic(
 				crate::runtime::ComputeDispatch {
 					kernel,
 					buffers: &[
@@ -3492,13 +3492,13 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 		let output_gradient = crate::Matrix::new_from_f32([tokens, width], &values(tokens * width))?;
 		let combine_backward = || -> Result<(Vec<f32>, Vec<f32>)> {
 			let packed_gradient = crate::Matrix::allocate(
-				output_gradient.engine_handle(),
+				output_gradient.runtime(),
 				vec![routes, width],
 				routes * width,
 				crate::DType::F32,
 			)?;
 			let gate_gradient = crate::Matrix::allocate(
-				output_gradient.engine_handle(),
+				output_gradient.runtime(),
 				vec![routes],
 				routes,
 				crate::DType::F32,
@@ -3510,7 +3510,7 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 				PushConstant::U32(routes as u32),
 			];
 			let kernel = KernelId::MlMoeCombineBackwardF32;
-			output_gradient.engine_handle().record_semantic(
+			output_gradient.runtime().record_semantic(
 				crate::runtime::ComputeDispatch {
 					kernel,
 					buffers: &[
@@ -3584,7 +3584,7 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 		let og_route = crate::Matrix::new_from_f32([tokens, k], &values(tokens * k))?;
 		let rw_backward = || -> Result<Vec<f32>> {
 			let probability_gradient = crate::Matrix::allocate(
-				probabilities.engine_handle(),
+				probabilities.runtime(),
 				vec![tokens, experts],
 				tokens * experts,
 				crate::DType::F32,
@@ -3595,7 +3595,7 @@ fn tile_moe_routes_match_incumbent() -> Result<()> {
 				PushConstant::U32(k as u32),
 			];
 			let kernel = KernelId::MlMoeRouteWeightsBackwardF32;
-			probabilities.engine_handle().record_semantic(
+			probabilities.runtime().record_semantic(
 				crate::runtime::ComputeDispatch {
 					kernel,
 					buffers: &[
@@ -3643,11 +3643,11 @@ fn tile_norm_backward_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9c4e_7b12u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -3672,25 +3672,25 @@ fn tile_norm_backward_routes_match_incumbent() -> Result<()> {
 		let output_gradient = crate::Matrix::new_from_f32([rows, columns], &values(rows * columns))?;
 		let record = || -> Result<Vec<f32>> {
 			let input_gradient = crate::Matrix::allocate(
-				normalized.engine_handle(),
+				normalized.runtime(),
 				vec![rows, columns],
 				rows * columns,
 				crate::DType::F32,
 			)?;
 			let weight_contribution = crate::Matrix::allocate(
-				normalized.engine_handle(),
+				normalized.runtime(),
 				vec![rows, columns],
 				rows * columns,
 				crate::DType::F32,
 			)?;
 			let weight_gradient = crate::Matrix::allocate(
-				normalized.engine_handle(),
+				normalized.runtime(),
 				vec![columns],
 				columns,
 				crate::DType::F32,
 			)?;
 			let bias_gradient = crate::Matrix::allocate(
-				normalized.engine_handle(),
+				normalized.runtime(),
 				vec![columns],
 				columns,
 				crate::DType::F32,
@@ -3734,7 +3734,7 @@ fn tile_norm_backward_routes_match_incumbent() -> Result<()> {
 					indirect: None,
 				},
 			];
-			normalized.engine_handle().record_split_semantic(
+			normalized.runtime().record_split_semantic(
 				&dispatches,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::ml::LAYER_NORM_BACKWARD,
@@ -3768,23 +3768,19 @@ fn tile_norm_backward_routes_match_incumbent() -> Result<()> {
 		let epsilon = 1.0e-5f32;
 		let record = || -> Result<Vec<f32>> {
 			let input_gradient = crate::Matrix::allocate(
-				input.engine_handle(),
+				input.runtime(),
 				vec![rows, columns],
 				rows * columns,
 				crate::DType::F32,
 			)?;
 			let weight_contribution = crate::Matrix::allocate(
-				input.engine_handle(),
+				input.runtime(),
 				vec![rows, columns],
 				rows * columns,
 				crate::DType::F32,
 			)?;
-			let weight_gradient = crate::Matrix::allocate(
-				input.engine_handle(),
-				vec![columns],
-				columns,
-				crate::DType::F32,
-			)?;
+			let weight_gradient =
+				crate::Matrix::allocate(input.runtime(), vec![columns], columns, crate::DType::F32)?;
 			let backward_push = [
 				PushConstant::U32(rows as u32),
 				PushConstant::U32(columns as u32),
@@ -3822,7 +3818,7 @@ fn tile_norm_backward_routes_match_incumbent() -> Result<()> {
 					indirect: None,
 				},
 			];
-			input.engine_handle().record_split_semantic(
+			input.runtime().record_split_semantic(
 				&dispatches,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::ml::RMS_NORM_BACKWARD,
@@ -3861,11 +3857,11 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x2bd9_7f3au64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -3943,7 +3939,7 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 			crate::Matrix::new_from_f32([batch, output_features], &values(batch * output_features))?;
 		let record = || -> Result<Vec<f32>> {
 			let input_gradient = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![batch, input_features],
 				batch * input_features,
 				crate::DType::F32,
@@ -3961,7 +3957,7 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 					.output_workgroups(batch as u32, input_features as u32),
 				indirect: None,
 			};
-			weight.engine_handle().record_semantic(
+			weight.runtime().record_semantic(
 				dispatch,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::ml::LINEAR_BACKWARD,
@@ -3996,13 +3992,13 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 		type Outputs = (Vec<f32>, Vec<f32>);
 		let record = || -> Result<Outputs> {
 			let dy = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![batch, output_features],
 				batch * output_features,
 				crate::DType::F32,
 			)?;
 			let input_gradient = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![batch, input_features],
 				batch * input_features,
 				crate::DType::F32,
@@ -4035,7 +4031,7 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 					indirect: None,
 				},
 			];
-			weight.engine_handle().record_split_semantic(
+			weight.runtime().record_split_semantic(
 				&dispatches,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::ml::LINEAR_BACKWARD,
@@ -4091,31 +4087,31 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 		type Outputs = (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>);
 		let record = || -> Result<Outputs> {
 			let dx_norm = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![batch, output_features],
 				batch * output_features,
 				crate::DType::F32,
 			)?;
 			let contribution = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![batch, output_features],
 				batch * output_features,
 				crate::DType::F32,
 			)?;
 			let gamma_gradient = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![output_features],
 				output_features,
 				crate::DType::F32,
 			)?;
 			let beta_gradient = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![output_features],
 				output_features,
 				crate::DType::F32,
 			)?;
 			let input_gradient = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![batch, input_features],
 				batch * input_features,
 				crate::DType::F32,
@@ -4170,7 +4166,7 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 					indirect: None,
 				},
 			];
-			weight.engine_handle().record_split_semantic(
+			weight.runtime().record_split_semantic(
 				&dispatches,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::ml::LAYER_NORM_BACKWARD,
@@ -4240,37 +4236,37 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 		type Outputs = (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>);
 		let record = || -> Result<Outputs> {
 			let dx_norm = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![batch, output_features],
 				batch * output_features,
 				crate::DType::F32,
 			)?;
 			let contribution = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![batch, output_features],
 				batch * output_features,
 				crate::DType::F32,
 			)?;
 			let gamma_gradient = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![output_features],
 				output_features,
 				crate::DType::F32,
 			)?;
 			let beta_gradient = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![output_features],
 				output_features,
 				crate::DType::F32,
 			)?;
 			let combined = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![batch, output_features],
 				batch * output_features,
 				crate::DType::F32,
 			)?;
 			let input_gradient = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![batch, input_features],
 				batch * input_features,
 				crate::DType::F32,
@@ -4338,7 +4334,7 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 					indirect: None,
 				},
 			];
-			weight.engine_handle().record_split_semantic(
+			weight.runtime().record_split_semantic(
 				&dispatches,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::ml::LAYER_NORM_BACKWARD,
@@ -4418,13 +4414,13 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 		type Outputs = (Vec<f32>, Vec<f32>);
 		let record = || -> Result<Outputs> {
 			let dy = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![batch, rows, columns],
 				batch * rows * columns,
 				crate::DType::F32,
 			)?;
 			let input_gradient = crate::Matrix::allocate(
-				weight.engine_handle(),
+				weight.runtime(),
 				vec![batch * rows, input_features],
 				batch * rows * input_features,
 				crate::DType::F32,
@@ -4465,7 +4461,7 @@ fn tile_linear_backward_routes_match_incumbent() -> Result<()> {
 					indirect: None,
 				},
 			];
-			weight.engine_handle().record_split_semantic(
+			weight.runtime().record_split_semantic(
 				&dispatches,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::ml::LINEAR_BACKWARD,
@@ -4521,11 +4517,11 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x3b9a_c077u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -4554,10 +4550,8 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 		// forward: [logits, targets, per_row] + [rows, classes, dtype]
 		// then the incumbent SumScale mean.
 		let forward = || -> Result<Vec<f32>> {
-			let per_row =
-				crate::Matrix::allocate(logits.engine_handle(), vec![rows], rows, crate::DType::F32)?;
-			let output =
-				crate::Matrix::allocate(logits.engine_handle(), Vec::new(), 1, crate::DType::F32)?;
+			let per_row = crate::Matrix::allocate(logits.runtime(), vec![rows], rows, crate::DType::F32)?;
+			let output = crate::Matrix::allocate(logits.runtime(), Vec::new(), 1, crate::DType::F32)?;
 			let loss_push = [
 				PushConstant::U32(rows as u32),
 				PushConstant::U32(classes as u32),
@@ -4592,7 +4586,7 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 					indirect: None,
 				},
 			];
-			logits.engine_handle().record_split_semantic(
+			logits.runtime().record_split_semantic(
 				&dispatches,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::ml::CROSS_ENTROPY,
@@ -4617,7 +4611,7 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 		// backward: [logits, targets, gradient] + [rows, classes, dtype].
 		let backward = || -> Result<Vec<f32>> {
 			let gradient = crate::Matrix::allocate(
-				logits.engine_handle(),
+				logits.runtime(),
 				vec![rows, classes],
 				rows * classes,
 				crate::DType::F32,
@@ -4628,7 +4622,7 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 				PushConstant::U32(1),
 			];
 			let kernel = KernelId::MlCrossEntropyBackwardF32;
-			logits.engine_handle().record_semantic(
+			logits.runtime().record_semantic(
 				crate::runtime::ComputeDispatch {
 					kernel,
 					buffers: &[
@@ -4674,10 +4668,8 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 		let valid_count = mask_host.iter().filter(|v| **v != 0.0).count();
 
 		let forward = || -> Result<Vec<f32>> {
-			let per_row =
-				crate::Matrix::allocate(logits.engine_handle(), vec![rows], rows, crate::DType::F32)?;
-			let output =
-				crate::Matrix::allocate(logits.engine_handle(), Vec::new(), 1, crate::DType::F32)?;
+			let per_row = crate::Matrix::allocate(logits.runtime(), vec![rows], rows, crate::DType::F32)?;
+			let output = crate::Matrix::allocate(logits.runtime(), Vec::new(), 1, crate::DType::F32)?;
 			let loss_push = [
 				PushConstant::U32(rows as u32),
 				PushConstant::U32(classes as u32),
@@ -4717,7 +4709,7 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 					indirect: None,
 				},
 			];
-			logits.engine_handle().record_split_semantic(
+			logits.runtime().record_split_semantic(
 				&dispatches,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::ml::MASKED_CROSS_ENTROPY,
@@ -4741,7 +4733,7 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 
 		let backward = || -> Result<Vec<f32>> {
 			let gradient = crate::Matrix::allocate(
-				logits.engine_handle(),
+				logits.runtime(),
 				vec![rows, classes],
 				rows * classes,
 				crate::DType::F32,
@@ -4757,7 +4749,7 @@ fn tile_cross_entropy_routes_match_incumbent() -> Result<()> {
 				name: "valid_count".into(),
 				value: valid_count as i64,
 			}];
-			logits.engine_handle().record_semantic(
+			logits.runtime().record_semantic(
 				crate::runtime::ComputeDispatch {
 					kernel,
 					buffers: &[
@@ -4804,11 +4796,11 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x51f2_9a3cu64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -4835,31 +4827,31 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 			let addend_c = crate::Matrix::new_from_f32([rows, columns], &values(rows * columns))?;
 			let record = || -> Result<Vec<f32>> {
 				let dy = crate::Matrix::allocate(
-					normalized.engine_handle(),
+					normalized.runtime(),
 					vec![rows, columns],
 					rows * columns,
 					crate::DType::F32,
 				)?;
 				let input_gradient = crate::Matrix::allocate(
-					normalized.engine_handle(),
+					normalized.runtime(),
 					vec![rows, columns],
 					rows * columns,
 					crate::DType::F32,
 				)?;
 				let weight_contribution = crate::Matrix::allocate(
-					normalized.engine_handle(),
+					normalized.runtime(),
 					vec![rows, columns],
 					rows * columns,
 					crate::DType::F32,
 				)?;
 				let weight_gradient = crate::Matrix::allocate(
-					normalized.engine_handle(),
+					normalized.runtime(),
 					vec![columns],
 					columns,
 					crate::DType::F32,
 				)?;
 				let bias_gradient = crate::Matrix::allocate(
-					normalized.engine_handle(),
+					normalized.runtime(),
 					vec![columns],
 					columns,
 					crate::DType::F32,
@@ -4876,7 +4868,7 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 					PushConstant::U32(columns as u32),
 				];
 				let partial = crate::Matrix::allocate(
-					normalized.engine_handle(),
+					normalized.runtime(),
 					vec![rows, columns],
 					rows * columns,
 					crate::DType::F32,
@@ -4949,7 +4941,7 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 					workgroups: KernelId::MlSumAxisPairF32.linear_workgroups(columns as u32),
 					indirect: None,
 				});
-				normalized.engine_handle().record_split_semantic(
+				normalized.runtime().record_split_semantic(
 					&dispatches,
 					crate::runtime::SemanticDispatch {
 						contract: crate::core::operation::ml::LAYER_NORM_BACKWARD,
@@ -5077,7 +5069,7 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 			)?;
 			let record = || -> Result<Vec<f32>> {
 				let weight_gradient = crate::Matrix::allocate(
-					table.engine_handle(),
+					table.runtime(),
 					vec![num_embeddings, embedding_dim],
 					num_embeddings * embedding_dim,
 					crate::DType::F32,
@@ -5098,7 +5090,7 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 					workgroups: kernel.linear_workgroups((num_embeddings * embedding_dim) as u32),
 					indirect: None,
 				};
-				table.engine_handle().record_semantic(
+				table.runtime().record_semantic(
 					dispatch,
 					crate::runtime::SemanticDispatch {
 						contract: crate::core::operation::ml::EMBEDDING_BACKWARD,
@@ -5132,7 +5124,7 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 			crate::Matrix::new_from_f32([outer_size, inner_size], &values(outer_size * inner_size))?;
 		let record = || -> Result<Vec<f32>> {
 			let input_gradient = crate::Matrix::allocate(
-				input.engine_handle(),
+				input.runtime(),
 				vec![outer_size, dim_size, inner_size],
 				input_count,
 				crate::DType::F32,
@@ -5152,7 +5144,7 @@ fn tile_gradient_sum_routes_match_incumbent() -> Result<()> {
 				workgroups: KernelId::MatrixSumBackwardF32.linear_workgroups(input_count as u32),
 				indirect: None,
 			};
-			input.engine_handle().record_semantic(
+			input.runtime().record_semantic(
 				dispatch,
 				crate::runtime::SemanticDispatch {
 					contract: crate::core::operation::matrix::SUM_BACKWARD,
@@ -5189,11 +5181,11 @@ fn tile_max_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x2f81_d5e6u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -5301,11 +5293,11 @@ fn tile_gemm_bias_route_matches_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	// The epilogue launch lowering binds problem slots
 	// [A, B, C, workspace, epilogue] into kernel order [left, right,
@@ -5315,22 +5307,22 @@ fn tile_gemm_bias_route_matches_incumbent() -> Result<()> {
 	for (epilogue, kernel, label) in [
 		(
 			crate::runtime::GemmEpilogue::Bias,
-			KernelId::MatrixMatMulNtBiasF32,
+			KernelId::MatrixMatmulNtBiasF32,
 			"bias",
 		),
 		(
 			crate::runtime::GemmEpilogue::BiasRelu,
-			KernelId::MatrixMatMulNtBiasReluF32,
+			KernelId::MatrixMatmulNtBiasReluF32,
 			"bias_relu",
 		),
 		(
 			crate::runtime::GemmEpilogue::BiasGelu,
-			KernelId::MatrixMatMulNtBiasGeluF32,
+			KernelId::MatrixMatmulNtBiasGeluF32,
 			"bias_gelu",
 		),
 		(
 			crate::runtime::GemmEpilogue::BiasSilu,
-			KernelId::MatrixMatMulNtBiasSiluF32,
+			KernelId::MatrixMatmulNtBiasSiluF32,
 			"bias_silu",
 		),
 	] {
@@ -5340,8 +5332,8 @@ fn tile_gemm_bias_route_matches_incumbent() -> Result<()> {
 			let bias = crate::Matrix::new_from_f32([n], &gemm_values(n, 7))?;
 			let mut problem = crate::runtime::MatmulProblem::contiguous(m as u32, n as u32, k as u32);
 			problem.epilogue = epilogue;
-			let plan = crate::runtime::plan_mat_mul_nt_problem(
-				&engine.handle(),
+			let plan = crate::runtime::plan_matmul_nt_problem(
+				&runtime.handle(),
 				&problem,
 				&crate::runtime::MatmulPreference::default(),
 			)?;
@@ -5349,10 +5341,10 @@ fn tile_gemm_bias_route_matches_incumbent() -> Result<()> {
 				plan.kernel_id, kernel,
 				"{label}: the planner must select the tiled epilogue donor"
 			);
-			let launch = crate::runtime::lower_mat_mul_nt_plan(&plan, &problem)?;
-			let run = |engine: &Engine| -> Result<Vec<f32>> {
+			let launch = crate::runtime::lower_matmul_nt_plan(&plan, &problem)?;
+			let run = |runtime: &Runtime| -> Result<Vec<f32>> {
 				let output =
-					crate::Matrix::allocate(&engine.handle(), vec![m, n], m * n, crate::DType::F32)?;
+					crate::Matrix::allocate(&runtime.handle(), vec![m, n], m * n, crate::DType::F32)?;
 				let buffers = launch.bindings(&[
 					left.storage(),
 					right.storage(),
@@ -5360,7 +5352,7 @@ fn tile_gemm_bias_route_matches_incumbent() -> Result<()> {
 					output.storage(),
 					bias.storage(),
 				])?;
-				engine.handle().record_semantic(
+				runtime.handle().record_semantic(
 					crate::runtime::ComputeDispatch {
 						kernel: launch.kernel_id,
 						buffers: &buffers,
@@ -5369,20 +5361,20 @@ fn tile_gemm_bias_route_matches_incumbent() -> Result<()> {
 						indirect: None,
 					},
 					crate::runtime::SemanticDispatch {
-						contract: crate::core::operation::matrix::MAT_MUL_NT,
+						contract: crate::core::operation::matrix::MATMUL,
 						inputs: &[&left, &right],
 						outputs: &[&output],
 						attributes: &[],
 					},
 				)?;
-				engine.checkpoint()?.wait()?;
+				runtime.checkpoint()?.wait()?;
 				output.read_f32()
 			};
-			let expected = run(&engine)?;
+			let expected = run(&runtime)?;
 			tile_route_bit_exact(
 				&device,
 				"OA_TILE_GEMM_BIAS",
-				|| run(&engine),
+				|| run(&runtime),
 				&expected,
 				&format!("{label} {m}x{n}x{k}"),
 			)?;
@@ -5412,15 +5404,15 @@ impl StridedLayout {
 
 #[test]
 #[ignore = "selected Vulkan device"]
-fn mat_mul_nt_strided_routes_match_host_oracle() -> Result<()> {
+fn matmul_nt_strided_routes_match_host_oracle() -> Result<()> {
 	let index = std::env::var("OA_TEST_DEVICE_INDEX")
 		.expect("explicit device index")
 		.parse::<usize>()
 		.expect("device index");
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
+	Runtime::set_default(runtime.clone());
 
 	struct Case {
 		m: usize,
@@ -5460,7 +5452,7 @@ fn mat_mul_nt_strided_routes_match_host_oracle() -> Result<()> {
 				col_stride: 1,
 				batch_stride: 78,
 			},
-			expected: KernelId::MatrixMatMulNtStridedF32,
+			expected: KernelId::MatrixMatmulNtStridedF32,
 		},
 		Case {
 			m: 33,
@@ -5485,7 +5477,7 @@ fn mat_mul_nt_strided_routes_match_host_oracle() -> Result<()> {
 				col_stride: 1,
 				batch_stride: 2400,
 			},
-			expected: KernelId::MatrixMatMulNtStridedTiledF32,
+			expected: KernelId::MatrixMatmulNtStridedTiledF32,
 		},
 		Case {
 			m: 17,
@@ -5510,7 +5502,7 @@ fn mat_mul_nt_strided_routes_match_host_oracle() -> Result<()> {
 				col_stride: 1,
 				batch_stride: 0,
 			},
-			expected: KernelId::MatrixMatMulNtStridedF32,
+			expected: KernelId::MatrixMatmulNtStridedF32,
 		},
 	];
 
@@ -5559,7 +5551,7 @@ fn mat_mul_nt_strided_routes_match_host_oracle() -> Result<()> {
 
 		let a = crate::Matrix::new_from_f32([a_len], &a_data)?;
 		let b = crate::Matrix::new_from_f32([b_len], &b_data)?;
-		let output = crate::Matrix::allocate(&engine.handle(), vec![c_len], c_len, crate::DType::F32)?;
+		let output = crate::Matrix::allocate(&runtime.handle(), vec![c_len], c_len, crate::DType::F32)?;
 
 		let mut problem =
 			crate::runtime::MatmulProblem::contiguous(case.m as u32, case.n as u32, case.k as u32);
@@ -5576,8 +5568,8 @@ fn mat_mul_nt_strided_routes_match_host_oracle() -> Result<()> {
 		}
 		problem.a_contiguous = false;
 		problem.b_contiguous = false;
-		let plan = crate::runtime::plan_mat_mul_nt_problem(
-			&engine.handle(),
+		let plan = crate::runtime::plan_matmul_nt_problem(
+			&runtime.handle(),
 			&problem,
 			&crate::runtime::MatmulPreference::default(),
 		)?;
@@ -5585,7 +5577,7 @@ fn mat_mul_nt_strided_routes_match_host_oracle() -> Result<()> {
 			plan.kernel_id, case.expected,
 			"the planner must route non-canonical layouts to the strided family"
 		);
-		let launch = crate::runtime::lower_mat_mul_nt_plan(&plan, &problem)?;
+		let launch = crate::runtime::lower_matmul_nt_plan(&plan, &problem)?;
 		assert_eq!(launch.grid[2], case.batch as u32);
 		let buffers = launch.bindings(&[
 			a.storage(),
@@ -5594,7 +5586,7 @@ fn mat_mul_nt_strided_routes_match_host_oracle() -> Result<()> {
 			output.storage(),
 			output.storage(),
 		])?;
-		engine.handle().record_semantic(
+		runtime.handle().record_semantic(
 			crate::runtime::ComputeDispatch {
 				kernel: launch.kernel_id,
 				buffers: &buffers,
@@ -5603,13 +5595,13 @@ fn mat_mul_nt_strided_routes_match_host_oracle() -> Result<()> {
 				indirect: None,
 			},
 			crate::runtime::SemanticDispatch {
-				contract: crate::core::operation::matrix::MAT_MUL_NT,
+				contract: crate::core::operation::matrix::MATMUL,
 				inputs: &[&a, &b],
 				outputs: &[&output],
 				attributes: &[],
 			},
 		)?;
-		engine.checkpoint()?.wait()?;
+		runtime.checkpoint()?.wait()?;
 		let actual = output.read_f32()?;
 		assert_eq!(actual.len(), expected.len());
 		for (index, (actual, expected)) in actual.iter().zip(expected.iter()).enumerate() {
@@ -5629,23 +5621,23 @@ fn mat_mul_nt_strided_routes_match_host_oracle() -> Result<()> {
 
 #[test]
 #[ignore = "selected Vulkan device"]
-fn mat_mul_nt_split_k_route_matches_host_oracle() -> Result<()> {
+fn matmul_nt_split_k_route_matches_host_oracle() -> Result<()> {
 	let index = std::env::var("OA_TEST_DEVICE_INDEX")
 		.expect("explicit device index")
 		.parse::<usize>()
 		.expect("device index");
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
+	Runtime::set_default(runtime.clone());
 
 	for (m, n, k) in [(64usize, 48usize, 200usize), (33, 19, 97), (16, 16, 4)] {
 		let a = crate::Matrix::new_from_f32([m, k], &gemm_values(m * k, 3))?;
 		let b = crate::Matrix::new_from_f32([n, k], &gemm_values(n * k, 11))?;
-		let output = crate::Matrix::allocate(&engine.handle(), vec![m, n], m * n, crate::DType::F32)?;
+		let output = crate::Matrix::allocate(&runtime.handle(), vec![m, n], m * n, crate::DType::F32)?;
 		let workspace_elements = m * n * 4;
 		let workspace = crate::Matrix::allocate(
-			&engine.handle(),
+			&runtime.handle(),
 			vec![workspace_elements],
 			workspace_elements,
 			crate::DType::F32,
@@ -5657,15 +5649,15 @@ fn mat_mul_nt_split_k_route_matches_host_oracle() -> Result<()> {
 			max_workspace_bytes: (workspace_elements * 4) as u64,
 			..crate::runtime::MatmulPreference::default()
 		};
-		let plan = crate::runtime::plan_mat_mul_nt_problem(&engine.handle(), &problem, &preference)?;
+		let plan = crate::runtime::plan_matmul_nt_problem(&runtime.handle(), &problem, &preference)?;
 		assert_eq!(
 			plan.kernel_id,
-			KernelId::MatrixMatMulNtSplitKF32,
+			KernelId::MatrixMatmulNtSplitKF32,
 			"the required-variant pin must select the split-K donor"
 		);
-		let launch = crate::runtime::lower_mat_mul_nt_plan(&plan, &problem)?;
+		let launch = crate::runtime::lower_matmul_nt_plan(&plan, &problem)?;
 		let reduction =
-			lower_mat_mul_nt_reduction(&plan, &problem)?.expect("split-K plans carry a reduction launch");
+			lower_matmul_nt_reduction(&plan, &problem)?.expect("split-K plans carry a reduction launch");
 		let problem_buffers = [
 			a.storage(),
 			b.storage(),
@@ -5675,7 +5667,7 @@ fn mat_mul_nt_split_k_route_matches_host_oracle() -> Result<()> {
 		];
 		let buffers = launch.bindings(&problem_buffers)?;
 		let reduce_buffers = reduction.bindings(&problem_buffers)?;
-		engine.handle().record_split_semantic(
+		runtime.handle().record_split_semantic(
 			&[
 				crate::runtime::ComputeDispatch {
 					kernel: launch.kernel_id,
@@ -5693,13 +5685,13 @@ fn mat_mul_nt_split_k_route_matches_host_oracle() -> Result<()> {
 				},
 			],
 			crate::runtime::SemanticDispatch {
-				contract: crate::core::operation::matrix::MAT_MUL_NT,
+				contract: crate::core::operation::matrix::MATMUL,
 				inputs: &[&a, &b],
 				outputs: &[&output],
 				attributes: &[],
 			},
 		)?;
-		engine.checkpoint()?.wait()?;
+		runtime.checkpoint()?.wait()?;
 		drop(workspace);
 		let actual = output.read_f32()?;
 		let expected = gemm_cpu_oracle(&gemm_values(m * k, 3), &gemm_values(n * k, 11), m, n, k);
@@ -5725,11 +5717,11 @@ fn tile_conv_1d_im2_col_route_matches_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x6a09e667f3bcc909u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -5882,11 +5874,11 @@ fn tile_conv_1d_parameter_backward_route_matches_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b97f4a7c15u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -5986,11 +5978,11 @@ fn tile_conv_1d_transpose_route_matches_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b97f4a7c15u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -6081,11 +6073,11 @@ fn tile_conv_2d_backward_route_matches_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b97f4a7c15u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -6187,11 +6179,11 @@ fn tile_conv_2d_transpose_route_matches_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b97f4a7c15u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -6287,11 +6279,11 @@ fn tile_conv_1d_bias_tail_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x1b873593u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -6320,7 +6312,7 @@ fn tile_conv_1d_bias_tail_routes_match_incumbent() -> Result<()> {
 				let _route = ScopedVar::set("OA_TILE_CONV", std::ffi::OsStr::new("1"));
 				let _fusion = ScopedVar::set("OA_JIT_FUSION", std::ffi::OsStr::new("1"));
 				let _forced = ScopedVar::set("OA_JIT_ROUTE", std::ffi::OsStr::new("specialized"));
-				engine.capture(run)?
+				runtime.capture(run)?
 			};
 			let census = device.fusion_census().snapshot();
 			let specialized = census.jit_admitted_count() + census.jit_reused_count()
@@ -6341,7 +6333,7 @@ fn tile_conv_1d_bias_tail_routes_match_incumbent() -> Result<()> {
 				"{label}: conv_1d must specialize im2col, both tail members and the \
 			 fused tail: {census}"
 			);
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			let actual = output.read_f32()?;
 			for (index, (actual, expected)) in actual.iter().zip(expected.iter()).enumerate() {
 				assert_eq!(
@@ -6393,11 +6385,11 @@ fn tile_pool_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x9e3779b97f4a7c15u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -6659,11 +6651,11 @@ fn tile_attention_routes_match_incumbent() -> Result<()> {
 		// SAFETY: same single-threaded qualification scope as `JitFlag`.
 		unsafe { std::env::set_var("OA_SLANG_LIBRARY", library) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(index))
 		.build()?;
-	Engine::set_default(engine.clone());
-	let device = engine.handle.state.borrow().device.clone();
+	Runtime::set_default(runtime.clone());
+	let device = runtime.handle.state.borrow().device.clone();
 	let _hold = JitFlag::hold();
 	let mut seeded = 0x1bf52f5f6d4e7c91u64;
 	let mut values = |count: usize| -> Vec<f32> {
@@ -6765,8 +6757,8 @@ fn tile_attention_routes_match_incumbent() -> Result<()> {
 				sequence,
 				0x4d41_534b,
 			)?;
-			let (plan, output) = engine.capture(|| attention.forward(&input))?;
-			let _event = engine.submit(&plan)?;
+			let (plan, output) = runtime.capture(|| attention.forward(&input))?;
+			let _event = runtime.submit(&plan)?;
 			plan.wait()?;
 			output.read_f32()
 		};

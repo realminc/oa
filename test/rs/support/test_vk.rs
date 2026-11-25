@@ -1,18 +1,18 @@
-/// Define an explicitly requested Vulkan test with a fresh thread-affine engine.
+/// Define an explicitly requested Vulkan test with a fresh thread-affine runtime.
 ///
 /// Rust's parallel test harness cannot share the current `!Send + !Sync`
-/// engine. Keeping construction here removes call-site boilerplate while
+/// runtime. Keeping construction here removes call-site boilerplate while
 /// preserving per-test isolation and an explicit ignored-test requirement.
 macro_rules! test_vk {
-	($name:ident, $engine:ident, $body:block) => {
+	($name:ident, $runtime:ident, $body:block) => {
 		test_vk!(
 			$name,
-			$engine,
+			$runtime,
 			"requires an admitted Vulkan compute device",
 			$body
 		);
 	};
-	($name:ident, $engine:ident, $requirement:literal, $body:block) => {
+	($name:ident, $runtime:ident, $requirement:literal, $body:block) => {
 		#[test]
 		#[ignore = $requirement]
 		fn $name() -> oa::Result<()> {
@@ -25,8 +25,8 @@ macro_rules! test_vk {
 				Err(std::env::VarError::NotPresent) => oa::DeviceSelection::Automatic,
 				Err(_) => panic!("OA_TEST_DEVICE_INDEX must be Unicode"),
 			};
-			let $engine = oa::Engine::builder().devices(selection).build()?;
-			oa::Engine::set_default($engine.clone());
+			let $runtime = oa::Runtime::builder().devices(selection).build()?;
+			oa::Runtime::set_default($runtime.clone());
 			$body
 		}
 	};
@@ -35,21 +35,21 @@ macro_rules! test_vk {
 /// Define a heavyweight Vulkan test that additionally requires `OA_TEST_SLOW`.
 ///
 /// Corpus and multi-parameter PQC proofs compile several ~600 KiB SPIR-V
-/// modules per fresh engine; on weak drivers that means minutes of shader
+/// modules per fresh runtime; on weak drivers that means minutes of shader
 /// compilation per test. These tests stay `#[ignore]`d like [`test_vk!`] and
 /// early-return unless `OA_TEST_SLOW` names a truthy value, so a plain
 /// `--ignored` run stays fast and `OA_TEST_SLOW=1` opts into the full battery.
 #[allow(unused_macros)]
 macro_rules! test_vk_slow {
-	($name:ident, $engine:ident, $body:block) => {
+	($name:ident, $runtime:ident, $body:block) => {
 		test_vk_slow!(
 			$name,
-			$engine,
+			$runtime,
 			"requires OA_TEST_SLOW=1 and an admitted Vulkan compute device",
 			$body
 		);
 	};
-	($name:ident, $engine:ident, $requirement:literal, $body:block) => {
+	($name:ident, $runtime:ident, $requirement:literal, $body:block) => {
 		#[test]
 		#[ignore = $requirement]
 		fn $name() -> oa::Result<()> {
@@ -69,8 +69,8 @@ macro_rules! test_vk_slow {
 				Err(std::env::VarError::NotPresent) => oa::DeviceSelection::Automatic,
 				Err(_) => panic!("OA_TEST_DEVICE_INDEX must be Unicode"),
 			};
-			let $engine = oa::Engine::builder().devices(selection).build()?;
-			oa::Engine::set_default($engine.clone());
+			let $runtime = oa::Runtime::builder().devices(selection).build()?;
+			oa::Runtime::set_default($runtime.clone());
 			$body
 		}
 	};

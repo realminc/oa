@@ -1,6 +1,6 @@
 use std::{any::TypeId, time::Duration};
 
-use oa::{Engine, VideoDemuxer, VideoPlayer, video::VideoPlayerConfig};
+use oa::{Runtime, VideoDemuxer, VideoPlayer, video::VideoPlayerConfig};
 
 fn donor_h264_fixture() -> std::path::PathBuf {
 	let sibling = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -30,10 +30,10 @@ fn player_cache_defaults_match_the_bounded_donor_policy() {
 #[test]
 #[ignore = "requires Vulkan H.264 hardware and OA donor fixture"]
 fn player_steps_through_cache_and_replays_evicted_history() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = donor_h264_fixture();
 	let mut player = VideoPlayer::open(
-		&engine,
+		&runtime,
 		fixture,
 		VideoPlayerConfig {
 			loop_playback: false,
@@ -94,10 +94,10 @@ fn player_steps_through_cache_and_replays_evicted_history() -> oa::Result<()> {
 #[test]
 #[ignore = "requires Vulkan H.264 hardware and OA donor fixture"]
 fn player_composes_decode_pacing_eos_seek_and_close() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = donor_h264_fixture();
 	let mut player = VideoPlayer::open(
-		&engine,
+		&runtime,
 		&fixture,
 		VideoPlayerConfig {
 			loop_playback: false,
@@ -202,12 +202,12 @@ fn player_composes_decode_pacing_eos_seek_and_close() -> oa::Result<()> {
 #[test]
 #[ignore = "requires Vulkan AV1 hardware, OA donor fixture, and the Core profile"]
 fn native_player_presents_av1_frames_as_textures() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 		.with_file_name("oa")
 		.join("sdk/asset/video/clip/shibuya_720p_30fps_av1_main_8bit_420.mp4");
 	let mut player = VideoPlayer::new_native(
-		&engine,
+		&runtime,
 		fixture,
 		VideoPlayerConfig {
 			loop_playback: false,
@@ -234,13 +234,13 @@ fn native_player_presents_av1_frames_as_textures() -> oa::Result<()> {
 #[test]
 #[ignore = "requires Vulkan AV1 8/10-bit decode; exercises repeated reverse scrubbing"]
 fn av1_native_reverse_scrub_preserves_pixels_across_repeated_seeks() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	for bits in [8, 10] {
 		let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
 			"sdk/asset/video/clip/shibuya_720p_30fps_av1_main_{bits}bit_420.mp4"
 		));
 		let mut player = VideoPlayer::new_native(
-			&engine,
+			&runtime,
 			fixture,
 			VideoPlayerConfig {
 				loop_playback: false,
@@ -291,7 +291,7 @@ fn av1_native_reverse_scrub_preserves_pixels_across_repeated_seeks() -> oa::Resu
 #[test]
 #[ignore = "requires all four Vulkan decode codecs and Core presentation"]
 fn native_cached_scrubbing_uses_no_decode_or_conversion_work() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("sdk/asset/video/clip");
 	let mut paths = std::fs::read_dir(directory)
 		.expect("video fixtures")
@@ -302,7 +302,7 @@ fn native_cached_scrubbing_uses_no_decode_or_conversion_work() -> oa::Result<()>
 	assert_eq!(paths.len(), 9);
 	for path in paths {
 		let mut player = VideoPlayer::new_native(
-			&engine,
+			&runtime,
 			&path,
 			VideoPlayerConfig {
 				loop_playback: false,
@@ -316,7 +316,7 @@ fn native_cached_scrubbing_uses_no_decode_or_conversion_work() -> oa::Result<()>
 				break;
 			}
 		}
-		engine.checkpoint()?.wait()?;
+		runtime.checkpoint()?.wait()?;
 		let before = player.stats().expect("open player");
 		assert_eq!(before.presentation_cache_resident, 32);
 		let mut elapsed = Vec::new();
@@ -359,13 +359,13 @@ fn native_cached_scrubbing_uses_no_decode_or_conversion_work() -> oa::Result<()>
 #[test]
 #[ignore = "requires Vulkan AV1 decode and Core presentation"]
 fn av1_native_reverse_replay_without_history_does_not_exhaust_dpb() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	for bits in [8, 10] {
 		let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
 			"sdk/asset/video/clip/shibuya_720p_30fps_av1_main_{bits}bit_420.mp4"
 		));
 		let mut player = VideoPlayer::new_native(
-			&engine,
+			&runtime,
 			path,
 			VideoPlayerConfig {
 				loop_playback: false,
@@ -390,7 +390,7 @@ fn av1_native_reverse_replay_without_history_does_not_exhaust_dpb() -> oa::Resul
 #[ignore = "requires four Vulkan decode codecs, Core profile, FFmpeg and video fixtures"]
 fn native_presentation_pixels_match_independent_planar_oracle() -> oa::Result<()> {
 	use oa::video::{VideoColorMatrix, VideoColorRange};
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("sdk/asset/video/clip");
 	let mut fixtures = std::fs::read_dir(directory)
 		.expect("video fixtures")
@@ -422,7 +422,7 @@ fn native_presentation_pixels_match_independent_planar_oracle() -> oa::Result<()
 			String::from_utf8_lossy(&output.stderr)
 		);
 		let mut player = VideoPlayer::new_native(
-			&engine,
+			&runtime,
 			&path,
 			VideoPlayerConfig {
 				start_playing: false,
@@ -504,9 +504,9 @@ fn native_presentation_pixels_match_independent_planar_oracle() -> oa::Result<()
 #[test]
 #[ignore = "requires Vulkan H.264 hardware and OA donor fixture"]
 fn native_player_retains_decoder_frames_without_host_pixels() -> oa::Result<()> {
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	let mut player = VideoPlayer::new_native(
-		&engine,
+		&runtime,
 		donor_h264_fixture(),
 		VideoPlayerConfig {
 			loop_playback: false,
@@ -546,9 +546,9 @@ fn player_streams_mpeg_ts_without_a_display_index() -> oa::Result<()> {
 		.expect("FFmpeg must be installed for the ignored remux test");
 	assert!(status.success());
 	let result = (|| -> oa::Result<()> {
-		let engine = Engine::new()?;
+		let runtime = Runtime::new()?;
 		let mut player = VideoPlayer::open(
-			&engine,
+			&runtime,
 			&output,
 			VideoPlayerConfig {
 				loop_playback: false,
@@ -577,7 +577,7 @@ fn player_streams_mpeg_ts_without_a_display_index() -> oa::Result<()> {
 #[ignore = "requires FFmpeg x264/x265 and Vulkan H.264 and H.265 decode"]
 fn cropped_avc_and_open_gop_hevc_seek_match_ffmpeg() -> oa::Result<()> {
 	use std::process::Command;
-	let engine = Engine::new()?;
+	let runtime = Runtime::new()?;
 	for (encoder, extension, pixel_format, encoder_args) in [
 		("libx264", "mp4", "yuv420p", &["-g", "24"][..]),
 		(
@@ -633,8 +633,8 @@ fn cropped_avc_and_open_gop_hevc_seek_match_ffmpeg() -> oa::Result<()> {
 				start_playing: false,
 				..Default::default()
 			};
-			let mut player = VideoPlayer::open(&engine, &path, cfg)?;
-			let mut native = VideoPlayer::new_native(&engine, &path, cfg)?;
+			let mut player = VideoPlayer::open(&runtime, &path, cfg)?;
+			let mut native = VideoPlayer::new_native(&runtime, &path, cfg)?;
 			for index in [97, 74, 110, 24, 0, 119] {
 				player.seek_frame(index)?;
 				native.seek_frame(index)?;

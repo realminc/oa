@@ -100,7 +100,7 @@ fn planar_yuv420_frames_validate_and_share_bytes() -> oa::Result<()> {
 
 test_vk!(
 	packed_video_frame_retains_image_storage_and_metadata,
-	engine,
+	runtime,
 	{
 		let matrix = Matrix::new_from_f32([2, 4, 4], &[0.25; 32])?;
 		let image = Image::new(matrix, ImageLayout::Hwc, ImageFormat::Rgba)?;
@@ -129,7 +129,7 @@ test_vk!(
 	}
 );
 
-test_vk!(video_frame_rejects_batches_and_empty_extents, engine, {
+test_vk!(video_frame_rejects_batches_and_empty_extents, runtime, {
 	let batch = Matrix::new_from_f32([2, 3, 1, 1], &[0.0; 6])?;
 	let batch = Image::new(batch, ImageLayout::Nchw, ImageFormat::Rgb)?;
 	let Err(error) = VideoFrame::new_from_image(
@@ -156,7 +156,7 @@ test_vk!(video_frame_rejects_batches_and_empty_extents, engine, {
 
 test_vk!(
 	video_from_texture_retains_render_storage_without_image_erasure,
-	engine,
+	runtime,
 	{
 		let rgba = (0_u8..32).collect::<Vec<_>>();
 		let texture = texture_from_rgba8(&rgba, 4, 2)?;
@@ -164,13 +164,13 @@ test_vk!(
 		let color = VideoColorInfo::new(VideoColorMatrix::Bt709, VideoColorRange::Full);
 		let frame = oa::video::from_texture(&texture, timing, color)?;
 		assert!(frame.ready_event().is_none());
-		let producer = engine.checkpoint()?;
+		let producer = runtime.checkpoint()?;
 		let ready_frame = oa::video::from_texture_with_ready(&texture, timing, color, &producer)?;
 		assert!(ready_frame.ready_event().is_some());
 		ready_frame.ready_event().expect("producer event").wait()?;
 		assert!(ready_frame.clone().ready_event().is_some());
-		let other_engine = oa::Engine::new()?;
-		let foreign_event = other_engine.checkpoint()?;
+		let other_runtime = oa::Runtime::new()?;
+		let foreign_event = other_runtime.checkpoint()?;
 		let error = oa::video::from_texture_with_ready(&texture, timing, color, &foreign_event)
 			.err()
 			.expect("foreign producer event must be rejected");

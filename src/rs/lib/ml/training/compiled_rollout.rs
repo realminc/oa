@@ -10,7 +10,7 @@ use crate::ml::environment::CompiledEnvironment;
 use crate::ml::{ActorCritic, RolloutBuffer, RolloutTransition, policy};
 use crate::runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch};
 use crate::{
-	DType, Engine, Error, ExecutionPlan, ExecutionPlanDiagnostics, Matrix, OpAttribute, Result,
+	DType, Error, ExecutionPlan, ExecutionPlanDiagnostics, Matrix, OpAttribute, Result, Runtime,
 	matrix,
 };
 use std::time::Duration;
@@ -131,7 +131,7 @@ impl CompiledRollout {
 	/// or status failures.
 	pub fn collect<E: CompiledEnvironment>(
 		&mut self,
-		engine: &Engine,
+		runtime: &Runtime,
 		model: &dyn ActorCritic,
 		env: &mut E,
 		rollout: &mut RolloutBuffer,
@@ -146,18 +146,18 @@ impl CompiledRollout {
 		} = options;
 		if !env.replay_valid()
 			|| !shaping.is_finite()
-			|| !engine.owns_matrix(env.observation())
+			|| !runtime.owns_matrix(env.observation())
 			|| env.environments() as usize != ppo.environments
 		{
 			return Err(Error::invalid_argument(
-				"compiled collection geometry/Engine/shaping mismatch",
+				"compiled collection geometry/Runtime/shaping mismatch",
 			));
 		}
-		engine.checkpoint()?.wait()?;
+		runtime.checkpoint()?.wait()?;
 		let reset_environment = !continuing || !env.replay_initialized();
 		if self.state.is_none() {
 			self.state = Some(State::capture(
-				engine, model, env, rollout, ppo, shaping, continuing,
+				runtime, model, env, rollout, ppo, shaping, continuing,
 			)?);
 		}
 		let s = self.state.as_mut().expect("compiled collection state");
@@ -207,7 +207,7 @@ impl CompiledRollout {
 		} else {
 			s.resume.as_ref().expect("continuation reset plan")
 		};
-		let mut elapsed = submit(engine, reset, ppo.enable_gpu_timing)?;
+		let mut elapsed = submit(runtime, reset, ppo.enable_gpu_timing)?;
 		env.replay_observation(s.observation.clone());
 		let mut completed = 0_usize;
 		while completed < ppo.horizon {
@@ -220,12 +220,12 @@ impl CompiledRollout {
 			let mut events = Vec::with_capacity(count);
 			for _ in 0..count {
 				events.push(if ppo.enable_gpu_timing {
-					engine.submit_timed(&s.step)?
+					runtime.submit_timed(&s.step)?
 				} else {
-					engine.submit(&s.step)?
+					runtime.submit(&s.step)?
 				});
 			}
-			// Engine timeline dependencies preserve visibility and exact order.
+			// Runtime timeline dependencies preserve visibility and exact order.
 			events.last().expect("nonempty replay batch").wait()?;
 			if ppo.enable_gpu_timing {
 				for event in events {
@@ -244,7 +244,7 @@ impl CompiledRollout {
 			}
 		}
 		elapsed = elapsed
-			.checked_add(submit(engine, &s.gae, ppo.enable_gpu_timing)?)
+			.checked_add(submit(runtime, &s.gae, ppo.enable_gpu_timing)?)
 			.ok_or_else(|| Error::resource_exhausted("collection GPU time overflow"))?;
 		env.check_status()?;
 		if s.cursor.read::<u32>()?[6] != ppo.horizon as u32 {
@@ -265,7 +265,7 @@ impl Default for CompiledRollout {
 
 impl State {
 	fn capture<E: CompiledEnvironment>(
-		engine: &Engine,
+		runtime: &Runtime,
 		model: &dyn ActorCritic,
 		env: &mut E,
 		rollout: &mut RolloutBuffer,
@@ -274,8 +274,8 @@ impl State {
 		continuing: bool,
 	) -> Result<Self> {
 		rollout.initialize_replay_storage()?;
-		let cursor = Matrix::new_from_slice_on(engine, [7], &[0_u32, 1, 0, 1, 0, 0, 0])?;
-		let copy_cursor = Matrix::new_from_slice_on(engine, [2], &[0_u32, 1])?;
+		let cursor = Matrix::new_from_slice_on(runtime, [7], &[0_u32, 1, 0, 1, 0, 0, 0])?;
+		let copy_cursor = Matrix::new_from_slice_on(runtime, [2], &[0_u32, 1])?;
 		let observation = env.observation().clone();
 		let observation_elements = ppo
 			.observation_shape
@@ -294,7 +294,7 @@ impl State {
 			.checked_mul(ppo.environments)
 			.ok_or_else(|| Error::resource_exhausted("rollout rows overflow usize"))?;
 		let next_observations = Matrix::allocate(
-			&engine.handle(),
+			&runtime.handle(),
 			vec![next_observation_rows, observation_elements],
 			next_observation_rows
 				.checked_mul(observation_elements)
@@ -312,21 +312,21 @@ impl State {
 			.cloned()
 			.collect::<Vec<_>>();
 		let state = initialized.iter().collect::<Vec<_>>();
-		let (reset, ()) = engine.capture_with_initialized_state(&state, || {
+		let (reset, ()) = runtime.capture_with_initialized_state(&state, || {
 			rollout.reset_replay_commands()?;
 			env.record_reset_replay(false, &cursor)
 		})?;
 		env.replay_observation(observation.clone());
 		let resume = if continuing {
 			Some(
-				engine
+				runtime
 					.capture_with_initialized_state(&state, || rollout.reset_replay_commands())?
 					.0,
 			)
 		} else {
 			None
 		};
-		let (step, ()) = engine.capture_with_initialized_state(&state, || {
+		let (step, ()) = runtime.capture_with_initialized_state(&state, || {
 			let network = model.evaluate(&observation)?;
 			let action = crate::ml::matrix::sample_categorical_cursor(&network.logits, &cursor)?;
 			let policy = policy::evaluate_categorical(&network.logits, &action, &network.value)?;
@@ -361,10 +361,10 @@ impl State {
 			)?;
 			env.record_reset_replay(true, &cursor)?;
 			crate::ml::matrix::training_accumulate(&observation, env.observation(), &copy_cursor, 1.)?;
-			advance_cursor(engine, &cursor, ppo.horizon as u32, continuing)
+			advance_cursor(runtime, &cursor, ppo.horizon as u32, continuing)
 		})?;
 		env.replay_observation(observation.clone());
-		let (gae, ()) = engine.capture_with_initialized_state(&state, || {
+		let (gae, ()) = runtime.capture_with_initialized_state(&state, || {
 			// One batched evaluation over all retained successor observations
 			// replaces the removed second per-step evaluation: every slot gets
 			// V(next_obs_t) exactly, including pre-reset terminal and truncation
@@ -405,19 +405,24 @@ impl State {
 	}
 }
 
-fn submit(engine: &Engine, plan: &ExecutionPlan, timed: bool) -> Result<Duration> {
+fn submit(runtime: &Runtime, plan: &ExecutionPlan, timed: bool) -> Result<Duration> {
 	if timed {
-		engine.submit_timed(plan)?.device_duration()
+		runtime.submit_timed(plan)?.device_duration()
 	} else {
-		engine.submit(plan)?.wait()?;
+		runtime.submit(plan)?.wait()?;
 		Ok(Duration::ZERO)
 	}
 }
 
-fn advance_cursor(engine: &Engine, cursor: &Matrix, horizon: u32, continuing: bool) -> Result<()> {
+fn advance_cursor(
+	runtime: &Runtime,
+	cursor: &Matrix,
+	horizon: u32,
+	continuing: bool,
+) -> Result<()> {
 	// The seven-word rollout cursor and its advance kernel are shared
 	// machinery despite the trading donor name.
-	engine.handle().record_semantic(
+	runtime.handle().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlTradingCursorAdvanceU32,
 			buffers: &[BufferBinding::read_write(cursor.storage())],

@@ -2,7 +2,7 @@ use oa::ml::Module;
 
 test_vk!(
 	encoder_decoder_constructs_and_enumerates_its_tree,
-	engine,
+	runtime,
 	{
 		let model =
 			oa::ml::nn::EncoderDecoder::new_with_seed(11, 13, 4, 3, 8, 16, 2, 2, 1.0e-5, 0x4543_4f44)?;
@@ -37,7 +37,7 @@ test_vk!(
 
 test_vk!(
 	encoder_decoder_forward_flows_gradients_into_the_encoder,
-	engine,
+	runtime,
 	{
 		let model =
 			oa::ml::nn::EncoderDecoder::new_with_seed(7, 9, 4, 3, 8, 16, 1, 2, 1.0e-5, 0x5351_3251)?;
@@ -81,7 +81,7 @@ test_vk!(
 
 test_vk!(
 	multi_head_attention_forward_kv_matches_self_attention_identity,
-	engine,
+	runtime,
 	{
 		// With an identical key/value source and bidirectional visibility,
 		// forward_kv reduces to bidirectional self-attention over the same
@@ -109,7 +109,7 @@ test_vk!(
 	}
 );
 
-test_vk!(encoder_decoder_rejects_invalid_contracts, engine, {
+test_vk!(encoder_decoder_rejects_invalid_contracts, runtime, {
 	let model = oa::ml::nn::EncoderDecoder::new_with_seed(7, 9, 4, 3, 8, 16, 1, 2, 1.0e-5, 1)?;
 	let source = oa::Matrix::new_from_slice([1, 4], &[0_u32, 1, 2, 3])?;
 	let target = oa::Matrix::new_from_slice([1, 3], &[0_u32, 1, 2])?;

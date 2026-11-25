@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::super::autograd::PythonParameter;
 
@@ -201,10 +201,10 @@ impl PythonMamba3 {
 	pub fn new(
 		config: &PythonMamba3Config,
 		seed: u64,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::nn::Mamba3::new_with_seed_on(&engine, config.inner, seed)
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::nn::Mamba3::new_with_seed_on(&runtime, config.inner, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

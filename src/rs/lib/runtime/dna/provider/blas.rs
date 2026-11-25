@@ -35,7 +35,7 @@ use crate::{Error, Result};
 
 use crate::runtime::device::NativeFlagBits;
 use crate::runtime::{
-	BufferAccess, BufferBinding, Device, EngineHandle, KernelId, PushConstant, Storage,
+	BufferAccess, BufferBinding, Device, KernelId, PushConstant, RuntimeHandle, Storage,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -284,7 +284,7 @@ pub(in crate::runtime) struct MatmulPreference {
 	pub required_variant: u64,
 	/// Explicit workspace budget; candidates exceeding it are illegal.
 	pub max_workspace_bytes: u64,
-	/// Replay the engine's measured winner for this exact problem when one is
+	/// Replay the runtime's measured winner for this exact problem when one is
 	/// recorded. Structural selection still decides unmeasured problems, and a
 	/// stale winner is revalidated before every replay.
 	pub use_measured_cache: bool,
@@ -350,11 +350,11 @@ pub(in crate::runtime) fn measured_route_cache_disabled() -> bool {
 	*DISABLED.get_or_init(|| crate::EnvFlag::is_set("OA_DISABLE_GEMM_ROUTE_CACHE"))
 }
 
-/// Engine-owned measured-winner cache with a monotonic publication step.
+/// Runtime-owned measured-winner cache with a monotonic publication step.
 ///
 /// Records are appended by the tuning driver after legality and numerical
-/// qualification, persisted field-wise at engine teardown, and loaded
-/// best-effort at engine init. `EngineState` is thread-affine, so no locking
+/// qualification, persisted field-wise at runtime teardown, and loaded
+/// best-effort at runtime init. `RuntimeState` is thread-affine, so no locking
 /// is required.
 #[derive(Debug, Default)]
 pub(in crate::runtime) struct MatmulRouteCache {
@@ -876,7 +876,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmTiled"),
 		name: "GemmTiled",
-		kernel_id: KernelId::MatrixMatMulNtTiledF32,
+		kernel_id: KernelId::MatrixMatmulNtTiledF32,
 		kernel: GemmKernel::TiledF32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::None,
@@ -901,7 +901,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmTiledWide"),
 		name: "GemmTiledWide",
-		kernel_id: KernelId::MatrixMatMulNtTiledWideF32,
+		kernel_id: KernelId::MatrixMatmulNtTiledWideF32,
 		kernel: GemmKernel::TiledWideF32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::None,
@@ -926,7 +926,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmNaive"),
 		name: "GemmNaive",
-		kernel_id: KernelId::MatrixMatMulNtNaiveF32,
+		kernel_id: KernelId::MatrixMatmulNtNaiveF32,
 		kernel: GemmKernel::Naive,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::None,
@@ -951,7 +951,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmSmallM"),
 		name: "GemmSmallM",
-		kernel_id: KernelId::MatrixMatMulNtGemvF32,
+		kernel_id: KernelId::MatrixMatmulNtGemvF32,
 		kernel: GemmKernel::SmallMF32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::None,
@@ -976,7 +976,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmBiasTiled"),
 		name: "GemmBiasTiled",
-		kernel_id: KernelId::MatrixMatMulNtBiasF32,
+		kernel_id: KernelId::MatrixMatmulNtBiasF32,
 		kernel: GemmKernel::TiledF32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::Bias,
@@ -1001,7 +1001,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmBiasReluTiled"),
 		name: "GemmBiasReluTiled",
-		kernel_id: KernelId::MatrixMatMulNtBiasReluF32,
+		kernel_id: KernelId::MatrixMatmulNtBiasReluF32,
 		kernel: GemmKernel::TiledF32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::BiasRelu,
@@ -1026,7 +1026,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmBiasGeluTiled"),
 		name: "GemmBiasGeluTiled",
-		kernel_id: KernelId::MatrixMatMulNtBiasGeluF32,
+		kernel_id: KernelId::MatrixMatmulNtBiasGeluF32,
 		kernel: GemmKernel::TiledF32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::BiasGelu,
@@ -1051,7 +1051,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmBiasSiluTiled"),
 		name: "GemmBiasSiluTiled",
-		kernel_id: KernelId::MatrixMatMulNtBiasSiluF32,
+		kernel_id: KernelId::MatrixMatmulNtBiasSiluF32,
 		kernel: GemmKernel::TiledF32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::BiasSilu,
@@ -1076,7 +1076,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmStridedTiled"),
 		name: "GemmStridedTiled",
-		kernel_id: KernelId::MatrixMatMulNtStridedTiledF32,
+		kernel_id: KernelId::MatrixMatmulNtStridedTiledF32,
 		kernel: GemmKernel::StridedTiledF32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::None,
@@ -1101,7 +1101,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmStridedScalar"),
 		name: "GemmStridedScalar",
-		kernel_id: KernelId::MatrixMatMulNtStridedF32,
+		kernel_id: KernelId::MatrixMatmulNtStridedF32,
 		kernel: GemmKernel::StridedF32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::None,
@@ -1126,7 +1126,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmSplitK"),
 		name: "GemmSplitK",
-		kernel_id: KernelId::MatrixMatMulNtSplitKF32,
+		kernel_id: KernelId::MatrixMatmulNtSplitKF32,
 		kernel: GemmKernel::SplitKF32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::None,
@@ -1145,7 +1145,7 @@ const VARIANTS: &[MatmulVariant] = &[
 		supports_batch: false,
 		max_m: 0,
 		split_k: 4,
-		reduction_kernel_id: Some(KernelId::MatrixMatMulNtSplitKReduceF32),
+		reduction_kernel_id: Some(KernelId::MatrixMatmulNtSplitKReduceF32),
 		reduction_workgroup_invocations: 256,
 	},
 	// FP16-storage tiled candidate: the caller's F32 operand storage is
@@ -1156,7 +1156,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmF16"),
 		name: "GemmF16",
-		kernel_id: KernelId::MatrixMatMulNtF16,
+		kernel_id: KernelId::MatrixMatmulNtF16,
 		kernel: GemmKernel::F16F32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::None,
@@ -1181,7 +1181,7 @@ const VARIANTS: &[MatmulVariant] = &[
 	MatmulVariant {
 		id: matmul_variant_id_from_name("GemmTiledWideF16"),
 		name: "GemmTiledWideF16",
-		kernel_id: KernelId::MatrixMatMulNtTiledWideF16,
+		kernel_id: KernelId::MatrixMatmulNtTiledWideF16,
 		kernel: GemmKernel::TiledWideF16F32,
 		path: GemmPath::Standard,
 		epilogue: GemmEpilogue::None,
@@ -1463,7 +1463,7 @@ impl MatmulKernelLaunch {
 /// Kernel families without registered candidates have no lowering arm —
 /// a family lands with its shader, schema record, registry row, and launch
 /// contract in one checkpoint.
-pub(in crate::runtime) fn lower_mat_mul_nt_plan(
+pub(in crate::runtime) fn lower_matmul_nt_plan(
 	plan: &MatmulPlan,
 	problem: &MatmulProblem,
 ) -> Result<MatmulKernelLaunch> {
@@ -1598,7 +1598,7 @@ pub(in crate::runtime) fn lower_mat_mul_nt_plan(
 /// The reduction binds kernel slots [workspace, C] — problem buffers 3, 2 —
 /// and returns `None` for plans without a split-K stage. The workspace the
 /// partial dispatch wrote is the same problem buffer in both launches.
-pub(in crate::runtime) fn lower_mat_mul_nt_reduction(
+pub(in crate::runtime) fn lower_matmul_nt_reduction(
 	plan: &MatmulPlan,
 	problem: &MatmulProblem,
 ) -> Result<Option<MatmulKernelLaunch>> {
@@ -1641,15 +1641,15 @@ pub(in crate::runtime) fn lower_mat_mul_nt_reduction(
 /// Lower a validated canonical `[M, K] × [N, K]` plan — the
 /// `pub(crate)`-visible entry for callers outside `crate::runtime`, which
 /// rebuilds the same contiguous problem the plan was produced against.
-pub(crate) fn lower_mat_mul_nt(
+pub(crate) fn lower_matmul_nt(
 	plan: &MatmulPlan,
 	m: u32,
 	n: u32,
 	k: u32,
 ) -> Result<MatmulKernelLaunch> {
 	let problem = MatmulProblem::contiguous(m, n, k);
-	let launch = lower_mat_mul_nt_plan(plan, &problem)?;
-	if lower_mat_mul_nt_reduction(plan, &problem)?.is_some() {
+	let launch = lower_matmul_nt_plan(plan, &problem)?;
+	if lower_matmul_nt_reduction(plan, &problem)?.is_some() {
 		return Err(Error::invalid_argument(
 			"split-K matmul plans require the two-dispatch lowering path",
 		));
@@ -2058,8 +2058,8 @@ fn classify_selection(plan: &MatmulPlan, problem: &MatmulProblem) -> KernelSelec
 /// non-canonical layouts, the small-M schedule, and finally the portable
 /// F32 fallback order.
 ///
-/// `measured_winner` is the caller-resolved cache value — the engine looks
-/// its route cache up before calling, keeping `plan` free of engine state.
+/// `measured_winner` is the caller-resolved cache value — the runtime looks
+/// its route cache up before calling, keeping `plan` free of runtime state.
 pub(in crate::runtime) fn plan(
 	contract: &MatmulDeviceContract,
 	problem: &MatmulProblem,
@@ -2307,25 +2307,30 @@ pub(in crate::runtime) fn validate_plan(
 }
 
 /// Plan the canonical contiguous `[M, K] × [N, K]` semantic matmul on an
-/// engine's device contract. The plan launches directly — kernels that
+/// runtime's device contract. The plan launches directly — kernels that
 /// require an additional lowering stage are never selected here.
-pub(crate) fn plan_mat_mul_nt(engine: &EngineHandle, m: u32, n: u32, k: u32) -> Result<MatmulPlan> {
+pub(crate) fn plan_matmul_nt(
+	runtime: &RuntimeHandle,
+	m: u32,
+	n: u32,
+	k: u32,
+) -> Result<MatmulPlan> {
 	let problem = MatmulProblem::contiguous(m, n, k);
-	plan_mat_mul_nt_problem(engine, &problem, &MatmulPreference::default())
+	plan_matmul_nt_problem(runtime, &problem, &MatmulPreference::default())
 }
 
-/// Plan the `mat_mul_nt` operation itself — the `OA_FORCE_PRECISION` math-mode
+/// Plan the `matmul` operation itself — the `OA_FORCE_PRECISION` math-mode
 /// request applies, so a lowered candidate such as FP16 storage may be
 /// selected for the caller's split-semantic lowering.
-pub(crate) fn plan_mat_mul_nt_lowered(
-	engine: &EngineHandle,
+pub(crate) fn plan_matmul_nt_lowered(
+	runtime: &RuntimeHandle,
 	m: u32,
 	n: u32,
 	k: u32,
 ) -> Result<MatmulPlan> {
 	let mut problem = MatmulProblem::contiguous(m, n, k);
 	problem.precision_hint = forced_precision_hint();
-	plan_mat_mul_nt_problem(engine, &problem, &MatmulPreference::default())
+	plan_matmul_nt_problem(runtime, &problem, &MatmulPreference::default())
 }
 
 /// `OA_FORCE_PRECISION` request for the canonical contiguous route. `FP16`
@@ -2345,13 +2350,13 @@ fn forced_precision_hint() -> GemmPrecision {
 /// Plan one caller-constructed problem through the identical admission path —
 /// the donor's `GemmRouter::plan`. Private providers build epilogue-bearing
 /// problems; measured replay stays opt-in through the preference.
-pub(in crate::runtime) fn plan_mat_mul_nt_problem(
-	engine: &EngineHandle,
+pub(in crate::runtime) fn plan_matmul_nt_problem(
+	runtime: &RuntimeHandle,
 	problem: &MatmulProblem,
 	preference: &MatmulPreference,
 ) -> Result<MatmulPlan> {
-	let contract = engine.matmul_device_contract();
-	let measured = engine.matmul_measured_route(&route_key(&contract, problem));
+	let contract = runtime.matmul_device_contract();
+	let measured = runtime.matmul_measured_route(&route_key(&contract, problem));
 	let plan = plan(&contract, problem, preference, measured)?;
 	debug_assert!(validate_plan(&contract, &plan, problem));
 	Ok(plan)

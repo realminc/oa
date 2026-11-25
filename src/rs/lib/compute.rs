@@ -1,7 +1,7 @@
 //! Extension compute kernels for SDK and third-party workloads.
 //!
 //! [`Kernel`] compiles caller-owned SPIR-V into a device compute pipeline and
-//! [`Engine::dispatch_kernel`] records it through the same eager batching,
+//! [`Runtime::dispatch_kernel`] records it through the same eager batching,
 //! barrier, and event machinery as built-in operations. This is the supported
 //! way to extend `oa` with custom shaders without forking the closed in-lib
 //! kernel registry; the `oa_sdk` crate builds its workload kernels on it.
@@ -20,13 +20,13 @@ use std::sync::Arc;
 
 use crate::runtime::{BufferBinding, Device, PushConstant};
 
-use crate::{Engine, Error, Matrix, Result};
+use crate::{Error, Matrix, Result, Runtime};
 
-/// A compiled extension compute kernel on one engine's device.
+/// A compiled extension compute kernel on one runtime's device.
 ///
 /// Compile cost is paid once at construction; identical SPIR-V on the same
 /// device reuses the cached pipeline. The kernel may be dispatched any number
-/// of times via [`Engine::dispatch_kernel`]. It is not part of the semantic
+/// of times via [`Runtime::dispatch_kernel`]. It is not part of the semantic
 /// graph or fusion system: dispatches record as physical nodes with the
 /// caller-declared binding accesses.
 pub struct Kernel {
@@ -83,13 +83,13 @@ impl Kernel {
 	/// reflected push-constant range is smaller than `bindings` words, when
 	/// `workgroup_size` exceeds device limits, or when pipeline creation fails.
 	pub fn compile(
-		engine: &Engine,
+		runtime: &Runtime,
 		name: &'static str,
 		spirv: &[u8],
 		bindings: u32,
 		workgroup_size: [u32; 3],
 	) -> Result<Self> {
-		let device = engine.handle().device();
+		let device = runtime.handle().device();
 		let words = crate::runtime::decode_spirv_bytes(spirv)?;
 		let mut key = DefaultHasher::new();
 		name.hash(&mut key);
@@ -120,7 +120,7 @@ impl Kernel {
 
 	/// The kernel's caller push-constant surface in four-byte words.
 	///
-	/// [`Engine::dispatch_kernel`] requires exactly this many
+	/// [`Runtime::dispatch_kernel`] requires exactly this many
 	/// [`KernelPush`] entries.
 	pub const fn push_words(&self) -> usize {
 		self.push_words
@@ -140,17 +140,17 @@ impl Kernel {
 	}
 }
 
-impl Engine {
+impl Runtime {
 	/// Record one eager extension-kernel dispatch.
 	///
-	/// The dispatch joins the engine's pending batch like any eager operation:
+	/// The dispatch joins the runtime's pending batch like any eager operation:
 	/// barriers against other recorded work are derived from the declared
 	/// binding accesses, and completion is observed through
-	/// [`Engine::checkpoint`] or any host read.
+	/// [`Runtime::checkpoint`] or any host read.
 	///
 	/// # Errors
 	///
-	/// Returns `InvalidArgument` when `kernel` belongs to another engine, when
+	/// Returns `InvalidArgument` when `kernel` belongs to another runtime, when
 	/// `bindings`/`push_constants` counts do not match the kernel's declared
 	/// ABI, or when `workgroups` is zero or exceeds device limits; returns the
 	/// recording errors from the underlying session otherwise.
@@ -194,7 +194,7 @@ impl Engine {
 			.collect::<Vec<_>>();
 		if !std::sync::Arc::ptr_eq(&kernel.device, &self.handle().device()) {
 			return Err(Error::invalid_argument(format!(
-				"extension kernel {} was compiled for a different engine",
+				"extension kernel {} was compiled for a different runtime",
 				kernel.name
 			)));
 		}

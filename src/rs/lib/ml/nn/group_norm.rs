@@ -1,6 +1,6 @@
 //! Group- and instance-normalization modules composed over reduce ops.
 
-use crate::{DType, Engine, Error, Matrix, Result, matrix};
+use crate::{DType, Error, Matrix, Result, Runtime, matrix};
 
 use super::super::{Module, ModuleRegistry, Parameter, autograd};
 
@@ -28,7 +28,7 @@ impl GroupNorm {
 	/// Returns an error when `num_channels` is zero, `num_groups` does not
 	/// divide it, `epsilon` is not finite and positive, or allocation fails.
 	pub fn new_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		num_groups: usize,
 		num_channels: usize,
 		epsilon: f32,
@@ -45,11 +45,11 @@ impl GroupNorm {
 		}
 		let weight = Parameter::new(
 			"weight",
-			Matrix::new_from_f32_on(engine, [num_channels], &vec![1.0_f32; num_channels])?,
+			Matrix::new_from_f32_on(runtime, [num_channels], &vec![1.0_f32; num_channels])?,
 		)?;
 		let bias = Parameter::new(
 			"bias",
-			Matrix::new_from_f32_on(engine, [num_channels], &vec![0.0_f32; num_channels])?,
+			Matrix::new_from_f32_on(runtime, [num_channels], &vec![0.0_f32; num_channels])?,
 		)?;
 		let mut registry = ModuleRegistry::new();
 		registry.register_parameter("weight", weight.clone())?;
@@ -64,13 +64,13 @@ impl GroupNorm {
 		})
 	}
 
-	/// Construct on the current engine with `epsilon = 1e-5`.
+	/// Construct on the current runtime with `epsilon = 1e-5`.
 	///
 	/// # Errors
 	///
 	/// Returns an error under the same contract as [`Self::new_on`].
 	pub fn new(num_groups: usize, num_channels: usize) -> Result<Self> {
-		Self::new_on(&Engine::current()?, num_groups, num_channels, 1e-5)
+		Self::new_on(&Runtime::current()?, num_groups, num_channels, 1e-5)
 	}
 
 	/// Normalize `input` shaped `[N, C, *spatial]` and apply the affine.
@@ -139,19 +139,19 @@ impl InstanceNorm {
 	/// # Errors
 	///
 	/// Returns an error under the same contract as [`GroupNorm::new_on`].
-	pub fn new_on(engine: &Engine, num_channels: usize, epsilon: f32) -> Result<Self> {
+	pub fn new_on(runtime: &Runtime, num_channels: usize, epsilon: f32) -> Result<Self> {
 		Ok(Self {
-			inner: GroupNorm::new_on(engine, num_channels, num_channels, epsilon)?,
+			inner: GroupNorm::new_on(runtime, num_channels, num_channels, epsilon)?,
 		})
 	}
 
-	/// Construct on the current engine.
+	/// Construct on the current runtime.
 	///
 	/// # Errors
 	///
 	/// Returns an error under the same contract as [`Self::new_on`].
 	pub fn new(num_channels: usize) -> Result<Self> {
-		Self::new_on(&Engine::current()?, num_channels, 1e-5)
+		Self::new_on(&Runtime::current()?, num_channels, 1e-5)
 	}
 }
 

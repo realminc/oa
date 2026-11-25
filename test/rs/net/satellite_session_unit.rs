@@ -1,6 +1,6 @@
 //! Donor `testSatelliteSession.cpp` and `testSatelliteVulkan.cpp` coverage for
 //! the private authenticated session layer. The server serves on the test
-//! thread because [`SatelliteServerSession`] borrows a `!Send` engine; client
+//! thread because [`SatelliteServerSession`] borrows a `!Send` runtime; client
 //! sessions move to a spawned thread instead, the inverse of the donor's
 //! thread split and the only arrangement the Rust ownership model admits.
 
@@ -300,15 +300,15 @@ fn vulkan_config(seed: u8, device_name: String) -> SatelliteSessionConfig {
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn satellite_matrix_add_uses_exact_owned_event() -> Result<()> {
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(crate::DeviceSelection::Index(0))
 		.build()?;
-	Engine::set_default(engine.clone());
+	Runtime::set_default(runtime.clone());
 	let (listener, _port) = bind_loopback();
-	let device_name = engine.device_info().name().to_owned();
+	let device_name = runtime.device_info().name().to_owned();
 	let (server_status, server, client_status) = serve_with_client(
 		&listener,
-		SatelliteServerSession::new_with_engine(&engine, vulkan_config(0xa0, device_name.clone())),
+		SatelliteServerSession::new_with_runtime(&runtime, vulkan_config(0xa0, device_name.clone())),
 		move |port| -> Result<()> {
 			let mut client =
 				SatelliteClientSession::connect("127.0.0.1", port, vulkan_config(0xa0, device_name))?;
@@ -358,14 +358,14 @@ fn satellite_matrix_add_uses_exact_owned_event() -> Result<()> {
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn abandon_pending_matrix_request_does_not_submit_or_wait() -> Result<()> {
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(crate::DeviceSelection::Index(0))
 		.build()?;
-	Engine::set_default(engine.clone());
+	Runtime::set_default(runtime.clone());
 	let (listener, _port) = bind_loopback();
-	let device_name = engine.device_info().name().to_owned();
+	let device_name = runtime.device_info().name().to_owned();
 	let server =
-		SatelliteServerSession::new_with_engine(&engine, vulkan_config(0xa0, device_name.clone()));
+		SatelliteServerSession::new_with_runtime(&runtime, vulkan_config(0xa0, device_name.clone()));
 	let (server_status, server, client_status) =
 		serve_with_client(&listener, server, move |port| -> Result<()> {
 			let mut client =

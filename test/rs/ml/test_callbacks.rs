@@ -49,7 +49,7 @@ fn phase_lookup_resolves_restored_global_progress_without_entering_a_phase() -> 
 
 test_vk!(
 	validation_feeds_early_stop_and_does_not_suppress_later_callbacks,
-	engine,
+	runtime,
 	{
 		let weight = oa::Matrix::new_from_f32([2, 2], &[0.2, -0.1, -0.3, 0.4])?;
 		let bias = oa::Matrix::new_from_f32([2], &[0.0, 0.0])?;
@@ -85,7 +85,7 @@ test_vk!(
 
 		let final_snapshot = {
 			let mut training = oa::ml::ItTraining::new(
-				&engine,
+				&runtime,
 				&mut optimizer,
 				oa::ml::ItTrainingConfig {
 					total_steps: 3,
@@ -138,7 +138,7 @@ test_vk!(
 
 test_vk!(
 	step_only_validation_runs_at_interval_without_duplicate_final_evaluation,
-	engine,
+	runtime,
 	{
 		let weight = oa::Matrix::new_from_f32([2, 2], &[0.2, -0.1, -0.3, 0.4])?;
 		let bias = oa::Matrix::new_from_f32([2], &[0.0, 0.0])?;
@@ -162,7 +162,7 @@ test_vk!(
 		)?;
 		{
 			let mut training = oa::ml::ItTraining::new(
-				&engine,
+				&runtime,
 				&mut optimizer,
 				oa::ml::ItTrainingConfig {
 					total_steps: 4,
@@ -189,7 +189,7 @@ test_vk!(
 
 test_vk!(
 	phase_schedule_uses_the_existing_optimizer_and_epoch_map,
-	engine,
+	runtime,
 	{
 		let weight = oa::Matrix::new_from_f32([2, 2], &[0.2, -0.1, -0.3, 0.4])?;
 		let bias = oa::Matrix::new_from_f32([2], &[0.0, 0.0])?;
@@ -209,7 +209,7 @@ test_vk!(
 
 		{
 			let mut training = oa::ml::ItTraining::new(
-				&engine,
+				&runtime,
 				&mut optimizer,
 				oa::ml::ItTrainingConfig {
 					epoch_steps: vec![1, 1, 1],
@@ -241,7 +241,7 @@ test_vk!(
 		mismatched.add_phase("wrong", 1, 2)?;
 		let error = {
 			let mut training = oa::ml::ItTraining::new(
-				&engine,
+				&runtime,
 				&mut optimizer,
 				oa::ml::ItTrainingConfig {
 					total_steps: 1,
@@ -260,7 +260,7 @@ test_vk!(
 
 test_vk!(
 	checkpoint_callback_saves_each_epoch_and_restores_the_best_state,
-	engine,
+	runtime,
 	{
 		let directory = std::env::temp_dir().join(format!(
 			"oars-callback-checkpoint-{}-{}",
@@ -290,7 +290,7 @@ test_vk!(
 		)?;
 		let metric = validation.metric();
 		let mut manager = oa::ml::CheckpointManager::new(
-			&engine,
+			&runtime,
 			oa::ml::CheckpointManagerConfig {
 				directory: directory.clone(),
 				model_name: "Linear".to_owned(),
@@ -307,7 +307,7 @@ test_vk!(
 
 		let final_snapshot = {
 			let mut training = oa::ml::ItTraining::new(
-				&engine,
+				&runtime,
 				&mut optimizer,
 				oa::ml::ItTrainingConfig {
 					epoch_steps: vec![1, 1, 1],

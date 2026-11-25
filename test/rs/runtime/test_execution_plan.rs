@@ -1,9 +1,9 @@
 use oa::ml::Module;
 
-test_vk!(captures_and_replays_an_immutable_plan, engine, {
+test_vk!(captures_and_replays_an_immutable_plan, runtime, {
 	let one = oa::matrix::ones([2, 3])?;
 	let two = oa::matrix::full([2, 3], 2.0)?;
-	let (plan, six) = engine.capture(|| {
+	let (plan, six) = runtime.capture(|| {
 		let three = oa::matrix::add(&one, &two)?;
 		oa::matrix::add(&three, &three)
 	})?;
@@ -99,7 +99,7 @@ test_vk!(captures_and_replays_an_immutable_plan, engine, {
 		oa::ErrorKind::FailedPrecondition
 	);
 
-	let first = engine.submit(&plan)?;
+	let first = runtime.submit(&plan)?;
 	drop(first);
 	plan.wait()?;
 	assert!(plan.is_complete()?);
@@ -114,7 +114,7 @@ test_vk!(captures_and_replays_an_immutable_plan, engine, {
 			.is_some_and(|value| value != 0)
 	);
 
-	let second = engine.submit(&plan)?;
+	let second = runtime.submit(&plan)?;
 	drop(second);
 	plan.wait()?;
 	assert_eq!(six.read_f32()?, [6.0; 6]);
@@ -123,10 +123,10 @@ test_vk!(captures_and_replays_an_immutable_plan, engine, {
 	Ok(())
 });
 
-test_vk!(fused_chain_materializes_observed_intermediates, engine, {
+test_vk!(fused_chain_materializes_observed_intermediates, runtime, {
 	let one = oa::matrix::ones([4])?;
 	let two = oa::matrix::full([4], 2.0)?;
-	let (plan, (three, six)) = engine.capture(|| {
+	let (plan, (three, six)) = runtime.capture(|| {
 		let three = oa::matrix::add(&one, &two)?;
 		let six = oa::matrix::add(&three, &three)?;
 		Ok((three, six))
@@ -134,7 +134,7 @@ test_vk!(fused_chain_materializes_observed_intermediates, engine, {
 	let lowering = plan.semantic_lowering();
 	assert_eq!(lowering.fused_op_count(), 2);
 	assert_eq!(lowering.fused_node_count(), 1);
-	let submitted = engine.submit(&plan)?;
+	let submitted = runtime.submit(&plan)?;
 	drop(submitted);
 	plan.wait()?;
 	assert_eq!(three.read_f32()?, [3.0; 4]);
@@ -142,7 +142,7 @@ test_vk!(fused_chain_materializes_observed_intermediates, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_linear_residual_pair, engine, {
+test_vk!(epilogue_fuses_linear_residual_pair, runtime, {
 	let input = oa::Matrix::new_from_f32([2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
 	let weight = oa::Matrix::new_from_f32(
 		[4, 3],
@@ -160,7 +160,7 @@ test_vk!(epilogue_fuses_linear_residual_pair, engine, {
 		let pre_activation = linear.forward(&input)?;
 		oa::matrix::add(&pre_activation, &residual)?.read_f32()?
 	};
-	let (plan, output) = engine.capture(|| {
+	let (plan, output) = runtime.capture(|| {
 		let pre_activation = linear.forward(&input)?;
 		oa::matrix::add(&pre_activation, &residual)
 	})?;
@@ -173,12 +173,12 @@ test_vk!(epilogue_fuses_linear_residual_pair, engine, {
 	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
 	assert_eq!(report["nodes"][0]["kernel"], "ml.linear_residual.f32");
 
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_eq!(output.read_f32()?, reference);
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_linear_residual_activation_triple, engine, {
+test_vk!(epilogue_fuses_linear_residual_activation_triple, runtime, {
 	let input = oa::Matrix::new_from_f32([2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
 	let weight = oa::Matrix::new_from_f32(
 		[4, 3],
@@ -197,7 +197,7 @@ test_vk!(epilogue_fuses_linear_residual_activation_triple, engine, {
 		let summed = oa::matrix::add(&pre_activation, &residual)?;
 		oa::ml::matrix::gelu(&summed)?.read_f32()?
 	};
-	let (plan, output) = engine.capture(|| {
+	let (plan, output) = runtime.capture(|| {
 		let pre_activation = linear.forward(&input)?;
 		let summed = oa::matrix::add(&pre_activation, &residual)?;
 		oa::ml::matrix::gelu(&summed)
@@ -211,12 +211,12 @@ test_vk!(epilogue_fuses_linear_residual_activation_triple, engine, {
 	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
 	assert_eq!(report["nodes"][0]["kernel"], "ml.linear_residual_act.f32");
 
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_eq!(output.read_f32()?, reference);
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_linear_activation_pair, engine, {
+test_vk!(epilogue_fuses_linear_activation_pair, runtime, {
 	let input = oa::Matrix::new_from_f32([2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
 	let weight = oa::Matrix::new_from_f32(
 		[4, 3],
@@ -233,7 +233,7 @@ test_vk!(epilogue_fuses_linear_activation_pair, engine, {
 		let pre_activation = linear.forward(&input)?;
 		oa::ml::matrix::gelu(&pre_activation)?.read_f32()?
 	};
-	let (plan, output) = engine.capture(|| {
+	let (plan, output) = runtime.capture(|| {
 		let pre_activation = linear.forward(&input)?;
 		oa::ml::matrix::gelu(&pre_activation)
 	})?;
@@ -246,12 +246,12 @@ test_vk!(epilogue_fuses_linear_activation_pair, engine, {
 	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
 	assert_eq!(report["nodes"][0]["kernel"], "ml.linear_act.f32");
 
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_eq!(output.read_f32()?, reference);
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_linear_backward_prologue_pair, engine, {
+test_vk!(epilogue_fuses_linear_backward_prologue_pair, runtime, {
 	let input_values: Vec<f32> = (0..12)
 		.map(|i| ((i * 13 % 19) as f32 - 9.0) / 7.0)
 		.collect();
@@ -294,7 +294,7 @@ test_vk!(epilogue_fuses_linear_backward_prologue_pair, engine, {
 				.collect::<oa::Result<Vec<_>>>()?
 		};
 		drop(epilogue_disabled);
-		let (plan, _) = engine.capture(|| {
+		let (plan, _) = runtime.capture(|| {
 			let tape = oa::ml::GradientTape::new();
 			let hidden = candidate[1].forward(&candidate[0].forward(&input)?)?;
 			let output = candidate[2].forward(&activate(&hidden)?)?;
@@ -315,7 +315,7 @@ test_vk!(epilogue_fuses_linear_backward_prologue_pair, engine, {
 					.ends_with("linear_backward_prologue.f32")),
 			"backward adjoint must fuse into linear_backward_prologue.f32"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let actual = candidate
 			.iter()
 			.flat_map(|layer| layer.all_parameters().unwrap())
@@ -328,7 +328,7 @@ test_vk!(epilogue_fuses_linear_backward_prologue_pair, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_linear_backward_silu_mul_pair, engine, {
+test_vk!(epilogue_fuses_linear_backward_silu_mul_pair, runtime, {
 	// linear_up → linear_fused(produces packed gate|up) → silu_mul →
 	// linear_out → mse: the gated adjoint feeds the data adjoint of the
 	// gate|up projection and fuses into linear_backward_prologue kind=9.
@@ -363,7 +363,7 @@ test_vk!(epilogue_fuses_linear_backward_silu_mul_pair, engine, {
 			.collect::<oa::Result<Vec<_>>>()?
 	};
 	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let hidden = candidate[1].forward(&candidate[0].forward(&input)?)?;
 		let output = candidate[2].forward(&oa::ml::matrix::silu_mul(&hidden, 6)?)?;
@@ -384,7 +384,7 @@ test_vk!(epilogue_fuses_linear_backward_silu_mul_pair, engine, {
 				.ends_with("linear_backward_prologue.f32")),
 		"gated backward adjoint must fuse into linear_backward_prologue.f32"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = candidate
 		.iter()
 		.flat_map(|layer| layer.all_parameters().unwrap())
@@ -396,7 +396,7 @@ test_vk!(epilogue_fuses_linear_backward_silu_mul_pair, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_linear_backward_add_pair, engine, {
+test_vk!(epilogue_fuses_linear_backward_add_pair, runtime, {
 	// lin1's output feeds two branch projections; its backward gradient is
 	// the sum of both branch data adjoints, emitted as a real matrix.add
 	// that directly feeds lin1's data adjoint — a pointwise producer
@@ -433,7 +433,7 @@ test_vk!(epilogue_fuses_linear_backward_add_pair, engine, {
 			.collect::<oa::Result<Vec<_>>>()?
 	};
 	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let shared = candidate[0].forward(&input)?;
 		let first = oa::ml::loss::mse(&candidate[1].forward(&shared)?, &target)?;
@@ -455,7 +455,7 @@ test_vk!(epilogue_fuses_linear_backward_add_pair, engine, {
 				.ends_with("linear_backward_prologue.f32")),
 		"accumulation add must fuse into linear_backward_prologue.f32"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = candidate
 		.iter()
 		.flat_map(|layer| layer.all_parameters().unwrap())
@@ -467,7 +467,7 @@ test_vk!(epilogue_fuses_linear_backward_add_pair, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_linear_backward_scalar_mul_pair, engine, {
+test_vk!(epilogue_fuses_linear_backward_scalar_mul_pair, runtime, {
 	// The cross-entropy adjoint scales its per-element gradient by the
 	// scalar loss gradient through a broadcast multiply that directly feeds
 	// the linear data adjoint — a scalar splat producer prologue
@@ -498,7 +498,7 @@ test_vk!(epilogue_fuses_linear_backward_scalar_mul_pair, engine, {
 			.collect::<oa::Result<Vec<_>>>()?
 	};
 	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let logits = candidate[1].forward(&candidate[0].forward(&input)?)?;
 		let loss = oa::ml::loss::cross_entropy(&logits, &target)?;
@@ -518,7 +518,7 @@ test_vk!(epilogue_fuses_linear_backward_scalar_mul_pair, engine, {
 				.ends_with("linear_backward_prologue.f32")),
 		"cross-entropy scalar multiply must fuse into linear_backward_prologue.f32"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = candidate
 		.iter()
 		.flat_map(|layer| layer.all_parameters().unwrap())
@@ -530,7 +530,7 @@ test_vk!(epilogue_fuses_linear_backward_scalar_mul_pair, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_linear_backward_norm_pair, engine, {
+test_vk!(epilogue_fuses_linear_backward_norm_pair, runtime, {
 	// lin1 → layer_norm → lin2 → mse: the layer norm's data adjoint writes
 	// the upstream operand of lin1's data adjoint with only the sibling
 	// sum_axis_pair reduction between them, fusing into
@@ -585,7 +585,7 @@ test_vk!(epilogue_fuses_linear_backward_norm_pair, engine, {
 		parameters(&reference)?
 	};
 	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let normalized = candidate.1.forward(&candidate.0.forward(&input)?)?;
 		let output = candidate.2.forward(&normalized)?;
@@ -606,7 +606,7 @@ test_vk!(epilogue_fuses_linear_backward_norm_pair, engine, {
 				.ends_with("linear_backward_norm.f32")),
 		"layer norm data adjoint must fuse into linear_backward_norm.f32"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = parameters(&candidate)?;
 	// The fused kernel's row statistics reduce in a different order than the
 	// unfused 256-lane tree, so gradients agree within float tolerance
@@ -620,7 +620,7 @@ test_vk!(epilogue_fuses_linear_backward_norm_pair, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_linear_backward_bmm_chain_pair, engine, {
+test_vk!(epilogue_fuses_linear_backward_bmm_chain_pair, runtime, {
 	// embed → {q,k,v} projections → scaled_dot_product_attention → proj →
 	// mse: the attention backward emits bmm producers for dQ (NN layout),
 	// dK and dV (TN layout) whose outputs feed the three projection data
@@ -674,7 +674,7 @@ test_vk!(epilogue_fuses_linear_backward_bmm_chain_pair, engine, {
 		parameters(&reference)?
 	};
 	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let output = forward(&candidate)?;
 		let loss = oa::ml::loss::mse(&output, &target)?;
@@ -698,7 +698,7 @@ test_vk!(epilogue_fuses_linear_backward_bmm_chain_pair, engine, {
 		chained, 3,
 		"all three projection data adjoints must fuse into linear_backward_bmm_chain.f32"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = parameters(&candidate)?;
 	// The fused attention route (`small_causal_sdpa`) serializes the
 	// per-row softmax where the unfused softmax tree-reduces, so
@@ -713,7 +713,7 @@ test_vk!(epilogue_fuses_linear_backward_bmm_chain_pair, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_linear_backward_bmm_chain_tails, engine, {
+test_vk!(epilogue_fuses_linear_backward_bmm_chain_tails, runtime, {
 	// Same chain pattern with odd geometry — batch 3, sequence 10, width 20
 	// leaves partial row bands, a partial k tile and 20 of 32 shared
 	// columns live; zero padding must reproduce the donor kernels' tails
@@ -763,7 +763,7 @@ test_vk!(epilogue_fuses_linear_backward_bmm_chain_tails, engine, {
 		parameters(&reference)?
 	};
 	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let output = forward(&candidate)?;
 		let loss = oa::ml::loss::mse(&output, &target)?;
@@ -787,7 +787,7 @@ test_vk!(epilogue_fuses_linear_backward_bmm_chain_tails, engine, {
 		chained, 3,
 		"odd-geometry adjoints must still fuse into linear_backward_bmm_chain.f32"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = parameters(&candidate)?;
 	// The fused attention route (`small_causal_sdpa`) serializes the
 	// per-row softmax where the unfused softmax tree-reduces, so
@@ -802,7 +802,7 @@ test_vk!(epilogue_fuses_linear_backward_bmm_chain_tails, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_linear_backward_norm_add_pair, engine, {
+test_vk!(epilogue_fuses_linear_backward_norm_add_pair, runtime, {
 	// lin1 → h, then h feeds both ln → lin2 and lin3 directly: h's
 	// gradient accumulates the norm input adjoint and lin3's data
 	// adjoint through a real matrix.add that feeds lin1's data adjoint —
@@ -864,7 +864,7 @@ test_vk!(epilogue_fuses_linear_backward_norm_add_pair, engine, {
 		parameters(&reference)?
 	};
 	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let shared = candidate.0.forward(&input)?;
 		let first = oa::ml::loss::mse(
@@ -900,7 +900,7 @@ test_vk!(epilogue_fuses_linear_backward_norm_add_pair, engine, {
 				.ends_with("sum_axis_pair.f32")),
 		"the sibling dγ/dβ reduction must survive the fusion"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = parameters(&candidate)?;
 	// The fused kernel's row statistics reduce in a different order than
 	// the unfused 256-lane tree, so gradients agree within float
@@ -914,7 +914,7 @@ test_vk!(epilogue_fuses_linear_backward_norm_add_pair, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_layer_norm_backward_sum_chain, engine, {
+test_vk!(epilogue_fuses_layer_norm_backward_sum_chain, runtime, {
 	// A layer_norm feeding three linears — the QKV projection shape —
 	// accumulates three data adjoints into the norm's dY through
 	// add(add(dXq, dXk), dXv): the whole window fuses into
@@ -976,7 +976,7 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_chain, engine, {
 		parameters(&reference)?
 	};
 	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let shared = candidate.0.forward(&input)?;
 		let loss = oa::matrix::add(
@@ -1024,7 +1024,7 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_chain, engine, {
 				.ends_with("matrix.layer_norm_backward.f32")),
 		"no unfused layer_norm_backward dispatch may remain"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = parameters(&candidate)?;
 	// The fused kernel's row statistics reduce in a different order than
 	// the unfused 256-lane tree, so gradients agree within float
@@ -1038,7 +1038,7 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_chain, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_layer_norm_backward_sum_pair, engine, {
+test_vk!(epilogue_fuses_layer_norm_backward_sum_pair, runtime, {
 	// A layer_norm feeding two linears accumulates dX1 + dX2 into the
 	// norm's dY through one matrix.add: the two-addend variant of the
 	// same window fuses into layer_norm_backward_sum.
@@ -1091,7 +1091,7 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_pair, engine, {
 		parameters(&reference)?
 	};
 	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let shared = candidate.0.forward(&input)?;
 		let loss = oa::matrix::add(
@@ -1114,7 +1114,7 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_pair, engine, {
 				.ends_with("layer_norm_backward_sum.f32")),
 		"the two-addend dY window must fuse into layer_norm_backward_sum.f32"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = parameters(&candidate)?;
 	for (actual, expected) in actual.iter().flatten().zip(expected.iter().flatten()) {
 		assert!(
@@ -1131,7 +1131,7 @@ test_vk!(epilogue_fuses_layer_norm_backward_sum_pair, engine, {
 // its republished upstream operand. The oracle compares fused parameter
 // gradients bit-exact against an unfused capture.
 fn grouped_backward_prologue_oracle(
-	engine: &oa::Engine,
+	runtime: &oa::Runtime,
 	rows: usize,
 	width: usize,
 	hidden: usize,
@@ -1232,7 +1232,7 @@ fn grouped_backward_prologue_oracle(
 		gradients(&reference)?
 	};
 	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let loss = oa::ml::loss::mse(&forward(&candidate, &input)?, &target)?;
 		tape.backward(&loss)?;
@@ -1264,7 +1264,7 @@ fn grouped_backward_prologue_oracle(
 				.ends_with("grouped_linear_m_parameter_backward.f32")),
 		"the grouped parameter adjoint must survive the fusion"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = gradients(&candidate)?;
 	for (actual, expected) in actual.iter().flatten().zip(expected.iter().flatten()) {
 		assert_eq!(
@@ -1277,16 +1277,16 @@ fn grouped_backward_prologue_oracle(
 	Ok(())
 }
 
-test_vk!(epilogue_fuses_grouped_backward_prologue_pair, engine, {
+test_vk!(epilogue_fuses_grouped_backward_prologue_pair, runtime, {
 	// 120 rows over three experts with offsets [0, 40, 80, 120] places two
 	// 32-row bands inside one expert and two across expert boundaries,
 	// covering the single-expert and mixed-expert segment paths.
-	grouped_backward_prologue_oracle(&engine, 120, 2, 2, 3, &[0, 40, 80, 120])
+	grouped_backward_prologue_oracle(&runtime, 120, 2, 2, 3, &[0, 40, 80, 120])
 });
 
 test_vk!(
 	epilogue_fuses_grouped_backward_prologue_boundary_shapes,
-	engine,
+	runtime,
 	{
 		// The fused kernel tiles rows by 32, output features by 16 and input
 		// features by 2×32 column groups; every case keeps the bit-exact
@@ -1306,13 +1306,13 @@ test_vk!(
 			(1, 2, 2, 3, &[0, 1, 1, 1]),
 			(33, 64, 8, 3, &[0, 33, 33, 33]),
 		] {
-			grouped_backward_prologue_oracle(&engine, rows, width, hidden, output, offsets)?;
+			grouped_backward_prologue_oracle(&runtime, rows, width, hidden, output, offsets)?;
 		}
 		Ok(())
 	}
 );
 
-test_vk!(epilogue_fuses_residual_layer_norm_pair, engine, {
+test_vk!(epilogue_fuses_residual_layer_norm_pair, runtime, {
 	// [512, 4]: the elementwise add launches eight workgroups while the fused
 	// kernel needs one per row — a mismatched dispatch leaves 504 rows unwritten.
 	let input_a = oa::Matrix::new_from_f32(
@@ -1334,7 +1334,7 @@ test_vk!(epilogue_fuses_residual_layer_norm_pair, engine, {
 		let summed = oa::matrix::add(&input_a, &input_b)?;
 		norm.forward(&summed)?.read_f32()?
 	};
-	let (plan, output) = engine.capture(|| {
+	let (plan, output) = runtime.capture(|| {
 		let summed = oa::matrix::add(&input_a, &input_b)?;
 		norm.forward(&summed)
 	})?;
@@ -1347,12 +1347,12 @@ test_vk!(epilogue_fuses_residual_layer_norm_pair, engine, {
 	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
 	assert_eq!(report["nodes"][0]["kernel"], "ml.residual_layer_norm.f32");
 
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_eq!(output.read_f32()?, reference);
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_linear_residual_norm_chain, engine, {
+test_vk!(epilogue_fuses_linear_residual_norm_chain, runtime, {
 	// residual + lin1 → layer_norm → lin2 → mse: the forward
 	// [linear, add, layer_norm] triple that forms the transformer
 	// sublayer epilogue fuses into one linear_residual_norm dispatch
@@ -1409,7 +1409,7 @@ test_vk!(epilogue_fuses_linear_residual_norm_chain, engine, {
 		(value, parameters(&reference)?)
 	};
 	drop(epilogue_disabled);
-	let (plan, loss) = engine.capture(|| {
+	let (plan, loss) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let summed = oa::matrix::add(&residual, &candidate.0.forward(&input)?)?;
 		let loss = oa::ml::loss::mse(
@@ -1432,7 +1432,7 @@ test_vk!(epilogue_fuses_linear_residual_norm_chain, engine, {
 				.ends_with("linear_residual_norm.f32")),
 		"the [linear, add, layer_norm] window must fuse into linear_residual_norm.f32"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = parameters(&candidate)?;
 	// The fused forward replays the donor layer_norm reduction order, but
 	// exact bit parity still depends on the device: on some drivers the
@@ -1458,7 +1458,7 @@ test_vk!(epilogue_fuses_linear_residual_norm_chain, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_shared_input_linear_triple, engine, {
+test_vk!(epilogue_fuses_shared_input_linear_triple, runtime, {
 	let input = oa::Matrix::new_from_f32([2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
 	let weights: Vec<oa::Matrix> = (0..3)
 		.map(|index| {
@@ -1493,7 +1493,7 @@ test_vk!(epilogue_fuses_shared_input_linear_triple, engine, {
 		.iter()
 		.map(|projection| projection.forward(&input)?.read_f32())
 		.collect::<oa::Result<_>>()?;
-	let (plan, (out_q, out_k, out_v)) = engine.capture(|| {
+	let (plan, (out_q, out_k, out_v)) = runtime.capture(|| {
 		Ok((
 			projections[0].forward(&input)?,
 			projections[1].forward(&input)?,
@@ -1510,14 +1510,14 @@ test_vk!(epilogue_fuses_shared_input_linear_triple, engine, {
 	assert_eq!(report["nodes"][0]["kernel"], "ml.linear_triple.f32");
 	assert_eq!(report["nodes"][0]["groups"][2], 3);
 
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_eq!(out_q.read_f32()?, reference[0]);
 	assert_eq!(out_k.read_f32()?, reference[1]);
 	assert_eq!(out_v.read_f32()?, reference[2]);
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_embedding_pair_sum, engine, {
+test_vk!(epilogue_fuses_embedding_pair_sum, runtime, {
 	let tokens = oa::Matrix::new_from_slice([4], &[0_u32, 2, 1, 3])?;
 	let positions = oa::Matrix::new_from_slice([4], &[0_u32, 1, 2, 3])?;
 	let token_table = oa::Matrix::new_from_f32(
@@ -1545,7 +1545,7 @@ test_vk!(epilogue_fuses_embedding_pair_sum, engine, {
 		let position_values = position_embedding.forward(&positions)?;
 		oa::matrix::add(&token_values, &position_values)?.read_f32()?
 	};
-	let (plan, output) = engine.capture(|| {
+	let (plan, output) = runtime.capture(|| {
 		let token_values = token_embedding.forward(&tokens)?;
 		let position_values = position_embedding.forward(&positions)?;
 		oa::matrix::add(&token_values, &position_values)
@@ -1558,12 +1558,12 @@ test_vk!(epilogue_fuses_embedding_pair_sum, engine, {
 	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
 	assert_eq!(report["nodes"][0]["kernel"], "ml.embedding_pair.f32");
 
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_eq!(output.read_f32()?, reference);
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_embedding_pair_norm_chain, engine, {
+test_vk!(epilogue_fuses_embedding_pair_norm_chain, runtime, {
 	// token + position embeddings summed then normalized: the
 	// [embedding, embedding, add, layer_norm] head that opens the
 	// transformer fuses into one embedding_pair_norm dispatch instead
@@ -1619,7 +1619,7 @@ test_vk!(epilogue_fuses_embedding_pair_norm_chain, engine, {
 		(value, parameters(&reference)?)
 	};
 	drop(epilogue_disabled);
-	let (plan, loss) = engine.capture(|| {
+	let (plan, loss) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let token_values = candidate.0.forward(&tokens)?;
 		let position_values = candidate.1.forward(&positions)?;
@@ -1644,7 +1644,7 @@ test_vk!(epilogue_fuses_embedding_pair_norm_chain, engine, {
 				.ends_with("embedding_pair_norm.f32")),
 		"the [embedding, embedding, add, layer_norm] window must fuse into embedding_pair_norm.f32"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = parameters(&candidate)?;
 	assert_eq!(loss.read_f32()?, expected_loss);
 	// The candidate backward still runs the prologue matchers the
@@ -1659,7 +1659,7 @@ test_vk!(epilogue_fuses_embedding_pair_norm_chain, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_embedding_backward_sum_pair, engine, {
+test_vk!(epilogue_fuses_embedding_backward_sum_pair, runtime, {
 	// Two embeddings summed into a head that feeds two downstream
 	// consumers: the accumulated gradient of the shared sum is one
 	// matrix.add read by both embedding_backward scatters. Each fused
@@ -1718,7 +1718,7 @@ test_vk!(epilogue_fuses_embedding_backward_sum_pair, engine, {
 		parameters(&reference)?
 	};
 	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let summed = oa::matrix::add(
 			&candidate.0.forward(&tokens)?,
@@ -1759,7 +1759,7 @@ test_vk!(epilogue_fuses_embedding_backward_sum_pair, engine, {
 				.ends_with("matrix.embedding_backward.f32")),
 		"no unfused embedding_backward dispatch may remain"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = parameters(&candidate)?;
 	// The fused kernel's per-position sum is evaluated elementwise in
 	// the same order as the unfused add, so gradients agree within
@@ -1773,108 +1773,113 @@ test_vk!(epilogue_fuses_embedding_backward_sum_pair, engine, {
 	Ok(())
 });
 
-test_vk!(epilogue_fuses_conv_1d_bias_layout_transpose_pair, engine, {
-	// Every Conv1d lowering ends with an in-place bias add over the
-	// projected GEMM buffer followed by the NCL transpose. The fused
-	// kernel adds bias[channel] at the tile load, so the projected
-	// buffer stays raw and the biased [B, C, T] output is written in
-	// one pass — bit-identical to the unfused pair.
-	let input = oa::Matrix::new_from_f32(
-		[2, 3, 12],
-		&vec![0.0; 2 * 3 * 12]
+test_vk!(
+	epilogue_fuses_conv_1d_bias_layout_transpose_pair,
+	runtime,
+	{
+		// Every Conv1d lowering ends with an in-place bias add over the
+		// projected GEMM buffer followed by the NCL transpose. The fused
+		// kernel adds bias[channel] at the tile load, so the projected
+		// buffer stays raw and the biased [B, C, T] output is written in
+		// one pass — bit-identical to the unfused pair.
+		let input = oa::Matrix::new_from_f32(
+			[2, 3, 12],
+			&vec![0.0; 2 * 3 * 12]
+				.iter()
+				.enumerate()
+				.map(|(i, _)| ((i * 29 % 17) as f32 - 8.0) / 7.0)
+				.collect::<Vec<f32>>(),
+		)?;
+		let target = oa::Matrix::new_from_f32([2, 4, 12], &vec![0.0; 2 * 4 * 12])?;
+		let layers = || -> oa::Result<(oa::ml::nn::Conv1d, oa::ml::nn::Conv1d)> {
+			Ok((
+				oa::ml::nn::Conv1d::new_with_seed(3, 5, 3, 1, 1, 1, 0x5c1)?,
+				oa::ml::nn::Conv1d::new_with_seed(5, 4, 3, 1, 1, 1, 0x5c2)?,
+			))
+		};
+		let reference = layers()?;
+		let candidate = layers()?;
+		let gradients =
+			|layers: &(oa::ml::nn::Conv1d, oa::ml::nn::Conv1d)| -> oa::Result<Vec<Vec<f32>>> {
+				layers
+					.0
+					.parameters()
+					.iter()
+					.chain(layers.1.parameters().iter())
+					.map(|p| p.gradient().unwrap().read_f32())
+					.collect()
+			};
+		let run = |layers: &(oa::ml::nn::Conv1d, oa::ml::nn::Conv1d)| -> oa::Result<Vec<Vec<f32>>> {
+			let tape = oa::ml::GradientTape::new();
+			let hidden = oa::ml::matrix::relu(&layers.0.forward(&input)?)?;
+			let reconstruction = layers.1.forward(&hidden)?;
+			let loss = oa::ml::loss::mse(&reconstruction, &target)?;
+			tape.backward(&loss)?;
+			gradients(layers)
+		};
+		let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
+		let expected = run(&reference)?;
+		drop(epilogue_disabled);
+		let (plan, _) = runtime.capture(|| {
+			let _ = run(&candidate);
+			Ok(())
+		})?;
+		let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("epilogue"))
+			.expect("fused epilogue executable report must be valid JSON");
+		let nodes = report["nodes"].as_array().expect("nodes");
+		// The first Conv1d feeds ReLU directly, so its tail extends to the
+		// activated variant; the second Conv1d feeds the loss and keeps the
+		// bias/transpose pair.
+		let fused_relu = nodes
 			.iter()
-			.enumerate()
-			.map(|(i, _)| ((i * 29 % 17) as f32 - 8.0) / 7.0)
-			.collect::<Vec<f32>>(),
-	)?;
-	let target = oa::Matrix::new_from_f32([2, 4, 12], &vec![0.0; 2 * 4 * 12])?;
-	let layers = || -> oa::Result<(oa::ml::nn::Conv1d, oa::ml::nn::Conv1d)> {
-		Ok((
-			oa::ml::nn::Conv1d::new_with_seed(3, 5, 3, 1, 1, 1, 0x5c1)?,
-			oa::ml::nn::Conv1d::new_with_seed(5, 4, 3, 1, 1, 1, 0x5c2)?,
-		))
-	};
-	let reference = layers()?;
-	let candidate = layers()?;
-	let gradients = |layers: &(oa::ml::nn::Conv1d, oa::ml::nn::Conv1d)| -> oa::Result<Vec<Vec<f32>>> {
-		layers
-			.0
-			.parameters()
-			.iter()
-			.chain(layers.1.parameters().iter())
-			.map(|p| p.gradient().unwrap().read_f32())
-			.collect()
-	};
-	let run = |layers: &(oa::ml::nn::Conv1d, oa::ml::nn::Conv1d)| -> oa::Result<Vec<Vec<f32>>> {
-		let tape = oa::ml::GradientTape::new();
-		let hidden = oa::ml::matrix::relu(&layers.0.forward(&input)?)?;
-		let reconstruction = layers.1.forward(&hidden)?;
-		let loss = oa::ml::loss::mse(&reconstruction, &target)?;
-		tape.backward(&loss)?;
-		gradients(layers)
-	};
-	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
-	let expected = run(&reference)?;
-	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
-		let _ = run(&candidate);
-		Ok(())
-	})?;
-	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("epilogue"))
-		.expect("fused epilogue executable report must be valid JSON");
-	let nodes = report["nodes"].as_array().expect("nodes");
-	// The first Conv1d feeds ReLU directly, so its tail extends to the
-	// activated variant; the second Conv1d feeds the loss and keeps the
-	// bias/transpose pair.
-	let fused_relu = nodes
-		.iter()
-		.filter(|node| {
-			node["kernel"]
-				.as_str()
-				.unwrap()
-				.ends_with("conv_1d_bias_layout_transpose_relu.f32")
-		})
-		.count();
-	assert_eq!(
-		fused_relu, 1,
-		"the Conv1d-ReLU tail must fuse all three nodes"
-	);
-	let fused_pair = nodes
-		.iter()
-		.filter(|node| {
-			node["kernel"]
-				.as_str()
-				.unwrap()
-				.ends_with("conv_1d_bias_layout_transpose.f32")
-		})
-		.count();
-	assert_eq!(
-		fused_pair, 1,
-		"the plain Conv1d tail must fuse bias and transpose"
-	);
-	assert!(
-		!nodes.iter().any(|node| {
-			let kernel = node["kernel"].as_str().unwrap();
-			kernel.ends_with("conv_1d_bias_add.f32")
-				|| kernel.ends_with("conv_1d_layout_transpose.f32")
-				|| kernel.ends_with("matrix.relu.f32")
-		}),
-		"no unfused Conv1d bias add, transpose or ReLU may remain"
-	);
-	engine.submit(&plan)?.wait()?;
-	let actual = gradients(&candidate)?;
-	for (actual, expected) in actual.iter().flatten().zip(expected.iter().flatten()) {
-		assert!(
-			(actual - expected).abs() <= 1e-5 + 1e-5 * expected.abs(),
-			"fused Conv1d tail must match unfused: {actual} vs {expected}"
+			.filter(|node| {
+				node["kernel"]
+					.as_str()
+					.unwrap()
+					.ends_with("conv_1d_bias_layout_transpose_relu.f32")
+			})
+			.count();
+		assert_eq!(
+			fused_relu, 1,
+			"the Conv1d-ReLU tail must fuse all three nodes"
 		);
+		let fused_pair = nodes
+			.iter()
+			.filter(|node| {
+				node["kernel"]
+					.as_str()
+					.unwrap()
+					.ends_with("conv_1d_bias_layout_transpose.f32")
+			})
+			.count();
+		assert_eq!(
+			fused_pair, 1,
+			"the plain Conv1d tail must fuse bias and transpose"
+		);
+		assert!(
+			!nodes.iter().any(|node| {
+				let kernel = node["kernel"].as_str().unwrap();
+				kernel.ends_with("conv_1d_bias_add.f32")
+					|| kernel.ends_with("conv_1d_layout_transpose.f32")
+					|| kernel.ends_with("matrix.relu.f32")
+			}),
+			"no unfused Conv1d bias add, transpose or ReLU may remain"
+		);
+		runtime.submit(&plan)?.wait()?;
+		let actual = gradients(&candidate)?;
+		for (actual, expected) in actual.iter().flatten().zip(expected.iter().flatten()) {
+			assert!(
+				(actual - expected).abs() <= 1e-5 + 1e-5 * expected.abs(),
+				"fused Conv1d tail must match unfused: {actual} vs {expected}"
+			);
+		}
+		Ok(())
 	}
-	Ok(())
-});
+);
 
 test_vk!(
 	epilogue_fuses_conv_1d_bias_layout_transpose_residual_relu,
-	engine,
+	runtime,
 	{
 		// The ALM encoder's residual block feeds relu(conv(x)) + residual
 		// into the next stage. The fused kernel republishes the activated
@@ -1928,7 +1933,7 @@ test_vk!(
 		let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 		let expected = run(&reference)?;
 		drop(epilogue_disabled);
-		let (plan, _) = engine.capture(|| {
+		let (plan, _) = runtime.capture(|| {
 			let _ = run(&candidate);
 			Ok(())
 		})?;
@@ -1957,7 +1962,7 @@ test_vk!(
 			}),
 			"no unfused Conv1d bias add, transpose or ReLU may remain"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let actual = gradients(&candidate)?;
 		for (actual, expected) in actual.iter().flatten().zip(expected.iter().flatten()) {
 			assert!(
@@ -1971,7 +1976,7 @@ test_vk!(
 
 test_vk!(
 	epilogue_fuses_conv_1d_bias_layout_transpose_norm_relu,
-	engine,
+	runtime,
 	{
 		// The ALM encoder applies channel normalization with fused ReLU
 		// directly after Conv1d. The fused kernel reduces over the channels
@@ -2029,7 +2034,7 @@ test_vk!(
 		let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 		let expected = run(&reference)?;
 		drop(epilogue_disabled);
-		let (plan, _) = engine.capture(|| {
+		let (plan, _) = runtime.capture(|| {
 			let _ = run(&candidate);
 			Ok(())
 		})?;
@@ -2058,7 +2063,7 @@ test_vk!(
 			}),
 			"no unfused Conv1d bias add, transpose or channel norm may remain"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let actual = gradients(&candidate)?;
 		// The fused norm keeps the donor's lane-strided reduction order, so
 		// forward is bit-identical; backward runs the other matchers the
@@ -2073,7 +2078,7 @@ test_vk!(
 	}
 );
 
-test_vk!(epilogue_fuses_conv_1d_bias_copy, engine, {
+test_vk!(epilogue_fuses_conv_1d_bias_copy, runtime, {
 	// The ALM decoder transposes a Conv1d output straight back to
 	// [B, T, C]: the NCL transpose followed by its exact inverse is a
 	// biased copy of the projected buffer, so the fused kernel drops
@@ -2109,7 +2114,7 @@ test_vk!(epilogue_fuses_conv_1d_bias_copy, engine, {
 	let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 	let expected = run(&reference)?;
 	drop(epilogue_disabled);
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let _ = run(&candidate);
 		Ok(())
 	})?;
@@ -2136,7 +2141,7 @@ test_vk!(epilogue_fuses_conv_1d_bias_copy, engine, {
 		}),
 		"no unfused Conv1d bias add or NCL transpose may remain"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let actual = gradients(&candidate)?;
 	for (actual, expected) in actual.iter().flatten().zip(expected.iter().flatten()) {
 		assert!(
@@ -2149,7 +2154,7 @@ test_vk!(epilogue_fuses_conv_1d_bias_copy, engine, {
 
 test_vk!(
 	epilogue_fuses_conv_2d_relu_and_pool_relu_backward,
-	engine,
+	runtime,
 	{
 		// The commands-CNN block `conv2d → relu → max_pool` runs both new
 		// fusions: the forward activation applies at the conv store and the
@@ -2187,7 +2192,7 @@ test_vk!(
 		let epilogue_disabled = oa::runtime::EpilogueFusionDisabled::enter();
 		let expected = run(&reference)?;
 		drop(epilogue_disabled);
-		let (plan, _) = engine.capture(|| {
+		let (plan, _) = runtime.capture(|| {
 			let _ = run(&candidate);
 			Ok(())
 		})?;
@@ -2211,7 +2216,7 @@ test_vk!(
 			}),
 			"no unfused conv, relu or pool adjoint may remain"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let actual = gradients(&candidate)?;
 		for (actual, expected) in actual.iter().flatten().zip(expected.iter().flatten()) {
 			assert!(
@@ -2225,7 +2230,7 @@ test_vk!(
 
 test_vk!(
 	epilogue_preserves_externally_retained_conv_outputs,
-	engine,
+	runtime,
 	{
 		// A structural provider that stops materializing an intermediate may only
 		// do so when nothing outside the pending execution owns that storage. A
@@ -2289,8 +2294,8 @@ test_vk!(
 				expected[0].iter().any(|value| *value != 0.0),
 				"{name}: the reference convolution output must be non-trivial"
 			);
-			let (plan, captured) = engine.capture(build)?;
-			engine.submit(&plan)?.wait()?;
+			let (plan, captured) = runtime.capture(build)?;
+			runtime.submit(&plan)?.wait()?;
 			assert_eq!(
 				read(&captured)?,
 				expected,
@@ -2306,13 +2311,13 @@ test_vk!(
 	}
 );
 
-test_vk!(epilogue_fuses_sum_axis_scale_pair, engine, {
+test_vk!(epilogue_fuses_sum_axis_scale_pair, runtime, {
 	let input = oa::Matrix::new_from_f32([2, 3], &[1.0, -2.0, 0.5, -1.5, 2.0, 0.25])?;
 	let reference = {
 		let summed = oa::matrix::sum(&input, 1)?;
 		oa::matrix::scale(&summed, 0.25)?.read_f32()?
 	};
-	let (plan, output) = engine.capture(|| {
+	let (plan, output) = runtime.capture(|| {
 		let summed = oa::matrix::sum(&input, 1)?;
 		oa::matrix::scale(&summed, 0.25)
 	})?;
@@ -2325,15 +2330,15 @@ test_vk!(epilogue_fuses_sum_axis_scale_pair, engine, {
 	assert_eq!(report["nodes"].as_array().expect("nodes").len(), 1);
 	assert_eq!(report["nodes"][0]["kernel"], "ml.sum_axis_scale.f32");
 
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_eq!(output.read_f32()?, reference);
 	Ok(())
 });
 
-test_vk!(capture_preserves_metadata_view_provenance, engine, {
+test_vk!(capture_preserves_metadata_view_provenance, runtime, {
 	let source = oa::matrix::ones([2, 3])?;
 	let view = source.reshape([3, 2])?;
-	let (plan, output) = engine.capture(|| oa::matrix::scale(&view, 2.0))?;
+	let (plan, output) = runtime.capture(|| oa::matrix::scale(&view, 2.0))?;
 
 	let semantic = plan.semantic_graph();
 	assert_eq!(semantic.values().len(), 3);
@@ -2349,33 +2354,33 @@ test_vk!(capture_preserves_metadata_view_provenance, engine, {
 	assert_eq!(semantic.operations()[0].attributes()[0].name(), "scalar");
 	assert_eq!(plan.semantic_lowering().direct_op_count(), 1);
 
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_eq!(output.read_f32()?, [2.0; 6]);
 	Ok(())
 });
 
 test_vk!(
 	timed_replays_report_exact_device_durations,
-	engine,
+	runtime,
 	"requires a hardware Vulkan 1.3 compute device with timestamp support",
 	{
 		use std::time::Duration;
 
 		let one = oa::matrix::ones([262_147])?;
 		let two = oa::matrix::full([262_147], 2.0)?;
-		let (plan, output) = engine.capture(|| {
+		let (plan, output) = runtime.capture(|| {
 			let three = oa::matrix::add(&one, &two)?;
 			oa::matrix::add(&three, &three)
 		})?;
 
-		let untimed = engine.submit(&plan)?;
+		let untimed = runtime.submit(&plan)?;
 		assert_eq!(
 			untimed.device_duration().unwrap_err().kind(),
 			oa::ErrorKind::FailedPrecondition
 		);
 
-		let first = engine.submit_timed(&plan)?;
-		let second = engine.submit_timed(&plan)?;
+		let first = runtime.submit_timed(&plan)?;
+		let second = runtime.submit_timed(&plan)?;
 		let first_duration = first.device_duration()?;
 		let second_duration = second.device_duration()?;
 		assert!(first_duration > Duration::ZERO);
@@ -2385,10 +2390,10 @@ test_vk!(
 		assert_eq!(output.read_f32()?, vec![6.0; 262_147]);
 
 		let surviving_event = {
-			let engine = oa::Engine::new()?;
+			let runtime = oa::Runtime::new()?;
 			let input = oa::matrix::ones([262_147])?;
-			let (plan, _output) = engine.capture(|| oa::matrix::add(&input, &input))?;
-			engine.submit_timed(&plan)?
+			let (plan, _output) = runtime.capture(|| oa::matrix::add(&input, &input))?;
+			runtime.submit_timed(&plan)?
 		};
 		assert!(surviving_event.device_duration()? > Duration::ZERO);
 		Ok(())
@@ -2397,7 +2402,7 @@ test_vk!(
 
 test_vk!(
 	capture_rejects_dirty_empty_nested_and_failed_scopes,
-	engine,
+	runtime,
 	{
 		use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -2405,15 +2410,15 @@ test_vk!(
 		let two = oa::matrix::full([2], 2.0)?;
 		let pending = oa::matrix::add(&one, &two)?;
 
-		let dirty = engine.capture(|| Ok(()));
+		let dirty = runtime.capture(|| Ok(()));
 		assert_eq!(dirty.unwrap_err().kind(), oa::ErrorKind::FailedPrecondition);
 		assert_eq!(pending.read_f32()?, [3.0; 2]);
 
-		let empty = engine.capture(|| Ok(()));
+		let empty = runtime.capture(|| Ok(()));
 		assert_eq!(empty.unwrap_err().kind(), oa::ErrorKind::FailedPrecondition);
 
-		let nested = engine.capture(|| {
-			let (_plan, _output) = engine.capture(|| Ok(()))?;
+		let nested = runtime.capture(|| {
+			let (_plan, _output) = runtime.capture(|| Ok(()))?;
 			Ok(())
 		});
 		assert_eq!(
@@ -2423,7 +2428,7 @@ test_vk!(
 
 		let mismatched = oa::matrix::ones([3])?;
 		let mut escaped = None;
-		let failed = engine.capture(|| {
+		let failed = runtime.capture(|| {
 			escaped = Some(oa::matrix::add(&one, &two)?);
 			oa::matrix::add(&one, &mismatched)?;
 			Ok(())
@@ -2439,7 +2444,7 @@ test_vk!(
 
 		let mut panic_escaped = None;
 		let unwound = catch_unwind(AssertUnwindSafe(|| {
-			let _capture = engine.capture(|| -> oa::Result<()> {
+			let _capture = runtime.capture(|| -> oa::Result<()> {
 				panic_escaped = Some(oa::matrix::add(&one, &two)?);
 				panic!("capture unwind probe");
 			});
@@ -2460,7 +2465,7 @@ test_vk!(
 test_vk!(rejects_foreign_plan_without_poisoning_its_origin, origin, {
 	let input = oa::matrix::ones_on(&origin, [3])?;
 	let (plan, output) = origin.capture(|| oa::matrix::add(&input, &input))?;
-	let foreign = oa::Engine::new()?;
+	let foreign = oa::Runtime::new()?;
 
 	let error = foreign.submit(&plan).unwrap_err();
 	assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
@@ -2469,10 +2474,10 @@ test_vk!(rejects_foreign_plan_without_poisoning_its_origin, origin, {
 	Ok(())
 });
 
-test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
+test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, runtime, {
 	let one = oa::matrix::ones([2, 3])?;
 	let two = oa::matrix::full([2, 3], 2.0)?;
-	let (mut plan, output) = engine.capture(|| {
+	let (mut plan, output) = runtime.capture(|| {
 		let three = oa::matrix::add(&one, &two)?;
 		oa::matrix::add(&three, &one)
 	})?;
@@ -2511,15 +2516,15 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 	assert_eq!(initial.fallback_count(), 0);
 	let duplicate_one = oa::matrix::ones([2, 3])?;
 	let duplicate_two = oa::matrix::full([2, 3], 2.0)?;
-	let (equivalent_plan, _equivalent_output) = engine.capture(|| {
+	let (equivalent_plan, _equivalent_output) = runtime.capture(|| {
 		let three = oa::matrix::add(&duplicate_one, &duplicate_two)?;
 		oa::matrix::add(&three, &duplicate_one)
 	})?;
 	assert_eq!(equivalent_plan.diagnostics().graph_id(), initial.graph_id());
 	drop(equivalent_plan);
 
-	let first = engine.submit(&plan)?;
-	let second = engine.submit(&plan)?;
+	let first = runtime.submit(&plan)?;
+	let second = runtime.submit(&plan)?;
 	first.wait()?;
 	second.wait()?;
 	assert_eq!(output.read_f32()?, [4.0; 6]);
@@ -2542,7 +2547,7 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 				.contains("cannot rebind fused elementwise operands"),
 			"unexpected error: {error}"
 		);
-		let third = engine.submit(&plan)?;
+		let third = runtime.submit(&plan)?;
 		third.wait()?;
 		assert_eq!(output.read_f32()?, [4.0; 6]);
 	}
@@ -2558,15 +2563,15 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 				.expect("rebound executable report must be valid JSON");
 		assert_eq!(rebound_report["compiled"], false);
 
-		let third = engine.submit(&plan)?;
-		let fourth = engine.submit(&plan)?;
+		let third = runtime.submit(&plan)?;
+		let fourth = runtime.submit(&plan)?;
 		plan.bind_matrix_input(&one, &one)?;
 		let restored_report: serde_json::Value =
 			serde_json::from_str(&plan.debug_report_json("restored"))
 				.expect("restored executable report must be valid JSON");
 		assert_eq!(restored_report["compiled"], true);
-		let fifth = engine.submit(&plan)?;
-		let sixth = engine.submit(&plan)?;
+		let fifth = runtime.submit(&plan)?;
+		let sixth = runtime.submit(&plan)?;
 		let final_diagnostics = plan.diagnostics();
 		assert_eq!(final_diagnostics.command_recording_count(), 2);
 		assert_eq!(final_diagnostics.command_cache_hit_count(), 4);
@@ -2582,38 +2587,42 @@ test_vk!(reuses_commands_and_rebinds_stable_matrix_inputs, engine, {
 	Ok(())
 });
 
-test_vk!(dnn_analysis_recognizes_a_schema_owned_qkv_region, engine, {
-	let activation = oa::matrix::ones([2, 3])?;
-	let q_weight = oa::matrix::ones([4, 3])?;
-	let k_weight = oa::matrix::full([4, 3], 2.0)?;
-	let v_weight = oa::matrix::full([4, 3], 3.0)?;
-	let (plan, output) = engine.capture(|| {
-		let _query = oa::matrix::mat_mul_nt(&activation, &q_weight)?;
-		let _key = oa::matrix::mat_mul_nt(&activation, &k_weight)?;
-		oa::matrix::mat_mul_nt(&activation, &v_weight)
-	})?;
+test_vk!(
+	dnn_analysis_recognizes_a_schema_owned_qkv_region,
+	runtime,
+	{
+		let activation = oa::matrix::ones([2, 3])?;
+		let q_weight = oa::matrix::ones([4, 3])?;
+		let k_weight = oa::matrix::full([4, 3], 2.0)?;
+		let v_weight = oa::matrix::full([4, 3], 3.0)?;
+		let (plan, output) = runtime.capture(|| {
+			let _query = oa::matrix::matmul(&activation, &q_weight)?;
+			let _key = oa::matrix::matmul(&activation, &k_weight)?;
+			oa::matrix::matmul(&activation, &v_weight)
+		})?;
 
-	let diagnostics = plan.diagnostics();
-	assert_eq!(diagnostics.semantic_operation_count(), 3);
-	assert_eq!(diagnostics.dnn_captured_operation_count(), 3);
-	assert_eq!(diagnostics.dnn_value_count(), 7);
-	assert_eq!(diagnostics.dnn_external_value_count(), 4);
-	assert_eq!(diagnostics.dnn_virtual_value_count(), 0);
-	assert_eq!(diagnostics.dnn_partition_count(), 1);
-	assert_eq!(diagnostics.dnn_recognized_partition_count(), 1);
-	assert_eq!(diagnostics.dnn_portable_partition_count(), 0);
-	assert_eq!(diagnostics.dnn_applied_partition_count(), 0);
-	assert_eq!(diagnostics.dnn_fallback_partition_count(), 1);
-	assert_eq!(diagnostics.dnn_unexpected_fallback_count(), 0);
+		let diagnostics = plan.diagnostics();
+		assert_eq!(diagnostics.semantic_operation_count(), 3);
+		assert_eq!(diagnostics.dnn_captured_operation_count(), 3);
+		assert_eq!(diagnostics.dnn_value_count(), 7);
+		assert_eq!(diagnostics.dnn_external_value_count(), 4);
+		assert_eq!(diagnostics.dnn_virtual_value_count(), 0);
+		assert_eq!(diagnostics.dnn_partition_count(), 1);
+		assert_eq!(diagnostics.dnn_recognized_partition_count(), 1);
+		assert_eq!(diagnostics.dnn_portable_partition_count(), 0);
+		assert_eq!(diagnostics.dnn_applied_partition_count(), 0);
+		assert_eq!(diagnostics.dnn_fallback_partition_count(), 1);
+		assert_eq!(diagnostics.dnn_unexpected_fallback_count(), 0);
 
-	engine.submit(&plan)?.wait()?;
-	assert_eq!(output.read_f32()?, [9.0; 8]);
-	Ok(())
-});
+		runtime.submit(&plan)?.wait()?;
+		assert_eq!(output.read_f32()?, [9.0; 8]);
+		Ok(())
+	}
+);
 
 test_vk!(
 	dnn_lowering_fuses_the_donor_qualified_qkv_projection,
-	engine,
+	runtime,
 	{
 		let input = oa::matrix::ones([1024, 32])?;
 		let query = oa::ml::nn::Linear::new_from_matrices(
@@ -2629,7 +2638,7 @@ test_vk!(
 			oa::matrix::full([32], 1.5)?,
 		)?;
 		let capture = || {
-			engine.capture(|| {
+			runtime.capture(|| {
 				Ok((
 					query.forward(&input)?,
 					key.forward(&input)?,
@@ -2654,7 +2663,7 @@ test_vk!(
 		let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("triple"))
 			.expect("fused triple executable report must be valid JSON");
 		assert_eq!(report["nodes"][0]["kernel"], "ml.linear_triple.f32");
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		check(outputs)?;
 
 		// With L1 disabled, the L3 donor-qualified QKV lowering applies.
@@ -2686,14 +2695,14 @@ test_vk!(
 			serde_json::json!([0, 1, 2])
 		);
 
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		check((query_output, key_output, value_output))
 	}
 );
 
 test_vk!(
 	dnn_lowering_fuses_the_donor_qualified_gate_up_swiglu,
-	engine,
+	runtime,
 	{
 		let input = oa::matrix::ones([1024, 32])?;
 		let gate = oa::ml::nn::Linear::new_from_matrices(
@@ -2704,7 +2713,7 @@ test_vk!(
 			oa::matrix::full([64, 32], 0.02)?,
 			oa::matrix::full([64], 0.2)?,
 		)?;
-		let (plan, output) = engine.capture(|| {
+		let (plan, output) = runtime.capture(|| {
 			let gate_output = gate.forward(&input)?;
 			let up_output = up.forward(&input)?;
 			oa::ml::matrix::swiglu(&gate_output, &up_output)
@@ -2725,7 +2734,7 @@ test_vk!(
 			serde_json::json!([0, 1, 2])
 		);
 
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let expected = 0.42_f32 / (1.0 + (-0.42_f32).exp()) * 0.84;
 		for actual in output.read_f32()? {
 			assert!((actual - expected).abs() <= 1.0e-5);
@@ -2736,7 +2745,7 @@ test_vk!(
 
 test_vk!(
 	dnn_gate_up_retains_source_nodes_when_an_intermediate_escapes,
-	engine,
+	runtime,
 	{
 		let input = oa::matrix::ones([1024, 32])?;
 		let gate = oa::ml::nn::Linear::new_from_matrices(
@@ -2747,7 +2756,7 @@ test_vk!(
 			oa::matrix::full([64, 32], 0.02)?,
 			oa::matrix::full([64], 0.2)?,
 		)?;
-		let (plan, (_escaped, output)) = engine.capture(|| {
+		let (plan, (_escaped, output)) = runtime.capture(|| {
 			let gate_output = gate.forward(&input)?;
 			let up_output = up.forward(&input)?;
 			let output = oa::ml::matrix::swiglu(&gate_output, &up_output)?;
@@ -2758,7 +2767,7 @@ test_vk!(
 		assert_eq!(diagnostics.dnn_applied_partition_count(), 0);
 		assert_eq!(diagnostics.dnn_fallback_partition_count(), 1);
 		assert_eq!(diagnostics.dnn_unexpected_fallback_count(), 0);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(output.read_f32()?.len(), 1024 * 64);
 		Ok(())
 	}
@@ -2766,11 +2775,11 @@ test_vk!(
 
 test_vk!(
 	rejects_invalid_matrix_input_rebinding_without_mutating_the_plan,
-	engine,
+	runtime,
 	{
 		let one = oa::matrix::ones([2, 3])?;
 		let two = oa::matrix::full([2, 3], 2.0)?;
-		let (mut plan, output) = engine.capture(|| oa::matrix::add(&one, &two))?;
+		let (mut plan, output) = runtime.capture(|| oa::matrix::add(&one, &two))?;
 		let graph_id = plan.diagnostics().graph_id();
 
 		let wrong_shape = oa::matrix::ones([3, 2])?;
@@ -2801,7 +2810,7 @@ test_vk!(
 				.kind(),
 			oa::ErrorKind::InvalidArgument
 		);
-		let foreign = oa::Engine::new()?;
+		let foreign = oa::Runtime::new()?;
 		let foreign_input = oa::matrix::ones_on(&foreign, [2, 3])?;
 		assert_eq!(
 			plan
@@ -2815,7 +2824,7 @@ test_vk!(
 		assert_eq!(diagnostics.graph_id(), graph_id);
 		assert_eq!(diagnostics.input_binding_count(), 2);
 		assert_eq!(diagnostics.input_rebinding_count(), 0);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(output.read_f32()?, [3.0; 6]);
 		Ok(())
 	}
@@ -2823,12 +2832,12 @@ test_vk!(
 
 test_vk!(
 	timed_replay_reuses_graph_command_and_retains_independent_queries,
-	engine,
+	runtime,
 	{
 		let x = oa::matrix::ones([17])?;
-		let (plan, y) = engine.capture(|| oa::matrix::scale(&x, 3.))?;
-		let first = engine.submit_timed(&plan)?;
-		let second = engine.submit_timed(&plan)?;
+		let (plan, y) = runtime.capture(|| oa::matrix::scale(&x, 3.))?;
+		let first = runtime.submit_timed(&plan)?;
+		let second = runtime.submit_timed(&plan)?;
 		let a = first.device_duration()?;
 		let b = second.device_duration()?;
 		assert!(!a.is_zero() && !b.is_zero());
@@ -2844,15 +2853,15 @@ test_vk!(
 
 test_vk!(
 	dnn_filtered_storage_root_keeps_view_on_source_path,
-	engine,
+	runtime,
 	{
 		let scalar = oa::Matrix::new_from_f32([], &[3.0])?;
-		let (plan, output) = engine.capture(|| {
+		let (plan, output) = runtime.capture(|| {
 			let view = oa::matrix::reshape(&scalar, [1])?;
 			oa::matrix::add_scalar(&view, 2.0)
 		})?;
 		assert_eq!(plan.diagnostics().dnn_captured_operation_count(), 0);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(output.read_f32()?, vec![5.0]);
 		Ok(())
 	}
@@ -2860,7 +2869,7 @@ test_vk!(
 
 test_vk!(
 	dnn_lowering_fuses_the_donor_qualified_vision_preprocess,
-	engine,
+	runtime,
 	{
 		let rgb = oa::Image::new(
 			oa::Matrix::new_from_f32(
@@ -2886,7 +2895,7 @@ test_vk!(
 		)?
 		.as_matrix()
 		.read_f32()?;
-		let (plan, output) = engine.capture(|| {
+		let (plan, output) = runtime.capture(|| {
 			let converted = oa::image::convert_color(&rgb, oa::ImageFormat::Bgr)?;
 			oa::image::resize_normalize(&converted, 2, 2, parameters)
 		})?;
@@ -2904,13 +2913,13 @@ test_vk!(
 		assert_eq!(report["nodes"][0]["operation"], "oa::Dnn::VisionPreprocess");
 		assert_eq!(report["nodes"][0]["kernel"], "image.resize_normalize.f32");
 
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(output.as_matrix().read_f32()?, reference);
 		Ok(())
 	}
 );
 
-test_vk!(dnn_lowering_fuses_linear_bias_epilogue, engine, {
+test_vk!(dnn_lowering_fuses_linear_bias_epilogue, runtime, {
 	let a = oa::Matrix::new_from_f32(
 		[4, 8],
 		&[
@@ -2932,9 +2941,9 @@ test_vk!(dnn_lowering_fuses_linear_bias_epilogue, engine, {
 		],
 	)?;
 	let bias = oa::Matrix::new_from_f32([6], &[0.5, -1.0, 2.0, -0.25, 1.5, -3.0])?;
-	let reference = oa::matrix::bias_add(&oa::matrix::mat_mul_nt(&a, &b)?, &bias)?.read_f32()?;
-	let (plan, output) = engine.capture(|| {
-		let product = oa::matrix::mat_mul_nt(&a, &b)?;
+	let reference = oa::matrix::bias_add(&oa::matrix::matmul(&a, &b)?, &bias)?.read_f32()?;
+	let (plan, output) = runtime.capture(|| {
+		let product = oa::matrix::matmul(&a, &b)?;
 		oa::matrix::bias_add(&product, &bias)
 	})?;
 
@@ -2948,16 +2957,16 @@ test_vk!(dnn_lowering_fuses_linear_bias_epilogue, engine, {
 	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("linear_epilogue"))
 		.expect("fused linear epilogue executable report must be valid JSON");
 	assert_eq!(report["nodes"][0]["operation"], "oa::Dnn::LinearEpilogue");
-	assert_eq!(report["nodes"][0]["kernel"], "matrix.mat_mul_nt_bias.f32");
+	assert_eq!(report["nodes"][0]["kernel"], "matrix.matmul_nt_bias.f32");
 
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_eq!(output.read_f32()?, reference);
 	Ok(())
 });
 
 test_vk!(
 	dnn_lowering_fuses_linear_bias_activation_epilogues,
-	engine,
+	runtime,
 	{
 		let a = oa::Matrix::new_from_f32(
 			[4, 8],
@@ -2983,18 +2992,15 @@ test_vk!(
 		for (activate, kernel) in [
 			(
 				oa::ml::matrix::relu as fn(&oa::Matrix) -> oa::Result<oa::Matrix>,
-				"matrix.mat_mul_nt_bias_relu.f32",
+				"matrix.matmul_nt_bias_relu.f32",
 			),
-			(oa::ml::matrix::gelu, "matrix.mat_mul_nt_bias_gelu.f32"),
-			(oa::ml::matrix::silu, "matrix.mat_mul_nt_bias_silu.f32"),
+			(oa::ml::matrix::gelu, "matrix.matmul_nt_bias_gelu.f32"),
+			(oa::ml::matrix::silu, "matrix.matmul_nt_bias_silu.f32"),
 		] {
-			let reference = activate(&oa::matrix::bias_add(
-				&oa::matrix::mat_mul_nt(&a, &b)?,
-				&bias,
-			)?)?
-			.read_f32()?;
-			let (plan, output) = engine.capture(|| {
-				let product = oa::matrix::mat_mul_nt(&a, &b)?;
+			let reference =
+				activate(&oa::matrix::bias_add(&oa::matrix::matmul(&a, &b)?, &bias)?)?.read_f32()?;
+			let (plan, output) = runtime.capture(|| {
+				let product = oa::matrix::matmul(&a, &b)?;
 				activate(&oa::matrix::bias_add(&product, &bias)?)
 			})?;
 
@@ -3011,7 +3017,7 @@ test_vk!(
 			assert_eq!(report["nodes"][0]["operation"], "oa::Dnn::LinearEpilogue");
 			assert_eq!(report["nodes"][0]["kernel"], kernel);
 
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			let fused = output.read_f32()?;
 			for (index, (actual, expected)) in fused.iter().zip(&reference).enumerate() {
 				assert!(
@@ -3055,7 +3061,7 @@ impl Drop for ScopedVar {
 	}
 }
 
-fn budget_engine() -> oa::Result<oa::Engine> {
+fn budget_runtime() -> oa::Result<oa::Runtime> {
 	let selection = match std::env::var("OA_TEST_DEVICE_INDEX") {
 		Ok(index) => oa::DeviceSelection::Index(
 			index
@@ -3064,7 +3070,7 @@ fn budget_engine() -> oa::Result<oa::Engine> {
 		),
 		Err(_) => oa::DeviceSelection::Automatic,
 	};
-	oa::Engine::builder().devices(selection).build()
+	oa::Runtime::builder().devices(selection).build()
 }
 
 #[test]
@@ -3074,23 +3080,23 @@ fn submission_budget_splits_a_long_plan_and_preserves_outputs() -> oa::Result<()
 		.lock()
 		.unwrap_or_else(|poisoned| poisoned.into_inner());
 	let _budget = ScopedVar::set("OA_SUBMISSION_BUDGET_MS", "1");
-	let engine = budget_engine()?;
+	let runtime = budget_runtime()?;
 	let zero = oa::matrix::full([4, 4], 0.0)?;
-	let (plan, output) = engine.capture(|| {
-		let mut acc = oa::matrix::mat_mul_nt(&zero, &zero)?;
+	let (plan, output) = runtime.capture(|| {
+		let mut acc = oa::matrix::matmul(&zero, &zero)?;
 		for index in 0..200 {
 			if index == 124 {
 				acc = acc.copy()?;
 			}
-			acc = oa::matrix::mat_mul_nt(&acc, &zero)?;
+			acc = oa::matrix::matmul(&acc, &zero)?;
 		}
 		Ok(acc)
 	})?;
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	plan.wait()?;
 	assert!(plan.is_complete()?);
 	assert_eq!(output.read_f32()?, [0.0; 16]);
-	let timed = engine.submit_timed(&plan)?;
+	let timed = runtime.submit_timed(&plan)?;
 	assert!(timed.device_duration()? > std::time::Duration::ZERO);
 	assert!(plan.is_complete()?);
 	Ok(())
@@ -3103,13 +3109,13 @@ fn submission_budget_declines_a_single_over_budget_node() -> oa::Result<()> {
 		.lock()
 		.unwrap_or_else(|poisoned| poisoned.into_inner());
 	let _budget = ScopedVar::set("OA_SUBMISSION_BUDGET_MS", "0");
-	let engine = budget_engine()?;
+	let runtime = budget_runtime()?;
 	let one = oa::matrix::ones([2, 3])?;
 	for (plan, _output) in [
-		engine.capture(|| oa::matrix::add(&one, &one))?,
-		engine.capture(|| one.copy())?,
+		runtime.capture(|| oa::matrix::add(&one, &one))?,
+		runtime.capture(|| one.copy())?,
 	] {
-		let error = engine
+		let error = runtime
 			.submit(&plan)
 			.expect_err("a zero budget must decline every executable command before submission");
 		assert_eq!(error.kind(), oa::ErrorKind::ResourceExhausted);
@@ -3118,71 +3124,75 @@ fn submission_budget_declines_a_single_over_budget_node() -> oa::Result<()> {
 	Ok(())
 }
 
-test_vk!(indirect_dispatch_reports_the_recorded_dependency, engine, {
-	let input = oa::Matrix::new_from_f32([4, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])?;
-	let mask = oa::Matrix::new_from_f32([4], &[1.0, 0.0, 1.0, 0.0])?;
-	let base = oa::Matrix::new_from_f32([4, 2], &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0])?;
-	let (plan, (output, args_copy)) = engine.capture(|| {
-		let packed = oa::matrix::compact_rows(&input, &mask)?;
-		// The preceding shader-storage read only exposes the writer to that
-		// stage. The indirect launch needs a separate dependency on it.
-		let args_copy = packed.dispatch_args.copy()?;
-		let output = oa::matrix::scatter_rows_indirect(&base, &packed.values, &packed)?;
-		Ok((output, args_copy))
-	})?;
+test_vk!(
+	indirect_dispatch_reports_the_recorded_dependency,
+	runtime,
+	{
+		let input = oa::Matrix::new_from_f32([4, 2], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])?;
+		let mask = oa::Matrix::new_from_f32([4], &[1.0, 0.0, 1.0, 0.0])?;
+		let base = oa::Matrix::new_from_f32([4, 2], &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0])?;
+		let (plan, (output, args_copy)) = runtime.capture(|| {
+			let packed = oa::matrix::compact_rows(&input, &mask)?;
+			// The preceding shader-storage read only exposes the writer to that
+			// stage. The indirect launch needs a separate dependency on it.
+			let args_copy = packed.dispatch_args.copy()?;
+			let output = oa::matrix::scatter_rows_indirect(&base, &packed.values, &packed)?;
+			Ok((output, args_copy))
+		})?;
 
-	let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("indirect"))
-		.expect("valid executable graph report");
-	let nodes = report["nodes"].as_array().expect("executable nodes");
-	let dispatch = nodes
-		.iter()
-		.position(|node| node["indirect"] == true)
-		.expect("GPU-authored dispatch");
-	assert_eq!(nodes[dispatch]["queue"], "compute");
-	assert_eq!(report["stats"]["indirect_barriers"], 1);
-	let barriers = report["barriers"].as_array().expect("planned barriers");
-	let barrier = barriers
-		.iter()
-		.find(|barrier| {
-			barrier["destination_node"] == dispatch
-				&& barrier["destination_accesses"]
-					.as_array()
-					.is_some_and(|access| access.iter().any(|name| name == "indirect_command_read"))
-		})
-		.expect("dependency on the indirect argument writer");
-	assert_eq!(barrier["reason"], "read_after_write");
-	assert_eq!(barrier["source_nodes"], serde_json::json!([0, 0]));
-	assert_eq!(
-		barrier["destination_stages"],
-		serde_json::json!(["compute_shader", "draw_indirect"])
-	);
-	assert_eq!(
-		barrier["source_stages"],
-		serde_json::json!(["compute_shader"])
-	);
-	assert_eq!(
-		barrier["source_accesses"],
-		serde_json::json!(["shader_storage_write"])
-	);
-
-	for _ in 0..2 {
-		engine.submit(&plan)?.wait()?;
-		assert_eq!(args_copy.read::<u32>()?, [1, 1, 1]);
+		let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("indirect"))
+			.expect("valid executable graph report");
+		let nodes = report["nodes"].as_array().expect("executable nodes");
+		let dispatch = nodes
+			.iter()
+			.position(|node| node["indirect"] == true)
+			.expect("GPU-authored dispatch");
+		assert_eq!(nodes[dispatch]["queue"], "compute");
+		assert_eq!(report["stats"]["indirect_barriers"], 1);
+		let barriers = report["barriers"].as_array().expect("planned barriers");
+		let barrier = barriers
+			.iter()
+			.find(|barrier| {
+				barrier["destination_node"] == dispatch
+					&& barrier["destination_accesses"]
+						.as_array()
+						.is_some_and(|access| access.iter().any(|name| name == "indirect_command_read"))
+			})
+			.expect("dependency on the indirect argument writer");
+		assert_eq!(barrier["reason"], "read_after_write");
+		assert_eq!(barrier["source_nodes"], serde_json::json!([0, 0]));
 		assert_eq!(
-			output.read_f32()?,
-			[11.0, 22.0, 30.0, 40.0, 55.0, 66.0, 70.0, 80.0]
+			barrier["destination_stages"],
+			serde_json::json!(["compute_shader", "draw_indirect"])
 		);
+		assert_eq!(
+			barrier["source_stages"],
+			serde_json::json!(["compute_shader"])
+		);
+		assert_eq!(
+			barrier["source_accesses"],
+			serde_json::json!(["shader_storage_write"])
+		);
+
+		for _ in 0..2 {
+			runtime.submit(&plan)?.wait()?;
+			assert_eq!(args_copy.read::<u32>()?, [1, 1, 1]);
+			assert_eq!(
+				output.read_f32()?,
+				[11.0, 22.0, 30.0, 40.0, 55.0, 66.0, 70.0, 80.0]
+			);
+		}
+		Ok(())
 	}
-	Ok(())
-});
+);
 
 test_vk!(
 	captured_buffer_copy_replays_between_compute_dispatches,
-	engine,
+	runtime,
 	{
 		let left = oa::Matrix::new_from_f32([3], &[2.0, -4.0, 8.0])?;
 		let right = oa::Matrix::new_from_f32([3], &[1.0, 3.0, -2.0])?;
-		let (plan, (copy, output)) = engine.capture(|| {
+		let (plan, (copy, output)) = runtime.capture(|| {
 			let sum = oa::matrix::add(&left, &right)?;
 			let copy = sum.copy()?;
 			let output = oa::matrix::add(&copy, &right)?;
@@ -3242,7 +3252,7 @@ test_vk!(
 		let descriptor = plan.serialize_descriptor()?;
 		plan.validate_serialized_descriptor(&descriptor)?;
 		for _ in 0..2 {
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			assert_eq!(copy.read_f32()?, [3.0, -1.0, 6.0]);
 			assert_eq!(output.read_f32()?, [4.0, 2.0, 4.0]);
 		}
@@ -3253,21 +3263,21 @@ test_vk!(
 
 test_vk!(
 	buffer_copy_only_plan_rebinds_its_source_and_refreshes_mapping,
-	engine,
+	runtime,
 	{
 		let source = oa::Matrix::new_from_f32([3], &[1.0, -0.0, 3.0])?;
 		let replacement = oa::Matrix::new_from_f32([3], &[f32::from_bits(0x7fc0_1234), 5.0, 6.0])?;
-		let (mut plan, copy) = engine.capture(|| source.copy())?;
+		let (mut plan, copy) = runtime.capture(|| source.copy())?;
 		let report: serde_json::Value =
 			serde_json::from_str(&plan.debug_report_json("copy only")).expect("valid copy graph report");
 		assert_eq!(report["stats"]["dispatches"], 0);
 		assert_eq!(report["stats"]["copies"], 1);
 		assert_eq!(plan.diagnostics().push_byte_count(), 0);
 
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(copy.read_f32()?[1].to_bits(), (-0.0_f32).to_bits());
 		plan.bind_matrix_input(&source, &replacement)?;
-		engine.submit_timed(&plan)?.wait()?;
+		runtime.submit_timed(&plan)?.wait()?;
 		let copied = copy.read_f32()?;
 		assert_eq!(copied[0].to_bits(), 0x7fc0_1234);
 		assert_eq!(copied[1..], [5.0, 6.0]);

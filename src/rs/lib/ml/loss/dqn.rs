@@ -20,9 +20,9 @@ impl Default for DqnLossConfig {
 ///
 /// # Errors
 ///
-/// Returns an error unless Q and next-Q are same-engine nonempty F32 `[B,A]`
+/// Returns an error unless Q and next-Q are same-runtime nonempty F32 `[B,A]`
 /// matrices with `A > 1`, action is I32 `[B]`, reward is F32 `[B]`, boundary
-/// masks are U8 `[B]`, all fields share one engine, extents fit the shader ABI,
+/// masks are U8 `[B]`, all fields share one runtime, extents fit the shader ABI,
 /// and discount is finite in `[0, 1]`.
 #[allow(
 	clippy::too_many_arguments,
@@ -60,12 +60,12 @@ pub fn dqn(
 		&& truncated.dtype() == DType::U8
 		&& [action, reward, next_q, terminated, truncated]
 			.into_iter()
-			.all(|input| q.engine_handle().same_as(input.engine_handle()))
+			.all(|input| q.runtime().same_as(input.runtime()))
 		&& config.discount.is_finite()
 		&& (0.0..=1.0).contains(&config.discount);
 	if !valid {
 		return Err(Error::invalid_argument(format!(
-			"{} requires same-engine F32 Q/next-Q [B,A], I32 action [B], F32 reward [B], U8 boundaries [B], A > 1, and discount in [0, 1]",
+			"{} requires same-runtime F32 Q/next-Q [B,A], I32 action [B], F32 reward [B], U8 boundaries [B], A > 1, and discount in [0, 1]",
 			CONTRACT.name()
 		)));
 	}
@@ -78,7 +78,7 @@ pub fn dqn(
 		Error::invalid_argument(format!("{} Q element count exceeds u32", CONTRACT.name()))
 	})?;
 
-	let lowering = q.engine_handle().begin_semantic_lowering()?;
+	let lowering = q.runtime().begin_semantic_lowering()?;
 	let target_q = dqn_target_impl(
 		&lowering,
 		reward,
@@ -130,7 +130,7 @@ fn dqn_target_impl(
 	discount: f32,
 ) -> Result<Matrix> {
 	let output = Matrix::allocate(
-		reward.engine_handle(),
+		reward.runtime(),
 		reward.shape().to_vec(),
 		reward.num_elements(),
 		DType::F32,

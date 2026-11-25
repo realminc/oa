@@ -1,7 +1,7 @@
 //! `oa` — command-line application over the OA library.
 //!
 //! One binary with subcommands. This shell owns argument parsing and file
-//! orchestration only; all engine behavior lives in `oa`.
+//! orchestration only; all runtime behavior lives in `oa`.
 
 use std::error::Error;
 
@@ -23,7 +23,7 @@ struct Args {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-	let mut cli: Cli<Args> = Cli::new("oa", "OA GPU compute engine");
+	let mut cli: Cli<Args> = Cli::new("oa", "OA GPU compute runtime");
 	{
 		let view = cli.add_subcommand("view", "open an image, video, or audio file in the viewer");
 		view.add_positional(

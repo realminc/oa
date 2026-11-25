@@ -88,13 +88,13 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 
 test_vk!(
 	upsample_2d_forward_modes_match_independent_oracles,
-	engine,
+	runtime,
 	{
 		let shape = [1, 1, 2, 3];
 		let values = [1.0_f32, 2.0, 4.0, -1.0, 0.5, 3.0];
 		let input = oa::Matrix::new_from_f32(shape, &values)?;
 		for mode in [UpsampleMode::Nearest, UpsampleMode::Bilinear] {
-			let (plan, output) = engine.capture(|| oa::ml::matrix::upsample_2d(&input, 2, mode))?;
+			let (plan, output) = runtime.capture(|| oa::ml::matrix::upsample_2d(&input, 2, mode))?;
 			assert_eq!(output.shape(), [1, 1, 4, 6]);
 			assert_eq!(plan.semantic_graph().operations().len(), 1);
 			assert_eq!(
@@ -102,7 +102,7 @@ test_vk!(
 				"oa::ml::matrix::upsample_2d"
 			);
 			assert_eq!(plan.semantic_graph().operations()[0].attributes().len(), 2);
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			assert_close(
 				&output.read_f32()?,
 				&host_upsample_2d(&values, shape, 2, mode),
@@ -115,7 +115,7 @@ test_vk!(
 
 test_vk!(
 	upsample_2d_adjoint_modes_match_finite_differences,
-	engine,
+	runtime,
 	{
 		let shape = [1, 1, 2, 3];
 		let values = [0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4];
@@ -150,7 +150,7 @@ test_vk!(
 
 test_vk!(
 	upsample_2d_preserves_donor_nearest_backward_vector,
-	engine,
+	runtime,
 	{
 		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 			[2, 2],

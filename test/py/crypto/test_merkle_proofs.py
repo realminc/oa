@@ -34,13 +34,13 @@ class MerkleProofFixtureTest(unittest.TestCase):
 @unittest.skipUnless("OA_TEST_DEVICE_INDEX" in os.environ, "explicit Vulkan test device required")
 class MerkleProofVulkanTest(unittest.TestCase):
 	def test_selected_device_frames_and_rejection(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		for case in json.loads(FIXTURE.read_text())["cases"]:
 			count = len(case["leaves"])
-			leaves = oa.Matrix.new_from_u8([count, 32], list(b"".join(bytes.fromhex(v) for v in case["leaves"])), engine=engine)
-			selected = oa.Matrix.new_from_u8([5, 32], list(b"".join(bytes.fromhex(v) for v in case["selected_leaves"])), engine=engine)
-			indices = oa.Matrix.new_from_u32([5], case["indices"], engine=engine)
-			root = oa.Matrix.new_from_u8([1, 32], list(bytes.fromhex(case["root"])), engine=engine)
+			leaves = oa.Matrix.new_from_u8([count, 32], list(b"".join(bytes.fromhex(v) for v in case["leaves"])), runtime=runtime)
+			selected = oa.Matrix.new_from_u8([5, 32], list(b"".join(bytes.fromhex(v) for v in case["selected_leaves"])), runtime=runtime)
+			indices = oa.Matrix.new_from_u32([5], case["indices"], runtime=runtime)
+			root = oa.Matrix.new_from_u8([1, 32], list(bytes.fromhex(case["root"])), runtime=runtime)
 			proofs = oa.crypto.hash_merkle_proofs(leaves, indices)
 			self.assertEqual(bytes(proofs.read_u8()).hex(), "".join(case["frames"]))
 			flags = oa.crypto.hash_verify_merkle_proofs(selected, proofs, root, count)

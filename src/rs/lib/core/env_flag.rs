@@ -5,7 +5,7 @@
 //! [`EnvFlag`] is the single-source convention for reading OA env knobs.
 //! [`NumericMode`] and [`apply_numeric_mode`] translate a process-wide numeric
 //! execution policy into the equivalent env-knob state, called once from
-//! `Engine::create`.
+//! `Runtime::create`.
 //!
 //! # Reading pattern
 //!
@@ -45,7 +45,7 @@
 //! - `OA_FORCE_COOPMAT=1` — bypass vendor-trust blocklist
 //! - `OA_FORCE_COOPVEC=1` — bypass CoopVec NVIDIA-only routing gate
 //! - `OA_FORCE_DEVICE_INDEX=N` — override device pick
-//! - `OA_SHADER_PRELOAD=1` — compile all admitted pipelines during Engine build
+//! - `OA_SHADER_PRELOAD=1` — compile all admitted pipelines during Runtime build
 //! - `OA_SHADER_LOAD_THREADS=0|1|N` — shader preload workers
 //!
 //! ## Diagnostic / opt-in logging
@@ -110,7 +110,7 @@ impl EnvFlag {
 	///
 	/// Calls `std::env::set_var` which is not signal-safe. Callers must ensure
 	/// this is not called concurrently from multiple threads. Typically called
-	/// once from `Engine::create` during single-threaded startup.
+	/// once from `Runtime::create` during single-threaded startup.
 	pub fn set_if_unset(name: &str, value: &str) -> bool {
 		if env::var(name).is_ok() {
 			return false;
@@ -134,8 +134,8 @@ impl EnvFlag {
 
 /// Process-wide numerical execution policy.
 ///
-/// Core owns the vocabulary and its environment mapping; the runtime engine
-/// consumes it through `EngineConfig`.
+/// Core owns the vocabulary and its environment mapping; the runtime runtime
+/// consumes it through `RuntimeConfig`.
 ///
 /// | Mode            | Effect |
 /// |-----------------|--------|
@@ -161,7 +161,7 @@ pub enum NumericMode {
 
 /// Translate a [`NumericMode`] into the equivalent env-knob state.
 ///
-/// Called **once** at engine init. User-set env vars always win
+/// Called **once** at runtime init. User-set env vars always win
 /// ([`EnvFlag::set_if_unset`] checks before writing).
 ///
 /// | Mode            | Env vars touched |

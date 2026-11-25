@@ -27,7 +27,7 @@ import oa
 
 def _has_gpu() -> bool:
 	try:
-		oa.Engine()
+		oa.Runtime()
 		return True
 	except Exception:
 		return False
@@ -173,10 +173,10 @@ class VideoContainerKindTest(unittest.TestCase):
 class VideoFrameFromImageTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def test_from_image_produces_correct_dimensions(self) -> None:
-		m = oa.Matrix.new_from_f32( [1, 3, 4, 4], [0.5] * 48, engine=self.engine)
+		m = oa.Matrix.new_from_f32( [1, 3, 4, 4], [0.5] * 48, runtime=self.runtime)
 		image = oa.Image.new_from_matrix(m, "nchw", "rgb")
 		frame = oa.VideoFrame.new_from_image(image, presentation_us=1_000)
 		self.assertEqual(frame.width(), 4)
@@ -185,7 +185,7 @@ class VideoFrameFromImageTest(unittest.TestCase):
 		self.assertIn("VideoFrame", repr(frame))
 
 	def test_color_returns_video_color_info(self) -> None:
-		m = oa.Matrix.new_from_f32( [1, 3, 4, 4], [0.5] * 48, engine=self.engine)
+		m = oa.Matrix.new_from_f32( [1, 3, 4, 4], [0.5] * 48, runtime=self.runtime)
 		image = oa.Image.new_from_matrix(m, "nchw", "rgb")
 		frame = oa.VideoFrame.new_from_image(image)
 		color = frame.color()
@@ -193,7 +193,7 @@ class VideoFrameFromImageTest(unittest.TestCase):
 		self.assertEqual(color.matrix, oa.VideoColorMatrix.Unspecified)
 
 	def test_timing_returns_video_frame_timing(self) -> None:
-		m = oa.Matrix.new_from_f32( [1, 3, 4, 4], [0.5] * 48, engine=self.engine)
+		m = oa.Matrix.new_from_f32( [1, 3, 4, 4], [0.5] * 48, runtime=self.runtime)
 		image = oa.Image.new_from_matrix(m, "nchw", "rgb")
 		frame = oa.VideoFrame.new_from_image(image, presentation_us=2_500)
 		timing = frame.timing()
@@ -201,7 +201,7 @@ class VideoFrameFromImageTest(unittest.TestCase):
 		self.assertEqual(timing.presentation_us, 2_500)
 
 	def test_as_image_returns_backing_image(self) -> None:
-		m = oa.Matrix.new_from_f32( [1, 3, 4, 4], [0.5] * 48, engine=self.engine)
+		m = oa.Matrix.new_from_f32( [1, 3, 4, 4], [0.5] * 48, runtime=self.runtime)
 		image = oa.Image.new_from_matrix(m, "nchw", "rgb")
 		frame = oa.VideoFrame.new_from_image(image)
 		result = frame.as_image()
@@ -531,19 +531,19 @@ class VideoProfileConfigTest(unittest.TestCase):
 class VideoEncoderSessionTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def setUp(self) -> None:
-		caps = oa.video.query_device_capabilities(engine=self.engine)
+		caps = oa.video.query_device_capabilities(runtime=self.runtime)
 		if not caps.supports_h265_encode or not caps.encoder_sessions_available:
 			self.skipTest("device does not admit H.265 encode sessions")
 
 	def test_capability_and_encoder_round_trip(self) -> None:
 		profile = oa.VideoEncodeProfile.h265_main_420_8bit()
-		caps = oa.video.query_encode_capabilities( profile, engine=self.engine)
+		caps = oa.video.query_encode_capabilities( profile, runtime=self.runtime)
 		config = oa.VideoEncodeConfig(profile, 640, 360, gop_size=4)
 		config.validate_for_device(caps)
-		encoder = oa.video.VideoEncoder( config, engine=self.engine)
+		encoder = oa.video.VideoEncoder( config, runtime=self.runtime)
 		try:
 			self.assertTrue(encoder.is_open)
 			frame = bytes(640 * 360 * 4)

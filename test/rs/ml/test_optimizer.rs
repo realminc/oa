@@ -10,7 +10,7 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 
 test_vk!(
 	clip_grad_norm_matches_the_donor_two_pass_operation,
-	engine,
+	runtime,
 	{
 		let first = oa::Matrix::new_from_f32([3], &[3.0, 4.0, 0.0])?;
 		let second = oa::Matrix::new_from_f32([2, 2], &[0.0, 12.0, 0.0, 0.0])?;
@@ -29,7 +29,7 @@ test_vk!(
 
 test_vk!(
 	clip_grad_norm_validates_collection_and_scalar_contracts,
-	engine,
+	runtime,
 	{
 		let gradient = oa::Matrix::new_from_f32([1], &[1.0])?;
 		let error = oa::ml::optim::clip_grad_norm(std::slice::from_ref(&gradient), f32::NAN)
@@ -57,12 +57,12 @@ test_vk!(
 
 test_vk!(
 	clip_grad_norm_capture_retains_one_variadic_semantic_operation,
-	engine,
+	runtime,
 	{
 		let gradients = (1..=10)
 			.map(|value| oa::Matrix::new_from_f32([1], &[value as f32]))
 			.collect::<oa::Result<Vec<_>>>()?;
-		let (plan, ()) = engine.capture(|| oa::ml::optim::clip_grad_norm(&gradients, 100.0))?;
+		let (plan, ()) = runtime.capture(|| oa::ml::optim::clip_grad_norm(&gradients, 100.0))?;
 
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
 		assert_eq!(plan.diagnostics().node_count(), 2);
@@ -75,7 +75,7 @@ test_vk!(
 		assert_eq!(operation.mutated_inputs().len(), 10);
 		assert_eq!(operation.aliases().len(), 10);
 
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		for (index, gradient) in gradients.iter().enumerate() {
 			assert_close(&gradient.read_f32()?, &[(index + 1) as f32], 0.0);
 		}
@@ -85,7 +85,7 @@ test_vk!(
 
 test_vk!(
 	clip_parameter_grad_norm_rescales_stored_parameter_gradients,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, -1.0, 0.5])?;
 		let targets = oa::Matrix::new_from_slice([2], &[1_u32, 0])?;
@@ -136,7 +136,7 @@ test_vk!(
 
 test_vk!(
 	clip_parameter_grad_norm_scales_beyond_the_fused_storage_limit,
-	engine,
+	runtime,
 	{
 		// The fused kernel admits at most sixteen gradient storages; nine
 		// Linear layers contribute eighteen parameters and exercise the
@@ -180,7 +180,7 @@ test_vk!(
 	}
 );
 
-test_vk!(sgd_matches_the_donor_fp32_update_order, engine, {
+test_vk!(sgd_matches_the_donor_fp32_update_order, runtime, {
 	const LEARNING_RATE: f32 = 0.05;
 	const WEIGHT_DECAY: f32 = 0.01;
 	let initial = [0.2_f32, -0.1, -0.3, 0.4];
@@ -210,37 +210,43 @@ test_vk!(sgd_matches_the_donor_fp32_update_order, engine, {
 	Ok(())
 });
 
-test_vk!(adam_matches_the_donor_first_step_bias_correction, engine, {
-	const LEARNING_RATE: f32 = 0.01;
-	const EPSILON: f32 = 1.0e-8;
-	let initial = [0.2_f32, -0.1, -0.3, 0.4];
-	let input = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, -1.0, 0.5])?;
-	let targets = oa::Matrix::new_from_slice([2], &[1_u32, 0])?;
-	let weight = oa::Matrix::new_from_f32([2, 2], &initial)?;
-	let bias = oa::Matrix::new_from_f32([2], &[0.0, 0.0])?;
-	let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
-	let weight_parameter = layer.weight();
-	let mut optimizer = oa::ml::Adam::new(layer.parameters(), LEARNING_RATE)?;
+test_vk!(
+	adam_matches_the_donor_first_step_bias_correction,
+	runtime,
+	{
+		const LEARNING_RATE: f32 = 0.01;
+		const EPSILON: f32 = 1.0e-8;
+		let initial = [0.2_f32, -0.1, -0.3, 0.4];
+		let input = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, -1.0, 0.5])?;
+		let targets = oa::Matrix::new_from_slice([2], &[1_u32, 0])?;
+		let weight = oa::Matrix::new_from_f32([2, 2], &initial)?;
+		let bias = oa::Matrix::new_from_f32([2], &[0.0, 0.0])?;
+		let layer = oa::ml::nn::Linear::new_from_matrices(weight, bias)?;
+		let weight_parameter = layer.weight();
+		let mut optimizer = oa::ml::Adam::new(layer.parameters(), LEARNING_RATE)?;
 
-	let tape = oa::ml::GradientTape::new();
-	let loss = oa::ml::loss::cross_entropy(&layer.forward(&input)?, &targets)?;
-	tape.backward(&loss)?;
-	let gradient = weight_parameter
-		.gradient()
-		.expect("backward produced a weight gradient")
-		.read_f32()?;
-	let expected = initial
-		.iter()
-		.zip(&gradient)
-		.map(|(parameter, gradient)| parameter - LEARNING_RATE * gradient / (gradient.abs() + EPSILON))
-		.collect::<Vec<_>>();
-	optimizer.step()?;
-	assert_eq!(optimizer.step_count(), 1);
-	assert_close(&weight_parameter.data().read_f32()?, &expected, 2.0e-5);
-	Ok(())
-});
+		let tape = oa::ml::GradientTape::new();
+		let loss = oa::ml::loss::cross_entropy(&layer.forward(&input)?, &targets)?;
+		tape.backward(&loss)?;
+		let gradient = weight_parameter
+			.gradient()
+			.expect("backward produced a weight gradient")
+			.read_f32()?;
+		let expected = initial
+			.iter()
+			.zip(&gradient)
+			.map(|(parameter, gradient)| {
+				parameter - LEARNING_RATE * gradient / (gradient.abs() + EPSILON)
+			})
+			.collect::<Vec<_>>();
+		optimizer.step()?;
+		assert_eq!(optimizer.step_count(), 1);
+		assert_close(&weight_parameter.data().read_f32()?, &expected, 2.0e-5);
+		Ok(())
+	}
+);
 
-test_vk!(muon_matches_the_donor_matrix_and_vector_routes, engine, {
+test_vk!(muon_matches_the_donor_matrix_and_vector_routes, runtime, {
 	const LEARNING_RATE: f32 = 0.01;
 	const BETA: f32 = 0.95;
 	const WEIGHT_DECAY: f32 = 0.1;
@@ -313,15 +319,15 @@ test_vk!(muon_matches_the_donor_matrix_and_vector_routes, engine, {
 	Ok(())
 });
 
-test_vk!(muon_handles_tall_and_large_matrix_orientations, engine, {
-	run_muon_matrix_case(&engine, 5, 3)?;
-	run_muon_matrix_case(&engine, 65, 67)?;
+test_vk!(muon_handles_tall_and_large_matrix_orientations, runtime, {
+	run_muon_matrix_case(&runtime, 5, 3)?;
+	run_muon_matrix_case(&runtime, 65, 67)?;
 	Ok(())
 });
 
 test_vk!(
 	eager_training_accepts_sgd_through_optimizer_policy,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([2, 2], &[1.0, 0.0, 0.0, 1.0])?;
 		let targets = oa::Matrix::new_from_slice([2], &[0_u32, 1])?;
@@ -329,7 +335,7 @@ test_vk!(
 		let initial = layer.weight().data().read_f32()?;
 		let mut optimizer = oa::ml::Sgd::new(layer.parameters(), 0.1, 0.9, 0.0)?;
 		let mut training = oa::ml::ItTraining::new_eager(
-			&engine,
+			&runtime,
 			&mut optimizer,
 			oa::ml::ItTrainingConfig {
 				total_steps: 1,
@@ -390,15 +396,15 @@ fn muon_matrix_reference(
 		*value /= norm;
 	}
 	for _ in 0..iterations {
-		let a = mat_mul_nt_reference(&z, &z, operation_rows, operation_rows, operation_columns);
-		let aa = mat_mul_nt_reference(&a, &a, operation_rows, operation_rows, operation_rows);
+		let a = matmul_nt_reference(&z, &z, operation_rows, operation_rows, operation_columns);
+		let aa = matmul_nt_reference(&a, &a, operation_rows, operation_rows, operation_rows);
 		let b = a
 			.iter()
 			.zip(aa)
 			.map(|(a, aa)| -4.7750 * a + 2.0315 * aa)
 			.collect::<Vec<_>>();
 		let z_transpose = transpose_reference(&z, operation_rows, operation_columns);
-		let bz = mat_mul_nt_reference(
+		let bz = matmul_nt_reference(
 			&b,
 			&z_transpose,
 			operation_rows,
@@ -418,7 +424,7 @@ fn muon_matrix_reference(
 	}
 }
 
-fn run_muon_matrix_case(_engine: &oa::Engine, rows: usize, columns: usize) -> oa::Result<()> {
+fn run_muon_matrix_case(_runtime: &oa::Runtime, rows: usize, columns: usize) -> oa::Result<()> {
 	const LEARNING_RATE: f32 = 0.01;
 	const BETA: f32 = 0.95;
 	const WEIGHT_DECAY: f32 = 0.1;
@@ -496,7 +502,7 @@ fn transpose_reference(input: &[f32], rows: usize, columns: usize) -> Vec<f32> {
 	output
 }
 
-fn mat_mul_nt_reference(left: &[f32], right: &[f32], m: usize, n: usize, k: usize) -> Vec<f32> {
+fn matmul_nt_reference(left: &[f32], right: &[f32], m: usize, n: usize, k: usize) -> Vec<f32> {
 	let mut output = vec![0.0; m * n];
 	for row in 0..m {
 		for column in 0..n {
@@ -510,7 +516,7 @@ fn mat_mul_nt_reference(left: &[f32], right: &[f32], m: usize, n: usize, k: usiz
 
 test_vk!(
 	grad_scaler_unscales_steps_and_grows_on_finite_gradients,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, -1.0, 0.5])?;
 		let targets = oa::Matrix::new_from_slice([2], &[1_u32, 0])?;
@@ -568,7 +574,7 @@ test_vk!(
 
 test_vk!(
 	grad_scaler_skips_step_and_backs_off_on_nonfinite_check,
-	engine,
+	runtime,
 	{
 		let check = oa::Matrix::new_from_f32([1], &[f32::INFINITY])?;
 		let mut scaler = oa::ml::optim::GradScaler::with_config(8.0, 2.0, 0.5, 1)?;
@@ -586,10 +592,10 @@ test_vk!(
 
 test_vk!(
 	grad_scaler_advance_gates_and_adapts_scale_on_device,
-	engine,
+	runtime,
 	{
 		let mut scaler = oa::ml::optim::GradScaler::with_config(8.0, 2.0, 0.5, 2)?;
-		scaler.prepare_captured(&engine)?;
+		scaler.prepare_captured(&runtime)?;
 		let flag = scaler.finite_flag()?;
 
 		let check = oa::Matrix::new_from_f32([], &[3.0])?;
@@ -611,7 +617,7 @@ test_vk!(
 
 test_vk!(
 	gated_adamw_step_freezes_parameters_when_the_finite_flag_is_zero,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, -1.0, 0.5])?;
 		let targets = oa::Matrix::new_from_slice([2], &[1_u32, 0])?;
@@ -624,23 +630,23 @@ test_vk!(
 
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.5)?;
 		let mut scaler = oa::ml::optim::GradScaler::new();
-		scaler.prepare_captured(&engine)?;
+		scaler.prepare_captured(&runtime)?;
 		optimizer.set_finite_gate(&scaler.finite_flag()?)?;
 
 		let check_inf = oa::Matrix::new_from_f32([], &[f32::INFINITY])?;
 		let check_ok = oa::Matrix::new_from_f32([], &[1.0])?;
 
-		engine.checkpoint()?.wait()?;
+		runtime.checkpoint()?.wait()?;
 		let before: Vec<Vec<f32>> = layer
 			.parameters()
 			.iter()
 			.map(|parameter| parameter.data().read_f32().expect("parameter readback"))
 			.collect();
-		let (overflow_plan, ()) = engine.capture(|| {
+		let (overflow_plan, ()) = runtime.capture(|| {
 			scaler.record_finite_gate(&check_inf)?;
 			optimizer.step()
 		})?;
-		engine.submit(&overflow_plan)?.wait()?;
+		runtime.submit(&overflow_plan)?.wait()?;
 		for (parameter, before) in layer.parameters().iter().zip(&before) {
 			assert_eq!(
 				&parameter.data().read_f32()?,
@@ -649,12 +655,12 @@ test_vk!(
 			);
 		}
 
-		engine.checkpoint()?.wait()?;
-		let (finite_plan, ()) = engine.capture(|| {
+		runtime.checkpoint()?.wait()?;
+		let (finite_plan, ()) = runtime.capture(|| {
 			scaler.record_finite_gate(&check_ok)?;
 			optimizer.step()
 		})?;
-		engine.submit(&finite_plan)?.wait()?;
+		runtime.submit(&finite_plan)?.wait()?;
 		let changed = layer
 			.parameters()
 			.iter()

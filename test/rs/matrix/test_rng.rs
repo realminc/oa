@@ -76,7 +76,7 @@ fn cpu_sample_dense(
 
 test_vk!(
 	philox_portable_multiply_matches_u64_oracle_across_seed_words,
-	engine,
+	runtime,
 	{
 		let shape = oa::Matrix::new_from_f32([4099], &[0.0; 4099])?;
 		for seed in [
@@ -99,7 +99,7 @@ test_vk!(
 
 test_vk!(
 	philox_eager_preserves_seed_and_distribution_contracts,
-	engine,
+	runtime,
 	{
 		let shape = oa::Matrix::new_from_f32([1031], &[0.0; 1031])?;
 		let first = oa::matrix::philox_uniform(&shape, -2.0, 4.0, 0x1234_5678_9abc_def0)?;
@@ -141,11 +141,11 @@ test_vk!(
 
 test_vk!(
 	philox_replay_advances_without_freezing_or_losing_abi_fields,
-	engine,
+	runtime,
 	{
 		let shape = oa::Matrix::new_from_f32([1031], &[0.0; 1031])?;
 		let (plan, random) =
-			engine.capture(|| oa::matrix::philox_uniform(&shape, -3.0, 7.0, 0xfedc_ba98_7654_3210))?;
+			runtime.capture(|| oa::matrix::philox_uniform(&shape, -3.0, 7.0, 0xfedc_ba98_7654_3210))?;
 		assert_eq!(plan.diagnostics().compatibility_node_count(), 0);
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 2);
 		assert_eq!(
@@ -157,17 +157,17 @@ test_vk!(
 			"oa::matrix::philox_replay_advance"
 		);
 
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let replay0 = random.read_f32()?;
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let replay1 = random.read_f32()?;
 		assert_ne!(replay0, replay1);
 		assert!(replay0.iter().all(|value| (-3.0..7.0).contains(value)));
 		assert!(replay1.iter().all(|value| (-3.0..7.0).contains(value)));
 
 		let (fresh_plan, fresh_random) =
-			engine.capture(|| oa::matrix::philox_uniform(&shape, -3.0, 7.0, 0xfedc_ba98_7654_3210))?;
-		engine.submit(&fresh_plan)?.wait()?;
+			runtime.capture(|| oa::matrix::philox_uniform(&shape, -3.0, 7.0, 0xfedc_ba98_7654_3210))?;
+		runtime.submit(&fresh_plan)?.wait()?;
 		assert_exact(&replay0, &fresh_random.read_f32()?);
 		Ok(())
 	}
@@ -175,7 +175,7 @@ test_vk!(
 
 test_vk!(
 	philox_rejects_invalid_public_contracts_before_recording,
-	engine,
+	runtime,
 	{
 		let float = oa::Matrix::new_from_f32([1], &[0.0])?;
 		let integer = oa::Matrix::new_from_slice([1], &[0_u32])?;
@@ -201,7 +201,7 @@ test_vk!(
 
 test_vk!(
 	dropout_eager_and_replay_preserve_random_contracts,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([1031], &[1.0; 1031])?;
 		let first = oa::matrix::dropout(&input, 0.5, 0x1234_5678_9abc_def0)?;
@@ -219,12 +219,12 @@ test_vk!(
 		assert!(first.iter().all(|value| *value == 0.0 || *value == 2.0));
 
 		let (plan, dropped) =
-			engine.capture(|| oa::matrix::dropout(&input, 0.5, 0x1234_5678_9abc_def0))?;
+			runtime.capture(|| oa::matrix::dropout(&input, 0.5, 0x1234_5678_9abc_def0))?;
 		assert_eq!(plan.diagnostics().compatibility_node_count(), 0);
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 2);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let replay0 = dropped.read_f32()?;
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let replay1 = dropped.read_f32()?;
 		assert_ne!(replay0, replay1);
 		assert_exact(&first, &replay0);
@@ -233,7 +233,7 @@ test_vk!(
 	}
 );
 
-test_vk!(dropout_rejects_invalid_public_contracts, engine, {
+test_vk!(dropout_rejects_invalid_public_contracts, runtime, {
 	let float = oa::Matrix::new_from_f32([1], &[1.0])?;
 	let integer = oa::Matrix::new_from_slice([1], &[1_u32])?;
 	for error in [
@@ -252,7 +252,7 @@ test_vk!(dropout_rejects_invalid_public_contracts, engine, {
 	Ok(())
 });
 
-test_vk!(sample_logits_preserves_all_donor_routes, engine, {
+test_vk!(sample_logits_preserves_all_donor_routes, runtime, {
 	let greedy_logits = oa::Matrix::new_from_f32([2, 3], &[1.0, 4.0, 2.0, -1.0, 3.0, 3.0])?;
 	assert_eq!(
 		oa::matrix::sample_logits(&greedy_logits, 0.0, 0, 1.0, 0)?.read::<i32>()?,
@@ -281,21 +281,21 @@ test_vk!(sample_logits_preserves_all_donor_routes, engine, {
 
 test_vk!(
 	sample_logits_capture_advances_its_private_philox_state,
-	engine,
+	runtime,
 	{
 		let logits = oa::Matrix::new_from_f32([257, 4], &[0.0; 1028])?;
 		let seed = 0x4452_4f50_4c49_4359;
 		let eager = oa::matrix::sample_logits(&logits, 1.0, 0, 1.0, seed)?.read::<i32>()?;
 		let (plan, sampled) =
-			engine.capture(|| oa::matrix::sample_logits(&logits, 1.0, 0, 1.0, seed))?;
+			runtime.capture(|| oa::matrix::sample_logits(&logits, 1.0, 0, 1.0, seed))?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
 			"oa::FnMatrix::sampleLogits"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let first = sampled.read::<i32>()?;
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let second = sampled.read::<i32>()?;
 		assert_eq!(first, eager);
 		assert_ne!(second, first);
@@ -303,7 +303,7 @@ test_vk!(
 	}
 );
 
-test_vk!(sample_logits_rejects_invalid_public_contracts, engine, {
+test_vk!(sample_logits_rejects_invalid_public_contracts, runtime, {
 	let integer = oa::Matrix::new_from_slice([2], &[1_i32, 2])?;
 	let rank_three = oa::Matrix::new_from_f32([1, 1, 2], &[0.0, 1.0])?;
 	let wide = oa::Matrix::new_from_f32([1, 1025], &[0.0; 1025])?;

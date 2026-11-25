@@ -6,7 +6,7 @@ use oa::ml::{RolloutBuffer, RolloutConfig, RolloutTransition};
 	reason = "the oracle fixture names every donor transition field at each time step"
 )]
 fn transition(
-	_engine: &oa::Engine,
+	_runtime: &oa::Runtime,
 	observation: &[f32; 4],
 	action: &[i32; 2],
 	reward: &[f32; 2],
@@ -40,10 +40,10 @@ fn assert_close(actual: &[f32], expected: &[f32]) {
 
 test_vk!(
 	rollout_buffer_preserves_time_major_fields_and_finalizes_in_place,
-	engine,
+	runtime,
 	{
 		let mut rollout = RolloutBuffer::new(
-			&engine,
+			&runtime,
 			RolloutConfig {
 				time: 3,
 				environments: 2,
@@ -52,7 +52,7 @@ test_vk!(
 		)?;
 		let transitions = [
 			transition(
-				&engine,
+				&runtime,
 				&[0.0, 1.0, 10.0, 11.0],
 				&[0, 1],
 				&[1.0, 0.5],
@@ -63,7 +63,7 @@ test_vk!(
 				&[0, 0],
 			)?,
 			transition(
-				&engine,
+				&runtime,
 				&[2.0, 3.0, 12.0, 13.0],
 				&[1, 0],
 				&[0.2, 1.0],
@@ -74,7 +74,7 @@ test_vk!(
 				&[0, 1],
 			)?,
 			transition(
-				&engine,
+				&runtime,
 				&[4.0, 5.0, 14.0, 15.0],
 				&[0, 1],
 				&[2.0, 0.3],
@@ -89,7 +89,7 @@ test_vk!(
 			gamma: 0.9,
 			lambda: 0.8,
 		};
-		let (plan, ()) = engine.capture(|| {
+		let (plan, ()) = runtime.capture(|| {
 			for transition in &transitions {
 				rollout.append(transition)?;
 			}
@@ -111,7 +111,7 @@ test_vk!(
 			plan.semantic_graph().operations()[3].name(),
 			"oa::FnAdvantage::gae"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 
 		let batch = rollout.batch();
 		assert_eq!(batch.observation().shape(), [3, 2, 2]);
@@ -168,10 +168,10 @@ test_vk!(
 
 test_vk!(
 	rollout_buffer_reuses_storage_and_enforces_lifecycle,
-	engine,
+	runtime,
 	{
 		let mut rollout = RolloutBuffer::new(
-			&engine,
+			&runtime,
 			RolloutConfig {
 				time: 2,
 				environments: 2,
@@ -187,7 +187,7 @@ test_vk!(
 			oa::ErrorKind::FailedPrecondition
 		);
 		let first = transition(
-			&engine,
+			&runtime,
 			&[1.0, 2.0, 3.0, 4.0],
 			&[0, 1],
 			&[1.0, 1.0],
@@ -198,7 +198,7 @@ test_vk!(
 			&[0, 0],
 		)?;
 		let second = transition(
-			&engine,
+			&runtime,
 			&[5.0, 6.0, 7.0, 8.0],
 			&[1, 0],
 			&[2.0, 3.0],
@@ -239,7 +239,7 @@ test_vk!(
 		);
 
 		let mut alias_rollout = RolloutBuffer::new(
-			&engine,
+			&runtime,
 			RolloutConfig {
 				time: 1,
 				environments: 2,
@@ -270,7 +270,7 @@ test_vk!(
 
 test_vk!(
 	rollout_buffer_rejects_invalid_configuration_and_transition,
-	engine,
+	runtime,
 	{
 		for config in [
 			RolloutConfig {
@@ -295,7 +295,7 @@ test_vk!(
 			},
 		] {
 			assert_eq!(
-				RolloutBuffer::new(&engine, config)
+				RolloutBuffer::new(&runtime, config)
 					.err()
 					.expect("invalid rollout configuration was accepted")
 					.kind(),
@@ -303,7 +303,7 @@ test_vk!(
 			);
 		}
 		let mut rollout = RolloutBuffer::new(
-			&engine,
+			&runtime,
 			RolloutConfig {
 				time: 2,
 				environments: 2,

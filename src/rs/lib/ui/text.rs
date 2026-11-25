@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 pub use crate::ui::type_gen::{GlyphInfo, TextLayoutConfig};
 use crate::{
 	Color, Error, Result,
-	runtime::{EngineHandle, Storage},
+	runtime::{RuntimeHandle, Storage},
 };
 
 const COVERAGE: &[u8] = include_bytes!("../../../font/coverage.bin");
@@ -69,9 +69,9 @@ impl TextAtlas {
 		&self._storage
 	}
 
-	pub(crate) fn new(engine: &EngineHandle) -> Result<Self> {
-		let storage = engine.create_storage(COVERAGE)?;
-		let descriptor = engine.storage_descriptor_index(&storage)?;
+	pub(crate) fn new(runtime: &RuntimeHandle) -> Result<Self> {
+		let storage = runtime.create_storage(COVERAGE)?;
+		let descriptor = runtime.storage_descriptor_index(&storage)?;
 		Ok(Self {
 			_storage: storage,
 			descriptor,
@@ -277,10 +277,10 @@ impl Default for GlyphInstance {
 /// Records are replaced through [`GlyphBuffer::upload`] while
 /// [`GlyphBuffer::mark_consumed`] pins the exact [`crate::Event`] a GPU
 /// consumer must complete before the next overwrite. Dropping the buffer
-/// never waits; the engine's retirement service keeps submitted resources
+/// never waits; the runtime's retirement service keeps submitted resources
 /// alive through completion.
 pub struct GlyphBuffer {
-	engine: EngineHandle,
+	runtime: RuntimeHandle,
 	storage: crate::Matrix,
 	consumer: Option<crate::Event>,
 	count: u32,
@@ -295,10 +295,10 @@ impl GlyphBuffer {
 	/// Returns an error when `capacity` is zero, the capacity byte extent
 	/// overflows, or allocation fails.
 	pub fn create_host_upload(capacity: u32) -> Result<Self> {
-		Self::create_host_upload_on(&crate::Engine::current()?, capacity)
+		Self::create_host_upload_on(&crate::Runtime::current()?, capacity)
 	}
 
-	pub fn create_host_upload_on(engine: &crate::Engine, capacity: u32) -> Result<Self> {
+	pub fn create_host_upload_on(runtime: &crate::Runtime, capacity: u32) -> Result<Self> {
 		if capacity == 0 {
 			return Err(Error::invalid_argument(
 				"oa::ui::GlyphBuffer::create_host_upload: capacity must be non-zero",
@@ -312,9 +312,9 @@ impl GlyphBuffer {
 					"oa::ui::GlyphBuffer::create_host_upload: capacity byte extent overflows usize",
 				)
 			})?;
-		let storage = crate::Matrix::new_from_slice_on(engine, [byte_len], &vec![0_u8; byte_len])?;
+		let storage = crate::Matrix::new_from_slice_on(runtime, [byte_len], &vec![0_u8; byte_len])?;
 		Ok(Self {
-			engine: engine.handle(),
+			runtime: runtime.handle(),
 			storage,
 			consumer: None,
 			count: 0,
@@ -363,11 +363,11 @@ impl GlyphBuffer {
 	/// # Errors
 	///
 	/// Returns an error when `completion` does not belong to this buffer's
-	/// engine or completion cannot be queried.
+	/// runtime or completion cannot be queried.
 	pub fn mark_consumed(&mut self, completion: &crate::Event) -> Result<()> {
-		if !self.engine.owns_event(completion) {
+		if !self.runtime.owns_event(completion) {
 			return Err(Error::invalid_argument(
-				"oa::ui::GlyphBuffer::mark_consumed requires an event from its engine",
+				"oa::ui::GlyphBuffer::mark_consumed requires an event from its runtime",
 			));
 		}
 		self.consumer = if completion.is_complete()? {
@@ -402,7 +402,9 @@ impl GlyphBuffer {
 
 	/// Bindless storage-buffer descriptor index for UI draw consumers.
 	pub(crate) fn bindless_index(&self) -> Result<u32> {
-		self.engine.storage_descriptor_index(self.storage.storage())
+		self
+			.runtime
+			.storage_descriptor_index(self.storage.storage())
 	}
 
 	/// The packed record storage retained by UI draw commands.
@@ -410,8 +412,8 @@ impl GlyphBuffer {
 		&self.storage
 	}
 
-	/// The engine that owns this buffer's storage.
-	pub(crate) const fn engine_handle(&self) -> &EngineHandle {
-		&self.engine
+	/// The runtime that owns this buffer's storage.
+	pub(crate) const fn runtime(&self) -> &RuntimeHandle {
+		&self.runtime
 	}
 }

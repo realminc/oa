@@ -13,7 +13,7 @@ use serde_json::Value;
 use super::{ViewerLiveCapabilities, ViewerLiveSource};
 use crate::input::{InputEvent, InputEventKind};
 use crate::ui::{PixelRect, Ui, UiDirection, UiSplitConfig, UiTabBarState, UiTabItem};
-use crate::{Engine, Error, Result};
+use crate::{Error, Result, Runtime};
 
 /// Content provider rendered inside one workspace leaf pane.
 ///
@@ -554,7 +554,7 @@ impl ViewerLiveSource for Workspace {
 		}
 	}
 
-	fn open(&mut self, _engine: &Engine) -> Result<()> {
+	fn open(&mut self, _runtime: &Runtime) -> Result<()> {
 		Ok(())
 	}
 

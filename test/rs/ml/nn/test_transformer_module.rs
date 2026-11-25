@@ -2,7 +2,7 @@ use oa::ml::Module;
 
 test_vk!(
 	donor_transformer_model_owns_and_differentiates_its_stack,
-	engine,
+	runtime,
 	{
 		let model = oa::ml::nn::Transformer::new_with_seed(5, 3, 4, 7, 2, 2, 1.0e-5, 0x5452_4e53)?;
 		assert_eq!(model.vocab_size(), 5);
@@ -45,7 +45,7 @@ test_vk!(
 	}
 );
 
-test_vk!(transformer_model_rejects_invalid_contracts, engine, {
+test_vk!(transformer_model_rejects_invalid_contracts, runtime, {
 	for dimensions in [
 		(0, 3, 4, 7, 2, 2),
 		(5, 0, 4, 7, 2, 2),
@@ -81,7 +81,7 @@ test_vk!(transformer_model_rejects_invalid_contracts, engine, {
 
 test_vk!(
 	moe_transformer_owns_and_differentiates_donor_topology,
-	engine,
+	runtime,
 	{
 		let model =
 			oa::ml::nn::Transformer::new_with_seed_moe(5, 3, 4, 3, 1, 2, 2, 1, 1.0e-5, 0x4d4f_4554)?;
@@ -134,7 +134,7 @@ test_vk!(
 
 test_vk!(
 	adaptive_transformer_blocks_preserve_adaln_zero_identity_and_gradients,
-	engine,
+	runtime,
 	{
 		let dense =
 			oa::ml::nn::TransformerBlock::new_with_seed_conditioned(4, 7, 2, 2, 3, 1.0e-5, 0x4144_414c)?;
@@ -207,7 +207,7 @@ test_vk!(
 	}
 );
 
-test_vk!(adaptive_transformer_rejects_invalid_contracts, engine, {
+test_vk!(adaptive_transformer_rejects_invalid_contracts, runtime, {
 	assert_eq!(
 		oa::ml::nn::TransformerBlock::new_with_seed_conditioned(4, 7, 2, 2, 0, 1.0e-5, 1,)
 			.err()
@@ -249,7 +249,7 @@ test_vk!(adaptive_transformer_rejects_invalid_contracts, engine, {
 
 test_vk!(
 	transformer_incremental_decode_matches_full_forward,
-	engine,
+	runtime,
 	{
 		let model = oa::ml::nn::Transformer::new_with_seed(8, 4, 8, 16, 2, 2, 1.0e-5, 7)?;
 		let token_values = [1_u32, 3, 0, 5];
@@ -281,7 +281,7 @@ test_vk!(
 	}
 );
 
-test_vk!(transformer_step_rejects_contract_violations, engine, {
+test_vk!(transformer_step_rejects_contract_violations, runtime, {
 	let model = oa::ml::nn::Transformer::new_with_seed(8, 4, 8, 16, 1, 2, 1.0e-5, 3)?;
 	let mut cache = model.new_cache(1)?;
 	let pair = oa::Matrix::new_from_slice([2], &[1_u32, 2])?;
@@ -294,7 +294,7 @@ test_vk!(transformer_step_rejects_contract_violations, engine, {
 
 test_vk!(
 	transformer_grouped_query_attention_builds_and_decodes,
-	engine,
+	runtime,
 	{
 		use oa::ml::nn::Transformer;
 

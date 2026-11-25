@@ -1,14 +1,14 @@
 <p align="center">
-  <a href="https://github.com/realminc/oa/blob/main/sdk/asset/docs/readme/realmIdentityAscii.mp4">
-    <img src="https://raw.githubusercontent.com/realminc/oa/main/sdk/asset/docs/readme/realmIdentityAscii.gif" width="100%" alt="Realm ASCII identity display forming under a right-to-left hover, rippling under three liquid presses, then returning to a sine wave">
+  <a href="https://github.com/realminc/oa/blob/main/oasdk-dev/asset/docs/readme/realmIdentityAscii.mp4">
+    <img src="https://raw.githubusercontent.com/realminc/oa/main/oasdk-dev/asset/docs/readme/realmIdentityAscii.gif" width="100%" alt="Realm ASCII identity display forming under a right-to-left hover, rippling under three liquid presses, then returning to a sine wave">
   </a>
 </p>
 
 # OA
 
-**GPU-first semantic computing in Rust. Compute, ML, media, and presentation on Vulkan behind one explicit `Engine`.**
+**GPU-first semantic computing in Rust. Compute, ML, media, and presentation on Vulkan behind one explicit `Runtime`.**
 
-OA is an experimental, executable engine: typed values and domain operations
+OA is an experimental, executable runtime: typed values and domain operations
 build on one owner of devices, memory, queues, scheduling, kernels, and
 profiling without exposing backend machinery through the public API. The
 Cargo package is **`oarust`**; the library and Python import namespace are
@@ -31,7 +31,7 @@ oracles, and recorded hardware evidence rather than to API surface alone.
 
 ```toml
 [dependencies]
-oarust = "0.14"
+oarust = "0.17"
 ```
 
 ```bash
@@ -53,7 +53,7 @@ assert_eq!(total.read_f32()?, [3.0; 6]);
 # Ok::<(), oa::Error>(())
 ```
 
-No `Engine` value appears: each thread has a lazy default engine that owns
+No `Runtime` value appears: each thread has a lazy default runtime that owns
 the device work. Python resolves the same default:
 
 ```python
@@ -66,27 +66,27 @@ total = oa.matrix.add(one, two)
 assert total.read_f32() == [3.0] * 6
 ```
 
-## Default and explicit engines
+## Default and explicit runtimes
 
-Every engine-first value constructor ships in a pair. The short form resolves
-the thread's default engine; the `_on` form selects one explicitly.
-`Engine::set_default(engine)` is the multi-device path: install the node's
-engine once per thread and ordinary calls resolve to it.
+Every runtime-first value constructor ships in a pair. The short form resolves
+the thread's default runtime; the `_on` form selects one explicitly.
+`Runtime::set_default(runtime)` is the multi-device path: install the node's
+runtime once per thread and ordinary calls resolve to it.
 
-| Purpose | Defaulted | Explicit engine |
+| Purpose | Defaulted | Explicit runtime |
 | --- | --- | --- |
-| Allocate | `matrix::ones(shape)` | `matrix::ones_on(&engine, shape)` |
-| Upload | `Matrix::new_from_f32(shape, data)` | `Matrix::new_from_f32_on(&engine, shape, data)` |
-| Layer | `nn::Linear::new_with_seed(in, out, seed)` | `nn::Linear::new_with_seed_on(&engine, in, out, seed)` |
-| Decode | `audio::decode_file(path)` | `audio::decode_file_on(&engine, path)` |
+| Allocate | `matrix::ones(shape)` | `matrix::ones_on(&runtime, shape)` |
+| Upload | `Matrix::new_from_f32(shape, data)` | `Matrix::new_from_f32_on(&runtime, shape, data)` |
+| Layer | `nn::Linear::new_with_seed(in, out, seed)` | `nn::Linear::new_with_seed_on(&runtime, in, out, seed)` |
+| Decode | `audio::decode_file(path)` | `audio::decode_file_on(&runtime, path)` |
 
 Operations on existing values infer their owner from storage and never take
-an engine. Sessions—training, capture, codec, presentation—keep an explicit
-`&Engine`: ownership is part of their contract, not a convenience.
+an runtime. Sessions—training, capture, codec, presentation—keep an explicit
+`&Runtime`: ownership is part of their contract, not a convenience.
 
-Python uses the same convention with an optional trailing `engine` keyword
+Python uses the same convention with an optional trailing `runtime` keyword
 instead of `_on`: `oa.matrix.ones([2, 3])` or
-`oa.matrix.ones([2, 3], engine=engine)`, and `oa.Engine.set_default(engine)`
+`oa.matrix.ones([2, 3], runtime=runtime)`, and `oa.Runtime.set_default(runtime)`
 installs the thread's default.
 
 ## What works today
@@ -107,7 +107,7 @@ Checked vertical slices include:
   containers/decoding/encoding, Vision detection/metrics, Render value
   foundations, cryptographic hashes/Merkle/PQC, secure memory, and Vulkan
   batch hashing;
-- native PyO3 bindings for Engine/Event, typed dense Matrix construction and
+- native PyO3 bindings for Runtime/Event, typed dense Matrix construction and
   operations, the functional ML spine, Image codecs/transforms, Audio
   codecs/DSP/features, metadata, and explicit synchronized host observation.
 
@@ -125,7 +125,7 @@ semantic values and operations
       executable Vulkan graph
              │
              ▼
- Engine-owned queues, memory, events, profiling
+ Runtime-owned queues, memory, events, profiling
 ```
 
 - Values carry semantics; shared storage does not erase type identity.
@@ -142,10 +142,10 @@ semantic values and operations
 
 The project and API namespace are `oa`. The language-specific distribution
 names are `oarust` on crates.io and `oapython` on PyPI; Python uses `import oa`.
-The crate contains the library and its required build inputs, including the
-source support modules exposed through `oa::sdk`. Runnable SDK programs are
-separate release downloads; they are not part of the registry package.
-Tagged CI verifies and publishes both packages, the SDK executables and native
+The crate contains the library and its required build inputs. Runnable
+tutorials, benchmarks, and applications moved to the standalone oasdk source
+companion in v0.17.0 and are not part of this tree or the registry package.
+Tagged CI verifies and publishes both packages, the `oa` CLI and native
 Linux packages, source and Rust API documentation archives, and checksums.
 The old `oarust` 0.0.1 package is a documentation-only name reservation.
 
@@ -196,7 +196,7 @@ the matching native extension.
 
 ## Python preview
 
-Python follows the Rust module graph directly, with the engine explicit:
+Python follows the Rust module graph directly, with the runtime explicit:
 
 ```bash
 python -m venv .venv
@@ -206,7 +206,7 @@ python -m venv .venv
 ```
 
 The native PyO3 implementation lives in `src/py/pyo3`, the importable `oa`
-package in `src/py/oa`, and Python tutorials in `sdk/py`. Neither creates a
+package in `src/py/oa`, and Python tutorials in `oasdk-dev/src/py`. Neither creates a
 second runtime or CPU implementation.
 
 ## Release artifacts
@@ -214,9 +214,9 @@ second runtime or CPU implementation.
 Every public release is assembled by the tagged CI workflow and publishes:
 
 - an exact Rust source archive with the resolved `Cargo.lock`;
-- a Linux x86-64 SDK archive containing the runnable tutorials, benchmarks,
-  and applications staged from the same Release build;
-- matching `oa-sdk` packages for Debian, RPM, and Arch Linux;
+- a Linux x86-64 archive containing the `oa` runtime CLI staged from the
+  same Release build;
+- matching `oa` packages for Debian, RPM, and Arch Linux;
 - one portable CPython 3.10+ ABI3 wheel, published to PyPI and then downloaded
   back from PyPI before attachment to GitHub;
 - dependency and toolchain evidence plus one checksum manifest covering every
@@ -242,13 +242,11 @@ git diff --check
 Hardware tests are explicitly ignored by the default harness and run serially
 on admitted devices. See [test organization](test/README.md).
 
-## SDK and source reference
+## Source reference
 
-- [Rust tutorials](https://github.com/realminc/oa/tree/main/sdk/rs/tutorials)
-- [Rust examples](https://github.com/realminc/oa/tree/main/sdk/rs/examples)
-- [Python tutorials](https://github.com/realminc/oa/tree/main/sdk/py/tutorials)
-- [Python examples](https://github.com/realminc/oa/tree/main/sdk/py/examples)
-- [Python SDK guide](https://github.com/realminc/oa/tree/main/sdk/py/README.md)
 - [Test organization](https://github.com/realminc/oa/tree/main/test/README.md)
+
+Runnable tutorials, benchmarks, and examples moved to the standalone
+oasdk source companion in v0.17.0 and are not part of this source tree.
 
 OA is licensed under the Business Source License 1.1. See `LICENSE`.

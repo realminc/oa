@@ -20,7 +20,7 @@ use std::{
 };
 
 use crate::{
-	Color, Engine, Error, Event, Result,
+	Color, Error, Event, Result, Runtime,
 	render::material::{FlatColorMaterial, SurfaceMaterial, TextureHandle, UnlitMaterial},
 	runtime::{
 		CanvasGridPipeline, FlatColorPipeline, GraphicsPipeline, MeshBuffer, NativeRgbaImage,
@@ -83,13 +83,13 @@ impl Default for RendererConfig {
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-/// Engine-borrowing headless render-to-texture session.
+/// Runtime-borrowing headless render-to-texture session.
 ///
 /// Admits multiple frame sources through the same slot-ring lifecycle.
 /// `submit_frame` returns a [`RenderFrame`] carrying the color `Texture` and
 /// exact producer `Event`.
-pub struct Renderer<'engine> {
-	engine: &'engine Engine,
+pub struct Renderer<'runtime> {
+	runtime: &'runtime Runtime,
 	config: RendererConfig,
 	state: Rc<RefCell<RendererState>>,
 }
@@ -569,18 +569,18 @@ fn mesh_vertex_bytes(mesh: &MeshData) -> Vec<u8> {
 
 // ── impl Renderer ─────────────────────────────────────────────────────────────
 
-impl<'engine> Renderer<'engine> {
+impl<'runtime> Renderer<'runtime> {
 	pub(crate) fn owns_frame(&self, frame: &RenderFrame) -> bool {
 		frame
 			.state
 			.upgrade()
 			.is_some_and(|state| Rc::ptr_eq(&state, &self.state))
-			&& frame.texture.engine_handle().same_as(&self.engine.handle())
+			&& frame.texture.runtime().same_as(&self.runtime.handle())
 	}
 
-	/// Create a bounded headless target ring borrowing `engine`.
+	/// Create a bounded headless target ring borrowing `runtime`.
 	///
-	/// When `max_vertex_count` / `max_index_count` are non-zero and the Engine
+	/// When `max_vertex_count` / `max_index_count` are non-zero and the Runtime
 	/// has a graphics queue, all graphics pipelines are created and per-slot
 	/// render targets and mesh buffers are allocated.
 	///
@@ -589,11 +589,11 @@ impl<'engine> Renderer<'engine> {
 	/// Returns an error for zero extent, zero or >4 target slots, invalid
 	/// light/color config, a missing graphics queue when mesh capacity is
 	/// requested, or device allocation failure.
-	pub fn new(engine: &'engine Engine, config: RendererConfig) -> Result<Self> {
+	pub fn new(runtime: &'runtime Runtime, config: RendererConfig) -> Result<Self> {
 		validate_config(&config)?;
 		let mesh_enabled =
-			config.max_vertex_count > 0 && config.max_index_count > 0 && engine.has_graphics();
-		let handle = engine.handle();
+			config.max_vertex_count > 0 && config.max_index_count > 0 && runtime.has_graphics();
+		let handle = runtime.handle();
 
 		let (
 			pipeline,
@@ -643,7 +643,7 @@ impl<'engine> Renderer<'engine> {
 			(None, None, None, None, None, None, None, None, None, None)
 		};
 		let white_texture = mesh_enabled
-			.then(|| texture_from_rgba8_on(engine, &[255, 255, 255, 255], 1, 1))
+			.then(|| texture_from_rgba8_on(runtime, &[255, 255, 255, 255], 1, 1))
 			.transpose()?;
 
 		let vertex_cap = config.max_vertex_count as usize * VERTEX_STRIDE;
@@ -686,7 +686,7 @@ impl<'engine> Renderer<'engine> {
 			});
 		}
 		Ok(Self {
-			engine,
+			runtime,
 			config,
 			state: Rc::new(RefCell::new(RendererState {
 				pipeline,
@@ -729,9 +729,9 @@ impl<'engine> Renderer<'engine> {
 				"render::Renderer texture handles must be non-zero",
 			));
 		}
-		if !texture.engine_handle().same_as(&self.engine.handle()) {
+		if !texture.runtime().same_as(&self.runtime.handle()) {
 			return Err(Error::invalid_argument(
-				"render::Renderer registered Texture belongs to a different Engine",
+				"render::Renderer registered Texture belongs to a different Runtime",
 			));
 		}
 		if texture.native().is_none() {
@@ -751,9 +751,9 @@ impl<'engine> Renderer<'engine> {
 
 	/// Begin one frame from a completed packed source `Texture` (blit path).
 	pub fn begin_frame(&self, source: &Texture) -> Result<()> {
-		if !source.engine_handle().same_as(&self.engine.handle()) {
+		if !source.runtime().same_as(&self.runtime.handle()) {
 			return Err(Error::invalid_argument(
-				"render::Renderer source Texture belongs to a different Engine",
+				"render::Renderer source Texture belongs to a different Runtime",
 			));
 		}
 		if source.width() != self.config.width as usize
@@ -1039,7 +1039,7 @@ impl<'engine> Renderer<'engine> {
 
 		match building.source {
 			BuildingSource::Texture(texture) => {
-				let producer = match self.engine.checkpoint() {
+				let producer = match self.runtime.checkpoint() {
 					Ok(event) => event,
 					Err(error) => {
 						self.release_slot(building.slot, building.generation);
@@ -1067,7 +1067,7 @@ impl<'engine> Renderer<'engine> {
 
 			// ── Surface — multi-draw scene path ─────────────────────
 			BuildingSource::Surface { scene_data, draws } => {
-				let handle = self.engine.handle();
+				let handle = self.runtime.handle();
 				let producer = {
 					let mut state = self.state.borrow_mut();
 					// Resolve pipeline and arena handles.
@@ -1241,7 +1241,7 @@ impl<'engine> Renderer<'engine> {
 					BuildingSource::Unlit { texture, .. } => Some(texture.clone()),
 					_ => None,
 				};
-				let handle = self.engine.handle();
+				let handle = self.runtime.handle();
 				let producer = {
 					let mut state = self.state.borrow_mut();
 					let slot = &mut state.slots[building.slot];
@@ -1385,7 +1385,7 @@ impl<'engine> Renderer<'engine> {
 	fn require_graphics(&self, path: &str) -> Result<()> {
 		if self.state.borrow().pipeline.is_none() {
 			Err(Error::failed_precondition(format!(
-				"render::Renderer {path} path requires a graphics-capable Engine and non-zero \
+				"render::Renderer {path} path requires a graphics-capable Runtime and non-zero \
 				 max_vertex_count/max_index_count in RendererConfig",
 			)))
 		} else {

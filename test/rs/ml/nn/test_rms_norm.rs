@@ -103,7 +103,7 @@ fn host_rms_norm_gated(
 
 test_vk!(
 	gated_rms_norm_matches_forward_and_complete_finite_differences,
-	engine,
+	runtime,
 	{
 		const EPSILON: f32 = 0.003;
 		const COLUMNS: usize = 3;
@@ -200,7 +200,7 @@ test_vk!(
 
 test_vk!(
 	rms_norm_matches_rank_three_forward_and_reverse_oracles,
-	engine,
+	runtime,
 	{
 		const EPSILON: f32 = 0.01;
 		let input_values = [
@@ -286,7 +286,7 @@ test_vk!(
 	}
 );
 
-test_vk!(rms_norm_rejects_invalid_contracts, engine, {
+test_vk!(rms_norm_rejects_invalid_contracts, runtime, {
 	let weight = oa::Matrix::new_from_f32([3], &[1.0; 3])?;
 	let input = oa::Matrix::new_from_f32([2, 3], &[1.0; 6])?;
 	for epsilon in [0.0_f32, -1.0, f32::NAN] {
@@ -309,7 +309,7 @@ test_vk!(rms_norm_rejects_invalid_contracts, engine, {
 	Ok(())
 });
 
-test_vk!(rms_norm_weight_adjoint_uses_core_sum_axis, engine, {
+test_vk!(rms_norm_weight_adjoint_uses_core_sum_axis, runtime, {
 	let indices = oa::Matrix::new_from_slice([2, 2], &[0_u32, 1, 2, 3])?;
 	let targets = oa::Matrix::new_from_slice([4], &[0_u32, 1, 0, 1])?;
 	let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
@@ -327,7 +327,7 @@ test_vk!(rms_norm_weight_adjoint_uses_core_sum_axis, engine, {
 		oa::Matrix::new_from_f32([2], &[0.05_f32, -0.15])?,
 	)?;
 
-	let (plan, ()) = engine.capture(|| {
+	let (plan, ()) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let embedded = embedding.forward(&indices)?;
 		let normalized = rms_norm.forward(&embedded)?.reshape([4, 3])?;
@@ -378,6 +378,6 @@ test_vk!(rms_norm_weight_adjoint_uses_core_sum_axis, engine, {
 		rms_backward["physical_write"]["workspace"],
 		"exclusive_per_workgroup"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	Ok(())
 });

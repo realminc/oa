@@ -125,7 +125,7 @@ struct DnnOpDesc {
 }
 
 struct DnnPartition {
-	engine: DnnEngineType,
+	engine_type: DnnEngineType,
 	operations: Vec<SemanticOpId>,
 	saved_for_backward: Vec<SemanticValueId>,
 	workspace_bytes: u64,
@@ -253,7 +253,7 @@ impl DnnPlan {
 		let recognized_partition_count = checked_u32(
 			partitions
 				.iter()
-				.filter(|partition| partition.engine != DnnEngineType::Portable)
+				.filter(|partition| partition.engine_type != DnnEngineType::Portable)
 				.count(),
 			"DNN recognized partition",
 		)?;
@@ -279,7 +279,7 @@ impl DnnPlan {
 	#[allow(clippy::too_many_arguments)]
 	pub(in crate::runtime) fn lower_captured_plan(
 		&mut self,
-		engine: &crate::runtime::EngineHandle,
+		runtime: &crate::runtime::RuntimeHandle,
 		semantic: &SemanticGraph,
 		bindings: &[crate::runtime::SemanticStorageBinding],
 		resources: &[crate::runtime::graph::executable::ResourceLifetime],
@@ -288,7 +288,7 @@ impl DnnPlan {
 		source: &crate::runtime::graph::executable::ExecutableGraph,
 	) -> Result<crate::runtime::graph::executable::ExecutableGraph> {
 		let graph = lowering::lower_captured_plan(
-			engine,
+			runtime,
 			self,
 			semantic,
 			bindings,
@@ -363,7 +363,7 @@ impl DnnPlan {
 
 		out.count(self.partitions.len());
 		for partition in &self.partitions {
-			out.u8(partition.engine as u8);
+			out.u8(partition.engine_type as u8);
 			out.count(partition.operations.len());
 			for operation in &partition.operations {
 				out.u32(operation.index());
@@ -482,7 +482,7 @@ impl DnnPlan {
 		self
 			.partitions
 			.iter()
-			.filter(|partition| partition.engine == DnnEngineType::Portable)
+			.filter(|partition| partition.engine_type == DnnEngineType::Portable)
 			.count()
 	}
 
@@ -573,7 +573,7 @@ impl DnnPlan {
 		let mut inherited = 0_u32;
 		let mut fallback = 0_u32;
 		for partition in &self.partitions {
-			if partition.engine == DnnEngineType::Portable {
+			if partition.engine_type == DnnEngineType::Portable {
 				if partition.state != DnnPartitionState::Analyzed || partition.fallback_reason.is_some() {
 					return Err(Error::internal(
 						"portable DNN partition acquired a provider state",
@@ -731,7 +731,7 @@ fn partition(
 				saved.extend(operation.outputs.first().copied());
 			}
 			partitions.push(DnnPartition {
-				engine: DnnEngineType::BlasLtEpilogue,
+				engine_type: DnnEngineType::BlasLtEpilogue,
 				operations: vec![operation.source_op],
 				saved_for_backward: saved,
 				workspace_bytes: 0,
@@ -747,11 +747,11 @@ fn partition(
 			partitions.push(partition);
 			continue;
 		}
-		let mut engine = DnnEngineType::Portable;
+		let mut engine_type = DnnEngineType::Portable;
 		let mut saved = Vec::new();
 		match operation.op_type {
 			DnnOpType::ScaledDotProductAttention if supports(operation, DnnProvider::Attention) => {
-				engine = DnnEngineType::Attention;
+				engine_type = DnnEngineType::Attention;
 				if operation.training {
 					saved.extend(operation.inputs.iter().take(3).copied());
 					if let Some(saved_state) = operation.outputs.get(1) {
@@ -767,18 +767,18 @@ fn partition(
 				}
 			}
 			DnnOpType::GroupedGemm if supports(operation, DnnProvider::GroupedMoe) => {
-				engine = DnnEngineType::GroupedMoe;
+				engine_type = DnnEngineType::GroupedMoe;
 				if operation.training {
 					saved.extend(operation.inputs.first().copied());
 				}
 			}
 			DnnOpType::ResidualRmsNorm if supports(operation, DnnProvider::ResidualNorm) => {
-				engine = DnnEngineType::ResidualNorm;
+				engine_type = DnnEngineType::ResidualNorm;
 			}
 			_ => {}
 		}
 		partitions.push(DnnPartition {
-			engine,
+			engine_type,
 			operations: vec![operation.source_op],
 			saved_for_backward: saved,
 			workspace_bytes: 0,
@@ -802,7 +802,7 @@ fn match_vision_preprocess(operations: &[DnnOpDesc], index: usize) -> Option<Dnn
 		return None;
 	}
 	Some(DnnPartition {
-		engine: DnnEngineType::VisionPreprocess,
+		engine_type: DnnEngineType::VisionPreprocess,
 		operations: group.iter().map(|operation| operation.source_op).collect(),
 		saved_for_backward: Vec::new(),
 		workspace_bytes: 0,
@@ -825,7 +825,7 @@ fn match_qkv(operations: &[DnnOpDesc], index: usize) -> Option<DnnPartition> {
 			saved.push(shared);
 		}
 		return Some(DnnPartition {
-			engine: DnnEngineType::QkvProjectionGroup,
+			engine_type: DnnEngineType::QkvProjectionGroup,
 			operations: group.iter().map(|operation| operation.source_op).collect(),
 			saved_for_backward: saved,
 			workspace_bytes: 0,
@@ -856,7 +856,7 @@ fn match_gated_ffn(operations: &[DnnOpDesc], index: usize) -> Option<DnnPartitio
 				saved.extend(shared);
 			}
 			return Some(DnnPartition {
-				engine: DnnEngineType::GatedFfn,
+				engine_type: DnnEngineType::GatedFfn,
 				operations: group.iter().map(|operation| operation.source_op).collect(),
 				saved_for_backward: saved,
 				workspace_bytes: 0,
@@ -887,7 +887,7 @@ fn match_gated_ffn(operations: &[DnnOpDesc], index: usize) -> Option<DnnPartitio
 		saved.push(shared);
 	}
 	Some(DnnPartition {
-		engine: DnnEngineType::GatedFfn,
+		engine_type: DnnEngineType::GatedFfn,
 		operations: group.iter().map(|operation| operation.source_op).collect(),
 		saved_for_backward: saved,
 		workspace_bytes: 0,
@@ -930,7 +930,7 @@ fn match_blas_epilogue(
 	}
 	Some((
 		DnnPartition {
-			engine: DnnEngineType::BlasLtEpilogue,
+			engine_type: DnnEngineType::BlasLtEpilogue,
 			operations: group,
 			saved_for_backward: saved,
 			workspace_bytes: 0,
@@ -953,7 +953,7 @@ fn match_residual_norm(operations: &[DnnOpDesc], index: usize) -> Option<DnnPart
 		return None;
 	}
 	Some(DnnPartition {
-		engine: DnnEngineType::ResidualNorm,
+		engine_type: DnnEngineType::ResidualNorm,
 		operations: group.iter().map(|operation| operation.source_op).collect(),
 		saved_for_backward: Vec::new(),
 		workspace_bytes: 0,

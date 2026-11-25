@@ -34,7 +34,7 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 	}
 }
 
-test_vk!(rnn_cell_matches_nonzero_hidden_state_oracle, engine, {
+test_vk!(rnn_cell_matches_nonzero_hidden_state_oracle, runtime, {
 	let input = [0.2, -0.4];
 	let hidden = [0.3, -0.25];
 	let weight_ih = [0.1, -0.2, 0.3, 0.4];
@@ -71,7 +71,7 @@ test_vk!(rnn_cell_matches_nonzero_hidden_state_oracle, engine, {
 });
 
 fn gpu_cell_loss_and_gradients(
-	_engine: &oa::Engine,
+	_runtime: &oa::Runtime,
 	input: f32,
 	hidden: f32,
 	values: &[f32; 4],
@@ -114,16 +114,16 @@ fn gpu_cell_loss_and_gradients(
 
 test_vk!(
 	rnn_cell_parameter_gradients_match_finite_differences,
-	engine,
+	runtime,
 	{
 		let mut values = [0.2, 0.15, 0.01, -0.03];
-		let (_, gradients) = gpu_cell_loss_and_gradients(&engine, 0.25, -0.4, &values, true)?;
+		let (_, gradients) = gpu_cell_loss_and_gradients(&runtime, 0.25, -0.4, &values, true)?;
 		let epsilon = 1.0e-3_f32;
 		for parameter in 0..values.len() {
 			values[parameter] += epsilon;
-			let plus = gpu_cell_loss_and_gradients(&engine, 0.25, -0.4, &values, false)?.0;
+			let plus = gpu_cell_loss_and_gradients(&runtime, 0.25, -0.4, &values, false)?.0;
 			values[parameter] -= 2.0 * epsilon;
-			let minus = gpu_cell_loss_and_gradients(&engine, 0.25, -0.4, &values, false)?.0;
+			let minus = gpu_cell_loss_and_gradients(&runtime, 0.25, -0.4, &values, false)?.0;
 			values[parameter] += epsilon;
 			let numerical = (plus - minus) / (2.0 * epsilon);
 			let actual = gradients[parameter];
@@ -136,7 +136,7 @@ test_vk!(
 	}
 );
 
-test_vk!(rnn_cell_preserves_bias_and_bias_free_contracts, engine, {
+test_vk!(rnn_cell_preserves_bias_and_bias_free_contracts, runtime, {
 	let cell = oa::ml::nn::RnnCell::new_with_seed(2, 3, true, 0x524e_4e01)?;
 	let input = oa::Matrix::new_from_f32([2, 2], &[0.1; 4])?;
 	let hidden = oa::Matrix::new_from_f32([2, 3], &[0.2; 6])?;

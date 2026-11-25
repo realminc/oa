@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::super::autograd::PythonParameter;
 
@@ -18,7 +18,7 @@ impl PythonSwiglu {
 	/// `input_features`/`intermediate_size` (output_dim is ignored — the Rust
 	/// implementation uses intermediate→input projection).
 	#[new]
-	#[pyo3(signature = (input_features=None, intermediate_size=None, bias=true, seed=0, input_dim=None, hidden_dim=None, output_dim=None, engine=None))]
+	#[pyo3(signature = (input_features=None, intermediate_size=None, bias=true, seed=0, input_dim=None, hidden_dim=None, output_dim=None, runtime=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		input_features: Option<usize>,
@@ -28,15 +28,15 @@ impl PythonSwiglu {
 		input_dim: Option<usize>,
 		hidden_dim: Option<usize>,
 		output_dim: Option<usize>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		let _ = output_dim;
 		let inf = input_features.or(input_dim).ok_or_else(|| {
 			pyo3::exceptions::PyTypeError::new_err("Swiglu requires input_features or input_dim")
 		})?;
 		let is = intermediate_size.or(hidden_dim).unwrap_or(inf * 2);
-		oa::ml::nn::Swiglu::new_with_seed_on(&engine, inf, is, bias, seed)
+		oa::ml::nn::Swiglu::new_with_seed_on(&runtime, inf, is, bias, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

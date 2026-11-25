@@ -3,7 +3,7 @@
 Coverage:
 * LogLevel enum — all 7 members exist and are distinct.
 * LogOptions — constructor, builder methods, repr.
-* Engine — construction with explicit LogOptions, log_level getter/setter,
+* Runtime — construction with explicit LogOptions, log_level getter/setter,
   log_path (None when file output is disabled), flush_log.
 * Identity aliases: oa.LogLevel / oa.runtime.LogLevel, oa.LogOptions / oa.runtime.LogOptions.
 """
@@ -84,22 +84,22 @@ class LogOptionsTest(unittest.TestCase):
 		self.assertIn("LogOptions", repr(oa.LogOptions()))
 
 
-class EngineLoggingTest(unittest.TestCase):
-	def test_default_engine_construction_succeeds(self) -> None:
+class RuntimeLoggingTest(unittest.TestCase):
+	def test_default_runtime_construction_succeeds(self) -> None:
 		# Basic construction without explicit LogOptions.
-		engine = oa.Engine()
-		self.assertIsInstance(engine, oa.Engine)
+		runtime = oa.Runtime()
+		self.assertIsInstance(runtime, oa.Runtime)
 
-	def test_engine_with_explicit_log_options(self) -> None:
+	def test_runtime_with_explicit_log_options(self) -> None:
 		opts = oa.LogOptions()
 		opts.minimum_level(oa.LogLevel.Warn)
 		opts.console_output(False)
-		engine = oa.Engine(logging=opts)
-		self.assertIsInstance(engine, oa.Engine)
+		runtime = oa.Runtime(logging=opts)
+		self.assertIsInstance(runtime, oa.Runtime)
 
 	def test_log_level_getter_returns_log_level(self) -> None:
-		engine = oa.Engine()
-		level = engine.log_level()
+		runtime = oa.Runtime()
+		level = runtime.log_level()
 		# Level must be one of the known enum members.
 		known = [
 			oa.LogLevel.Trace,
@@ -113,33 +113,33 @@ class EngineLoggingTest(unittest.TestCase):
 		self.assertIn(level, known)
 
 	def test_set_log_level_takes_effect(self) -> None:
-		engine = oa.Engine()
-		engine.set_log_level(oa.LogLevel.Off)
-		self.assertEqual(engine.log_level(), oa.LogLevel.Off)
+		runtime = oa.Runtime()
+		runtime.set_log_level(oa.LogLevel.Off)
+		self.assertEqual(runtime.log_level(), oa.LogLevel.Off)
 		# Restore to Info so subsequent tests are not silenced.
-		engine.set_log_level(oa.LogLevel.Info)
-		self.assertEqual(engine.log_level(), oa.LogLevel.Info)
+		runtime.set_log_level(oa.LogLevel.Info)
+		self.assertEqual(runtime.log_level(), oa.LogLevel.Info)
 
 	def test_log_path_is_none_without_file_output(self) -> None:
 		# No directory configured → file output not enabled → path is None.
 		opts = oa.LogOptions()
 		opts.console_output(False)
-		engine = oa.Engine(logging=opts)
-		self.assertIsNone(engine.log_path())
+		runtime = oa.Runtime(logging=opts)
+		self.assertIsNone(runtime.log_path())
 
 	def test_flush_log_succeeds(self) -> None:
-		engine = oa.Engine()
+		runtime = oa.Runtime()
 		# flush_log must not raise when console-only logging is active.
-		engine.flush_log()
+		runtime.flush_log()
 
 	def test_existing_aliases_still_work(self) -> None:
-		self.assertIs(oa.Engine, oa.runtime.Engine)
+		self.assertIs(oa.Runtime, oa.runtime.Runtime)
 		self.assertIs(oa.Event, oa.runtime.Event)
 
 	def test_checkpoint_returns_a_waitable_event(self) -> None:
-		engine = oa.Engine()
-		oa.matrix.ones([1], engine=engine)
-		event = engine.checkpoint()
+		runtime = oa.Runtime()
+		oa.matrix.ones([1], runtime=runtime)
+		event = runtime.checkpoint()
 		event.wait()
 		self.assertTrue(event.is_complete())
 		self.assertIn("Event", repr(event))

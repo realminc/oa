@@ -2,7 +2,7 @@
 
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::optim::PythonAdamW;
 
@@ -166,11 +166,11 @@ impl PythonTrainingCompilationStageRecord {
 
 /// Fixed-shape forward, backward, and AdamW program captured for Vulkan replay.
 ///
-/// Capture is triggered via `TrainingProgram.capture(engine, optimizer, step_fn)`.
+/// Capture is triggered via `TrainingProgram.capture(runtime, optimizer, step_fn)`.
 /// `step_fn` must be a Python callable that builds and returns a scalar `Matrix`
 /// loss (autograd backward is run inside the call). The optimizer must be `AdamW`.
 ///
-/// The engine and optimizer must outlive this object — keep them as locals or
+/// The runtime and optimizer must outlive this object — keep them as locals or
 /// attributes so Python reference counting keeps them alive.
 #[pyclass(name = "TrainingProgram", unsendable)]
 pub(crate) struct PythonTrainingProgram {
@@ -189,11 +189,11 @@ impl PythonTrainingProgram {
 		py: Python<'_>,
 		optimizer: &mut PythonAdamW,
 		step_fn: Py<PyAny>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		let engine_ref: &oa::Engine = &engine;
-		let inner = oa::ml::TrainingProgram::capture(engine_ref, &mut optimizer.inner, || {
+		let runtime = PythonRuntime::resolve(runtime)?;
+		let runtime_ref: &oa::Runtime = &runtime;
+		let inner = oa::ml::TrainingProgram::capture(runtime_ref, &mut optimizer.inner, || {
 			Python::attach(|py2| {
 				let result = step_fn
 					.bind(py2)
@@ -230,12 +230,12 @@ impl PythonTrainingProgram {
 	pub fn replay(
 		&mut self,
 		optimizer: &mut PythonAdamW,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<crate::runtime::PythonEvent> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		self
 			.inner
-			.replay(&engine, &mut optimizer.inner)
+			.replay(&runtime, &mut optimizer.inner)
 			.map(|e| crate::runtime::PythonEvent { inner: e })
 			.map_err(python_error)
 	}
@@ -244,12 +244,12 @@ impl PythonTrainingProgram {
 	pub fn replay_timed(
 		&mut self,
 		optimizer: &mut PythonAdamW,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<crate::runtime::PythonEvent> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		self
 			.inner
-			.replay_timed(&engine, &mut optimizer.inner)
+			.replay_timed(&runtime, &mut optimizer.inner)
 			.map(|e| crate::runtime::PythonEvent { inner: e })
 			.map_err(python_error)
 	}
@@ -258,12 +258,12 @@ impl PythonTrainingProgram {
 	pub fn replay_and_wait(
 		&mut self,
 		optimizer: &mut PythonAdamW,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<f32> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		self
 			.inner
-			.replay_and_wait(&engine, &mut optimizer.inner)
+			.replay_and_wait(&runtime, &mut optimizer.inner)
 			.map_err(python_error)
 	}
 
@@ -271,12 +271,12 @@ impl PythonTrainingProgram {
 	pub fn replay_timed_and_wait(
 		&mut self,
 		optimizer: &mut PythonAdamW,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<(f32, f64)> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		self
 			.inner
-			.replay_timed_and_wait(&engine, &mut optimizer.inner)
+			.replay_timed_and_wait(&runtime, &mut optimizer.inner)
 			.map(|(loss, dur)| (loss, dur.as_secs_f64()))
 			.map_err(python_error)
 	}

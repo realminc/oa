@@ -2,13 +2,13 @@
 //!
 //! Donor: `oacpp/test/cpp/ml/quant/testFnMatrixQuant.cpp`.
 
-use oa::ml::matrix::{QuantMatrix, Quantization, dequantize, mat_mul_nt, quantize};
+use oa::ml::matrix::{QuantMatrix, Quantization, dequantize, matmul, quantize};
 
 const BLOCK_SIZE: usize = 32;
 const Q4_BYTES_PER_BLOCK: usize = 16;
 const Q8_BYTES_PER_BLOCK: usize = 32;
 
-fn make_input(_engine: &oa::Engine, values: &[f32]) -> oa::Result<oa::Matrix> {
+fn make_input(_runtime: &oa::Runtime, values: &[f32]) -> oa::Result<oa::Matrix> {
 	oa::Matrix::new_from_f32([values.len()], values)
 }
 
@@ -75,7 +75,7 @@ fn dequantize_q8_oracle(payload: &[u8], scales: &[f32], count: usize) -> Vec<f32
 		.collect()
 }
 
-fn reference_mat_mul_nt(
+fn reference_matmul_nt(
 	input: &[f32],
 	weight: &[f32],
 	rows: usize,
@@ -107,11 +107,11 @@ fn expect_near(actual: &[f32], expected: &[f32], relative_tolerance: f32) {
 }
 
 fn expect_round_trip(
-	engine: &oa::Engine,
+	runtime: &oa::Runtime,
 	values: &[f32],
 	quantization: Quantization,
 ) -> oa::Result<()> {
-	let input = make_input(engine, values)?;
+	let input = make_input(runtime, values)?;
 	let quantized = quantize(&input, quantization)?;
 	let scales = quantized.scale().read_f32()?;
 	let output = dequantize(&quantized)?.read_f32()?;
@@ -128,30 +128,30 @@ fn expect_round_trip(
 
 test_vk!(
 	q4_compute_scale_owns_every_block_and_partial_tail,
-	engine,
+	runtime,
 	{
 		let mut values = vec![0.0_f32; 73];
 		values[0] = -7.0;
 		values[33] = 14.0;
 		values[72] = -21.0;
-		let quantized = quantize(&make_input(&engine, &values)?, Quantization::Q4)?;
+		let quantized = quantize(&make_input(&runtime, &values)?, Quantization::Q4)?;
 		expect_near(&quantized.scale().read_f32()?, &[1.0, 2.0, 3.0], 1.0e-6);
 		Ok(())
 	}
 );
 
-test_vk!(q4_zero_blocks_use_finite_unit_scale, engine, {
-	let quantized = quantize(&make_input(&engine, &vec![0.0; 65])?, Quantization::Q4)?;
+test_vk!(q4_zero_blocks_use_finite_unit_scale, runtime, {
+	let quantized = quantize(&make_input(&runtime, &vec![0.0; 65])?, Quantization::Q4)?;
 	assert_eq!(quantized.scale().read_f32()?, vec![1.0, 1.0, 1.0]);
 	Ok(())
 });
 
 test_vk!(
 	q4_packed_payload_matches_independent_aligned_oracle,
-	engine,
+	runtime,
 	{
 		let values: Vec<f32> = (0..50).map(|i| ((i * 11) % 29 - 14) as f32).collect();
-		let input = make_input(&engine, &values)?;
+		let input = make_input(&runtime, &values)?;
 		let quantized = quantize(&input, Quantization::Q4)?;
 		let scales = quantized.scale().read_f32()?;
 		let payload = quantized.payload().read::<u8>()?;
@@ -166,28 +166,28 @@ test_vk!(
 
 test_vk!(
 	q4_odd_sizes_and_partial_blocks_round_trip_within_half_step,
-	engine,
+	runtime,
 	{
 		for count in [1_usize, 7, 31, 32, 33, 50, 257] {
 			let values: Vec<f32> = (0..count).map(|i| (i as f32 * 0.17).sin() * 13.0).collect();
-			expect_round_trip(&engine, &values, Quantization::Q4)?;
+			expect_round_trip(&runtime, &values, Quantization::Q4)?;
 		}
 		Ok(())
 	}
 );
 
-test_vk!(q4_sign_and_extreme_values_are_preserved, engine, {
+test_vk!(q4_sign_and_extreme_values_are_preserved, runtime, {
 	let values: Vec<f32> = (0..32)
 		.map(|i| if i % 2 == 0 { -7.0 } else { 7.0 })
 		.collect();
-	let quantized = quantize(&make_input(&engine, &values)?, Quantization::Q4)?;
+	let quantized = quantize(&make_input(&runtime, &values)?, Quantization::Q4)?;
 	assert_eq!(dequantize(&quantized)?.read_f32()?, values);
 	Ok(())
 });
 
 test_vk!(
 	q4_nonfinite_values_encode_as_zero_and_do_not_poison_scale,
-	engine,
+	runtime,
 	{
 		let mut values = vec![0.0_f32; 64];
 		values[0] = f32::NAN;
@@ -195,7 +195,7 @@ test_vk!(
 		values[2] = f32::NEG_INFINITY;
 		values[3] = -7.0;
 		values[32] = 7.0e-9;
-		let quantized = quantize(&make_input(&engine, &values)?, Quantization::Q4)?;
+		let quantized = quantize(&make_input(&runtime, &values)?, Quantization::Q4)?;
 		let scales = quantized.scale().read_f32()?;
 		assert_eq!(scales.len(), 2);
 		expect_near(&scales, &[1.0, 1.0e-9], 1.0e-6);
@@ -212,7 +212,7 @@ test_vk!(
 
 test_vk!(
 	q4_invalid_scale_values_produce_deterministic_zero_blocks,
-	engine,
+	runtime,
 	{
 		let payload = oa::Matrix::new_from_slice([48], &[0x77_u8; 48])?;
 		let scale = oa::Matrix::new_from_f32([3], &[f32::NAN, 0.0, -1.0])?;
@@ -222,9 +222,9 @@ test_vk!(
 	}
 );
 
-test_vk!(q4_repeated_quantization_is_byte_deterministic, engine, {
+test_vk!(q4_repeated_quantization_is_byte_deterministic, runtime, {
 	let values: Vec<f32> = (0..129).map(|i| (i as f32 * 0.031).cos() * 20.0).collect();
-	let input = make_input(&engine, &values)?;
+	let input = make_input(&runtime, &values)?;
 	let first = quantize(&input, Quantization::Q4)?;
 	let second = quantize(&input, Quantization::Q4)?;
 	assert_eq!(
@@ -236,21 +236,21 @@ test_vk!(q4_repeated_quantization_is_byte_deterministic, engine, {
 
 test_vk!(
 	q8_compute_scale_owns_every_block_and_partial_tail,
-	engine,
+	runtime,
 	{
 		let mut values = vec![0.0_f32; 73];
 		values[0] = -127.0;
 		values[33] = 254.0;
 		values[72] = -381.0;
-		let quantized = quantize(&make_input(&engine, &values)?, Quantization::Q8)?;
+		let quantized = quantize(&make_input(&runtime, &values)?, Quantization::Q8)?;
 		expect_near(&quantized.scale().read_f32()?, &[1.0, 2.0, 3.0], 1.0e-6);
 		Ok(())
 	}
 );
 
-test_vk!(q8_payload_matches_independent_aligned_oracle, engine, {
+test_vk!(q8_payload_matches_independent_aligned_oracle, runtime, {
 	let values: Vec<f32> = (0..50).map(|i| ((i * 37) % 251 - 125) as f32).collect();
-	let input = make_input(&engine, &values)?;
+	let input = make_input(&runtime, &values)?;
 	let quantized = quantize(&input, Quantization::Q8)?;
 	let scales = quantized.scale().read_f32()?;
 	let payload = quantized.payload().read::<u8>()?;
@@ -264,30 +264,30 @@ test_vk!(q8_payload_matches_independent_aligned_oracle, engine, {
 
 test_vk!(
 	q8_odd_sizes_and_partial_blocks_round_trip_within_half_step,
-	engine,
+	runtime,
 	{
 		for count in [1_usize, 7, 31, 32, 33, 50, 257] {
 			let values: Vec<f32> = (0..count)
 				.map(|i| (i as f32 * 0.17).sin() * 130.0)
 				.collect();
-			expect_round_trip(&engine, &values, Quantization::Q8)?;
+			expect_round_trip(&runtime, &values, Quantization::Q8)?;
 		}
 		Ok(())
 	}
 );
 
-test_vk!(q8_sign_and_extreme_values_are_preserved, engine, {
+test_vk!(q8_sign_and_extreme_values_are_preserved, runtime, {
 	let values: Vec<f32> = (0..32)
 		.map(|i| if i % 2 == 0 { -127.0 } else { 127.0 })
 		.collect();
-	let quantized = quantize(&make_input(&engine, &values)?, Quantization::Q8)?;
+	let quantized = quantize(&make_input(&runtime, &values)?, Quantization::Q8)?;
 	assert_eq!(dequantize(&quantized)?.read_f32()?, values);
 	Ok(())
 });
 
 test_vk!(
 	q8_nonfinite_values_encode_as_zero_and_do_not_poison_scale,
-	engine,
+	runtime,
 	{
 		let mut values = vec![0.0_f32; 64];
 		values[0] = f32::NAN;
@@ -295,7 +295,7 @@ test_vk!(
 		values[2] = f32::NEG_INFINITY;
 		values[3] = -127.0;
 		values[32] = 127.0e-9;
-		let quantized = quantize(&make_input(&engine, &values)?, Quantization::Q8)?;
+		let quantized = quantize(&make_input(&runtime, &values)?, Quantization::Q8)?;
 		let scales = quantized.scale().read_f32()?;
 		assert_eq!(scales.len(), 2);
 		expect_near(&scales, &[1.0, 1.0e-9], 1.0e-6);
@@ -312,7 +312,7 @@ test_vk!(
 
 test_vk!(
 	q8_invalid_scale_values_produce_deterministic_zero_blocks,
-	engine,
+	runtime,
 	{
 		let payload = oa::Matrix::new_from_slice([96], &[0_u8; 96])?;
 		let scale = oa::Matrix::new_from_f32([3], &[f32::NAN, 0.0, -1.0])?;
@@ -322,9 +322,9 @@ test_vk!(
 	}
 );
 
-test_vk!(q8_repeated_quantization_is_byte_deterministic, engine, {
+test_vk!(q8_repeated_quantization_is_byte_deterministic, runtime, {
 	let values: Vec<f32> = (0..129).map(|i| (i as f32 * 0.031).cos() * 200.0).collect();
-	let input = make_input(&engine, &values)?;
+	let input = make_input(&runtime, &values)?;
 	let first = quantize(&input, Quantization::Q8)?;
 	let second = quantize(&input, Quantization::Q8)?;
 	assert_eq!(
@@ -335,8 +335,8 @@ test_vk!(q8_repeated_quantization_is_byte_deterministic, engine, {
 });
 
 test_vk!(
-	mat_mul_nt_q4_fuses_dequantization_across_odd_weight_rows_and_k_tail,
-	engine,
+	matmul_nt_q4_fuses_dequantization_across_odd_weight_rows_and_k_tail,
+	runtime,
 	{
 		let (rows, output_features, input_features) = (6_usize, 5_usize, 35_usize);
 		let input_values: Vec<f32> = (0..rows * input_features)
@@ -350,7 +350,7 @@ test_vk!(
 			&oa::Matrix::new_from_f32([output_features, input_features], &weight_values)?,
 			Quantization::Q4,
 		)?;
-		let expected = reference_mat_mul_nt(
+		let expected = reference_matmul_nt(
 			&input_values,
 			&dequantize_q4_oracle(
 				&weight.payload().read::<u8>()?,
@@ -361,7 +361,7 @@ test_vk!(
 			output_features,
 			input_features,
 		);
-		let output = mat_mul_nt(&input, &weight)?;
+		let output = matmul(&input, &weight)?;
 		assert_eq!(output.shape(), &[rows, output_features]);
 		expect_near(&output.read_f32()?, &expected, 2.0e-4);
 		Ok(())
@@ -369,8 +369,8 @@ test_vk!(
 );
 
 test_vk!(
-	mat_mul_nt_q8_fuses_dequantization_across_odd_weight_rows_and_k_tail,
-	engine,
+	matmul_nt_q8_fuses_dequantization_across_odd_weight_rows_and_k_tail,
+	runtime,
 	{
 		let (rows, output_features, input_features) = (6_usize, 5_usize, 35_usize);
 		let input_values: Vec<f32> = (0..rows * input_features)
@@ -384,7 +384,7 @@ test_vk!(
 			&oa::Matrix::new_from_f32([output_features, input_features], &weight_values)?,
 			Quantization::Q8,
 		)?;
-		let expected = reference_mat_mul_nt(
+		let expected = reference_matmul_nt(
 			&input_values,
 			&dequantize_q8_oracle(
 				&weight.payload().read::<u8>()?,
@@ -395,7 +395,7 @@ test_vk!(
 			output_features,
 			input_features,
 		);
-		let output = mat_mul_nt(&input, &weight)?;
+		let output = matmul(&input, &weight)?;
 		assert_eq!(output.shape(), &[rows, output_features]);
 		expect_near(&output.read_f32()?, &expected, 2.0e-4);
 		Ok(())
@@ -403,8 +403,8 @@ test_vk!(
 );
 
 test_vk!(
-	quantized_mat_mul_handles_batched_leading_dimensions,
-	engine,
+	quantized_matmul_handles_batched_leading_dimensions,
+	runtime,
 	{
 		let (batches, rows, output_features, input_features) = (2_usize, 4_usize, 3_usize, 33_usize);
 		let input_values: Vec<f32> = (0..batches * rows * input_features)
@@ -423,14 +423,14 @@ test_vk!(
 			&weight.scale().read_f32()?,
 			weight_values.len(),
 		);
-		let expected = reference_mat_mul_nt(
+		let expected = reference_matmul_nt(
 			&input_values,
 			&dequantized,
 			batches * rows,
 			output_features,
 			input_features,
 		);
-		let output = mat_mul_nt(&input, &weight)?;
+		let output = matmul(&input, &weight)?;
 		assert_eq!(output.shape(), &[batches, rows, output_features]);
 		expect_near(&output.read_f32()?, &expected, 2.0e-4);
 		Ok(())
@@ -439,7 +439,7 @@ test_vk!(
 
 test_vk!(
 	quantized_value_owns_format_shape_and_private_planes,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([2, 3], &[1.0, -2.0, 3.0, -4.0, 5.0, -6.0])?;
 		let weight = quantize(&input, Quantization::Q4)?;
@@ -454,17 +454,17 @@ test_vk!(
 	}
 );
 
-test_vk!(dequantize_restores_the_logical_shape, engine, {
+test_vk!(dequantize_restores_the_logical_shape, runtime, {
 	let values: Vec<f32> = (0..99).map(|i| (i as f32 * 0.13).sin() * 5.0).collect();
 	let input = oa::Matrix::new_from_f32([3, 33], &values)?;
 	let output = dequantize(&quantize(&input, Quantization::Q8)?)?;
 	assert_eq!(output.shape(), &[3, 33]);
-	expect_round_trip(&engine, &values, Quantization::Q8)
+	expect_round_trip(&runtime, &values, Quantization::Q8)
 });
 
 test_vk!(
 	quantized_surface_fails_closed_on_invalid_contracts,
-	engine,
+	runtime,
 	{
 		let f32_matrix = oa::Matrix::new_from_f32([32], &[0.0; 32])?;
 		let byte_matrix = oa::Matrix::new_from_slice([32], &[0_u8; 32])?;
@@ -503,45 +503,45 @@ test_vk!(
 			Quantization::Q8,
 		)?;
 		let rank2_input = oa::Matrix::new_from_f32([2, 5], &[0.0; 10])?;
-		assert!(mat_mul_nt(&rank2_input, &rank3_weight).is_err());
+		assert!(matmul(&rank2_input, &rank3_weight).is_err());
 
 		let matrix_input = oa::Matrix::new_from_f32([2, 32], &[0.0; 64])?;
 		let wrong_k = oa::Matrix::new_from_f32([2, 31], &[0.0; 62])?;
-		assert!(mat_mul_nt(&wrong_k, &weight).is_err());
-		assert!(mat_mul_nt(&matrix_input, &weight).is_ok());
+		assert!(matmul(&wrong_k, &weight).is_err());
+		assert!(matmul(&matrix_input, &weight).is_ok());
 		Ok(())
 	}
 );
 
-test_vk!(quantized_mat_mul_rejects_invalid_contracts, engine, {
+test_vk!(quantized_matmul_rejects_invalid_contracts, runtime, {
 	let weight_matrix = oa::Matrix::new_from_f32([4, 32], &[0.0; 128])?;
 	let weight = quantize(&weight_matrix, Quantization::Q4)?;
 	let rank1_input = oa::Matrix::new_from_f32([32], &[0.0; 32])?;
-	assert!(mat_mul_nt(&rank1_input, &weight).is_err());
+	assert!(matmul(&rank1_input, &weight).is_err());
 	let mismatched = oa::Matrix::new_from_f32([2, 31], &[0.0; 62])?;
-	assert!(mat_mul_nt(&mismatched, &weight).is_err());
+	assert!(matmul(&mismatched, &weight).is_err());
 	let valid = oa::Matrix::new_from_f32([2, 32], &[0.0; 64])?;
-	assert_eq!(mat_mul_nt(&valid, &weight)?.shape(), &[2, 4]);
+	assert_eq!(matmul(&valid, &weight)?.shape(), &[2, 4]);
 	Ok(())
 });
 
-test_vk!(quantized_mat_mul_zero_rows_do_not_dispatch, engine, {
+test_vk!(quantized_matmul_zero_rows_do_not_dispatch, runtime, {
 	let weight = quantize(
 		&oa::Matrix::new_from_f32([4, 32], &[1.0; 128])?,
 		Quantization::Q8,
 	)?;
 	let input = oa::Matrix::new_from_f32([0, 32], &[])?;
-	let output = mat_mul_nt(&input, &weight)?;
+	let output = matmul(&input, &weight)?;
 	assert_eq!(output.shape(), &[0, 4]);
 	assert_eq!(output.num_elements(), 0);
 	Ok(())
 });
 
 test_vk!(
-	quantize_dequantize_mat_mul_own_one_semantic_operation_each,
-	engine,
+	quantize_dequantize_matmul_own_one_semantic_operation_each,
+	runtime,
 	{
-		let (capture_plan, weight) = engine.capture(|| {
+		let (capture_plan, weight) = runtime.capture(|| {
 			quantize(
 				&oa::Matrix::new_from_f32([4, 32], &[1.0; 128])?,
 				Quantization::Q4,
@@ -559,23 +559,23 @@ test_vk!(
 		assert_eq!(output_value.dtype(), oa::DType::F32);
 		assert!(!output_value.is_external());
 		assert!(capture_plan.captured_resources().len() >= 2);
-		engine.submit(&capture_plan)?.wait()?;
+		runtime.submit(&capture_plan)?.wait()?;
 
 		let input = oa::Matrix::new_from_f32([2, 32], &[0.5; 64])?;
-		let (matmul_plan, _) = engine.capture(|| mat_mul_nt(&input, &weight))?;
+		let (matmul_plan, _) = runtime.capture(|| matmul(&input, &weight))?;
 		let semantic = matmul_plan.semantic_graph();
 		assert_eq!(semantic.operations().len(), 1);
 		assert_eq!(
 			semantic.operations()[0].name(),
-			"oa::FnMatrix::matMulNtQuantized"
+			"oa::FnMatrix::matmulNtQuantized"
 		);
 		Ok(())
 	}
 );
 
 test_vk!(
-	captured_quantized_mat_mul_matches_eager_oracle_and_replays,
-	engine,
+	captured_quantized_matmul_matches_eager_oracle_and_replays,
+	runtime,
 	{
 		let input_values: Vec<f32> = (0..96).map(|i| (i as f32 * 0.19).sin() * 4.0).collect();
 		let input = oa::Matrix::new_from_f32([3, 32], &input_values)?;
@@ -588,11 +588,11 @@ test_vk!(
 			)?,
 			Quantization::Q8,
 		)?;
-		let eager = mat_mul_nt(&input, &weight)?.read_f32()?;
-		let (plan, _) = engine.capture(|| mat_mul_nt(&input, &weight))?;
+		let eager = matmul(&input, &weight)?.read_f32()?;
+		let (plan, _) = runtime.capture(|| matmul(&input, &weight))?;
 		for _ in 0..2 {
-			engine.submit(&plan)?.wait()?;
-			assert_eq!(mat_mul_nt(&input, &weight)?.read_f32()?, eager);
+			runtime.submit(&plan)?.wait()?;
+			assert_eq!(matmul(&input, &weight)?.read_f32()?, eager);
 		}
 		Ok(())
 	}
@@ -624,7 +624,7 @@ fn dense_linear(with_bias: bool) -> oa::Result<Linear> {
 
 test_vk!(
 	quantized_linear_q8_matches_dense_forward_within_tolerance,
-	engine,
+	runtime,
 	{
 		let dense = dense_linear(true)?;
 		let quantized = QuantizedLinear::from_linear(&dense, Quantization::Q8)?;
@@ -652,7 +652,7 @@ test_vk!(
 
 test_vk!(
 	quantized_linear_q4_without_bias_matches_dequantized_oracle,
-	engine,
+	runtime,
 	{
 		let dense = dense_linear(false)?;
 		let quantized = QuantizedLinear::from_linear(&dense, Quantization::Q4)?;
@@ -683,7 +683,7 @@ test_vk!(
 
 test_vk!(
 	quantized_linear_registers_bias_as_persistent_buffer_not_parameter,
-	engine,
+	runtime,
 	{
 		let dense = dense_linear(true)?;
 		let quantized = QuantizedLinear::from_linear(&dense, Quantization::Q8)?;
@@ -696,7 +696,7 @@ test_vk!(
 	}
 );
 
-test_vk!(quantized_linear_rejects_rank_and_bias_mismatch, engine, {
+test_vk!(quantized_linear_rejects_rank_and_bias_mismatch, runtime, {
 	let rank1 = quantize(
 		&oa::Matrix::new_from_f32([32], &[1.0; 32])?,
 		Quantization::Q8,

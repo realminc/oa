@@ -81,18 +81,18 @@ fn equal_nonempty(left: &Matrix, right: &Matrix, dtype: DType, operation: &str) 
 			"{operation} inputs must be nonempty"
 		)));
 	}
-	validate_same_engine(left, &[right], operation)?;
+	validate_same_runtime(left, &[right], operation)?;
 	u32::try_from(left.num_elements())
 		.map_err(|_| Error::out_of_range(format!("{operation} element count exceeds u32")))
 }
 
-fn validate_same_engine(reference: &Matrix, others: &[&Matrix], operation: &str) -> Result<()> {
+fn validate_same_runtime(reference: &Matrix, others: &[&Matrix], operation: &str) -> Result<()> {
 	if others
 		.iter()
-		.any(|matrix| !reference.engine_handle().same_as(matrix.engine_handle()))
+		.any(|matrix| !reference.runtime().same_as(matrix.runtime()))
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	Ok(())
@@ -106,13 +106,13 @@ fn positive_class_count(class_count: i32, operation: &str) -> Result<u32> {
 }
 
 fn allocate(
-	engine: &crate::runtime::EngineHandle,
+	runtime: &crate::runtime::RuntimeHandle,
 	shape: &[u32],
 	element_count: u32,
 	dtype: DType,
 ) -> Result<Matrix> {
 	Matrix::allocate(
-		engine,
+		runtime,
 		shape.iter().map(|value| *value as usize).collect(),
 		element_count as usize,
 		dtype,

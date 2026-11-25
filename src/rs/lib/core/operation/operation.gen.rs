@@ -2,18 +2,18 @@
 // schema=matrix_elemwise.json schema_version=1 generator_version=64
 // schema_sha256=7e17a5ca4604aaf3197bf9f361e22d89f61c7a26045b69350eff7eede1237ba4
 // cryptography_merkle_sha256=99b9b2b5040e2c94cfd38f69ad0613df36d69f63b49e1a3d34e4698f9a791e81
-// cryptography_ntt_sha256=7c4fa9a7775bc4e482550c6d15fd3d9506d13e51a23259023f87fe2db4c2f2a4
+// cryptography_ntt_sha256=e338d1df58fe4bd5c144d6c64cbadc6b6a0f089ba9f06f5873371153025d5458
 // cryptography_bigint_sha256=a34ad504b52a086742db5b531f6494ed8c64744556b6db85e3e893c56bd149b0
-// matrix_blas_sha256=069a018c55da56f4a086cd2e1adf93d14c368274db0386dd226084fb9060700b
+// matrix_blas_sha256=923f078871da395b32c267810611a04885c383d5cb159a144fb1186d1d866ce8
 // matrix_reduce_sha256=12a02e351479af1f60fb6c783c17c0a4834cbc5f513691df32e782777ded56bc
 // matrix_rng_sha256=bc63df2993dd5d9a09ae6d6f482a8fdf1f8dec4740a79dc6a3c475fe3de1da91
 // matrix_index_sha256=3af2a22d5d958bba3246d8ade8e5cafb8f51de44d1c36155cc41e324fbea3fdb
-// ml_training_sha256=faa4f7fe14ddee83260c86ef0ae313b7b0e9b8e7f586f1090e4350fbec8d9e38
+// ml_training_sha256=20f0b7622ce0326b4b010c6d411597a366e94542d525aeb5bae5ad5ba57a0983
 // audio_sha256=0acacb625934738cbac7eca8170ac18c3fb7f7dc2fb4b57552bf03ab04585d3b
 // cryptography_hash_sha256=346a7ffb863b1e9905cd924bf5b52ea0b452e06f9c1a0918d8d76e8ff4df2dc3
-// cryptography_pqc_sha256=8f189e5eb316e76fc2971de4cd6f5852eb7011a1e6fcaeebaba92903ca0214ed
-// image_sha256=4c3af0f4b2504702bcaaa32134afcbd07ca92d06660d4847a5eeb5a0691dde61
-// vision_detection_sha256=02e86d30bda28aa25900407a10548d1272ebbac64461f518e53e8266eebd9f1a
+// cryptography_pqc_sha256=ad5c52b92d5db6eea9bc0f3a0052a27bc622f590c2bf8aff4671611eeef37982
+// image_sha256=b49cf13c5c000ebf985020b5b9eb0a98ddc2d64d8757d5cc3b5cb39d7aecbf00
+// vision_detection_sha256=1d56e470ef51214370f11f870bcd94e22d378b7068a58f011c9dc160d9e13b47
 // Current OARS compatibility contracts; donor OA identities replace each row when its full contract lands.
 
 use super::{
@@ -305,13 +305,13 @@ pub mod matrix {
 	.with_fusion_class(OpFusionClass::Gather)
 	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
 
-	pub const MAT_MUL_NT: OperationContract = OperationContract::new(
+	pub const MATMUL: OperationContract = OperationContract::new(
 		"oa::FnMatrix::matMulNt",
 		0x4309b836dbcb8f84,
 		&[OpValueKind::Matrix, OpValueKind::Matrix],
 		&[OpValueKind::Matrix],
 	)
-	.with_shape_rule(OpShapeRule::MatMulNt)
+	.with_shape_rule(OpShapeRule::MatmulNt)
 	.with_dtype_rule(OpDTypeRule::MatchInput)
 	.with_differentiation(OpDifferentiation::Reverse)
 	.with_lowering(OpLowering::Gemm)
@@ -4208,9 +4208,9 @@ pub mod ml {
 	.with_fusion_class(OpFusionClass::Pointwise)
 	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
 
-	pub const MAT_MUL_NT_Q4: OperationContract = OperationContract::new(
-		"oa::ml::matrix::mat_mul_nt_q4",
-		0x248882c837fbb863,
+	pub const MATMUL_NT_Q4: OperationContract = OperationContract::new(
+		"oa::ml::matrix::matmul_nt_q4",
+		0xf7676122be8e9cb1,
 		&[
 			OpValueKind::Matrix,
 			OpValueKind::Matrix,
@@ -4225,9 +4225,9 @@ pub mod ml {
 	.with_fusion_class(OpFusionClass::Gemm)
 	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
 
-	pub const MAT_MUL_NT_Q8: OperationContract = OperationContract::new(
-		"oa::ml::matrix::mat_mul_nt_q8",
-		0xe29dbc2d1cf01dde,
+	pub const MATMUL_NT_Q8: OperationContract = OperationContract::new(
+		"oa::ml::matrix::matmul_nt_q8",
+		0x0c3a4956b5642e2a,
 		&[
 			OpValueKind::Matrix,
 			OpValueKind::Matrix,
@@ -4902,13 +4902,13 @@ pub mod ml {
 	.with_control_flow(OpControlFlow::Conditional)
 	.attributes(&[OpAttributeSpec::new("quantization", OpAttributeKind::Enum)]);
 
-	pub const MAT_MUL_NT_QUANTIZED: OperationContract = OperationContract::new(
+	pub const MATMUL_NT_QUANTIZED: OperationContract = OperationContract::new(
 		"oa::FnMatrix::matMulNtQuantized",
 		0x5d0edf95db46aa53,
 		&[OpValueKind::Matrix, OpValueKind::QuantMatrix],
 		&[OpValueKind::Matrix],
 	)
-	.with_shape_rule(OpShapeRule::MatMulNt)
+	.with_shape_rule(OpShapeRule::MatmulNt)
 	.with_dtype_rule(OpDTypeRule::Explicit)
 	.with_differentiation(OpDifferentiation::None)
 	.with_lowering(OpLowering::Dispatch)
@@ -7780,6 +7780,534 @@ pub mod image {
 	.with_fusion_class(OpFusionClass::Reduce)
 	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
 	.attributes(&[OpAttributeSpec::new("method", OpAttributeKind::Enum)]);
+
+	pub const PYR_DOWN: OperationContract = OperationContract::new(
+		"oa::image::pyr_down",
+		0x1fff822c81afc57b,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Gather)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const PYR_UP: OperationContract = OperationContract::new(
+		"oa::image::pyr_up",
+		0x4943bcc70a51b585,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Gather)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const THRESHOLD_AUTO: OperationContract = OperationContract::new(
+		"oa::image::threshold_auto",
+		0x61b59e7ee3ec8127,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image, OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("method", OpAttributeKind::Enum),
+		OpAttributeSpec::new("max_value", OpAttributeKind::Float),
+	]);
+
+	pub const INTEGRAL: OperationContract = OperationContract::new(
+		"oa::image::integral",
+		0x6bbc5b95576cca38,
+		&[OpValueKind::Image],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const CVT_COLOR: OperationContract = OperationContract::new(
+		"oa::image::cvt_color",
+		0xfb265c9420d683b2,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new("conversion", OpAttributeKind::Enum)]);
+
+	pub const APPLY_COLOR_MAP: OperationContract = OperationContract::new(
+		"oa::image::apply_color_map",
+		0x243e369de7b10eaa,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new("colormap", OpAttributeKind::Enum)]);
+
+	pub const CALC_BACK_PROJECT: OperationContract = OperationContract::new(
+		"oa::image::calc_back_project",
+		0x8d1603b9e402da35,
+		&[OpValueKind::Image, OpValueKind::Matrix],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("lower", OpAttributeKind::Float),
+		OpAttributeSpec::new("upper", OpAttributeKind::Float),
+	]);
+
+	pub const CLAHE: OperationContract = OperationContract::new(
+		"oa::image::clahe",
+		0x4bf4c35486fa101a,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("clip_limit", OpAttributeKind::Float),
+		OpAttributeSpec::new("tile_width", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("tile_height", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const ACCUMULATE: OperationContract = OperationContract::new(
+		"oa::image::accumulate",
+		0x3279bcc7ed3a4791,
+		&[OpValueKind::Image, OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const ACCUMULATE_WEIGHTED: OperationContract = OperationContract::new(
+		"oa::image::accumulate_weighted",
+		0xef0f7646410865b0,
+		&[OpValueKind::Image, OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new("alpha", OpAttributeKind::Float)]);
+
+	pub const MOMENTS: OperationContract = OperationContract::new(
+		"oa::image::moments",
+		0x35d6d8244f9d3e26,
+		&[OpValueKind::Image],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Reduce)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const PSNR: OperationContract = OperationContract::new(
+		"oa::image::psnr",
+		0x1b6ecaa7f981119e,
+		&[OpValueKind::Image, OpValueKind::Image],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Reduce)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new("peak_value", OpAttributeKind::Float)]);
+
+	pub const SSIM: OperationContract = OperationContract::new(
+		"oa::image::ssim",
+		0x1daee9962c764cd0,
+		&[OpValueKind::Image, OpValueKind::Image],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Reduce)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const MATCH_TEMPLATE: OperationContract = OperationContract::new(
+		"oa::image::match_template",
+		0x18cacda0ce17f273,
+		&[OpValueKind::Image, OpValueKind::Image],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Conv)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new("method", OpAttributeKind::Enum)]);
+
+	pub const WARP_POLAR: OperationContract = OperationContract::new(
+		"oa::image::warp_polar",
+		0x75e5586982d68b8e,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Gather)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("center_x", OpAttributeKind::Float),
+		OpAttributeSpec::new("center_y", OpAttributeKind::Float),
+		OpAttributeSpec::new("max_radius", OpAttributeKind::Float),
+		OpAttributeSpec::new("out_width", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("out_height", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("mode", OpAttributeKind::Enum),
+		OpAttributeSpec::new("interpolation", OpAttributeKind::Enum),
+		OpAttributeSpec::new("border", OpAttributeKind::Enum),
+		OpAttributeSpec::new("border_value", OpAttributeKind::Float),
+	]);
+
+	pub const CANNY: OperationContract = OperationContract::new(
+		"oa::image::canny",
+		0x00385eb9028aa9b3,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("low_threshold", OpAttributeKind::Float),
+		OpAttributeSpec::new("high_threshold", OpAttributeKind::Float),
+		OpAttributeSpec::new("hysteresis_passes", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const CONNECTED_COMPONENTS: OperationContract = OperationContract::new(
+		"oa::image::connected_components",
+		0xafdcf5e3b33791b9,
+		&[OpValueKind::Image],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("threshold", OpAttributeKind::Float),
+		OpAttributeSpec::new("connectivity", OpAttributeKind::Enum),
+		OpAttributeSpec::new("propagation_passes", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const DISTANCE_TRANSFORM: OperationContract = OperationContract::new(
+		"oa::image::distance_transform",
+		0xfcbfec25e46d1a7f,
+		&[OpValueKind::Image],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("threshold", OpAttributeKind::Float),
+		OpAttributeSpec::new("distance", OpAttributeKind::Enum),
+		OpAttributeSpec::new("propagation_passes", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const HOUGH_LINES: OperationContract = OperationContract::new(
+		"oa::image::hough_lines",
+		0x41b423ee4b611e97,
+		&[OpValueKind::Image],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("edge_threshold", OpAttributeKind::Float),
+		OpAttributeSpec::new("rho_step", OpAttributeKind::Float),
+		OpAttributeSpec::new("theta_step", OpAttributeKind::Float),
+		OpAttributeSpec::new("threshold", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("max_lines", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const HOUGH_LINES_P: OperationContract = OperationContract::new(
+		"oa::image::hough_lines_p",
+		0xae146d00c93a2531,
+		&[OpValueKind::Image],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("edge_threshold", OpAttributeKind::Float),
+		OpAttributeSpec::new("rho_step", OpAttributeKind::Float),
+		OpAttributeSpec::new("theta_step", OpAttributeKind::Float),
+		OpAttributeSpec::new("threshold", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("max_lines", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("min_line_length", OpAttributeKind::Float),
+		OpAttributeSpec::new("max_line_gap", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const FIND_CONTOURS: OperationContract = OperationContract::new(
+		"oa::image::find_contours",
+		0xfd1f4b1b2abda875,
+		&[OpValueKind::Image],
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("threshold", OpAttributeKind::Float),
+		OpAttributeSpec::new("connectivity", OpAttributeKind::Enum),
+		OpAttributeSpec::new("max_contours", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("max_points", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("propagation_passes", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const FLOOD_FILL: OperationContract = OperationContract::new(
+		"oa::image::flood_fill",
+		0xe0b57fe51cba6ae2,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("seed_x", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("seed_y", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("value", OpAttributeKind::Float),
+		OpAttributeSpec::new("lo_diff", OpAttributeKind::Float),
+		OpAttributeSpec::new("up_diff", OpAttributeKind::Float),
+		OpAttributeSpec::new("connectivity", OpAttributeKind::Enum),
+		OpAttributeSpec::new("propagation_passes", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const DRAW_LINE: OperationContract = OperationContract::new(
+		"oa::image::draw_line",
+		0xdab3d30bf79fef91,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("x1", OpAttributeKind::Float),
+		OpAttributeSpec::new("y1", OpAttributeKind::Float),
+		OpAttributeSpec::new("x2", OpAttributeKind::Float),
+		OpAttributeSpec::new("y2", OpAttributeKind::Float),
+		OpAttributeSpec::new("color", OpAttributeKind::Float),
+		OpAttributeSpec::new("thickness", OpAttributeKind::Float),
+	]);
+
+	pub const DRAW_RECTANGLE: OperationContract = OperationContract::new(
+		"oa::image::draw_rectangle",
+		0xd5aef537edd71b5d,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("x", OpAttributeKind::Float),
+		OpAttributeSpec::new("y", OpAttributeKind::Float),
+		OpAttributeSpec::new("width", OpAttributeKind::Float),
+		OpAttributeSpec::new("height", OpAttributeKind::Float),
+		OpAttributeSpec::new("color", OpAttributeKind::Float),
+		OpAttributeSpec::new("thickness", OpAttributeKind::Float),
+	]);
+
+	pub const DRAW_CIRCLE: OperationContract = OperationContract::new(
+		"oa::image::draw_circle",
+		0x48ad9d29b8e23afb,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("cx", OpAttributeKind::Float),
+		OpAttributeSpec::new("cy", OpAttributeKind::Float),
+		OpAttributeSpec::new("radius", OpAttributeKind::Float),
+		OpAttributeSpec::new("color", OpAttributeKind::Float),
+		OpAttributeSpec::new("thickness", OpAttributeKind::Float),
+	]);
+
+	pub const FILL_POLYGON: OperationContract = OperationContract::new(
+		"oa::image::fill_polygon",
+		0x2740c10840e88535,
+		&[OpValueKind::Image, OpValueKind::Matrix],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new("color", OpAttributeKind::Float)]);
+
+	pub const CORNER_SCORE: OperationContract = OperationContract::new(
+		"oa::image::corner_score",
+		0xd3edf5608a113269,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("block_size", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("k", OpAttributeKind::Float),
+		OpAttributeSpec::new("score_type", OpAttributeKind::Enum),
+	]);
+
+	pub const CORNER_FAST: OperationContract = OperationContract::new(
+		"oa::image::corner_fast",
+		0x5475eb13a4fc1a04,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[OpAttributeSpec::new(
+		"arc_length",
+		OpAttributeKind::UnsignedInteger,
+	)]);
+
+	pub const BF_MATCH: OperationContract = OperationContract::new(
+		"oa::image::bf_match",
+		0x2c419366e192c0aa,
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::Explicit)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const GOOD_FEATURES_TO_TRACK: OperationContract = OperationContract::new(
+		"oa::image::good_features_to_track",
+		0x46a004089f6529ee,
+		&[OpValueKind::Image],
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("max_corners", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("quality", OpAttributeKind::Float),
+		OpAttributeSpec::new("min_distance", OpAttributeKind::Float),
+	]);
+
+	pub const ORB: OperationContract = OperationContract::new(
+		"oa::image::orb",
+		0xc9b5fc470fdeb062,
+		&[OpValueKind::Image],
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("max_features", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("quality", OpAttributeKind::Float),
+		OpAttributeSpec::new("min_distance", OpAttributeKind::Float),
+		OpAttributeSpec::new("levels", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("edge", OpAttributeKind::UnsignedInteger),
+	]);
 }
 
 /// Generated semantic contracts for Vision operations.

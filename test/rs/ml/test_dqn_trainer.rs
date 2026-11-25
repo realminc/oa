@@ -4,7 +4,7 @@ use oa::ml::{
 };
 
 fn linear(
-	_engine: &oa::Engine,
+	_runtime: &oa::Runtime,
 	weight: [f32; 4],
 	bias: [f32; 2],
 ) -> oa::Result<oa::ml::nn::Linear> {
@@ -16,10 +16,10 @@ fn linear(
 
 test_vk!(
 	dqn_trainer_matches_donor_update_and_target_cadence,
-	engine,
+	runtime,
 	{
 		let mut replay = ReplayBuffer::new(
-			&engine,
+			&runtime,
 			ReplayConfig {
 				capacity: 8,
 				observation_shape: vec![2],
@@ -36,13 +36,13 @@ test_vk!(
 			oa::Matrix::new_from_slice([4], &[0_u8, 0, 0, 1])?,
 		))?;
 
-		let online = linear(&engine, [0.2, -0.1, -0.3, 0.4], [0.0, 0.0])?;
-		let target = linear(&engine, [9.0; 4], [7.0; 2])?;
+		let online = linear(&runtime, [0.2, -0.1, -0.3, 0.4], [0.0, 0.0])?;
+		let target = linear(&runtime, [9.0; 4], [7.0; 2])?;
 		let online_weight = online.weight();
 		let target_weight = target.weight();
 		let mut optimizer = Sgd::new(online.all_parameters()?, 1.0e-3, 0.0, 0.0)?;
 		let mut trainer = DqnTrainer::new(
-			&engine,
+			&runtime,
 			&online,
 			&target,
 			&mut optimizer,
@@ -83,10 +83,10 @@ test_vk!(
 
 test_vk!(
 	dqn_trainer_rejects_replay_and_module_contract_drift,
-	engine,
+	runtime,
 	{
 		let replay = ReplayBuffer::new(
-			&engine,
+			&runtime,
 			ReplayConfig {
 				capacity: 4,
 				observation_shape: vec![2],
@@ -94,11 +94,11 @@ test_vk!(
 				action_dtype: oa::DType::F32,
 			},
 		)?;
-		let online = linear(&engine, [0.0; 4], [0.0; 2])?;
-		let target = linear(&engine, [0.0; 4], [0.0; 2])?;
+		let online = linear(&runtime, [0.0; 4], [0.0; 2])?;
+		let target = linear(&runtime, [0.0; 4], [0.0; 2])?;
 		let mut optimizer = Sgd::new(online.all_parameters()?, 1.0e-3, 0.0, 0.0)?;
 		let error = match DqnTrainer::new(
-			&engine,
+			&runtime,
 			&online,
 			&target,
 			&mut optimizer,

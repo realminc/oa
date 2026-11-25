@@ -5,7 +5,7 @@ pub(in crate::ml) fn {{name}}(
 ) -> Result<Matrix> {
 	let contract = {{contract}};
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	for matrix in &[input, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -13,9 +13,9 @@ pub(in crate::ml) fn {{name}}(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -48,7 +48,7 @@ pub(in crate::ml) fn {{name}}(
 	let intermediate_u32 = u32::try_from(intermediate_size)
 		.map_err(|_| Error::invalid_argument(format!("{operation} intermediate size exceeds u32")))?;
 	let input_gradient = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -67,7 +67,7 @@ pub(in crate::ml) fn {{name}}(
 		PushConstant::U32(output_count_u32),
 		PushConstant::U32(intermediate_u32),
 	];
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::{{kernel}},
 			buffers: &buffers,

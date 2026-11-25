@@ -1,11 +1,11 @@
 //! Stochastic gradient descent optimizer.
 
 use crate::ml::Parameter;
-use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::ml::validation::{shader_u32, validate_f32_same_runtime};
 use crate::runtime::ComputeDispatch;
 use crate::runtime::SemanticDispatch;
 use crate::runtime::{BufferBinding, KernelId, PushConstant};
-use crate::{DType, Engine, Error, Matrix, OpAttribute, Result};
+use crate::{DType, Error, Matrix, OpAttribute, Result, Runtime};
 
 use super::optimizer::{
 	Optimizer, OptimizerCheckpoint, OptimizerRestore, SgdParameterState, checkpoint_capability,
@@ -21,7 +21,7 @@ pub(super) struct SgdScalars {
 
 fn sgd(parameter: &Matrix, gradient: &Matrix, scalars: SgdScalars) -> Result<()> {
 	const OPERATION: &str = crate::core::operation::ml::SGD.name();
-	validate_f32_same_engine(OPERATION, &[parameter, gradient])?;
+	validate_f32_same_runtime(OPERATION, &[parameter, gradient])?;
 	if gradient.shape() != parameter.shape() {
 		return Err(Error::invalid_argument(format!(
 			"{OPERATION} requires identical parameter and gradient shapes"
@@ -68,11 +68,11 @@ fn sgd(parameter: &Matrix, gradient: &Matrix, scalars: SgdScalars) -> Result<()>
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -91,7 +91,7 @@ fn sgd_momentum(
 	scalars: SgdScalars,
 ) -> Result<()> {
 	const OPERATION: &str = crate::core::operation::ml::SGD_MOMENTUM.name();
-	validate_f32_same_engine(OPERATION, &[parameter, gradient, momentum])?;
+	validate_f32_same_runtime(OPERATION, &[parameter, gradient, momentum])?;
 	for candidate in [gradient, momentum] {
 		if candidate.shape() != parameter.shape() {
 			return Err(Error::invalid_argument(format!(
@@ -146,11 +146,11 @@ fn sgd_momentum(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -179,7 +179,7 @@ impl Sgd {
 	/// # Errors
 	///
 	/// Returns an error for invalid hyperparameters, duplicate parameters,
-	/// mixed-engine ownership, or momentum allocation/upload failure.
+	/// mixed-runtime ownership, or momentum allocation/upload failure.
 	pub fn new(
 		parameters: impl IntoIterator<Item = Parameter>,
 		learning_rate: f32,
@@ -217,13 +217,13 @@ impl Sgd {
 				));
 			}
 		}
-		let engine = parameters[0].data().engine_handle().clone();
+		let runtime = parameters[0].data().runtime().clone();
 		if parameters
 			.iter()
-			.any(|parameter| !engine.same_as(parameter.data().engine_handle()))
+			.any(|parameter| !runtime.same_as(parameter.data().runtime()))
 		{
 			return Err(Error::invalid_argument(
-				"SGD parameters must belong to one engine",
+				"SGD parameters must belong to one runtime",
 			));
 		}
 		let mut states = Vec::with_capacity(parameters.len());
@@ -232,7 +232,7 @@ impl Sgd {
 			let momentum_buf = (momentum > 0.0)
 				.then(|| {
 					Matrix::allocate(
-						data.engine_handle(),
+						data.runtime(),
 						data.shape().to_vec(),
 						data.num_elements(),
 						DType::F32,
@@ -327,8 +327,8 @@ impl Sgd {
 		self.step
 	}
 
-	pub(super) fn belongs_to_engine(&self, engine: &Engine) -> bool {
-		engine.same_as_handle(self.parameters[0].parameter.data().engine_handle())
+	pub(super) fn belongs_to_runtime(&self, runtime: &Runtime) -> bool {
+		runtime.same_as_handle(self.parameters[0].parameter.data().runtime())
 	}
 
 	pub(super) fn checkpoint(&self) -> Result<OptimizerCheckpoint> {
@@ -403,8 +403,8 @@ impl Optimizer for Sgd {
 		Self::step_count(self)
 	}
 
-	fn belongs_to(&self, engine: &Engine) -> bool {
-		self.belongs_to_engine(engine)
+	fn belongs_to(&self, runtime: &Runtime) -> bool {
+		self.belongs_to_runtime(runtime)
 	}
 }
 

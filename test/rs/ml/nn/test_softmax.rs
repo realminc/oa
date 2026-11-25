@@ -72,7 +72,7 @@ fn host_loss(
 	(loss / rows as f64) as f32
 }
 
-test_vk!(softmax_module_and_adjoint_match_donor_contract, engine, {
+test_vk!(softmax_module_and_adjoint_match_donor_contract, runtime, {
 	let input_values = [
 		0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, -1.2, 0.5, 0.9, 1.4, -0.2, 0.1,
 	];
@@ -125,7 +125,7 @@ test_vk!(softmax_module_and_adjoint_match_donor_contract, engine, {
 
 test_vk!(
 	log_softmax_module_and_adjoint_match_donor_contract,
-	engine,
+	runtime,
 	{
 		let input_values = [
 			0.2_f32, -0.7, 1.1, 0.8, 0.3, -0.4, -1.2, 0.5, 0.9, 1.4, -0.2, 0.1,

@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::super::autograd::PythonParameter;
 
@@ -16,10 +16,10 @@ pub(crate) struct PythonByteEmbedding {
 impl PythonByteEmbedding {
 	/// Construct a deterministically initialized byte embedding.
 	#[new]
-	#[pyo3(signature = (embedding_dim, seed = 0, engine=None))]
-	pub fn new(embedding_dim: usize, seed: u64, engine: Option<&PythonEngine>) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::nn::ByteEmbedding::new_with_seed_on(&engine, embedding_dim, seed)
+	#[pyo3(signature = (embedding_dim, seed = 0, runtime=None))]
+	pub fn new(embedding_dim: usize, seed: u64, runtime: Option<&PythonRuntime>) -> PyResult<Self> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::nn::ByteEmbedding::new_with_seed_on(&runtime, embedding_dim, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}
@@ -78,10 +78,10 @@ pub(crate) struct PythonByteHead {
 impl PythonByteHead {
 	/// Construct a deterministically initialized byte head.
 	#[new]
-	#[pyo3(signature = (input_features, seed = 0, engine=None))]
-	pub fn new(input_features: usize, seed: u64, engine: Option<&PythonEngine>) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::nn::ByteHead::new_with_seed_on(&engine, input_features, seed)
+	#[pyo3(signature = (input_features, seed = 0, runtime=None))]
+	pub fn new(input_features: usize, seed: u64, runtime: Option<&PythonRuntime>) -> PyResult<Self> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::nn::ByteHead::new_with_seed_on(&runtime, input_features, seed)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

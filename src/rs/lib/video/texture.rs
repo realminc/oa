@@ -35,20 +35,20 @@ pub fn from_texture(
 /// Retain a texture and its exact producer completion in one video frame.
 ///
 /// This is the render-target path: it shares the texture and event without a
-/// readback, wait, or pixel copy. The event must belong to the texture's Engine.
+/// readback, wait, or pixel copy. The event must belong to the texture's Runtime.
 ///
 /// # Errors
 ///
-/// Returns an error when `ready` comes from a different Engine.
+/// Returns an error when `ready` comes from a different Runtime.
 pub fn from_texture_with_ready(
 	texture: &Texture,
 	timing: VideoFrameTiming,
 	color: VideoColorInfo,
 	ready: &Event,
 ) -> Result<VideoFrame> {
-	if !texture.engine_handle().owns_event(ready) {
+	if !texture.runtime().owns_event(ready) {
 		return Err(Error::invalid_argument(
-			"video frame producer event belongs to another Engine",
+			"video frame producer event belongs to another Runtime",
 		));
 	}
 	Ok(VideoFrame::from_texture(

@@ -1,7 +1,7 @@
 //! Channel norm Matrix operation implementations.
 
 use crate::ml::autograd;
-use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::ml::validation::{shader_u32, validate_f32_same_runtime};
 use crate::{
 	DType, Error, Matrix, OpAttribute, Result,
 	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
@@ -43,7 +43,7 @@ pub(in crate::ml) fn channel_norm_tracked(
 /// # Errors
 ///
 /// Returns an error unless the affine vectors match `C`, all values belong to
-/// one Engine, epsilon is finite and positive, `C <= 1024`, or recording fails.
+/// one Runtime, epsilon is finite and positive, `C <= 1024`, or recording fails.
 pub fn channel_norm(
 	input: &Matrix,
 	weight: &Matrix,
@@ -141,7 +141,7 @@ fn channel_norm_geometry(
 	if let Some(bias) = bias {
 		matrices.push(bias);
 	}
-	validate_f32_same_engine(operation, &matrices)?;
+	validate_f32_same_runtime(operation, &matrices)?;
 	Ok((
 		shader_u32(*batch, "batch", operation)?,
 		shader_u32(*channels, "channel count", operation)?,
@@ -165,7 +165,7 @@ pub(in crate::ml) fn channel_norm_forward(
 	let (batch, channels, sequence_length) =
 		channel_norm_geometry(input, weight, Some(bias), epsilon, operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -228,11 +228,11 @@ pub(in crate::ml) fn channel_norm_forward(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -275,12 +275,12 @@ pub(in crate::ml) fn channel_norm_backward_saved(
 	if let Some(output) = forward_output {
 		matrices.push(output);
 	}
-	validate_f32_same_engine(operation, &matrices)?;
+	validate_f32_same_runtime(operation, &matrices)?;
 	let rows = batch
 		.checked_mul(sequence_length)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} row count exceeds u32")))?;
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -289,25 +289,25 @@ pub(in crate::ml) fn channel_norm_backward_saved(
 		.checked_mul(channels as usize)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} contribution size overflows")))?;
 	let weight_contribution = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows as usize, channels as usize],
 		contribution_count,
 		DType::F32,
 	)?;
 	let bias_contribution = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows as usize, channels as usize],
 		contribution_count,
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		weight.num_elements(),
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		weight.num_elements(),
 		DType::F32,
@@ -396,7 +396,7 @@ pub(in crate::ml) fn channel_norm_backward_saved(
 			value: f64::from(epsilon),
 		},
 	];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,

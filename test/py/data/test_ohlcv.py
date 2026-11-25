@@ -65,13 +65,13 @@ class OhlcvBindingTest(unittest.TestCase):
 		value.set_f64("volume", [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0])
 		self.assertEqual(len(oa.OhlcvWindows.new_from_view(value.slice(3, 6), oa.UnixTimeUnit.Nanoseconds, 2, 1)), 1)
 
-	def test_dataset_retains_engine_and_uploads_native_sample(self):
+	def test_dataset_retains_runtime_and_uploads_native_sample(self):
 		value = frame()
 		value.set_f32("close", [10.0 + row * 0.1 for row in range(6)])
 		windows = oa.OhlcvWindows(value, oa.UnixTimeUnit.Nanoseconds, 2, 2)
-		engine = oa.Engine(logging=oa.LogOptions().console_output(False))
-		dataset = oa.OhlcvDataset(windows, engine=engine)
-		del engine, windows, value
+		runtime = oa.Runtime(logging=oa.LogOptions().console_output(False))
+		dataset = oa.OhlcvDataset(windows, runtime=runtime)
+		del runtime, windows, value
 		gc.collect()
 		self.assertEqual(len(dataset), 3)
 		x, y = dataset.get_sample(1)

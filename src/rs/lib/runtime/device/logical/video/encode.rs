@@ -114,7 +114,7 @@ enum EncodeCodec {
 	H265,
 }
 
-/// Engine-owned session state shared by every encode slot.
+/// Runtime-owned session state shared by every encode slot.
 pub(in crate::runtime) struct EncodeSession {
 	handle: vk::VideoSessionKHR,
 	parameters: vk::VideoSessionParametersKHR,
@@ -642,7 +642,7 @@ impl EncodeSession {
 	/// Producer: `write_rgba` host copy (visible via `Buffer::write` flush).
 	/// Consumer: this dispatch writes Y/UV plane views (SHADER_STORAGE_WRITE,
 	/// GENERAL) then the frame's encode submission transitions the image to
-	/// VIDEO_ENCODE_SRC. Cross-queue ordering comes from the engine timeline
+	/// VIDEO_ENCODE_SRC. Cross-queue ordering comes from the runtime timeline
 	/// serializing the compute submit before the encode submit.
 	pub(in crate::runtime) fn record_conversion(
 		&self,
@@ -758,7 +758,7 @@ impl EncodeSession {
 
 	/// Record one IDR/P frame for a slot onto the video encode queue.
 	///
-	/// The engine timeline orders this after the slot's conversion submission;
+	/// The runtime timeline orders this after the slot's conversion submission;
 	/// DPB read/write hazards are fenced by the in-command barrier (the donor's
 	/// zero-byte Xe workaround) and GOP state advances at submission time.
 	pub(in crate::runtime) fn record_frame(
@@ -1471,7 +1471,7 @@ fn record_rgba_to_nv12(
 	// Transition the NV12 picture to GENERAL for the storage-image writes;
 	// reinitialize is a no-op barrier on the same layout.
 	let barrier = vk::ImageMemoryBarrier2::new()
-		// The previous encode read completes before slot reuse, and the Engine
+		// The previous encode read completes before slot reuse, and the Runtime
 		// timeline orders this compute submission after it. The compute family
 		// cannot name VIDEO_ENCODE as a local pipeline stage. Images use concurrent
 		// sharing across the two families; acquire the next write at COMPUTE.

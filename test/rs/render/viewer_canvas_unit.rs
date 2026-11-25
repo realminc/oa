@@ -3,15 +3,15 @@ use super::*;
 #[test]
 #[ignore = "requires Vulkan texture upload and UI raster composition"]
 fn live_canvas_preserves_navigation_and_uses_shared_image_channels() -> Result<()> {
-	let engine = Engine::builder().build()?;
-	Engine::set_default(engine.clone());
+	let runtime = Runtime::builder().build()?;
+	Runtime::set_default(runtime.clone());
 	let config = ViewerConfig {
 		mode: ViewerMode::Live,
 		show_stats: false,
 		show_help: false,
 		..Default::default()
 	};
-	let mut media = MediaState::open(&engine, &config, None)?;
+	let mut media = MediaState::open(&runtime, &config, None)?;
 	let mut nav = Navigation::new();
 	nav.set_viewport_size(320.0, 240.0)?;
 	let texture = crate::render::texture_from_rgba8(&[231, 47, 13, 255].repeat(17 * 11), 17, 11)?;
@@ -48,7 +48,7 @@ fn live_canvas_preserves_navigation_and_uses_shared_image_channels() -> Result<(
 			..
 		}
 	));
-	let mut ui = Ui::init(&engine, 320, 240)?;
+	let mut ui = Ui::init(&runtime, 320, 240)?;
 	ui.begin_frame(16.0);
 	render_frame(
 		&mut ui,
@@ -77,11 +77,11 @@ fn live_canvas_preserves_navigation_and_uses_shared_image_channels() -> Result<(
 fn yuv_canvas_matches_rgba_and_keeps_reverse_history() -> Result<()> {
 	use crate::video::{VideoPlayer, VideoPlayerConfig};
 
-	let engine = Engine::builder()
-		.requirements(crate::EngineRequirements::default().graphics())
+	let runtime = Runtime::builder()
+		.requirements(crate::RuntimeRequirements::default().graphics())
 		.build()?;
-	Engine::set_default(engine.clone());
-	let mut ui = Ui::init(&engine, 1280, 720)?;
+	Runtime::set_default(runtime.clone());
+	let mut ui = Ui::init(&runtime, 1280, 720)?;
 	let fixtures = [
 		"shibuya_720p_30fps_h265_main10_10bit_420.mp4",
 		"shibuya_720p_30fps_av1_main_10bit_420.mp4",
@@ -92,8 +92,8 @@ fn yuv_canvas_matches_rgba_and_keeps_reverse_history() -> Result<()> {
 			.join("sdk/asset/video/clip")
 			.join(fixture);
 		let config = VideoPlayerConfig::default();
-		let mut reference = VideoPlayer::new_native(&engine, &path, config)?;
-		let mut direct = VideoPlayer::new_native(&engine, &path, config)?;
+		let mut reference = VideoPlayer::new_native(&runtime, &path, config)?;
+		let mut direct = VideoPlayer::new_native(&runtime, &path, config)?;
 		direct.enable_canvas_yuv()?;
 		let geometry = [
 			PixelRect::new(0, 0, 1280, 720),
@@ -145,15 +145,15 @@ fn measure_yuv_canvas_throughput() -> Result<()> {
 	use crate::video::{VideoPlayer, VideoPlayerConfig};
 	use std::{path::Path, time::Instant};
 
-	let engine = Engine::builder()
-		.requirements(crate::EngineRequirements::default().graphics())
+	let runtime = Runtime::builder()
+		.requirements(crate::RuntimeRequirements::default().graphics())
 		.build()?;
-	Engine::set_default(engine.clone());
-	let mut ui = Ui::init(&engine, 1280, 720)?;
+	Runtime::set_default(runtime.clone());
+	let mut ui = Ui::init(&runtime, 1280, 720)?;
 	let dst = PixelRect::new(0, 0, 1280, 720);
 	let mut measure = |path: &Path, trial: bool| -> Result<f64> {
 		let started = Instant::now();
-		let mut player = VideoPlayer::new_native(&engine, path, VideoPlayerConfig::default())?;
+		let mut player = VideoPlayer::new_native(&runtime, path, VideoPlayerConfig::default())?;
 		if trial {
 			player.enable_canvas_yuv()?;
 		}

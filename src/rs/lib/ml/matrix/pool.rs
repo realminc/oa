@@ -11,7 +11,7 @@ use crate::{
 
 use crate::ml::autograd;
 
-use super::super::validation::{shader_u32, validate_f32_same_engine};
+use super::super::validation::{shader_u32, validate_f32_same_runtime};
 
 // ── geometry helpers ─────────────────────────────────────────────────────────
 
@@ -456,7 +456,7 @@ pub(in crate::ml) fn avg_pool_2d_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::AVG_POOL_2D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	let geometry = Pool2dGeometry::resolve(input, kernel_size, stride, padding, operation)?;
 	let expected_shape = [
 		geometry.batch as usize,
@@ -471,7 +471,7 @@ pub(in crate::ml) fn avg_pool_2d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -484,7 +484,7 @@ pub(in crate::ml) fn avg_pool_2d_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, output_gradient];
 	let outputs = [&input_gradient];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAvgPool2dBackwardF32,
 			buffers: &buffers,
@@ -544,16 +544,16 @@ pub(in crate::ml) fn max_pool_2d_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::MAX_POOL_2D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	if indices.dtype() != DType::U32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} indices must use U32; found {}",
 			indices.dtype().token()
 		)));
 	}
-	if !input.engine_handle().same_as(indices.engine_handle()) {
+	if !input.runtime().same_as(indices.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let geometry = Pool2dGeometry::resolve(input, kernel_size, stride, padding, operation)?;
@@ -571,7 +571,7 @@ pub(in crate::ml) fn max_pool_2d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -585,7 +585,7 @@ pub(in crate::ml) fn max_pool_2d_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, indices, output_gradient];
 	let outputs = [&input_gradient];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMaxPool2dBackwardF32,
 			buffers: &buffers,
@@ -635,7 +635,7 @@ pub(in crate::ml) fn adaptive_avg_pool_2d_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::ADAPTIVE_AVG_POOL_2D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	let geometry = AdaptivePool2dGeometry::resolve(input, output_height, output_width, operation)?;
 	let expected_shape = [
 		geometry.batch as usize,
@@ -650,7 +650,7 @@ pub(in crate::ml) fn adaptive_avg_pool_2d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -661,7 +661,7 @@ pub(in crate::ml) fn adaptive_avg_pool_2d_backward(
 	];
 	let push_constants = geometry.push_constants();
 	let attributes = geometry.attributes();
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAdaptiveAvgPool2dBackwardF32,
 			buffers: &buffers,
@@ -723,16 +723,16 @@ pub(in crate::ml) fn max_pool_1d_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::MAX_POOL_1D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	if indices.dtype() != DType::U32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} indices must use U32; found {}",
 			indices.dtype().token()
 		)));
 	}
-	if !input.engine_handle().same_as(indices.engine_handle()) {
+	if !input.runtime().same_as(indices.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let geometry = Pool1dGeometry::resolve(input, kernel_size, stride, padding, operation)?;
@@ -749,7 +749,7 @@ pub(in crate::ml) fn max_pool_1d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -763,7 +763,7 @@ pub(in crate::ml) fn max_pool_1d_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, indices, output_gradient];
 	let outputs = [&input_gradient];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMaxPool1dBackwardF32,
 			buffers: &buffers,
@@ -813,16 +813,16 @@ pub(in crate::ml) fn adaptive_max_pool_1d_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::ADAPTIVE_MAX_POOL_1D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	if indices.dtype() != DType::U32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} indices must use U32; found {}",
 			indices.dtype().token()
 		)));
 	}
-	if !input.engine_handle().same_as(indices.engine_handle()) {
+	if !input.runtime().same_as(indices.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let geometry = AdaptivePool1dGeometry::resolve(input, output_length, operation)?;
@@ -839,7 +839,7 @@ pub(in crate::ml) fn adaptive_max_pool_1d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -853,7 +853,7 @@ pub(in crate::ml) fn adaptive_max_pool_1d_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, indices, output_gradient];
 	let outputs = [&input_gradient];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAdaptiveMaxPool1dBackwardF32,
 			buffers: &buffers,
@@ -885,7 +885,7 @@ fn avg_pool_2d_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::AVG_POOL_2D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let geometry = Pool2dGeometry::resolve(input, kernel_size, stride, padding, operation)?;
 	let output_shape = [
 		geometry.batch as usize,
@@ -899,7 +899,7 @@ fn avg_pool_2d_dispatch(
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::F32,
@@ -912,7 +912,7 @@ fn avg_pool_2d_dispatch(
 	let attributes = geometry.attributes();
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAvgPool2dF32,
 			buffers: &buffers,
@@ -942,7 +942,7 @@ fn max_pool_2d_dispatch(
 ) -> Result<(Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::MAX_POOL_2D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let geometry = Pool2dGeometry::resolve(input, kernel_size, stride, padding, operation)?;
 	let output_shape = [
 		geometry.batch as usize,
@@ -956,13 +956,13 @@ fn max_pool_2d_dispatch(
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::F32,
 	)?;
 	let indices = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::U32,
@@ -976,7 +976,7 @@ fn max_pool_2d_dispatch(
 	let attributes = geometry.attributes();
 	let inputs = [input];
 	let outputs = [&output, &indices];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMaxPool2dF32,
 			buffers: &buffers,
@@ -1005,7 +1005,7 @@ fn adaptive_avg_pool_2d_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::ADAPTIVE_AVG_POOL_2D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let geometry = AdaptivePool2dGeometry::resolve(input, output_height, output_width, operation)?;
 	let output_shape = [
 		geometry.batch as usize,
@@ -1015,7 +1015,7 @@ fn adaptive_avg_pool_2d_dispatch(
 	];
 	let output_count = output_shape.iter().product();
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::F32,
@@ -1026,7 +1026,7 @@ fn adaptive_avg_pool_2d_dispatch(
 	];
 	let push_constants = geometry.push_constants();
 	let attributes = geometry.attributes();
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAdaptiveAvgPool2dF32,
 			buffers: &buffers,
@@ -1055,7 +1055,7 @@ fn max_pool_1d_dispatch(
 ) -> Result<(Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::MAX_POOL_1D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let geometry = Pool1dGeometry::resolve(input, kernel_size, stride, padding, operation)?;
 	let output_shape = [
 		geometry.batch as usize,
@@ -1068,13 +1068,13 @@ fn max_pool_1d_dispatch(
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::F32,
 	)?;
 	let indices = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::U32,
@@ -1088,7 +1088,7 @@ fn max_pool_1d_dispatch(
 	let attributes = geometry.attributes();
 	let inputs = [input];
 	let outputs = [&output, &indices];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMaxPool1dF32,
 			buffers: &buffers,
@@ -1113,7 +1113,7 @@ fn max_pool_1d_dispatch(
 fn adaptive_max_pool_1d_dispatch(input: &Matrix, output_length: usize) -> Result<(Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::ADAPTIVE_MAX_POOL_1D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let geometry = AdaptivePool1dGeometry::resolve(input, output_length, operation)?;
 	let output_shape = [
 		geometry.batch as usize,
@@ -1126,13 +1126,13 @@ fn adaptive_max_pool_1d_dispatch(input: &Matrix, output_length: usize) -> Result
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::F32,
 	)?;
 	let indices = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::U32,
@@ -1146,7 +1146,7 @@ fn adaptive_max_pool_1d_dispatch(input: &Matrix, output_length: usize) -> Result
 	let attributes = geometry.attributes();
 	let inputs = [input];
 	let outputs = [&output, &indices];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAdaptiveMaxPool1dF32,
 			buffers: &buffers,
@@ -1471,16 +1471,16 @@ pub(in crate::ml) fn max_pool_3d_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::MAX_POOL_3D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	if indices.dtype() != DType::U32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} indices must use U32; found {}",
 			indices.dtype().token()
 		)));
 	}
-	if !input.engine_handle().same_as(indices.engine_handle()) {
+	if !input.runtime().same_as(indices.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let geometry = Pool3dGeometry::resolve(input, kernel_size, stride, padding, operation)?;
@@ -1493,7 +1493,7 @@ pub(in crate::ml) fn max_pool_3d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -1507,7 +1507,7 @@ pub(in crate::ml) fn max_pool_3d_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, indices, output_gradient];
 	let outputs = [&input_gradient];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMaxPool3dBackwardF32,
 			buffers: &buffers,
@@ -1556,7 +1556,7 @@ pub(in crate::ml) fn avg_pool_3d_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::AVG_POOL_3D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	let geometry = Pool3dGeometry::resolve(input, kernel_size, stride, padding, operation)?;
 	let expected_shape = geometry.output_shape();
 	if output_gradient.shape() != expected_shape {
@@ -1566,7 +1566,7 @@ pub(in crate::ml) fn avg_pool_3d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -1579,7 +1579,7 @@ pub(in crate::ml) fn avg_pool_3d_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, output_gradient];
 	let outputs = [&input_gradient];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAvgPool3dBackwardF32,
 			buffers: &buffers,
@@ -1633,16 +1633,16 @@ pub(in crate::ml) fn adaptive_max_pool_2d_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::ADAPTIVE_MAX_POOL_2D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	if indices.dtype() != DType::U32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} indices must use U32; found {}",
 			indices.dtype().token()
 		)));
 	}
-	if !input.engine_handle().same_as(indices.engine_handle()) {
+	if !input.runtime().same_as(indices.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let geometry = AdaptivePool2dGeometry::resolve(input, output_height, output_width, operation)?;
@@ -1660,7 +1660,7 @@ pub(in crate::ml) fn adaptive_max_pool_2d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -1674,7 +1674,7 @@ pub(in crate::ml) fn adaptive_max_pool_2d_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, indices, output_gradient];
 	let outputs = [&input_gradient];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAdaptiveMaxPool2dBackwardF32,
 			buffers: &buffers,
@@ -1732,16 +1732,16 @@ pub(in crate::ml) fn adaptive_max_pool_3d_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::ADAPTIVE_MAX_POOL_3D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	if indices.dtype() != DType::U32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} indices must use U32; found {}",
 			indices.dtype().token()
 		)));
 	}
-	if !input.engine_handle().same_as(indices.engine_handle()) {
+	if !input.runtime().same_as(indices.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let geometry =
@@ -1755,7 +1755,7 @@ pub(in crate::ml) fn adaptive_max_pool_3d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -1769,7 +1769,7 @@ pub(in crate::ml) fn adaptive_max_pool_3d_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, indices, output_gradient];
 	let outputs = [&input_gradient];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAdaptiveMaxPool3dBackwardF32,
 			buffers: &buffers,
@@ -1818,7 +1818,7 @@ pub(in crate::ml) fn adaptive_avg_pool_3d_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::ADAPTIVE_AVG_POOL_3D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	let geometry =
 		AdaptivePool3dGeometry::resolve(input, output_depth, output_height, output_width, operation)?;
 	let expected_shape = geometry.output_shape();
@@ -1829,7 +1829,7 @@ pub(in crate::ml) fn adaptive_avg_pool_3d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -1842,7 +1842,7 @@ pub(in crate::ml) fn adaptive_avg_pool_3d_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, output_gradient];
 	let outputs = [&input_gradient];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAdaptiveAvgPool3dBackwardF32,
 			buffers: &buffers,
@@ -1875,7 +1875,7 @@ pub(in crate::ml) fn adaptive_avg_pool_3d_backward(
 /// # Errors
 ///
 /// Returns an error unless `input` and `indices` are nonempty rank-three
-/// same-shape NCL Matrices on one engine (`indices` U32), `output_length`
+/// same-shape NCL Matrices on one runtime (`indices` U32), `output_length`
 /// admits the declared kernel/stride/padding geometry, or runtime recording
 /// fails.
 pub fn max_unpool_1d(
@@ -1897,19 +1897,16 @@ pub(in crate::ml) fn max_unpool_1d_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::MAX_UNPOOL_1D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[output_gradient])?;
+	validate_f32_same_runtime(operation, &[output_gradient])?;
 	if indices.dtype() != DType::U32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} indices must use U32; found {}",
 			indices.dtype().token()
 		)));
 	}
-	if !output_gradient
-		.engine_handle()
-		.same_as(indices.engine_handle())
-	{
+	if !output_gradient.runtime().same_as(indices.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	if indices.num_elements() > output_gradient.num_elements() {
@@ -1918,7 +1915,7 @@ pub(in crate::ml) fn max_unpool_1d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		output_gradient.engine_handle(),
+		output_gradient.runtime(),
 		indices.shape().to_vec(),
 		indices.num_elements(),
 		DType::F32,
@@ -1935,7 +1932,7 @@ pub(in crate::ml) fn max_unpool_1d_backward(
 	)?)];
 	let inputs = [indices, output_gradient];
 	let outputs = [&input_gradient];
-	output_gradient.engine_handle().record_semantic(
+	output_gradient.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMaxUnpool1dBackwardF32,
 			buffers: &buffers,
@@ -1960,7 +1957,7 @@ pub(in crate::ml) fn max_unpool_1d_backward(
 /// # Errors
 ///
 /// Returns an error unless `input` and `indices` are nonempty rank-four
-/// same-shape NCHW Matrices on one engine (`indices` U32), the declared
+/// same-shape NCHW Matrices on one runtime (`indices` U32), the declared
 /// output geometry admits the kernel/stride/padding window grid, or runtime
 /// recording fails.
 pub fn max_unpool_2d(
@@ -1991,19 +1988,16 @@ pub(in crate::ml) fn max_unpool_2d_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::MAX_UNPOOL_2D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[output_gradient])?;
+	validate_f32_same_runtime(operation, &[output_gradient])?;
 	if indices.dtype() != DType::U32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} indices must use U32; found {}",
 			indices.dtype().token()
 		)));
 	}
-	if !output_gradient
-		.engine_handle()
-		.same_as(indices.engine_handle())
-	{
+	if !output_gradient.runtime().same_as(indices.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	if indices.num_elements() > output_gradient.num_elements() {
@@ -2012,7 +2006,7 @@ pub(in crate::ml) fn max_unpool_2d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		output_gradient.engine_handle(),
+		output_gradient.runtime(),
 		indices.shape().to_vec(),
 		indices.num_elements(),
 		DType::F32,
@@ -2029,7 +2023,7 @@ pub(in crate::ml) fn max_unpool_2d_backward(
 	)?)];
 	let inputs = [indices, output_gradient];
 	let outputs = [&input_gradient];
-	output_gradient.engine_handle().record_semantic(
+	output_gradient.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMaxUnpool2dBackwardF32,
 			buffers: &buffers,
@@ -2055,7 +2049,7 @@ fn max_pool_3d_dispatch(
 ) -> Result<(Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::MAX_POOL_3D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let geometry = Pool3dGeometry::resolve(input, kernel_size, stride, padding, operation)?;
 	let output_shape = geometry.output_shape();
 	let output_count = output_shape
@@ -2064,13 +2058,13 @@ fn max_pool_3d_dispatch(
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::F32,
 	)?;
 	let indices = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::U32,
@@ -2084,7 +2078,7 @@ fn max_pool_3d_dispatch(
 	let attributes = geometry.attributes();
 	let inputs = [input];
 	let outputs = [&output, &indices];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMaxPool3dF32,
 			buffers: &buffers,
@@ -2114,7 +2108,7 @@ fn avg_pool_3d_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::AVG_POOL_3D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let geometry = Pool3dGeometry::resolve(input, kernel_size, stride, padding, operation)?;
 	let output_shape = geometry.output_shape();
 	let output_count = output_shape
@@ -2123,7 +2117,7 @@ fn avg_pool_3d_dispatch(
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::F32,
@@ -2136,7 +2130,7 @@ fn avg_pool_3d_dispatch(
 	let attributes = geometry.attributes();
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAvgPool3dF32,
 			buffers: &buffers,
@@ -2165,7 +2159,7 @@ fn adaptive_max_pool_2d_dispatch(
 ) -> Result<(Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::ADAPTIVE_MAX_POOL_2D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let geometry = AdaptivePool2dGeometry::resolve(input, output_height, output_width, operation)?;
 	let output_shape = [
 		geometry.batch as usize,
@@ -2179,13 +2173,13 @@ fn adaptive_max_pool_2d_dispatch(
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::F32,
 	)?;
 	let indices = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::U32,
@@ -2199,7 +2193,7 @@ fn adaptive_max_pool_2d_dispatch(
 	let attributes = geometry.attributes();
 	let inputs = [input];
 	let outputs = [&output, &indices];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAdaptiveMaxPool2dF32,
 			buffers: &buffers,
@@ -2229,7 +2223,7 @@ fn adaptive_max_pool_3d_dispatch(
 ) -> Result<(Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::ADAPTIVE_MAX_POOL_3D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let geometry =
 		AdaptivePool3dGeometry::resolve(input, output_depth, output_height, output_width, operation)?;
 	let output_shape = geometry.output_shape();
@@ -2239,13 +2233,13 @@ fn adaptive_max_pool_3d_dispatch(
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::F32,
 	)?;
 	let indices = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::U32,
@@ -2259,7 +2253,7 @@ fn adaptive_max_pool_3d_dispatch(
 	let attributes = geometry.attributes();
 	let inputs = [input];
 	let outputs = [&output, &indices];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAdaptiveMaxPool3dF32,
 			buffers: &buffers,
@@ -2289,7 +2283,7 @@ fn adaptive_avg_pool_3d_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::ADAPTIVE_AVG_POOL_3D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let geometry =
 		AdaptivePool3dGeometry::resolve(input, output_depth, output_height, output_width, operation)?;
 	let output_shape = geometry.output_shape();
@@ -2299,7 +2293,7 @@ fn adaptive_avg_pool_3d_dispatch(
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape.to_vec(),
 		output_count,
 		DType::F32,
@@ -2312,7 +2306,7 @@ fn adaptive_avg_pool_3d_dispatch(
 	let attributes = geometry.attributes();
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlAdaptiveAvgPool3dF32,
 			buffers: &buffers,
@@ -2344,16 +2338,16 @@ fn max_unpool_1d_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::MAX_UNPOOL_1D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	if indices.dtype() != DType::U32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} indices must use U32; found {}",
 			indices.dtype().token()
 		)));
 	}
-	if !input.engine_handle().same_as(indices.engine_handle()) {
+	if !input.runtime().same_as(indices.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let [batch, channels, input_length] = input.shape() else {
@@ -2407,7 +2401,7 @@ fn max_unpool_1d_dispatch(
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![*batch, *channels, output_length],
 		output_count,
 		DType::F32,
@@ -2447,7 +2441,7 @@ fn max_unpool_1d_dispatch(
 	];
 	let inputs = [input, indices];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMaxUnpool1dF32,
 			buffers: &buffers,
@@ -2480,16 +2474,16 @@ fn max_unpool_2d_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::MAX_UNPOOL_2D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	if indices.dtype() != DType::U32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} indices must use U32; found {}",
 			indices.dtype().token()
 		)));
 	}
-	if !input.engine_handle().same_as(indices.engine_handle()) {
+	if !input.runtime().same_as(indices.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let [batch, channels, input_height, input_width] = input.shape() else {
@@ -2551,7 +2545,7 @@ fn max_unpool_2d_dispatch(
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	shader_u32(output_count, "output element count", operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![*batch, *channels, output_height, output_width],
 		output_count,
 		DType::F32,
@@ -2593,7 +2587,7 @@ fn max_unpool_2d_dispatch(
 	];
 	let inputs = [input, indices];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMaxUnpool2dF32,
 			buffers: &buffers,

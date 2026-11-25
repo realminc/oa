@@ -37,7 +37,7 @@ fn codec_capabilities_and_host_rgba_sink_are_checked() -> oa::Result<()> {
 
 test_vk!(
 	codec_memory_and_file_roundtrips_preserve_contracts,
-	engine,
+	runtime,
 	{
 		let values = [
 			1.0, 0.0, 0.25, 0.75, // red

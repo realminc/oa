@@ -56,7 +56,7 @@ fn compatibility_adapts_source_without_a_core_compilation() {
 fn schema_and_family_metadata_define_descriptor_capacity() {
 	let operation = json!({"push_fields": [["input_index", "uint32"], ["output_idx", "uint32"], ["count", "uint32"]]});
 	assert_eq!(schema_buffer_count(&operation).unwrap(), 2);
-	let fields = expected_push_fields("mat_mul_nt", "bias_gelu").unwrap();
+	let fields = expected_push_fields("matmul_nt", "bias_gelu").unwrap();
 	let count = fields
 		.iter()
 		.filter(|(name, _, _)| name.ends_with("_index"))

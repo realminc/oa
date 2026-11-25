@@ -1631,7 +1631,7 @@ impl BlockProgram {
 				} else {
 					String::new()
 				};
-				// The `mat_mul_nt_bias*` donors apply a fixed activation
+				// The `matmul_nt_bias*` donors apply a fixed activation
 				// to `acc + bias` at the single store — spelled with each
 				// donor's literal constants so the artifact is
 				// bit-identical.

@@ -22,8 +22,8 @@ pub use matrix::Matrix;
 pub(crate) use matrix::{MatrixSemantic, byte_storage_len};
 
 pub use alloc::{from_f32, from_f32_on, full, full_on, ones, ones_on};
-pub use blas::mat_mul_nt;
-pub(crate) use blas::mat_mul_nt_backward;
+pub use blas::matmul;
+pub(crate) use blas::matmul_backward;
 pub use elemwise::{
 	abs, add, add_scalar, bias_add, clamp_max, clamp_min, copy, cos, div, div_scalar, exp, log, mul,
 	neg, pow, reciprocal, scale, sin, sqrt, sub, sub_scalar,

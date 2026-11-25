@@ -43,10 +43,10 @@ class FixedHashFixtureTest(unittest.TestCase):
 @unittest.skipUnless("OA_TEST_DEVICE_INDEX" in os.environ, "explicit Vulkan test device required")
 class FixedHashVulkanTest(unittest.TestCase):
 	def test_generated_adapters_match_hashlib(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		for length in (0, 3, 112, 145):
 			messages = [bytes((i + row) & 255 for i in range(length)) for row in range(3)]
-			input_value = oa.Matrix.new_from_u8([3, length], list(b"".join(messages)), engine=engine)
+			input_value = oa.Matrix.new_from_u8([3, length], list(b"".join(messages)), runtime=runtime)
 			for name in ALGORITHMS:
 				with self.subTest(name=name, length=length):
 					output = getattr(oa.crypto, f"hash_{name}")(input_value)
@@ -55,10 +55,10 @@ class FixedHashVulkanTest(unittest.TestCase):
 					self.assertEqual(bytes(output.to_list()), expected)
 
 	def test_non_power_of_two_merkle_adapters(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		for case in json.loads(FIXTURE.read_text())["merkle_cases"]:
 			leaves = b"".join(bytes.fromhex(leaf) for leaf in case["leaves"])
-			input_value = oa.Matrix.new_from_u8([len(case["leaves"]), 32], list(leaves), engine=engine)
+			input_value = oa.Matrix.new_from_u8([len(case["leaves"]), 32], list(leaves), runtime=runtime)
 			output = oa.crypto.hash_merkle_root(input_value)
 			self.assertEqual(bytes(output.to_list()).hex(), case["root"])
 

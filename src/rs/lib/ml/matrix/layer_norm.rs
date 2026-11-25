@@ -1,6 +1,6 @@
 //! Layer norm Matrix operation implementations.
 
-use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::ml::validation::{shader_u32, validate_f32_same_runtime};
 use crate::{
 	DType, Error, Matrix, OpAttribute, Result,
 	runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch},
@@ -21,19 +21,19 @@ pub(in crate::ml) fn layer_norm(
 	const OPERATION: &str = crate::core::operation::ml::LAYER_NORM.name();
 	let (rows, columns) = validate_layer_norm_inputs(input, weight, bias, epsilon, OPERATION)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let normalized = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let inverse_stddev = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows as usize],
 		rows as usize,
 		DType::F32,
@@ -72,11 +72,11 @@ pub(in crate::ml) fn layer_norm(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -123,32 +123,32 @@ pub(in crate::ml) fn layer_norm_backward(
 			input.shape()
 		)));
 	}
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		OPERATION,
 		&[input, weight, normalized, inverse_stddev, output_gradient],
 	)?;
 	let rows = shader_u32(input.num_elements() / columns, "row count", OPERATION)?;
 	let columns = shader_u32(columns, "normalized dimension", OPERATION)?;
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let weight_contribution = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		weight.num_elements(),
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		weight.num_elements(),
 		DType::F32,
@@ -192,7 +192,7 @@ pub(in crate::ml) fn layer_norm_backward(
 	];
 	let inputs = [normalized, inverse_stddev, weight, output_gradient];
 	let outputs = [&input_gradient, &weight_gradient, &bias_gradient];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: crate::core::operation::ml::LAYER_NORM_BACKWARD,
@@ -232,7 +232,7 @@ fn validate_layer_norm_inputs(
 			"{operation} epsilon must be finite and positive"
 		)));
 	}
-	validate_f32_same_engine(operation, &[input, weight, bias])?;
+	validate_f32_same_runtime(operation, &[input, weight, bias])?;
 	let rows = input.num_elements() / columns;
 	shader_u32(input.num_elements(), "element count", operation)?;
 	Ok((

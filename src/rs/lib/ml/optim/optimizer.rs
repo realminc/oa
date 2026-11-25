@@ -6,7 +6,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::{Engine, Error, Matrix, Result};
+use crate::{Error, Matrix, Result, Runtime};
 
 use crate::ml::Parameter;
 
@@ -44,14 +44,14 @@ pub trait Optimizer {
 	/// Return the number of completed logical optimizer steps.
 	fn step_count(&self) -> u64;
 
-	/// Return whether this optimizer can participate in work owned by `engine`.
-	fn belongs_to(&self, engine: &Engine) -> bool;
+	/// Return whether this optimizer can participate in work owned by `runtime`.
+	fn belongs_to(&self, runtime: &Runtime) -> bool;
 
 	/// Bind a device-resident finite flag gating captured updates.
 	///
-	/// The flag is a same-engine FP32 single-element `Matrix` written by a
+	/// The flag is a same-runtime FP32 single-element `Matrix` written by a
 	/// gradient scaler's device check. When a bound optimizer records its
-	/// step inside an `Engine::capture` program, the update kernels read the
+	/// step inside an `Runtime::capture` program, the update kernels read the
 	/// flag at replay time: a nonzero flag applies the normal update and a
 	/// zero flag freezes parameters, moments, and the device step counter
 	/// exactly, so AMP overflow handling replays inside one captured
@@ -213,7 +213,7 @@ impl Optimizer for NoOpOptimizer {
 		0
 	}
 
-	fn belongs_to(&self, _engine: &Engine) -> bool {
+	fn belongs_to(&self, _runtime: &Runtime) -> bool {
 		true
 	}
 }

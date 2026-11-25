@@ -15,6 +15,10 @@ from ._native import (
 	image_encode as encode,
 	image_save_file as save_file,
 	image_save_rgba_file as save_rgba_file,
+	image_rotation_matrix_2d as rotation_matrix_2d,
+	image_invert_affine as invert_affine,
+	image_perspective_transform as perspective_transform,
+	image_estimate_affine_2d as estimate_affine_2d,
 )
 
 __all__ = _GEN_ALL + [
@@ -30,4 +34,8 @@ __all__ = _GEN_ALL + [
 	"encode",
 	"save_file",
 	"save_rgba_file",
+	"rotation_matrix_2d",
+	"invert_affine",
+	"perspective_transform",
+	"estimate_affine_2d",
 ]

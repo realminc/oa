@@ -3,7 +3,7 @@
 pub use crate::video::types::{
 	VideoDecodeCapabilities, VideoDeviceCapabilities, VideoEncodeCapabilities,
 };
-use crate::{Engine, Result};
+use crate::{Result, Runtime};
 
 /// Chroma sampling carried by a video codec profile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -552,25 +552,25 @@ impl VideoDeviceCapabilities {
 		self.av1_encode
 	}
 
-	/// Return whether the Engine enabled the advertised Vulkan Video queue extensions.
+	/// Return whether the Runtime enabled the advertised Vulkan Video queue extensions.
 	pub const fn video_queues_enabled(self) -> bool {
 		self.video_queues_enabled
 	}
 
-	/// Return whether this Engine currently has an enabled decoder-session path.
+	/// Return whether this Runtime currently has an enabled decoder-session path.
 	pub const fn decoder_sessions_available(self) -> bool {
 		self.decoder_sessions_available
 	}
 
-	/// Return whether this Engine currently has an enabled encoder-session path.
+	/// Return whether this Runtime currently has an enabled encoder-session path.
 	pub const fn encoder_sessions_available(self) -> bool {
 		self.encoder_sessions_available
 	}
 }
 
-/// Query Vulkan Video queues and codec extensions on the Engine's selected device.
+/// Query Vulkan Video queues and codec extensions on the Runtime's selected device.
 ///
-/// This query reports both physical-device advertisement and whether Engine
+/// This query reports both physical-device advertisement and whether Runtime
 /// creation enabled video queues, and whether at least one qualified codec
 /// session path exists.
 ///
@@ -578,8 +578,8 @@ impl VideoDeviceCapabilities {
 ///
 /// Returns an error when Vulkan device-extension or queue-family enumeration
 /// fails.
-pub fn query_device_capabilities(engine: &Engine) -> Result<VideoDeviceCapabilities> {
-	engine.query_video_device_capabilities()
+pub fn query_device_capabilities(runtime: &Runtime) -> Result<VideoDeviceCapabilities> {
+	runtime.query_video_device_capabilities()
 }
 
 /// Query the selected device's exact limits for one decoder profile.
@@ -593,10 +593,10 @@ pub fn query_device_capabilities(engine: &Engine) -> Result<VideoDeviceCapabilit
 /// Returns an error when the codec extension is unavailable, the exact profile
 /// is unsupported, or the Vulkan capability query fails.
 pub fn query_decode_capabilities(
-	engine: &Engine,
+	runtime: &Runtime,
 	profile: VideoDecodeProfile,
 ) -> Result<VideoDecodeCapabilities> {
-	engine.query_video_decode_capabilities(profile)
+	runtime.query_video_decode_capabilities(profile)
 }
 
 /// Enumerate decoded-output and DPB image formats for one exact profile.
@@ -606,24 +606,24 @@ pub fn query_decode_capabilities(
 /// Returns an error when the profile or its codec extension is unsupported, a
 /// Vulkan enumeration fails, or the driver reports an unreasonable result size.
 pub fn query_decode_formats(
-	engine: &Engine,
+	runtime: &Runtime,
 	profile: VideoDecodeProfile,
 ) -> Result<VideoDecodeFormats> {
-	engine.query_video_decode_formats(profile)
+	runtime.query_video_decode_formats(profile)
 }
 
 /// Query exact H.264 or H.265 encoder limits without creating a session.
 pub fn query_encode_capabilities(
-	engine: &Engine,
+	runtime: &Runtime,
 	profile: VideoEncodeProfile,
 ) -> Result<VideoEncodeCapabilities> {
-	engine.query_video_encode_capabilities(profile)
+	runtime.query_video_encode_capabilities(profile)
 }
 
 /// Enumerate encode-input and DPB formats for one exact profile.
 pub fn query_encode_formats(
-	engine: &Engine,
+	runtime: &Runtime,
 	profile: VideoEncodeProfile,
 ) -> Result<VideoEncodeFormats> {
-	engine.query_video_encode_formats(profile)
+	runtime.query_video_encode_formats(profile)
 }

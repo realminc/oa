@@ -11,7 +11,7 @@
 //! that appears finished.
 
 use crate::audio::{AudioCaptureChunk, AudioCodec, AudioEncoder};
-use crate::{Engine, Error, Result};
+use crate::{Error, Result, Runtime};
 
 use super::{
 	EncodedVideoPacket, VideoCodec, VideoColorMatrix, VideoEncodeConfig, VideoEncoder, VideoMuxer,
@@ -68,7 +68,7 @@ impl VideoRecorder {
 	/// Create a recorder, its encoder session, and the output container.
 	///
 	/// The encode profile must carry a non-zero extent admitted by the
-	/// engine's queried encode capabilities; audio, when configured, admits
+	/// runtime's queried encode capabilities; audio, when configured, admits
 	/// only the muxer's PCM-S16 track.
 	///
 	/// # Errors
@@ -76,7 +76,7 @@ impl VideoRecorder {
 	/// Returns an error for an empty output path or zero extent, when the
 	/// device does not admit the encode session, when the audio profile is
 	/// not PCM-S16, or when the container cannot be created.
-	pub fn new(engine: &Engine, config: VideoRecorderConfig) -> Result<Self> {
+	pub fn new(runtime: &Runtime, config: VideoRecorderConfig) -> Result<Self> {
 		if config.output_path.is_empty() {
 			return Err(Error::invalid_argument(
 				"VideoRecorder output path must not be empty",
@@ -95,7 +95,7 @@ impl VideoRecorder {
 				"the recorder's MP4 audio track admits PCM-S16 only",
 			));
 		}
-		let encoder = VideoEncoder::new(engine, config.encode)?;
+		let encoder = VideoEncoder::new(runtime, config.encode)?;
 		let audio_encoder = config.audio.map(AudioEncoder::new).transpose()?;
 		let mut mux_config = VideoMuxerConfig::new(codec, config.encode.width, config.encode.height)?;
 		mux_config.frame_rate = config.encode.frame_rate;

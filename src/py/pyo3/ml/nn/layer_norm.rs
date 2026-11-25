@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::super::autograd::PythonParameter;
 
@@ -18,14 +18,14 @@ impl PythonLayerNorm {
 	/// `[n]`.  The `seed` keyword is accepted for API compatibility but ignored
 	/// (LayerNorm initializes deterministically to unit weight / zero bias).
 	#[new]
-	#[pyo3(signature = (normalized_shape=None, epsilon=1e-5, seed=None, engine=None))]
+	#[pyo3(signature = (normalized_shape=None, epsilon=1e-5, seed=None, runtime=None))]
 	pub fn new(
 		normalized_shape: Option<pyo3::Bound<'_, pyo3::PyAny>>,
 		epsilon: f32,
 		seed: Option<u64>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		let _ = seed;
 		let shape: usize = match normalized_shape {
 			None => {
@@ -50,7 +50,7 @@ impl PythonLayerNorm {
 				}
 			}
 		};
-		oa::ml::nn::LayerNorm::new_on(&engine, shape, epsilon)
+		oa::ml::nn::LayerNorm::new_on(&runtime, shape, epsilon)
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

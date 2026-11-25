@@ -140,7 +140,7 @@ impl TradingEnvironment<'_> {
 	/// # Errors
 	/// Requires healthy initialized state and no open environment transaction.
 	pub fn snapshot(&self) -> Result<TradingState> {
-		self.engine.checkpoint()?.wait()?;
+		self.runtime.checkpoint()?.wait()?;
 		self.check_status()?;
 		Ok(TradingState {
 			config: self.config.identity(),
@@ -177,7 +177,7 @@ impl TradingEnvironment<'_> {
 				));
 			}
 		}
-		self.engine.checkpoint()?.wait()?;
+		self.runtime.checkpoint()?.wait()?;
 		self.committed = false;
 		self.ledger.write_values(&state.ledger)?;
 		self.meta.write_values(&state.metadata)?;

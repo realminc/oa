@@ -8,8 +8,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"info",
@@ -116,8 +116,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&'a Engine"
+						"runtime",
+						"&'a Runtime"
 					],
 					[
 						"windows",
@@ -171,8 +171,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					]
 				],
 				"returns": "EnvironmentExecution",
@@ -186,8 +186,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&'engine Engine"
+						"runtime",
+						"&'runtime Runtime"
 					],
 					[
 						"config",
@@ -198,7 +198,7 @@
 						"&[TradingSeries]"
 					]
 				],
-				"returns": "TradingEnvironment<'engine>",
+				"returns": "TradingEnvironment<'runtime>",
 				"visibility": "pub",
 				"target": "crate::ml::environment::TradingEnvironment::new"
 			}
@@ -208,8 +208,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&'engine Engine"
+						"runtime",
+						"&'runtime Runtime"
 					],
 					[
 						"config",
@@ -224,7 +224,7 @@
 						"usize"
 					]
 				],
-				"returns": "TradingEnvironment<'engine>",
+				"returns": "TradingEnvironment<'runtime>",
 				"visibility": "pub",
 				"target": "crate::ml::environment::TradingEnvironment::new_with_row_capacity"
 			}
@@ -234,15 +234,15 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&'engine Engine"
+						"runtime",
+						"&'runtime Runtime"
 					],
 					[
 						"config",
 						"CheckpointManagerConfig"
 					]
 				],
-				"returns": "CheckpointManager<'engine>",
+				"returns": "CheckpointManager<'runtime>",
 				"visibility": "pub",
 				"target": "crate::ml::checkpoint::CheckpointManager::new"
 			}
@@ -252,8 +252,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"config",
@@ -291,8 +291,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"uri",
@@ -304,8 +304,8 @@
 				"target": "crate::audio::AudioPlayer::new_from_uri",
 				"parity": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"uri",
@@ -367,8 +367,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"path",
@@ -384,8 +384,8 @@
 				"target": "crate::video::VideoPlayer::open",
 				"parity": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"path",
@@ -399,40 +399,40 @@
 			}
 		},
 		{
-			"name": "engine_new",
+			"name": "runtime_new",
 			"signature": {
 				"parameters": [],
-				"returns": "Engine",
+				"returns": "Runtime",
 				"visibility": "pub",
-				"target": "crate::runtime::Engine::new"
+				"target": "crate::runtime::Runtime::new"
 			}
 		},
 		{
-			"name": "engine_builder",
+			"name": "runtime_builder",
 			"signature": {
 				"parameters": [],
-				"returns": "EngineBuilder",
+				"returns": "RuntimeBuilder",
 				"visibility": "pub",
-				"target": "crate::runtime::Engine::builder",
+				"target": "crate::runtime::Runtime::builder",
 				"raw_return": true
 			}
 		},
 		{
-			"name": "engine_init_default",
+			"name": "runtime_init_default",
 			"signature": {
 				"parameters": [],
 				"returns": "()",
 				"visibility": "pub",
-				"target": "crate::runtime::Engine::init_default"
+				"target": "crate::runtime::Runtime::init_default"
 			}
 		},
 		{
-			"name": "engine_available_devices",
+			"name": "runtime_available_devices",
 			"signature": {
 				"parameters": [],
 				"returns": "Vec<DeviceSummary>",
 				"visibility": "pub",
-				"target": "crate::runtime::Engine::available_devices"
+				"target": "crate::runtime::Runtime::available_devices"
 			}
 		},
 		{
@@ -590,8 +590,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"config",

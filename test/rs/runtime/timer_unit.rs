@@ -1,7 +1,7 @@
 //! Named host/device timer tests.
 //!
 //! Donor: `oacpp/test/cpp/runtime/profiling/testTimer.cpp` — host region
-//! lifecycle, device timer initialization against an engine, timer-tagged
+//! lifecycle, device timer initialization against an runtime, timer-tagged
 //! submission, pending/committed state transitions, and throughput.
 
 use super::*;
@@ -63,15 +63,15 @@ fn timer_auto_resolves_to_host_on_begin() {
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn timer_device_commits_measured_submissions() -> crate::Result<()> {
-	let engine = match crate::Engine::new() {
-		Ok(engine) => engine,
+	let runtime = match crate::Runtime::new() {
+		Ok(runtime) => runtime,
 		Err(_) => return Ok(()),
 	};
 
 	// A host timer and an uninitialized device timer cannot tag submissions.
 	let mut host = Timer::new(TimerDomain::Host, "host.submit");
 	assert_eq!(
-		engine
+		runtime
 			.checkpoint_with_timer(&mut host)
 			.expect_err("host timer cannot tag submissions")
 			.kind(),
@@ -79,7 +79,7 @@ fn timer_device_commits_measured_submissions() -> crate::Result<()> {
 	);
 	let mut uninitialized = Timer::new(TimerDomain::Device, "device.uninitialized");
 	assert_eq!(
-		engine
+		runtime
 			.checkpoint_with_timer(&mut uninitialized)
 			.expect_err("device timer requires init")
 			.kind(),
@@ -88,7 +88,7 @@ fn timer_device_commits_measured_submissions() -> crate::Result<()> {
 
 	let mut timer = Timer::new(TimerDomain::Device, "device.region");
 	assert!(!timer.is_initialized());
-	timer.init(&engine, "device.region")?;
+	timer.init(&runtime, "device.region")?;
 	assert!(timer.is_device());
 	assert!(timer.is_initialized());
 	assert!(!timer.is_pending());
@@ -98,7 +98,7 @@ fn timer_device_commits_measured_submissions() -> crate::Result<()> {
 	for _ in 0..2 {
 		let one = crate::matrix::ones([262_147])?;
 		let _two = crate::matrix::add(&one, &one)?;
-		let event = engine.checkpoint_with_timer(&mut timer)?;
+		let event = runtime.checkpoint_with_timer(&mut timer)?;
 		assert_eq!(
 			event
 				.device_duration()

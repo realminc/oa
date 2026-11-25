@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "oapython"
-version = "0.16.0"
+version = "0.17.0"
 description = "OA — Rust cross-vendor Vulkan GPU compute, ML, image, audio, and crypto"
 readme = "src/py/README.md"
 requires-python = ">=3.10"
@@ -16,7 +16,7 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Programming Language :: Rust",
-  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Runtimeering :: Artificial Intelligence",
 ]
 
 [project.urls]

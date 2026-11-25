@@ -10,15 +10,15 @@ python -m pip install oapython
 ```python
 import oa
 
-engine = oa.Engine()
-one = oa.matrix.ones(engine, [2, 3])
-two = oa.matrix.full(engine, [2, 3], 2.0)
+runtime = oa.Runtime()
+one = oa.matrix.ones(runtime, [2, 3])
+two = oa.matrix.full(runtime, [2, 3], 2.0)
 total = oa.matrix.add(one, two)
 
 assert total.shape == [2, 3]
 assert total.to_list() == [3.0] * 6
 
-image = oa.Image.new_from_matrix(oa.matrix.ones(engine, [3, 2, 2]), "chw", "rgb")
+image = oa.Image.new_from_matrix(oa.matrix.ones(runtime, [3, 2, 2]), "chw", "rgb")
 flipped = oa.image.flip(image, horizontal=True, vertical=False)
 ```
 

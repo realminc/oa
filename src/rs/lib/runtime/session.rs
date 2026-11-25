@@ -37,7 +37,7 @@ pub(super) struct RecordedEncodeStep {
 	pub(super) picture: PreparedEncode,
 }
 
-/// Private mutable eager-recording owner for one engine.
+/// Private mutable eager-recording owner for one runtime.
 pub(super) struct ExecutionSession {
 	graphs: Vec<ExecutableGraph>,
 	outputs: Vec<Storage>,
@@ -488,7 +488,7 @@ impl ExecutionSession {
 	/// Append one captured encode batch. Each step stages its input planes on
 	/// the compute family (the input image is CONCURRENT across compute and
 	/// encode families) then records the retained `vkCmdEncodeVideoKHR`
-	/// picture; resolved queue runs and the engine timeline order the two.
+	/// picture; resolved queue runs and the runtime timeline order the two.
 	pub(super) fn record_video_encode(
 		&mut self,
 		device: &Arc<Device>,

@@ -69,7 +69,7 @@ impl ChannelShuffle {
 		let indices: Vec<i32> = (0..per_group)
 			.flat_map(|within| (0..self.groups).map(move |group| (group * per_group + within) as i32))
 			.collect();
-		let index = Matrix::new_from_slice_handle(input.engine_handle(), vec![channels], &indices)?;
+		let index = Matrix::new_from_slice_handle(input.runtime(), vec![channels], &indices)?;
 		let shuffled = matrix::transpose(&matrix::gather(&rows, &index)?, 0, 1)?
 			.reshape([batch, spatial, channels])?;
 		matrix::transpose(&shuffled, 1, 2)?.reshape(shape.to_vec())

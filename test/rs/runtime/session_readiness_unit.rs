@@ -1,16 +1,16 @@
 use super::*;
 use crate::{
-	DType, Engine, ErrorKind,
+	DType, ErrorKind, Runtime,
 	runtime::{BufferBinding, KernelId},
 };
 
 #[test]
 #[ignore = "requires a hardware Vulkan compute device"]
 fn split_recording_requires_an_earlier_exhaustive_producer() -> Result<()> {
-	let engine = Engine::new()?;
-	Engine::set_default(engine.clone());
+	let runtime = Runtime::new()?;
+	Runtime::set_default(runtime.clone());
 	let source = Matrix::new_from_slice([1, 32], &[0_u8; 32])?;
-	let intermediate = Matrix::allocate_output(source.engine_handle(), vec![1, 32], 32, DType::U8)?;
+	let intermediate = Matrix::allocate_output(source.runtime(), vec![1, 32], 32, DType::U8)?;
 	let writes = [BufferBinding::write(intermediate.storage())];
 	let reads = [BufferBinding::read(intermediate.storage())];
 	let updates = [BufferBinding::read_write(intermediate.storage())];

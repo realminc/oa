@@ -4,7 +4,7 @@
 
 use pyo3::prelude::*;
 
-use crate::{error::python_error, runtime::PythonEngine};
+use crate::{error::python_error, runtime::PythonRuntime};
 
 // ── ViewerMode ────────────────────────────────────────────────────────────────
 
@@ -265,7 +265,7 @@ pub(crate) struct PythonViewer;
 
 #[pymethods]
 impl PythonViewer {
-	/// Open `path` in a window with a fresh presentation-capable engine.
+	/// Open `path` in a window with a fresh presentation-capable runtime.
 	#[staticmethod]
 	#[pyo3(signature = (path, config=None))]
 	fn preview(path: &str, config: Option<PyRef<'_, PythonViewerConfig>>) -> PyResult<()> {
@@ -273,31 +273,31 @@ impl PythonViewer {
 		oa::Viewer::preview_with_config(path, cfg).map_err(python_error)
 	}
 
-	/// Open `path` borrowing `engine`.
+	/// Open `path` borrowing `runtime`.
 	#[staticmethod]
-	#[pyo3(signature = (path, config=None, engine=None))]
-	fn preview_with_engine(
+	#[pyo3(signature = (path, config=None, runtime=None))]
+	fn preview_with_runtime(
 		path: &str,
 		config: Option<PyRef<'_, PythonViewerConfig>>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<()> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		let cfg = config.map_or_else(oa::ViewerConfig::default, |c| c.inner.clone());
-		oa::Viewer::preview_with_engine_and_config(&engine, path, cfg).map_err(python_error)
+		oa::Viewer::preview_with_runtime_and_config(&runtime, path, cfg).map_err(python_error)
 	}
 
 	/// Display a semantic Image in a blocking window.
 	#[staticmethod]
-	#[pyo3(signature = (image, config=None, engine=None))]
+	#[pyo3(signature = (image, config=None, runtime=None))]
 	fn show(
 		image: &crate::image::PythonImage,
 		config: Option<PyRef<'_, PythonViewerConfig>>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<()> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		let cfg = config.map_or_else(oa::ViewerConfig::default, |c| c.inner.clone());
 		let texture = oa::render::texture_from_image(&image.inner).map_err(python_error)?;
-		oa::Viewer::show_with_config(&engine, &texture, cfg).map_err(python_error)
+		oa::Viewer::show_with_config(&runtime, &texture, cfg).map_err(python_error)
 	}
 }
 
@@ -345,13 +345,13 @@ impl PythonWorkspace {
 	}
 
 	/// Present the workspace in a blocking `Viewer` workspace-mode window.
-	#[pyo3(signature = (config=None, engine=None))]
+	#[pyo3(signature = (config=None, runtime=None))]
 	fn show(
 		&mut self,
 		config: Option<PyRef<'_, PythonViewerConfig>>,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<()> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		let cfg = config.map_or_else(
 			|| oa::ViewerConfig {
 				mode: oa::ViewerMode::Workspace,
@@ -364,7 +364,7 @@ impl PythonWorkspace {
 		);
 		let mut viewer = oa::Viewer::new(cfg);
 		viewer.set_workspace(&mut self.inner);
-		viewer.run(&engine).map_err(python_error)
+		viewer.run(&runtime).map_err(python_error)
 	}
 }
 

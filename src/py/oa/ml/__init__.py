@@ -1,6 +1,6 @@
 """Machine-learning operations matching Rust :mod:`oa::ml`."""
 
-from . import audio, byte, flow, loss, matrix, metric, nlp, nn, rl
+from . import byte, flow, loss, matrix, metric, nn, rl
 from .._native import (
 	CategoricalActorCritic,
 	CategoricalActorCriticConfig,
@@ -131,31 +131,6 @@ from .._native import (
 	VectorQuantizerConfig,
 	VqResult,
 )
-# ── NLP presets ────────────────────────────────────────────────────────────────
-from .._native import (
-	BpeGru,
-	BpeMamba3,
-	BpeMoeTransformer,
-	BpeRnn,
-	BpeSampler,
-	BpeTransformer,
-	ByteEmpyrealm,
-	ByteGru,
-	ByteMamba3,
-	ByteMoeTransformer,
-	ByteRnn,
-	ByteSampler,
-	ByteTransformer,
-	CharGru,
-	CharMamba3,
-	CharMoeTransformer,
-	CharRnn,
-	CharSampler,
-	CharTransformer,
-	ml_nlp_generate_bpe_greedy as nlp_generate_bpe_greedy,
-	ml_nlp_generate_bytes_greedy as nlp_generate_bytes_greedy,
-	ml_nlp_generate_greedy as nlp_generate_greedy,
-)
 # ── Training data / callbacks / metrics ───────────────────────────────────────
 from .._native import (
 	CsvLogger,
@@ -277,36 +252,13 @@ __all__ = [
 	"TrainingCompilationStageRecord",
 	"TrainingCompilationState",
 	"TrainingProgram",
-	# NLP presets
-	"BpeGru",
-	"BpeMamba3",
-	"BpeMoeTransformer",
-	"BpeRnn",
-	"BpeSampler",
-	"BpeTransformer",
-	"BpeTokenizer",
-	"ByteEmpyrealm",
-	"ByteGru",
-	"ByteMamba3",
-	"ByteMoeTransformer",
-	"ByteRnn",
-	"ByteSampler",
-	"ByteTransformer",
-	"CharGru",
-	"CharMamba3",
-	"CharMoeTransformer",
-	"CharRnn",
-	"CharSampler",
-	"CharTransformer",
-	"nlp_generate_bpe_greedy",
-	"nlp_generate_bytes_greedy",
-	"nlp_generate_greedy",
 	# NN layers
 	"AdaptiveAvgPool2d",
 	"AttentionBackend",
 	"AttentionMode",
 	"AvgPool2d",
 	"BatchNorm2d",
+	"BpeTokenizer",
 	"ByteEmbedding",
 	"ByteHead",
 	"Conv1d",

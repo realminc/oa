@@ -291,7 +291,7 @@ fn numerical_vector_gradient(values: &[f32], mut evaluate: impl FnMut(&[f32]) ->
 
 test_vk!(
 	linear_cross_entropy_backward_and_adamw_match_independent_oracles,
-	engine,
+	runtime,
 	{
 		const BATCH: usize = 2;
 		const INPUT_FEATURES: usize = 2;
@@ -354,10 +354,10 @@ test_vk!(
 		let expected_bias = cpu_first_adamw(&bias_values, &bias_gradient, LEARNING_RATE);
 		let zero = oa::matrix::full([OUTPUT_FEATURES, INPUT_FEATURES], 0.0)?;
 		let (stable_weight_plan, stable_weight) =
-			engine.capture(|| oa::matrix::add(&weight_parameter.data(), &zero))?;
+			runtime.capture(|| oa::matrix::add(&weight_parameter.data(), &zero))?;
 		optimizer.step()?;
 		assert_eq!(optimizer.step_count(), 1);
-		engine.submit(&stable_weight_plan)?.wait()?;
+		runtime.submit(&stable_weight_plan)?.wait()?;
 		assert_close(&stable_weight.read_f32()?, &expected_weight, 2.0e-5);
 		assert_close(
 			&weight_parameter.data().read_f32()?,
@@ -374,7 +374,7 @@ test_vk!(
 
 test_vk!(
 	linear_preserves_arbitrary_leading_dimensions_and_adjoint,
-	engine,
+	runtime,
 	{
 		const ROWS: usize = 4;
 		const INPUT_FEATURES: usize = 3;
@@ -465,11 +465,11 @@ test_vk!(
 
 test_vk!(
 	cross_entropy_capture_retains_one_semantic_operation_with_two_executable_nodes,
-	engine,
+	runtime,
 	{
 		let logits = oa::Matrix::new_from_f32([2, 3], &[1.0, 2.0, 3.0, -1.0, 0.5, 0.25])?;
 		let targets = oa::Matrix::new_from_slice([2], &[2_u32, 1])?;
-		let (plan, loss) = engine.capture(|| oa::ml::loss::cross_entropy(&logits, &targets))?;
+		let (plan, loss) = runtime.capture(|| oa::ml::loss::cross_entropy(&logits, &targets))?;
 		let diagnostics = plan.diagnostics();
 		let lowering = plan.semantic_lowering();
 
@@ -483,7 +483,7 @@ test_vk!(
 		let operation = plan.semantic_graph().operations()[0].id();
 		assert_eq!(lowering.executable_node_count(operation), 2);
 
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		let expected = cpu_cross_entropy(&[1.0, 2.0, 3.0, -1.0, 0.5, 0.25], &[2, 1], 3);
 		assert!((loss.read_f32()?[0] - expected).abs() <= 1.0e-5);
 		Ok(())
@@ -492,7 +492,7 @@ test_vk!(
 
 test_vk!(
 	dropout_backward_reuses_the_exact_forward_philox_mask,
-	engine,
+	runtime,
 	{
 		const BATCH: usize = 2;
 		const FEATURES: usize = 2;
@@ -572,7 +572,7 @@ test_vk!(
 
 test_vk!(
 	linear_training_reduces_a_fixed_classification_loss,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([4, 2], &[1.0, 0.0, 0.0, 1.0, -1.0, 0.0, 0.0, -1.0])?;
 		let targets = oa::Matrix::new_from_slice([4], &[0_u32, 1, 1, 0])?;
@@ -604,7 +604,7 @@ test_vk!(
 
 test_vk!(
 	captured_training_program_matches_eager_adamw_and_reuses_one_command,
-	engine,
+	runtime,
 	{
 		const INPUTS: [[f32; 4]; 4] = [
 			[1.0, 0.0, 0.0, 1.0],
@@ -619,7 +619,7 @@ test_vk!(
 		let eager_layer = oa::ml::nn::Linear::new_with_seed(2, 2, 0x5447)?;
 		let mut captured_optimizer = oa::ml::AdamW::new(captured_layer.parameters(), 0.01)?;
 		let mut eager_optimizer = oa::ml::AdamW::new(eager_layer.parameters(), 0.01)?;
-		let mut program = oa::ml::TrainingProgram::capture(&engine, &mut captured_optimizer, || {
+		let mut program = oa::ml::TrainingProgram::capture(&runtime, &mut captured_optimizer, || {
 			let tape = oa::ml::GradientTape::new();
 			let logits = captured_layer.forward(&captured_input)?;
 			let loss = oa::ml::loss::cross_entropy(&logits, &captured_target)?;
@@ -633,7 +633,7 @@ test_vk!(
 				program.upload_input(&captured_input, &INPUTS[step])?;
 				program.upload_input(&captured_target, &TARGETS[step])?;
 			}
-			let captured_loss = program.replay_and_wait(&engine, &mut captured_optimizer)?;
+			let captured_loss = program.replay_and_wait(&runtime, &mut captured_optimizer)?;
 
 			let input = oa::Matrix::new_from_f32([2, 2], &INPUTS[step])?;
 			let target = oa::Matrix::new_from_slice([2], &TARGETS[step])?;
@@ -723,7 +723,7 @@ test_vk!(
 		captured_optimizer.zero_grad();
 		assert_eq!(
 			program
-				.replay(&engine, &mut captured_optimizer)
+				.replay(&runtime, &mut captured_optimizer)
 				.unwrap_err()
 				.kind(),
 			oa::ErrorKind::FailedPrecondition
@@ -734,13 +734,13 @@ test_vk!(
 
 test_vk!(
 	captured_training_program_advances_dropout_forward_and_backward,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([4, 2], &[1.0, 0.0, 0.0, 1.0, -1.0, 0.5, 0.25, -0.75])?;
 		let targets = oa::Matrix::new_from_slice([4], &[0_u32, 1, 1, 0])?;
 		let layer = oa::ml::nn::Linear::new_with_seed(2, 2, 0x4452_4f50)?;
 		let mut optimizer = oa::ml::AdamW::new(layer.parameters(), 0.01)?;
-		let mut program = oa::ml::TrainingProgram::capture(&engine, &mut optimizer, || {
+		let mut program = oa::ml::TrainingProgram::capture(&runtime, &mut optimizer, || {
 			let tape = oa::ml::GradientTape::new();
 			let logits = layer.forward(&input)?;
 			let dropped = oa::matrix::dropout(&logits, 0.25, 0x5245_504c_4159)?;
@@ -777,8 +777,8 @@ test_vk!(
 		);
 		assert_eq!(program.diagnostics().compatibility_node_count(), 0);
 
-		let first_loss = program.replay_and_wait(&engine, &mut optimizer)?;
-		let second_loss = program.replay_and_wait(&engine, &mut optimizer)?;
+		let first_loss = program.replay_and_wait(&runtime, &mut optimizer)?;
+		let second_loss = program.replay_and_wait(&runtime, &mut optimizer)?;
 		assert!(first_loss.is_finite());
 		assert!(second_loss.is_finite());
 		assert_eq!(optimizer.step_count(), 2);
@@ -799,7 +799,7 @@ test_vk!(
 
 test_vk!(
 	embedding_reshape_and_scatter_add_backward_match_independent_oracles,
-	engine,
+	runtime,
 	{
 		const VOCABULARY: usize = 4;
 		const EMBEDDING_DIM: usize = 3;
@@ -858,7 +858,7 @@ test_vk!(
 
 test_vk!(
 	character_rnn_forward_and_complete_bptt_match_independent_oracles,
-	engine,
+	runtime,
 	{
 		const VOCABULARY: usize = 3;
 		const EMBEDDING_DIM: usize = 2;
@@ -978,7 +978,7 @@ test_vk!(
 
 test_vk!(
 	stacked_rnn_preserves_batch_sequence_and_parameter_order,
-	engine,
+	runtime,
 	{
 		let rnn = oa::ml::nn::Rnn::new_with_seed(2, 3, 2, 0x0052_4e4e)?;
 		assert_eq!(rnn.input_size(), 2);
@@ -1030,7 +1030,7 @@ test_vk!(
 	}
 );
 
-test_vk!(embedding_and_reshape_reject_invalid_contracts, engine, {
+test_vk!(embedding_and_reshape_reject_invalid_contracts, runtime, {
 	let weight = oa::Matrix::new_from_f32([3, 2], &[0.0; 6])?;
 	let embedding = oa::ml::nn::Embedding::new_from_matrix(weight)?;
 	let floats = oa::Matrix::new_from_f32([2], &[0.0, 1.0])?;
@@ -1065,7 +1065,7 @@ test_vk!(embedding_and_reshape_reject_invalid_contracts, engine, {
 
 test_vk!(
 	out_of_range_embedding_index_produces_nan_without_oob_access,
-	engine,
+	runtime,
 	{
 		let weight = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, 3.0, 4.0])?;
 		let indices = oa::Matrix::new_from_slice([2], &[1_u32, 2])?;
@@ -1079,7 +1079,7 @@ test_vk!(
 
 test_vk!(
 	ml_training_contracts_reject_invalid_shapes_and_dtypes,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([2, 2], &[0.0; 4])?;
 		let weight = oa::Matrix::new_from_f32([3, 2], &[0.0; 6])?;
@@ -1107,8 +1107,8 @@ test_vk!(
 		let targets = oa::Matrix::new_from_slice([2], &[0_u32, 2])?;
 		let layer = oa::ml::nn::Linear::new_with_seed(2, 3, 7)?;
 		let output = layer.forward(&input)?;
-		let foreign_engine = oa::Engine::new()?;
-		let foreign_targets = oa::Matrix::new_from_slice_on(&foreign_engine, [2], &[0_u32, 2])?;
+		let foreign_runtime = oa::Runtime::new()?;
+		let foreign_targets = oa::Matrix::new_from_slice_on(&foreign_runtime, [2], &[0_u32, 2])?;
 		let error = oa::ml::loss::cross_entropy(&output, &foreign_targets)
 			.err()
 			.expect("foreign targets were accepted");
@@ -1119,7 +1119,7 @@ test_vk!(
 	}
 );
 
-test_vk!(cross_entropy_accepts_donor_32bit_target_dtypes, engine, {
+test_vk!(cross_entropy_accepts_donor_32bit_target_dtypes, runtime, {
 	let logits = oa::Matrix::new_from_f32([2, 3], &[1.0, 2.0, 3.0, -1.0, 0.5, 0.25])?;
 	let unsigned_targets = oa::Matrix::new_from_slice([2], &[2_u32, 1])?;
 	let signed_targets = oa::Matrix::new_from_slice([2], &[2_i32, 1])?;
@@ -1138,7 +1138,7 @@ test_vk!(cross_entropy_accepts_donor_32bit_target_dtypes, engine, {
 
 test_vk!(
 	out_of_range_cross_entropy_target_produces_nan_without_oob_access,
-	engine,
+	runtime,
 	{
 		let logits = oa::Matrix::new_from_f32([1, 3], &[1.0, 2.0, 3.0])?;
 		let targets = oa::Matrix::new_from_slice([1], &[3_u32])?;
@@ -1150,7 +1150,7 @@ test_vk!(
 
 test_vk!(
 	backward_rejects_a_parameter_changed_after_forward,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([1, 2], &[1.0, -1.0])?;
 		let targets = oa::Matrix::new_from_slice([1], &[0_u32])?;
@@ -1178,7 +1178,7 @@ test_vk!(
 
 test_vk!(
 	backward_rejects_an_embedding_changed_after_forward,
-	engine,
+	runtime,
 	{
 		let embedding_weight = oa::Matrix::new_from_f32([3, 2], &[0.1, 0.2, -0.3, 0.4, 0.5, -0.6])?;
 		let linear_weight = oa::Matrix::new_from_f32([2, 2], &[0.2, -0.1, 0.3, 0.4])?;

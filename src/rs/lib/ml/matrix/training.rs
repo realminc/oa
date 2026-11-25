@@ -12,14 +12,14 @@ pub(in crate::ml) fn training_accumulate(
 	if target.dtype() != DType::F32
 		|| target.shape() != value.shape()
 		|| value.dtype() != DType::F32
-		|| !target.engine_handle().same_as(value.engine_handle())
+		|| !target.runtime().same_as(value.runtime())
 		|| cursor.dtype() != DType::U32
 		|| cursor.shape() != [2]
-		|| !target.engine_handle().same_as(cursor.engine_handle())
+		|| !target.runtime().same_as(cursor.runtime())
 		|| !scale.is_finite()
 	{
 		return Err(Error::invalid_argument(
-			"compiled accumulation shape/dtype/Engine mismatch",
+			"compiled accumulation shape/dtype/Runtime mismatch",
 		));
 	}
 	let count = u32::try_from(target.num_elements())
@@ -30,7 +30,7 @@ pub(in crate::ml) fn training_accumulate(
 		BufferBinding::read(cursor.storage()),
 	];
 	let push = [PushConstant::U32(count), PushConstant::F32(scale)];
-	target.engine_handle().record_semantic(
+	target.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlTrainingAccumulateF32,
 			buffers: &buffers,
@@ -61,10 +61,10 @@ pub(in crate::ml) fn sample_categorical_cursor(logits: &Matrix, cursor: &Matrix)
 		|| logits.dtype() != DType::F32
 		|| cursor.dtype() != DType::U32
 		|| cursor.shape() != [7]
-		|| !logits.engine_handle().same_as(cursor.engine_handle())
+		|| !logits.runtime().same_as(cursor.runtime())
 	{
 		return Err(Error::invalid_argument(
-			"categorical cursor shape/dtype/Engine mismatch",
+			"categorical cursor shape/dtype/Runtime mismatch",
 		));
 	}
 	let rows =
@@ -72,7 +72,7 @@ pub(in crate::ml) fn sample_categorical_cursor(logits: &Matrix, cursor: &Matrix)
 	let categories = u32::try_from(*categories)
 		.map_err(|_| Error::resource_exhausted("categorical categories overflow"))?;
 	let output = Matrix::allocate(
-		logits.engine_handle(),
+		logits.runtime(),
 		vec![rows as usize],
 		rows as usize,
 		DType::I32,
@@ -83,7 +83,7 @@ pub(in crate::ml) fn sample_categorical_cursor(logits: &Matrix, cursor: &Matrix)
 		BufferBinding::write(output.storage()),
 	];
 	let push = [PushConstant::U32(rows), PushConstant::U32(categories)];
-	logits.engine_handle().record_semantic(
+	logits.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlSampleCategoricalCursorF32,
 			buffers: &buffers,

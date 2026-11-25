@@ -32,7 +32,7 @@ class InventoryTests(unittest.TestCase):
 		self.assertFalse(list((ROOT / "tests").glob("*.rs")), "legacy test files remain")
 
 		# Walk the [[test]] harness entries and follow every #[path] chain.
-		manifests = [ROOT / "Cargo.toml", ROOT / "sdk/Cargo.toml"]
+		manifests = [ROOT / "Cargo.toml"]
 		pending = [
 			path.parent / suite["path"]
 			for path in manifests
@@ -54,7 +54,7 @@ class InventoryTests(unittest.TestCase):
 			for child in _PATH_ATTR.findall(path.read_text()):
 				pending.append(path.parent / child)
 
-		for source_root in (ROOT / "src/rs", ROOT / "sdk/rs", ROOT / "build.rs"):
+		for source_root in (ROOT / "src/rs", ROOT / "build.rs"):
 			sources = [source_root] if source_root.is_file() else source_root.rglob("*.rs")
 			for src in sources:
 				text = src.read_text()

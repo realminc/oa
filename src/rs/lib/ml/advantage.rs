@@ -37,7 +37,7 @@ pub fn normalize(advantage: &Matrix, epsilon: f32) -> Result<Matrix> {
 			CONTRACT.name()
 		)));
 	}
-	let lowering = advantage.engine_handle().begin_semantic_lowering()?;
+	let lowering = advantage.runtime().begin_semantic_lowering()?;
 	let inverse_count = 1.0 / advantage.num_elements() as f32;
 	let mean = matrix::scale(&matrix::sum(advantage, -1)?, inverse_count)?;
 	let centered = matrix::sub(advantage, &mean)?;
@@ -67,7 +67,7 @@ pub fn normalize(advantage: &Matrix, epsilon: f32) -> Result<Matrix> {
 ///
 /// # Errors
 ///
-/// Returns an error unless all inputs share one engine and one nonempty
+/// Returns an error unless all inputs share one runtime and one nonempty
 /// `[time, environments]` shape, values are F32, boundary masks are U8, both
 /// discounts are finite in `[0, 1]`, and GPU recording succeeds.
 pub fn gae(
@@ -80,13 +80,13 @@ pub fn gae(
 ) -> Result<GaeResult> {
 	validate_inputs(reward, value, next_value, terminated, truncated, config)?;
 	let mut advantage = Matrix::allocate(
-		reward.engine_handle(),
+		reward.runtime(),
 		reward.shape().to_vec(),
 		reward.num_elements(),
 		DType::F32,
 	)?;
 	let mut returns = Matrix::allocate(
-		reward.engine_handle(),
+		reward.runtime(),
 		reward.shape().to_vec(),
 		reward.num_elements(),
 		DType::F32,
@@ -112,7 +112,7 @@ pub fn gae(
 /// # Errors
 ///
 /// Returns the errors from [`gae`], and rejects output matrices that do not
-/// match the rollout's engine, F32 dtype, and shape or alias any input/each other.
+/// match the rollout's runtime, F32 dtype, and shape or alias any input/each other.
 #[allow(
 	clippy::too_many_arguments,
 	reason = "the allocation-free API keeps every rollout field and both outputs explicit"
@@ -130,12 +130,12 @@ pub fn gae_into(
 	const OPERATION: &str = "oa::FnAdvantage::gae";
 	validate_inputs(reward, value, next_value, terminated, truncated, config)?;
 	for output in [&*advantage, &*returns] {
-		if !reward.engine_handle().same_as(output.engine_handle())
+		if !reward.runtime().same_as(output.runtime())
 			|| output.dtype() != DType::F32
 			|| output.shape() != reward.shape()
 		{
 			return Err(Error::invalid_argument(format!(
-				"{OPERATION} outputs must be same-engine F32 matrices matching the rollout shape"
+				"{OPERATION} outputs must be same-runtime F32 matrices matching the rollout shape"
 			)));
 		}
 	}
@@ -195,11 +195,11 @@ pub fn gae_into(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -221,9 +221,9 @@ fn validate_inputs(
 ) -> Result<()> {
 	const OPERATION: &str = "oa::FnAdvantage::gae";
 	for input in [reward, value, next_value, terminated, truncated] {
-		if !reward.engine_handle().same_as(input.engine_handle()) {
+		if !reward.runtime().same_as(input.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{OPERATION} inputs must belong to the same engine"
+				"{OPERATION} inputs must belong to the same runtime"
 			)));
 		}
 		if input.shape() != reward.shape() {

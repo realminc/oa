@@ -1,5 +1,5 @@
 //! Dynamic compilation services and owned, validated SPIR-V artifacts.
-//! Engine owns service lifetime; device code publishes Vulkan pipelines.
+//! Runtime owns service lifetime; device code publishes Vulkan pipelines.
 
 mod artifact;
 mod elementwise;

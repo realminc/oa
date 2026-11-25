@@ -46,12 +46,12 @@ pub fn ctc(
 		OPERATION,
 	)?;
 	let per_item = Matrix::allocate(
-		log_probs.engine_handle(),
+		log_probs.runtime(),
 		vec![batch as usize],
 		batch as usize,
 		DType::F32,
 	)?;
-	let output = Matrix::allocate(log_probs.engine_handle(), Vec::new(), 1, DType::F32)?;
+	let output = Matrix::allocate(log_probs.runtime(), Vec::new(), 1, DType::F32)?;
 	let loss_buffers = [
 		BufferBinding::read(log_probs.storage()),
 		BufferBinding::read(targets.storage()),
@@ -94,7 +94,7 @@ pub fn ctc(
 			indirect: None,
 		},
 	];
-	log_probs.engine_handle().record_split_semantic(
+	log_probs.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: crate::core::operation::ml::CTC,
@@ -136,12 +136,12 @@ pub(in crate::ml) fn ctc_backward(
 	)?;
 	// The gradient accumulates class posteriors through shared atomic
 	// contributors; it must start at exact zero.
-	let gradient = log_probs.new_from_slice_on_same_engine(
+	let gradient = log_probs.new_from_slice_on_same_runtime(
 		log_probs.shape().to_vec(),
 		&vec![0.0_f32; log_probs.num_elements()],
 	)?;
 	let lattice = Matrix::allocate(
-		log_probs.engine_handle(),
+		log_probs.runtime(),
 		vec![batch as usize, times as usize * (2 * width as usize + 1)],
 		batch as usize * times as usize * (2 * width as usize + 1),
 		DType::F32,
@@ -172,7 +172,7 @@ pub(in crate::ml) fn ctc_backward(
 		workgroups: portable_row_workgroups(batch),
 		indirect: None,
 	};
-	log_probs.engine_handle().record_semantic(
+	log_probs.runtime().record_semantic(
 		dispatch,
 		SemanticDispatch {
 			contract: crate::core::operation::ml::CTC_BACKWARD,
@@ -211,9 +211,9 @@ fn validate_ctc_inputs(
 				"{operation} requires I32 or U32 {name}"
 			)));
 		}
-		if !matrix.engine_handle().same_as(log_probs.engine_handle()) {
+		if !matrix.runtime().same_as(log_probs.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}

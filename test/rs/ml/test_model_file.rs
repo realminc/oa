@@ -8,7 +8,7 @@ struct CheckpointModule {
 }
 
 impl CheckpointModule {
-	fn new(_engine: &oa::Engine, weight: f32, persistent: u32, scratch: i32) -> oa::Result<Self> {
+	fn new(_runtime: &oa::Runtime, weight: f32, persistent: u32, scratch: i32) -> oa::Result<Self> {
 		let parameter = Parameter::new(
 			"value",
 			oa::Matrix::new_from_f32([1, 2], &[weight, weight + 1.0])?,
@@ -44,7 +44,7 @@ impl Module for CheckpointModule {
 
 test_vk!(
 	native_oam_roundtrip_integrity_and_legacy_checksums,
-	engine,
+	runtime,
 	{
 		let directory = std::env::temp_dir().join(format!(
 			"oars-oam-{}-{}",
@@ -57,7 +57,7 @@ test_vk!(
 		std::fs::create_dir_all(&directory).expect("create .oam test directory");
 		let path = directory.join("model.oam");
 
-		let source = CheckpointModule::new(&engine, 3.0, 97, -7)?;
+		let source = CheckpointModule::new(&runtime, 3.0, 97, -7)?;
 		let source_optimizer = AdamW::new(source.all_parameters()?, 0.025)?;
 		oa::ml::save_checkpoint(&path, &source, &source_optimizer)?;
 		let first = std::fs::read(&path).expect("read native .oam");
@@ -81,13 +81,13 @@ test_vk!(
 
 		// Saving a second complete artifact to the same path exercises atomic
 		// replacement rather than in-place mutation.
-		let replacement = CheckpointModule::new(&engine, 9.0, 98, -8)?;
+		let replacement = CheckpointModule::new(&runtime, 9.0, 98, -8)?;
 		let replacement_optimizer = AdamW::new(replacement.all_parameters()?, 0.05)?;
 		oa::ml::save_checkpoint(&path, &replacement, &replacement_optimizer)?;
 		let valid = std::fs::read(&path).expect("read replaced .oam");
 		assert_ne!(first, valid);
 
-		let destination = CheckpointModule::new(&engine, -1.0, 1, 123)?;
+		let destination = CheckpointModule::new(&runtime, -1.0, 1, 123)?;
 		let mut destination_optimizer = AdamW::new(destination.all_parameters()?, 1.0e-3)?;
 		oa::ml::load_checkpoint(&path, &destination, &mut destination_optimizer)?;
 		assert_eq!(destination.parameter.data().read_f32()?, [9.0, 10.0]);
@@ -118,7 +118,7 @@ test_vk!(
 				.status()
 				.expect("run OA C++ modelctl quantize");
 			assert!(status.success(), "OA C++ could not rewrite Rust .oam");
-			let cpp_destination = CheckpointModule::new(&engine, 0.0, 0, 0)?;
+			let cpp_destination = CheckpointModule::new(&runtime, 0.0, 0, 0)?;
 			let mut cpp_optimizer = AdamW::new(cpp_destination.all_parameters()?, 0.01)?;
 			let error = oa::ml::load_checkpoint(&cpp_path, &cpp_destination, &mut cpp_optimizer)
 				.expect_err("inference-only C++ artifact retained optimizer state");
@@ -134,17 +134,17 @@ test_vk!(
 		corrupt[weights.end - 1] ^= 1;
 		let corrupt_path = directory.join("corrupt.oam");
 		std::fs::write(&corrupt_path, corrupt).expect("write corrupt .oam");
-		assert_corrupt(&engine, &corrupt_path)?;
+		assert_corrupt(&runtime, &corrupt_path)?;
 
 		let mut metadata_corrupt = valid.clone();
 		metadata_corrupt[64 + 8] ^= 1;
 		let metadata_path = directory.join("metadata-corrupt.oam");
 		std::fs::write(&metadata_path, metadata_corrupt).expect("write metadata-corrupt .oam");
-		assert_corrupt(&engine, &metadata_path)?;
+		assert_corrupt(&runtime, &metadata_path)?;
 
 		let truncated_path = directory.join("truncated.oam");
 		std::fs::write(&truncated_path, &valid[..valid.len() - 7]).expect("write truncated .oam");
-		assert_corrupt(&engine, &truncated_path)?;
+		assert_corrupt(&runtime, &truncated_path)?;
 
 		for version in [1_u32, 2] {
 			let mut legacy = valid.clone();
@@ -160,7 +160,7 @@ test_vk!(
 			legacy[24..32].copy_from_slice(&checksum.to_le_bytes());
 			let legacy_path = directory.join(format!("model-v{version}.oam"));
 			std::fs::write(&legacy_path, legacy).expect("write legacy .oam");
-			let legacy_destination = CheckpointModule::new(&engine, 0.0, 0, 0)?;
+			let legacy_destination = CheckpointModule::new(&runtime, 0.0, 0, 0)?;
 			let mut legacy_optimizer = AdamW::new(legacy_destination.all_parameters()?, 0.01)?;
 			oa::ml::load_checkpoint(&legacy_path, &legacy_destination, &mut legacy_optimizer)?;
 			assert_eq!(legacy_destination.parameter.data().read_f32()?, [9.0, 10.0]);
@@ -173,7 +173,7 @@ test_vk!(
 
 test_vk!(
 	native_oam_roundtrips_sgd_adam_and_muon_optimizer_state,
-	engine,
+	runtime,
 	{
 		let directory = std::env::temp_dir().join(format!(
 			"oars-optimizer-oam-{}-{}",
@@ -240,7 +240,7 @@ test_vk!(
 
 test_vk!(
 	checkpoint_manager_tracks_best_latest_and_rotation,
-	engine,
+	runtime,
 	{
 		let directory = std::env::temp_dir().join(format!(
 			"oars-checkpoint-manager-{}-{}",
@@ -259,9 +259,9 @@ test_vk!(
 			metric_name: "loss".to_owned(),
 			lower_is_better: true,
 		};
-		let source = CheckpointModule::new(&engine, 4.0, 9, 0)?;
+		let source = CheckpointModule::new(&runtime, 4.0, 9, 0)?;
 		let mut optimizer = AdamW::new(source.all_parameters()?, 0.01)?;
-		let mut manager = oa::ml::CheckpointManager::new(&engine, config.clone())?;
+		let mut manager = oa::ml::CheckpointManager::new(&runtime, config.clone())?;
 		for (metric, expected_improvement) in [(3.0, true), (2.0, true), (2.5, false)] {
 			optimizer.step()?;
 			assert_eq!(
@@ -283,9 +283,9 @@ test_vk!(
 			.expect("read incremental checkpoint entries");
 		assert_eq!(incrementals.len(), 2);
 
-		let latest_model = CheckpointModule::new(&engine, -1.0, 0, 0)?;
+		let latest_model = CheckpointModule::new(&runtime, -1.0, 0, 0)?;
 		let mut latest_optimizer = AdamW::new(latest_model.all_parameters()?, 0.5)?;
-		let scanning_manager = oa::ml::CheckpointManager::new(&engine, config.clone())?;
+		let scanning_manager = oa::ml::CheckpointManager::new(&runtime, config.clone())?;
 		scanning_manager.load_latest_into(&latest_model, &mut latest_optimizer)?;
 		assert_eq!(latest_optimizer.step_count(), 3);
 		let latest_path = incrementals
@@ -300,7 +300,7 @@ test_vk!(
 			.expect("step-three checkpoint exists");
 		let mismatched_path = latest_path.with_file_name("Tiny_train_step99_loss2.50.oam");
 		std::fs::rename(&latest_path, &mismatched_path).expect("rename checkpoint step segment");
-		let mismatched_manager = oa::ml::CheckpointManager::new(&engine, config.clone())?;
+		let mismatched_manager = oa::ml::CheckpointManager::new(&runtime, config.clone())?;
 		let error = mismatched_manager
 			.load_latest_into(&latest_model, &mut latest_optimizer)
 			.expect_err("filename/progress step mismatch was accepted");
@@ -318,7 +318,7 @@ test_vk!(
 				.is_err()
 		);
 
-		let best_model = CheckpointModule::new(&engine, -2.0, 0, 0)?;
+		let best_model = CheckpointModule::new(&runtime, -2.0, 0, 0)?;
 		let mut best_optimizer = AdamW::new(best_model.all_parameters()?, 0.5)?;
 		manager.load_best_into(&best_model, &mut best_optimizer)?;
 		assert_eq!(best_optimizer.step_count(), 2);
@@ -328,7 +328,7 @@ test_vk!(
 			model_name: "../escape".to_owned(),
 			..Default::default()
 		};
-		assert!(oa::ml::CheckpointManager::new(&engine, invalid).is_err());
+		assert!(oa::ml::CheckpointManager::new(&runtime, invalid).is_err());
 		std::fs::remove_dir_all(directory).expect("remove checkpoint manager directory");
 		Ok(())
 	}
@@ -389,8 +389,8 @@ fn hash(bytes: &[u8]) -> u64 {
 	})
 }
 
-fn assert_corrupt(engine: &oa::Engine, path: &std::path::Path) -> oa::Result<()> {
-	let destination = CheckpointModule::new(engine, 0.0, 0, 0)?;
+fn assert_corrupt(runtime: &oa::Runtime, path: &std::path::Path) -> oa::Result<()> {
+	let destination = CheckpointModule::new(runtime, 0.0, 0, 0)?;
 	let mut optimizer = AdamW::new(destination.all_parameters()?, 0.01)?;
 	assert_eq!(
 		oa::ml::load_checkpoint(path, &destination, &mut optimizer)

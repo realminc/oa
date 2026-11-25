@@ -1,7 +1,7 @@
 //! Parametric activation modules: learned-slope PReLU and alpha-scaled ELU.
 
 use crate::ml::matrix::relu;
-use crate::{Engine, Error, Matrix, Result, matrix};
+use crate::{Error, Matrix, Result, Runtime, matrix};
 
 use super::super::{Module, ModuleRegistry, Parameter, autograd};
 
@@ -23,14 +23,14 @@ impl Prelu {
 	/// # Errors
 	///
 	/// Returns an error when `num_slope_parameters` is zero or allocation fails.
-	pub fn new_on(engine: &Engine, num_slope_parameters: usize) -> Result<Self> {
+	pub fn new_on(runtime: &Runtime, num_slope_parameters: usize) -> Result<Self> {
 		if num_slope_parameters == 0 {
 			return Err(Error::invalid_argument(
 				"prelu requires at least one slope parameter",
 			));
 		}
 		let data = Matrix::new_from_f32_on(
-			engine,
+			runtime,
 			[num_slope_parameters],
 			&vec![0.25_f32; num_slope_parameters],
 		)?;
@@ -44,13 +44,13 @@ impl Prelu {
 		})
 	}
 
-	/// Construct on the current engine.
+	/// Construct on the current runtime.
 	///
 	/// # Errors
 	///
 	/// Returns an error under the same contract as [`Self::new_on`].
 	pub fn new(num_slope_parameters: usize) -> Result<Self> {
-		Self::new_on(&Engine::current()?, num_slope_parameters)
+		Self::new_on(&Runtime::current()?, num_slope_parameters)
 	}
 
 	/// Return the learned slope parameter.

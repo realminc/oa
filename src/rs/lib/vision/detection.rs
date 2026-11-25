@@ -12,7 +12,7 @@
 
 use std::mem::{offset_of, size_of};
 
-use crate::{Engine, Error, Event, Matrix, Result, runtime::EngineHandle};
+use crate::{Error, Event, Matrix, Result, Runtime, runtime::RuntimeHandle};
 
 /// One GPU-consumable detection record, exactly 32 bytes.
 ///
@@ -40,11 +40,11 @@ const _: () = assert!(offset_of!(Detection, track_id) == 28);
 
 /// A fixed-capacity GPU-consumable detection buffer.
 ///
-/// Construction requires an [`Engine`]; dropping the buffer never waits —
-/// the engine's retirement service keeps submitted resources alive through
+/// Construction requires an [`Runtime`]; dropping the buffer never waits —
+/// the runtime's retirement service keeps submitted resources alive through
 /// completion.
 pub struct DetectionBuffer {
-	engine: EngineHandle,
+	runtime: RuntimeHandle,
 	storage: Matrix,
 	consumer: Option<Event>,
 	count: u32,
@@ -53,7 +53,7 @@ pub struct DetectionBuffer {
 
 impl DetectionBuffer {
 	pub fn create_host_upload(capacity: u32) -> Result<Self> {
-		Self::create_host_upload_on(&Engine::current()?, capacity)
+		Self::create_host_upload_on(&Runtime::current()?, capacity)
 	}
 
 	/// Allocate a host-uploadable buffer for `capacity` detection records.
@@ -65,7 +65,7 @@ impl DetectionBuffer {
 	///
 	/// Returns an error when `capacity` is zero, the capacity byte extent
 	/// overflows, or allocation fails.
-	pub fn create_host_upload_on(engine: &Engine, capacity: u32) -> Result<Self> {
+	pub fn create_host_upload_on(runtime: &Runtime, capacity: u32) -> Result<Self> {
 		if capacity == 0 {
 			return Err(Error::invalid_argument(
 				"oa::vision::DetectionBuffer::create_host_upload: capacity must be non-zero",
@@ -79,9 +79,9 @@ impl DetectionBuffer {
 					"oa::vision::DetectionBuffer::create_host_upload: capacity byte extent overflows usize",
 				)
 			})?;
-		let storage = Matrix::new_from_slice_on(engine, [byte_len], &vec![0_u8; byte_len])?;
+		let storage = Matrix::new_from_slice_on(runtime, [byte_len], &vec![0_u8; byte_len])?;
 		Ok(Self {
-			engine: engine.handle(),
+			runtime: runtime.handle(),
 			storage,
 			consumer: None,
 			count: 0,
@@ -129,11 +129,11 @@ impl DetectionBuffer {
 	/// # Errors
 	///
 	/// Returns an error when `completion` does not belong to this buffer's
-	/// engine or completion cannot be queried.
+	/// runtime or completion cannot be queried.
 	pub fn mark_consumed(&mut self, completion: &Event) -> Result<()> {
-		if !self.engine.owns_event(completion) {
+		if !self.runtime.owns_event(completion) {
 			return Err(Error::invalid_argument(
-				"oa::vision::DetectionBuffer::mark_consumed requires an event from its engine",
+				"oa::vision::DetectionBuffer::mark_consumed requires an event from its runtime",
 			));
 		}
 		self.consumer = if completion.is_complete()? {
@@ -168,7 +168,9 @@ impl DetectionBuffer {
 
 	/// Bindless storage-buffer descriptor index for UI/render consumers.
 	pub(crate) fn bindless_index(&self) -> Result<u32> {
-		self.engine.storage_descriptor_index(self.storage.storage())
+		self
+			.runtime
+			.storage_descriptor_index(self.storage.storage())
 	}
 
 	/// The packed record storage retained by UI draw commands.
@@ -176,8 +178,8 @@ impl DetectionBuffer {
 		&self.storage
 	}
 
-	/// The engine that owns this buffer's storage.
-	pub(crate) const fn engine_handle(&self) -> &EngineHandle {
-		&self.engine
+	/// The runtime that owns this buffer's storage.
+	pub(crate) const fn runtime(&self) -> &RuntimeHandle {
+		&self.runtime
 	}
 }

@@ -2,6 +2,7 @@
 
 use crate::{
 	DType, Error, Image, ImageFormat, ImageLayout, Matrix, OpAttribute, Result,
+	image::Connectivity,
 	runtime::{
 		BufferBinding, ComputeDispatch, ImageSemanticDispatch, ImageSemanticInput,
 		ImageSemanticOutput, KernelId,
@@ -18,10 +19,10 @@ fn validate_matching_images(a: &Image, b: &Image, operation: &str) -> Result<()>
 		|| a.dtype() != b.dtype()
 		|| a.layout() != b.layout()
 		|| a.format() != b.format()
-		|| !a.engine_handle().same_as(b.engine_handle())
+		|| !a.runtime().same_as(b.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} images must have identical shape, dtype, layout, format, and engine"
+			"{operation} images must have identical shape, dtype, layout, format, and runtime"
 		)));
 	}
 	Ok(())
@@ -69,7 +70,7 @@ fn allocate(
 	})?;
 	u32::try_from(elements)
 		.map_err(|_| Error::out_of_range(format!("{operation} output size exceeds u32")))?;
-	let matrix = Matrix::allocate(input.engine_handle(), shape, elements, DType::F32)?;
+	let matrix = Matrix::allocate(input.runtime(), shape, elements, DType::F32)?;
 	Image::new(matrix, input.layout(), format)
 }
 

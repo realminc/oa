@@ -64,19 +64,19 @@ impl GradientTape {
 		}
 		self.recording.consumed.set(true);
 
-		let engine = root.engine_handle().clone();
+		let runtime = root.runtime().clone();
 		let mut gradients = HashMap::<u64, Matrix>::new();
 		gradients.insert(
 			root.value_id(),
-			Matrix::new_from_slice_handle(&engine, vec![], &[1.0_f32])?,
+			Matrix::new_from_slice_handle(&runtime, vec![], &[1.0_f32])?,
 		);
 		for entry in nodes.iter().rev() {
 			let node = &entry.node;
 			let Some(reached_output_id) = reached_output_id(node, &gradients) else {
 				continue;
 			};
-			let attachment = engine.attach_semantic_autograd(reached_output_id, entry.sequence)?;
-			let backward_first = engine.semantic_operation_count();
+			let attachment = runtime.attach_semantic_autograd(reached_output_id, entry.sequence)?;
+			let backward_first = runtime.semantic_operation_count();
 			match node {
 				GradNode::Matrix(node) => {
 					if !node.backward(&mut MatrixGradients(&mut gradients))? {
@@ -1148,7 +1148,7 @@ impl GradientTape {
 					let hidden_gradient = match hidden_gradient {
 						Some(gradient) => gradient,
 						None => Matrix::new_from_slice_handle(
-							node.hidden.engine_handle(),
+							node.hidden.runtime(),
 							node.hidden.shape().to_vec(),
 							&vec![0.0_f32; node.hidden.element_count()],
 						)?,
@@ -1156,7 +1156,7 @@ impl GradientTape {
 					let cell_gradient = match cell_gradient {
 						Some(gradient) => gradient,
 						None => Matrix::new_from_slice_handle(
-							node.cell.engine_handle(),
+							node.cell.runtime(),
 							node.cell.shape().to_vec(),
 							&vec![0.0_f32; node.cell.element_count()],
 						)?,
@@ -1206,7 +1206,7 @@ impl GradientTape {
 				}
 			}
 			if let Some((forward, generation)) = attachment {
-				engine.complete_semantic_autograd(forward, entry.sequence, generation, backward_first)?;
+				runtime.complete_semantic_autograd(forward, entry.sequence, generation, backward_first)?;
 			}
 		}
 		for watched in self.recording.watched_parameters.borrow().iter() {
@@ -1239,7 +1239,7 @@ fn take_or_zero_gradient(gradients: &mut HashMap<u64, Matrix>, output: &Matrix) 
 		return Ok(gradient);
 	}
 	Matrix::new_from_slice_handle(
-		output.engine_handle(),
+		output.runtime(),
 		output.shape().to_vec(),
 		&vec![0.0_f32; output.element_count()],
 	)

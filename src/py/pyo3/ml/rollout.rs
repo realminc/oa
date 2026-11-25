@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::rl::PythonGaeConfig;
 
@@ -140,11 +140,11 @@ pub(crate) struct PythonRolloutBuffer {
 
 #[pymethods]
 impl PythonRolloutBuffer {
-	/// Allocate one empty fixed-capacity rollout on `engine`.
+	/// Allocate one empty fixed-capacity rollout on `runtime`.
 	#[new]
-	pub fn new(config: &PythonRolloutConfig, engine: Option<&PythonEngine>) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::RolloutBuffer::new(&engine, config.inner.clone())
+	pub fn new(config: &PythonRolloutConfig, runtime: Option<&PythonRuntime>) -> PyResult<Self> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::RolloutBuffer::new(&runtime, config.inner.clone())
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

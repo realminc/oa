@@ -1,13 +1,13 @@
 //! `oa tune` — offline measured-route tuning evidence runs.
 //!
 //! Runs a GEMM shape suite under the tile-search flags so each candidate
-//! signature accrues measured samples; `Engine` drop commits the route
+//! signature accrues measured samples; `Runtime` drop commits the route
 //! observations and block artifacts into the device-scoped `.vkcache`,
 //! which later runs replay without re-measurement.
 
 use std::error::Error;
 
-use oa::{DeviceSelection, Engine, Matrix};
+use oa::{DeviceSelection, Matrix, Runtime};
 
 /// `MxNxK` tile-search suite used when `--shapes` is not given: small,
 /// square, wide-N and deep-K representatives of the admitted geometry set.
@@ -18,10 +18,10 @@ const DEFAULT_SHAPES: &str = "64x64x32,128x128x128,256x256x256,512x512x512,64x51
 ///
 /// `shapes` is a comma-separated `MxNxK` list; empty selects
 /// [`DEFAULT_SHAPES`]. The opt-in tile flags are enabled for this process
-/// before engine creation so the measured candidates are offered.
+/// before runtime creation so the measured candidates are offered.
 pub fn run(device: usize, samples: u32, shapes: &str) -> Result<(), Box<dyn Error>> {
 	// SAFETY: the process-wide opt-in route flags are set once before any
-	// engine or worker thread exists in this single-command scope.
+	// runtime or worker thread exists in this single-command scope.
 	for (name, value) in [
 		("OA_TILE_GEMM", "1"),
 		("OA_TILE_GEMM_SEARCH", "1"),
@@ -30,7 +30,7 @@ pub fn run(device: usize, samples: u32, shapes: &str) -> Result<(), Box<dyn Erro
 	] {
 		unsafe { std::env::set_var(name, value) };
 	}
-	let engine = Engine::builder()
+	let runtime = Runtime::builder()
 		.devices(DeviceSelection::Index(device))
 		.build()?;
 	let list = if shapes.is_empty() {
@@ -51,12 +51,12 @@ pub fn run(device: usize, samples: u32, shapes: &str) -> Result<(), Box<dyn Erro
 		geometries.push((*m, *n, *k));
 	}
 	for (m, n, k) in &geometries {
-		let left = Matrix::new_from_f32_on(&engine, [*m, *k], &fill(m * k, 3))?;
-		let right = Matrix::new_from_f32_on(&engine, [*n, *k], &fill(n * k, 11))?;
+		let left = Matrix::new_from_f32_on(&runtime, [*m, *k], &fill(m * k, 3))?;
+		let right = Matrix::new_from_f32_on(&runtime, [*n, *k], &fill(n * k, 11))?;
 		for _ in 0..samples {
-			let _ = oa::matrix::mat_mul_nt(&left, &right)?;
+			let _ = oa::matrix::matmul(&left, &right)?;
 		}
-		engine.checkpoint()?.wait()?;
+		runtime.checkpoint()?.wait()?;
 		println!("tuned {m}x{n}x{k}: {samples} dispatches");
 	}
 	println!(

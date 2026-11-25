@@ -3,7 +3,7 @@
 use crate::runtime::ComputeDispatch;
 use crate::runtime::SemanticDispatch;
 use crate::runtime::{BufferBinding, KernelId, PushConstant};
-use crate::{DType, Engine, Error, Matrix, OpAttribute, Result};
+use crate::{DType, Error, Matrix, OpAttribute, Result, Runtime};
 
 pub use super::types::RolloutConfig;
 use super::{advantage, validation::shader_u32};
@@ -24,7 +24,7 @@ pub struct RolloutTransition {
 impl RolloutTransition {
 	/// Construct one categorical vector-environment transition.
 	///
-	/// Shape, dtype, and engine compatibility are checked by
+	/// Shape, dtype, and runtime compatibility are checked by
 	/// [`RolloutBuffer::append`] against that buffer's configuration.
 	#[allow(
 		clippy::too_many_arguments,
@@ -167,7 +167,7 @@ impl RolloutBatch {
 
 /// Stateful fixed-capacity owner for one categorical on-policy rollout.
 ///
-/// Appends, validity reset, and final GAE are recorded on the owning engine;
+/// Appends, validity reset, and final GAE are recorded on the owning runtime;
 /// host observation remains the explicit submit-and-wait boundary. Storage is
 /// allocated once and overwritten in place across completed collection cycles.
 pub struct RolloutBuffer {
@@ -179,14 +179,14 @@ pub struct RolloutBuffer {
 }
 
 impl RolloutBuffer {
-	/// Allocate one empty fixed-capacity rollout on `engine`.
+	/// Allocate one empty fixed-capacity rollout on `runtime`.
 	///
 	/// # Errors
 	///
 	/// Returns an error unless time and environment counts are nonzero, the
 	/// observation rank is in `1..=6`, every observation extent is positive,
 	/// all GPU-indexed counts fit `u32`, and every matrix allocation succeeds.
-	pub fn new(engine: &Engine, config: RolloutConfig) -> Result<Self> {
+	pub fn new(runtime: &Runtime, config: RolloutConfig) -> Result<Self> {
 		if config.time == 0
 			|| config.environments == 0
 			|| !(1..=6).contains(&config.observation_shape.len())
@@ -220,7 +220,7 @@ impl RolloutBuffer {
 		let scalar_shape = vec![config.time, config.environments];
 		let mut observation_shape = scalar_shape.clone();
 		observation_shape.extend_from_slice(&config.observation_shape);
-		let handle = engine.handle();
+		let handle = runtime.handle();
 		let allocate =
 			|shape: Vec<usize>, count: usize, dtype| Matrix::allocate(&handle, shape, count, dtype);
 		let batch = RolloutBatch {
@@ -250,7 +250,7 @@ impl RolloutBuffer {
 	/// # Errors
 	///
 	/// Returns an error after finalization, at capacity, when any transition
-	/// field violates the configured shape/dtype/engine contract or aliases
+	/// field violates the configured shape/dtype/runtime contract or aliases
 	/// retained rollout storage, or when GPU recording fails.
 	pub fn append(&mut self, transition: &RolloutTransition) -> Result<()> {
 		if self.finalized {
@@ -370,7 +370,7 @@ impl RolloutBuffer {
 	/// Begin a new collection cycle and clear the validity mask on the device.
 	///
 	/// Previously allocated matrices are retained and overwritten by later
-	/// appends. Pending work remains ordered by the engine's execution session.
+	/// appends. Pending work remains ordered by the runtime's execution session.
 	///
 	/// # Errors
 	///
@@ -465,13 +465,9 @@ fn append_dispatch(
 				"{OPERATION} transition does not match the configured categorical shape/dtype contract"
 			)));
 		}
-		if !transition
-			.observation()
-			.engine_handle()
-			.same_as(matrix.engine_handle())
-		{
+		if !transition.observation().runtime().same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{OPERATION} transition fields must belong to one engine"
+				"{OPERATION} transition fields must belong to one runtime"
 			)));
 		}
 	}
@@ -479,11 +475,11 @@ fn append_dispatch(
 	for destination in destinations {
 		if !transition
 			.observation()
-			.engine_handle()
-			.same_as(destination.engine_handle())
+			.runtime()
+			.same_as(destination.runtime())
 		{
 			return Err(Error::invalid_argument(format!(
-				"{OPERATION} transition and rollout buffer must belong to one engine"
+				"{OPERATION} transition and rollout buffer must belong to one runtime"
 			)));
 		}
 		if fields
@@ -590,11 +586,11 @@ fn append_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -623,15 +619,11 @@ pub(in crate::ml) fn next_observation_append(
 		|| next_observation.num_elements() != observation_count
 		|| observation_count == 0
 		|| !retained.num_elements().is_multiple_of(observation_count)
-		|| !next_observation
-			.engine_handle()
-			.same_as(retained.engine_handle())
-		|| !next_observation
-			.engine_handle()
-			.same_as(cursor.engine_handle())
+		|| !next_observation.runtime().same_as(retained.runtime())
+		|| !next_observation.runtime().same_as(cursor.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{OPERATION} source/retained/cursor shape/dtype/Engine mismatch"
+			"{OPERATION} source/retained/cursor shape/dtype/Runtime mismatch"
 		)));
 	}
 	if next_observation.storage().same_as(retained.storage()) {
@@ -682,11 +674,11 @@ pub(in crate::ml) fn next_observation_append(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -726,11 +718,11 @@ fn reset_dispatch(valid: &Matrix) -> Result<()> {
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -780,11 +772,11 @@ pub(in crate::ml) fn minibatch(
 	for (index, input) in inputs.iter().enumerate() {
 		let dtype = if index == 1 { DType::I32 } else { DType::F32 };
 		if input.dtype() != dtype
-			|| !input.engine_handle().same_as(inputs[0].engine_handle())
+			|| !input.runtime().same_as(inputs[0].runtime())
 			|| (index > 0 && input.shape() != [*batch])
 		{
 			return Err(Error::invalid_argument(
-				"PPO minibatch shape/dtype/Engine mismatch",
+				"PPO minibatch shape/dtype/Runtime mismatch",
 			));
 		}
 	}
@@ -794,8 +786,8 @@ pub(in crate::ml) fn minibatch(
 		.checked_mul(*width)
 		.ok_or_else(|| Error::resource_exhausted("PPO minibatch observation extent overflows"))?;
 	let items = shader_u32(elements, "output observation elements", OP)?;
-	let engine = inputs[0].engine_handle();
-	let allocate = |shape, count, dtype| Matrix::allocate(engine, shape, count, dtype);
+	let runtime = inputs[0].runtime();
+	let allocate = |shape, count, dtype| Matrix::allocate(runtime, shape, count, dtype);
 	let outputs = [
 		allocate(vec![count, *width], elements, DType::F32)?,
 		allocate(vec![count], count, DType::I32)?,
@@ -832,7 +824,7 @@ pub(in crate::ml) fn minibatch(
 			value: u64::from(count),
 		},
 	];
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlRolloutMinibatchF32,
 			buffers: &buffers,
@@ -875,20 +867,20 @@ pub(in crate::ml) fn minibatch_cursor(
 	for (index, input) in inputs.iter().enumerate() {
 		let dtype = if index == 1 { DType::I32 } else { DType::F32 };
 		if input.dtype() != dtype
-			|| !input.engine_handle().same_as(inputs[0].engine_handle())
+			|| !input.runtime().same_as(inputs[0].runtime())
 			|| (index > 0 && input.shape() != [*batch])
 		{
 			return Err(Error::invalid_argument(
-				"PPO minibatch shape/dtype/Engine mismatch",
+				"PPO minibatch shape/dtype/Runtime mismatch",
 			));
 		}
 	}
 	if cursor.dtype() != DType::U32
 		|| cursor.shape() != [2]
-		|| !cursor.engine_handle().same_as(inputs[0].engine_handle())
+		|| !cursor.runtime().same_as(inputs[0].runtime())
 	{
 		return Err(Error::invalid_argument(
-			"PPO cursor must be same-engine U32 [2]",
+			"PPO cursor must be same-runtime U32 [2]",
 		));
 	}
 	const OP: &str = "oa::ml::rollout::minibatch";
@@ -897,8 +889,8 @@ pub(in crate::ml) fn minibatch_cursor(
 		.checked_mul(*width)
 		.ok_or_else(|| Error::resource_exhausted("PPO minibatch observation extent overflows"))?;
 	let items = shader_u32(elements, "output observation elements", OP)?;
-	let engine = inputs[0].engine_handle();
-	let allocate = |shape, count, dtype| Matrix::allocate(engine, shape, count, dtype);
+	let runtime = inputs[0].runtime();
+	let allocate = |shape, count, dtype| Matrix::allocate(runtime, shape, count, dtype);
 	let outputs = [
 		allocate(vec![count, *width], elements, DType::F32)?,
 		allocate(vec![count], count, DType::I32)?,
@@ -928,7 +920,7 @@ pub(in crate::ml) fn minibatch_cursor(
 		name: "count".into(),
 		value: u64::from(count),
 	}];
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlRolloutMinibatchCursorF32,
 			buffers: &buffers,

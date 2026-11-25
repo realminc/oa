@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeMap, time::Duration};
 
-use crate::{DType, Engine, Error, Matrix, Result, Texture, runtime::VideoDecoderBackend};
+use crate::{DType, Error, Matrix, Result, Runtime, Texture, runtime::VideoDecoderBackend};
 
 use super::{
 	Av1Parser, Av1Profile, Av1SequenceHeader, H264PictureLayout, H264PictureParameterSet,
@@ -77,14 +77,14 @@ impl VideoDecoder {
 	///
 	/// Returns an error unless the track is representable as progressive H.264
 	/// Baseline/Main/High, H.265 Main, AV1 Main 8-bit 4:2:0 without film grain,
-	/// or VP9 Profile 0 8-bit 4:2:0 and the selected Engine admits the qualified
+	/// or VP9 Profile 0 8-bit 4:2:0 and the selected Runtime admits the qualified
 	/// Vulkan path.
-	pub fn new(engine: &Engine, info: VideoContainerInfo) -> Result<Self> {
+	pub fn new(runtime: &Runtime, info: VideoContainerInfo) -> Result<Self> {
 		let profile = info.decode_profile().ok_or_else(|| {
 			Error::missing_capability("the stream has no Vulkan-queryable decode profile")
 		})?;
 		let backend = VideoDecoderBackend::create(
-			engine,
+			runtime,
 			profile,
 			super::VideoExtent {
 				width: info.width(),
@@ -307,7 +307,7 @@ impl VideoDecoder {
 				.backend
 				.read_native_rgba8(native, color_space, full_range)?;
 		let data = Matrix::from_runtime_storage(
-			state.backend.engine_handle(),
+			state.backend.runtime(),
 			storage,
 			vec![height as usize, width as usize, 4],
 			DType::U8,
@@ -319,7 +319,7 @@ impl VideoDecoder {
 	///
 	/// The output supports [`VideoFrame::to_matrix`]. I420 and NV12 also support
 	/// native geometry and luma operations. The copy can be recorded inside
-	/// [`Engine::capture`]. The plan retains the decoder image layer and restores
+	/// [`Runtime::capture`]. The plan retains the decoder image layer and restores
 	/// its ownership on each replay.
 	///
 	/// # Errors

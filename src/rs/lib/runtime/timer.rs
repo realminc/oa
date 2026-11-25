@@ -6,14 +6,14 @@
 //! dedicated timestamp pair instead of a pooled registry slot — the donor's
 //! slot pooling is an internal allocation optimization with the same public
 //! contract. Device regions are recorded by
-//! [`Engine::checkpoint_with_timer`]; [`Timer::commit`] never waits and
+//! [`Runtime::checkpoint_with_timer`]; [`Timer::commit`] never waits and
 //! requires the attached submission event to be complete.
 
 use std::sync::Arc;
 
 use crate::{Error, Result, Timestamp};
 
-use super::{Device, Engine, Event, TimestampPair};
+use super::{Device, Event, Runtime, TimestampPair};
 
 /// Clock domain measured by one [`Timer`]. `Auto` resolves to `Device` on
 /// [`Timer::init`] and to `Host` on the first [`Timer::begin`].
@@ -24,15 +24,15 @@ pub enum TimerDomain {
 	Auto,
 	/// Host-side monotonic region bracketed by [`Timer::begin`]/[`Timer::end`].
 	Host,
-	/// Device-side region bracketed by one timer-tagged engine submission.
+	/// Device-side region bracketed by one timer-tagged runtime submission.
 	Device,
 }
 
 /// One named measurement region.
 ///
 /// A host timer brackets arbitrary host code. A device timer must be
-/// initialized against an engine, then one
-/// [`Engine::checkpoint_with_timer`] records the device timestamps around the
+/// initialized against an runtime, then one
+/// [`Runtime::checkpoint_with_timer`] records the device timestamps around the
 /// submitted batch. The device path is single-flight: a timer cannot tag a
 /// new submission while its previous one is still pending.
 pub struct Timer {
@@ -65,14 +65,14 @@ impl Timer {
 		}
 	}
 
-	/// Resolve `Auto` to `Device` and acquire this engine's device timestamp
-	/// backend. A host timer needs no engine and initialization is a no-op.
+	/// Resolve `Auto` to `Device` and acquire this runtime's device timestamp
+	/// backend. A host timer needs no runtime and initialization is a no-op.
 	///
 	/// # Errors
 	///
-	/// Returns an error when the domain is `Device` and the engine's compute
+	/// Returns an error when the domain is `Device` and the runtime's compute
 	/// queue cannot provide timestamps.
-	pub fn init(&mut self, engine: &Engine, name: impl Into<String>) -> Result<()> {
+	pub fn init(&mut self, runtime: &Runtime, name: impl Into<String>) -> Result<()> {
 		let name = name.into();
 		if !name.is_empty() {
 			self.name = name;
@@ -83,7 +83,7 @@ impl Timer {
 		if self.domain == TimerDomain::Host {
 			return Ok(());
 		}
-		self.device_pair = Some(engine.device_timestamp_pair()?);
+		self.device_pair = Some(runtime.device_timestamp_pair()?);
 		self.device_event = None;
 		Ok(())
 	}
@@ -93,7 +93,7 @@ impl Timer {
 	/// # Errors
 	///
 	/// Returns an error when the timer resolves to `Device` — device regions are
-	/// recorded by [`Engine::checkpoint_with_timer`] — or when a previous host
+	/// recorded by [`Runtime::checkpoint_with_timer`] — or when a previous host
 	/// region is still running.
 	pub fn begin(&mut self) -> Result<()> {
 		if self.domain == TimerDomain::Auto {
@@ -101,7 +101,7 @@ impl Timer {
 		}
 		if self.domain != TimerDomain::Host {
 			return Err(Error::failed_precondition(
-				"device timer regions are recorded by Engine::checkpoint_with_timer",
+				"device timer regions are recorded by Runtime::checkpoint_with_timer",
 			));
 		}
 		if self.host_running {
@@ -235,7 +235,7 @@ impl Timer {
 	pub(in crate::runtime) fn prepare_device_submit(&mut self, device: &Arc<Device>) -> Result<()> {
 		if self.domain != TimerDomain::Device {
 			return Err(Error::failed_precondition(
-				"engine submission requires an initialized device timer",
+				"runtime submission requires an initialized device timer",
 			));
 		}
 		let pair = self.device_pair.as_ref().ok_or_else(|| {
@@ -243,7 +243,7 @@ impl Timer {
 		})?;
 		if !pair.belongs_to(device) {
 			return Err(Error::invalid_argument(
-				"device timer was initialized by another engine",
+				"device timer was initialized by another runtime",
 			));
 		}
 		if self.is_pending() {

@@ -1,4 +1,4 @@
-//! Engine-owned structured host logging.
+//! Runtime-owned structured host logging.
 
 use std::{
 	cell::RefCell,
@@ -74,8 +74,8 @@ impl LogComponent {
 	pub const CORE: Self = Self::constant(*b"CORE", 4);
 	/// Device, memory, queue, stream, and descriptor machinery.
 	pub const RUNTIME: Self = Self::constant(*b"RT  ", 2);
-	/// Engine ownership and lifecycle.
-	pub const ENGINE: Self = Self::constant(*b"ENGN", 4);
+	/// Runtime ownership and lifecycle.
+	pub const OWNERSHIP: Self = Self::constant(*b"OWNR", 4);
 	/// Graphs, kernels, dispatch, and GEMM.
 	pub const COMPUTE: Self = Self::constant(*b"COMP", 4);
 	/// Machine-learning operations and sessions.
@@ -149,7 +149,7 @@ impl fmt::Display for LogComponent {
 	}
 }
 
-/// Configuration for the logging session owned by an [`Engine`](super::Engine).
+/// Configuration for the logging session owned by an [`Runtime`](super::Runtime).
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct LogOptions {
@@ -474,7 +474,7 @@ pub(crate) struct LogSelection {
 
 impl LogSelection {
 	/// A selection marker that shares this selection's identity but performs no
-	/// restore on drop. Used by `Engine` clones: only the instance that
+	/// restore on drop. Used by `Runtime` clones: only the instance that
 	/// installed the selection owns restoring the prior logger, or a temporary
 	/// clone's drop would deselect the live logger mid-process.
 	pub(crate) fn detached(&self) -> Self {
@@ -533,7 +533,7 @@ pub fn __log_write(level: LogLevel, component: LogComponent, arguments: fmt::Arg
 }
 
 #[macro_export]
-/// Write an informational record through the selected engine logger.
+/// Write an informational record through the selected runtime logger.
 macro_rules! log_info {
 	($component:expr, $($argument:tt)*) => {{
 		if $crate::runtime::__log_should_write($crate::LogLevel::Info) {
@@ -547,7 +547,7 @@ macro_rules! log_info {
 }
 
 #[macro_export]
-/// Write a recoverable-warning record through the selected engine logger.
+/// Write a recoverable-warning record through the selected runtime logger.
 macro_rules! log_warn {
 	($component:expr, $($argument:tt)*) => {{
 		if $crate::runtime::__log_should_write($crate::LogLevel::Warn) {

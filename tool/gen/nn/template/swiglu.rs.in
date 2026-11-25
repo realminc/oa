@@ -36,7 +36,7 @@ impl {{name}} {
 		bias: bool,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, input_features, intermediate_size, bias, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, input_features, intermediate_size, bias, seed)	}
 
 	/// Construct gate, up, and down projections with deterministic Xavier weights.
 	///
@@ -45,7 +45,7 @@ impl {{name}} {
 	/// Returns an error when dimensions are zero, shape arithmetic overflows, or
 	/// parameter allocation and registration fail.
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		input_features: usize,
 		intermediate_size: usize,
 		bias: bool,
@@ -57,30 +57,30 @@ impl {{name}} {
 			));
 		}
 		let gate_weight = xavier_parameter(
-			engine,
+			runtime,
 			"{{gate_weight_name}}",
 			input_features,
 			intermediate_size,
 			seed,
 		)?;
 		let up_weight = xavier_parameter(
-			engine,
+			runtime,
 			"{{up_weight_name}}",
 			input_features,
 			intermediate_size,
 			seed.wrapping_add(1),
 		)?;
 		let down_weight = xavier_parameter(
-			engine,
+			runtime,
 			"{{down_weight_name}}",
 			intermediate_size,
 			input_features,
 			seed.wrapping_add(2),
 		)?;
 		let biases = [
-			projection_bias(engine, "{{gate_bias_name}}", intermediate_size, bias)?,
-			projection_bias(engine, "{{up_bias_name}}", intermediate_size, bias)?,
-			projection_bias(engine, "{{down_bias_name}}", input_features, bias)?,
+			projection_bias(runtime, "{{gate_bias_name}}", intermediate_size, bias)?,
+			projection_bias(runtime, "{{up_bias_name}}", intermediate_size, bias)?,
+			projection_bias(runtime, "{{down_bias_name}}", input_features, bias)?,
 		];
 		let weights = [gate_weight, up_weight, down_weight];
 		let mut registry = ModuleRegistry::new();
@@ -173,7 +173,7 @@ impl Module for {{name}} {
 }
 
 fn xavier_parameter(
-	engine: &Engine,
+	runtime: &Runtime,
 	name: &'static str,
 	input_features: usize,
 	output_features: usize,
@@ -189,7 +189,7 @@ fn xavier_parameter(
 	Parameter::new(
 		name,
 		Matrix::new_from_f32_on(
-			engine,
+			runtime,
 			[output_features, input_features],
 			&random::symmetric_uniform(count, limit, seed),
 		)?,
@@ -197,12 +197,12 @@ fn xavier_parameter(
 }
 
 fn projection_bias(
-	engine: &Engine,
+	runtime: &Runtime,
 	name: &'static str,
 	size: usize,
 	trainable: bool,
 ) -> Result<ProjectionBias> {
-	let value = Matrix::new_from_f32_on(engine, [size], &vec![0.0; size])?;
+	let value = Matrix::new_from_f32_on(runtime, [size], &vec![0.0; size])?;
 	if trainable {
 		Ok(ProjectionBias::Parameter(Parameter::new(name, value)?))
 	} else {

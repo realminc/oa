@@ -44,7 +44,7 @@
           "",
           "# Errors",
           "",
-          "Returns an error when an input has the wrong rank, extent, dtype, or engine,",
+          "Returns an error when an input has the wrong rank, extent, dtype, or runtime,",
           "a shader-ABI size overflows, allocation fails, or runtime recording fails."
         ],
         "annotations": [],
@@ -159,7 +159,7 @@
           "# Errors",
           "",
           "Returns an error unless boxes are nonempty FP32 `[N, 4]`, scores are FP32",
-          "`[N]`, classes are I32 `[N]`, all inputs share an engine, thresholds are",
+          "`[N]`, classes are I32 `[N]`, all inputs share an runtime, thresholds are",
           "finite, `iou_threshold` is in `[0, 1]`, and `max_detections` is positive."
         ],
         "annotations": [],
@@ -277,7 +277,7 @@
           "",
           "# Errors",
           "",
-          "Returns an error unless inputs are equal nonempty I32 vectors on one engine,",
+          "Returns an error unless inputs are equal nonempty I32 vectors on one runtime,",
           "`class_count` is positive, and all sizes fit the shader ABI."
         ],
         "annotations": [],
@@ -391,7 +391,7 @@
           "# Errors",
           "",
           "Returns an error unless inputs are nonempty, equal-shaped U8 matrices on one",
-          "engine and their element count fits the shader ABI."
+          "runtime and their element count fits the shader ABI."
         ],
         "annotations": [],
         "attribute_sources": {},
@@ -733,7 +733,7 @@
           "# Errors",
           "",
           "Returns an error unless inputs are equal-shaped nonempty I32 matrices on one",
-          "engine, `class_count` is positive, and all sizes fit the shader ABI."
+          "runtime, `class_count` is positive, and all sizes fit the shader ABI."
         ],
         "annotations": [],
         "attribute_sources": {

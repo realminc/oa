@@ -54,7 +54,7 @@ pub struct {{name}} {
 impl {{name}} {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_seed(config: {{config_type}}, seed: u64) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, config, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, config, seed)	}
 
 	/// Construct a deterministically initialized quantizer.
 	///
@@ -62,7 +62,7 @@ impl {{name}} {
 	///
 	/// Returns an error for an invalid configuration, shape overflow, or failed
 	/// state allocation/upload.
-	pub fn new_with_seed_on(engine: &Engine, config: {{config_type}}, seed: u64) -> Result<Self> {
+	pub fn new_with_seed_on(runtime: &Runtime, config: {{config_type}}, seed: u64) -> Result<Self> {
 		validate_config(config)?;
 		let count = config
 			.num_codes
@@ -74,22 +74,22 @@ impl {{name}} {
 			.ok_or_else(|| Error::invalid_argument("VQ Glorot extent overflows usize"))?;
 		let limit = (6.0_f32 / denominator as f32).sqrt();
 		let values = {{initializer}}(count, limit, seed);
-		let codebook = Matrix::new_from_f32_on(engine, [config.num_codes, config.code_dim], &values)?;
-		let embed_sum = Matrix::new_from_f32_on(engine, [config.num_codes, config.code_dim], &values)?;
-		let cluster_size = Matrix::new_from_f32_on(engine, [config.num_codes], &vec![1.0; config.num_codes])?;
+		let codebook = Matrix::new_from_f32_on(runtime, [config.num_codes, config.code_dim], &values)?;
+		let embed_sum = Matrix::new_from_f32_on(runtime, [config.num_codes, config.code_dim], &values)?;
+		let cluster_size = Matrix::new_from_f32_on(runtime, [config.num_codes], &vec![1.0; config.num_codes])?;
 		Self::from_state(config, codebook, embed_sum, cluster_size)
 	}
 
 	pub fn new(config: {{config_type}}) -> Result<Self> {
-		Self::new_on(&Engine::current()?, config)	}
+		Self::new_on(&Runtime::current()?, config)	}
 
 	/// Construct a quantizer using deterministic seed zero.
 	///
 	/// # Errors
 	///
 	/// Returns the same errors as [`Self::new_with_seed`].
-	pub fn new_on(engine: &Engine, config: {{config_type}}) -> Result<Self> {
-		Self::new_with_seed_on(engine, config, 0)
+	pub fn new_on(runtime: &Runtime, config: {{config_type}}) -> Result<Self> {
+		Self::new_with_seed_on(runtime, config, 0)
 	}
 
 	fn from_state(
@@ -106,13 +106,13 @@ impl {{name}} {
 			|| [codebook.dtype(), embed_sum.dtype(), cluster_size.dtype()]
 				.into_iter()
 				.any(|dtype| dtype != DType::F32)
-			|| !codebook.engine_handle().same_as(embed_sum.engine_handle())
+			|| !codebook.runtime().same_as(embed_sum.runtime())
 			|| !codebook
-				.engine_handle()
-				.same_as(cluster_size.engine_handle())
+				.runtime()
+				.same_as(cluster_size.runtime())
 		{
 			return Err(Error::invalid_argument(
-				"VQ state must match the configured same-engine FP32 codebook geometry",
+				"VQ state must match the configured same-runtime FP32 codebook geometry",
 			));
 		}
 		let mut registry = ModuleRegistry::new();
@@ -207,7 +207,7 @@ impl {{name}} {
 	/// # Errors
 	///
 	/// Returns an error unless `latents` is FP32 `[N,D]`, `N >= K`, and its code
-	/// dimension and engine match this quantizer, or readback/upload fails.
+	/// dimension and runtime match this quantizer, or readback/upload fails.
 	pub fn seed(&self, latents: &Matrix) -> Result<()> {
 		let [rows, code_dim] = latents.shape() else {
 			return Err(Error::invalid_argument(
@@ -219,10 +219,10 @@ impl {{name}} {
 			|| *rows < self.config.num_codes
 			|| self.config.num_codes > 512
 			|| *code_dim != self.config.code_dim
-			|| !latents.engine_handle().same_as(codebook.engine_handle())
+			|| !latents.runtime().same_as(codebook.runtime())
 		{
 			return Err(Error::invalid_argument(
-				"VQ seed requires same-engine FP32 [N,D] latents with N >= K",
+				"VQ seed requires same-runtime FP32 [N,D] latents with N >= K",
 			));
 		}
 		let squared = {{multiply_operation}}(latents, latents)?;
@@ -236,14 +236,14 @@ impl {{name}} {
 		let seeded = {{lookup_operation}}(latents, &selected.indices)?;
 		let embed_sum = {{copy_operation}}(&seeded)?;
 		let cluster_size = Matrix::new_from_slice_handle(
-			latents.engine_handle(),
+			latents.runtime(),
 			vec![self.config.num_codes],
 			&vec![1.0_f32; self.config.num_codes],
 		)?;
 		self.codebook.replace_data(seeded)?;
 		self.embed_sum.replace_data(embed_sum)?;
 		self.cluster_size.replace_data(cluster_size)?;
-		latents.engine_handle().checkpoint(false)?.wait()
+		latents.runtime().checkpoint(false)?.wait()
 	}
 
 	/// Return a cheap handle to the current codebook value.
@@ -298,7 +298,7 @@ impl {{residual_type}} {
 		num_levels: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, config, num_levels, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, config, num_levels, seed)	}
 
 	/// Construct `num_levels` deterministically initialized quantizers.
 	///
@@ -307,7 +307,7 @@ impl {{residual_type}} {
 	/// Returns an error when the level count or configuration is invalid, child
 	/// state allocation fails, or module registration fails.
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		config: {{config_type}},
 		num_levels: usize,
 		seed: u64,
@@ -321,7 +321,7 @@ impl {{residual_type}} {
 		let mut levels = Vec::with_capacity(num_levels);
 		for level in 0..num_levels {
 			let quantizer = Rc::new({{name}}::new_with_seed_on(
-				engine,
+				runtime,
 				config,
 				seed.wrapping_add(level as u64),
 			)?);
@@ -336,15 +336,15 @@ impl {{residual_type}} {
 	}
 
 	pub fn new(config: {{config_type}}, num_levels: usize) -> Result<Self> {
-		Self::new_on(&Engine::current()?, config, num_levels)	}
+		Self::new_on(&Runtime::current()?, config, num_levels)	}
 
 	/// Construct a residual quantizer using deterministic seed zero.
 	///
 	/// # Errors
 	///
 	/// Returns the same errors as [`Self::new_with_seed`].
-	pub fn new_on(engine: &Engine, config: {{config_type}}, num_levels: usize) -> Result<Self> {
-		Self::new_with_seed_on(engine, config, num_levels, 0)
+	pub fn new_on(runtime: &Runtime, config: {{config_type}}, num_levels: usize) -> Result<Self> {
+		Self::new_with_seed_on(runtime, config, num_levels, 0)
 	}
 
 	/// Quantize successive residuals and apply one straight-through estimator.

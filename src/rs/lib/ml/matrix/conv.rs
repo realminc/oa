@@ -7,7 +7,7 @@ use crate::{
 
 use crate::ml::{Parameter, autograd};
 
-use super::super::validation::{shader_u32, validate_f32_same_engine};
+use super::super::validation::{shader_u32, validate_f32_same_runtime};
 
 // ── Conv1d geometry ───────────────────────────────────────────────────────────
 
@@ -924,7 +924,7 @@ impl Conv2dGeometry {
 ///
 /// # Errors
 ///
-/// Returns an error unless all inputs are nonempty same-engine F32 matrices,
+/// Returns an error unless all inputs are nonempty same-runtime F32 matrices,
 /// shapes agree, stride and dilation are nonzero, the effective kernel fits
 /// the padded input, every extent fits the shader ABI, or recording fails.
 pub fn conv_1d(
@@ -989,7 +989,7 @@ pub(in crate::ml) fn conv_1d_backward(
 ) -> Result<(Matrix, Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::CONV_1D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, weight, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, weight, output_gradient])?;
 	let geometry =
 		Conv1dGeometry::resolve(input, weight, None, stride, padding, dilation, operation)?;
 	let expected_output_shape = [
@@ -1004,19 +1004,19 @@ pub(in crate::ml) fn conv_1d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		geometry.weight_count as usize,
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![geometry.output_channels as usize],
 		geometry.output_channels as usize,
 		DType::F32,
@@ -1060,7 +1060,7 @@ pub(in crate::ml) fn conv_1d_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, weight, output_gradient];
 	let outputs = [&input_gradient, &weight_gradient, &bias_gradient];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -1081,7 +1081,7 @@ pub(in crate::ml) fn conv_1d_backward(
 ///
 /// # Errors
 ///
-/// Returns an error unless all inputs are same-engine F32 matrices, shapes and
+/// Returns an error unless all inputs are same-runtime F32 matrices, shapes and
 /// group divisibility agree, the cubic kernel fits the padded input, every
 /// extent fits the shader ABI, or runtime recording fails.
 pub fn conv_3d(
@@ -1146,7 +1146,7 @@ pub(in crate::ml) fn conv_3d_backward(
 ) -> Result<(Matrix, Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::CONV_3D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, weight, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, weight, output_gradient])?;
 	let geometry = Conv3dGeometry::resolve(input, weight, None, stride, padding, groups, operation)?;
 	let expected_output_shape = [
 		geometry.batch_size as usize,
@@ -1162,19 +1162,19 @@ pub(in crate::ml) fn conv_3d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		geometry.weight_count as usize,
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![geometry.output_channels as usize],
 		geometry.output_channels as usize,
 		DType::F32,
@@ -1218,7 +1218,7 @@ pub(in crate::ml) fn conv_3d_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, weight, output_gradient];
 	let outputs = [&input_gradient, &weight_gradient, &bias_gradient];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -1237,7 +1237,7 @@ pub(in crate::ml) fn conv_3d_backward(
 ///
 /// # Errors
 ///
-/// Returns an error unless both inputs are nonempty same-engine F32 matrices,
+/// Returns an error unless both inputs are nonempty same-runtime F32 matrices,
 /// channel geometry agrees, stride and dilation are nonzero, the output extent
 /// is positive and fits the shader ABI, or runtime recording fails.
 pub fn conv_1d_transpose(
@@ -1291,7 +1291,7 @@ pub(in crate::ml) fn conv_1d_transpose_backward(
 ) -> Result<(Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::CONV_1D_TRANSPOSE_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, weight, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, weight, output_gradient])?;
 	let transposed =
 		Conv1dTransposeGeometry::resolve(input, weight, stride, padding, dilation, operation)?;
 	let expected_output_shape = [
@@ -1328,31 +1328,31 @@ pub(in crate::ml) fn conv_1d_transpose_backward(
 	let rows = forward.batch_size * forward.output_length;
 	let inner_size = forward.input_channels * forward.kernel_size;
 	let columns = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows as usize, inner_size as usize],
 		forward.columns_count as usize,
 		DType::F32,
 	)?;
 	let projected = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows as usize, forward.output_channels as usize],
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		transposed.weight_count as usize,
 		DType::F32,
 	)?;
 	let discarded_bias_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![forward.output_channels as usize],
 		forward.output_channels as usize,
 		DType::F32,
@@ -1372,14 +1372,10 @@ pub(in crate::ml) fn conv_1d_transpose_backward(
 		PushConstant::U32(forward.dilation),
 		PushConstant::U32(forward.output_length),
 	];
-	let gemm_plan = crate::runtime::plan_mat_mul_nt(
-		input.engine_handle(),
-		rows,
-		forward.output_channels,
-		inner_size,
-	)?;
+	let gemm_plan =
+		crate::runtime::plan_matmul_nt(input.runtime(), rows, forward.output_channels, inner_size)?;
 	let gemm_launch =
-		crate::runtime::lower_mat_mul_nt(&gemm_plan, rows, forward.output_channels, inner_size)?;
+		crate::runtime::lower_matmul_nt(&gemm_plan, rows, forward.output_channels, inner_size)?;
 	let gemm_buffers =
 		gemm_launch.bindings(&[columns.storage(), weight.storage(), projected.storage()])?;
 	let gemm_constants = &gemm_launch.push_constants[..gemm_launch.push_count];
@@ -1437,7 +1433,7 @@ pub(in crate::ml) fn conv_1d_transpose_backward(
 	let attributes = transposed.attributes();
 	let inputs = [input, weight, output_gradient];
 	let outputs = [&input_gradient, &weight_gradient];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -1457,7 +1453,7 @@ pub(in crate::ml) fn conv_1d_transpose_backward(
 ///
 /// # Errors
 ///
-/// Returns an error unless all inputs are nonempty same-engine F32 matrices,
+/// Returns an error unless all inputs are nonempty same-runtime F32 matrices,
 /// channel and square-kernel geometry agree, stride is nonzero, output extents
 /// are positive and fit the shader ABI, or runtime recording fails.
 pub fn conv_2d_transpose(
@@ -1517,7 +1513,7 @@ pub(in crate::ml) fn conv_2d_transpose_backward(
 ) -> Result<(Matrix, Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::CONV_2D_TRANSPOSE_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, weight, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, weight, output_gradient])?;
 	let geometry = Conv2dTransposeGeometry::resolve(input, weight, None, stride, padding, operation)?;
 	let expected_output_shape = [
 		geometry.batch_size as usize,
@@ -1532,19 +1528,19 @@ pub(in crate::ml) fn conv_2d_transpose_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		geometry.weight_count as usize,
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![geometry.output_channels as usize],
 		geometry.output_channels as usize,
 		DType::F32,
@@ -1587,7 +1583,7 @@ pub(in crate::ml) fn conv_2d_transpose_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, weight, output_gradient];
 	let outputs = [&input_gradient, &weight_gradient, &bias_gradient];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -1607,7 +1603,7 @@ pub(in crate::ml) fn conv_2d_transpose_backward(
 ///
 /// # Errors
 ///
-/// Returns an error unless all inputs are nonempty same-engine F32 matrices,
+/// Returns an error unless all inputs are nonempty same-runtime F32 matrices,
 /// channel and cubic-kernel geometry agree, stride is nonzero, output extents
 /// are positive and fit the shader ABI, or runtime recording fails.
 pub fn conv_3d_transpose(
@@ -1667,7 +1663,7 @@ pub(in crate::ml) fn conv_3d_transpose_backward(
 ) -> Result<(Matrix, Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::CONV_3D_TRANSPOSE_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, weight, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, weight, output_gradient])?;
 	let geometry = Conv3dTransposeGeometry::resolve(input, weight, None, stride, padding, operation)?;
 	let expected_output_shape = [
 		geometry.batch_size as usize,
@@ -1683,19 +1679,19 @@ pub(in crate::ml) fn conv_3d_transpose_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		geometry.weight_count as usize,
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![geometry.output_channels as usize],
 		geometry.output_channels as usize,
 		DType::F32,
@@ -1738,7 +1734,7 @@ pub(in crate::ml) fn conv_3d_transpose_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, weight, output_gradient];
 	let outputs = [&input_gradient, &weight_gradient, &bias_gradient];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -1758,7 +1754,7 @@ pub(in crate::ml) fn conv_3d_transpose_backward(
 ///
 /// # Errors
 ///
-/// Returns an error unless all inputs are same-engine F32 matrices, shapes and
+/// Returns an error unless all inputs are same-runtime F32 matrices, shapes and
 /// group divisibility agree, the square kernel fits the padded input, every
 /// extent fits the shader ABI, or runtime recording fails.
 pub fn conv_2d(
@@ -1823,7 +1819,7 @@ pub(in crate::ml) fn conv_2d_backward(
 ) -> Result<(Matrix, Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::CONV_2D_BACKWARD;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, weight, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, weight, output_gradient])?;
 	let geometry = Conv2dGeometry::resolve(input, weight, None, stride, padding, groups, operation)?;
 	let expected_output_shape = [
 		geometry.batch_size as usize,
@@ -1838,19 +1834,19 @@ pub(in crate::ml) fn conv_2d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		weight.shape().to_vec(),
 		geometry.weight_count as usize,
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![geometry.output_channels as usize],
 		geometry.output_channels as usize,
 		DType::F32,
@@ -1894,7 +1890,7 @@ pub(in crate::ml) fn conv_2d_backward(
 	let attributes = geometry.attributes();
 	let inputs = [input, weight, output_gradient];
 	let outputs = [&input_gradient, &weight_gradient, &bias_gradient];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -2136,7 +2132,7 @@ fn conv_1d_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::CONV_1D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, weight, bias])?;
+	validate_f32_same_runtime(operation, &[input, weight, bias])?;
 	let geometry = Conv1dGeometry::resolve(
 		input,
 		weight,
@@ -2149,19 +2145,19 @@ fn conv_1d_dispatch(
 	let rows = geometry.batch_size * geometry.output_length;
 	let inner_size = geometry.input_channels * geometry.kernel_size;
 	let columns = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows as usize, inner_size as usize],
 		geometry.columns_count as usize,
 		DType::F32,
 	)?;
 	let projected = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![rows as usize, geometry.output_channels as usize],
 		geometry.output_count as usize,
 		DType::F32,
 	)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			geometry.batch_size as usize,
 			geometry.output_channels as usize,
@@ -2184,14 +2180,10 @@ fn conv_1d_dispatch(
 		PushConstant::U32(geometry.dilation),
 		PushConstant::U32(geometry.output_length),
 	];
-	let gemm_plan = crate::runtime::plan_mat_mul_nt(
-		input.engine_handle(),
-		rows,
-		geometry.output_channels,
-		inner_size,
-	)?;
+	let gemm_plan =
+		crate::runtime::plan_matmul_nt(input.runtime(), rows, geometry.output_channels, inner_size)?;
 	let gemm_launch =
-		crate::runtime::lower_mat_mul_nt(&gemm_plan, rows, geometry.output_channels, inner_size)?;
+		crate::runtime::lower_matmul_nt(&gemm_plan, rows, geometry.output_channels, inner_size)?;
 	let gemm_buffers =
 		gemm_launch.bindings(&[columns.storage(), weight.storage(), projected.storage()])?;
 	let gemm_constants = &gemm_launch.push_constants[..gemm_launch.push_count];
@@ -2249,7 +2241,7 @@ fn conv_1d_dispatch(
 	let attributes = geometry.attributes();
 	let inputs = [input, weight, bias];
 	let outputs = [&output];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -2270,11 +2262,11 @@ fn conv_1d_transpose_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::CONV_1D_TRANSPOSE;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, weight])?;
+	validate_f32_same_runtime(operation, &[input, weight])?;
 	let geometry =
 		Conv1dTransposeGeometry::resolve(input, weight, stride, padding, dilation, operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			geometry.batch_size as usize,
 			geometry.output_channels as usize,
@@ -2308,11 +2300,11 @@ fn conv_1d_transpose_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -2334,11 +2326,11 @@ fn conv_2d_transpose_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::CONV_2D_TRANSPOSE;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, weight, bias])?;
+	validate_f32_same_runtime(operation, &[input, weight, bias])?;
 	let geometry =
 		Conv2dTransposeGeometry::resolve(input, weight, Some(bias), stride, padding, operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			geometry.batch_size as usize,
 			geometry.output_channels as usize,
@@ -2383,7 +2375,7 @@ fn conv_2d_transpose_dispatch(
 	let attributes = geometry.attributes();
 	let inputs = [input, weight, bias];
 	let outputs = [&output];
-	input.engine_handle().record_split_semantic(
+	input.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -2405,7 +2397,7 @@ fn conv_2d_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::CONV_2D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, weight, bias])?;
+	validate_f32_same_runtime(operation, &[input, weight, bias])?;
 	let geometry = Conv2dGeometry::resolve(
 		input,
 		weight,
@@ -2416,7 +2408,7 @@ fn conv_2d_dispatch(
 		operation,
 	)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			geometry.batch_size as usize,
 			geometry.output_channels as usize,
@@ -2452,11 +2444,11 @@ fn conv_2d_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -2479,7 +2471,7 @@ fn conv_3d_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::CONV_3D;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, weight, bias])?;
+	validate_f32_same_runtime(operation, &[input, weight, bias])?;
 	let geometry = Conv3dGeometry::resolve(
 		input,
 		weight,
@@ -2490,7 +2482,7 @@ fn conv_3d_dispatch(
 		operation,
 	)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			geometry.batch_size as usize,
 			geometry.output_channels as usize,
@@ -2527,11 +2519,11 @@ fn conv_3d_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -2553,11 +2545,11 @@ fn conv_3d_transpose_dispatch(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::CONV_3D_TRANSPOSE;
 	let operation = contract.name();
-	validate_f32_same_engine(operation, &[input, weight, bias])?;
+	validate_f32_same_runtime(operation, &[input, weight, bias])?;
 	let geometry =
 		Conv3dTransposeGeometry::resolve(input, weight, Some(bias), stride, padding, operation)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			geometry.batch_size as usize,
 			geometry.output_channels as usize,
@@ -2578,7 +2570,7 @@ fn conv_3d_transpose_dispatch(
 	let attributes = geometry.attributes();
 	let inputs = [input, weight, bias];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlConv3dTransposeF32,
 			buffers: &buffers,

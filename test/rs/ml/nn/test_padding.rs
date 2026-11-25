@@ -1,7 +1,7 @@
 //! Padding module contracts over `matrix::pad`.
 
-test_vk!(constant_pad_modules_match_constant_mode_oracles, engine, {
-	let _ = engine;
+test_vk!(constant_pad_modules_match_constant_mode_oracles, runtime, {
+	let _ = runtime;
 	let input =
 		oa::Matrix::new_from_f32([1, 1, 2, 3], &(0..6).map(|v| v as f32).collect::<Vec<_>>())?;
 	let pad1d = oa::ml::nn::ConstantPad1d::new(1, 7.0);
@@ -36,8 +36,8 @@ test_vk!(constant_pad_modules_match_constant_mode_oracles, engine, {
 	Ok(())
 });
 
-test_vk!(border_pad_modules_match_mode_oracles, engine, {
-	let _ = engine;
+test_vk!(border_pad_modules_match_mode_oracles, runtime, {
+	let _ = runtime;
 	let input = oa::Matrix::new_from_f32([1, 1, 1, 3], &[1.0, 2.0, 3.0])?;
 	assert_eq!(
 		oa::ml::nn::ReplicationPad1d::new_with_padding([1, 2])
@@ -77,8 +77,8 @@ test_vk!(border_pad_modules_match_mode_oracles, engine, {
 	Ok(())
 });
 
-test_vk!(pad_modules_reject_rank_and_reflect_contracts, engine, {
-	let _ = engine;
+test_vk!(pad_modules_reject_rank_and_reflect_contracts, runtime, {
+	let _ = runtime;
 	let vector = oa::Matrix::new_from_f32([4], &[1.0, 2.0, 3.0, 4.0])?;
 	assert!(
 		oa::ml::nn::ConstantPad2d::new(1, 0.0)

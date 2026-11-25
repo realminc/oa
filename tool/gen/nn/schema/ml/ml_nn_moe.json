@@ -3,7 +3,7 @@
 	"family": "moe",
 	"imports": [
 		"use std::{cell::{Cell, RefCell}, rc::Rc};",
-		"use crate::{DType, Engine, Error, Matrix, Result, matrix as core_matrix};",
+		"use crate::{DType, Runtime, Error, Matrix, Result, matrix as core_matrix};",
 		"use super::super::{Module, ModuleRegistry, NamedBuffer, Parameter, autograd, matrix, random};",
 		"use super::{Linear, RmsNorm, Swiglu};"
 	],

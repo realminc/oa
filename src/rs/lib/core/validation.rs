@@ -108,7 +108,7 @@ impl Validation {
 	}
 
 	/// Read `OA_VK_VALIDATION` and `OA_VALIDATION_SEVERITY` from the process
-	/// environment and apply them. Call once at engine init.
+	/// environment and apply them. Call once at runtime init.
 	pub fn init_from_env() {
 		if std::env::var("OA_VK_VALIDATION")
 			.map(|v| !matches!(v.as_str(), "" | "0" | "false" | "no" | "off"))

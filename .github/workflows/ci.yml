@@ -8,7 +8,7 @@
 #   realminc/oa tag (v*) on main → build + test + release
 #   realminc/oa pull request     → build + test + package, without publication
 #
-# Every job is repository-gated. The private empyrealm/oa staging repository
+# Every job is repository-gated. The private realminc/oa-dev staging repository
 # may receive the same refs, but it must not consume hosted or self-hosted
 # runner time.
 
@@ -153,11 +153,10 @@ jobs:
           icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
           test -n "$icd"
           export VK_DRIVER_FILES="$icd"
-          cargo run -p sdk --all-features --example tu_core_device_canary --locked -- --list-devices
           cargo test --test runtime --all-features --locked \
             vk::software_vulkan_index_executes_compute_and_crypto -- --exact --ignored --nocapture
           OA_TEST_DEVICE_INDEX=0 cargo test --lib --all-features --locked \
-            runtime::engine::secret_tests::abandoned_secret_is_quarantined_instead_of_recycled \
+            runtime::runtime::secret_tests::abandoned_secret_is_quarantined_instead_of_recycled \
             -- --exact --ignored --nocapture
           OA_TEST_DEVICE_INDEX=0 cargo test --test crypto --all-features --locked \
             crypto::batch_shake_matches_cpu_across_rate_boundaries -- --exact --ignored --nocapture
@@ -186,14 +185,14 @@ jobs:
           # pack before execution; never turn MissingCapability into success.
           OA_TEST_DEVICE_INDEX=0 cargo test --lib --all-features --locked \
             -- --include-ignored --test-threads=1 --nocapture \
-            runtime::engine::secret_tests::secret_entropy \
-            runtime::engine::secret_tests::secret_erasure \
-            runtime::engine::secret_tests::secret_storage \
-            runtime::engine::secret_tests::secret_staging \
-            runtime::engine::secret_tests::secret_descriptor \
-            runtime::engine::secret_tests::secret_mlkem \
-            runtime::engine::secret_tests::dropped_erasure \
-            runtime::engine::secret_tests::unavailable_retirement
+            runtime::runtime::secret_tests::secret_entropy \
+            runtime::runtime::secret_tests::secret_erasure \
+            runtime::runtime::secret_tests::secret_storage \
+            runtime::runtime::secret_tests::secret_staging \
+            runtime::runtime::secret_tests::secret_descriptor \
+            runtime::runtime::secret_tests::secret_mlkem \
+            runtime::runtime::secret_tests::dropped_erasure \
+            runtime::runtime::secret_tests::unavailable_retirement
           echo 'Software Vulkan: secret storage and ML-KEM pack qualified; bounded ML-DSA provider not admitted by this software device (physical qualification required).' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Package Rust API documentation
@@ -209,40 +208,38 @@ jobs:
           if-no-files-found: error
           path: target/package/oarust-*.crate
 
-      - name: Release debug build storage before SDK packaging
+      - name: Release debug build storage before CLI packaging
         if: github.repository == 'realminc/oa'
         run: cargo clean --profile dev
 
       # Verify every artifact on the public candidate before creating a tag.
-      - name: Build and stage SDK programs
+      - name: Build and stage the oa CLI
         if: github.repository == 'realminc/oa'
         run: |
           # The default stager copies both binaries and examples.
           cargo build --workspace --release --bins --examples --locked
           python3 tool/oa stage --clean --profile release
           python3 tool/oa stage --profile release
-          test -n "$(find bin/release/sdk -type f -perm -111 -print -quit)"
 
-      - name: Package source, SDK programs, and build evidence
+      - name: Package source, CLI, and build evidence
         if: github.repository == 'realminc/oa'
         run: |
           set -euo pipefail
           version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
           epoch="$(git show -s --format=%ct HEAD)"
           source_name="oa-${version}-source"
-          sdk_name="oa-sdk-${version}-linux-x86_64"
-          mkdir -p dist "stage/$source_name" "stage/$sdk_name"
+          cli_name="oa-${version}-linux-x86_64"
+          mkdir -p dist "stage/$source_name" "stage/$cli_name"
 
           git archive --format=tar HEAD | tar -xf - -C "stage/$source_name"
           cp Cargo.lock "stage/$source_name/Cargo.lock"
-          cp -a bin/release/sdk "stage/$sdk_name/sdk"
-          install -Dm755 bin/release/oa "stage/$sdk_name/bin/oa"
-          cp README.md LICENSE NOTICE.md "stage/$sdk_name/"
+          install -Dm755 bin/release/oa "stage/$cli_name/bin/oa"
+          cp README.md LICENSE NOTICE.md "stage/$cli_name/"
 
           tar --sort=name --mtime="@${epoch}" --owner=0 --group=0 --numeric-owner \
             -czf "dist/${source_name}.tar.gz" -C stage "$source_name"
           tar --sort=name --mtime="@${epoch}" --owner=0 --group=0 --numeric-owner \
-            -czf "dist/${sdk_name}.tar.gz" -C stage "$sdk_name"
+            -czf "dist/${cli_name}.tar.gz" -C stage "$cli_name"
 
           cargo tree --workspace --all-features --locked --prefix none \
             > "dist/oa-${version}-dependencies.txt"
@@ -257,7 +254,7 @@ jobs:
             spirv-val --version
           } > "dist/oa-${version}-build-info.txt"
 
-      - name: Build SDK distro packages
+      - name: Build CLI distro packages
         if: github.repository == 'realminc/oa'
         run: |
           set -euo pipefail
@@ -265,14 +262,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends ruby ruby-dev build-essential rpm zstd libarchive-tools
           sudo gem install --no-document fpm
 
-          # Rust has no stable native ABI. Package the runnable SDK programs under
-          # their truthful name; do not publish the internal Rust library as a
+          # Rust has no stable native ABI. Package the oa CLI under its
+          # truthful name; do not publish the internal Rust library as a
           # system runtime .so.
-          mkdir -p stage/oa-sdk-distro/usr
-          cp -a bin/release/sdk/* stage/oa-sdk-distro/usr/
-          install -Dm755 bin/release/oa stage/oa-sdk-distro/usr/bin/oa
-          mkdir -p stage/oa-sdk-distro/usr/share/doc/oa-sdk
-          cp README.md LICENSE NOTICE.md stage/oa-sdk-distro/usr/share/doc/oa-sdk/
+          mkdir -p stage/oa-distro/usr
+          install -Dm755 bin/release/oa stage/oa-distro/usr/bin/oa
+          mkdir -p stage/oa-distro/usr/share/doc/oa
+          cp README.md LICENSE NOTICE.md stage/oa-distro/usr/share/doc/oa/
 
           MAINT="Empyrealm <realminc.depravity737@passinbox.com>"
           URL="https://github.com/realminc/oa"; LIC="BUSL-1.1"
@@ -284,9 +280,9 @@ jobs:
               "${deps[@]}" -C "$root" -p dist/ usr
           }
           # The Vulkan loader dependency name differs per distro.
-          pkg deb    oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" libvulkan1 libasound2t64 libpipewire-0.3-0t64 libstdc++6
-          pkg rpm    oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" vulkan-loader alsa-lib pipewire-libs libstdc++
-          pkg pacman oa-sdk stage/oa-sdk-distro "OA runnable Rust SDK programs" vulkan-icd-loader alsa-lib pipewire gcc-libs
+          pkg deb    oa stage/oa-distro "OA runtime CLI" libvulkan1 libasound2t64 libpipewire-0.3-0t64 libstdc++6
+          pkg rpm    oa stage/oa-distro "OA runtime CLI" vulkan-loader alsa-lib pipewire-libs libstdc++
+          pkg pacman oa stage/oa-distro "OA runtime CLI" vulkan-icd-loader alsa-lib pipewire gcc-libs
 
           ( cd dist && sha256sum *.tar.gz *.deb *.rpm *.pkg.tar.zst > SHA256SUMS.txt )
           echo "### 📦 Distro packages" >> "$GITHUB_STEP_SUMMARY"

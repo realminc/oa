@@ -2,7 +2,7 @@ use oa::{Matrix, ml};
 
 test_vk!(
 	byte_upload_embedding_and_adjoint_match_donor_contract,
-	engine,
+	runtime,
 	{
 		let bytes = [65_u8, 66, 65];
 		let encoded = ml::byte::encode_batched(&bytes)?;
@@ -45,7 +45,7 @@ test_vk!(
 	}
 );
 
-test_vk!(byte_logit_decode_is_exact_and_checked, engine, {
+test_vk!(byte_logit_decode_is_exact_and_checked, runtime, {
 	let mut logits = vec![-10.0_f32; 2 * ml::byte::VOCAB_SIZE];
 	logits[65] = 3.0;
 	logits[ml::byte::VOCAB_SIZE + 255] = 4.0;

@@ -44,17 +44,17 @@
 	validate_packed_u8(signatures, "signatures", batch_size, sig_bytes, operation)?;
 	validate_packed_u8(public_keys, "public_keys", batch_size, pk_bytes, operation)?;
 
-	// All matrices must share the same engine.
-	let engine = messages.engine_handle();
+	// All matrices must share the same runtime.
+	let runtime = messages.runtime();
 	for (label, matrix) in [
 		("msg_offsets", msg_offsets),
 		("msg_lengths", msg_lengths),
 		("signatures", signatures),
 		("public_keys", public_keys),
 	] {
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} {label} must share an engine with messages"
+				"{operation} {label} must share an runtime with messages"
 			)));
 		}
 	}
@@ -79,8 +79,8 @@
 
 	// Allocate the U32 result rows and the device-resident mu staging buffer:
 	// one packed 64-byte FIPS 204 message representative per signature.
-	let results = Matrix::allocate_output(engine, vec![batch_size], batch_size, DType::U32)?;
-	let mus = Matrix::allocate_output(engine, vec![mus_bytes], mus_bytes, DType::U8)?;
+	let results = Matrix::allocate_output(runtime, vec![batch_size], batch_size, DType::U32)?;
+	let mus = Matrix::allocate_output(runtime, vec![mus_bytes], mus_bytes, DType::U8)?;
 	// Empty U32 vectors have no Vulkan backing. There is no invocation or value
 	// to produce; return the already-ready empty value without binding them.
 	if batch_size == 0 {
@@ -122,7 +122,7 @@
 	let inputs = [messages, msg_offsets, msg_lengths, signatures, public_keys];
 	let outputs = [&results];
 	let attributes = [{{attributes}}];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -179,17 +179,17 @@
 	validate_packed_u8(signatures, "signatures", batch_size, sig_bytes, operation)?;
 	validate_packed_u8(public_keys, "public_keys", batch_size, pk_bytes, operation)?;
 
-	// All matrices must share the same engine.
-	let engine = messages.engine_handle();
+	// All matrices must share the same runtime.
+	let runtime = messages.runtime();
 	for (label, matrix) in [
 		("msg_offsets", msg_offsets),
 		("msg_lengths", msg_lengths),
 		("signatures", signatures),
 		("public_keys", public_keys),
 	] {
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} {label} must share an engine with messages"
+				"{operation} {label} must share an runtime with messages"
 			)));
 		}
 	}
@@ -227,9 +227,9 @@
 
 	// Allocate the U32 result rows, the packed digest staging rows and the
 	// device-resident mu staging buffer.
-	let results = Matrix::allocate_output(engine, vec![batch_size], batch_size, DType::U32)?;
-	let digests = Matrix::allocate_output(engine, vec![digests_bytes], digests_bytes, DType::U8)?;
-	let mus = Matrix::allocate_output(engine, vec![mus_bytes], mus_bytes, DType::U8)?;
+	let results = Matrix::allocate_output(runtime, vec![batch_size], batch_size, DType::U32)?;
+	let digests = Matrix::allocate_output(runtime, vec![digests_bytes], digests_bytes, DType::U8)?;
+	let mus = Matrix::allocate_output(runtime, vec![mus_bytes], mus_bytes, DType::U8)?;
 	// Empty U32 vectors have no Vulkan backing. There is no invocation or value
 	// to produce; return the already-ready empty value without binding them.
 	if batch_size == 0 {
@@ -281,7 +281,7 @@
 	let inputs = [messages, msg_offsets, msg_lengths, signatures, public_keys];
 	let outputs = [&results];
 	let attributes = [{{attributes}}];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,

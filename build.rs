@@ -1509,7 +1509,7 @@ fn expected_push_fields(
 	kind: &str,
 	variant: &str,
 ) -> Result<Vec<(&'static str, &'static str, u32)>, String> {
-	if let ("mat_mul_nt", "strided" | "strided_tiled") = (kind, variant) {
+	if let ("matmul_nt", "strided" | "strided_tiled") = (kind, variant) {
 		// Arbitrary-layout candidates carry the MatmulLayout fields of
 		// all three operands: row/column/batch strides plus element offset.
 		return Ok(vec![
@@ -1533,7 +1533,7 @@ fn expected_push_fields(
 			("c_offset", "uint32", 68),
 		]);
 	}
-	if let ("mat_mul_nt", "split_k") = (kind, variant) {
+	if let ("matmul_nt", "split_k") = (kind, variant) {
 		// The partial kernel carries the K-slice extent after the canonical
 		// problem fields; `group_id.z * k_chunk` bounds each slice.
 		return Ok(vec![
@@ -1546,7 +1546,7 @@ fn expected_push_fields(
 			("k_chunk", "uint32", 24),
 		]);
 	}
-	if let ("mat_mul_nt", "split_k_reduce") = (kind, variant) {
+	if let ("matmul_nt", "split_k_reduce") = (kind, variant) {
 		return Ok(vec![
 			("partial_index", "uint32", 0),
 			("output_index", "uint32", 4),
@@ -1554,7 +1554,7 @@ fn expected_push_fields(
 			("split_k", "uint32", 12),
 		]);
 	}
-	if let ("mat_mul_nt", "bias" | "bias_relu" | "bias_gelu" | "bias_silu") = (kind, variant) {
+	if let ("matmul_nt", "bias" | "bias_relu" | "bias_gelu" | "bias_silu") = (kind, variant) {
 		return Ok(vec![
 			("left_index", "uint32", 0),
 			("right_index", "uint32", 4),
@@ -1583,7 +1583,7 @@ fn expected_push_fields(
 			("element_count", "uint32", 8),
 			("scalar", "float32", 12),
 		]),
-		"mat_mul_nt" => Ok(vec![
+		"matmul_nt" => Ok(vec![
 			("left_index", "uint32", 0),
 			("right_index", "uint32", 4),
 			("output_index", "uint32", 8),

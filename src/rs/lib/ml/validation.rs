@@ -3,7 +3,7 @@
 
 use crate::{DType, Error, Matrix, Result};
 
-pub(in crate::ml) fn validate_f32_same_engine(
+pub(in crate::ml) fn validate_f32_same_runtime(
 	operation: &'static str,
 	matrices: &[&Matrix],
 ) -> Result<()> {
@@ -19,9 +19,9 @@ pub(in crate::ml) fn validate_f32_same_engine(
 				matrix.dtype().token()
 			)));
 		}
-		if !first.engine_handle().same_as(matrix.engine_handle()) {
+		if !first.runtime().same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}

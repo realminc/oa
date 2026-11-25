@@ -186,7 +186,7 @@ fn build_mel_filterbank(input: &Audio, config: MelConfig, freq_bins: u32) -> Res
 		}
 	}
 	Matrix::new_from_slice_handle(
-		input.engine_handle(),
+		input.runtime(),
 		vec![config.num_mels as usize, freq_bins as usize],
 		&weights,
 	)
@@ -238,7 +238,7 @@ pub fn stft(input: &Audio, config: StftConfig) -> Result<Matrix> {
 	let shape = validate_stft(input, config)?;
 	let elements = shape.channels * shape.frames * shape.freq_bins;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			shape.channels as usize,
 			shape.frames as usize,
@@ -284,7 +284,7 @@ pub fn stft(input: &Audio, config: StftConfig) -> Result<Matrix> {
 		},
 	];
 	let outputs = [AudioSemanticOutput::Matrix(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioStftF32,
 			buffers: &buffers,
@@ -307,7 +307,7 @@ pub fn stft_complex(input: &Audio, config: StftConfig) -> Result<Matrix> {
 	let shape = validate_stft(input, config)?;
 	let elements = shape.channels * shape.frames * shape.freq_bins * 2;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			shape.channels as usize,
 			shape.frames as usize,
@@ -354,7 +354,7 @@ pub fn stft_complex(input: &Audio, config: StftConfig) -> Result<Matrix> {
 		},
 	];
 	let outputs = [AudioSemanticOutput::Matrix(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioStftComplexF32,
 			buffers: &buffers,
@@ -421,19 +421,19 @@ struct IstftShape {
 pub fn istft(input: &Matrix, config: IstftConfig) -> Result<Audio> {
 	let shape = validate_istft(input, config)?;
 	let scratch = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![shape.channels as usize, shape.padded_samples as usize],
 		(shape.channels * shape.padded_samples) as usize,
 		DType::F32,
 	)?;
 	let norm = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![shape.channels as usize, shape.padded_samples as usize],
 		(shape.channels * shape.padded_samples) as usize,
 		DType::F32,
 	)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![shape.channels as usize, shape.out_samples as usize],
 		(shape.channels * shape.out_samples) as usize,
 		DType::F32,
@@ -508,7 +508,7 @@ pub fn istft(input: &Matrix, config: IstftConfig) -> Result<Audio> {
 		AudioChannelLayout::for_channel_count(shape.channels as usize),
 	)?;
 	let outputs = [AudioSemanticOutput::Audio(&audio)];
-	input.engine_handle().record_audio_split_semantic(
+	input.runtime().record_audio_split_semantic(
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: crate::core::operation::audio::ISTFT,
@@ -569,7 +569,7 @@ pub fn mel_spectrogram(input: &Audio, config: MelConfig) -> Result<Matrix> {
 	let shape = validate_stft(input, stft_config)?;
 	let elements = shape.channels * shape.frames * shape.freq_bins;
 	let spectrum = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			shape.channels as usize,
 			shape.frames as usize,
@@ -639,7 +639,7 @@ pub fn mel_spectrogram(input: &Audio, config: MelConfig) -> Result<Matrix> {
 
 	let output = if config.normalize {
 		let raw = Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			vec![
 				shape.channels as usize,
 				config.num_mels as usize,
@@ -649,7 +649,7 @@ pub fn mel_spectrogram(input: &Audio, config: MelConfig) -> Result<Matrix> {
 			DType::F32,
 		)?;
 		let output = Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			raw.shape().to_vec(),
 			raw.num_elements(),
 			DType::F32,
@@ -691,7 +691,7 @@ pub fn mel_spectrogram(input: &Audio, config: MelConfig) -> Result<Matrix> {
 			},
 		];
 		let outputs = [AudioSemanticOutput::Matrix(&output)];
-		input.engine_handle().record_audio_split_semantic(
+		input.runtime().record_audio_split_semantic(
 			&dispatches,
 			AudioSemanticDispatch {
 				contract: crate::core::operation::audio::MEL_SPECTROGRAM,
@@ -703,7 +703,7 @@ pub fn mel_spectrogram(input: &Audio, config: MelConfig) -> Result<Matrix> {
 		output
 	} else {
 		let output = Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			vec![
 				shape.channels as usize,
 				config.num_mels as usize,
@@ -734,7 +734,7 @@ pub fn mel_spectrogram(input: &Audio, config: MelConfig) -> Result<Matrix> {
 			},
 		];
 		let outputs = [AudioSemanticOutput::Matrix(&output)];
-		input.engine_handle().record_audio_split_semantic(
+		input.runtime().record_audio_split_semantic(
 			&dispatches,
 			AudioSemanticDispatch {
 				contract: crate::core::operation::audio::MEL_SPECTROGRAM,
@@ -781,7 +781,7 @@ pub fn mfcc(input: &Audio, config: MfccConfig) -> Result<Matrix> {
 	let shape = validate_stft(input, stft_config)?;
 	let elements = shape.channels * shape.frames * shape.freq_bins;
 	let spectrum = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			shape.channels as usize,
 			shape.frames as usize,
@@ -797,7 +797,7 @@ pub fn mfcc(input: &Audio, config: MfccConfig) -> Result<Matrix> {
 		.and_then(|value| value.checked_mul(shape.frames))
 		.ok_or_else(|| Error::out_of_range("audio::mfcc mel workspace exceeds u32"))?;
 	let mel = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			shape.channels as usize,
 			config.mel.num_mels as usize,
@@ -812,7 +812,7 @@ pub fn mfcc(input: &Audio, config: MfccConfig) -> Result<Matrix> {
 		.and_then(|value| value.checked_mul(shape.frames))
 		.ok_or_else(|| Error::out_of_range("audio::mfcc output exceeds u32"))?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![
 			shape.channels as usize,
 			config.num_coeffs as usize,
@@ -916,7 +916,7 @@ pub fn mfcc(input: &Audio, config: MfccConfig) -> Result<Matrix> {
 		},
 	];
 	let outputs = [AudioSemanticOutput::Matrix(&output)];
-	input.engine_handle().record_audio_split_semantic(
+	input.runtime().record_audio_split_semantic(
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: crate::core::operation::audio::MFCC,

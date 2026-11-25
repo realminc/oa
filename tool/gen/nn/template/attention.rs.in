@@ -93,7 +93,7 @@ impl {{name}} {
 		sequence_length: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, model_width, num_heads, sequence_length, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, model_width, num_heads, sequence_length, seed)	}
 
 	/// Construct four biased projections with causal visibility and automatic
 	/// backend policy.
@@ -103,14 +103,14 @@ impl {{name}} {
 	/// Returns an error unless dimensions are positive and `model_width` is
 	/// divisible by `num_heads`, or child construction/registration fails.
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		model_width: usize,
 		num_heads: usize,
 		sequence_length: usize,
 		seed: u64,
 	) -> Result<Self> {
 		Self::new_with_seed_and_options_on(
-			engine,
+			runtime,
 			model_width,
 			num_heads,
 			sequence_length,
@@ -128,7 +128,7 @@ impl {{name}} {
 		bias: bool,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_bias_on(&Engine::current()?, model_width, num_heads, sequence_length, bias, seed)	}
+		Self::new_with_seed_and_bias_on(&Runtime::current()?, model_width, num_heads, sequence_length, bias, seed)	}
 
 	/// Construct four projections with explicit optional bias.
 	///
@@ -137,7 +137,7 @@ impl {{name}} {
 	/// Returns an error unless dimensions are positive and `model_width` is
 	/// divisible by `num_heads`, or child construction/registration fails.
 	pub fn new_with_seed_and_bias_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		model_width: usize,
 		num_heads: usize,
 		sequence_length: usize,
@@ -145,7 +145,7 @@ impl {{name}} {
 		seed: u64,
 	) -> Result<Self> {
 		Self::new_with_seed_and_options_on(
-			engine,
+			runtime,
 			model_width,
 			num_heads,
 			sequence_length,
@@ -174,11 +174,11 @@ impl {{name}} {
 		bias: bool,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_options_on(&Engine::current()?, model_width, num_heads, sequence_length, dropout_probability, bias, seed)	}
+		Self::new_with_seed_and_options_on(&Runtime::current()?, model_width, num_heads, sequence_length, dropout_probability, bias, seed)	}
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_seed_and_options_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		model_width: usize,
 		num_heads: usize,
 		sequence_length: usize,
@@ -187,7 +187,7 @@ impl {{name}} {
 		seed: u64,
 	) -> Result<Self> {
 		Self::new_with_seed_and_options_grouped_on(
-			engine,
+			runtime,
 			model_width,
 			num_heads,
 			num_heads,
@@ -214,7 +214,7 @@ impl {{name}} {
 	/// zero or does not divide `num_heads`.
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_seed_and_options_grouped_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		model_width: usize,
 		num_heads: usize,
 		num_kv_heads: usize,
@@ -243,28 +243,28 @@ impl {{name}} {
 			.checked_mul(num_kv_heads)
 			.ok_or_else(|| Error::invalid_argument("attention key/value width overflows usize"))?;
 		let query_projection = Rc::new({{projection_constructor}}(
-			engine,
+			runtime,
 			model_width,
 			model_width,
 			bias,
 			seed,
 		)?);
 		let key_projection = Rc::new({{projection_constructor}}(
-			engine,
+			runtime,
 			model_width,
 			kv_width,
 			bias,
 			seed.wrapping_add(1),
 		)?);
 		let value_projection = Rc::new({{projection_constructor}}(
-			engine,
+			runtime,
 			model_width,
 			kv_width,
 			bias,
 			seed.wrapping_add(2),
 		)?);
 		let output_projection = Rc::new({{projection_constructor}}(
-			engine,
+			runtime,
 			model_width,
 			model_width,
 			bias,
@@ -427,7 +427,7 @@ impl {{name}} {
 			}
 		}
 		let mask = Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			vec![score_rows, key_length],
 			count,
 			DType::F32,
@@ -523,7 +523,7 @@ impl {{name}} {
 	/// # Errors
 	///
 	/// Returns an error when Flash is explicitly selected, either input's
-	/// geometry or dtype is invalid, the engines differ, or operation
+	/// geometry or dtype is invalid, the runtimes differ, or operation
 	/// recording fails.
 	pub fn forward_kv(&self, input: &Matrix, key_value_source: &Matrix) -> Result<Matrix> {
 		self.forward_kv_impl(input, key_value_source, None)
@@ -568,11 +568,11 @@ impl {{name}} {
 			|| *key_rows == 0
 			|| !key_rows.is_multiple_of(batch)
 			|| !input
-				.engine_handle()
-				.same_as(key_value_source.engine_handle())
+				.runtime()
+				.same_as(key_value_source.runtime())
 		{
 			return Err(Error::invalid_argument(format!(
-				"{{name}} cross-attention requires same-engine F32 [B*S_kv, {}] source with batch {batch}; found {:?} {}",
+				"{{name}} cross-attention requires same-runtime F32 [B*S_kv, {}] source with batch {batch}; found {:?} {}",
 				self.model_width,
 				key_value_source.shape(),
 				key_value_source.dtype().token(),
@@ -840,7 +840,7 @@ impl {{linear_name}} {
 		sequence_length: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, model_width, num_heads, sequence_length, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, model_width, num_heads, sequence_length, seed)	}
 
 	/// Construct four biased projections with causal visibility.
 	///
@@ -849,13 +849,13 @@ impl {{linear_name}} {
 	/// Returns an error unless dimensions are positive, `model_width` is
 	/// divisible by `num_heads`, or child construction/registration fails.
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		model_width: usize,
 		num_heads: usize,
 		sequence_length: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_options_on(engine, model_width, num_heads, sequence_length, true, seed)
+		Self::new_with_seed_and_options_on(runtime, model_width, num_heads, sequence_length, true, seed)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -866,7 +866,7 @@ impl {{linear_name}} {
 		bias: bool,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_bias_on(&Engine::current()?, model_width, num_heads, sequence_length, bias, seed)	}
+		Self::new_with_seed_and_bias_on(&Runtime::current()?, model_width, num_heads, sequence_length, bias, seed)	}
 
 	/// Construct four projections with explicit optional bias.
 	///
@@ -875,14 +875,14 @@ impl {{linear_name}} {
 	/// Returns an error unless dimensions are positive, `model_width` is
 	/// divisible by `num_heads`, or child construction/registration fails.
 	pub fn new_with_seed_and_bias_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		model_width: usize,
 		num_heads: usize,
 		sequence_length: usize,
 		bias: bool,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_options_on(engine, model_width, num_heads, sequence_length, bias, seed)
+		Self::new_with_seed_and_options_on(runtime, model_width, num_heads, sequence_length, bias, seed)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -893,7 +893,7 @@ impl {{linear_name}} {
 		bias: bool,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_options_on(&Engine::current()?, model_width, num_heads, sequence_length, bias, seed)	}
+		Self::new_with_seed_and_options_on(&Runtime::current()?, model_width, num_heads, sequence_length, bias, seed)	}
 
 	/// Construct with explicit bias policy; initial mode is
 	/// [`{{linear_mode_type}}::Causal`].
@@ -903,7 +903,7 @@ impl {{linear_name}} {
 	/// Returns an error unless dimensions are positive, `model_width` is
 	/// divisible by `num_heads`, or child construction/registration fails.
 	pub fn new_with_seed_and_options_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		model_width: usize,
 		num_heads: usize,
 		sequence_length: usize,
@@ -920,28 +920,28 @@ impl {{linear_name}} {
 			));
 		}
 		let query_projection = Rc::new({{projection_constructor}}(
-			engine,
+			runtime,
 			model_width,
 			model_width,
 			bias,
 			seed,
 		)?);
 		let key_projection = Rc::new({{projection_constructor}}(
-			engine,
+			runtime,
 			model_width,
 			model_width,
 			bias,
 			seed.wrapping_add(1),
 		)?);
 		let value_projection = Rc::new({{projection_constructor}}(
-			engine,
+			runtime,
 			model_width,
 			model_width,
 			bias,
 			seed.wrapping_add(2),
 		)?);
 		let output_projection = Rc::new({{projection_constructor}}(
-			engine,
+			runtime,
 			model_width,
 			model_width,
 			bias,
@@ -1050,14 +1050,14 @@ impl {{linear_name}} {
 			.checked_mul(head_dim)
 			.ok_or_else(|| Error::invalid_argument("linear attention k_sum size overflows"))?;
 		let kv = Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			vec![batch_heads, head_dim, head_dim],
 			kv_count,
 			DType::F32,
 		)?;
 		kv.write_values(&vec![0.0_f32; kv_count])?;
 		let k_sum = Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			vec![batch_heads, head_dim, 1],
 			ksum_count,
 			DType::F32,

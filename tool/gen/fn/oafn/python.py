@@ -57,6 +57,9 @@ PYTHON_RESULT_TYPES = PYTHON_VALUE_TYPES | {
 	"DetectionMetricsResult": "PythonDetectionMetricsResult",
 	"SegmentationMetricsResult": "PythonSegmentationMetricsResult",
 	"TopKResult": "(PythonMatrix, PythonMatrix)",
+	"(Image, Matrix)": "(PythonImage, PythonMatrix)",
+	"(Matrix, Matrix)": "(PythonMatrix, PythonMatrix)",
+	"(Matrix, Matrix, Matrix)": "(PythonMatrix, PythonMatrix, PythonMatrix)",
 	"MoeExpertPlan": "PythonMoeExpertPlan",
 	"CompactRowsResult": "PythonCompactRowsResult",
 	"Vec<Matrix>": "Vec<PythonMatrix>",
@@ -96,6 +99,14 @@ PYTHON_ENUM_TYPES = {
 	"InterpolationMode": "super::interpolation",
 	"BorderMode": "super::border",
 	"HistogramComparison": "super::histogram_comparison",
+	"AutoThreshold": "super::auto_threshold",
+	"ColorConversion": "super::color_conversion",
+	"ColorMap": "super::color_map",
+	"MatchTemplate": "super::match_template",
+	"PolarMode": "super::polar_mode",
+	"Connectivity": "super::connectivity",
+	"DistanceType": "super::distance_type",
+	"CornerScore": "super::corner_score",
 	"ImageFormat": "super::format",
 	"crate::ImageFormat": "super::format",
 	"NormalizeAudioMode": "super::normalize_mode",
@@ -118,6 +129,9 @@ PYTHON_STUB_TYPES = {
 PYTHON_STUB_RETURNS = {
 	"()": "None",
 	"TopKResult": "tuple[Matrix, Matrix]",
+	"(Image, Matrix)": "tuple[Image, Matrix]",
+	"(Matrix, Matrix)": "tuple[Matrix, Matrix]",
+	"(Matrix, Matrix, Matrix)": "tuple[Matrix, Matrix, Matrix]",
 	"CompactRowsResult": "CompactRowsResult",
 	"Vec<Matrix>": "list[Matrix]",
 	"i64": "int",
@@ -132,7 +146,7 @@ def python_operation(
 	result fields (None for single-value results).
 
 	Returns one `(name, pyo3_type, call_argument)` triple per parameter.
-	Unsupported types (configuration records, engine handles, borrowed slices)
+	Unsupported types (configuration records, runtime handles, borrowed slices)
 	keep their handwritten adapters until the schema owns a Python-adaptation
 	record for them.
 	"""
@@ -281,6 +295,12 @@ def generate_python_domain(
 		returns_import = "Matrix" if signature["returns"] == "Vec<Matrix>" else signature["returns"]
 		if returns_import in PYTHON_RESULT_MODULES:
 			types.add(returns_import)
+		elif returns_import.startswith("("):
+			types.update(
+				member.strip()
+				for member in returns_import.strip("()").split(",")
+				if member.strip() in PYTHON_RESULT_MODULES
+			)
 		types.update(
 			kind.lstrip("&") for _, kind in signature["parameters"]
 			if kind.lstrip("&") in PYTHON_VALUE_TYPES or kind.lstrip("&") in PYTHON_STRUCT_PARAMETERS
@@ -326,6 +346,12 @@ def generate_python_domain(
 			result_map = ""
 		elif signature["returns"] == "Vec<Matrix>":
 			result_map = ".map(|r| r.into_iter().map(PythonMatrix::wrap).collect::<Vec<_>>())"
+		elif returns == "(PythonImage, PythonMatrix)":
+			result_map = ".map(|(image, matrix)| (PythonImage::wrap(image), PythonMatrix::wrap(matrix)))"
+		elif signature["returns"] == "(Matrix, Matrix)":
+			result_map = ".map(|(first, second)| (PythonMatrix::wrap(first), PythonMatrix::wrap(second)))"
+		elif signature["returns"] == "(Matrix, Matrix, Matrix)":
+			result_map = ".map(|(first, second, third)| (PythonMatrix::wrap(first), PythonMatrix::wrap(second), PythonMatrix::wrap(third)))"
 		elif result_fields is None:
 			result_map = f".map({returns}::wrap)"
 		elif returns.startswith("("):

@@ -9,13 +9,13 @@ use super::*;
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn binding_contract_describes_inputs_and_outputs() -> crate::Result<()> {
-	let engine = match crate::Engine::new() {
-		Ok(engine) => engine,
+	let runtime = match crate::Runtime::new() {
+		Ok(runtime) => runtime,
 		Err(_) => return Ok(()),
 	};
 	let one = crate::matrix::ones([2, 3])?;
 	let two = crate::matrix::full([2, 3], 2.0)?;
-	let (plan, _output) = engine.capture(|| {
+	let (plan, _output) = runtime.capture(|| {
 		let three = crate::matrix::add(&one, &two)?;
 		crate::matrix::add(&three, &three)
 	})?;
@@ -73,7 +73,7 @@ fn binding_contract_describes_inputs_and_outputs() -> crate::Result<()> {
 	);
 
 	// A structurally identical recapture reproduces the same contract hash.
-	let (recaptured, _output) = engine.capture(|| {
+	let (recaptured, _output) = runtime.capture(|| {
 		let three = crate::matrix::add(&one, &two)?;
 		crate::matrix::add(&three, &three)
 	})?;

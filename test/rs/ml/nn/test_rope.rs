@@ -73,7 +73,7 @@ fn numerical_gradient(values: &[f32], loss: impl Fn(&[f32]) -> f32) -> Vec<f32> 
 		.collect()
 }
 
-test_vk!(rope_matches_forward_and_reverse_oracles, engine, {
+test_vk!(rope_matches_forward_and_reverse_oracles, runtime, {
 	let values = [0.2_f32, -0.4, 0.8, 1.1, -0.7, 0.3, 0.5, -0.2];
 	let input = oa::Matrix::new_from_f32([2, 4], &values)?;
 	let output = oa::ml::matrix::rope(&input, 1, 4, 100.0, 3)?;
@@ -124,7 +124,7 @@ test_vk!(rope_matches_forward_and_reverse_oracles, engine, {
 	Ok(())
 });
 
-test_vk!(rope_rejects_invalid_contracts, engine, {
+test_vk!(rope_rejects_invalid_contracts, runtime, {
 	for (heads, head_dim, theta) in [(0, 4, 100.0), (1, 3, 100.0), (1, 4, 0.0)] {
 		assert_eq!(
 			oa::ml::nn::Rope::new(heads, head_dim, theta)

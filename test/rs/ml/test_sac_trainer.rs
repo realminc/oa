@@ -4,7 +4,7 @@ use oa::ml::{
 };
 
 fn linear(
-	_engine: &oa::Engine,
+	_runtime: &oa::Runtime,
 	input: usize,
 	output: usize,
 	weights: &[f32],
@@ -15,9 +15,9 @@ fn linear(
 	)
 }
 
-test_vk!(sac_trainer_runs_donor_actor_twin_critic_update, engine, {
+test_vk!(sac_trainer_runs_donor_actor_twin_critic_update, runtime, {
 	let mut replay = ReplayBuffer::new(
-		&engine,
+		&runtime,
 		ReplayConfig {
 			capacity: 8,
 			observation_shape: vec![2],
@@ -34,11 +34,11 @@ test_vk!(sac_trainer_runs_donor_actor_twin_critic_update, engine, {
 		oa::Matrix::new_from_slice([4], &[0_u8, 0, 0, 1])?,
 	))?;
 
-	let actor = linear(&engine, 2, 2, &[0.1, -0.2, 0.05, 0.1])?;
-	let critic1 = linear(&engine, 3, 1, &[0.2, -0.1, 0.3])?;
-	let critic2 = linear(&engine, 3, 1, &[-0.1, 0.25, 0.15])?;
-	let target_critic1 = linear(&engine, 3, 1, &[9.0; 3])?;
-	let target_critic2 = linear(&engine, 3, 1, &[8.0; 3])?;
+	let actor = linear(&runtime, 2, 2, &[0.1, -0.2, 0.05, 0.1])?;
+	let critic1 = linear(&runtime, 3, 1, &[0.2, -0.1, 0.3])?;
+	let critic2 = linear(&runtime, 3, 1, &[-0.1, 0.25, 0.15])?;
+	let target_critic1 = linear(&runtime, 3, 1, &[9.0; 3])?;
+	let target_critic2 = linear(&runtime, 3, 1, &[8.0; 3])?;
 	let critic1_weight = critic1.weight();
 	let critic2_weight = critic2.weight();
 	let target1_weight = target_critic1.weight();
@@ -49,7 +49,7 @@ test_vk!(sac_trainer_runs_donor_actor_twin_critic_update, engine, {
 	let mut critic_optimizer = Sgd::new(critic_parameters, 1.0e-3, 0.0, 0.0)?;
 
 	let mut trainer = SacTrainer::new(
-		&engine,
+		&runtime,
 		&actor,
 		&critic1,
 		&critic2,
@@ -104,9 +104,9 @@ test_vk!(sac_trainer_runs_donor_actor_twin_critic_update, engine, {
 	Ok(())
 });
 
-test_vk!(sac_trainer_rejects_categorical_replay, engine, {
+test_vk!(sac_trainer_rejects_categorical_replay, runtime, {
 	let replay = ReplayBuffer::new(
-		&engine,
+		&runtime,
 		ReplayConfig {
 			capacity: 4,
 			observation_shape: vec![2],
@@ -114,17 +114,17 @@ test_vk!(sac_trainer_rejects_categorical_replay, engine, {
 			action_dtype: oa::DType::I32,
 		},
 	)?;
-	let actor = linear(&engine, 2, 2, &[0.0; 4])?;
-	let critic1 = linear(&engine, 3, 1, &[0.0; 3])?;
-	let critic2 = linear(&engine, 3, 1, &[0.0; 3])?;
-	let target1 = linear(&engine, 3, 1, &[0.0; 3])?;
-	let target2 = linear(&engine, 3, 1, &[0.0; 3])?;
+	let actor = linear(&runtime, 2, 2, &[0.0; 4])?;
+	let critic1 = linear(&runtime, 3, 1, &[0.0; 3])?;
+	let critic2 = linear(&runtime, 3, 1, &[0.0; 3])?;
+	let target1 = linear(&runtime, 3, 1, &[0.0; 3])?;
+	let target2 = linear(&runtime, 3, 1, &[0.0; 3])?;
 	let mut actor_optimizer = Sgd::new(actor.all_parameters()?, 1.0e-3, 0.0, 0.0)?;
 	let mut critic_parameters = critic1.all_parameters()?;
 	critic_parameters.extend(critic2.all_parameters()?);
 	let mut critic_optimizer = Sgd::new(critic_parameters, 1.0e-3, 0.0, 0.0)?;
 	let error = match SacTrainer::new(
-		&engine,
+		&runtime,
 		&actor,
 		&critic1,
 		&critic2,

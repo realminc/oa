@@ -8,7 +8,7 @@ use crate::{
 
 use crate::ml::{
 	autograd,
-	validation::{shader_u32, validate_f32_same_engine},
+	validation::{shader_u32, validate_f32_same_runtime},
 };
 
 impl Mamba3PreprocessConfig {
@@ -219,7 +219,7 @@ impl Geometry {
 				"{operation} operands do not match the explicit SSM configuration"
 			)));
 		}
-		validate_f32_same_engine(operation, inputs)?;
+		validate_f32_same_runtime(operation, inputs)?;
 		for shape in &expected {
 			let count = checked_count(shape, operation)?;
 			shader_u32(count, "tensor element count", operation)?;
@@ -346,7 +346,7 @@ impl MimoGeometry {
 				"{operation} operands do not match the explicit MIMO configuration"
 			)));
 		}
-		validate_f32_same_engine(operation, inputs)?;
+		validate_f32_same_runtime(operation, inputs)?;
 		for shape in &expected {
 			shader_u32(
 				checked_count(shape, operation)?,
@@ -485,7 +485,7 @@ impl PreprocessGeometry {
 				"{operation} projected width or dt-bias shape does not match the configuration"
 			)));
 		}
-		validate_f32_same_engine(operation, &[projected, dt_bias])?;
+		validate_f32_same_runtime(operation, &[projected, dt_bias])?;
 		shader_u32(expected_width, "projected row width", operation)?;
 		shader_u32(bc_width, "B/C width", operation)?;
 		for (label, shape) in [
@@ -553,11 +553,11 @@ fn dispatch_mamba3_preprocess(
 	let operation = contract.name();
 	let geometry = PreprocessGeometry::resolve(projected, dt_bias, config, operation)?;
 	let [vector_shape, bc_shape, scalar_shape, angle_shape] = geometry.output_shapes();
-	let engine = projected.engine_handle();
+	let runtime = projected.runtime();
 	let allocate = |shape: Vec<usize>| {
 		let count = checked_count(&shape, operation)?;
 		shader_u32(count, "output element count", operation)?;
-		Matrix::allocate(engine, shape, count, DType::F32)
+		Matrix::allocate(runtime, shape, count, DType::F32)
 	};
 	let result = Mamba3PreprocessResult {
 		x: allocate(vector_shape.clone())?,
@@ -588,7 +588,7 @@ fn dispatch_mamba3_preprocess(
 	}];
 	let inputs = [projected, dt_bias];
 	let outputs = result.matrices();
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3PreprocessF32,
 			buffers: &buffers,
@@ -639,10 +639,10 @@ fn dispatch_mamba3_preprocess_backward(
 	let mut all_inputs = Vec::with_capacity(10);
 	all_inputs.extend([projected, dt_bias]);
 	all_inputs.extend(gradient_matrices);
-	validate_f32_same_engine(operation, &all_inputs)?;
+	validate_f32_same_runtime(operation, &all_inputs)?;
 
 	let projected_gradient = Matrix::allocate(
-		projected.engine_handle(),
+		projected.runtime(),
 		projected.shape().to_vec(),
 		projected.element_count(),
 		DType::F32,
@@ -652,13 +652,13 @@ fn dispatch_mamba3_preprocess_backward(
 		.checked_mul(geometry.heads)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} partial size overflows")))?;
 	let dt_bias_partial = Matrix::allocate(
-		projected.engine_handle(),
+		projected.runtime(),
 		vec![geometry.rows, geometry.heads],
 		partial_count,
 		DType::F32,
 	)?;
 	let dt_bias_gradient = Matrix::allocate(
-		projected.engine_handle(),
+		projected.runtime(),
 		vec![geometry.heads],
 		geometry.heads,
 		DType::F32,
@@ -707,7 +707,7 @@ fn dispatch_mamba3_preprocess_backward(
 		value: config.identity(operation)?,
 	}];
 	let outputs = [&projected_gradient, &dt_bias_gradient];
-	projected.engine_handle().record_split_semantic(
+	projected.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -746,7 +746,7 @@ fn dispatch_mamba3_siso(
 	let geometry = Geometry::resolve(&inputs, config, operation)?;
 	let output_shape = geometry.output_shape();
 	let output = Matrix::allocate(
-		x.engine_handle(),
+		x.runtime(),
 		output_shape.clone(),
 		checked_count(&output_shape, operation)?,
 		DType::F32,
@@ -781,7 +781,7 @@ fn dispatch_mamba3_siso(
 		value: config.identity(operation)?,
 	}];
 	let outputs = [&output];
-	x.engine_handle().record_semantic(
+	x.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoF32,
 			buffers: &buffers,
@@ -863,7 +863,7 @@ fn dispatch_mamba3_siso_step(
 			"{operation} recurrent-state shapes do not match the explicit configuration"
 		)));
 	}
-	validate_f32_same_engine(operation, &[x, ssm_state, angle_state, k_state, v_state])?;
+	validate_f32_same_runtime(operation, &[x, ssm_state, angle_state, k_state, v_state])?;
 	for shape in &expected_states {
 		shader_u32(
 			checked_count(shape, operation)?,
@@ -874,7 +874,7 @@ fn dispatch_mamba3_siso_step(
 
 	let output_shape = geometry.output_shape();
 	let output = Matrix::allocate(
-		x.engine_handle(),
+		x.runtime(),
 		output_shape.clone(),
 		checked_count(&output_shape, operation)?,
 		DType::F32,
@@ -929,7 +929,7 @@ fn dispatch_mamba3_siso_step(
 		d,
 	];
 	let semantic_outputs = [&output, ssm_state, angle_state, k_state, v_state];
-	x.engine_handle().record_semantic(
+	x.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3SisoStepF32,
 			buffers: &buffers,
@@ -991,7 +991,7 @@ fn dispatch_mamba3_mimo(
 	let geometry = MimoGeometry::resolve(&inputs, config, operation)?;
 	let output_shape = geometry.output_shape();
 	let output = Matrix::allocate(
-		x.engine_handle(),
+		x.runtime(),
 		output_shape.clone(),
 		checked_count(&output_shape, operation)?,
 		DType::F32,
@@ -1020,7 +1020,7 @@ fn dispatch_mamba3_mimo(
 		value: config.identity(operation)?,
 	}];
 	let outputs = [&output];
-	x.engine_handle().record_semantic(
+	x.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3MimoF32,
 			buffers: &buffers,
@@ -1124,7 +1124,7 @@ fn dispatch_mamba3_mimo_step(
 			"{operation} recurrent-state shapes do not match the explicit MIMO configuration"
 		)));
 	}
-	validate_f32_same_engine(operation, &[x, ssm_state, angle_state, k_state, v_state])?;
+	validate_f32_same_runtime(operation, &[x, ssm_state, angle_state, k_state, v_state])?;
 	for shape in &expected_states {
 		shader_u32(
 			checked_count(shape, operation)?,
@@ -1134,7 +1134,7 @@ fn dispatch_mamba3_mimo_step(
 	}
 	let output_shape = geometry.output_shape();
 	let output = Matrix::allocate(
-		x.engine_handle(),
+		x.runtime(),
 		output_shape.clone(),
 		checked_count(&output_shape, operation)?,
 		DType::F32,
@@ -1200,7 +1200,7 @@ fn dispatch_mamba3_mimo_step(
 		norm_weight,
 	];
 	let semantic_outputs = [&output, ssm_state, angle_state, k_state, v_state];
-	x.engine_handle().record_semantic(
+	x.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlMamba3MimoStepF32,
 			buffers: &buffers,
@@ -1268,13 +1268,13 @@ fn dispatch_mamba3_mimo_backward(
 			"{operation} output gradient does not match the configured output"
 		)));
 	}
-	validate_f32_same_engine(operation, &[output_gradient, x])?;
+	validate_f32_same_runtime(operation, &[output_gradient, x])?;
 
-	let engine = x.engine_handle();
+	let runtime = x.runtime();
 	let alloc = |shape: Vec<usize>| -> Result<Matrix> {
 		let count = checked_count(&shape, operation)?;
 		shader_u32(count, "temporary element count", operation)?;
-		Matrix::allocate(engine, shape, count, DType::F32)
+		Matrix::allocate(runtime, shape, count, DType::F32)
 	};
 	let batch = geometry.batch as usize;
 	let length = geometry.length as usize;
@@ -1596,7 +1596,7 @@ fn dispatch_mamba3_mimo_backward(
 		name: "config_identity".into(),
 		value: config.identity(operation)?,
 	}];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -1652,8 +1652,8 @@ fn dispatch_mamba3_siso_backward(
 			"{operation} output gradient does not match the configured output"
 		)));
 	}
-	validate_f32_same_engine(operation, &[output_gradient, x])?;
-	let engine = x.engine_handle();
+	validate_f32_same_runtime(operation, &[output_gradient, x])?;
+	let runtime = x.runtime();
 	let short_route = geometry.length <= 16
 		&& geometry.head_dim <= 16
 		&& geometry.state_size <= 32
@@ -1717,7 +1717,7 @@ fn dispatch_mamba3_siso_backward(
 	let alloc = |shape: Vec<usize>| -> Result<Matrix> {
 		let count = checked_count(&shape, operation)?;
 		shader_u32(count, "temporary element count", operation)?;
-		Matrix::allocate(engine, shape, count, DType::F32)
+		Matrix::allocate(runtime, shape, count, DType::F32)
 	};
 	let bsz = geometry.batch as usize;
 	let len = geometry.length as usize;
@@ -1975,7 +1975,7 @@ fn dispatch_mamba3_siso_backward(
 		name: "config_identity".into(),
 		value: config.identity(operation)?,
 	}];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -2021,11 +2021,11 @@ fn mamba3_siso_backward_chunked(
 ) -> Result<SsmBackwardResult> {
 	let contract = crate::core::operation::ml::MAMBA3_SISO_BACKWARD;
 	let operation = contract.name();
-	let engine = x.engine_handle();
+	let runtime = x.runtime();
 	let allocate = |shape: Vec<usize>| -> Result<Matrix> {
 		let count = checked_count(&shape, operation)?;
 		shader_u32(count, "chunked SISO tensor element count", operation)?;
-		Matrix::allocate(engine, shape, count, DType::F32)
+		Matrix::allocate(runtime, shape, count, DType::F32)
 	};
 	let batch = geometry.batch as usize;
 	let length = geometry.length as usize;
@@ -2337,7 +2337,7 @@ fn mamba3_siso_backward_chunked(
 		name: "config_identity".into(),
 		value: config.identity(operation)?,
 	}];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -2383,11 +2383,11 @@ fn mamba3_siso_backward_generic(
 ) -> Result<SsmBackwardResult> {
 	let contract = crate::core::operation::ml::MAMBA3_SISO_BACKWARD;
 	let operation = contract.name();
-	let engine = x.engine_handle();
+	let runtime = x.runtime();
 	let allocate = |shape: Vec<usize>| -> Result<Matrix> {
 		let count = checked_count(&shape, operation)?;
 		shader_u32(count, "generic SISO tensor element count", operation)?;
-		Matrix::allocate(engine, shape, count, DType::F32)
+		Matrix::allocate(runtime, shape, count, DType::F32)
 	};
 	let batch = geometry.batch as usize;
 	let length = geometry.length as usize;
@@ -2533,7 +2533,7 @@ fn mamba3_siso_backward_generic(
 		name: "config_identity".into(),
 		value: config.identity(operation)?,
 	}];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -2571,7 +2571,7 @@ fn mamba3_siso_backward_generic(
 /// # Errors
 ///
 /// Returns an error for invalid configuration, incompatible shape, dtype or
-/// Engine ownership, arithmetic overflow, or failed runtime recording.
+/// Runtime ownership, arithmetic overflow, or failed runtime recording.
 pub fn mamba3_preprocess(
 	projected: &Matrix,
 	dt_bias: &Matrix,
@@ -2590,7 +2590,7 @@ pub fn mamba3_preprocess(
 /// # Errors
 ///
 /// Returns an error for invalid configuration, incompatible gradients, shape,
-/// dtype or Engine ownership, arithmetic overflow, or failed runtime recording.
+/// dtype or Runtime ownership, arithmetic overflow, or failed runtime recording.
 pub fn mamba3_preprocess_backward(
 	projected: &Matrix,
 	dt_bias: &Matrix,
@@ -2668,7 +2668,7 @@ pub struct Mamba3MimoBackward {
 ///
 /// Operand layouts are C/B `[B,L,G,N]`, x/z/output `[B,L,H,P]`,
 /// A-times-dt/dt/trap `[B,L,H]`, angle `[B,L,A]`, C/B bias `[H,N]`, and D
-/// `[H]`. All operands are same-engine F32 matrices.
+/// `[H]`. All operands are same-runtime F32 matrices.
 ///
 /// # Errors
 ///
@@ -2711,7 +2711,7 @@ pub fn mamba3_siso(
 /// # Errors
 ///
 /// Returns an error unless `config.sequence_length == 1`, every operand and
-/// state has the configured same-engine F32 shape, or recording fails.
+/// state has the configured same-runtime F32 shape, or recording fails.
 #[allow(
 	clippy::too_many_arguments,
 	reason = "preserves the donor eleven operands plus four explicit recurrent-state buffers"
@@ -2837,7 +2837,7 @@ pub fn mamba3_mimo(
 /// # Errors
 ///
 /// Returns an error unless `config.sequence_length == 1`, every operand and
-/// state matches the configured same-engine F32 layout, or recording fails.
+/// state matches the configured same-runtime F32 layout, or recording fails.
 #[allow(
 	clippy::too_many_arguments,
 	reason = "preserves the donor fifteen operands plus four recurrent-state buffers"

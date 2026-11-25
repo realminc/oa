@@ -1,15 +1,15 @@
 //! `oa::plot` — matplotlib-style retained figure and axes.
 //!
-//! The module is a thin layout + replay layer over the engine's GPU
+//! The module is a thin layout + replay layer over the runtime's GPU
 //! compositor.  Three terminal sinks are provided:
 //!
 //! ```rust,ignore
 //! let mut fig = plot::Figure::new(plot::FigureConfig { rows: 2, cols: 2, ..Default::default() });
 //! fig.ax(0, 0).plot(&loss_data, Default::default());
 //! fig.ax(0, 1).imshow(texture);
-//! fig.save_to(&engine, "out.png")?;   // headless file sink
-//! let img = fig.render_on(&engine)?;     // → oa::Image
-//! fig.show_on(&engine)?;                 // interactive window
+//! fig.save_to(&runtime, "out.png")?;   // headless file sink
+//! let img = fig.render_on(&runtime)?;     // → oa::Image
+//! fig.show_on(&runtime)?;                 // interactive window
 //! ```
 //!
 //! Compact surface: raster bases plus ordered line, scatter, bar, and

@@ -6,7 +6,7 @@
 
 use std::time::{Duration, Instant};
 
-use crate::{DType, Engine, Error, Matrix, Result, ml::optim::AdamWProgramSignature};
+use crate::{DType, Error, Matrix, Result, Runtime, ml::optim::AdamWProgramSignature};
 
 use super::{
 	AdamW, CheckpointOptimizer, Optimizer, TrainingParameterDesc, TrainingProgram, TrainingSession,
@@ -466,14 +466,14 @@ impl TrainingOptimizer<'_> {
 
 /// Exact eager or captured training-step lifecycle.
 ///
-/// The loop borrows the engine, optimizer, metrics, and callbacks. Call
+/// The loop borrows the runtime, optimizer, metrics, and callbacks. Call
 /// [`ItTraining::begin_step`] before authoring each body, then finish it with
 /// [`ItTraining::complete_step`] or [`ItTraining::complete_program_step`].
 /// [`ItTraining::finish`] is the explicit fallible terminal boundary.
 #[must_use]
-pub struct ItTraining<'engine, 'hooks> {
-	engine: &'engine Engine,
-	optimizer: TrainingOptimizer<'engine>,
+pub struct ItTraining<'runtime, 'hooks> {
+	runtime: &'runtime Runtime,
+	optimizer: TrainingOptimizer<'runtime>,
 	config: ItTrainingConfig,
 	epoch_offsets: Vec<u64>,
 	metrics: Vec<&'hooks mut dyn TrainingMetric>,
@@ -514,19 +514,19 @@ pub struct ItTraining<'engine, 'hooks> {
 	excluded_epoch: Duration,
 }
 
-impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
-	/// Construct a training lifecycle around one engine and optimizer.
+impl<'runtime, 'hooks> ItTraining<'runtime, 'hooks> {
+	/// Construct a training lifecycle around one runtime and optimizer.
 	///
 	/// # Errors
 	///
 	/// Returns an error when source-unit accounting is non-finite or overflows,
 	/// or the variable epoch schedule overflows.
 	pub fn new(
-		engine: &'engine Engine,
-		optimizer: &'engine mut AdamW,
+		runtime: &'runtime Runtime,
+		optimizer: &'runtime mut AdamW,
 		config: ItTrainingConfig,
 	) -> Result<Self> {
-		Self::new_with_optimizer(engine, TrainingOptimizer::AdamW(optimizer), config)
+		Self::new_with_optimizer(runtime, TrainingOptimizer::AdamW(optimizer), config)
 	}
 
 	/// Construct an eager-only training lifecycle around any optimizer.
@@ -537,14 +537,14 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 	///
 	/// # Errors
 	///
-	/// Returns an error when the optimizer does not belong to `engine`, source-unit
+	/// Returns an error when the optimizer does not belong to `runtime`, source-unit
 	/// accounting is non-finite or overflows, or the epoch schedule overflows.
 	pub fn new_eager(
-		engine: &'engine Engine,
-		optimizer: &'engine mut dyn Optimizer,
+		runtime: &'runtime Runtime,
+		optimizer: &'runtime mut dyn Optimizer,
 		config: ItTrainingConfig,
 	) -> Result<Self> {
-		Self::new_with_optimizer(engine, TrainingOptimizer::Eager(optimizer), config)
+		Self::new_with_optimizer(runtime, TrainingOptimizer::Eager(optimizer), config)
 	}
 
 	/// Construct an eager lifecycle with native checkpoint capability.
@@ -557,21 +557,25 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 	///
 	/// Returns the same configuration or ownership errors as [`ItTraining::new_eager`].
 	pub fn new_eager_checkpointable(
-		engine: &'engine Engine,
-		optimizer: &'engine mut dyn CheckpointOptimizer,
+		runtime: &'runtime Runtime,
+		optimizer: &'runtime mut dyn CheckpointOptimizer,
 		config: ItTrainingConfig,
 	) -> Result<Self> {
-		Self::new_with_optimizer(engine, TrainingOptimizer::Checkpointable(optimizer), config)
+		Self::new_with_optimizer(
+			runtime,
+			TrainingOptimizer::Checkpointable(optimizer),
+			config,
+		)
 	}
 
 	fn new_with_optimizer(
-		engine: &'engine Engine,
-		optimizer: TrainingOptimizer<'engine>,
+		runtime: &'runtime Runtime,
+		optimizer: TrainingOptimizer<'runtime>,
 		mut config: ItTrainingConfig,
 	) -> Result<Self> {
-		if !optimizer.behavior().belongs_to(engine) {
+		if !optimizer.behavior().belongs_to(runtime) {
 			return Err(Error::invalid_argument(
-				"training optimizer must belong to the selected engine",
+				"training optimizer must belong to the selected runtime",
 			));
 		}
 		if !config.source_units_per_sample.is_finite() || config.source_units_per_sample < 0.0 {
@@ -589,7 +593,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		let initial_step = config.initial_step;
 		let now = Instant::now();
 		Ok(Self {
-			engine,
+			runtime,
 			optimizer,
 			config,
 			epoch_offsets,
@@ -641,7 +645,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 
 	/// Attach one thread-safe live-control session before training starts.
 	///
-	/// Handler closures remain on this iterator's engine thread. Clones of
+	/// Handler closures remain on this iterator's runtime thread. Clones of
 	/// `session` contain only bounded commands and immutable observation data.
 	///
 	/// # Errors
@@ -776,7 +780,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 				self.execution_mode,
 				Some(ExecutionMode::Eager | ExecutionMode::Automatic)
 			) {
-			if let Err(error) = self.engine.begin_stable_resource_frame() {
+			if let Err(error) = self.runtime.begin_stable_resource_frame() {
 				return self.fail(error);
 			}
 			self.stable_resource_frame_open = true;
@@ -883,9 +887,9 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 				"training loss must be an FP32 scalar",
 			));
 		}
-		if !self.engine.owns_matrix(loss) {
+		if !self.runtime.owns_matrix(loss) {
 			return self.fail(Error::invalid_argument(
-				"training loss must belong to the selected engine",
+				"training loss must belong to the selected runtime",
 			));
 		}
 		let stepped = match scaler.step_optimizer(self.optimizer.behavior_mut(), check) {
@@ -894,9 +898,9 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		};
 		scaler.update();
 		let event = if self.config.enable_gpu_timing {
-			self.engine.checkpoint_timed()
+			self.runtime.checkpoint_timed()
 		} else {
-			self.engine.checkpoint()
+			self.runtime.checkpoint()
 		};
 		let event = match event {
 			Ok(event) => event,
@@ -930,18 +934,18 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 				"training loss must be an FP32 scalar",
 			));
 		}
-		if !self.engine.owns_matrix(loss) {
+		if !self.runtime.owns_matrix(loss) {
 			return self.fail(Error::invalid_argument(
-				"training loss must belong to the selected engine",
+				"training loss must belong to the selected runtime",
 			));
 		}
 		if let Err(error) = self.optimizer.behavior_mut().step() {
 			return self.fail(error);
 		}
 		let event = if self.config.enable_gpu_timing {
-			self.engine.checkpoint_timed()
+			self.runtime.checkpoint_timed()
 		} else {
-			self.engine.checkpoint()
+			self.runtime.checkpoint()
 		};
 		let event = match event {
 			Ok(event) => event,
@@ -993,7 +997,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		if !self.begin_step()? {
 			return Ok(false);
 		}
-		if self.engine.has_pending_work() {
+		if self.runtime.has_pending_work() {
 			return self.fail(Error::failed_precondition(
 				"automatic training step requires an empty execution session",
 			));
@@ -1002,8 +1006,8 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 			Ok(prepared) => prepared,
 			Err(error) => return self.fail(error),
 		};
-		if self.engine.has_pending_work() {
-			self.engine.abort_pending_work();
+		if self.runtime.has_pending_work() {
+			self.runtime.abort_pending_work();
 			return self.fail(Error::failed_precondition(
 				"automatic training preparation may only allocate or refresh inputs",
 			));
@@ -1036,7 +1040,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 				Err(error) => return self.fail(error),
 			};
 			let capture =
-				TrainingProgram::capture_preserving_recording(self.engine, optimizer, || record(prepared));
+				TrainingProgram::capture_preserving_recording(self.runtime, optimizer, || record(prepared));
 			match capture {
 				Ok(TrainingProgramCapture::Captured(program)) => self.program = Some(*program),
 				Ok(TrainingProgramCapture::Rejected {
@@ -1072,9 +1076,9 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 			error
 		);
 		let event = if self.config.enable_gpu_timing {
-			self.engine.checkpoint_timed()
+			self.runtime.checkpoint_timed()
 		} else {
-			self.engine.checkpoint()
+			self.runtime.checkpoint()
 		};
 		let event = match event {
 			Ok(event) => event,
@@ -1122,11 +1126,11 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		};
 		let completed = if self.config.enable_gpu_timing {
 			program
-				.replay_timed_and_wait(self.engine, optimizer)
+				.replay_timed_and_wait(self.runtime, optimizer)
 				.map(|(loss, time)| (loss, Some(time)))
 		} else {
 			program
-				.replay_and_wait(self.engine, optimizer)
+				.replay_and_wait(self.runtime, optimizer)
 				.map(|loss| (loss, None))
 		};
 		match completed {
@@ -1195,7 +1199,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 			));
 		}
 		if self.stable_resource_frame_open
-			&& let Err(error) = self.engine.seal_stable_resource_inputs()
+			&& let Err(error) = self.runtime.seal_stable_resource_inputs()
 		{
 			return self.fail(error);
 		}
@@ -1235,11 +1239,11 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 		};
 		let completed = if self.config.enable_gpu_timing {
 			program
-				.replay_timed_and_wait(self.engine, optimizer)
+				.replay_timed_and_wait(self.runtime, optimizer)
 				.map(|(loss, time)| (loss, Some(time)))
 		} else {
 			program
-				.replay_and_wait(self.engine, optimizer)
+				.replay_and_wait(self.runtime, optimizer)
 				.map(|loss| (loss, None))
 		};
 		match completed {
@@ -1552,7 +1556,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 
 	fn seal_stable_resources(&self) -> Result<()> {
 		if self.stable_resource_frame_open && !self.stable_resource_inputs_sealed {
-			self.engine.seal_all_stable_resources_external()?;
+			self.runtime.seal_all_stable_resources_external()?;
 		}
 		Ok(())
 	}
@@ -1572,7 +1576,7 @@ impl<'engine, 'hooks> ItTraining<'engine, 'hooks> {
 
 	fn close_stable_resource_frame(&mut self) {
 		if self.stable_resource_frame_open {
-			self.engine.end_stable_resource_frame();
+			self.runtime.end_stable_resource_frame();
 			self.stable_resource_frame_open = false;
 		}
 		self.stable_resource_inputs_sealed = false;
@@ -1664,7 +1668,7 @@ impl Drop for ItTraining<'_, '_> {
 }
 
 /// Compatibility alias for the pre-`ItTraining` Rust prototype spelling.
-pub type TrainingLoop<'engine, 'hooks> = ItTraining<'engine, 'hooks>;
+pub type TrainingLoop<'runtime, 'hooks> = ItTraining<'runtime, 'hooks>;
 
 /// Compatibility alias for the pre-`ItTrainingConfig` Rust prototype spelling.
 pub type TrainingLoopConfig = ItTrainingConfig;

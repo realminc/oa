@@ -8,8 +8,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"encoded",
@@ -62,8 +62,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"encoded",
@@ -136,8 +136,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"path",
@@ -149,8 +149,8 @@
 				"target": "crate::audio::decode_file_on",
 				"parity": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"path",
@@ -192,8 +192,8 @@
 			"signature": {
 				"parameters": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"path",
@@ -209,8 +209,8 @@
 				"target": "crate::image::decode_file_on",
 				"parity": [
 					[
-						"engine",
-						"&Engine"
+						"runtime",
+						"&Runtime"
 					],
 					[
 						"path",

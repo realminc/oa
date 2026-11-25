@@ -69,11 +69,11 @@ class Poseidon2ReferenceTest(unittest.TestCase):
 @unittest.skipUnless("OA_TEST_DEVICE_INDEX" in os.environ, "explicit Vulkan device required")
 class Poseidon2VulkanTest(unittest.TestCase):
 	def test_all_profiles_permutation_and_framed_sponge(self):
-		engine = oa.Engine(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
+		runtime = oa.Runtime(device=int(os.environ["OA_TEST_DEVICE_INDEX"]))
 		profiles = {p["name"]: p for p in json.loads(SCHEMA.read_text())["poseidon2_profiles"]}
 		for case in json.loads(FIXTURE.read_text())["cases"]:
 			name, values = case["profile"], case["input"]
-			input_ = oa.Matrix.new_from_u32([1, len(values)], values, engine=engine)
+			input_ = oa.Matrix.new_from_u32([1, len(values)], values, runtime=runtime)
 			self.assertEqual(getattr(oa.crypto, f"hash_poseidon2_{name}_permute")(input_).read_u32(), case["output"])
 		for name, profile in profiles.items():
 			function = getattr(oa.crypto, f"hash_poseidon2_{name}")
@@ -81,7 +81,7 @@ class Poseidon2VulkanTest(unittest.TestCase):
 			for length in (0, 1, rate - 1, rate, rate + 1, 2 * rate):
 				rows = 33 if length == rate + 1 else 1
 				values = [(i * 2654435761) & 0xFFFFFFFF for i in range(length * rows)]
-				input_ = oa.Matrix.new_from_u32([rows, length], values, engine=engine)
+				input_ = oa.Matrix.new_from_u32([rows, length], values, runtime=runtime)
 				for output_length in (8, rate + 3):
 					expected = sum((sponge(values[r * length:(r + 1) * length], profile, output_length) for r in range(rows)), [])
 					self.assertEqual(function(input_, output_length).read_u32(), expected, (name, length, output_length))

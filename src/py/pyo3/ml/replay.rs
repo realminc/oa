@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 // ── dtype helper (local copy to avoid cross-module dep on environment.rs) ─────
 
@@ -203,11 +203,11 @@ pub(crate) struct PythonReplayBuffer {
 
 #[pymethods]
 impl PythonReplayBuffer {
-	/// Allocate empty circular replay storage on `engine`.
+	/// Allocate empty circular replay storage on `runtime`.
 	#[new]
-	pub fn new(config: &PythonReplayConfig, engine: Option<&PythonEngine>) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
-		oa::ml::ReplayBuffer::new(&engine, config.inner.clone())
+	pub fn new(config: &PythonReplayConfig, runtime: Option<&PythonRuntime>) -> PyResult<Self> {
+		let runtime = PythonRuntime::resolve(runtime)?;
+		oa::ml::ReplayBuffer::new(&runtime, config.inner.clone())
 			.map(|inner| Self { inner })
 			.map_err(python_error)
 	}

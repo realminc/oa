@@ -8,7 +8,7 @@
 //!
 //! Typical use from a live source:
 //! ```ignore
-//! let mut overlay = DetectionOverlay::create(&engine, Default::default())?;
+//! let mut overlay = DetectionOverlay::create(&runtime, Default::default())?;
 //! overlay.update(&items, &atlas)?;
 //! // … draw image into destination …
 //! overlay.draw(&mut ui, &atlas, destination, clip)?;
@@ -20,7 +20,7 @@
 
 pub use crate::ui::type_gen::DetectionOverlayConfig;
 use crate::{
-	Color, Engine, Error, Event, Result,
+	Color, Error, Event, Result, Runtime,
 	ui::{
 		FontId, GlyphBuffer, GlyphInstance, PixelRect, TextAtlas, TextLayout, TextLayoutConfig, Ui,
 	},
@@ -88,7 +88,7 @@ impl DetectionOverlay {
 	/// # Errors
 	///
 	/// Returns an error when either capacity is zero or allocation fails.
-	pub fn create(engine: &Engine, config: DetectionOverlayConfig) -> Result<Self> {
+	pub fn create(runtime: &Runtime, config: DetectionOverlayConfig) -> Result<Self> {
 		if config.max_detections == 0 || config.max_glyphs == 0 {
 			return Err(Error::invalid_argument(
 				"oa::ui::DetectionOverlay: capacities must be non-zero",
@@ -97,8 +97,8 @@ impl DetectionOverlay {
 		let mut slots = Vec::with_capacity(RING_SIZE);
 		for _ in 0..RING_SIZE {
 			slots.push(OverlaySlot {
-				detections: DetectionBuffer::create_host_upload_on(engine, config.max_detections)?,
-				glyphs: GlyphBuffer::create_host_upload_on(engine, config.max_glyphs)?,
+				detections: DetectionBuffer::create_host_upload_on(runtime, config.max_detections)?,
+				glyphs: GlyphBuffer::create_host_upload_on(runtime, config.max_glyphs)?,
 			});
 		}
 		Ok(Self {
@@ -202,7 +202,7 @@ impl DetectionOverlay {
 	/// # Errors
 	///
 	/// Returns an error when `completion` does not belong to the owning
-	/// engine.
+	/// runtime.
 	pub fn mark_consumed(&mut self, completion: &Event) -> Result<()> {
 		let Some(index) = self.active_slot else {
 			return Ok(());

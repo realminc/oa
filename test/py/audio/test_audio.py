@@ -9,7 +9,7 @@ import oa
 class AudioConstructorTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def _stereo(self) -> oa.Audio:
 		# 4 stereo samples (channels first / planar): L=[0.1, 0.2, 0.3, 0.4] R=[0.5, 0.6, 0.7, 0.8]
@@ -17,14 +17,14 @@ class AudioConstructorTest(unittest.TestCase):
 			[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
 			channels=2,
 			sample_rate=8000,
-			layout="stereo", engine=self.engine)
+			layout="stereo", runtime=self.runtime)
 
 	def _mono(self) -> oa.Audio:
 		return oa.Audio.new_from_planar_f32(
 			[0.0, 0.25, 0.5, 0.75, 1.0, 0.75, 0.5, 0.25],
 			channels=1,
 			sample_rate=8000,
-			layout="mono", engine=self.engine)
+			layout="mono", runtime=self.runtime)
 
 	def test_from_planar_f32_properties(self) -> None:
 		a = self._stereo()
@@ -51,12 +51,12 @@ class AudioConstructorTest(unittest.TestCase):
 class AudioDspTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 		cls.mono = oa.Audio.new_from_planar_f32(
 			[0.0, 0.1, 0.2, 0.3, 0.4, 0.3, 0.2, 0.1],
 			channels=1,
 			sample_rate=8000,
-			layout="mono", engine=cls.engine)
+			layout="mono", runtime=cls.runtime)
 
 	def test_gain_increases_amplitude(self) -> None:
 		boosted = oa.audio.gain(self.mono, gain_db=6.0)
@@ -97,7 +97,7 @@ class AudioDspTest(unittest.TestCase):
 			[0.1] * 8,
 			channels=1,
 			sample_rate=8000,
-			layout="mono", engine=self.engine)
+			layout="mono", runtime=self.runtime)
 		result = oa.audio.mix(self.mono, other, gain_left=1.0, gain_right=1.0)
 		self.assertIsInstance(result, oa.Audio)
 		self.assertEqual(result.samples, 8)
@@ -107,7 +107,7 @@ class AudioDspTest(unittest.TestCase):
 			[0.01] * 8,
 			channels=1,
 			sample_rate=8000,
-			layout="mono", engine=self.engine)
+			layout="mono", runtime=self.runtime)
 		result = oa.audio.normalize(loud, target_db=-3.0, mode="peak")
 		self.assertIsInstance(result, oa.Audio)
 
@@ -115,11 +115,11 @@ class AudioDspTest(unittest.TestCase):
 class AudioFeatureTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 		# 512 samples of a 440 Hz tone at 8000 Hz sample rate
 		import math as _math
 		samples = [_math.sin(2 * _math.pi * 440 * i / 8000) for i in range(512)]
-		cls.tone = oa.Audio.new_from_planar_f32( samples, channels=1, sample_rate=8000, layout="mono", engine=cls.engine)
+		cls.tone = oa.Audio.new_from_planar_f32( samples, channels=1, sample_rate=8000, layout="mono", runtime=cls.runtime)
 
 	def test_amplitude_to_db_shape(self) -> None:
 		result = oa.audio.amplitude_to_db(self.tone, floor_db=-80.0)
@@ -161,12 +161,12 @@ class AudioFeatureTest(unittest.TestCase):
 class AudioBiquadTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 		cls.mono = oa.Audio.new_from_planar_f32(
 			[0.0, 1.0, 0.0, -1.0, 0.0, 1.0, 0.0, -1.0],
 			channels=1,
 			sample_rate=8000,
-			layout="mono", engine=cls.engine)
+			layout="mono", runtime=cls.runtime)
 
 	def test_biquad_passthrough_identity(self) -> None:
 		# identity: b0=1 b1=0 b2=0 a1=0 a2=0
@@ -196,7 +196,7 @@ class AudioBiquadTest(unittest.TestCase):
 class AudioCodecTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def test_encode_interleaved_wav_f32_returns_bytes(self) -> None:
 		samples = [0.0, 0.1, 0.2, 0.3] * 2  # 4 stereo frames interleaved
@@ -216,7 +216,7 @@ class AudioCodecTest(unittest.TestCase):
 			[0.0, 0.5, 1.0, 0.5, 0.0],
 			channels=1,
 			sample_rate=8000,
-			layout="mono", engine=self.engine)
+			layout="mono", runtime=self.runtime)
 		encoded = oa.audio.encode_wav_f32(audio)
 		self.assertIsInstance(encoded, bytes)
 		self.assertTrue(encoded[:4] == b"RIFF")
@@ -230,7 +230,7 @@ class StftComplexIstftTest(unittest.TestCase):
 
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 		samples = [
 			0.5 * math.sin(2 * math.pi * i / 32.0)
 			+ 0.3 * math.cos(2 * math.pi * i / 11.0)
@@ -239,7 +239,7 @@ class StftComplexIstftTest(unittest.TestCase):
 		]
 		cls.samples = samples
 		cls.tone = oa.Audio.new_from_planar_f32(
-			samples, channels=1, sample_rate=48_000, layout="mono", engine=cls.engine
+			samples, channels=1, sample_rate=48_000, layout="mono", runtime=cls.runtime
 		)
 
 	def test_stft_complex_matches_magnitude(self) -> None:
@@ -266,7 +266,7 @@ class StftComplexIstftTest(unittest.TestCase):
 			self.assertAlmostEqual(actual, expected, places=4)
 
 	def test_istft_rejects_mismatched_shape(self) -> None:
-		bad = oa.Matrix.new_from_f32([1, 4, 8, 2], [0.0] * 64, engine=self.engine)
+		bad = oa.Matrix.new_from_f32([1, 4, 8, 2], [0.0] * 64, runtime=self.runtime)
 		with self.assertRaises(Exception):
 			oa.audio.istft(bad, fft_size=16)
 

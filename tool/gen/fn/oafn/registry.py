@@ -1023,7 +1023,7 @@ def kernel_fusion_class(kernel: dict, operations: dict) -> str | None:
 
 def contract_shape_rule_variant(token: str) -> str:
 	if token in {"left_mk_right_nk_to_mn", "matmul_nt"}:
-		return "MatMulNt"
+		return "MatmulNt"
 	if token == "broadcast":
 		return "Broadcast"
 	if token in {"equal_no_broadcast", "preserve_input", "match_input"}:
@@ -1067,7 +1067,7 @@ def normalized_semantic_contract(contract: dict[str, Any]) -> dict[str, Any]:
 	shape_donor = {
 		"MatchInput": "match_input",
 		"Broadcast": "broadcast",
-		"MatMulNt": "matmul_nt",
+		"MatmulNt": "matmul_nt",
 		"Explicit": "explicit",
 	}
 	dtype_donor = {

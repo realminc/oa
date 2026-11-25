@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{Engine, Error, Matrix, Result};
+use crate::{Error, Matrix, Result, Runtime};
 
 use super::super::{Module, ModuleRegistry};
 use super::BatchNorm2d;
@@ -19,22 +19,22 @@ pub struct BatchNorm1d {
 }
 
 impl BatchNorm1d {
-	/// Construct over `num_features` channels on the current engine.
+	/// Construct over `num_features` channels on the current runtime.
 	///
 	/// # Errors
 	///
 	/// Returns an error under the same contract as [`BatchNorm2d::new_on`].
 	pub fn new(num_features: usize) -> Result<Self> {
-		Self::new_on(&Engine::current()?, num_features)
+		Self::new_on(&Runtime::current()?, num_features)
 	}
 
-	/// Construct on `engine`.
+	/// Construct on `runtime`.
 	///
 	/// # Errors
 	///
 	/// Returns an error under the same contract as [`BatchNorm2d::new_on`].
-	pub fn new_on(engine: &Engine, num_features: usize) -> Result<Self> {
-		let inner = Rc::new(BatchNorm2d::new_on(engine, num_features)?);
+	pub fn new_on(runtime: &Runtime, num_features: usize) -> Result<Self> {
+		let inner = Rc::new(BatchNorm2d::new_on(runtime, num_features)?);
 		let mut registry = ModuleRegistry::new();
 		registry.register_module("inner", Rc::clone(&inner) as Rc<dyn Module>)?;
 		Ok(Self { inner, registry })
@@ -81,22 +81,22 @@ pub struct BatchNorm3d {
 }
 
 impl BatchNorm3d {
-	/// Construct over `num_features` channels on the current engine.
+	/// Construct over `num_features` channels on the current runtime.
 	///
 	/// # Errors
 	///
 	/// Returns an error under the same contract as [`BatchNorm2d::new_on`].
 	pub fn new(num_features: usize) -> Result<Self> {
-		Self::new_on(&Engine::current()?, num_features)
+		Self::new_on(&Runtime::current()?, num_features)
 	}
 
-	/// Construct on `engine`.
+	/// Construct on `runtime`.
 	///
 	/// # Errors
 	///
 	/// Returns an error under the same contract as [`BatchNorm2d::new_on`].
-	pub fn new_on(engine: &Engine, num_features: usize) -> Result<Self> {
-		let inner = Rc::new(BatchNorm2d::new_on(engine, num_features)?);
+	pub fn new_on(runtime: &Runtime, num_features: usize) -> Result<Self> {
+		let inner = Rc::new(BatchNorm2d::new_on(runtime, num_features)?);
 		let mut registry = ModuleRegistry::new();
 		registry.register_module("inner", Rc::clone(&inner) as Rc<dyn Module>)?;
 		Ok(Self { inner, registry })

@@ -2,7 +2,7 @@
 //! Reuses OA capture, GradientTape and TrainingProgram; never owns execution.
 use super::{ItRolloutTraining, PpoTrainerConfig, PpoTrainerMetrics, TrainingProgram};
 use crate::ml::{ActorCritic, GradientTape, Parameter, RolloutBatch, advantage, loss, policy};
-use crate::{Engine, Error, Event, ExecutionPlan, Matrix, Result, matrix};
+use crate::{Error, Event, ExecutionPlan, Matrix, Result, Runtime, matrix};
 use std::time::Duration;
 
 /// Reusable fixed-geometry PPO backward and AdamW programs.
@@ -62,7 +62,7 @@ impl PpoUpdateProgram {
 	}
 	pub(super) fn update(
 		&mut self,
-		engine: &Engine,
+		runtime: &Runtime,
 		model: &dyn ActorCritic,
 		config: &PpoTrainerConfig,
 		rollout: &RolloutBatch,
@@ -80,10 +80,10 @@ impl PpoUpdateProgram {
 			matrix::reshape(rollout.advantage(), [batch])?,
 			matrix::reshape(rollout.returns(), [batch])?,
 		];
-		engine.checkpoint()?.wait()?;
+		runtime.checkpoint()?.wait()?;
 		if self.state.is_none() {
 			self.state = Some(State::capture(
-				engine,
+				runtime,
 				model,
 				config,
 				inputs.clone(),
@@ -125,7 +125,7 @@ impl PpoUpdateProgram {
 		// stage through the bounded input ring, so each in-flight submission
 		// always reads a distinct staged slot. No observations or gradients
 		// cross the host boundary.
-		let mut events = vec![submit(engine, &s.normalize, config.enable_gpu_timing)?];
+		let mut events = vec![submit(runtime, &s.normalize, config.enable_gpu_timing)?];
 		let mini = if config.update_minibatch_size == 0 {
 			batch
 		} else {
@@ -145,7 +145,7 @@ impl PpoUpdateProgram {
 					u32::from(start == 0),
 				],
 			)?;
-			events.push(submit(engine, plan, config.enable_gpu_timing)?);
+			events.push(submit(runtime, plan, config.enable_gpu_timing)?);
 		}
 		let mut elapsed = Duration::ZERO;
 		if config.enable_gpu_timing {
@@ -186,7 +186,7 @@ impl PpoUpdateProgram {
 }
 impl State {
 	fn capture(
-		engine: &Engine,
+		runtime: &Runtime,
 		model: &dyn ActorCritic,
 		config: &PpoTrainerConfig,
 		inputs: [Matrix; 5],
@@ -198,25 +198,25 @@ impl State {
 			.iter()
 			.map(|p| {
 				let d = p.data();
-				Matrix::new_from_f32_on(engine, d.shape().to_vec(), &vec![0.; d.num_elements()])
+				Matrix::new_from_f32_on(runtime, d.shape().to_vec(), &vec![0.; d.num_elements()])
 			})
 			.collect::<Result<Vec<_>>>()?;
 		let metrics: [Result<Matrix>; 4] =
-			std::array::from_fn(|_| Matrix::new_from_f32_on(engine, [], &[0.]));
+			std::array::from_fn(|_| Matrix::new_from_f32_on(runtime, [], &[0.]));
 		let metrics: [Matrix; 4] = metrics
 			.into_iter()
 			.collect::<Result<Vec<_>>>()?
 			.try_into()
 			.map_err(|_| Error::internal("PPO metric count"))?;
-		let cursor = Matrix::new_from_slice_on(engine, [2], &[0_u32, 1])?;
-		engine.checkpoint()?.wait()?;
+		let cursor = Matrix::new_from_slice_on(runtime, [2], &[0_u32, 1])?;
+		runtime.checkpoint()?.wait()?;
 		let normalized = Matrix::new_from_f32_on(
-			engine,
+			runtime,
 			inputs[3].shape().to_vec(),
 			&vec![0.; inputs[3].num_elements()],
 		)?;
-		let copy_cursor = Matrix::new_from_slice_on(engine, [2], &[0_u32, 1])?;
-		let (normalize, ()) = engine.capture_with_initialized_state(&[&normalized], || {
+		let copy_cursor = Matrix::new_from_slice_on(runtime, [2], &[0_u32, 1])?;
+		let (normalize, ()) = runtime.capture_with_initialized_state(&[&normalized], || {
 			crate::ml::matrix::training_accumulate(
 				&normalized,
 				&advantage::normalize(&inputs[3], 1e-8)?,
@@ -243,7 +243,7 @@ impl State {
 				.iter()
 				.chain(metrics.iter())
 				.collect::<Vec<_>>();
-			let (plan, ()) = engine.capture_with_initialized_state(&mutable, || {
+			let (plan, ()) = runtime.capture_with_initialized_state(&mutable, || {
 				let [obs, actions, logs, adv, ret] = crate::ml::rollout::minibatch_cursor(
 					[&inputs[0], &inputs[1], &inputs[2], &normalized, &inputs[4]],
 					&cursor,
@@ -282,7 +282,7 @@ impl State {
 			batches.push((count, plan));
 		}
 		let optimizer =
-			TrainingProgram::capture(engine, training.update_loop_mut().adamw_mut()?, || {
+			TrainingProgram::capture(runtime, training.update_loop_mut().adamw_mut()?, || {
 				for (p, g) in parameters.iter().zip(&accumulators) {
 					p.restore_gradient(g.clone());
 				}
@@ -303,10 +303,10 @@ impl State {
 		})
 	}
 }
-fn submit(engine: &Engine, plan: &ExecutionPlan, timed: bool) -> Result<Event> {
+fn submit(runtime: &Runtime, plan: &ExecutionPlan, timed: bool) -> Result<Event> {
 	if timed {
-		engine.submit_timed(plan)
+		runtime.submit_timed(plan)
 	} else {
-		engine.submit(plan)
+		runtime.submit(plan)
 	}
 }

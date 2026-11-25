@@ -37,10 +37,10 @@ fn validate_kernel(input: &Image, kernel: &Matrix, vector: bool, operation: &str
 	if !valid_shape
 		|| !valid_extent
 		|| kernel.dtype() != DType::F32
-		|| !input.engine_handle().same_as(kernel.engine_handle())
+		|| !input.runtime().same_as(kernel.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
-			"{operation} requires a same-engine odd FP32 kernel with each extent <=31"
+			"{operation} requires a same-runtime odd FP32 kernel with each extent <=31"
 		)));
 	}
 	Ok(())
@@ -107,7 +107,7 @@ fn allocate_like(input: &Image, operation: &str) -> Result<Image> {
 	u32::try_from(elements)
 		.map_err(|_| Error::out_of_range(format!("{operation} output size exceeds u32")))?;
 	let matrix = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		elements,
 		DType::F32,

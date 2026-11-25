@@ -1,4 +1,4 @@
-//! Private Vulkan Video integration for the Device and Engine adapters.
+//! Private Vulkan Video integration for the Device and Runtime adapters.
 
 mod decode;
 mod encode;

@@ -5,7 +5,7 @@ use oa::{Matrix, Result as OaResult, ml};
 use crate::{
 	error::python_error,
 	ml::{PythonAdam, PythonAdamW, PythonMuon, PythonSgd, autograd::PythonParameter},
-	runtime::PythonEngine,
+	runtime::PythonRuntime,
 };
 
 // ── ParamListModule ───────────────────────────────────────────────────────────
@@ -64,12 +64,12 @@ pub(crate) fn ml_load_checkpoint(
 	path: &str,
 	params: Vec<PyRef<'_, PythonParameter>>,
 	optimizer: &Bound<'_, PyAny>,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<()> {
-	let engine = PythonEngine::resolve(engine)?;
+	let runtime = PythonRuntime::resolve(runtime)?;
 	let rust_params: Vec<ml::Parameter> = params.iter().map(|p| p.inner.clone()).collect();
 	let model = ParamListModule::from_params(rust_params).map_err(python_error)?;
-	dispatch_load(&engine, path, &model, optimizer)
+	dispatch_load(&runtime, path, &model, optimizer)
 }
 
 fn dispatch_save(
@@ -95,22 +95,22 @@ fn dispatch_save(
 }
 
 fn dispatch_load(
-	engine: &oa::Engine,
+	runtime: &oa::Runtime,
 	path: &str,
 	model: &ParamListModule,
 	optimizer: &Bound<'_, PyAny>,
 ) -> PyResult<()> {
 	if let Ok(mut opt) = optimizer.extract::<PyRefMut<PythonSgd>>() {
-		return ml::load_checkpoint_on(engine, path, model, &mut opt.inner).map_err(python_error);
+		return ml::load_checkpoint_on(runtime, path, model, &mut opt.inner).map_err(python_error);
 	}
 	if let Ok(mut opt) = optimizer.extract::<PyRefMut<PythonAdam>>() {
-		return ml::load_checkpoint_on(engine, path, model, &mut opt.inner).map_err(python_error);
+		return ml::load_checkpoint_on(runtime, path, model, &mut opt.inner).map_err(python_error);
 	}
 	if let Ok(mut opt) = optimizer.extract::<PyRefMut<PythonAdamW>>() {
-		return ml::load_checkpoint_on(engine, path, model, &mut opt.inner).map_err(python_error);
+		return ml::load_checkpoint_on(runtime, path, model, &mut opt.inner).map_err(python_error);
 	}
 	if let Ok(mut opt) = optimizer.extract::<PyRefMut<PythonMuon>>() {
-		return ml::load_checkpoint_on(engine, path, model, &mut opt.inner).map_err(python_error);
+		return ml::load_checkpoint_on(runtime, path, model, &mut opt.inner).map_err(python_error);
 	}
 	Err(pyo3::exceptions::PyTypeError::new_err(
 		"optimizer must be one of Sgd, Adam, AdamW, or Muon",

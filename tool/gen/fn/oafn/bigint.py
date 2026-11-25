@@ -93,7 +93,7 @@ def bigint_extended_output(kernel: dict[str, Any]) -> tuple[str, str]:
 		[_, words] => *words,
 		_ => return Err(Error::invalid_argument(format!("{{operation}} requires rank-two divisors"))),
 	}};'''
-		validation = f'left.dtype() != DType::U32 || !(1..=256).contains(&input_words) || !(1..=128).contains(&words)\n\t\t|| {right}.dtype() != DType::U32 || ({right}.shape()[0] != 1 && {right}.shape()[0] != rows)\n\t\t|| !left.engine_handle().same_as({right}.engine_handle())'
+		validation = f'left.dtype() != DType::U32 || !(1..=256).contains(&input_words) || !(1..=128).contains(&words)\n\t\t|| {right}.dtype() != DType::U32 || ({right}.shape()[0] != 1 && {right}.shape()[0] != rows)\n\t\t|| !left.runtime().same_as({right}.runtime())'
 		if name != 'div_rem_mixed':
 			validation += '\n\t\t|| input_words != words * 2'
 		else:
@@ -113,7 +113,7 @@ def bigint_extended_output(kernel: dict[str, Any]) -> tuple[str, str]:
 	let {n}_bytes = {n}_elements.checked_mul(4)
 		.ok_or_else(|| Error::invalid_argument(format!("{{operation}} output byte extent overflows usize")))?;
 	u32::try_from({n}_bytes).map_err(|_| Error::invalid_argument(format!("{{operation}} output byte extent exceeds u32")))?;
-	let {n} = Matrix::allocate_output(engine, {shape}, {n}_elements, DType::U32)?;''')
+	let {n} = Matrix::allocate_output(runtime, {shape}, {n}_elements, DType::U32)?;''')
 	result = '(' + ', '.join(o['name'] for o in results) + ')' if len(results) > 1 else 'output'
 	return_type = '(' + ', '.join(['Matrix'] * len(results)) + ')' if len(results) > 1 else 'Matrix'
 	behavior = ('Division returns (quotient, remainder, status): 1 success, 0 zero divisor, 2 quotient overflow.\n/// Invalid rows have completely zero outputs. The divisor may be one shared row.\n/// Mixed division accepts independent dividend (1..=256), divisor (1..=128)\n/// and quotient (1..=256) word counts; wide/narrow division takes a double-width dividend.' if division else
@@ -249,15 +249,15 @@ pub fn setup_barrett(modulus: &Matrix) -> Result<BarrettParameters> {
 	let elements = rows.checked_mul(encoded_words).ok_or_else(|| Error::invalid_argument("setup_barrett extent overflows usize"))?;
 	let bytes = elements.checked_mul(4).ok_or_else(|| Error::invalid_argument("setup_barrett bytes overflow usize"))?;
 	u32::try_from(bytes).map_err(|_| Error::invalid_argument("setup_barrett bytes exceed u32"))?;
-	let engine = modulus.engine_handle();
-	let encoded = Matrix::allocate_output(engine, vec![rows, encoded_words], elements, DType::U32)?;
-	let status = Matrix::allocate_output(engine, vec![rows], rows, DType::U32)?;
+	let runtime = modulus.runtime();
+	let encoded = Matrix::allocate_output(runtime, vec![rows, encoded_words], elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], rows, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntSetupBarrettU32;
 		let buffers = [BufferBinding::read(modulus.storage()), BufferBinding::write(encoded.storage()), BufferBinding::write(status.storage())];
 		let push_constants = [PushConstant::U32(count), PushConstant::U32(words as u32)];
 		let attributes = [OpAttribute::UnsignedInteger { name: "width_bits".into(), value: (words * 32) as u64 }];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch { kernel, buffers: &buffers, push_constants: &push_constants, workgroups: kernel.linear_workgroups(count), indirect: None },
 			SemanticDispatch { contract, inputs: &[modulus], outputs: &[&encoded, &status], attributes: &attributes },
 		)?;
@@ -283,22 +283,22 @@ pub fn reduce_barrett(left: &Matrix, parameters: &BarrettParameters) -> Result<(
 	let prepared = &parameters.encoded;
 	if left.dtype() != DType::U32 || input_words != words * 2
 		|| (prepared.shape()[0] != 1 && prepared.shape()[0] != rows)
-		|| !left.engine_handle().same_as(prepared.engine_handle()) {
-		return Err(Error::invalid_argument("reduce_barrett requires matching Engine and modulus width/batch"));
+		|| !left.runtime().same_as(prepared.runtime()) {
+		return Err(Error::invalid_argument("reduce_barrett requires matching Runtime and modulus width/batch"));
 	}
 	let count = u32::try_from(rows).map_err(|_| Error::invalid_argument("reduce_barrett batch exceeds u32"))?;
 	let input_bytes = left.num_elements().checked_mul(4).ok_or_else(|| Error::invalid_argument("reduce_barrett input bytes overflow usize"))?;
 	u32::try_from(input_bytes).map_err(|_| Error::invalid_argument("reduce_barrett input bytes exceed u32"))?;
 	let elements = rows.checked_mul(words).ok_or_else(|| Error::invalid_argument("reduce_barrett output extent overflows usize"))?;
-	let engine = left.engine_handle();
-	let output = Matrix::allocate_output(engine, vec![rows, words], elements, DType::U32)?;
-	let status = Matrix::allocate_output(engine, vec![rows], rows, DType::U32)?;
+	let runtime = left.runtime();
+	let output = Matrix::allocate_output(runtime, vec![rows, words], elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], rows, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntReduceBarrettU32;
 		let buffers = [BufferBinding::read(left.storage()), BufferBinding::read(prepared.storage()), BufferBinding::write(output.storage()), BufferBinding::write(status.storage())];
 		let push_constants = [PushConstant::U32(count), PushConstant::U32(words as u32), PushConstant::U32(prepared.shape()[0] as u32)];
 		let attributes = [OpAttribute::UnsignedInteger { name: "width_bits".into(), value: (words * 32) as u64 }];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch { kernel, buffers: &buffers, push_constants: &push_constants, workgroups: kernel.linear_workgroups(count), indirect: None },
 			SemanticDispatch { contract, inputs: &[left, prepared], outputs: &[&output, &status], attributes: &attributes },
 		)?;
@@ -677,7 +677,7 @@ def bigint_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> dict
 \t\t.ok_or_else(|| Error::invalid_argument(format!("{{operation}} output byte extent overflows usize")))?;
 \tu32::try_from({key}_bytes)
 \t\t.map_err(|_| Error::invalid_argument(format!("{{operation}} output byte extent exceeds u32")))?;
-\tlet {key} = Matrix::allocate_output(engine, {shape}, {key}_elements, DType::U32)?;''')
+\tlet {key} = Matrix::allocate_output(runtime, {shape}, {key}_elements, DType::U32)?;''')
 		result = '(' + ', '.join(o['name'] for o in results) + ')' if multiple else 'output'
 		return_type = '(' + ', '.join(['Matrix'] * len(results)) + ')' if multiple else 'Matrix'
 		summary = f"Compute batched unsigned limb {name.replace('_', ' ')}."
@@ -690,16 +690,16 @@ def bigint_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> dict
 			'Shifts at or beyond the operand width produce zero; discarded bits are lost.' if shift else
 			'Returns same-width rows; arithmetic overflow/underflow wraps modulo 2^width.')
 		if modular:
-			behavior = 'Returns `(output, status)` with U32 `[batch]` status flags.\n/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.\n/// A zero modulus returns status 0 and zero output; valid rows return status 1.'
+			behavior = 'Returns `(output, status)` with U32 `[batch]` status flags.\n/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.\n/// A zero modulus returns status 0 and zero output; valid rows return status 1.'
 			if name == 'inverse_mod':
 				behavior += '\n/// Non-invertible values also return status 0 and zero output. Odd/even and composite moduli are accepted.'
 			elif name in {'to_montgomery', 'from_montgomery', 'montgomery_multiply'}:
 				behavior += '\n/// Montgomery operations require an odd modulus; even moduli return status 0 and zero output.\n/// R = 2^(32*words). Conversion multiplies by R or R^-1; multiplication computes a*b*R^-1 modulo m.'
 			elif name == 'pow_mod':
 				behavior += '\n/// `right` is the unsigned exponent; zero exponents yield 1 modulo m, including 0^0.'
-		validation = '' if unary else '\n\t\t|| right.dtype() != DType::U32 || right.shape() != left.shape()\n\t\t|| !left.engine_handle().same_as(right.engine_handle())'
+		validation = '' if unary else '\n\t\t|| right.dtype() != DType::U32 || right.shape() != left.shape()\n\t\t|| !left.runtime().same_as(right.runtime())'
 		if modular:
-			validation += '\n\t\t|| modulus.dtype() != DType::U32 || modulus.shape().len() != 2\n\t\t|| modulus.shape()[1] != words\n\t\t|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)\n\t\t|| !left.engine_handle().same_as(modulus.engine_handle())'
+			validation += '\n\t\t|| modulus.dtype() != DType::U32 || modulus.shape().len() != 2\n\t\t|| modulus.shape()[1] != words\n\t\t|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)\n\t\t|| !left.runtime().same_as(modulus.runtime())'
 		if name in BIGINT_EXTENDED:
 			function, shader = bigint_extended_output(kernel)
 			api += function + "\n"
@@ -721,7 +721,7 @@ def bigint_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> dict
 			OpAttribute::UnsignedInteger {{ name: "width_bits".into(), value: (words * 32) as u64 }},
 {chr(9) * 3 + 'OpAttribute::UnsignedInteger { name: "shift".into(), value: u64::from(shift) },' if shift else ''}
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {{
 				kernel, buffers: &buffers, push_constants: &push_constants,
 				workgroups: kernel.linear_workgroups(count),
@@ -743,7 +743,7 @@ def bigint_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> dict
 			let buffers = [
 {coop_bindings}
 			];
-			let groups = engine.linear_dispatch_grid(count, 1)?;
+			let groups = runtime.linear_dispatch_grid(count, 1)?;
 			let push_constants = [
 				PushConstant::U32(count),
 				PushConstant::U32(groups[0]),
@@ -754,7 +754,7 @@ def bigint_outputs(root: Path, schema: dict[str, Any], schema_hash: str) -> dict
 			let attributes = [
 				OpAttribute::UnsignedInteger {{ name: "width_bits".into(), value: (words * 32) as u64 }},
 			];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {{
 					kernel, buffers: &buffers, push_constants: &push_constants,
 					workgroups: groups,

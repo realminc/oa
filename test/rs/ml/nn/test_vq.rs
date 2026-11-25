@@ -9,7 +9,7 @@ struct CheckpointVq {
 
 impl CheckpointVq {
 	fn new(
-		_engine: &oa::Engine,
+		_runtime: &oa::Runtime,
 		config: oa::ml::nn::VectorQuantizerConfig,
 		seed: u64,
 	) -> oa::Result<Self> {
@@ -66,7 +66,7 @@ fn small_config() -> oa::ml::nn::VectorQuantizerConfig {
 
 test_vk!(
 	vq_assignment_ste_ema_lookup_and_seed_match_donor_contract,
-	engine,
+	runtime,
 	{
 		let config = small_config();
 		let quantizer = oa::ml::nn::VectorQuantizer::new_with_seed(config, 7)?;
@@ -139,7 +139,7 @@ test_vk!(
 
 test_vk!(
 	residual_vq_round_trips_tokens_and_persistent_level_tree,
-	engine,
+	runtime,
 	{
 		let config = oa::ml::nn::VectorQuantizerConfig {
 			num_codes: 2,
@@ -168,7 +168,7 @@ test_vk!(
 
 test_vk!(
 	vq_ties_dead_code_revival_and_normalization_match_donor,
-	engine,
+	runtime,
 	{
 		let tie = oa::ml::matrix::vq_assign(
 			&oa::Matrix::new_from_f32([1, 2], &[1.0, 0.0])?,
@@ -222,7 +222,7 @@ test_vk!(
 
 test_vk!(
 	vq_checkpoint_restores_the_exact_next_ema_transition,
-	engine,
+	runtime,
 	{
 		let config = oa::ml::nn::VectorQuantizerConfig {
 			num_codes: 4,
@@ -233,7 +233,7 @@ test_vk!(
 			dead_threshold: 10.0,
 			normalize_codes: false,
 		};
-		let source = CheckpointVq::new(&engine, config, 41)?;
+		let source = CheckpointVq::new(&runtime, config, 41)?;
 		let latent = oa::Matrix::new_from_f32(
 			[6, 2],
 			&[
@@ -264,7 +264,7 @@ test_vk!(
 		let source_optimizer = oa::ml::AdamW::new(source.all_parameters()?, 0.01)?;
 		oa::ml::save_checkpoint(&path, &source, &source_optimizer)?;
 
-		let destination = CheckpointVq::new(&engine, config, 99)?;
+		let destination = CheckpointVq::new(&runtime, config, 99)?;
 		let mut destination_optimizer = oa::ml::AdamW::new(destination.all_parameters()?, 0.25)?;
 		oa::ml::load_checkpoint(&path, &destination, &mut destination_optimizer)?;
 		assert_eq!(destination.quantizer.ema_step(), 2);

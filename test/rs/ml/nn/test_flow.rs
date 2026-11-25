@@ -23,7 +23,7 @@ fn transformer_config(moe: bool) -> oa::ml::nn::FlowTransformerConfig {
 	}
 }
 
-test_vk!(flow_time_embedding_matches_the_donor_cpu_oracle, engine, {
+test_vk!(flow_time_embedding_matches_the_donor_cpu_oracle, runtime, {
 	let embedding = oa::ml::nn::FlowTimeEmbedding::new(4, 100.0, 10.0)?;
 	assert_eq!(embedding.embedding_dim(), 4);
 	assert_eq!(embedding.max_period(), 100.0);
@@ -51,7 +51,7 @@ test_vk!(flow_time_embedding_matches_the_donor_cpu_oracle, engine, {
 	Ok(())
 });
 
-test_vk!(flow_time_embedding_rejects_invalid_contracts, engine, {
+test_vk!(flow_time_embedding_rejects_invalid_contracts, runtime, {
 	for (dimension, period, scale) in [
 		(0, 100.0, 1.0),
 		(3, 100.0, 1.0),
@@ -80,7 +80,7 @@ test_vk!(flow_time_embedding_rejects_invalid_contracts, engine, {
 	Ok(())
 });
 
-test_vk!(flow_objective_and_euler_match_the_donor_oracle, engine, {
+test_vk!(flow_objective_and_euler_match_the_donor_oracle, runtime, {
 	let clean = oa::Matrix::new_from_f32([2, 3], &[0.0, 2.0, 4.0, 6.0, 8.0, 10.0])?;
 	let noise = oa::Matrix::new_from_f32([2, 3], &[10.0, 12.0, 14.0, 16.0, 18.0, 20.0])?;
 	let time = oa::Matrix::new_from_f32([2], &[0.25, 0.75])?;
@@ -97,7 +97,7 @@ test_vk!(flow_objective_and_euler_match_the_donor_oracle, engine, {
 
 test_vk!(
 	flow_linear_match_and_euler_reverse_reach_both_endpoints,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32([1, 2], &[1.0, 2.0])?;
 		let identity = oa::Matrix::new_from_f32([2, 2], &[1.0, 0.0, 0.0, 1.0])?;
@@ -148,7 +148,7 @@ test_vk!(
 
 test_vk!(
 	flow_masked_mse_excludes_padding_and_preserves_reverse,
-	engine,
+	runtime,
 	{
 		let input_values = [1.0, 3.0, 5.0, 7.0, 100.0, 100.0, 100.0, 100.0];
 		let input = oa::Matrix::new_from_f32([1, 2, 4], &input_values)?;
@@ -186,42 +186,42 @@ test_vk!(
 	}
 );
 
-test_vk!(flow_operations_keep_one_semantic_identity_each, engine, {
+test_vk!(flow_operations_keep_one_semantic_identity_each, runtime, {
 	let clean = oa::Matrix::new_from_f32([1, 2], &[1.0, 2.0])?;
 	let noise = oa::Matrix::new_from_f32([1, 2], &[3.0, 4.0])?;
 	let time = oa::Matrix::new_from_f32([1], &[0.5])?;
 	let (match_plan, matched) =
-		engine.capture(|| oa::ml::flow::linear_match(&clean, &noise, &time))?;
+		runtime.capture(|| oa::ml::flow::linear_match(&clean, &noise, &time))?;
 	assert_eq!(match_plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		match_plan.semantic_graph().operations()[0].name(),
 		"oa::FnFlow::linearMatch"
 	);
-	engine.submit(&match_plan)?.wait()?;
+	runtime.submit(&match_plan)?.wait()?;
 
 	let (euler_plan, _) =
-		engine.capture(|| oa::ml::flow::euler_step(&matched.state, &matched.velocity, -0.5))?;
+		runtime.capture(|| oa::ml::flow::euler_step(&matched.state, &matched.velocity, -0.5))?;
 	assert_eq!(euler_plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		euler_plan.semantic_graph().operations()[0].name(),
 		"oa::FnFlow::eulerStep"
 	);
-	engine.submit(&euler_plan)?.wait()?;
+	runtime.submit(&euler_plan)?.wait()?;
 
 	let mask = oa::Matrix::new_from_f32([1, 1], &[1.0])?;
-	let (loss_plan, _) = engine.capture(|| oa::ml::flow::masked_mse(&clean, &noise, &mask))?;
+	let (loss_plan, _) = runtime.capture(|| oa::ml::flow::masked_mse(&clean, &noise, &mask))?;
 	assert_eq!(loss_plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		loss_plan.semantic_graph().operations()[0].name(),
 		"oa::FnFlow::maskedMse"
 	);
-	engine.submit(&loss_plan)?.wait()?;
+	runtime.submit(&loss_plan)?.wait()?;
 	Ok(())
 });
 
 test_vk!(
 	dense_and_moe_flow_transformers_share_the_donor_contract,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_f32(
 			[2, 2, 4],
@@ -251,7 +251,7 @@ test_vk!(
 
 test_vk!(
 	flow_padding_mask_prevents_invalid_keys_changing_valid_tokens,
-	engine,
+	runtime,
 	{
 		let first = oa::Matrix::new_from_f32([1, 2, 4], &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])?;
 		let changed = oa::Matrix::new_from_f32(
@@ -273,7 +273,7 @@ test_vk!(
 
 test_vk!(
 	flow_denoiser_dense_moe_cfg_and_reverse_match_one_contract,
-	engine,
+	runtime,
 	{
 		for moe in [false, true] {
 			let config = oa::ml::nn::FlowDenoiserConfig {
@@ -326,7 +326,7 @@ test_vk!(
 	}
 );
 
-test_vk!(flow_models_reject_invalid_geometry_and_guidance, engine, {
+test_vk!(flow_models_reject_invalid_geometry_and_guidance, runtime, {
 	let invalid = oa::ml::nn::FlowTransformerConfig {
 		model_width: 4,
 		hidden_width: 8,

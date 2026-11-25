@@ -109,7 +109,7 @@ fn make_leaves(count: usize, algorithm: MerkleAlgorithm) -> Vec<Vec<u8>> {
 }
 
 fn leaf_matrix(
-	_engine: &oa::Engine,
+	_runtime: &oa::Runtime,
 	leaves: &[Vec<u8>],
 	algorithm: MerkleAlgorithm,
 ) -> oa::Result<Matrix> {
@@ -149,14 +149,14 @@ fn read_digest(matrix: &Matrix, algorithm: MerkleAlgorithm) -> oa::Result<Vec<u8
 
 test_vk!(
 	merkle_general_roots_frames_and_fail_closed_verification,
-	engine,
+	runtime,
 	{
 		for algorithm in ALGORITHMS {
 			let bytes = leaf_bytes(algorithm);
 			for count in [1_usize, 2, 5, 33] {
 				let leaves = make_leaves(count, algorithm);
 				let levels = levels_of(&leaves, algorithm);
-				let input = leaf_matrix(&engine, &leaves, algorithm)?;
+				let input = leaf_matrix(&runtime, &leaves, algorithm)?;
 				let tree = merkle::build(&input, algorithm)?;
 				assert_eq!(
 					read_digest(tree.root(), algorithm)?,
@@ -168,7 +168,7 @@ test_vk!(
 				let mut selected = leaves.clone();
 				selected.push(leaves[0].clone());
 				selected.push(leaves[0].clone());
-				let selected_matrix = leaf_matrix(&engine, &selected, algorithm)?;
+				let selected_matrix = leaf_matrix(&runtime, &selected, algorithm)?;
 				let index_matrix = Matrix::new_from_slice([indices.len()], &indices)?;
 				let proofs = merkle::proofs(&tree, &index_matrix)?;
 				let mut expected = Vec::new();
@@ -247,7 +247,7 @@ test_vk!(
 
 test_vk!(
 	merkle_general_hierarchical_subtrees_preserve_the_root,
-	engine,
+	runtime,
 	{
 		for algorithm in ALGORITHMS {
 			let bytes = leaf_bytes(algorithm);
@@ -264,7 +264,7 @@ test_vk!(
 					.map(|i| (0..bytes).map(|j| ((i + j) % 256) as u8).collect())
 					.collect()
 			};
-			let input = leaf_matrix(&engine, &leaves, algorithm)?;
+			let input = leaf_matrix(&runtime, &leaves, algorithm)?;
 			for width in [1_usize, 2, 4, 16] {
 				let subtrees = merkle::subtree_roots(&input, algorithm, width)?;
 				let composed = merkle::build(&subtrees, algorithm)?;
@@ -319,7 +319,7 @@ fn poseidon2_pinned_permutation_vectors_match_schema_oracle() {
 	}
 }
 
-test_vk!(poseidon2_permute_and_framed_sponge_match_oracle, engine, {
+test_vk!(poseidon2_permute_and_framed_sponge_match_oracle, runtime, {
 	let profiles = poseidon_profiles();
 	for case in poseidon2_case_fixture()["cases"].as_array().unwrap() {
 		let values: Vec<u32> = case["input"]

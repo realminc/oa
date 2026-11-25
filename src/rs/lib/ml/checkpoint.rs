@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::{DType, Engine, Error, Matrix, Result};
+use crate::{DType, Error, Matrix, Result, Runtime};
 
 use super::{
 	CheckpointOptimizer, Module,
@@ -63,7 +63,7 @@ impl ModuleArtifact {
 
 	pub fn restore(
 		self,
-		engine: &Engine,
+		runtime: &Runtime,
 		model: &dyn Module,
 		artifact_name: impl Fn(&str) -> Result<String>,
 	) -> Result<()> {
@@ -78,16 +78,16 @@ impl ModuleArtifact {
 				"module artifact tensor count does not match its architecture",
 			));
 		}
-		let owner = engine.handle();
+		let owner = runtime.handle();
 		if named
 			.iter()
-			.any(|entry| !entry.parameter().data().engine_handle().same_as(&owner))
+			.any(|entry| !entry.parameter().data().runtime().same_as(&owner))
 			|| buffers
 				.iter()
-				.any(|entry| !entry.data().engine_handle().same_as(&owner))
+				.any(|entry| !entry.data().runtime().same_as(&owner))
 		{
 			return Err(Error::invalid_argument(
-				"module artifact engine does not own the destination module",
+				"module artifact runtime does not own the destination module",
 			));
 		}
 
@@ -102,7 +102,7 @@ impl ModuleArtifact {
 				.ok_or_else(|| Error::checkpoint_corrupt(format!("missing weight {path}")))?;
 			let parameter = expected.parameter();
 			validate_tensor_contract(tensor, &path, &parameter.data())?;
-			loaded_parameters.push((parameter, matrix_from_tensor(engine, tensor)?));
+			loaded_parameters.push((parameter, matrix_from_tensor(runtime, tensor)?));
 		}
 		let mut loaded_buffers = Vec::with_capacity(buffers.len());
 		for expected in &buffers {
@@ -114,7 +114,7 @@ impl ModuleArtifact {
 				.find(|tensor| tensor.name == path)
 				.ok_or_else(|| Error::checkpoint_corrupt(format!("missing state {path}")))?;
 			validate_tensor_contract(tensor, &path, &expected.data())?;
-			loaded_buffers.push((expected, matrix_from_tensor(engine, tensor)?));
+			loaded_buffers.push((expected, matrix_from_tensor(runtime, tensor)?));
 		}
 		for (parameter, _) in &loaded_parameters {
 			parameter.validate_can_update()?;
@@ -318,13 +318,13 @@ pub fn load_checkpoint(
 	model: &dyn Module,
 	optimizer: &mut dyn CheckpointOptimizer,
 ) -> Result<()> {
-	load_checkpoint_on(&Engine::current()?, path, model, optimizer)
+	load_checkpoint_on(&Runtime::current()?, path, model, optimizer)
 }
 /// Load a native OA `.oam` checkpoint into existing matching owners.
 ///
 /// The complete file, section hashes, tensor metadata, module paths, shapes,
 /// dtypes, and optimizer payload are validated before any live handle changes.
-/// `engine` remains the sole owner of newly uploaded storage.
+/// `runtime` remains the sole owner of newly uploaded storage.
 ///
 /// # Errors
 ///
@@ -333,26 +333,26 @@ pub fn load_checkpoint(
 /// does not match the destination model/optimizer, or for allocation/runtime
 /// and filesystem failures.
 pub fn load_checkpoint_on(
-	engine: &Engine,
+	runtime: &Runtime,
 	path: impl AsRef<Path>,
 	model: &dyn Module,
 	optimizer: &mut dyn CheckpointOptimizer,
 ) -> Result<()> {
-	load_checkpoint_impl(engine, path.as_ref(), model, optimizer, None)
+	load_checkpoint_impl(runtime, path.as_ref(), model, optimizer, None)
 }
 
 pub(super) fn load_checkpoint_at_step(
-	engine: &Engine,
+	runtime: &Runtime,
 	path: &Path,
 	model: &dyn Module,
 	optimizer: &mut dyn CheckpointOptimizer,
 	expected_step: u64,
 ) -> Result<()> {
-	load_checkpoint_impl(engine, path, model, optimizer, Some(expected_step))
+	load_checkpoint_impl(runtime, path, model, optimizer, Some(expected_step))
 }
 
 fn load_checkpoint_impl(
-	engine: &Engine,
+	runtime: &Runtime,
 	path: &Path,
 	model: &dyn Module,
 	optimizer: &mut dyn CheckpointOptimizer,
@@ -390,19 +390,16 @@ fn load_checkpoint_impl(
 		));
 	}
 
-	let engine_handle = engine.handle();
-	if named.iter().any(|entry| {
-		!entry
-			.parameter()
-			.data()
-			.engine_handle()
-			.same_as(&engine_handle)
-	}) || buffers
+	let runtime_handle = runtime.handle();
+	if named
 		.iter()
-		.any(|entry| !entry.data().engine_handle().same_as(&engine_handle))
+		.any(|entry| !entry.parameter().data().runtime().same_as(&runtime_handle))
+		|| buffers
+			.iter()
+			.any(|entry| !entry.data().runtime().same_as(&runtime_handle))
 	{
 		return Err(Error::invalid_argument(
-			"checkpoint engine does not own the destination module",
+			"checkpoint runtime does not own the destination module",
 		));
 	}
 
@@ -411,13 +408,13 @@ fn load_checkpoint_impl(
 		let parameter = expected.parameter();
 		let data = parameter.data();
 		validate_tensor_contract(tensor, expected.path(), &data)?;
-		loaded_parameters.push((parameter, matrix_from_tensor(engine, tensor)?));
+		loaded_parameters.push((parameter, matrix_from_tensor(runtime, tensor)?));
 	}
 	let mut loaded_buffers = Vec::with_capacity(buffers.len());
 	for (expected, tensor) in buffers.iter().zip(file.state.iter().take(buffers.len())) {
 		let data = expected.data();
 		validate_tensor_contract(tensor, expected.path(), &data)?;
-		loaded_buffers.push((expected, matrix_from_tensor(engine, tensor)?));
+		loaded_buffers.push((expected, matrix_from_tensor(runtime, tensor)?));
 	}
 	let mut loaded_state_u32 = Vec::with_capacity(state_u32.len());
 	for (expected, tensor) in state_u32.iter().zip(file.state.iter().skip(buffers.len())) {
@@ -466,8 +463,8 @@ fn load_checkpoint_impl(
 			".oam optimizer state does not cover the destination parameters",
 		));
 	}
-	let first_state = matrices_from_flat(engine, &named, &persisted.first_moment)?;
-	let second_state = matrices_from_flat(engine, &named, &persisted.second_moment)?;
+	let first_state = matrices_from_flat(runtime, &named, &persisted.first_moment)?;
+	let second_state = matrices_from_flat(runtime, &named, &persisted.second_moment)?;
 	for (parameter, (loaded, _)) in optimizer_state.parameters.iter().zip(&loaded_parameters) {
 		if !parameter.same_as(loaded) {
 			return Err(Error::invalid_argument(
@@ -519,7 +516,7 @@ fn validate_optimizer_snapshot(state: &OptimizerCheckpoint) -> Result<()> {
 }
 
 fn matrices_from_flat(
-	engine: &Engine,
+	runtime: &Runtime,
 	parameters: &[super::NamedParameter],
 	values: &[f32],
 ) -> Result<Vec<Matrix>> {
@@ -534,7 +531,7 @@ fn matrices_from_flat(
 			.checked_add(data.num_elements())
 			.ok_or_else(|| Error::resource_exhausted("optimizer state offset overflows usize"))?;
 		matrices.push(Matrix::new_from_f32_on(
-			engine,
+			runtime,
 			data.shape().to_vec(),
 			&values[offset..end],
 		)?);
@@ -610,14 +607,14 @@ fn validate_state_u32_contract(tensor: &Tensor, path: &str) -> Result<()> {
 	Ok(())
 }
 
-fn matrix_from_tensor(engine: &Engine, tensor: &Tensor) -> Result<Matrix> {
+fn matrix_from_tensor(runtime: &Runtime, tensor: &Tensor) -> Result<Matrix> {
 	let shape = tensor_shape(tensor)?;
 	match tensor_dtype(tensor)? {
-		DType::U8 => Matrix::new_from_slice_on(engine, shape, &tensor.data),
-		DType::F16 => Matrix::new_from_slice_on(engine, shape, &decode_f16(&tensor.data)?),
-		DType::F32 => Matrix::new_from_slice_on(engine, shape, &decode_f32(&tensor.data)?),
-		DType::I32 => Matrix::new_from_slice_on(engine, shape, &decode_i32(&tensor.data)?),
-		DType::U32 => Matrix::new_from_slice_on(engine, shape, &decode_u32(&tensor.data)?),
+		DType::U8 => Matrix::new_from_slice_on(runtime, shape, &tensor.data),
+		DType::F16 => Matrix::new_from_slice_on(runtime, shape, &decode_f16(&tensor.data)?),
+		DType::F32 => Matrix::new_from_slice_on(runtime, shape, &decode_f32(&tensor.data)?),
+		DType::I32 => Matrix::new_from_slice_on(runtime, shape, &decode_i32(&tensor.data)?),
+		DType::U32 => Matrix::new_from_slice_on(runtime, shape, &decode_u32(&tensor.data)?),
 	}
 }
 

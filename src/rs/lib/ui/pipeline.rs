@@ -550,7 +550,7 @@ impl Drop for UiLayouts {
 /// allocation.
 pub(super) struct UiFrameBindings {
 	device: Arc<vk::Device>,
-	_engine: crate::runtime::EngineHandle,
+	_runtime: crate::runtime::RuntimeHandle,
 	pool: vk::DescriptorPool,
 	pub(super) sets: Vec<vk::DescriptorSet>,
 	pub(super) layouts: Vec<vk::PipelineLayout>,
@@ -568,13 +568,13 @@ enum CmdBinding {
 
 impl UiFrameBindings {
 	pub(super) fn new(
-		engine: &crate::runtime::EngineHandle,
+		runtime: &crate::runtime::RuntimeHandle,
 		layouts: &UiLayouts,
 		commands: &[super::command::UiCmd],
 		resolve: impl Fn(u32) -> Result<vk::DescriptorBufferInfo>,
 	) -> Result<Self> {
 		use super::command::UiCmd;
-		let device = engine.raw_device();
+		let device = runtime.raw_device();
 		let mut bindings = Vec::with_capacity(commands.len());
 		for command in commands {
 			let indices: Vec<u32> = match command {
@@ -667,7 +667,7 @@ impl UiFrameBindings {
 		.map_err(|e| Error::backend_failure("Vulkan", "UI raster descriptor pool", e))?;
 		let mut result = Self {
 			device: device.clone(),
-			_engine: engine.clone(),
+			_runtime: runtime.clone(),
 			pool,
 			sets: Vec::new(),
 			layouts: bindings

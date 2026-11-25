@@ -80,7 +80,7 @@ fn microsecond_seek_uses_exact_rational_time_base() {
 
 test_vk!(
 	embedded_container_audio_decodes_and_video_demuxes_the_same_file,
-	engine,
+	runtime,
 	{
 		for (fixture, bytes, codec, extension) in [
 			(
@@ -124,12 +124,12 @@ test_vk!(
 #[test]
 #[ignore = "requires native H.264/VP9 Vulkan Video and an audio output device"]
 fn embedded_playback_survives_seek_pause_and_audio_drain() -> oa::Result<()> {
-	let engine = oa::Engine::new()?;
+	let runtime = oa::Runtime::new()?;
 	for fixture in ["embedded_av.mp4", "embedded_av.mkv"] {
 		let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 			.join("test/fixtures/media")
 			.join(fixture);
-		let mut player = MediaPlayer::open(&engine, MediaPlayerConfig::embedded(path))?;
+		let mut player = MediaPlayer::open(&runtime, MediaPlayerConfig::embedded(path))?;
 		assert_eq!(player.position_us()?, 0);
 		player.seek_us(400_000)?;
 		let at_seek = player.current_frame()?.timing().presentation_timestamp();
@@ -166,7 +166,7 @@ fn embedded_playback_survives_seek_pause_and_audio_drain() -> oa::Result<()> {
 #[test]
 #[ignore = "requires native H.264 Vulkan Video, an audio output device and FFmpeg"]
 fn sequential_transport_plays_the_longer_track_to_completion() -> oa::Result<()> {
-	let engine = oa::Engine::new()?;
+	let runtime = oa::Runtime::new()?;
 	let dir = std::env::temp_dir().join(format!("oa-media-tails-{}", std::process::id()));
 	std::fs::create_dir(&dir).expect("temporary media directory");
 	let ts = dir.join("video.ts");
@@ -204,7 +204,7 @@ fn sequential_transport_plays_the_longer_track_to_completion() -> oa::Result<()>
 				.unwrap()
 				.success()
 		);
-		let mut player = MediaPlayer::open(&engine, MediaPlayerConfig::new(&ts, &wav))?;
+		let mut player = MediaPlayer::open(&runtime, MediaPlayerConfig::new(&ts, &wav))?;
 		let origin = player.current_frame()?.timing().presentation_timestamp();
 		let mut displayed = 1;
 		player.play()?;
@@ -243,7 +243,7 @@ fn sequential_transport_plays_the_longer_track_to_completion() -> oa::Result<()>
 
 test_vk!(
 	captured_multimodal_plan_carries_demuxed_streams_to_model_output,
-	engine,
+	runtime,
 	{
 		// Reference audio-visual workload: one mp4 carries an H.264 video
 		// elementary stream and an AAC audio track. Host code demuxes the
@@ -259,7 +259,7 @@ test_vk!(
 			packets.push(packet);
 		}
 		assert!(!packets.is_empty(), "fixture produced no video packets");
-		let decoder = oa::video::VideoDecoder::new(&engine, info)?;
+		let decoder = oa::video::VideoDecoder::new(&runtime, info)?;
 		let audio = oa::audio::decode_file(&fixture)?;
 
 		let video_config = oa::video::VideoMatrixConfig {
@@ -293,16 +293,16 @@ test_vk!(
 		let video_weight = make_weight(video_features, 7)?;
 		let audio_weight = make_weight(audio_features, 13)?;
 
-		let (plan, (video_frames, probabilities)) = engine.capture(|| {
+		let (plan, (video_frames, probabilities)) = runtime.capture(|| {
 			let frames = decoder.record_to_planes(&packets)?;
 			let video_score = oa::video::to_matrix(&frames, &video_config)?
 				.reshape(vec![frames.len(), video_features])?
-				.mat_mul_nt(&video_weight)?
+				.matmul(&video_weight)?
 				.mean(0)?
 				.reshape(vec![1, class_count])?;
 			let audio_score = oa::audio::mel_spectrogram(&audio, mel_config)?
 				.reshape(vec![1, audio_features])?
-				.mat_mul_nt(&audio_weight)?;
+				.matmul(&audio_weight)?;
 			Ok((frames.len(), video_score.add(&audio_score)?.softmax(-1)?))
 		})?;
 
@@ -333,11 +333,11 @@ test_vk!(
 			.map(|resource| resource.byte_len() as u64)
 			.sum::<u64>();
 		let started = std::time::Instant::now();
-		let _event = engine.submit(&plan)?;
+		let _event = runtime.submit(&plan)?;
 		plan.wait()?;
 		let submit_ms = started.elapsed().as_secs_f64() * 1_000.0;
 		let first = probabilities.read_f32()?;
-		let _event = engine.submit(&plan)?;
+		let _event = runtime.submit(&plan)?;
 		plan.wait()?;
 		let second = probabilities.read_f32()?;
 		assert_eq!(first.len(), class_count);
@@ -353,7 +353,7 @@ test_vk!(
 			kinds.len()
 		);
 		bench_media::record(
-			&engine,
+			&runtime,
 			&plan,
 			serde_json::json!({
 				"kind": "multimodal",

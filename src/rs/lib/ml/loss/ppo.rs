@@ -21,7 +21,7 @@ impl Default for PpoLossConfig {
 ///
 /// # Errors
 ///
-/// Returns an error unless all inputs are matching nonempty same-engine FP32
+/// Returns an error unless all inputs are matching nonempty same-runtime FP32
 /// matrices and `clip_epsilon` is finite in `(0, 1)`.
 pub fn ppo_clipped_policy(
 	new_log_probability: &Matrix,
@@ -38,17 +38,12 @@ pub fn ppo_clipped_policy(
 		contract.name(),
 	)?;
 	let per_sample = Matrix::allocate(
-		new_log_probability.engine_handle(),
+		new_log_probability.runtime(),
 		new_log_probability.shape().to_vec(),
 		new_log_probability.num_elements(),
 		DType::F32,
 	)?;
-	let output = Matrix::allocate(
-		new_log_probability.engine_handle(),
-		Vec::new(),
-		1,
-		DType::F32,
-	)?;
+	let output = Matrix::allocate(new_log_probability.runtime(), Vec::new(), 1, DType::F32)?;
 	let policy_buffers = [
 		BufferBinding::read(new_log_probability.storage()),
 		BufferBinding::read(old_log_probability.storage()),
@@ -85,7 +80,7 @@ pub fn ppo_clipped_policy(
 			indirect: None,
 		},
 	];
-	new_log_probability.engine_handle().record_split_semantic(
+	new_log_probability.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,
@@ -124,7 +119,7 @@ pub fn ppo_clipped_policy_backward(
 		contract.name(),
 	)?;
 	let gradient = Matrix::allocate(
-		new_log_probability.engine_handle(),
+		new_log_probability.runtime(),
 		new_log_probability.shape().to_vec(),
 		new_log_probability.num_elements(),
 		DType::F32,
@@ -158,11 +153,11 @@ pub fn ppo_clipped_policy_backward(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -184,7 +179,7 @@ pub fn ppo_clipped_policy_backward(
 /// # Errors
 ///
 /// Returns an error unless all rollout fields are matching nonempty
-/// same-engine FP32 matrices and every coefficient is valid.
+/// same-runtime FP32 matrices and every coefficient is valid.
 pub fn ppo(
 	new_log_probability: &Matrix,
 	old_log_probability: &Matrix,
@@ -206,12 +201,10 @@ pub fn ppo(
 	for input in inputs {
 		if input.shape() != new_log_probability.shape()
 			|| input.dtype() != DType::F32
-			|| !new_log_probability
-				.engine_handle()
-				.same_as(input.engine_handle())
+			|| !new_log_probability.runtime().same_as(input.runtime())
 		{
 			return Err(Error::invalid_argument(format!(
-				"{} requires matching nonempty same-engine F32 rollout fields",
+				"{} requires matching nonempty same-runtime F32 rollout fields",
 				CONTRACT.name()
 			)));
 		}
@@ -229,9 +222,7 @@ pub fn ppo(
 			CONTRACT.name()
 		)));
 	}
-	let lowering = new_log_probability
-		.engine_handle()
-		.begin_semantic_lowering()?;
+	let lowering = new_log_probability.runtime().begin_semantic_lowering()?;
 	let policy_loss = ppo_clipped_policy(
 		new_log_probability,
 		old_log_probability,
@@ -304,12 +295,9 @@ fn validate_ppo_inputs(
 				"{operation} requires matching F32 inputs"
 			)));
 		}
-		if !new_log_probability
-			.engine_handle()
-			.same_as(input.engine_handle())
-		{
+		if !new_log_probability.runtime().same_as(input.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}

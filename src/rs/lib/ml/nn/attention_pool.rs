@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{DType, Engine, Error, Matrix, Result, matrix};
+use crate::{DType, Error, Matrix, Result, Runtime, matrix};
 
 use super::super::{Module, ModuleRegistry, Parameter, autograd};
 use super::MultiHeadAttention;
@@ -33,7 +33,7 @@ impl AttentionPool {
 	/// Returns an error under the attention constructor contract or when
 	/// allocation/registration fails.
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		model_width: usize,
 		num_heads: usize,
 		seed: u64,
@@ -44,7 +44,7 @@ impl AttentionPool {
 			));
 		}
 		let attention = Rc::new(MultiHeadAttention::new_with_seed_on(
-			engine,
+			runtime,
 			model_width,
 			num_heads,
 			1,
@@ -52,7 +52,7 @@ impl AttentionPool {
 		)?);
 		let query = Parameter::new(
 			"query",
-			Matrix::new_from_f32_on(engine, [1, model_width], &vec![0.0_f32; model_width])?,
+			Matrix::new_from_f32_on(runtime, [1, model_width], &vec![0.0_f32; model_width])?,
 		)?;
 		let mut registry = ModuleRegistry::new();
 		registry.register_parameter("query", query.clone())?;
@@ -65,13 +65,13 @@ impl AttentionPool {
 		})
 	}
 
-	/// Construct on the current engine.
+	/// Construct on the current runtime.
 	///
 	/// # Errors
 	///
 	/// Returns an error under the same contract as [`Self::new_with_seed_on`].
 	pub fn new_with_seed(model_width: usize, num_heads: usize, seed: u64) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, model_width, num_heads, seed)
+		Self::new_with_seed_on(&Runtime::current()?, model_width, num_heads, seed)
 	}
 
 	/// Pool `input` shaped `[B*S, D]` to `[B, D]` for `batch` sequences.

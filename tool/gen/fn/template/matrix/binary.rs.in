@@ -6,10 +6,10 @@
 			right.dtype().token()
 		)));
 	}
-	let engine = left.engine_handle();
-	if !engine.same_as(right.engine_handle()) {
+	let runtime = left.runtime();
+	if !runtime.same_as(right.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let output = if left.shape() == right.shape() {
@@ -17,7 +17,7 @@
 		let element_count = u32::try_from(left.element_count())
 			.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 		let output = Matrix::allocate(
-			engine,
+			runtime,
 			left.shape().to_vec(),
 			left.element_count(),
 			left.dtype(),
@@ -31,7 +31,7 @@
 			let push_constants = [PushConstant::U32(element_count)];
 			let inputs = [left, right];
 			let outputs = [&output];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -55,7 +55,7 @@
 		let output_count = usize::try_from(layout.element_count)
 			.expect("u32 element count always fits the supported Rust targets");
 		let output = Matrix::allocate(
-			left.engine_handle(),
+			left.runtime(),
 			layout.output_shape,
 			output_count,
 			left.dtype(),
@@ -77,7 +77,7 @@
 			});
 			let inputs = [left, right];
 			let outputs = [&output];
-			left.engine_handle().record_semantic(
+			left.runtime().record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,

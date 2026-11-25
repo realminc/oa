@@ -154,7 +154,7 @@ fn shared_ir_compiles_both_descriptor_profiles() -> Result<()> {
 impl super::JitArtifacts {
 	/// Persist every compiled artifact through the envelope writer policy.
 	/// Production publication flows through `section_updates` inside the
-	/// Engine's single atomic commit; direct persistence is a laboratory path.
+	/// Runtime's single atomic commit; direct persistence is a laboratory path.
 	pub(in crate::runtime) fn persist(
 		&self,
 		path: &crate::Path,
@@ -170,8 +170,8 @@ fn block_gemm_template_compiles_and_validates() -> Result<()> {
 	use crate::runtime::dna::ir::tile::{BiasAct, BlockProgram};
 	let library = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit compiler library");
 	let compiler = SlangCompiler::open(std::path::Path::new(&library))?;
-	// Donor geometry: src/slang/matrix/blas/mat_mul_nt_tiled.gen.slang.
-	let program = BlockProgram::mat_mul_nt(64, 64, 16, 4, 4, 4).unwrap();
+	// Donor geometry: src/slang/matrix/blas/matmul_nt_tiled.gen.slang.
+	let program = BlockProgram::matmul(64, 64, 16, 4, 4, 4).unwrap();
 	for bounded in [true, false] {
 		let source = program.slang_source(bounded)?;
 		let words = compiler.compile_source(&source, bounded)?;
@@ -191,7 +191,7 @@ fn block_gemm_template_compiles_and_validates() -> Result<()> {
 		(32, 64, 16, 4, 4, 4),
 		(16, 16, 4, 2, 2, 1),
 	] {
-		let program = BlockProgram::mat_mul_nt(args.0, args.1, args.2, args.3, args.4, args.5).unwrap();
+		let program = BlockProgram::matmul(args.0, args.1, args.2, args.3, args.4, args.5).unwrap();
 		let source = program.slang_source(true)?;
 		let words = compiler.compile_source(&source, true)?;
 		validate_with_spirv_tools(&words, true)?;
@@ -257,7 +257,7 @@ fn block_gemm_template_compiles_and_validates() -> Result<()> {
 			BlockProgram::grouped_gemm_m_parameter_backward().unwrap(),
 			4,
 		),
-		(BlockProgram::mat_mul_nt_gemv(256).unwrap(), 3),
+		(BlockProgram::matmul_nt_gemv(256).unwrap(), 3),
 		// 6 bindings + 5 u32 scalars + 1 f32 alpha = 48-byte push block.
 		(BlockProgram::grouped_backward_prologue().unwrap(), 6),
 		(BlockProgram::moe_router_select(), 3),
@@ -330,19 +330,19 @@ fn block_gemm_template_compiles_and_validates() -> Result<()> {
 		(BlockProgram::flash_causal_backward_kv(), 4),
 		(BlockProgram::argmax_wave(256).unwrap(), 1),
 		(
-			BlockProgram::mat_mul_nt_bias(64, 64, 16, 4, 4, 4, None).unwrap(),
+			BlockProgram::matmul_nt_bias(64, 64, 16, 4, 4, 4, None).unwrap(),
 			3,
 		),
 		(
-			BlockProgram::mat_mul_nt_bias(64, 64, 16, 4, 4, 4, Some(BiasAct::Relu)).unwrap(),
+			BlockProgram::matmul_nt_bias(64, 64, 16, 4, 4, 4, Some(BiasAct::Relu)).unwrap(),
 			3,
 		),
 		(
-			BlockProgram::mat_mul_nt_bias(64, 64, 16, 4, 4, 4, Some(BiasAct::Gelu)).unwrap(),
+			BlockProgram::matmul_nt_bias(64, 64, 16, 4, 4, 4, Some(BiasAct::Gelu)).unwrap(),
 			3,
 		),
 		(
-			BlockProgram::mat_mul_nt_bias(64, 64, 16, 4, 4, 4, Some(BiasAct::Silu)).unwrap(),
+			BlockProgram::matmul_nt_bias(64, 64, 16, 4, 4, 4, Some(BiasAct::Silu)).unwrap(),
 			3,
 		),
 	] {

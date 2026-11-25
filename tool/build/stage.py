@@ -49,10 +49,6 @@ def cargo_metadata() -> dict[str, object]:
 
 
 def destination_directory(source: Path, kind: str) -> Path:
-	relative = source.relative_to(ROOT)
-	parts = relative.parts
-	if len(parts) >= 4 and parts[:2] == ("sdk", "rs"):
-		return Path("sdk", *parts[2:-1])
 	if kind == "example":
 		return Path("examples")
 	return Path()

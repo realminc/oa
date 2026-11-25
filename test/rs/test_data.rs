@@ -61,7 +61,7 @@ fn random_split_empty_input_returns_empty() {
 
 // ---- Sample -----------------------------------------------------------------
 
-test_vk!(sample_has_label_reflects_constructor, engine, {
+test_vk!(sample_has_label_reflects_constructor, runtime, {
 	let x = oa::Matrix::new_from_f32([2], &[1.0, 2.0])?;
 	let y = oa::Matrix::new_from_f32([2], &[0.0, 1.0])?;
 	let unlabeled = oa::Sample::new(x.clone());
@@ -75,7 +75,7 @@ test_vk!(sample_has_label_reflects_constructor, engine, {
 
 struct VecDataset<'e> {
 	data: Vec<Vec<f32>>,
-	engine: &'e oa::Engine,
+	runtime: &'e oa::Runtime,
 }
 
 impl oa::Dataset for VecDataset<'_> {
@@ -85,15 +85,15 @@ impl oa::Dataset for VecDataset<'_> {
 
 	fn get_item(&self, index: i64) -> oa::Result<oa::Matrix> {
 		let row = &self.data[index as usize];
-		oa::Matrix::new_from_f32_on(self.engine, [row.len()], row)
+		oa::Matrix::new_from_f32_on(self.runtime, [row.len()], row)
 	}
 }
 
-test_vk!(ds_subset_wraps_parent_correctly, engine, {
+test_vk!(ds_subset_wraps_parent_correctly, runtime, {
 	use oa::Dataset;
 	let parent = VecDataset {
 		data: vec![vec![1.0], vec![2.0], vec![3.0], vec![4.0]],
-		engine: &engine,
+		runtime: &runtime,
 	};
 	let subset = parent.subset(vec![3, 1])?;
 	assert_eq!(subset.len(), 2);
@@ -102,11 +102,11 @@ test_vk!(ds_subset_wraps_parent_correctly, engine, {
 	Ok(())
 });
 
-test_vk!(ds_shuffled_subset_is_deterministic_permutation, engine, {
+test_vk!(ds_shuffled_subset_is_deterministic_permutation, runtime, {
 	use oa::Dataset;
 	let parent = VecDataset {
 		data: (0..16).map(|i| vec![i as f32]).collect(),
-		engine: &engine,
+		runtime: &runtime,
 	};
 	let view = parent.shuffled_subset(7)?;
 	assert_eq!(view.len(), 16);
@@ -127,10 +127,10 @@ test_vk!(ds_shuffled_subset_is_deterministic_permutation, engine, {
 
 // ---- DataLoader -------------------------------------------------------------
 
-test_vk!(data_loader_exhausts_epoch_and_resets, engine, {
+test_vk!(data_loader_exhausts_epoch_and_resets, runtime, {
 	let parent = VecDataset {
 		data: (0..10).map(|i| vec![i as f32]).collect(),
-		engine: &engine,
+		runtime: &runtime,
 	};
 	let config = oa::DataLoaderConfig {
 		batch_size: 3,
@@ -156,11 +156,11 @@ test_vk!(data_loader_exhausts_epoch_and_resets, engine, {
 
 test_vk!(
 	data_loader_reset_epoch_varies_order_deterministically,
-	engine,
+	runtime,
 	{
 		let parent = VecDataset {
 			data: (0..16).map(|i| vec![i as f32]).collect(),
-			engine: &engine,
+			runtime: &runtime,
 		};
 		let config = oa::DataLoaderConfig {
 			batch_size: 4,
@@ -190,10 +190,10 @@ test_vk!(
 	}
 );
 
-test_vk!(data_loader_drop_last_drops_incomplete_batch, engine, {
+test_vk!(data_loader_drop_last_drops_incomplete_batch, runtime, {
 	let parent = VecDataset {
 		data: (0..10).map(|i| vec![i as f32]).collect(),
-		engine: &engine,
+		runtime: &runtime,
 	};
 	let config = oa::DataLoaderConfig {
 		batch_size: 3,
@@ -208,7 +208,7 @@ test_vk!(data_loader_drop_last_drops_incomplete_batch, engine, {
 
 // ---- collate ----------------------------------------------------------------
 
-test_vk!(collate_stacks_x_along_batch_dim, engine, {
+test_vk!(collate_stacks_x_along_batch_dim, runtime, {
 	let samples: Vec<oa::Sample> = (0..4_i64)
 		.map(|i| {
 			let x = oa::Matrix::new_from_f32([3], &[i as f32; 3]).expect("from_f32 in collate test");
@@ -222,7 +222,7 @@ test_vk!(collate_stacks_x_along_batch_dim, engine, {
 	Ok(())
 });
 
-test_vk!(collate_stacks_y_when_all_labeled, engine, {
+test_vk!(collate_stacks_y_when_all_labeled, runtime, {
 	let samples: Vec<oa::Sample> = (0..3_i64)
 		.map(|i| {
 			let x = oa::Matrix::new_from_f32([2], &[i as f32; 2]).expect("from_f32 x in labeled collate");
@@ -238,7 +238,7 @@ test_vk!(collate_stacks_y_when_all_labeled, engine, {
 	Ok(())
 });
 
-test_vk!(collate_stacks_integer_labels_and_byte_samples, engine, {
+test_vk!(collate_stacks_integer_labels_and_byte_samples, runtime, {
 	let first = oa::Sample::new_with_label(
 		oa::Matrix::new_from_slice([3], &[1_u8, 2, 3])?,
 		oa::Matrix::new_from_slice([], &[-4_i32])?,
@@ -398,7 +398,7 @@ fn split_clamps_validation_after_train_and_rejects_nonfinite_ratios() -> oa::Res
 
 test_vk!(
 	collate_rejects_inconsistent_labels_shapes_and_dtypes,
-	engine,
+	runtime,
 	{
 		let x = oa::Matrix::new_from_f32([2], &[1.0, 2.0])?;
 		let y = oa::Matrix::new_from_f32([1], &[1.0])?;
@@ -445,7 +445,7 @@ fn shuffle_matches_compiled_donor_random_header() -> oa::Result<()> {
 
 test_vk!(
 	single_sample_collation_preserves_values_and_metadata,
-	engine,
+	runtime,
 	{
 		let x = oa::Matrix::new_from_f32([2], &[3.0, 4.0])?;
 		let y = oa::Matrix::new_from_f32([1], &[1.0])?;
@@ -598,10 +598,10 @@ fn collate_host_rejects_mismatched_components() -> oa::Result<()> {
 	Ok(())
 }
 
-test_vk!(prefetch_loader_uploads_collated_batches, engine, {
+test_vk!(prefetch_loader_uploads_collated_batches, runtime, {
 	let dataset = std::sync::Arc::new(host_dataset(8));
 	let mut loader = oa::data::PrefetchDataLoader::new(dataset, prefetch_config(4, false, false), 2)?;
-	let first = loader.next_batch_on(&engine)?.expect("first batch");
+	let first = loader.next_batch_on(&runtime)?.expect("first batch");
 	assert_eq!(first.x.shape(), [4, 3]);
 	assert_eq!(
 		first.x.read_f32()?,
@@ -611,8 +611,8 @@ test_vk!(prefetch_loader_uploads_collated_batches, engine, {
 	);
 	let labels = first.y.expect("labeled batch");
 	assert_eq!(labels.shape(), [4, 1]);
-	let second = loader.next_batch_on(&engine)?.expect("second batch");
+	let second = loader.next_batch_on(&runtime)?.expect("second batch");
 	assert_eq!(second.x.shape(), [4, 3]);
-	assert!(loader.next_batch_on(&engine)?.is_none());
+	assert!(loader.next_batch_on(&runtime)?.is_none());
 	Ok(())
 });

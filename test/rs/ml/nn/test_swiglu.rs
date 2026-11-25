@@ -2,7 +2,7 @@ use oa::ml::Module;
 
 test_vk!(
 	swiglu_module_preserves_donor_bias_contract_and_gradients,
-	engine,
+	runtime,
 	{
 		for has_bias in [false, true] {
 			let module = oa::ml::nn::Swiglu::new_with_seed(4, 7, has_bias, 0x5357_474c)?;
@@ -60,7 +60,7 @@ test_vk!(
 	}
 );
 
-test_vk!(swiglu_module_rejects_invalid_contracts, engine, {
+test_vk!(swiglu_module_rejects_invalid_contracts, runtime, {
 	for (input_features, intermediate_size) in [(0, 4), (4, 0)] {
 		assert_eq!(
 			oa::ml::nn::Swiglu::new_with_seed(input_features, intermediate_size, false, 1,)

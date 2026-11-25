@@ -10,7 +10,7 @@
 /// recording fails.
 pub fn upsample_2d(input: &Matrix, scale_factor: usize, mode: UpsampleMode) -> Result<Matrix> {
 	let operation = crate::core::operation::ml::UPSAMPLE_2D.name();
-	validate_f32_same_engine(operation, &[input])?;
+	validate_f32_same_runtime(operation, &[input])?;
 	let geometry = Upsample2dGeometry::resolve(input, scale_factor, operation)?;
 	let output_shape = geometry.output_shape();
 	let output_count = output_shape
@@ -18,7 +18,7 @@ pub fn upsample_2d(input: &Matrix, scale_factor: usize, mode: UpsampleMode) -> R
 		.try_fold(1_usize, |product, extent| product.checked_mul(*extent))
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output size overflows usize")))?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		output_shape,
 		output_count,
 		DType::F32,
@@ -50,11 +50,11 @@ pub fn upsample_2d(input: &Matrix, scale_factor: usize, mode: UpsampleMode) -> R
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -76,7 +76,7 @@ pub(in crate::ml) fn upsample_2d_backward(
 	mode: UpsampleMode,
 ) -> Result<Matrix> {
 	let operation = crate::core::operation::ml::UPSAMPLE_2D_BACKWARD.name();
-	validate_f32_same_engine(operation, &[input, output_gradient])?;
+	validate_f32_same_runtime(operation, &[input, output_gradient])?;
 	let geometry = Upsample2dGeometry::resolve(input, scale_factor, operation)?;
 	if output_gradient.shape() != geometry.output_shape() {
 		return Err(Error::invalid_argument(format!(
@@ -86,7 +86,7 @@ pub(in crate::ml) fn upsample_2d_backward(
 		)));
 	}
 	let input_gradient = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -118,11 +118,11 @@ pub(in crate::ml) fn upsample_2d_backward(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,

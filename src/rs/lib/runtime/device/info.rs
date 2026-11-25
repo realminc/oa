@@ -66,7 +66,7 @@ impl DeviceInfo {
 		self.hardware.local_memory_bytes
 	}
 
-	/// Local memory budget observed when the engine was created, if advertised.
+	/// Local memory budget observed when the runtime was created, if advertised.
 	pub const fn local_memory_budget_bytes(&self) -> Option<u64> {
 		self.hardware.local_memory_budget_bytes
 	}
@@ -77,7 +77,7 @@ impl DeviceInfo {
 		self.hardware.local_memory_unified
 	}
 
-	/// Local memory usage observed when the engine was created, if advertised.
+	/// Local memory usage observed when the runtime was created, if advertised.
 	pub const fn local_memory_usage_bytes(&self) -> Option<u64> {
 		self.hardware.local_memory_usage_bytes
 	}

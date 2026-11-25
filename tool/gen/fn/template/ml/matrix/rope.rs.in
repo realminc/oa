@@ -22,7 +22,7 @@ pub fn rope(
 	let (tokens, num_heads_u32, head_dim_u32, pair_count) =
 		validate_rope(input, num_heads, head_dim, theta_base, OPERATION)?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -74,11 +74,11 @@ pub fn rope(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -111,7 +111,7 @@ pub(in crate::ml) fn rope_backward(
 	let (tokens, num_heads, head_dim, pair_count) =
 		validate_rope(output_gradient, num_heads, head_dim, theta_base, OPERATION)?;
 	let input_gradient = Matrix::allocate(
-		output_gradient.engine_handle(),
+		output_gradient.runtime(),
 		output_gradient.shape().to_vec(),
 		output_gradient.num_elements(),
 		DType::F32,
@@ -163,11 +163,11 @@ pub(in crate::ml) fn rope_backward(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,

@@ -24,7 +24,6 @@ VISION_SCHEMA_PATH = GENERATOR_ROOT / "schema/vision/vision_detection.json"
 UI_SCHEMA_PATH = GENERATOR_ROOT / "schema/ui/ui.json"
 REPOSITORY_ROOT = GENERATOR_ROOT.parents[2]
 SLANG_ROOT = REPOSITORY_ROOT / "src/slang"
-SDK_SLANG_ROOT = REPOSITORY_ROOT / "sdk/rs/slang"
 
 import sys
 sys.path.insert(0, str(GENERATOR_ROOT))
@@ -89,7 +88,7 @@ class GeneratorTests(unittest.TestCase):
 		for operation in self.activation_schema["operations"]:
 			body = oa_ml._ml_activation_fn(operation)
 			self.assertIn("let contract = crate::core::operation::ml::", body)
-			self.assertIn("engine.record_semantic(", body)
+			self.assertIn("runtime.record_semantic(", body)
 			self.assertIn("u32::try_from(", body)
 			self.assertIn(f"KernelId::{operation['kernel_id']}", body)
 			if "autograd" in operation:
@@ -340,7 +339,7 @@ class GeneratorTests(unittest.TestCase):
 
 	def test_private_prehashed_signing_abi_is_fixed(self):
 		# Prehashed signing carries the OID trailer in the mu head push words;
-		# the kernel ABI is fixed so the engine can pack it.
+		# the kernel ABI is fixed so the runtime can pack it.
 		index = next(i for i, row in enumerate(self.cryptography_pqc_schema["private_kernels"])
 			if row["name"] == "ml_dsa_mu")
 		kernel = self.cryptography_pqc_schema["private_kernels"][index]
@@ -362,7 +361,7 @@ class GeneratorTests(unittest.TestCase):
 		self.assertNotIn("push.algorithm", shader)
 
 	def test_private_hash_message_signing_abi_is_fixed(self):
-		# Hash-message signing prehashes on the engine hash path; the mu kernel
+		# Hash-message signing prehashes on the runtime hash path; the mu kernel
 		# only absorbs the finished digest with the OID-framed head.
 		index = next(i for i, row in enumerate(self.cryptography_pqc_schema["private_kernels"])
 			if row["name"] == "ml_dsa_mu")
@@ -480,7 +479,7 @@ class GeneratorTests(unittest.TestCase):
 				self.assertNotIn("_impl(", family)
 			self.assertNotIn("binary(left", api)
 			self.assertNotIn("unary(input", api)
-			self.assertIn("autograd::record_mat_mul_nt", blas_api)
+			self.assertIn("autograd::record_matmul", blas_api)
 			self.assertIn("autograd::record_softmax", reduce_api)
 
 			registry = outputs[root / "src/rs/lib/runtime/dna/kernel/kernel.gen.rs"]
@@ -874,7 +873,7 @@ class GeneratorTests(unittest.TestCase):
 		expected = schema_sources | generated_sources
 		actual = {
 			path.relative_to(REPOSITORY_ROOT).as_posix()
-			for root in (SLANG_ROOT, SDK_SLANG_ROOT)
+			for root in (SLANG_ROOT,)
 			for path in root.rglob("*.slang")
 			if (text := path.read_text(encoding="utf-8"))
 			and ("void main(" in text or '[shader("' in text)
@@ -882,7 +881,7 @@ class GeneratorTests(unittest.TestCase):
 
 		self.assertEqual(actual, expected)
 		self.assertTrue(all((REPOSITORY_ROOT / source).is_file() for source in expected))
-		for root in (SLANG_ROOT, SDK_SLANG_ROOT):
+		for root in (SLANG_ROOT,):
 			for path in root.rglob("*.slang"):
 				text = path.read_text(encoding="utf-8")
 				self.assertNotIn("TODO: Add common", text, path.as_posix())
@@ -1096,7 +1095,7 @@ class GeneratorTests(unittest.TestCase):
 			"evaluate_tanh_normal",
 			"quantize",
 			"dequantize",
-			"mat_mul_nt_quantized",
+			"matmul_nt_quantized",
 		])
 		for name in ("normalize_observation", "scale_action", "clip_reward"):
 			self.assertEqual(operations[name]["semantic_domain"], "ml::environment")

@@ -186,7 +186,7 @@ fn build_module() -> Result<AdaptiveLogSoftmaxWithLoss, oa::Error> {
 	AdaptiveLogSoftmaxWithLoss::from_parts(IN_FEATURES, N_CLASSES, &CUTOFFS, head, vec![tail0, tail1])
 }
 
-test_vk!(adaptive_log_softmax_forward_matches_oracle, engine, {
+test_vk!(adaptive_log_softmax_forward_matches_oracle, runtime, {
 	let module = build_module()?;
 	let input = oa::Matrix::new_from_f32([3, IN_FEATURES], &INPUT)?;
 	let target = oa::Matrix::new_from_slice([3], &TARGETS)?;
@@ -226,7 +226,7 @@ test_vk!(adaptive_log_softmax_forward_matches_oracle, engine, {
 
 test_vk!(
 	adaptive_log_softmax_backward_reaches_all_parameters,
-	engine,
+	runtime,
 	{
 		let module = build_module()?;
 		let input = oa::Matrix::new_from_f32([3, IN_FEATURES], &INPUT)?;
@@ -249,7 +249,7 @@ test_vk!(
 	}
 );
 
-test_vk!(adaptive_log_softmax_contract_errors, engine, {
+test_vk!(adaptive_log_softmax_contract_errors, runtime, {
 	let module = build_module()?;
 	let input = oa::Matrix::new_from_f32([3, IN_FEATURES], &INPUT)?;
 	// The Module trait forward requires a target.

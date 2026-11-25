@@ -14,13 +14,13 @@ fn corrupt(mut descriptor: Vec<u8>, offset: usize, value: u8) -> Vec<u8> {
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn execution_plan_descriptor_roundtrips_and_revalidates() -> crate::Result<()> {
-	let engine = match crate::Engine::new() {
-		Ok(engine) => engine,
+	let runtime = match crate::Runtime::new() {
+		Ok(runtime) => runtime,
 		Err(_) => return Ok(()),
 	};
 	let one = crate::matrix::ones([2, 3])?;
 	let two = crate::matrix::full([2, 3], 2.0)?;
-	let (plan, _output) = engine.capture(|| {
+	let (plan, _output) = runtime.capture(|| {
 		let three = crate::matrix::add(&one, &two)?;
 		crate::matrix::add(&three, &three)
 	})?;
@@ -40,7 +40,7 @@ fn execution_plan_descriptor_roundtrips_and_revalidates() -> crate::Result<()> {
 	// Serialization is deterministic: a fresh serialization and a structurally
 	// identical recapture both reproduce the persisted bytes.
 	assert_eq!(plan.serialize_descriptor()?, descriptor);
-	let (recaptured, _output) = engine.capture(|| {
+	let (recaptured, _output) = runtime.capture(|| {
 		let three = crate::matrix::add(&one, &two)?;
 		crate::matrix::add(&three, &three)
 	})?;
@@ -52,13 +52,13 @@ fn execution_plan_descriptor_roundtrips_and_revalidates() -> crate::Result<()> {
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn execution_plan_descriptor_rejects_malformed_and_foreign_envelopes() -> crate::Result<()> {
-	let engine = match crate::Engine::new() {
-		Ok(engine) => engine,
+	let runtime = match crate::Runtime::new() {
+		Ok(runtime) => runtime,
 		Err(_) => return Ok(()),
 	};
 	let one = crate::matrix::ones([2, 3])?;
 	let two = crate::matrix::full([2, 3], 2.0)?;
-	let (plan, _output) = engine.capture(|| crate::matrix::add(&one, &two))?;
+	let (plan, _output) = runtime.capture(|| crate::matrix::add(&one, &two))?;
 	let descriptor = plan.serialize_descriptor()?;
 
 	let error = plan
@@ -88,7 +88,7 @@ fn execution_plan_descriptor_rejects_malformed_and_foreign_envelopes() -> crate:
 		.expect_err("checksum mismatch must be rejected");
 	assert_eq!(error.kind(), crate::ErrorKind::DataLoss);
 
-	let (foreign, _output) = engine.capture(|| crate::matrix::scale(&one, 2.0))?;
+	let (foreign, _output) = runtime.capture(|| crate::matrix::scale(&one, 2.0))?;
 	let error = plan
 		.validate_serialized_descriptor(&foreign.serialize_descriptor()?)
 		.expect_err("a different compiled plan must not validate");

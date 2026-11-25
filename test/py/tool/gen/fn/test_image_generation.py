@@ -24,14 +24,18 @@ class ImageGenerationTests(unittest.TestCase):
 		return next(op for op in self.schema["contracts"] if op["name"] == name)
 
 	def test_complete_categories_are_directly_declared_with_one_owner(self):
-		counts = {"pixel": 20, "filter": 20, "geometric": 9, "color": 4}
+		counts = {"pixel": 25, "filter": 21, "geometric": 12, "color": 6, "statistics": 23}
 		facade = (ROOT / "src/rs/lib/image.rs").read_text()
 		for category, count in counts.items():
 			text = oa_image.generate_image_api(self.schema, "0" * 64, category)
 			names = [op["name"] for op in self.schema["contracts"] if op["rust"]["category"] == category]
 			self.assertEqual(len(names), count)
 			self.assertEqual(re.findall(r"pub fn (\w+)\(", text), names)
-			self.assertEqual(text.count("record_image_semantic("), count)
+			self.assertEqual(
+				text.count("record_image_semantic(")
+				+ text.count("record_image_split_semantic("),
+				count,
+			)
 			self.assertIn("DO NOT EDIT", text)
 			self.assertNotIn("{{", text)
 			self.assertNotRegex(text, r"\b\w+_(?:impl|dispatch)\(")
@@ -100,7 +104,7 @@ class ImageGenerationTests(unittest.TestCase):
 
 	def test_resize_preserves_both_variants_and_rejects_incomplete_coverage(self):
 		op = self.operation("resize")
-		self.assertEqual(op["rust"]["dispatches"][0]["kernels"], ["ImageResizeNearestF32", "ImageResizeBilinearF32"])
+		self.assertEqual(op["rust"]["dispatches"][0]["kernels"], ["ImageResizeNearestF32", "ImageResizeBilinearF32", "ImageResizeAreaF32", "ImageResizeCubicF32", "ImageResizeLanczosF32"])
 		op["rust"]["dispatches"][0].update(kernels=["ImageResizeNearestF32"], kernel="KernelId::ImageResizeNearestF32")
 		with self.assertRaisesRegex(oa_util.SchemaError, "coverage"):
 			oa_image.validate_image_schema(self.schema)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from ._gen.matrix import *
 from ._gen.matrix import __all__ as _GEN_ALL
 from ._native import (
-	Engine,
+	Runtime,
 	Matrix,
 	MoeExpertPlan,
 	matrix_full as full,
@@ -14,7 +14,7 @@ from ._native import (
 )
 
 __all__ = _GEN_ALL + [
-	"Engine",
+	"Runtime",
 	"Matrix",
 	"MoeExpertPlan",
 	"full",

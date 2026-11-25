@@ -53,7 +53,7 @@ pub(in crate::runtime::device) struct JitFusion {
 	/// compiler (compiler-version invalidation needs its identity).
 	block_restored: bool,
 	/// Validated block SPIR-V keyed by `block_key` — compiled this
-	/// session or restored from `.vkcache`; persisted at Engine drop.
+	/// session or restored from `.vkcache`; persisted at Runtime drop.
 	block_artifacts: BTreeMap<Vec<u8>, BlockArtifact>,
 	/// Compiler identity recorded with block artifacts; empty until the
 	/// block compiler first opens.
@@ -653,13 +653,13 @@ impl JitFusion {
 		}
 	}
 
-	/// Snapshot `.vkcache` section updates for the Engine's single atomic
+	/// Snapshot `.vkcache` section updates for the Runtime's single atomic
 	/// commit; empty when no artifacts exist.
 	pub(in crate::runtime::device) fn section_updates(
 		&mut self,
 		census: &FusionCensus,
 	) -> Vec<super::vkcache::SectionUpdate> {
-		// Engine Drop snapshots completed host state only; it must not read GPU
+		// Runtime Drop snapshots completed host state only; it must not read GPU
 		// queries or wait on the worker. Finished compiles fold into the
 		// snapshot; anything still compiling simply recompiles next process.
 		self.drain_compiles(census);

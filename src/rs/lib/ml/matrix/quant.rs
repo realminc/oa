@@ -111,9 +111,9 @@ impl QuantMatrix {
 				"payload and scale planes must both be one-dimensional",
 			));
 		}
-		if !payload.engine_handle().same_as(scale.engine_handle()) {
+		if !payload.runtime().same_as(scale.runtime()) {
 			return Err(Error::invalid_argument(
-				"quantized planes must belong to one engine",
+				"quantized planes must belong to one runtime",
 			));
 		}
 		let elements = shape
@@ -157,8 +157,8 @@ impl QuantMatrix {
 		self.payload.value_id()
 	}
 
-	pub(crate) const fn engine_handle(&self) -> &crate::runtime::EngineHandle {
-		self.payload.engine_handle()
+	pub(crate) const fn runtime(&self) -> &crate::runtime::RuntimeHandle {
+		self.payload.runtime()
 	}
 }
 
@@ -187,8 +187,8 @@ pub fn quantize(input: &Matrix, quantization: Quantization) -> Result<QuantMatri
 	}
 	admit_count(count, operation)?;
 
-	let engine = input.engine_handle();
-	let lowering = engine.begin_semantic_lowering()?;
+	let runtime = input.runtime();
+	let lowering = runtime.begin_semantic_lowering()?;
 	let scale = compute_scale(input, quantization)?;
 	let payload = quantize_planes(input, &scale, quantization)?;
 	let output = QuantMatrix::from_planes(payload, scale, input.shape().to_vec(), quantization)?;
@@ -217,8 +217,8 @@ pub fn dequantize(input: &QuantMatrix) -> Result<Matrix> {
 	}
 	admit_count(count, operation)?;
 
-	let engine = input.engine_handle();
-	let lowering = engine.begin_semantic_lowering()?;
+	let runtime = input.runtime();
+	let lowering = runtime.begin_semantic_lowering()?;
 	let flat = dequantize_planes(input.payload(), input.scale(), count, input.quantization())?;
 	let output = flat.reshape_semantic_output(input.shape().to_vec())?;
 	lowering.commit_quant(QuantSemanticDispatch {
@@ -239,10 +239,10 @@ pub fn dequantize(input: &QuantMatrix) -> Result<Matrix> {
 ///
 /// Returns an error unless the weight has rank 2, the input has rank at least
 /// 2 with a matching last dimension, all planes are contiguous base storage on
-/// one engine, the flattened dimensions fit the `u32` kernel ABI, or
+/// one runtime, the flattened dimensions fit the `u32` kernel ABI, or
 /// allocation/recording fails.
-pub fn mat_mul_nt(input: &Matrix, weight: &QuantMatrix) -> Result<Matrix> {
-	let operation = "oa::FnMatrix::matMulNtQuantized";
+pub fn matmul(input: &Matrix, weight: &QuantMatrix) -> Result<Matrix> {
+	let operation = "oa::FnMatrix::matmulNtQuantized";
 	if weight.shape().len() != 2 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} quantized weight must have rank 2 [N,K]"
@@ -253,15 +253,15 @@ pub fn mat_mul_nt(input: &Matrix, weight: &QuantMatrix) -> Result<Matrix> {
 			"{operation} input last dimension must match quantized weight K"
 		)));
 	}
-	if !input.engine_handle().same_as(weight.engine_handle()) {
+	if !input.runtime().same_as(weight.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} input and quantized weight must belong to one engine"
+			"{operation} input and quantized weight must belong to one runtime"
 		)));
 	}
 	let output_features = weight.shape()[0];
-	let engine = input.engine_handle();
-	let lowering = engine.begin_semantic_lowering()?;
-	let output = mat_mul_nt_planes(
+	let runtime = input.runtime();
+	let lowering = runtime.begin_semantic_lowering()?;
+	let output = matmul_nt_planes(
 		input,
 		weight.payload(),
 		weight.scale(),
@@ -269,7 +269,7 @@ pub fn mat_mul_nt(input: &Matrix, weight: &QuantMatrix) -> Result<Matrix> {
 		weight.quantization(),
 	)?;
 	lowering.commit_quant(QuantSemanticDispatch {
-		contract: crate::core::operation::ml::MAT_MUL_NT_QUANTIZED,
+		contract: crate::core::operation::ml::MATMUL_NT_QUANTIZED,
 		inputs: &[
 			QuantSemanticInput::Matrix(input),
 			QuantSemanticInput::QuantMatrix(weight),
@@ -318,7 +318,7 @@ fn compute_scale(input: &Matrix, quantization: Quantization) -> Result<Matrix> {
 	let count_u32 = shader_u32(count, "element count", operation)?;
 	let blocks = count.div_ceil(BLOCK_SIZE);
 	let blocks_u32 = shader_u32(blocks, "block count", operation)?;
-	let scale = Matrix::allocate(input.engine_handle(), vec![blocks], blocks, DType::F32)?;
+	let scale = Matrix::allocate(input.runtime(), vec![blocks], blocks, DType::F32)?;
 	if count_u32 == 0 {
 		return Ok(scale);
 	}
@@ -327,7 +327,7 @@ fn compute_scale(input: &Matrix, quantization: Quantization) -> Result<Matrix> {
 		BufferBinding::write(scale.storage()),
 	];
 	let push_constants = [PushConstant::U32(count_u32)];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -382,7 +382,7 @@ fn quantize_planes(input: &Matrix, scale: &Matrix, quantization: Quantization) -
 		.checked_mul(words_per_block)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} payload size overflows usize")))?;
 	let payload = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![payload_bytes],
 		payload_bytes,
 		DType::U8,
@@ -396,7 +396,7 @@ fn quantize_planes(input: &Matrix, scale: &Matrix, quantization: Quantization) -
 		BufferBinding::read(scale.storage()),
 	];
 	let push_constants = [PushConstant::U32(count_u32)];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -453,7 +453,7 @@ fn dequantize_planes(
 			"{operation} payload/scale shape does not match element count"
 		)));
 	}
-	let output = Matrix::allocate(payload.engine_handle(), vec![count], count, DType::F32)?;
+	let output = Matrix::allocate(payload.runtime(), vec![count], count, DType::F32)?;
 	if count_u32 == 0 {
 		return Ok(output);
 	}
@@ -463,7 +463,7 @@ fn dequantize_planes(
 		BufferBinding::read(scale.storage()),
 	];
 	let push_constants = [PushConstant::U32(count_u32)];
-	payload.engine_handle().record_semantic(
+	payload.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,
@@ -481,7 +481,7 @@ fn dequantize_planes(
 	Ok(output)
 }
 
-fn mat_mul_nt_planes(
+fn matmul_nt_planes(
 	input: &Matrix,
 	payload: &Matrix,
 	scale: &Matrix,
@@ -490,13 +490,13 @@ fn mat_mul_nt_planes(
 ) -> Result<Matrix> {
 	let (contract, kernel, bytes_per_block) = match quantization {
 		Quantization::Q4 => (
-			crate::core::operation::ml::MAT_MUL_NT_Q4,
-			KernelId::MlMatMulNtQ4F32,
+			crate::core::operation::ml::MATMUL_NT_Q4,
+			KernelId::MlMatmulNtQ4F32,
 			Q4_BYTES_PER_BLOCK,
 		),
 		Quantization::Q8 => (
-			crate::core::operation::ml::MAT_MUL_NT_Q8,
-			KernelId::MlMatMulNtQ8F32,
+			crate::core::operation::ml::MATMUL_NT_Q8,
+			KernelId::MlMatmulNtQ8F32,
 			Q8_BYTES_PER_BLOCK,
 		),
 	};
@@ -573,12 +573,7 @@ fn mat_mul_nt_planes(
 
 	let mut output_shape = input.shape().to_vec();
 	*output_shape.last_mut().unwrap() = output_features;
-	let output = Matrix::allocate(
-		input.engine_handle(),
-		output_shape,
-		output_count,
-		DType::F32,
-	)?;
+	let output = Matrix::allocate(input.runtime(), output_shape, output_count, DType::F32)?;
 	if rows == 0 || output_features == 0 {
 		return Ok(output);
 	}
@@ -593,7 +588,7 @@ fn mat_mul_nt_planes(
 		PushConstant::U32(output_features_u32),
 		PushConstant::U32(k_u32),
 	];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel,
 			buffers: &buffers,

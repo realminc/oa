@@ -1,10 +1,10 @@
 [package]
 name = "oarust"
-version = "0.16.0"
+version = "0.17.0"
 edition = "2024"
 rust-version = "1.98"
 autotests = false
-description = "GPU-first semantic computing engine written in Rust"
+description = "GPU-first semantic computing runtime written in Rust"
 repository = "https://github.com/realminc/oa"
 license = "BUSL-1.1"
 readme = "README.md"
@@ -17,12 +17,12 @@ include = [
   "/test/fixtures/crypto/mldsa/keyGen-*.json", "/test/fixtures/crypto/mldsa/capture-shake256.json",
   "/test/fixtures/crypto/mlkem/keyGen-*.json",
   "/test/fixtures/crypto/mlkem/encapDecap-*.json",
-  "/test/fixtures/crypto/mlkem/engine-roundtrip.json",
+  "/test/fixtures/crypto/mlkem/runtime-roundtrip.json",
   "!**/__pycache__/**", "!**/*.pyc",
 ]
 
 [workspace]
-members = ["sdk", "src/py"]
+members = ["src/py"]
 default-members = ["."]
 resolver = "3"
 

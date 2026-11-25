@@ -12,19 +12,19 @@ use crate::{Error, Result};
 
 use crate::Matrix;
 use crate::runtime::{
-	BufferBinding, ComputeDispatch, EngineHandle, KernelId, PushConstant, SemanticDispatch,
+	BufferBinding, ComputeDispatch, KernelId, PushConstant, RuntimeHandle, SemanticDispatch,
 };
 
 use super::blas::{GemmKernel, GemmPrecision, MatmulPlan};
 
 /// Whether the FP16-storage math mode is requested and admitted on this
-/// engine's device contract. Returns false — the caller's F32 route stays —
+/// runtime's device contract. Returns false — the caller's F32 route stays —
 /// when either condition fails.
-fn fp16s_admitted(engine: &EngineHandle) -> bool {
+fn fp16s_admitted(runtime: &RuntimeHandle) -> bool {
 	if forced_precision() != GemmPrecision::F16 {
 		return false;
 	}
-	engine.matmul_device_contract().caps_mask & super::blas::CAP_F16_STORAGE != 0
+	runtime.matmul_device_contract().caps_mask & super::blas::CAP_F16_STORAGE != 0
 }
 
 /// `OA_FORCE_PRECISION` request, shared by all precision-provider lowerings.
@@ -38,13 +38,13 @@ fn forced_precision() -> GemmPrecision {
 	}
 }
 
-/// Record the FP16-storage lowering of one `mat_mul_nt` plan: two F32→F16
+/// Record the FP16-storage lowering of one `matmul` plan: two F32→F16
 /// storage casts into private workspaces plus the selected FP16-storage GEMM.
 ///
 /// Returns `Ok(false)` for plans that did not select an F16s variant so the
 /// caller records its ordinary single-dispatch route instead.
-pub(crate) fn record_mat_mul_nt_f16(
-	engine: &EngineHandle,
+pub(crate) fn record_matmul_nt_f16(
+	runtime: &RuntimeHandle,
 	left: &Matrix,
 	right: &Matrix,
 	output: &Matrix,
@@ -56,21 +56,21 @@ pub(crate) fn record_mat_mul_nt_f16(
 		GemmKernel::F16F32 | GemmKernel::TiledWideF16F32 => plan.kernel_id,
 		_ => return Ok(false),
 	};
-	engine.require_kernel(KernelId::MatrixCastF32F16)?;
-	engine.require_kernel(gemm_kernel)?;
+	runtime.require_kernel(KernelId::MatrixCastF32F16)?;
+	runtime.require_kernel(gemm_kernel)?;
 	let left_count = usize::try_from(u64::from(m) * u64::from(k))
-		.map_err(|_| Error::invalid_argument("mat_mul_nt f16 left workspace exceeds usize"))?;
+		.map_err(|_| Error::invalid_argument("matmul f16 left workspace exceeds usize"))?;
 	let right_count = usize::try_from(u64::from(n) * u64::from(k))
-		.map_err(|_| Error::invalid_argument("mat_mul_nt f16 right workspace exceeds usize"))?;
+		.map_err(|_| Error::invalid_argument("matmul f16 right workspace exceeds usize"))?;
 	let cast_a_count = m
 		.checked_mul(k)
-		.ok_or_else(|| Error::invalid_argument("mat_mul_nt f16 left cast count exceeds u32"))?;
+		.ok_or_else(|| Error::invalid_argument("matmul f16 left cast count exceeds u32"))?;
 	let cast_b_count = n
 		.checked_mul(k)
-		.ok_or_else(|| Error::invalid_argument("mat_mul_nt f16 right cast count exceeds u32"))?;
-	let left_f16 = Matrix::allocate_output(engine, vec![left_count], left_count, crate::DType::F16)?;
+		.ok_or_else(|| Error::invalid_argument("matmul f16 right cast count exceeds u32"))?;
+	let left_f16 = Matrix::allocate_output(runtime, vec![left_count], left_count, crate::DType::F16)?;
 	let right_f16 =
-		Matrix::allocate_output(engine, vec![right_count], right_count, crate::DType::F16)?;
+		Matrix::allocate_output(runtime, vec![right_count], right_count, crate::DType::F16)?;
 	let cast_a_push = [PushConstant::U32(cast_a_count)];
 	let cast_b_push = [PushConstant::U32(cast_b_count)];
 	let gemm_push = [
@@ -116,10 +116,10 @@ pub(crate) fn record_mat_mul_nt_f16(
 	];
 	let inputs = [left, right];
 	let outputs = [output];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
-			contract: crate::core::operation::matrix::MAT_MUL_NT,
+			contract: crate::core::operation::matrix::MATMUL,
 			inputs: &inputs,
 			outputs: &outputs,
 			attributes: &[],
@@ -133,19 +133,19 @@ pub(crate) fn record_mat_mul_nt_f16(
 /// reduction. Returns `Ok(false)` when the F16 math mode is not requested or
 /// not admitted, so the caller records the ordinary F32 route.
 pub(crate) fn record_sum_f16(
-	engine: &EngineHandle,
+	runtime: &RuntimeHandle,
 	input: &Matrix,
 	output: &Matrix,
 	element_count: u32,
 	dim: i32,
 ) -> Result<bool> {
-	if !fp16s_admitted(engine) {
+	if !fp16s_admitted(runtime) {
 		return Ok(false);
 	}
-	engine.require_kernel(KernelId::MatrixCastF32F16)?;
-	engine.require_kernel(KernelId::MatrixSumF16)?;
+	runtime.require_kernel(KernelId::MatrixCastF32F16)?;
+	runtime.require_kernel(KernelId::MatrixSumF16)?;
 	let input_f16 = Matrix::allocate_output(
-		engine,
+		runtime,
 		vec![element_count as usize],
 		element_count as usize,
 		crate::DType::F16,
@@ -181,7 +181,7 @@ pub(crate) fn record_sum_f16(
 		name: "dim".into(),
 		value: i64::from(dim),
 	}];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: crate::core::operation::matrix::SUM,
@@ -200,7 +200,7 @@ pub(crate) fn record_sum_f16(
 /// Returns `Ok(false)` when the FP16 math mode is not admitted so the caller
 /// records the incumbent fused `MlLinearF32` dispatch.
 pub(crate) fn record_linear_f16(
-	engine: &EngineHandle,
+	runtime: &RuntimeHandle,
 	input: &Matrix,
 	weight: &Matrix,
 	bias: &Matrix,
@@ -208,13 +208,13 @@ pub(crate) fn record_linear_f16(
 	contract: crate::OperationContract,
 	dims: [u32; 3],
 ) -> Result<bool> {
-	if !fp16s_admitted(engine) {
+	if !fp16s_admitted(runtime) {
 		return Ok(false);
 	}
 	let [batch, input_features, output_features] = dims;
-	engine.require_kernel(KernelId::MatrixCastF32F16)?;
-	engine.require_kernel(KernelId::MatrixMatMulNtF16)?;
-	engine.require_kernel(KernelId::MatrixBiasAddBroadcastF32)?;
+	runtime.require_kernel(KernelId::MatrixCastF32F16)?;
+	runtime.require_kernel(KernelId::MatrixMatmulNtF16)?;
+	runtime.require_kernel(KernelId::MatrixBiasAddBroadcastF32)?;
 	let input_count = usize::try_from(u64::from(batch) * u64::from(input_features))
 		.map_err(|_| Error::invalid_argument("linear f16 input workspace exceeds usize"))?;
 	let weight_count = usize::try_from(u64::from(output_features) * u64::from(input_features))
@@ -222,11 +222,11 @@ pub(crate) fn record_linear_f16(
 	let output_count = usize::try_from(u64::from(batch) * u64::from(output_features))
 		.map_err(|_| Error::invalid_argument("linear f16 workspace exceeds usize"))?;
 	let input_f16 =
-		Matrix::allocate_output(engine, vec![input_count], input_count, crate::DType::F16)?;
+		Matrix::allocate_output(runtime, vec![input_count], input_count, crate::DType::F16)?;
 	let weight_f16 =
-		Matrix::allocate_output(engine, vec![weight_count], weight_count, crate::DType::F16)?;
+		Matrix::allocate_output(runtime, vec![weight_count], weight_count, crate::DType::F16)?;
 	let gemm_out =
-		Matrix::allocate_output(engine, vec![output_count], output_count, crate::DType::F32)?;
+		Matrix::allocate_output(runtime, vec![output_count], output_count, crate::DType::F32)?;
 	let cast_a_count = batch
 		.checked_mul(input_features)
 		.ok_or_else(|| Error::invalid_argument("linear f16 input cast count exceeds u32"))?;
@@ -288,7 +288,7 @@ pub(crate) fn record_linear_f16(
 			indirect: None,
 		},
 		ComputeDispatch {
-			kernel: KernelId::MatrixMatMulNtF16,
+			kernel: KernelId::MatrixMatmulNtF16,
 			buffers: &gemm_buffers,
 			push_constants: &[
 				PushConstant::U32(batch),
@@ -308,7 +308,7 @@ pub(crate) fn record_linear_f16(
 	];
 	let inputs = [input, weight, bias];
 	let outputs = [output];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract,

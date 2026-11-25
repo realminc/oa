@@ -1,6 +1,6 @@
 //! Bilinear layer (`nn.Bilinear`): `y = x1^T W_o x2 + b` per output feature.
 
-use crate::{Engine, Error, Matrix, Result, matrix};
+use crate::{Error, Matrix, Result, Runtime, matrix};
 
 use super::super::{Module, ModuleRegistry, Parameter, random};
 
@@ -18,7 +18,7 @@ pub struct Bilinear {
 }
 
 impl Bilinear {
-	/// Construct on the current engine with the thread-local seed source.
+	/// Construct on the current runtime with the thread-local seed source.
 	///
 	/// # Errors
 	///
@@ -27,7 +27,7 @@ impl Bilinear {
 		Self::new_with_seed(in1_features, in2_features, out_features, true, 0)
 	}
 
-	/// Construct on the current engine with an explicit seed.
+	/// Construct on the current runtime with an explicit seed.
 	///
 	/// # Errors
 	///
@@ -40,7 +40,7 @@ impl Bilinear {
 		seed: u64,
 	) -> Result<Self> {
 		Self::new_with_seed_on(
-			&Engine::current()?,
+			&Runtime::current()?,
 			in1_features,
 			in2_features,
 			out_features,
@@ -49,13 +49,13 @@ impl Bilinear {
 		)
 	}
 
-	/// Construct on `engine` with an explicit seed.
+	/// Construct on `runtime` with an explicit seed.
 	///
 	/// # Errors
 	///
 	/// Returns an error when a feature count is zero or initialization fails.
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		in1_features: usize,
 		in2_features: usize,
 		out_features: usize,
@@ -76,9 +76,12 @@ impl Bilinear {
 			.ok_or_else(|| Error::invalid_argument("bilinear Xavier extent overflows usize"))?;
 		let limit = (6.0_f32 / denominator as f32).sqrt();
 		let weights = random::symmetric_uniform(weight_count, limit, seed);
-		let weight =
-			Matrix::new_from_f32_on(engine, [out_features, in1_features, in2_features], &weights)?;
-		let bias = Matrix::new_from_f32_on(engine, [out_features], &vec![0.0; out_features])?;
+		let weight = Matrix::new_from_f32_on(
+			runtime,
+			[out_features, in1_features, in2_features],
+			&weights,
+		)?;
+		let bias = Matrix::new_from_f32_on(runtime, [out_features], &vec![0.0; out_features])?;
 		Self::new_from_parts(weight, bias, trainable_bias)
 	}
 
@@ -87,7 +90,7 @@ impl Bilinear {
 	/// # Errors
 	///
 	/// Returns an error unless weight is `[O, I1, I2]` and bias is `[O]` on the
-	/// same engine.
+	/// same runtime.
 	pub fn new_from_matrices(weight: Matrix, bias: Matrix) -> Result<Self> {
 		let [out_features, in1_features, in2_features] = weight.shape().to_vec()[..] else {
 			return Err(Error::invalid_argument(format!(
@@ -95,9 +98,9 @@ impl Bilinear {
 				weight.shape()
 			)));
 		};
-		if bias.shape() != [out_features] || !bias.engine_handle().same_as(weight.engine_handle()) {
+		if bias.shape() != [out_features] || !bias.runtime().same_as(weight.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"bilinear bias must be [O] on the weight engine; found {:?}",
+				"bilinear bias must be [O] on the weight runtime; found {:?}",
 				bias.shape()
 			)));
 		}
@@ -165,18 +168,16 @@ impl Bilinear {
 	/// # Errors
 	///
 	/// Returns an error for mismatched ranks, feature extents, batch counts, or
-	/// engines, or when the composed dispatch fails.
+	/// runtimes, or when the composed dispatch fails.
 	pub fn forward2(&self, input1: &Matrix, input2: &Matrix) -> Result<Matrix> {
 		let operation = "Bilinear";
 		for (input, features) in [(input1, self.in1_features), (input2, self.in2_features)] {
 			if input.shape().len() != 2
 				|| input.shape()[1] != features
-				|| !input
-					.engine_handle()
-					.same_as(self.weight.data().engine_handle())
+				|| !input.runtime().same_as(self.weight.data().runtime())
 			{
 				return Err(Error::invalid_argument(format!(
-					"{operation} requires same-engine [N, {features}] inputs; found {:?}",
+					"{operation} requires same-runtime [N, {features}] inputs; found {:?}",
 					input.shape()
 				)));
 			}
@@ -198,7 +199,7 @@ impl Bilinear {
 			.weight
 			.data()
 			.reshape([self.out_features, self.in1_features * self.in2_features])?;
-		let mut output = matrix::mat_mul_nt(&outer, &flat)?;
+		let mut output = matrix::matmul(&outer, &flat)?;
 		if let Some(bias) = &self.bias {
 			output = matrix::add(&output, &bias.data())?;
 		}

@@ -1,6 +1,6 @@
 //! Tile-template route admission (OA-CC-13).
 //!
-//! A canonical `matrix.mat_mul_nt` node may substitute an admitted
+//! A canonical `matrix.matmul` node may substitute an admitted
 //! `BlockProgram` specialization for the incumbent registry pipeline
 //! through the `JitNode` override path. Route selection is still
 //! env-gated experimental vocabulary; measured candidate selection and
@@ -17,12 +17,12 @@ use crate::runtime::{
 	graph::executable::{ComputeNode, JitNode},
 };
 
-/// Substitute an admitted `mat_mul_nt` tile template for the incumbent
+/// Substitute an admitted `matmul` tile template for the incumbent
 /// registry pipeline on one dispatch node. Every failure mode — gate
 /// off, non-tiled kernel, unexpected dispatch ABI, compile or pipeline
 /// rejection — leaves the canonical kernel route unchanged.
 pub(in crate::runtime) fn specialize_gemm_node(device: &Arc<Device>, node: &mut ComputeNode) {
-	if node.kernel != KernelId::MatrixMatMulNtTiledF32 || node.jit.is_some() {
+	if node.kernel != KernelId::MatrixMatmulNtTiledF32 || node.jit.is_some() {
 		return;
 	}
 	let [left, right, output] = node.buffers.as_slice() else {
@@ -43,7 +43,7 @@ pub(in crate::runtime) fn specialize_gemm_node(device: &Arc<Device>, node: &mut 
 	else {
 		return;
 	};
-	// Donor schedule re-expression: `matrix_mat_mul_nt_tiled_f32` (BK=16,
+	// Donor schedule re-expression: `matrix_matmul_nt_tiled_f32` (BK=16,
 	// 4×4 fragments, vec4 staging). The shape→tile map is the `OA_TILE_GEMM`
 	// seed candidate; `OA_TILE_GEMM_SEARCH` admits the bounded 32/64
 	// row-column set so the CC-12 route record selects by measurement.
@@ -60,7 +60,7 @@ pub(in crate::runtime) fn specialize_gemm_node(device: &Arc<Device>, node: &mut 
 			} else {
 				search
 			};
-			let program = BlockProgram::mat_mul_nt(tile_rows, tile_columns, 16, 4, 4, 4);
+			let program = BlockProgram::matmul(tile_rows, tile_columns, 16, 4, 4, 4);
 			if let Ok(program) = &program
 				&& program.workgroups(*m, *n)[1] > u32::from(u16::MAX)
 			{
@@ -86,7 +86,7 @@ pub(in crate::runtime) fn specialize_gemm_node(device: &Arc<Device>, node: &mut 
 }
 
 /// `OA_TILE_GEMM_BIAS` substitution for the BLAS epilogue donors —
-/// `MatrixMatMulNtBias*F32` share the `mat_mul_nt` schedule with the
+/// `MatrixMatmulNtBias*F32` share the `matmul` schedule with the
 /// `[left, right, bias, output]` binding order, `[m, n, k]` push ABI
 /// and a fixed inline activation on the single output store.
 pub(in crate::runtime) fn specialize_gemm_bias_node(device: &Arc<Device>, node: &mut ComputeNode) {
@@ -94,10 +94,10 @@ pub(in crate::runtime) fn specialize_gemm_bias_node(device: &Arc<Device>, node: 
 		return;
 	}
 	let act = match node.kernel {
-		KernelId::MatrixMatMulNtBiasF32 => None,
-		KernelId::MatrixMatMulNtBiasReluF32 => Some(BiasAct::Relu),
-		KernelId::MatrixMatMulNtBiasGeluF32 => Some(BiasAct::Gelu),
-		KernelId::MatrixMatMulNtBiasSiluF32 => Some(BiasAct::Silu),
+		KernelId::MatrixMatmulNtBiasF32 => None,
+		KernelId::MatrixMatmulNtBiasReluF32 => Some(BiasAct::Relu),
+		KernelId::MatrixMatmulNtBiasGeluF32 => Some(BiasAct::Gelu),
+		KernelId::MatrixMatmulNtBiasSiluF32 => Some(BiasAct::Silu),
 		_ => return,
 	};
 	let [left, right, bias, output] = node.buffers.as_slice() else {
@@ -119,7 +119,7 @@ pub(in crate::runtime) fn specialize_gemm_bias_node(device: &Arc<Device>, node: 
 		return;
 	};
 	let (tile_rows, tile_columns) = gemm_candidate(*m, *n);
-	let Ok(program) = BlockProgram::mat_mul_nt_bias(tile_rows, tile_columns, 16, 4, 4, 4, act) else {
+	let Ok(program) = BlockProgram::matmul_nt_bias(tile_rows, tile_columns, 16, 4, 4, 4, act) else {
 		return;
 	};
 	let workgroups = program.workgroups(*m, *n);
@@ -138,14 +138,14 @@ pub(in crate::runtime) fn specialize_gemm_bias_node(device: &Arc<Device>, node: 
 	node.workgroups = workgroups;
 }
 
-/// Substitute the `mat_mul_nt_gemv` tile template for the incumbent
+/// Substitute the `matmul_nt_gemv` tile template for the incumbent
 /// registry pipeline (OA-CC-13). The emitted program preserves the
 /// donor ABI — `[left, right, output]` bindings, `[m, n, k]` push
 /// scalars, one workgroup per `(row, column)` output — so
 /// `node.workgroups` stays untouched. Every failure mode keeps the
 /// canonical route.
 pub(in crate::runtime) fn specialize_gemv_node(device: &Arc<Device>, node: &mut ComputeNode) {
-	if node.kernel != KernelId::MatrixMatMulNtGemvF32 || node.jit.is_some() {
+	if node.kernel != KernelId::MatrixMatmulNtGemvF32 || node.jit.is_some() {
 		return;
 	}
 	let [left, right, output] = node.buffers.as_slice() else {
@@ -159,7 +159,7 @@ pub(in crate::runtime) fn specialize_gemv_node(device: &Arc<Device>, node: &mut 
 	{
 		return;
 	}
-	let Ok(program) = BlockProgram::mat_mul_nt_gemv(256) else {
+	let Ok(program) = BlockProgram::matmul_nt_gemv(256) else {
 		return;
 	};
 	node.fusion_signature = Some(device.tile_signature(&program));

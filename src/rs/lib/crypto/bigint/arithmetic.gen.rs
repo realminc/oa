@@ -57,7 +57,7 @@ pub fn add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -73,7 +73,7 @@ pub fn add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -82,7 +82,7 @@ pub fn add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		// Small batches underutilize per-invocation scheduling; the cooperative
 		// provider owns one workgroup per row. Routing is private lowering policy.
@@ -93,7 +93,7 @@ pub fn add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 				BufferBinding::read(right.storage()),
 				BufferBinding::write(output.storage()),
 			];
-			let groups = engine.linear_dispatch_grid(count, 1)?;
+			let groups = runtime.linear_dispatch_grid(count, 1)?;
 			let push_constants = [
 				PushConstant::U32(count),
 				PushConstant::U32(groups[0]),
@@ -105,7 +105,7 @@ pub fn add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 				name: "width_bits".into(),
 				value: (words * 32) as u64,
 			}];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -134,7 +134,7 @@ pub fn add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 				name: "width_bits".into(),
 				value: (words * 32) as u64,
 			}];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -181,7 +181,7 @@ pub fn subtract(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -197,7 +197,7 @@ pub fn subtract(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -206,7 +206,7 @@ pub fn subtract(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		// Small batches underutilize per-invocation scheduling; the cooperative
 		// provider owns one workgroup per row. Routing is private lowering policy.
@@ -217,7 +217,7 @@ pub fn subtract(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 				BufferBinding::read(right.storage()),
 				BufferBinding::write(output.storage()),
 			];
-			let groups = engine.linear_dispatch_grid(count, 1)?;
+			let groups = runtime.linear_dispatch_grid(count, 1)?;
 			let push_constants = [
 				PushConstant::U32(count),
 				PushConstant::U32(groups[0]),
@@ -229,7 +229,7 @@ pub fn subtract(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 				name: "width_bits".into(),
 				value: (words * 32) as u64,
 			}];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -258,7 +258,7 @@ pub fn subtract(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 				name: "width_bits".into(),
 				value: (words * 32) as u64,
 			}];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -305,7 +305,7 @@ pub fn multiply_low(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -321,7 +321,7 @@ pub fn multiply_low(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -330,7 +330,7 @@ pub fn multiply_low(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntMultiplyLowU32;
 		let buffers = [
@@ -345,7 +345,7 @@ pub fn multiply_low(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -391,7 +391,7 @@ pub fn multiply_wide(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -407,7 +407,7 @@ pub fn multiply_wide(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words * 2)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -416,7 +416,8 @@ pub fn multiply_wide(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words * 2], output_elements, DType::U32)?;
+	let output =
+		Matrix::allocate_output(runtime, vec![rows, words * 2], output_elements, DType::U32)?;
 	if rows != 0 {
 		// Small batches underutilize per-invocation scheduling; the cooperative
 		// provider owns one workgroup per row. Routing is private lowering policy.
@@ -427,7 +428,7 @@ pub fn multiply_wide(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 				BufferBinding::read(right.storage()),
 				BufferBinding::write(output.storage()),
 			];
-			let groups = engine.linear_dispatch_grid(count, 1)?;
+			let groups = runtime.linear_dispatch_grid(count, 1)?;
 			let push_constants = [
 				PushConstant::U32(count),
 				PushConstant::U32(groups[0]),
@@ -439,7 +440,7 @@ pub fn multiply_wide(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 				name: "width_bits".into(),
 				value: (words * 32) as u64,
 			}];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -468,7 +469,7 @@ pub fn multiply_wide(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 				name: "width_bits".into(),
 				value: (words * 32) as u64,
 			}];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -515,7 +516,7 @@ pub fn bit_and(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -531,7 +532,7 @@ pub fn bit_and(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -540,7 +541,7 @@ pub fn bit_and(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntBitAndU32;
 		let buffers = [
@@ -555,7 +556,7 @@ pub fn bit_and(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -601,7 +602,7 @@ pub fn bit_or(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -617,7 +618,7 @@ pub fn bit_or(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -626,7 +627,7 @@ pub fn bit_or(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntBitOrU32;
 		let buffers = [
@@ -641,7 +642,7 @@ pub fn bit_or(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -687,7 +688,7 @@ pub fn bit_xor(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -703,7 +704,7 @@ pub fn bit_xor(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -712,7 +713,7 @@ pub fn bit_xor(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntBitXorU32;
 		let buffers = [
@@ -727,7 +728,7 @@ pub fn bit_xor(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -773,7 +774,7 @@ pub fn compare(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -789,7 +790,7 @@ pub fn compare(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -798,7 +799,7 @@ pub fn compare(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntCompareU32;
 		let buffers = [
@@ -813,7 +814,7 @@ pub fn compare(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -861,7 +862,7 @@ pub fn div_rem(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, Matrix)
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -877,7 +878,7 @@ pub fn div_rem(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, Matrix)
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let quotient_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -886,7 +887,8 @@ pub fn div_rem(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, Matrix)
 	})?;
 	u32::try_from(quotient_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let quotient = Matrix::allocate_output(engine, vec![rows, words], quotient_elements, DType::U32)?;
+	let quotient =
+		Matrix::allocate_output(runtime, vec![rows, words], quotient_elements, DType::U32)?;
 	let remainder_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -896,7 +898,7 @@ pub fn div_rem(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, Matrix)
 	u32::try_from(remainder_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
 	let remainder =
-		Matrix::allocate_output(engine, vec![rows, words], remainder_elements, DType::U32)?;
+		Matrix::allocate_output(runtime, vec![rows, words], remainder_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -905,7 +907,7 @@ pub fn div_rem(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, Matrix)
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntDivRemU32;
 		let buffers = [
@@ -922,7 +924,7 @@ pub fn div_rem(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, Matrix)
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -979,7 +981,7 @@ pub fn shift_left(left: &Matrix, shift: u32) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -988,7 +990,7 @@ pub fn shift_left(left: &Matrix, shift: u32) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntShiftLeftU32;
 		let buffers = [
@@ -1012,7 +1014,7 @@ pub fn shift_left(left: &Matrix, shift: u32) -> Result<Matrix> {
 				value: u64::from(shift),
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1069,7 +1071,7 @@ pub fn shift_right(left: &Matrix, shift: u32) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1078,7 +1080,7 @@ pub fn shift_right(left: &Matrix, shift: u32) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntShiftRightU32;
 		let buffers = [
@@ -1102,7 +1104,7 @@ pub fn shift_right(left: &Matrix, shift: u32) -> Result<Matrix> {
 				value: u64::from(shift),
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1129,7 +1131,7 @@ pub fn shift_right(left: &Matrix, shift: u32) -> Result<Matrix> {
 /// and makes no constant-time or performance claim.
 ///
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 ///
 /// # Errors
@@ -1152,7 +1154,7 @@ pub fn reduce_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> {
 		|| modulus.shape().len() != 2
 		|| modulus.shape()[1] != words
 		|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)
-		|| !left.engine_handle().same_as(modulus.engine_handle())
+		|| !left.runtime().same_as(modulus.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -1168,7 +1170,7 @@ pub fn reduce_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1177,7 +1179,7 @@ pub fn reduce_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1186,7 +1188,7 @@ pub fn reduce_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> {
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntReduceModU32;
 		let buffers = [
@@ -1206,7 +1208,7 @@ pub fn reduce_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1233,7 +1235,7 @@ pub fn reduce_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> {
 /// and makes no constant-time or performance claim.
 ///
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 ///
 /// # Errors
@@ -1254,12 +1256,12 @@ pub fn add_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(Matri
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 		|| modulus.dtype() != DType::U32
 		|| modulus.shape().len() != 2
 		|| modulus.shape()[1] != words
 		|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)
-		|| !left.engine_handle().same_as(modulus.engine_handle())
+		|| !left.runtime().same_as(modulus.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -1275,7 +1277,7 @@ pub fn add_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(Matri
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1284,7 +1286,7 @@ pub fn add_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(Matri
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1293,7 +1295,7 @@ pub fn add_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(Matri
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntAddModU32;
 		let buffers = [
@@ -1314,7 +1316,7 @@ pub fn add_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(Matri
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1341,7 +1343,7 @@ pub fn add_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(Matri
 /// and makes no constant-time or performance claim.
 ///
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 ///
 /// # Errors
@@ -1362,12 +1364,12 @@ pub fn subtract_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 		|| modulus.dtype() != DType::U32
 		|| modulus.shape().len() != 2
 		|| modulus.shape()[1] != words
 		|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)
-		|| !left.engine_handle().same_as(modulus.engine_handle())
+		|| !left.runtime().same_as(modulus.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -1383,7 +1385,7 @@ pub fn subtract_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1392,7 +1394,7 @@ pub fn subtract_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1401,7 +1403,7 @@ pub fn subtract_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntSubtractModU32;
 		let buffers = [
@@ -1422,7 +1424,7 @@ pub fn subtract_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1449,7 +1451,7 @@ pub fn subtract_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(
 /// and makes no constant-time or performance claim.
 ///
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 ///
 /// # Errors
@@ -1470,12 +1472,12 @@ pub fn multiply_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 		|| modulus.dtype() != DType::U32
 		|| modulus.shape().len() != 2
 		|| modulus.shape()[1] != words
 		|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)
-		|| !left.engine_handle().same_as(modulus.engine_handle())
+		|| !left.runtime().same_as(modulus.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -1491,7 +1493,7 @@ pub fn multiply_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1500,7 +1502,7 @@ pub fn multiply_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1509,7 +1511,7 @@ pub fn multiply_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntMultiplyModU32;
 		let buffers = [
@@ -1530,7 +1532,7 @@ pub fn multiply_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1557,7 +1559,7 @@ pub fn multiply_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(
 /// and makes no constant-time or performance claim.
 ///
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 ///
 /// # Errors
@@ -1580,7 +1582,7 @@ pub fn square_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> {
 		|| modulus.shape().len() != 2
 		|| modulus.shape()[1] != words
 		|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)
-		|| !left.engine_handle().same_as(modulus.engine_handle())
+		|| !left.runtime().same_as(modulus.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -1596,7 +1598,7 @@ pub fn square_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1605,7 +1607,7 @@ pub fn square_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1614,7 +1616,7 @@ pub fn square_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> {
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntSquareModU32;
 		let buffers = [
@@ -1634,7 +1636,7 @@ pub fn square_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1661,7 +1663,7 @@ pub fn square_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> {
 /// and makes no constant-time or performance claim.
 ///
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 /// Non-invertible values also return status 0 and zero output. Odd/even and composite moduli are accepted.
 ///
@@ -1685,7 +1687,7 @@ pub fn inverse_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> 
 		|| modulus.shape().len() != 2
 		|| modulus.shape()[1] != words
 		|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)
-		|| !left.engine_handle().same_as(modulus.engine_handle())
+		|| !left.runtime().same_as(modulus.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -1701,7 +1703,7 @@ pub fn inverse_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> 
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1710,7 +1712,7 @@ pub fn inverse_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> 
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1719,7 +1721,7 @@ pub fn inverse_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> 
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntInverseModU32;
 		let buffers = [
@@ -1739,7 +1741,7 @@ pub fn inverse_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> 
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1766,7 +1768,7 @@ pub fn inverse_mod(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)> 
 /// and makes no constant-time or performance claim.
 ///
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 /// `right` is the unsigned exponent; zero exponents yield 1 modulo m, including 0^0.
 ///
@@ -1788,12 +1790,12 @@ pub fn pow_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(Matri
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 		|| modulus.dtype() != DType::U32
 		|| modulus.shape().len() != 2
 		|| modulus.shape()[1] != words
 		|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)
-		|| !left.engine_handle().same_as(modulus.engine_handle())
+		|| !left.runtime().same_as(modulus.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -1809,7 +1811,7 @@ pub fn pow_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(Matri
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1818,7 +1820,7 @@ pub fn pow_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(Matri
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1827,7 +1829,7 @@ pub fn pow_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(Matri
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntPowModU32;
 		let buffers = [
@@ -1848,7 +1850,7 @@ pub fn pow_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(Matri
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1875,7 +1877,7 @@ pub fn pow_mod(left: &Matrix, right: &Matrix, modulus: &Matrix) -> Result<(Matri
 /// and makes no constant-time or performance claim.
 ///
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 /// Montgomery operations require an odd modulus; even moduli return status 0 and zero output.
 /// R = 2^(32*words). Conversion multiplies by R or R^-1; multiplication computes a*b*R^-1 modulo m.
@@ -1900,7 +1902,7 @@ pub fn to_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)
 		|| modulus.shape().len() != 2
 		|| modulus.shape()[1] != words
 		|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)
-		|| !left.engine_handle().same_as(modulus.engine_handle())
+		|| !left.runtime().same_as(modulus.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -1916,7 +1918,7 @@ pub fn to_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1925,7 +1927,7 @@ pub fn to_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -1934,7 +1936,7 @@ pub fn to_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntToMontgomeryU32;
 		let buffers = [
@@ -1954,7 +1956,7 @@ pub fn to_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1981,7 +1983,7 @@ pub fn to_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matrix)
 /// and makes no constant-time or performance claim.
 ///
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 /// Montgomery operations require an odd modulus; even moduli return status 0 and zero output.
 /// R = 2^(32*words). Conversion multiplies by R or R^-1; multiplication computes a*b*R^-1 modulo m.
@@ -2006,7 +2008,7 @@ pub fn from_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matri
 		|| modulus.shape().len() != 2
 		|| modulus.shape()[1] != words
 		|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)
-		|| !left.engine_handle().same_as(modulus.engine_handle())
+		|| !left.runtime().same_as(modulus.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -2022,7 +2024,7 @@ pub fn from_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matri
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2031,7 +2033,7 @@ pub fn from_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matri
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2040,7 +2042,7 @@ pub fn from_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matri
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntFromMontgomeryU32;
 		let buffers = [
@@ -2060,7 +2062,7 @@ pub fn from_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matri
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -2087,7 +2089,7 @@ pub fn from_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Matri
 /// and makes no constant-time or performance claim.
 ///
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 /// Montgomery operations require an odd modulus; even moduli return status 0 and zero output.
 /// R = 2^(32*words). Conversion multiplies by R or R^-1; multiplication computes a*b*R^-1 modulo m.
@@ -2114,12 +2116,12 @@ pub fn montgomery_multiply(
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 		|| modulus.dtype() != DType::U32
 		|| modulus.shape().len() != 2
 		|| modulus.shape()[1] != words
 		|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)
-		|| !left.engine_handle().same_as(modulus.engine_handle())
+		|| !left.runtime().same_as(modulus.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -2135,7 +2137,7 @@ pub fn montgomery_multiply(
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2144,7 +2146,7 @@ pub fn montgomery_multiply(
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2153,7 +2155,7 @@ pub fn montgomery_multiply(
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntMontgomeryMultiplyU32;
 		let buffers = [
@@ -2174,7 +2176,7 @@ pub fn montgomery_multiply(
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -2201,7 +2203,7 @@ pub fn montgomery_multiply(
 /// and makes no constant-time or performance claim.
 ///
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 ///
 /// # Errors
@@ -2226,12 +2228,12 @@ pub fn barrett_multiply(
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 		|| modulus.dtype() != DType::U32
 		|| modulus.shape().len() != 2
 		|| modulus.shape()[1] != words
 		|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)
-		|| !left.engine_handle().same_as(modulus.engine_handle())
+		|| !left.runtime().same_as(modulus.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -2247,7 +2249,7 @@ pub fn barrett_multiply(
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2256,7 +2258,7 @@ pub fn barrett_multiply(
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2265,7 +2267,7 @@ pub fn barrett_multiply(
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntBarrettMultiplyU32;
 		let buffers = [
@@ -2286,7 +2288,7 @@ pub fn barrett_multiply(
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -2332,7 +2334,7 @@ pub fn multiply_high(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| right.shape() != left.shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 	{
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires matching-owner U32 limb rows with 1..=128 words"
@@ -2348,7 +2350,7 @@ pub fn multiply_high(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2357,7 +2359,7 @@ pub fn multiply_high(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntMultiplyHighU32;
 		let buffers = [
@@ -2372,7 +2374,7 @@ pub fn multiply_high(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -2429,7 +2431,7 @@ pub fn square_wide(left: &Matrix) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words * 2)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2438,7 +2440,8 @@ pub fn square_wide(left: &Matrix) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words * 2], output_elements, DType::U32)?;
+	let output =
+		Matrix::allocate_output(runtime, vec![rows, words * 2], output_elements, DType::U32)?;
 	if rows != 0 {
 		// Small batches underutilize per-invocation scheduling; the cooperative
 		// provider owns one workgroup per row. Routing is private lowering policy.
@@ -2449,7 +2452,7 @@ pub fn square_wide(left: &Matrix) -> Result<Matrix> {
 				BufferBinding::read(left.storage()),
 				BufferBinding::write(output.storage()),
 			];
-			let groups = engine.linear_dispatch_grid(count, 1)?;
+			let groups = runtime.linear_dispatch_grid(count, 1)?;
 			let push_constants = [
 				PushConstant::U32(count),
 				PushConstant::U32(groups[0]),
@@ -2461,7 +2464,7 @@ pub fn square_wide(left: &Matrix) -> Result<Matrix> {
 				name: "width_bits".into(),
 				value: (words * 32) as u64,
 			}];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -2489,7 +2492,7 @@ pub fn square_wide(left: &Matrix) -> Result<Matrix> {
 				name: "width_bits".into(),
 				value: (words * 32) as u64,
 			}];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -2547,7 +2550,7 @@ pub fn bit_not(left: &Matrix) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2556,7 +2559,7 @@ pub fn bit_not(left: &Matrix) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntBitNotU32;
 		let buffers = [
@@ -2570,7 +2573,7 @@ pub fn bit_not(left: &Matrix) -> Result<Matrix> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -2627,7 +2630,7 @@ pub fn leading_zeros(left: &Matrix) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2636,7 +2639,7 @@ pub fn leading_zeros(left: &Matrix) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntLeadingZerosU32;
 		let buffers = [
@@ -2650,7 +2653,7 @@ pub fn leading_zeros(left: &Matrix) -> Result<Matrix> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -2708,7 +2711,7 @@ pub fn add_scalar(left: &Matrix, scalar: u32) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2717,7 +2720,7 @@ pub fn add_scalar(left: &Matrix, scalar: u32) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntAddScalarU32;
 		let buffers = [
@@ -2742,7 +2745,7 @@ pub fn add_scalar(left: &Matrix, scalar: u32) -> Result<Matrix> {
 				value: scalar as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -2800,7 +2803,7 @@ pub fn compare_scalar(left: &Matrix, scalar: u32) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2809,7 +2812,7 @@ pub fn compare_scalar(left: &Matrix, scalar: u32) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntCompareScalarU32;
 		let buffers = [
@@ -2834,7 +2837,7 @@ pub fn compare_scalar(left: &Matrix, scalar: u32) -> Result<Matrix> {
 				value: scalar as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -2896,7 +2899,7 @@ pub fn div_rem_mixed(
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| (right.shape()[0] != 1 && right.shape()[0] != rows)
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 		|| !(1..=256).contains(&quotient_words)
 	{
 		return Err(Error::invalid_argument(format!(
@@ -2913,7 +2916,7 @@ pub fn div_rem_mixed(
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let quotient_elements = rows
 		.checked_mul(quotient_words as usize)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2923,7 +2926,7 @@ pub fn div_rem_mixed(
 	u32::try_from(quotient_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
 	let quotient = Matrix::allocate_output(
-		engine,
+		runtime,
 		vec![rows, quotient_words as usize],
 		quotient_elements,
 		DType::U32,
@@ -2937,7 +2940,7 @@ pub fn div_rem_mixed(
 	u32::try_from(remainder_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
 	let remainder =
-		Matrix::allocate_output(engine, vec![rows, words], remainder_elements, DType::U32)?;
+		Matrix::allocate_output(runtime, vec![rows, words], remainder_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -2946,7 +2949,7 @@ pub fn div_rem_mixed(
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntDivRemMixedU32;
 		let buffers = [
@@ -2975,7 +2978,7 @@ pub fn div_rem_mixed(
 				value: quotient_words as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -3033,7 +3036,7 @@ pub fn div_rem_narrow(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, 
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| (right.shape()[0] != 1 && right.shape()[0] != rows)
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 		|| input_words != words * 2
 	{
 		return Err(Error::invalid_argument(format!(
@@ -3050,7 +3053,7 @@ pub fn div_rem_narrow(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, 
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let quotient_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3059,7 +3062,8 @@ pub fn div_rem_narrow(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, 
 	})?;
 	u32::try_from(quotient_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let quotient = Matrix::allocate_output(engine, vec![rows, words], quotient_elements, DType::U32)?;
+	let quotient =
+		Matrix::allocate_output(runtime, vec![rows, words], quotient_elements, DType::U32)?;
 	let remainder_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3069,7 +3073,7 @@ pub fn div_rem_narrow(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, 
 	u32::try_from(remainder_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
 	let remainder =
-		Matrix::allocate_output(engine, vec![rows, words], remainder_elements, DType::U32)?;
+		Matrix::allocate_output(runtime, vec![rows, words], remainder_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3078,7 +3082,7 @@ pub fn div_rem_narrow(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, 
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntDivRemNarrowU32;
 		let buffers = [
@@ -3100,7 +3104,7 @@ pub fn div_rem_narrow(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, 
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -3158,7 +3162,7 @@ pub fn div_rem_scalar(left: &Matrix, scalar: u32) -> Result<(Matrix, Matrix, Mat
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let quotient_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3167,7 +3171,8 @@ pub fn div_rem_scalar(left: &Matrix, scalar: u32) -> Result<(Matrix, Matrix, Mat
 	})?;
 	u32::try_from(quotient_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let quotient = Matrix::allocate_output(engine, vec![rows, words], quotient_elements, DType::U32)?;
+	let quotient =
+		Matrix::allocate_output(runtime, vec![rows, words], quotient_elements, DType::U32)?;
 	let remainder_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3176,7 +3181,7 @@ pub fn div_rem_scalar(left: &Matrix, scalar: u32) -> Result<(Matrix, Matrix, Mat
 	})?;
 	u32::try_from(remainder_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let remainder = Matrix::allocate_output(engine, vec![rows], remainder_elements, DType::U32)?;
+	let remainder = Matrix::allocate_output(runtime, vec![rows], remainder_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3185,7 +3190,7 @@ pub fn div_rem_scalar(left: &Matrix, scalar: u32) -> Result<(Matrix, Matrix, Mat
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntDivRemScalarU32;
 		let buffers = [
@@ -3212,7 +3217,7 @@ pub fn div_rem_scalar(left: &Matrix, scalar: u32) -> Result<(Matrix, Matrix, Mat
 				value: scalar as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -3270,7 +3275,7 @@ pub fn div_rem_wide(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, Ma
 		|| !(1..=128).contains(&words)
 		|| right.dtype() != DType::U32
 		|| (right.shape()[0] != 1 && right.shape()[0] != rows)
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 		|| input_words != words * 2
 	{
 		return Err(Error::invalid_argument(format!(
@@ -3287,7 +3292,7 @@ pub fn div_rem_wide(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, Ma
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let quotient_elements = rows
 		.checked_mul(input_words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3297,7 +3302,7 @@ pub fn div_rem_wide(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, Ma
 	u32::try_from(quotient_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
 	let quotient = Matrix::allocate_output(
-		engine,
+		runtime,
 		vec![rows, input_words],
 		quotient_elements,
 		DType::U32,
@@ -3311,7 +3316,7 @@ pub fn div_rem_wide(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, Ma
 	u32::try_from(remainder_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
 	let remainder =
-		Matrix::allocate_output(engine, vec![rows, words], remainder_elements, DType::U32)?;
+		Matrix::allocate_output(runtime, vec![rows, words], remainder_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3320,7 +3325,7 @@ pub fn div_rem_wide(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, Ma
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntDivRemWideU32;
 		let buffers = [
@@ -3342,7 +3347,7 @@ pub fn div_rem_wide(left: &Matrix, right: &Matrix) -> Result<(Matrix, Matrix, Ma
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -3400,7 +3405,7 @@ pub fn from_u32(left: &Matrix, output_words: u32) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3409,7 +3414,7 @@ pub fn from_u32(left: &Matrix, output_words: u32) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntFromU32U32;
 		let buffers = [
@@ -3434,7 +3439,7 @@ pub fn from_u32(left: &Matrix, output_words: u32) -> Result<Matrix> {
 				value: output_words as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -3492,7 +3497,7 @@ pub fn from_u64(left: &Matrix, output_words: u32) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3501,7 +3506,7 @@ pub fn from_u64(left: &Matrix, output_words: u32) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntFromU64U32;
 		let buffers = [
@@ -3526,7 +3531,7 @@ pub fn from_u64(left: &Matrix, output_words: u32) -> Result<Matrix> {
 				value: output_words as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -3584,7 +3589,7 @@ pub fn multiply_scalar(left: &Matrix, scalar: u32) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3593,7 +3598,7 @@ pub fn multiply_scalar(left: &Matrix, scalar: u32) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntMultiplyScalarU32;
 		let buffers = [
@@ -3618,7 +3623,7 @@ pub fn multiply_scalar(left: &Matrix, scalar: u32) -> Result<Matrix> {
 				value: scalar as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -3674,7 +3679,7 @@ pub fn reduce_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Mat
 		|| !(1..=128).contains(&words)
 		|| modulus.dtype() != DType::U32
 		|| (modulus.shape()[0] != 1 && modulus.shape()[0] != rows)
-		|| !left.engine_handle().same_as(modulus.engine_handle())
+		|| !left.runtime().same_as(modulus.runtime())
 		|| input_words != words * 2
 	{
 		return Err(Error::invalid_argument(format!(
@@ -3691,7 +3696,7 @@ pub fn reduce_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Mat
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3700,7 +3705,7 @@ pub fn reduce_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Mat
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3709,7 +3714,7 @@ pub fn reduce_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Mat
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntReduceMontgomeryU32;
 		let buffers = [
@@ -3730,7 +3735,7 @@ pub fn reduce_montgomery(left: &Matrix, modulus: &Matrix) -> Result<(Matrix, Mat
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -3788,7 +3793,7 @@ pub fn subtract_scalar(left: &Matrix, scalar: u32) -> Result<Matrix> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3797,7 +3802,7 @@ pub fn subtract_scalar(left: &Matrix, scalar: u32) -> Result<Matrix> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, words], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, words], output_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntSubtractScalarU32;
 		let buffers = [
@@ -3822,7 +3827,7 @@ pub fn subtract_scalar(left: &Matrix, scalar: u32) -> Result<Matrix> {
 				value: scalar as u64,
 			},
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -3881,7 +3886,7 @@ pub fn to_u32(left: &Matrix) -> Result<(Matrix, Matrix)> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3890,7 +3895,7 @@ pub fn to_u32(left: &Matrix) -> Result<(Matrix, Matrix)> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3899,7 +3904,7 @@ pub fn to_u32(left: &Matrix) -> Result<(Matrix, Matrix)> {
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntToU32U32;
 		let buffers = [
@@ -3918,7 +3923,7 @@ pub fn to_u32(left: &Matrix) -> Result<(Matrix, Matrix)> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -3977,7 +3982,7 @@ pub fn to_u64(left: &Matrix) -> Result<(Matrix, Matrix)> {
 		})?;
 	u32::try_from(input_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} input byte extent exceeds u32")))?;
-	let engine = left.engine_handle();
+	let runtime = left.runtime();
 	let output_elements = rows
 		.checked_mul(2)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3986,7 +3991,7 @@ pub fn to_u64(left: &Matrix) -> Result<(Matrix, Matrix)> {
 	})?;
 	u32::try_from(output_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let output = Matrix::allocate_output(engine, vec![rows, 2], output_elements, DType::U32)?;
+	let output = Matrix::allocate_output(runtime, vec![rows, 2], output_elements, DType::U32)?;
 	let status_elements = rows
 		.checked_mul(1)
 		.ok_or_else(|| Error::invalid_argument(format!("{operation} output extent overflows usize")))?;
@@ -3995,7 +4000,7 @@ pub fn to_u64(left: &Matrix) -> Result<(Matrix, Matrix)> {
 	})?;
 	u32::try_from(status_bytes)
 		.map_err(|_| Error::invalid_argument(format!("{operation} output byte extent exceeds u32")))?;
-	let status = Matrix::allocate_output(engine, vec![rows], status_elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], status_elements, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntToU64U32;
 		let buffers = [
@@ -4014,7 +4019,7 @@ pub fn to_u64(left: &Matrix) -> Result<(Matrix, Matrix)> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -4062,9 +4067,9 @@ pub fn setup_barrett(modulus: &Matrix) -> Result<BarrettParameters> {
 		.checked_mul(4)
 		.ok_or_else(|| Error::invalid_argument("setup_barrett bytes overflow usize"))?;
 	u32::try_from(bytes).map_err(|_| Error::invalid_argument("setup_barrett bytes exceed u32"))?;
-	let engine = modulus.engine_handle();
-	let encoded = Matrix::allocate_output(engine, vec![rows, encoded_words], elements, DType::U32)?;
-	let status = Matrix::allocate_output(engine, vec![rows], rows, DType::U32)?;
+	let runtime = modulus.runtime();
+	let encoded = Matrix::allocate_output(runtime, vec![rows, encoded_words], elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], rows, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntSetupBarrettU32;
 		let buffers = [
@@ -4077,7 +4082,7 @@ pub fn setup_barrett(modulus: &Matrix) -> Result<BarrettParameters> {
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -4123,10 +4128,10 @@ pub fn reduce_barrett(left: &Matrix, parameters: &BarrettParameters) -> Result<(
 	if left.dtype() != DType::U32
 		|| input_words != words * 2
 		|| (prepared.shape()[0] != 1 && prepared.shape()[0] != rows)
-		|| !left.engine_handle().same_as(prepared.engine_handle())
+		|| !left.runtime().same_as(prepared.runtime())
 	{
 		return Err(Error::invalid_argument(
-			"reduce_barrett requires matching Engine and modulus width/batch",
+			"reduce_barrett requires matching Runtime and modulus width/batch",
 		));
 	}
 	let count =
@@ -4140,9 +4145,9 @@ pub fn reduce_barrett(left: &Matrix, parameters: &BarrettParameters) -> Result<(
 	let elements = rows
 		.checked_mul(words)
 		.ok_or_else(|| Error::invalid_argument("reduce_barrett output extent overflows usize"))?;
-	let engine = left.engine_handle();
-	let output = Matrix::allocate_output(engine, vec![rows, words], elements, DType::U32)?;
-	let status = Matrix::allocate_output(engine, vec![rows], rows, DType::U32)?;
+	let runtime = left.runtime();
+	let output = Matrix::allocate_output(runtime, vec![rows, words], elements, DType::U32)?;
+	let status = Matrix::allocate_output(runtime, vec![rows], rows, DType::U32)?;
 	if rows != 0 {
 		let kernel = KernelId::CryptographyBigIntReduceBarrettU32;
 		let buffers = [
@@ -4160,7 +4165,7 @@ pub fn reduce_barrett(left: &Matrix, parameters: &BarrettParameters) -> Result<(
 			name: "width_bits".into(),
 			value: (words * 32) as u64,
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,

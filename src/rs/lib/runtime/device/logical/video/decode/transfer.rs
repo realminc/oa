@@ -304,7 +304,7 @@ impl ImageHandoff<'_> {
 			.set_image_memory_barriers(std::slice::from_ref(&barrier))
 			.map_err(Error::from)?;
 		// SAFETY: both sides use the exact same layer and layouts. The
-		// engine timeline orders the matching release and acquire.
+		// runtime timeline orders the matching release and acquire.
 		unsafe { device.cmd_pipeline_barrier2(command, &dependency) }?;
 		Ok(())
 	}

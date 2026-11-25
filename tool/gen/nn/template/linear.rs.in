@@ -35,7 +35,7 @@ impl {{name}} {
 		output_features: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, input_features, output_features, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, input_features, output_features, seed)	}
 
 	/// Construct a deterministically initialized linear layer.
 	///
@@ -46,12 +46,12 @@ impl {{name}} {
 	/// Returns an error when either feature count is zero, shape arithmetic
 	/// overflows, or parameter allocation/upload fails.
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		input_features: usize,
 		output_features: usize,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_bias_on(engine, input_features, output_features, true, seed)
+		Self::new_with_seed_and_bias_on(runtime, input_features, output_features, true, seed)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -61,7 +61,7 @@ impl {{name}} {
 		trainable_bias: bool,
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_and_bias_on(&Engine::current()?, input_features, output_features, trainable_bias, seed)	}
+		Self::new_with_seed_and_bias_on(&Runtime::current()?, input_features, output_features, trainable_bias, seed)	}
 
 	/// Construct a deterministically initialized linear layer with optional bias.
 	///
@@ -73,7 +73,7 @@ impl {{name}} {
 	/// Returns an error when either feature count is zero, shape arithmetic
 	/// overflows, or parameter allocation/upload fails.
 	pub fn new_with_seed_and_bias_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		input_features: usize,
 		output_features: usize,
 		trainable_bias: bool,
@@ -92,8 +92,8 @@ impl {{name}} {
 			.ok_or_else(|| Error::invalid_argument("linear Xavier extent overflows usize"))?;
 		let limit = (6.0_f32 / denominator as f32).sqrt();
 		let weights = random::symmetric_uniform(weight_count, limit, seed);
-		let weight = Matrix::new_from_f32_on(engine, [output_features, input_features], &weights)?;
-		let bias = Matrix::new_from_f32_on(engine, [output_features], &vec![0.0; output_features])?;
+		let weight = Matrix::new_from_f32_on(runtime, [output_features, input_features], &weights)?;
+		let bias = Matrix::new_from_f32_on(runtime, [output_features], &vec![0.0; output_features])?;
 		Self::new_from_parts(weight, bias, trainable_bias)
 	}
 
@@ -102,7 +102,7 @@ impl {{name}} {
 	/// # Errors
 	///
 	/// Returns an error unless weight has shape `[O, I]`, bias has shape `[O]`,
-	/// both are nonempty FP32 matrices, and both belong to the same engine.
+	/// both are nonempty FP32 matrices, and both belong to the same runtime.
 	pub fn new_from_matrices(weight: Matrix, bias: Matrix) -> Result<Self> {
 		Self::new_from_parts(weight, bias, true)
 	}
@@ -124,7 +124,7 @@ impl {{name}} {
 		}
 		let output_features = *output_features;
 		let zero = Matrix::allocate(
-			weight.engine_handle(),
+			weight.runtime(),
 			vec![output_features],
 			output_features,
 			crate::DType::F32,
@@ -141,10 +141,10 @@ impl {{name}} {
 			|| bias.shape() != [*output_features]
 			|| weight.dtype() != crate::DType::F32
 			|| bias.dtype() != crate::DType::F32
-			|| !weight.engine_handle().same_as(bias.engine_handle())
+			|| !weight.runtime().same_as(bias.runtime())
 		{
 			return Err(Error::invalid_argument(
-				"linear requires nonempty same-engine FP32 weight [O, I] and bias [O]",
+				"linear requires nonempty same-runtime FP32 weight [O, I] and bias [O]",
 			));
 		}
 		let input_features = *input_features;

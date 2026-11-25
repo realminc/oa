@@ -303,7 +303,7 @@
 		},
 		{
 			"class": "record",
-			"name": "EngineRequirements",
+			"name": "RuntimeRequirements",
 			"kind": "struct",
 			"visibility": "pub",
 			"derive": [
@@ -357,7 +357,7 @@
 				"PartialEq",
 				"Eq"
 			],
-			"doc": "Engine-lifetime counters of fusion decisions, decline reasons and JIT admissions.",
+			"doc": "Runtime-lifetime counters of fusion decisions, decline reasons and JIT admissions.",
 			"fields": [
 				{
 					"name": "examined_node_count",

@@ -17,7 +17,7 @@ const BIQUAD_BLOCK_SIZE: u32 = 256;
 
 fn allocate_like(input: &Audio) -> Result<Matrix> {
 	Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		crate::DType::F32,
@@ -112,7 +112,7 @@ pub fn normalize(input: &Audio, config: NormalizeAudioConfig) -> Result<Audio> {
 		));
 	}
 	let count = element_count_u32(input, "audio::normalize")?;
-	let level = Matrix::allocate(input.engine_handle(), vec![1], 1, crate::DType::F32)?;
+	let level = Matrix::allocate(input.runtime(), vec![1], 1, crate::DType::F32)?;
 	let output_matrix = allocate_like(input)?;
 	let output = wrap_like(output_matrix, input)?;
 	let level_buffers = [
@@ -154,7 +154,7 @@ pub fn normalize(input: &Audio, config: NormalizeAudioConfig) -> Result<Audio> {
 		unsigned_attribute("mode", u64::from(mode)),
 	];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_split_semantic(
+	input.runtime().record_audio_split_semantic(
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: crate::core::operation::audio::NORMALIZE,
@@ -209,7 +209,7 @@ pub fn resample(input: &Audio, config: ResampleConfig) -> Result<Audio> {
 		.checked_mul(out_samples_u32)
 		.ok_or_else(|| Error::out_of_range("audio::resample dispatch exceeds u32"))?;
 	let matrix = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![input.channels(), out_samples],
 		count as usize,
 		crate::DType::F32,
@@ -232,7 +232,7 @@ pub fn resample(input: &Audio, config: ResampleConfig) -> Result<Audio> {
 		BufferBinding::write(output.storage()),
 	];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioResampleF32,
 			buffers: &buffers,
@@ -265,7 +265,7 @@ pub fn gain(input: &Audio, gain_db: f32) -> Result<Audio> {
 		BufferBinding::write(output.storage()),
 	];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioGainF32,
 			buffers: &buffers,
@@ -302,7 +302,7 @@ pub fn clip(input: &Audio, minimum: f32, maximum: f32) -> Result<Audio> {
 		BufferBinding::write(output.storage()),
 	];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioClipF32,
 			buffers: &buffers,
@@ -346,7 +346,7 @@ pub fn saturate(input: &Audio, drive_db: f32, mix: f32) -> Result<Audio> {
 		BufferBinding::write(output.storage()),
 	];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioSaturateF32,
 			buffers: &buffers,
@@ -412,19 +412,19 @@ pub fn biquad(input: &Audio, coefficients: BiquadCoefficients) -> Result<Audio> 
 		.and_then(|value| value.checked_mul(2))
 		.ok_or_else(|| Error::out_of_range("audio::biquad state exceeds usize"))?;
 	let summaries = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![input.channels(), blocks as usize, 6],
 		summary_elements,
 		DType::F32,
 	)?;
 	let states = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![input.channels(), blocks as usize, 2],
 		state_elements,
 		DType::F32,
 	)?;
 	let output_matrix = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
@@ -486,7 +486,7 @@ pub fn biquad(input: &Audio, coefficients: BiquadCoefficients) -> Result<Audio> 
 		float_attribute("a2", coefficients.a2),
 	];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_split_semantic(
+	input.runtime().record_audio_split_semantic(
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: crate::core::operation::audio::BIQUAD,
@@ -525,7 +525,7 @@ pub fn reverb(input: &Audio, decay_seconds: f32, wet: f32) -> Result<Audio> {
 	let output_shape = [input.channels(), out_samples as usize];
 	let allocate_output = || {
 		Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			output_shape.to_vec(),
 			count as usize,
 			DType::F32,
@@ -718,7 +718,7 @@ pub fn reverb(input: &Audio, decay_seconds: f32, wet: f32) -> Result<Audio> {
 		float_attribute("wet", wet),
 	];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_split_semantic(
+	input.runtime().record_audio_split_semantic(
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: crate::core::operation::audio::REVERB,
@@ -750,9 +750,9 @@ pub fn sos_filter(input: &Audio, sections: &[BiquadCoefficients]) -> Result<Audi
 		packed.extend_from_slice(&[section.b0, section.b1, section.b2, section.a1, section.a2]);
 	}
 	let coefficient_matrix =
-		Matrix::new_from_slice_handle(input.engine_handle(), vec![sections.len(), 5], &packed)?;
+		Matrix::new_from_slice_handle(input.runtime(), vec![sections.len(), 5], &packed)?;
 	let output_matrix = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
@@ -779,7 +779,7 @@ pub fn sos_filter(input: &Audio, sections: &[BiquadCoefficients]) -> Result<Audi
 		unsigned_attribute("coefficientHash", hash),
 	];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioSosFilterF32,
 			buffers: &buffers,
@@ -817,7 +817,7 @@ pub fn pre_emphasis(input: &Audio, alpha: f32) -> Result<Audio> {
 		BufferBinding::write(output.storage()),
 	];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioPreEmphasisF32,
 			buffers: &buffers,
@@ -840,7 +840,7 @@ pub fn to_mono(input: &Audio) -> Result<Audio> {
 	let channels = u32_extent(input.channels(), "audio::to_mono channels")?;
 	let samples = u32_extent(input.samples(), "audio::to_mono samples")?;
 	let matrix = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![1, input.samples()],
 		input.samples(),
 		crate::DType::F32,
@@ -852,7 +852,7 @@ pub fn to_mono(input: &Audio) -> Result<Audio> {
 	];
 	let push = [PushConstant::U32(channels), PushConstant::U32(samples)];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioToMonoF32,
 			buffers: &buffers,
@@ -890,7 +890,7 @@ pub fn fade(input: &Audio, fade_in_samples: u64, fade_out_samples: u64) -> Resul
 		BufferBinding::write(output.storage()),
 	];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioFadeF32,
 			buffers: &buffers,
@@ -916,7 +916,7 @@ pub fn mix(left: &Audio, right: &Audio, gain_left: f32, gain_right: f32) -> Resu
 	if left.sample_rate() != right.sample_rate()
 		|| left.layout() != right.layout()
 		|| left.as_matrix().shape() != right.as_matrix().shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 		|| !gain_left.is_finite()
 		|| !gain_right.is_finite()
 	{
@@ -941,7 +941,7 @@ pub fn mix(left: &Audio, right: &Audio, gain_left: f32, gain_right: f32) -> Resu
 		float_attribute("gainB", gain_right),
 	];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	left.engine_handle().record_audio_semantic(
+	left.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioMixF32,
 			buffers: &buffers,
@@ -978,7 +978,7 @@ pub fn amplitude_to_db(input: &Audio, floor_db: f32) -> Result<Matrix> {
 	let push = [PushConstant::U32(count), PushConstant::F32(floor_db)];
 	let outputs = [AudioSemanticOutput::Matrix(&output)];
 	let attributes = [float_attribute("floorDb", floor_db)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioAmplitudeToDbF32,
 			buffers: &buffers,
@@ -1010,7 +1010,7 @@ pub fn waveform_envelope(input: &Audio, bins: u32) -> Result<Matrix> {
 		.and_then(|value| value.checked_mul(2))
 		.ok_or_else(|| Error::out_of_range("audio::waveform_envelope output exceeds usize"))?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![bins as usize, 2],
 		elements,
 		crate::DType::F32,
@@ -1026,7 +1026,7 @@ pub fn waveform_envelope(input: &Audio, bins: u32) -> Result<Matrix> {
 	];
 	let outputs = [AudioSemanticOutput::Matrix(&output)];
 	let attributes = [unsigned_attribute("bins", u64::from(bins))];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		ComputeDispatch {
 			kernel: KernelId::AudioWaveformEnvelopeF32,
 			buffers: &buffers,

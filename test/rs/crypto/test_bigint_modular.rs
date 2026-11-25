@@ -1,4 +1,4 @@
-//! Modular/Montgomery/Barrett Engine routes against Python-integer fixtures.
+//! Modular/Montgomery/Barrett Runtime routes against Python-integer fixtures.
 use oa::{Matrix, Result, crypto::bigint};
 
 type Unary = fn(&Matrix, &Matrix) -> Result<(Matrix, Matrix)>;
@@ -32,14 +32,14 @@ fn words(value: &serde_json::Value) -> Vec<u32> {
 		.collect()
 }
 
-test_vk!(bigint_modular_oracles_and_multi_output_replay, engine, {
+test_vk!(bigint_modular_oracles_and_multi_output_replay, runtime, {
 	for case in fixture()["cases"].as_array().unwrap() {
 		let width = usize::try_from(case["words"].as_u64().unwrap()).unwrap();
 		let rows = usize::try_from(case["rows"].as_u64().unwrap()).unwrap();
 		let left = Matrix::new_from_slice([rows, width], &words(&case["left"]))?;
 		let right = Matrix::new_from_slice([rows, width], &words(&case["right"]))?;
 		let modulus = Matrix::new_from_slice([rows, width], &words(&case["modulus"]))?;
-		let (plan, outputs) = engine.capture(|| {
+		let (plan, outputs) = runtime.capture(|| {
 			let mut outputs = Vec::new();
 			for (name, op) in UNARY {
 				outputs.push((name, op(&left, &modulus)?));
@@ -63,7 +63,7 @@ test_vk!(bigint_modular_oracles_and_multi_output_replay, engine, {
 			);
 		}
 		for _ in 0..2 {
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			for (name, (output, status)) in &outputs {
 				assert_eq!(
 					output.read::<u32>()?,
@@ -86,13 +86,13 @@ test_vk!(bigint_modular_oracles_and_multi_output_replay, engine, {
 
 test_vk!(
 	bigint_shared_modulus_chain_rebinds_without_host_intermediates,
-	engine,
+	runtime,
 	{
 		let values = (1_u32..=33).collect::<Vec<_>>();
 		let left = Matrix::new_from_slice([33, 1], &values)?;
 		let right = Matrix::new_from_slice([33, 1], &[7_u32; 33])?;
 		let modulus = Matrix::new_from_slice([1, 1], &[97_u32])?;
-		let (mut plan, (output, status)) = engine.capture(|| {
+		let (mut plan, (output, status)) = runtime.capture(|| {
 			let (a, _) = bigint::to_montgomery(&left, &modulus)?;
 			let (b, _) = bigint::to_montgomery(&right, &modulus)?;
 			let (product, _) = bigint::montgomery_multiply(&a, &b, &modulus)?;
@@ -104,7 +104,7 @@ test_vk!(
 				let replacement = Matrix::new_from_slice([1, 1], &[prime])?;
 				plan.bind_matrix_input(&modulus, &replacement)?;
 			}
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			assert_eq!(
 				output.read::<u32>()?,
 				values.iter().map(|v| v * 7 % prime).collect::<Vec<_>>()
@@ -113,14 +113,14 @@ test_vk!(
 		}
 		let even = Matrix::new_from_slice([1, 1], &[96_u32])?;
 		plan.bind_matrix_input(&modulus, &even)?;
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(output.read::<u32>()?, vec![0; 33]);
 		assert_eq!(status.read::<u32>()?, vec![0; 33]);
 		Ok(())
 	}
 );
 
-test_vk!(bigint_modular_metadata_and_empty_batches, engine, {
+test_vk!(bigint_modular_metadata_and_empty_batches, runtime, {
 	let left = Matrix::new_from_slice([2, 2], &[1_u32; 4])?;
 	let valid = Matrix::new_from_slice([1, 2], &[97_u32, 0])?;
 	let wrong_dtype = Matrix::new_from_f32([1, 2], &[97.0, 0.0])?;

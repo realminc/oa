@@ -1,24 +1,24 @@
 //! Donor `testSatelliteNlp.cpp` coordinator coverage: the split-batch and
 //! standalone frozen byte-Transformer coordinators. The donor shares one
-//! engine between the serving thread and the coordinator thread; the Rust
-//! `Engine` is `!Send`, so the coordinator constructs its own engine inside
-//! the client thread while the server keeps the test thread's engine.
+//! runtime between the serving thread and the coordinator thread; the Rust
+//! `Runtime` is `!Send`, so the coordinator constructs its own runtime inside
+//! the client thread while the server keeps the test thread's runtime.
 
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::thread;
 
-use super::super::SatelliteProtocol;
-use super::super::nlp_step::{
+use super::SatelliteProtocol;
+use super::nlp_coordinator::*;
+use super::nlp_step::{
 	NLP_GRADIENT_OPERATION, NLP_STEP_OPERATION, satellite_build_nlp_batch, satellite_execute_nlp_work,
 };
-use super::super::session::*;
-use super::*;
+use super::session::*;
 
 use crate::TcpListener;
 use crate::net::satellite::nlp_step::{GENERATION_LENGTH, GENERATION_PROMPT, TRAINING_STEPS};
-use crate::{Engine, ErrorKind, Result};
+use crate::{ErrorKind, Result, Runtime};
 
 fn satellite_mac(secret: &[u8], data: &[u8], custom: &str, out: &mut [u8; 32]) -> Result<()> {
 	out.copy_from_slice(&crate::crypto::kmac256(
@@ -52,19 +52,19 @@ fn make_config(seed: u8, device_name: String) -> SatelliteSessionConfig {
 
 fn nlp_config(seed: u8, device_name: String, calls: Rc<Cell<u32>>) -> SatelliteSessionConfig {
 	let mut config = make_config(seed, device_name);
-	config.named_work = Some(Box::new(move |engine, request| {
+	config.named_work = Some(Box::new(move |runtime, request| {
 		calls.set(calls.get() + 1);
-		satellite_execute_nlp_work(engine, request)
+		satellite_execute_nlp_work(runtime, request)
 	}));
 	config
 }
 
-fn test_engine() -> Result<Engine> {
-	Engine::builder()
+fn test_runtime() -> Result<Runtime> {
+	Runtime::builder()
 		.devices(crate::DeviceSelection::Index(0))
 		.build()
-		.inspect(|engine| {
-			Engine::set_default(engine.clone());
+		.inspect(|runtime| {
+			Runtime::set_default(runtime.clone());
 		})
 }
 
@@ -106,12 +106,12 @@ fn batch_builder_source_contract_holds_for_coordinator() -> Result<()> {
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn satellite_nlp_coordinator_persists_optimizer_and_acknowledged_snapshots() -> Result<()> {
-	let engine = test_engine()?;
+	let runtime = test_runtime()?;
 	let listener = TcpListener::bind("127.0.0.1", 0, 8)?;
 	let calls = Rc::new(Cell::new(0_u32));
-	let device_name = engine.device_info().name().to_owned();
-	let server = SatelliteServerSession::new_with_engine(
-		&engine,
+	let device_name = runtime.device_info().name().to_owned();
+	let server = SatelliteServerSession::new_with_runtime(
+		&runtime,
 		nlp_config(0xa0, device_name.clone(), Rc::clone(&calls)),
 	);
 	let checkpoint = checkpoint_path("coordinator");
@@ -119,7 +119,7 @@ fn satellite_nlp_coordinator_persists_optimizer_and_acknowledged_snapshots() -> 
 		&listener,
 		server,
 		move |port| -> Result<SatelliteNlpCoordinatorReport> {
-			let coordinator_engine = test_engine()?;
+			let coordinator_runtime = test_runtime()?;
 			let mut client =
 				SatelliteClientSession::connect("127.0.0.1", port, make_config(0xa0, device_name))?;
 			let config = SatelliteNlpCoordinatorConfig {
@@ -129,7 +129,7 @@ fn satellite_nlp_coordinator_persists_optimizer_and_acknowledged_snapshots() -> 
 				checkpoint_path: checkpoint,
 				..SatelliteNlpCoordinatorConfig::default()
 			};
-			let report = satellite_run_split_batch_nlp(&coordinator_engine, &mut client, &config)?;
+			let report = satellite_run_split_batch_nlp(&coordinator_runtime, &mut client, &config)?;
 			client.close()?;
 			Ok(report)
 		},
@@ -163,12 +163,12 @@ fn satellite_nlp_coordinator_persists_optimizer_and_acknowledged_snapshots() -> 
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn satellite_nlp_coordinator_completes_canonical_300_step_quality_gate() -> Result<()> {
-	let engine = test_engine()?;
+	let runtime = test_runtime()?;
 	let listener = TcpListener::bind("127.0.0.1", 0, 8)?;
 	let calls = Rc::new(Cell::new(0_u32));
-	let device_name = engine.device_info().name().to_owned();
-	let server = SatelliteServerSession::new_with_engine(
-		&engine,
+	let device_name = runtime.device_info().name().to_owned();
+	let server = SatelliteServerSession::new_with_runtime(
+		&runtime,
 		nlp_config(0xa0, device_name.clone(), Rc::clone(&calls)),
 	);
 	let checkpoint = checkpoint_path("coordinator-full");
@@ -176,14 +176,14 @@ fn satellite_nlp_coordinator_completes_canonical_300_step_quality_gate() -> Resu
 		&listener,
 		server,
 		move |port| -> Result<SatelliteNlpCoordinatorReport> {
-			let coordinator_engine = test_engine()?;
+			let coordinator_runtime = test_runtime()?;
 			let mut client =
 				SatelliteClientSession::connect("127.0.0.1", port, make_config(0xa0, device_name))?;
 			let config = SatelliteNlpCoordinatorConfig {
 				checkpoint_path: checkpoint,
 				..SatelliteNlpCoordinatorConfig::default()
 			};
-			let report = satellite_run_split_batch_nlp(&coordinator_engine, &mut client, &config)?;
+			let report = satellite_run_split_batch_nlp(&coordinator_runtime, &mut client, &config)?;
 			client.close()?;
 			Ok(report)
 		},
@@ -211,13 +211,13 @@ fn satellite_nlp_coordinator_completes_canonical_300_step_quality_gate() -> Resu
 #[test]
 #[ignore = "requires an admitted Vulkan compute device"]
 fn satellite_nlp_standalone_completes_canonical_300_step_quality_gate() -> Result<()> {
-	let engine = test_engine()?;
+	let runtime = test_runtime()?;
 	let checkpoint = checkpoint_path("standalone-full");
 	let config = SatelliteNlpCoordinatorConfig {
 		checkpoint_path: checkpoint.clone(),
 		..SatelliteNlpCoordinatorConfig::default()
 	};
-	let report = satellite_run_standalone_nlp(&engine, &config)?;
+	let report = satellite_run_standalone_nlp(&runtime, &config)?;
 	assert_eq!(report.completed_steps, TRAINING_STEPS as u32);
 	assert_eq!(report.optimizer_step, TRAINING_STEPS as u64);
 	assert!(report.final_loss < report.initial_loss);

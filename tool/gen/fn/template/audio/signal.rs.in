@@ -7,7 +7,7 @@
 		));
 	}
 	let count = element_count_u32(input, "audio::normalize")?;
-	let level = Matrix::allocate(input.engine_handle(), vec![1], 1, crate::DType::F32)?;
+	let level = Matrix::allocate(input.runtime(), vec![1], 1, crate::DType::F32)?;
 	let output_matrix = allocate_like(input)?;
 	let output = wrap_like(output_matrix, input)?;
 	{{bindings:0}}
@@ -24,7 +24,7 @@
 	];
 	let attributes = [{{attributes}}];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_split_semantic(
+	input.runtime().record_audio_split_semantic(
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -60,7 +60,7 @@
 		.checked_mul(out_samples_u32)
 		.ok_or_else(|| Error::out_of_range("audio::resample dispatch exceeds u32"))?;
 	let matrix = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![input.channels(), out_samples],
 		count as usize,
 		crate::DType::F32,
@@ -70,7 +70,7 @@
 	let attributes = [{{attributes}}];
 	{{bindings:0}}
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -91,7 +91,7 @@
 	{{push:0}}
 	{{bindings:0}}
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -112,7 +112,7 @@
 	{{push:0}}
 	{{bindings:0}}
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -137,7 +137,7 @@
 	{{push:0}}
 	{{bindings:0}}
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -169,19 +169,19 @@
 		.and_then(|value| value.checked_mul(2))
 		.ok_or_else(|| Error::out_of_range("audio::biquad state exceeds usize"))?;
 	let summaries = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![input.channels(), blocks as usize, 6],
 		summary_elements,
 		DType::F32,
 	)?;
 	let states = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![input.channels(), blocks as usize, 2],
 		state_elements,
 		DType::F32,
 	)?;
 	let output_matrix = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
@@ -199,7 +199,7 @@
 	];
 	let attributes = [{{attributes}}];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_split_semantic(
+	input.runtime().record_audio_split_semantic(
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -235,7 +235,7 @@
 	let output_shape = [input.channels(), out_samples as usize];
 	let allocate_output = || {
 		Matrix::allocate(
-			input.engine_handle(),
+			input.runtime(),
 			output_shape.to_vec(),
 			count as usize,
 			DType::F32,
@@ -307,7 +307,7 @@
 	];
 	let attributes = [{{attributes}}];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_split_semantic(
+	input.runtime().record_audio_split_semantic(
 		&dispatches,
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -336,9 +336,9 @@
 		packed.extend_from_slice(&[section.b0, section.b1, section.b2, section.a1, section.a2]);
 	}
 	let coefficient_matrix =
-		Matrix::new_from_slice_handle(input.engine_handle(), vec![sections.len(), 5], &packed)?;
+		Matrix::new_from_slice_handle(input.runtime(), vec![sections.len(), 5], &packed)?;
 	let output_matrix = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		DType::F32,
@@ -354,7 +354,7 @@
 	}
 	let attributes = [{{attributes}}];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -376,7 +376,7 @@
 	{{push:0}}
 	{{bindings:0}}
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -390,7 +390,7 @@
 	let channels = u32_extent(input.channels(), "audio::to_mono channels")?;
 	let samples = u32_extent(input.samples(), "audio::to_mono samples")?;
 	let matrix = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![1, input.samples()],
 		input.samples(),
 		crate::DType::F32,
@@ -399,7 +399,7 @@
 	{{bindings:0}}
 	{{push:0}}
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -420,7 +420,7 @@
 	{{push:0}}
 	{{bindings:0}}
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -434,7 +434,7 @@
 	if left.sample_rate() != right.sample_rate()
 		|| left.layout() != right.layout()
 		|| left.as_matrix().shape() != right.as_matrix().shape()
-		|| !left.engine_handle().same_as(right.engine_handle())
+		|| !left.runtime().same_as(right.runtime())
 		|| !gain_left.is_finite()
 		|| !gain_right.is_finite()
 	{
@@ -448,7 +448,7 @@
 	{{push:0}}
 	let attributes = [{{attributes}}];
 	let outputs = [AudioSemanticOutput::Audio(&output)];
-	left.engine_handle().record_audio_semantic(
+	left.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -470,7 +470,7 @@
 	{{push:0}}
 	let outputs = [AudioSemanticOutput::Matrix(&output)];
 	let attributes = [{{attributes}}];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},
@@ -493,7 +493,7 @@
 		.and_then(|value| value.checked_mul(2))
 		.ok_or_else(|| Error::out_of_range("audio::waveform_envelope output exceeds usize"))?;
 	let output = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		vec![bins as usize, 2],
 		elements,
 		crate::DType::F32,
@@ -502,7 +502,7 @@
 	{{push:0}}
 	let outputs = [AudioSemanticOutput::Matrix(&output)];
 	let attributes = [{{attributes}}];
-	input.engine_handle().record_audio_semantic(
+	input.runtime().record_audio_semantic(
 		{{dispatch:0}},
 		AudioSemanticDispatch {
 			contract: {{contract}},

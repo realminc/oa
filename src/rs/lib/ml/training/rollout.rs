@@ -4,7 +4,7 @@
 //! composes one [`ItTraining`] optimizer lifecycle and never owns environment
 //! execution or another runtime.
 
-use crate::{Engine, Error, Matrix, Result};
+use crate::{Error, Matrix, Result, Runtime};
 
 use super::{ItTraining, ItTrainingConfig, Optimizer, TrainingSnapshot};
 pub use crate::ml::types::ItRolloutTrainingConfig;
@@ -36,9 +36,9 @@ pub enum RolloutTrainingPhase {
 
 /// Coordinator for alternating fixed-capacity collection and optimizer phases.
 #[must_use]
-pub struct ItRolloutTraining<'engine, 'hooks> {
+pub struct ItRolloutTraining<'runtime, 'hooks> {
 	config: ItRolloutTrainingConfig,
-	updates: ItTraining<'engine, 'hooks>,
+	updates: ItTraining<'runtime, 'hooks>,
 	phase: RolloutTrainingPhase,
 	rollout_index: u64,
 	update_epoch: u64,
@@ -47,32 +47,32 @@ pub struct ItRolloutTraining<'engine, 'hooks> {
 	active_rollout: Option<*const RolloutBuffer>,
 }
 
-impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
+impl<'runtime, 'hooks> ItRolloutTraining<'runtime, 'hooks> {
 	/// Construct a checked rollout lifecycle around one optimizer.
 	///
 	/// # Errors
 	///
 	/// Returns an error for zero schedule dimensions, count overflow, or
-	/// optimizer/engine ownership mismatch.
+	/// optimizer/runtime ownership mismatch.
 	pub fn new(
-		engine: &'engine Engine,
-		optimizer: &'engine mut dyn Optimizer,
+		runtime: &'runtime Runtime,
+		optimizer: &'runtime mut dyn Optimizer,
 		config: ItRolloutTrainingConfig,
 	) -> Result<Self> {
-		let updates = ItTraining::new_eager(engine, optimizer, update_config(&config)?)?;
+		let updates = ItTraining::new_eager(runtime, optimizer, update_config(&config)?)?;
 		Ok(Self::new_with_updates(config, updates))
 	}
 	pub(super) fn new_compiled(
-		engine: &'engine Engine,
-		optimizer: &'engine mut super::AdamW,
+		runtime: &'runtime Runtime,
+		optimizer: &'runtime mut super::AdamW,
 		config: ItRolloutTrainingConfig,
 	) -> Result<Self> {
-		let updates = ItTraining::new(engine, optimizer, update_config(&config)?)?;
+		let updates = ItTraining::new(runtime, optimizer, update_config(&config)?)?;
 		Ok(Self::new_with_updates(config, updates))
 	}
 	fn new_with_updates(
 		config: ItRolloutTrainingConfig,
-		updates: ItTraining<'engine, 'hooks>,
+		updates: ItTraining<'runtime, 'hooks>,
 	) -> Self {
 		Self {
 			config,
@@ -149,7 +149,7 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 	///
 	/// This is valid from `begin_rollout` through finalization until the first
 	/// update begins. It changes host visibility only; the caller must already
-	/// have rejected/aborted the unsubmitted Engine recording.
+	/// have rejected/aborted the unsubmitted Runtime recording.
 	///
 	/// # Errors
 	///
@@ -297,12 +297,12 @@ impl<'engine, 'hooks> ItRolloutTraining<'engine, 'hooks> {
 	}
 
 	/// Borrow the ordinary optimizer-update lifecycle.
-	pub const fn update_loop(&self) -> &ItTraining<'engine, 'hooks> {
+	pub const fn update_loop(&self) -> &ItTraining<'runtime, 'hooks> {
 		&self.updates
 	}
 
 	/// Mutably borrow the ordinary optimizer-update lifecycle between steps.
-	pub fn update_loop_mut(&mut self) -> &mut ItTraining<'engine, 'hooks> {
+	pub fn update_loop_mut(&mut self) -> &mut ItTraining<'runtime, 'hooks> {
 		&mut self.updates
 	}
 

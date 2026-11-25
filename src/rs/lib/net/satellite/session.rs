@@ -6,9 +6,9 @@
 //! connects, authenticates, and exchanges bounded requests; the
 //! [`SatelliteServerSession`] serves one accepted stream at a time on the
 //! caller's thread and never drains or waits on teardown. The optional
-//! [`Engine`] borrow enables `matrix-add-f32-v1` and application named work
+//! [`Runtime`] borrow enables `matrix-add-f32-v1` and application named work
 //! with exact submission-event provenance; the CPU oracle path needs no
-//! engine.
+//! runtime.
 //!
 //! Wire status codes keep the donor `StatusCode` numbering; `code_kind` and
 //! `kind_code` translate between that vocabulary and [`ErrorKind`]. Domain
@@ -23,7 +23,7 @@ use super::{
 	satellite_build_hash, satellite_schema_hash,
 };
 use crate::core::memory::{equal_constant_time, zero_secure};
-use crate::{DType, Engine, Error, ErrorKind, Event, Matrix, Result, TcpFramed, TcpStream};
+use crate::{DType, Error, ErrorKind, Event, Matrix, Result, Runtime, TcpFramed, TcpStream};
 
 const HELLO_CUSTOM: &str = "oa-satellite-hello-v1";
 const REPLY_CUSTOM: &str = "oa-satellite-reply-v1";
@@ -196,7 +196,7 @@ pub(crate) struct SatelliteNamedRequest<'a> {
 	pub expected_hash: [u8; 32],
 }
 
-/// Application named-work result. `completion` must be an engine-owned event
+/// Application named-work result. `completion` must be an runtime-owned event
 /// that is already complete when the callback returns.
 pub(crate) struct SatelliteNamedResult {
 	pub version: u64,
@@ -209,7 +209,7 @@ pub(crate) struct SatelliteNamedResult {
 
 /// Application-owned named work injected into the private session.
 pub(crate) type SatelliteNamedWorkFn =
-	Box<dyn Fn(&Engine, &SatelliteNamedRequest<'_>) -> Result<SatelliteNamedResult>>;
+	Box<dyn Fn(&Runtime, &SatelliteNamedRequest<'_>) -> Result<SatelliteNamedResult>>;
 
 /// 32-byte shared authentication secret, zeroized on drop.
 pub(crate) struct SatelliteSecret {
@@ -648,11 +648,11 @@ pub(crate) fn satellite_validate_request_envelope(
 /// Private, synchronous, single-connection worker session. The caller owns any
 /// accept/progress thread and joins it explicitly; destruction only closes the
 /// socket held by a client and never drains or waits for application work.
-/// [`Engine`] is `!Send`, so a server borrowing an engine must serve on the
-/// engine's own thread.
+/// [`Runtime`] is `!Send`, so a server borrowing an runtime must serve on the
+/// runtime's own thread.
 pub(crate) struct SatelliteServerSession<'a> {
 	config: SatelliteSessionConfig,
-	engine: Option<&'a Engine>,
+	runtime: Option<&'a Runtime>,
 	last_epoch: u64,
 	last_gpu_event_value: u64,
 	last_gpu_event_was_owned: bool,
@@ -663,7 +663,7 @@ impl<'a> SatelliteServerSession<'a> {
 	pub fn new(config: SatelliteSessionConfig) -> Self {
 		Self {
 			config,
-			engine: None,
+			runtime: None,
 			last_epoch: 0,
 			last_gpu_event_value: 0,
 			last_gpu_event_was_owned: false,
@@ -671,10 +671,10 @@ impl<'a> SatelliteServerSession<'a> {
 		}
 	}
 
-	pub fn new_with_engine(engine: &'a Engine, config: SatelliteSessionConfig) -> Self {
+	pub fn new_with_runtime(runtime: &'a Runtime, config: SatelliteSessionConfig) -> Self {
 		Self {
 			config,
-			engine: Some(engine),
+			runtime: Some(runtime),
 			last_epoch: 0,
 			last_gpu_event_value: 0,
 			last_gpu_event_was_owned: false,
@@ -1071,7 +1071,7 @@ impl<'a> SatelliteServerSession<'a> {
 						&& inputs.len() == 2
 						&& output != 0
 						&& arguments.is_none()
-						&& self.engine.is_some()
+						&& self.runtime.is_some()
 					{
 						let a = find_object(&objects, inputs[0]);
 						let b = find_object(&objects, inputs[1]);
@@ -1105,7 +1105,7 @@ impl<'a> SatelliteServerSession<'a> {
 						&& admits_named_operation(&self.config, &operation)
 						&& !inputs.is_empty()
 						&& output != 0
-						&& self.engine.is_some()
+						&& self.runtime.is_some()
 						&& let (Some(version_field), Some(hash_field)) =
 							(expected_version_field, expected_hash_field)
 					{
@@ -1233,18 +1233,18 @@ impl<'a> SatelliteServerSession<'a> {
 										true,
 									));
 								};
-								let Some(engine) = self.engine else {
+								let Some(runtime) = self.runtime else {
 									return Err(send_failure(
 										&mut stream,
 										&request,
 										status_code::INTERNAL,
-										"satellite session: matrix work requires an engine",
+										"satellite session: matrix work requires an runtime",
 										true,
 									));
 								};
-								let captured = engine.capture(|| {
-									let a = Matrix::new_from_slice_on(engine, shape.clone(), &a_values)?;
-									let b = Matrix::new_from_slice_on(engine, shape, &b_values)?;
+								let captured = runtime.capture(|| {
+									let a = Matrix::new_from_slice_on(runtime, shape.clone(), &a_values)?;
+									let b = Matrix::new_from_slice_on(runtime, shape, &b_values)?;
 									crate::matrix::add(&a, &b)
 								});
 								let Ok((plan, output_matrix)) = captured else {
@@ -1259,7 +1259,7 @@ impl<'a> SatelliteServerSession<'a> {
 									);
 									continue;
 								};
-								let event = match engine.submit(&plan) {
+								let event = match runtime.submit(&plan) {
 									Ok(event) => event,
 									Err(submitted) => {
 										let _ = write_message(
@@ -1274,7 +1274,7 @@ impl<'a> SatelliteServerSession<'a> {
 										continue;
 									}
 								};
-								self.last_gpu_event_was_owned = engine.handle().owns_event(&event);
+								self.last_gpu_event_was_owned = runtime.handle().owns_event(&event);
 								self.last_gpu_event_value = event.epoch();
 								let wait_status = event.wait();
 								self.last_gpu_event_completed = event.is_complete().unwrap_or(false);
@@ -1341,12 +1341,12 @@ impl<'a> SatelliteServerSession<'a> {
 									expected_version: active.expected_version,
 									expected_hash: active.expected_hash,
 								};
-								let Some(engine) = self.engine else {
+								let Some(runtime) = self.runtime else {
 									return Err(send_failure(
 										&mut stream,
 										&request,
 										status_code::INTERNAL,
-										"satellite session: named work requires an engine",
+										"satellite session: named work requires an runtime",
 										true,
 									));
 								};
@@ -1355,7 +1355,7 @@ impl<'a> SatelliteServerSession<'a> {
 									.named_work
 									.as_ref()
 									.expect("named work admitted only when configured");
-								let named_result = match named_work(engine, &named_request) {
+								let named_result = match named_work(runtime, &named_request) {
 									Ok(result) => result,
 									Err(error) => {
 										return Err(send_failure_error(&mut stream, &request, error, true));
@@ -1363,7 +1363,7 @@ impl<'a> SatelliteServerSession<'a> {
 								};
 								let elements = checked_element_count(&named_result.shape);
 								let scalar_bytes = named_result.dtype.size_bytes();
-								let event_owned = engine.handle().owns_event(&named_result.completion);
+								let event_owned = runtime.handle().owns_event(&named_result.completion);
 								let event_complete = named_result.completion.is_complete().unwrap_or(false);
 								let data_len = named_result.data.len();
 								let profile_len = named_result.profile.len();

@@ -10,7 +10,7 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 	}
 }
 
-test_vk!(dqn_matches_donor_boundary_oracle_and_q_adjoint, engine, {
+test_vk!(dqn_matches_donor_boundary_oracle_and_q_adjoint, runtime, {
 	let q_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 		[3, 2],
 		&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -27,9 +27,9 @@ test_vk!(dqn_matches_donor_boundary_oracle_and_q_adjoint, engine, {
 	let tape = oa::ml::GradientTape::new();
 	let q = q_parameter.forward(&rows)?;
 	let next_q = next_q_parameter.forward(&rows)?;
-	engine.checkpoint()?.wait()?;
+	runtime.checkpoint()?.wait()?;
 
-	let (plan, result) = engine.capture(|| {
+	let (plan, result) = runtime.capture(|| {
 		dqn(
 			&q,
 			&action,
@@ -49,7 +49,7 @@ test_vk!(dqn_matches_donor_boundary_oracle_and_q_adjoint, engine, {
 	let operation = &plan.semantic_graph().operations()[0];
 	assert_eq!(operation.name(), "oa::FnLoss::dqn");
 	assert_eq!(operation.attributes().len(), 1);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 
 	assert_close(&result.target_q.read_f32()?, &[11.0, 2.0, 33.0], 1.0e-6);
 	assert_close(&result.selected_q.read_f32()?, &[1.0, 4.0, 5.0], 1.0e-6);
@@ -72,7 +72,7 @@ test_vk!(dqn_matches_donor_boundary_oracle_and_q_adjoint, engine, {
 	Ok(())
 });
 
-test_vk!(dqn_rejects_invalid_contracts, engine, {
+test_vk!(dqn_rejects_invalid_contracts, runtime, {
 	let q = oa::Matrix::new_from_f32([2, 2], &[1.0, 2.0, 3.0, 4.0])?;
 	let next_q = oa::Matrix::new_from_f32([2, 2], &[4.0, 3.0, 2.0, 1.0])?;
 	let action = oa::Matrix::new_from_slice([2], &[0_i32, 1])?;

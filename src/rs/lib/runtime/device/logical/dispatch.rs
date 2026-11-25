@@ -64,7 +64,7 @@ pub(crate) struct IndirectDispatch<'a> {
 
 /// Backend-neutral executable compute description.
 ///
-/// Domain lowering creates this value. The engine submits it generically; it
+/// Domain lowering creates this value. The runtime submits it generically; it
 /// never grows operation-specific entry points.
 pub(crate) struct ComputeDispatch<'a> {
 	pub(crate) kernel: KernelId,

@@ -8,7 +8,7 @@ use std::{
 use crate::{Error, Matrix, Result, core::Element};
 
 use super::{
-	Buffer, BufferAccess, Device, EngineHandle, Event, RecordedCommandBuffer, ReusableCommandBuffer,
+	Buffer, BufferAccess, Device, Event, RecordedCommandBuffer, ReusableCommandBuffer, RuntimeHandle,
 	SemanticGraph, SemanticLoweringAnalysis, Storage,
 	device::NativeFlagBits,
 	dna::{DnnPlan, DnnPolicy, fusion},
@@ -578,7 +578,7 @@ struct PlanCounters {
 	fallbacks: Cell<u64>,
 }
 
-/// Engine-associated executable work captured for repeated submission.
+/// Runtime-associated executable work captured for repeated submission.
 ///
 /// The captured executable structure is immutable. Read-only Matrix inputs may
 /// be rebound to shape- and dtype-identical storage while preserving the graph
@@ -587,7 +587,7 @@ struct PlanCounters {
 /// after the first submission of each set.
 #[must_use]
 pub struct ExecutionPlan {
-	engine: EngineHandle,
+	runtime: RuntimeHandle,
 	graph_id: u64,
 	device_capability_identity: u64,
 	graph: ExecutableGraph,
@@ -610,13 +610,13 @@ pub struct ExecutionPlan {
 
 impl ExecutionPlan {
 	pub(super) fn new(
-		engine: EngineHandle,
+		runtime: RuntimeHandle,
 		pending: PendingExecution,
 		source_recording_retained: bool,
 	) -> Result<Self> {
 		let (mut graph, mut outputs, semantic, stable_resources, semantic_storage, observed_outputs) =
 			pending.into_parts();
-		let device_capability_identity = engine.device_info().capability_identity();
+		let device_capability_identity = runtime.device_info().capability_identity();
 		let mut dnn = DnnPlan::plan(&semantic, DnnPolicy::default())?;
 		if dnn.source_operation_count() as usize != semantic.operations().len() {
 			return Err(Error::internal(
@@ -751,7 +751,7 @@ impl ExecutionPlan {
 			}
 		}
 		graph = dnn.lower_captured_plan(
-			&engine,
+			&runtime,
 			&semantic,
 			&semantic_bindings,
 			&resource_lifetimes,
@@ -759,7 +759,7 @@ impl ExecutionPlan {
 			!source_recording_retained,
 			&graph,
 		)?;
-		engine.record_dnn_partitions(
+		runtime.record_dnn_partitions(
 			dnn.applied_partition_count(),
 			dnn.fallback_partition_count(),
 		);
@@ -796,7 +796,7 @@ impl ExecutionPlan {
 				&& !fusion::buffer_is_fused_binding(graph.compute_nodes(), buffer);
 		}
 		let materialization = materialize_aliases(
-			&engine,
+			&runtime,
 			&graph,
 			&outputs,
 			&resource_lifetimes,
@@ -816,11 +816,11 @@ impl ExecutionPlan {
 					Some(format!("transient alias materialization failed: {error}")),
 				),
 			};
-		engine.release_stable_transient_resources(&retired);
+		runtime.release_stable_transient_resources(&retired);
 		let initial_fallback_count = u64::from(alias_materialization_fallback_reason.is_some())
 			.saturating_add(u64::from(dnn.fallback_partition_count()));
 		Ok(Self {
-			engine,
+			runtime,
 			graph_id,
 			device_capability_identity,
 			graph,
@@ -894,9 +894,9 @@ impl ExecutionPlan {
 	/// input, the element type or count differs, or prior completion/upload
 	/// fails.
 	pub fn upload_matrix_input<T: Element>(&mut self, captured: &Matrix, values: &[T]) -> Result<()> {
-		if !self.engine.same_as(captured.engine_handle()) {
+		if !self.runtime.same_as(captured.runtime()) {
 			return Err(Error::invalid_argument(
-				"execution-plan Matrix input belongs to another engine",
+				"execution-plan Matrix input belongs to another runtime",
 			));
 		}
 		let captured_buffer = captured.storage().buffer().ok_or_else(|| {
@@ -979,7 +979,7 @@ impl ExecutionPlan {
 			self.graph.rebind_read_only(
 				&binding.current,
 				&slot.buffer,
-				self.engine.execution_profile(),
+				self.runtime.execution_profile(),
 			)?;
 			binding.current = slot.buffer.clone();
 		}
@@ -991,21 +991,19 @@ impl ExecutionPlan {
 	///
 	/// `captured` remains the stable slot identity even after repeated rebinding.
 	/// The replacement must have the same shape and dtype, belong to the plan's
-	/// engine, and not alias another resource already used by the plan. Rebinding
+	/// runtime, and not alias another resource already used by the plan. Rebinding
 	/// does not submit or wait; the next submission records one command buffer per
 	/// unseen binding set and later submissions of the same set reuse it.
 	///
 	/// # Errors
 	///
-	/// Returns an error when either Matrix belongs to another engine, their shape
+	/// Returns an error when either Matrix belongs to another runtime, their shape
 	/// or dtype differs, `captured` is not a read-only plan input, the replacement
 	/// aliases another plan resource, or its production state is invalid.
 	pub fn bind_matrix_input(&mut self, captured: &Matrix, replacement: &Matrix) -> Result<()> {
-		if !self.engine.same_as(captured.engine_handle())
-			|| !self.engine.same_as(replacement.engine_handle())
-		{
+		if !self.runtime.same_as(captured.runtime()) || !self.runtime.same_as(replacement.runtime()) {
 			return Err(Error::invalid_argument(
-				"execution-plan Matrix bindings must belong to the plan's engine",
+				"execution-plan Matrix bindings must belong to the plan's runtime",
 			));
 		}
 		if captured.shape() != replacement.shape() || captured.dtype() != replacement.dtype() {
@@ -1041,7 +1039,7 @@ impl ExecutionPlan {
 		self.graph.rebind_read_only(
 			&current,
 			replacement_buffer,
-			self.engine.execution_profile(),
+			self.runtime.execution_profile(),
 		)?;
 		self.input_bindings[existing].current = replacement_buffer.clone();
 		increment(&self.counters.input_rebindings);
@@ -1305,7 +1303,7 @@ impl ExecutionPlan {
 	/// # Errors
 	///
 	/// Returns an error from [`ExecutionPlan::wait`]. The consumed plan still drops
-	/// safely on error; submitted resources remain owned by engine retirement.
+	/// safely on error; submitted resources remain owned by runtime retirement.
 	pub fn reset(self) -> Result<()> {
 		self.wait()
 	}
@@ -1652,8 +1650,8 @@ impl ExecutionPlan {
 		output
 	}
 
-	pub(super) fn belongs_to(&self, engine: &EngineHandle) -> bool {
-		self.engine.same_as(engine)
+	pub(super) fn belongs_to(&self, runtime: &RuntimeHandle) -> bool {
+		self.runtime.same_as(runtime)
 	}
 
 	pub(crate) fn validate_training_replay_safety(&self) -> Result<()> {
@@ -1937,7 +1935,7 @@ struct AliasMaterialization {
 }
 
 fn materialize_aliases(
-	engine: &EngineHandle,
+	runtime: &RuntimeHandle,
 	graph: &ExecutableGraph,
 	outputs: &[Storage],
 	resource_lifetimes: &[super::graph::executable::ResourceLifetime],
@@ -1951,7 +1949,7 @@ fn materialize_aliases(
 	let mut retired = Vec::new();
 	let mut savings = 0_usize;
 	for group in groups.iter().filter(|group| group.resources.len() > 1) {
-		let arena = engine.create_alias_arena(group.required_size)?;
+		let arena = runtime.create_alias_arena(group.required_size)?;
 		let original_bytes = group.resources.iter().try_fold(0_usize, |sum, resource| {
 			sum
 				.checked_add(captured_resources[*resource].byte_len)

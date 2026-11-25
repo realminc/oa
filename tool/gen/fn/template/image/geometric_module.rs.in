@@ -51,9 +51,9 @@ fn validate_warp_inputs(
 			"{operation} coordinates must use f32 storage"
 		)));
 	}
-	if !input.engine_handle().same_as(coordinates.engine_handle()) {
+	if !input.runtime().same_as(coordinates.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	if !border_value.is_finite() {
@@ -84,7 +84,7 @@ fn allocate_image(input: &Image, width: u32, height: u32, operation: &str) -> Re
 			.ok_or_else(|| Error::out_of_range(format!("{operation} output size exceeds usize")))
 	})?;
 	u32_extent(elements, &format!("{operation} output element count"))?;
-	let matrix = Matrix::allocate(input.engine_handle(), shape, elements, DType::F32)?;
+	let matrix = Matrix::allocate(input.runtime(), shape, elements, DType::F32)?;
 	Image::new(matrix, input.layout(), input.format())
 }
 

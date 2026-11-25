@@ -1,6 +1,6 @@
 //! `ItTraining` stepwise training driver binding.
 //!
-//! `ItTraining<'engine, 'hooks>` borrows the engine, optimizer, metrics, and
+//! `ItTraining<'runtime, 'hooks>` borrows the runtime, optimizer, metrics, and
 //! callbacks. PyO3 cannot express those borrows directly, so this module uses
 //! the same lifetime adapter as `trainer.rs`: the returned pyclass stores the
 //! `Py` handles it borrows from, and hook installs either borrow the `inner`
@@ -9,7 +9,7 @@
 
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::{
 	optim::PythonAdamW,
@@ -28,11 +28,11 @@ use super::{
 /// implemented for AdamW only; other optimizers need the manual
 /// `begin_step`/`complete_step` surface that is not yet bound.
 ///
-/// The engine and optimizer must outlive this object — keep them as locals or
+/// The runtime and optimizer must outlive this object — keep them as locals or
 /// attributes so Python reference counting keeps them alive.
 #[pyclass(name = "ItTraining", unsendable)]
 pub(crate) struct PythonItTraining {
-	_engine: Py<PythonEngine>,
+	_runtime: Py<PythonRuntime>,
 	_optimizer: Py<PyAny>,
 	// Native wrapper objects whose `inner` fields `inner` borrows mutably.
 	_keep_alive: Vec<Py<PyAny>>,
@@ -94,22 +94,22 @@ fn call_record(record: &Py<PyAny>, prepared: Py<PyAny>) -> oa::Result<oa::Matrix
 
 #[pymethods]
 impl PythonItTraining {
-	/// Construct a training lifecycle around one engine and AdamW optimizer.
+	/// Construct a training lifecycle around one runtime and AdamW optimizer.
 	#[new]
-	#[pyo3(signature = (optimizer, config, engine=None))]
+	#[pyo3(signature = (optimizer, config, runtime=None))]
 	pub fn new(
 		py: Python<'_>,
 		optimizer: Py<PyAny>,
 		config: &PythonItTrainingConfig,
-		engine: Option<Py<PythonEngine>>,
+		runtime: Option<Py<PythonRuntime>>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve_owned(py, engine)?;
+		let runtime = PythonRuntime::resolve_owned(py, runtime)?;
 		let cfg = config.inner.clone();
 		let inner = {
-			let eng = engine.bind(py).borrow();
-			// SAFETY: `engine` and `optimizer` are stored in the returned struct,
+			let eng = runtime.bind(py).borrow();
+			// SAFETY: `runtime` and `optimizer` are stored in the returned struct,
 			// so the pointees outlive `inner`.
-			let engine_ptr: *const oa::Engine = &eng.inner;
+			let runtime_ptr: *const oa::Runtime = &eng.inner;
 			let mut opt = optimizer
 				.bind(py)
 				.extract::<PyRefMut<PythonAdamW>>()
@@ -122,7 +122,7 @@ impl PythonItTraining {
 					oa::Result<oa::ml::ItTraining<'_, '_>>,
 					oa::Result<oa::ml::ItTraining<'static, 'static>>,
 				>(oa::ml::ItTraining::new(
-					&*engine_ptr,
+					&*runtime_ptr,
 					&mut *opt_ptr,
 					cfg.clone(),
 				))
@@ -130,7 +130,7 @@ impl PythonItTraining {
 			.map_err(python_error)?
 		};
 		Ok(Self {
-			_engine: engine,
+			_runtime: runtime,
 			_optimizer: optimizer,
 			_keep_alive: Vec::new(),
 			_callbacks: Vec::new(),

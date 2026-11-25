@@ -5,24 +5,24 @@
 //!
 //! The Viewer owns an SDL3 window, swapchain `Presenter`, `Ui` compositor,
 //! `Navigation`, and optional media sources.  It borrows (or creates) one
-//! `Engine` and drives a per-frame compose → direct-present loop until the
+//! `Runtime` and drives a per-frame compose → direct-present loop until the
 //! user closes the window or calls `quit()`.
 //!
 //! Entry points:
 //! ```rust,ignore
-//! // Static file path (creates its own engine):
+//! // Static file path (creates its own runtime):
 //! Viewer::preview("path/to/image.png")?;
 //!
-//! // Borrowed engine:
-//! Viewer::preview_with_engine(&engine, "path/to/video.mp4")?;
+//! // Borrowed runtime:
+//! Viewer::preview_with_runtime(&runtime, "path/to/video.mp4")?;
 //!
 //! // Existing GPU texture:
-//! Viewer::show(&engine, &texture)?;
+//! Viewer::show(&runtime, &texture)?;
 //!
 //! // Custom live source:
 //! let mut viewer = Viewer::new(ViewerConfig { mode: ViewerMode::Live, .. });
 //! viewer.set_live_source(&mut my_source);
-//! viewer.run(&engine)?;
+//! viewer.run(&runtime)?;
 //! ```
 
 mod audio_mode;
@@ -59,7 +59,7 @@ use crate::input::{
 };
 use crate::runtime::{Presenter, SdlWindow};
 use crate::ui::{Ui, types::PixelRect};
-use crate::{Engine, Error, Result, Texture, render::Renderer};
+use crate::{Error, Result, Runtime, Texture, render::Renderer};
 
 // ── Viewer ────────────────────────────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ impl<'src> Viewer<'src> {
 
 	// ── Blocking entry points ─────────────────────────────────────────────────
 
-	/// Open `path` in a new window, creating a presentation-capable engine.
+	/// Open `path` in a new window, creating a presentation-capable runtime.
 	pub fn preview(path: &str) -> Result<()> {
 		Self::preview_with_config(path, ViewerConfig::default())
 	}
@@ -116,13 +116,13 @@ impl<'src> Viewer<'src> {
 		Viewer::new(full_config).run_owned()
 	}
 
-	/// Open `path` borrowing `engine`.
-	pub fn preview_with_engine(engine: &Engine, path: &str) -> Result<()> {
-		Self::preview_with_engine_and_config(engine, path, ViewerConfig::default())
+	/// Open `path` borrowing `runtime`.
+	pub fn preview_with_runtime(runtime: &Runtime, path: &str) -> Result<()> {
+		Self::preview_with_runtime_and_config(runtime, path, ViewerConfig::default())
 	}
 
-	pub fn preview_with_engine_and_config(
-		engine: &Engine,
+	pub fn preview_with_runtime_and_config(
+		runtime: &Runtime,
 		path: &str,
 		config: ViewerConfig,
 	) -> Result<()> {
@@ -135,18 +135,22 @@ impl<'src> Viewer<'src> {
 			path: path.to_owned(),
 			..config
 		};
-		Viewer::new(full_config).run_borrowed(engine)
+		Viewer::new(full_config).run_borrowed(runtime)
 	}
 
-	/// Display `texture` in a blocking window using `engine`.
-	pub fn show(engine: &Engine, texture: &Texture) -> Result<()> {
-		Self::show_with_config(engine, texture, ViewerConfig::default())
+	/// Display `texture` in a blocking window using `runtime`.
+	pub fn show(runtime: &Runtime, texture: &Texture) -> Result<()> {
+		Self::show_with_config(runtime, texture, ViewerConfig::default())
 	}
 
-	pub fn show_with_config(engine: &Engine, texture: &Texture, config: ViewerConfig) -> Result<()> {
-		if !texture.engine_handle().same_as(&engine.handle()) {
+	pub fn show_with_config(
+		runtime: &Runtime,
+		texture: &Texture,
+		config: ViewerConfig,
+	) -> Result<()> {
+		if !texture.runtime().same_as(&runtime.handle()) {
 			return Err(Error::invalid_argument(
-				"Viewer::show: Texture does not belong to this Engine",
+				"Viewer::show: Texture does not belong to this Runtime",
 			));
 		}
 		let app_config = ViewerConfig {
@@ -154,7 +158,7 @@ impl<'src> Viewer<'src> {
 			path: String::new(),
 			..config
 		};
-		Viewer::new(app_config).run_with_texture(engine, texture)
+		Viewer::new(app_config).run_with_texture(runtime, texture)
 	}
 
 	/// Display a headless `RenderFrame` in a blocking window.
@@ -164,16 +168,16 @@ impl<'src> Viewer<'src> {
 	/// cycle is recordable immediately after this call returns, proving that
 	/// the ring slot was released.
 	///
-	/// Donor: `oa::Viewer::show(*engine, *renderer, *frame, cfg)`.
+	/// Donor: `oa::Viewer::show(*runtime, *renderer, *frame, cfg)`.
 	pub fn show_render_frame(
-		engine: &Engine,
+		runtime: &Runtime,
 		renderer: &Renderer<'_>,
 		frame: crate::render::RenderFrame,
 		config: ViewerConfig,
 	) -> Result<()> {
 		if !renderer.owns_frame(&frame) {
 			return Err(Error::invalid_argument(
-				"Viewer::show_render_frame requires a frame produced by the supplied Renderer and Engine",
+				"Viewer::show_render_frame requires a frame produced by the supplied Renderer and Runtime",
 			));
 		}
 		// Wait for the GPU producer before any readback or blit.
@@ -186,7 +190,7 @@ impl<'src> Viewer<'src> {
 		};
 		// `frame` must stay alive until the Viewer exits so the ring slot
 		// is not recycled before the present completes.
-		let result = Viewer::new(app_config).run_with_texture(engine, &texture);
+		let result = Viewer::new(app_config).run_with_texture(runtime, &texture);
 		drop(texture);
 		drop(frame);
 		let collect_result = renderer.collect().map(|_| ());
@@ -196,25 +200,25 @@ impl<'src> Viewer<'src> {
 		}
 	}
 
-	/// Run the viewer session borrowing `engine`.
-	pub fn run(self, engine: &Engine) -> Result<()> {
-		self.run_borrowed(engine)
+	/// Run the viewer session borrowing `runtime`.
+	pub fn run(self, runtime: &Runtime) -> Result<()> {
+		self.run_borrowed(runtime)
 	}
 
 	// ── Private run ───────────────────────────────────────────────────────────
 
-	/// Create a presentation-capable engine and run.
+	/// Create a presentation-capable runtime and run.
 	///
 	/// Use this when `Viewer::new(config).run_standalone()` — the viewer
-	/// owns its own engine lifecycle.  Equivalent to the C++ `viewer.run()`
-	/// one-liner when no engine is passed.
+	/// owns its own runtime lifecycle.  Equivalent to the C++ `viewer.run()`
+	/// one-liner when no runtime is passed.
 	pub fn run_standalone(self) -> Result<()> {
 		self.run_owned()
 	}
 
 	fn run_owned(mut self) -> Result<()> {
 		// Create the SDL3 window first — its extensions are required before
-		// the Vulkan instance is created inside Engine::builder().build().
+		// the Vulkan instance is created inside Runtime::builder().build().
 		let window = SdlWindow::with_client_frame(
 			&self.config.title,
 			self.config.width,
@@ -222,44 +226,44 @@ impl<'src> Viewer<'src> {
 			true,
 		)?;
 		let extensions = window.required_instance_extensions()?;
-		let engine = Engine::builder()
-			.requirements(crate::EngineRequirements::default().presentation())
+		let runtime = Runtime::builder()
+			.requirements(crate::RuntimeRequirements::default().presentation())
 			.instance_extensions(extensions)
 			.build()?;
-		self.application_loop(&engine, window, None)
+		self.application_loop(&runtime, window, None)
 	}
 
-	/// Run on a borrowed engine (creates its own window).
-	fn run_borrowed(mut self, engine: &Engine) -> Result<()> {
+	/// Run on a borrowed runtime (creates its own window).
+	fn run_borrowed(mut self, runtime: &Runtime) -> Result<()> {
 		let window = SdlWindow::with_client_frame(
 			&self.config.title,
 			self.config.width,
 			self.config.height,
 			true,
 		)?;
-		self.application_loop(engine, window, None)
+		self.application_loop(runtime, window, None)
 	}
 
 	/// Run displaying a borrowed GPU texture.
-	fn run_with_texture(mut self, engine: &Engine, texture: &Texture) -> Result<()> {
+	fn run_with_texture(mut self, runtime: &Runtime, texture: &Texture) -> Result<()> {
 		let window = SdlWindow::with_client_frame(
 			&self.config.title,
 			self.config.width,
 			self.config.height,
 			texture.render_target_image().is_none(),
 		)?;
-		self.application_loop(engine, window, Some(texture))
+		self.application_loop(runtime, window, Some(texture))
 	}
 
 	/// Inner application loop. Donor: `oa::Viewer::runApplication`.
 	fn application_loop(
 		&mut self,
-		engine: &Engine,
+		runtime: &Runtime,
 		window: SdlWindow,
 		borrowed_texture: Option<&Texture>,
 	) -> Result<()> {
 		if self.config.show_help {
-			engine.log(crate::LogLevel::Info, crate::LogComponent::UI, "Viewer: wheel/drag pan, Ctrl+wheel or right-drag zoom, +/- zoom, 0 fit, 9 actual size, 1–5 channels, B background, G grid, Ctrl+O open file, F11 fullscreen, Space play/pause, arrows seek, W/S/M audio views, Q/Esc close")?;
+			runtime.log(crate::LogLevel::Info, crate::LogComponent::UI, "Viewer: wheel/drag pan, Ctrl+wheel or right-drag zoom, +/- zoom, 0 fit, 9 actual size, 1–5 channels, B background, G grid, Ctrl+O open file, F11 fullscreen, Space play/pause, arrows seek, W/S/M audio views, Q/Esc close")?;
 		}
 		// Resolve initial drawable extent.
 		let [w, h] = window.drawable_extent();
@@ -270,7 +274,7 @@ impl<'src> Viewer<'src> {
 		}
 
 		// Build Presenter + swapchain.
-		let mut presenter = Presenter::new(engine, &window)?;
+		let mut presenter = Presenter::new(runtime, &window)?;
 		if !presenter.supports_swapchain() {
 			return Err(Error::missing_capability(
 				"Viewer requires a swapchain-capable device (VK_KHR_swapchain)",
@@ -285,10 +289,10 @@ impl<'src> Viewer<'src> {
 
 		// Open the UI compositor.
 		let style = self.config.style.clone();
-		let mut ui = Ui::init_with_style(engine, w, h, style)?;
+		let mut ui = Ui::init_with_style(runtime, w, h, style)?;
 
 		// Open the media source.
-		let mut media = MediaState::open(engine, &self.config, borrowed_texture)?;
+		let mut media = MediaState::open(runtime, &self.config, borrowed_texture)?;
 
 		// Navigation — fitted to content.
 		let mut nav = Navigation::new();
@@ -301,7 +305,7 @@ impl<'src> Viewer<'src> {
 		let mut source_opened = false;
 		let mut run_result = (|| -> Result<()> {
 			if let Some(source) = self.live_source.as_deref_mut() {
-				source.open(engine)?;
+				source.open(runtime)?;
 				source_opened = true;
 			}
 
@@ -495,12 +499,12 @@ impl<'src> Viewer<'src> {
 					match result {
 						Ok(paths) => {
 							if let Some(path) = paths.into_iter().next() {
-								self.open_media_path(engine, &mut media, &mut nav, &mut timeline_state, &path)?;
+								self.open_media_path(runtime, &mut media, &mut nav, &mut timeline_state, &path)?;
 							}
 						}
 						Err(sdl3::dialog::DialogError::Canceled) => {}
 						Err(error) => {
-							engine.log(
+							runtime.log(
 								crate::LogLevel::Warn,
 								crate::LogComponent::UI,
 								format!("Viewer: open file dialog failed: {error}"),
@@ -636,11 +640,11 @@ impl<'src> Viewer<'src> {
 	}
 
 	/// Replace the open media with the file at `path`, keeping the window,
-	/// engine, and presenter alive. A failed open keeps the current media and
+	/// runtime, and presenter alive. A failed open keeps the current media and
 	/// is logged rather than propagated.
 	fn open_media_path(
 		&mut self,
-		engine: &Engine,
+		runtime: &Runtime,
 		media: &mut MediaState,
 		nav: &mut Navigation,
 		timeline_state: &mut timeline::TransportState,
@@ -650,10 +654,10 @@ impl<'src> Viewer<'src> {
 			path: path.to_string_lossy().into_owned(),
 			..self.config.clone()
 		};
-		let new_media = match MediaState::open(engine, &config, None) {
+		let new_media = match MediaState::open(runtime, &config, None) {
 			Ok(media) => media,
 			Err(error) => {
-				engine.log(
+				runtime.log(
 					crate::LogLevel::Warn,
 					crate::LogComponent::UI,
 					format!("Viewer: could not open {}: {error}", path.display()),
@@ -840,13 +844,13 @@ pub(crate) enum MediaState {
 }
 
 impl MediaState {
-	fn open(engine: &Engine, config: &ViewerConfig, borrowed: Option<&Texture>) -> Result<Self> {
+	fn open(runtime: &Runtime, config: &ViewerConfig, borrowed: Option<&Texture>) -> Result<Self> {
 		match config.mode {
 			ViewerMode::Image => {
 				let texture = if let Some(t) = borrowed {
 					Some(t.clone())
 				} else if !config.path.is_empty() {
-					Some(image_mode::load_texture(engine, &config.path)?)
+					Some(image_mode::load_texture(runtime, &config.path)?)
 				} else {
 					None
 				};
@@ -857,7 +861,7 @@ impl MediaState {
 			}
 			ViewerMode::Video => {
 				let player = if !config.path.is_empty() {
-					Some(video_mode::open(engine, config)?)
+					Some(video_mode::open(runtime, config)?)
 				} else {
 					None
 				};
@@ -867,8 +871,8 @@ impl MediaState {
 			}
 			ViewerMode::Audio => {
 				let (player, analysis) = if !config.path.is_empty() {
-					let a = audio_view::analyze(engine, &config.path, config)?;
-					let p = audio_mode::open(engine, config)?;
+					let a = audio_view::analyze(runtime, &config.path, config)?;
+					let p = audio_mode::open(runtime, config)?;
 					(Some(p), a)
 				} else {
 					(None, None)
@@ -885,13 +889,13 @@ impl MediaState {
 			ViewerMode::Workspace => Ok(Self::Workspace),
 			ViewerMode::Auto => {
 				// Try image → video → audio in donor order.
-				if let Ok(texture) = image_mode::load_texture(engine, &config.path) {
+				if let Ok(texture) = image_mode::load_texture(runtime, &config.path) {
 					return Ok(Self::Image {
 						texture: Box::new(Some(texture)),
 						channel_mode: image_mode::ChannelMode::Rgb,
 					});
 				}
-				let video_error = match video_mode::open(engine, config) {
+				let video_error = match video_mode::open(runtime, config) {
 					Ok(player) => {
 						return Ok(Self::Video {
 							player: Box::new(Some(player)),
@@ -899,9 +903,9 @@ impl MediaState {
 					}
 					Err(error) => error,
 				};
-				let audio_error = match audio_mode::open(engine, config) {
+				let audio_error = match audio_mode::open(runtime, config) {
 					Ok(mut player) => {
-						let analysis = match audio_view::analyze(engine, &config.path, config) {
+						let analysis = match audio_view::analyze(runtime, &config.path, config) {
 							Ok(analysis) => analysis,
 							Err(error) => {
 								let _ = player.close();

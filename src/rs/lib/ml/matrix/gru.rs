@@ -7,7 +7,7 @@ use crate::{
 
 use crate::ml::{Parameter, autograd};
 
-use super::super::validation::{shader_u32, validate_f32_same_engine};
+use super::super::validation::{shader_u32, validate_f32_same_runtime};
 
 use super::recurrent::{MAX_HIDDEN_SIZE, optional_bias};
 
@@ -19,7 +19,7 @@ use super::recurrent::{MAX_HIDDEN_SIZE, optional_bias};
 ///
 /// # Errors
 ///
-/// Returns an error unless all values are nonempty same-engine F32 matrices,
+/// Returns an error unless all values are nonempty same-runtime F32 matrices,
 /// shapes agree, hidden size is at most 1024, or runtime recording fails.
 pub fn gru_scan(gates_i: &Matrix, weight_hh: &Matrix, bias_hh: Option<&Matrix>) -> Result<Matrix> {
 	let bias_value = match bias_hh {
@@ -31,7 +31,7 @@ pub fn gru_scan(gates_i: &Matrix, weight_hh: &Matrix, bias_hh: Option<&Matrix>) 
 				));
 			};
 			Matrix::allocate(
-				weight_hh.engine_handle(),
+				weight_hh.runtime(),
 				vec![*gate_count],
 				*gate_count,
 				crate::DType::F32,
@@ -115,7 +115,7 @@ pub(in crate::ml) fn gru_scan_backward(
 			"{OPERATION} saved values and output gradient do not match the GRU scan contract"
 		)));
 	}
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		OPERATION,
 		&[
 			output_gradient,
@@ -126,25 +126,25 @@ pub(in crate::ml) fn gru_scan_backward(
 		],
 	)?;
 	let gates_i_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
 	)?;
 	let gates_h_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		weight_hh.shape().to_vec(),
 		weight_hh.num_elements(),
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		bias_hh.shape().to_vec(),
 		bias_hh.num_elements(),
 		DType::F32,
@@ -211,7 +211,7 @@ pub(in crate::ml) fn gru_scan_backward(
 		name: "has_bias".into(),
 		value: has_bias,
 	}];
-	gates_i.engine_handle().record_split_semantic(
+	gates_i.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: crate::core::operation::ml::GRU_SCAN_BACKWARD,
@@ -231,7 +231,7 @@ pub(in crate::ml) fn gru_scan_backward(
 ///
 /// # Errors
 ///
-/// Returns an error unless all values are nonempty same-engine F32 matrices,
+/// Returns an error unless all values are nonempty same-runtime F32 matrices,
 /// shapes agree, hidden size is at most 1024, or runtime recording fails.
 pub fn gru_cell(
 	gates_i: &Matrix,
@@ -321,7 +321,7 @@ pub(in crate::ml) fn gru_cell_backward(
 			"{OPERATION} saved values and output gradient do not match the GRU cell contract"
 		)));
 	}
-	validate_f32_same_engine(
+	validate_f32_same_runtime(
 		OPERATION,
 		&[
 			gates_i,
@@ -333,43 +333,43 @@ pub(in crate::ml) fn gru_cell_backward(
 		],
 	)?;
 	let gates_i_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
 	)?;
 	let gates_h_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
 	)?;
 	let direct_hidden_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		hidden.shape().to_vec(),
 		hidden.num_elements(),
 		DType::F32,
 	)?;
 	let recurrent_hidden_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		hidden.shape().to_vec(),
 		hidden.num_elements(),
 		DType::F32,
 	)?;
 	let hidden_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		hidden.shape().to_vec(),
 		hidden.num_elements(),
 		DType::F32,
 	)?;
 	let weight_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		weight_hh.shape().to_vec(),
 		weight_hh.num_elements(),
 		DType::F32,
 	)?;
 	let bias_gradient = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		bias_hh.shape().to_vec(),
 		bias_hh.num_elements(),
 		DType::F32,
@@ -461,7 +461,7 @@ pub(in crate::ml) fn gru_cell_backward(
 		name: "has_bias".into(),
 		value: has_bias,
 	}];
-	gates_i.engine_handle().record_split_semantic(
+	gates_i.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: crate::core::operation::ml::GRU_CELL_BACKWARD,
@@ -510,24 +510,20 @@ fn gru_scan_dispatch(
 			"{OPERATION} requires nonempty gates [B, S, 3H], recurrent weight [3H, H], bias storage [3H], and H <= {MAX_HIDDEN_SIZE}"
 		)));
 	}
-	validate_f32_same_engine(OPERATION, &[gates_i, weight_hh, bias_hh])?;
+	validate_f32_same_runtime(OPERATION, &[gates_i, weight_hh, bias_hh])?;
 	let output_count = batch
 		.checked_mul(*sequence_length)
 		.and_then(|count| count.checked_mul(*hidden_size))
 		.ok_or_else(|| Error::invalid_argument(format!("{OPERATION} output size overflows usize")))?;
 	let output_shape = vec![*batch, *sequence_length, *hidden_size];
 	let output = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		output_shape.clone(),
 		output_count,
 		DType::F32,
 	)?;
-	let hidden_previous = Matrix::allocate(
-		gates_i.engine_handle(),
-		output_shape,
-		output_count,
-		DType::F32,
-	)?;
+	let hidden_previous =
+		Matrix::allocate(gates_i.runtime(), output_shape, output_count, DType::F32)?;
 	let batch = shader_u32(*batch, "batch", OPERATION)?;
 	let sequence_length = shader_u32(*sequence_length, "sequence length", OPERATION)?;
 	let hidden_size = shader_u32(*hidden_size, "hidden size", OPERATION)?;
@@ -575,11 +571,11 @@ fn gru_scan_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,
@@ -631,15 +627,15 @@ fn gru_cell_dispatch(
 			"{OPERATION} requires gates [B, 3H], hidden [B, H], recurrent weight [3H, H], bias storage [3H], and H <= {MAX_HIDDEN_SIZE}"
 		)));
 	}
-	validate_f32_same_engine(OPERATION, &[gates_i, hidden, weight_hh, bias_hh])?;
+	validate_f32_same_runtime(OPERATION, &[gates_i, hidden, weight_hh, bias_hh])?;
 	let output = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		hidden.shape().to_vec(),
 		hidden.num_elements(),
 		DType::F32,
 	)?;
 	let gates_h = Matrix::allocate(
-		gates_i.engine_handle(),
+		gates_i.runtime(),
 		gates_i.shape().to_vec(),
 		gates_i.num_elements(),
 		DType::F32,
@@ -680,11 +676,11 @@ fn gru_cell_dispatch(
 				dispatch.kernel.report_name()
 			))
 		})?;
-		let engine = inputs
+		let runtime = inputs
 			.first()
 			.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-			.engine_handle();
-		engine.record_semantic(
+			.runtime();
+		runtime.record_semantic(
 			dispatch,
 			SemanticDispatch {
 				contract,

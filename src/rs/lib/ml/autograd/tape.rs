@@ -40,7 +40,7 @@ struct WatchedParameter {
 ///
 /// Constructing a tape selects it for operations on the current thread.
 /// [`GradientTape::backward`] closes the recording scope and records the
-/// corresponding backward operations into the originating engine's eager batch.
+/// corresponding backward operations into the originating runtime's eager batch.
 #[must_use]
 pub struct GradientTape {
 	recording: Rc<RecordingState>,

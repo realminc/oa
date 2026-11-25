@@ -124,16 +124,18 @@ impl Path {
 
 	/// Root of the OA asset tree.
 	///
-	/// Resolution: `OA_ASSET` env var → nearest ancestor `sdk/asset` dir →
-	/// `./asset`.
+	/// Resolution: `OA_ASSET` env var → nearest ancestor `sdk/asset`,
+	/// `src/asset`, or `asset` dir → `./asset`.
 	pub fn asset() -> Self {
 		if let Ok(v) = std::env::var("OA_ASSET") {
 			return Self(PathBuf::from(v));
 		}
 		if let Some(root) = find_source_root() {
-			let candidate = root.join("sdk/asset");
-			if candidate.is_dir() {
-				return Self(candidate);
+			for relative in ["sdk/asset", "src/asset", "asset"] {
+				let candidate = root.join(relative);
+				if candidate.is_dir() {
+					return Self(candidate);
+				}
 			}
 		}
 		Self(PathBuf::from("asset"))

@@ -11,11 +11,10 @@ Coverage strategy
   SequentialScheduler, ProgressBar, TrainingSummary, CsvLogger) exercise
   their public methods with minimal realistic inputs.
 * CheckpointManagerConfig round-trips all fields (the full manager requires
-  a running Engine with GPU, so it is guarded by a hardware-availability
+  a running Runtime with GPU, so it is guarded by a hardware-availability
   skip).
 * TrainingProgram / TrainingCompilation* types verify enum membership and
   token strings; GPU-requiring capture is skipped on non-GPU hosts.
-* NLP preset constructors and CharSampler.next_values() run on CPU only.
 * The full module-export inventory asserts every expected name is present in
   oa.ml.__all__ so stale __init__.py omissions are caught immediately.
 """
@@ -27,9 +26,9 @@ import oa
 
 
 def _has_gpu() -> bool:
-	"""Return True when a compute Engine can be constructed."""
+	"""Return True when a compute Runtime can be constructed."""
 	try:
-		oa.Engine()
+		oa.Runtime()
 		return True
 	except Exception:
 		return False
@@ -95,27 +94,6 @@ class MlExportInventoryTest(unittest.TestCase):
 		"TrainingCompilationState",
 		"TrainingCompilationStageRecord",
 		"TrainingProgram",
-		# NLP presets
-		"CharSampler",
-		"ByteSampler",
-		"CharRnn",
-		"CharGru",
-		"CharTransformer",
-		"CharMoeTransformer",
-		"CharMamba3",
-		"ByteRnn",
-		"ByteGru",
-		"ByteTransformer",
-		"ByteMoeTransformer",
-		"ByteMamba3",
-		"ByteEmpyrealm",
-		"BpeRnn",
-		"BpeGru",
-		"BpeTransformer",
-		"BpeMoeTransformer",
-		"BpeMamba3",
-		"nlp_generate_greedy",
-		"nlp_generate_bytes_greedy",
 	]
 
 	def test_all_new_names_are_accessible_on_oa_ml(self) -> None:
@@ -430,9 +408,7 @@ class SequentialSchedulerTest(unittest.TestCase):
 class ProgressBarTest(unittest.TestCase):
 	@require_gpu
 	def test_render_line_returns_non_empty_string(self) -> None:
-		engine = oa.Engine()
-		# CharTransformer is the simplest available model: build one so we can
-		# drive a single step and get a real snapshot.
+		runtime = oa.Runtime()
 		# Instead, just verify render_line accepts the right argument types.
 		cfg = oa.ml.ItTrainingConfig(
 			total_steps=10, steps_per_epoch=5, batch_size=1
@@ -569,7 +545,7 @@ class CheckpointManagerConfigTest(unittest.TestCase):
 class CheckpointManagerTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def test_constructs_and_reports_paths(self) -> None:
 		cfg = oa.ml.CheckpointManagerConfig(
@@ -578,7 +554,7 @@ class CheckpointManagerTest(unittest.TestCase):
 			metric_name="loss",
 			lower_is_better=True,
 		)
-		mgr = oa.ml.CheckpointManager( cfg, engine=self.engine)
+		mgr = oa.ml.CheckpointManager( cfg, runtime=self.runtime)
 		self.assertIn("TestModel", mgr.model_directory())
 		self.assertIn("TestModel", mgr.master_path())
 		self.assertIn("TestModel", mgr.incremental_directory())
@@ -593,7 +569,7 @@ class CheckpointManagerTest(unittest.TestCase):
 			metric_name="loss",
 			lower_is_better=True,
 		)
-		mgr = oa.ml.CheckpointManager( cfg, engine=self.engine)
+		mgr = oa.ml.CheckpointManager( cfg, runtime=self.runtime)
 		self.assertTrue(mgr.is_better(0.5))
 		self.assertTrue(mgr.is_better(-100.0))
 
@@ -604,13 +580,13 @@ class CheckpointManagerTest(unittest.TestCase):
 			metric_name="accuracy",
 			lower_is_better=False,
 		)
-		mgr = oa.ml.CheckpointManager( cfg, engine=self.engine)
+		mgr = oa.ml.CheckpointManager( cfg, runtime=self.runtime)
 		self.assertTrue(mgr.is_better(0.9))
 
 	def test_rejects_path_traversal_in_model_name(self) -> None:
 		cfg = oa.ml.CheckpointManagerConfig(model_name="../escape")
 		with self.assertRaises(Exception):
-			oa.ml.CheckpointManager( cfg, engine=self.engine)
+			oa.ml.CheckpointManager( cfg, runtime=self.runtime)
 
 
 class TrainingCompilationStageTest(unittest.TestCase):
@@ -681,16 +657,16 @@ class TrainingProgramTest(unittest.TestCase):
 	"""TrainingProgram: capture a real linear step and verify contracts."""
 
 	def setUp(self) -> None:
-		self.engine = oa.Engine()
+		self.runtime = oa.Runtime()
 		# Build a minimal 1-layer linear model + AdamW for capture.
-		self.linear = oa.ml.Linear( input_features=4, output_features=1, seed=0, engine=self.engine)
+		self.linear = oa.ml.Linear( input_features=4, output_features=1, seed=0, runtime=self.runtime)
 		params = self.linear.all_parameters()
 		self.optimizer = oa.ml.AdamW(params, learning_rate=1e-3)
 
 	def _step_fn(self) -> "oa.Matrix":
 		"""One forward + backward step; returns a scalar F32 loss."""
-		x = oa.Matrix.new_from_f32( [1, 4], [1.0, 2.0, 3.0, 4.0], engine=self.engine)
-		target = oa.Matrix.new_from_f32( [1, 1], [0.0], engine=self.engine)
+		x = oa.Matrix.new_from_f32( [1, 4], [1.0, 2.0, 3.0, 4.0], runtime=self.runtime)
+		target = oa.Matrix.new_from_f32( [1, 1], [0.0], runtime=self.runtime)
 		with oa.ml.GradientTape() as tape:
 			pred = self.linear(x)
 			loss = oa.ml.loss.mse(pred, target)
@@ -698,12 +674,12 @@ class TrainingProgramTest(unittest.TestCase):
 		return loss
 
 	def test_capture_produces_correct_stage_count(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, runtime=self.runtime)
 		stages = prog.compilation_stages()
 		self.assertEqual(len(stages), 11)
 
 	def test_stage_records_have_valid_types(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, runtime=self.runtime)
 		for record in prog.compilation_stages():
 			self.assertIsInstance(record, oa.ml.TrainingCompilationStageRecord)
 			self.assertIsInstance(record.stage, oa.ml.TrainingCompilationStage)
@@ -712,7 +688,7 @@ class TrainingProgramTest(unittest.TestCase):
 			self.assertGreaterEqual(record.output_count, 0)
 
 	def test_stage_tokens_cover_all_11_stages(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, runtime=self.runtime)
 		tokens = {r.stage.token() for r in prog.compilation_stages()}
 		expected = {
 			"semantic_validation", "replay_safety", "decomposition",
@@ -723,99 +699,29 @@ class TrainingProgramTest(unittest.TestCase):
 		self.assertEqual(tokens, expected)
 
 	def test_replay_count_starts_at_zero(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, runtime=self.runtime)
 		self.assertEqual(prog.replay_count(), 0)
 
 	def test_replay_and_wait_returns_finite_loss(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
-		loss = prog.replay_and_wait(self.optimizer, engine=self.engine)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, runtime=self.runtime)
+		loss = prog.replay_and_wait(self.optimizer, runtime=self.runtime)
 		self.assertIsInstance(loss, float)
 		self.assertTrue(math.isfinite(loss))
 		self.assertEqual(prog.replay_count(), 1)
 
 	def test_repr_includes_class_name(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, runtime=self.runtime)
 		self.assertIn("TrainingProgram", repr(prog))
 
 	def test_loss_matrix_is_scalar_f32(self) -> None:
-		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, engine=self.engine)
+		prog = oa.ml.TrainingProgram.capture(self.optimizer, self._step_fn, runtime=self.runtime)
 		loss_mat = prog.loss()
 		self.assertIsInstance(loss_mat, oa.Matrix)
 		self.assertEqual(loss_mat.dtype, "f32")
 		self.assertEqual(loss_mat.shape, [])
 
 
-class CharSamplerTest(unittest.TestCase):
-	def test_constructs_with_valid_batch_size(self) -> None:
-		sampler = oa.ml.CharSampler(batch_size=2)
-		self.assertIn("CharSampler", repr(sampler))
 
-	def test_next_values_returns_paired_u32_sequences(self) -> None:
-		sampler = oa.ml.CharSampler(batch_size=1)
-		inputs, targets = sampler.next_values()
-		# CharSampler uses sequence_length=16; input and target have same length
-		self.assertEqual(len(inputs), len(targets))
-		self.assertGreater(len(inputs), 0)
-		# All tokens are valid u32 values
-		for tok in inputs + targets:
-			self.assertIsInstance(tok, int)
-			self.assertGreaterEqual(tok, 0)
-
-	def test_rejects_zero_batch_size(self) -> None:
-		with self.assertRaises(Exception):
-			oa.ml.CharSampler(batch_size=0)
-
-
-class ByteSamplerTest(unittest.TestCase):
-	def test_constructs_with_valid_batch_size(self) -> None:
-		sampler = oa.ml.ByteSampler(batch_size=2)
-		self.assertIn("ByteSampler", repr(sampler))
-
-	def test_next_values_returns_paired_sequences(self) -> None:
-		sampler = oa.ml.ByteSampler(batch_size=1)
-		inputs, targets = sampler.next_values()
-		self.assertEqual(len(inputs), len(targets))
-		self.assertGreater(len(inputs), 0)
-
-
-@require_gpu
-class NlpPresetSmoke(unittest.TestCase):
-	"""Smoke-test that each NLP model preset constructs without error."""
-
-	@classmethod
-	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
-
-	def _assert_preset(self, cls_name: str, **kwargs) -> None:
-		preset_cls = getattr(oa.ml, cls_name)
-		model = preset_cls(engine=self.engine, **kwargs)
-		self.assertIn(cls_name, repr(model))
-		params = model.all_parameters()
-		self.assertGreater(len(params), 0)
-
-	def test_char_rnn(self) -> None:
-		self._assert_preset("CharRnn")
-
-	def test_char_gru(self) -> None:
-		self._assert_preset("CharGru")
-
-	def test_char_transformer(self) -> None:
-		self._assert_preset("CharTransformer")
-
-	def test_byte_rnn(self) -> None:
-		self._assert_preset("ByteRnn")
-
-	def test_byte_gru(self) -> None:
-		self._assert_preset("ByteGru")
-
-	def test_byte_transformer(self) -> None:
-		self._assert_preset("ByteTransformer")
-
-	def test_char_mamba3(self) -> None:
-		self._assert_preset("CharMamba3")
-
-	def test_byte_mamba3(self) -> None:
-		self._assert_preset("ByteMamba3")
 
 
 @require_gpu
@@ -824,13 +730,13 @@ class FlowMatchBatchTest(unittest.TestCase):
 
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def test_linear_match_returns_flow_match_batch(self) -> None:
 		# Minimal 1-D batch: clean and noise are [2, 4], time is [2]
-		clean = oa.Matrix.new_from_f32( [2, 4], [0.0] * 8, engine=self.engine)
-		noise = oa.Matrix.new_from_f32( [2, 4], [1.0] * 8, engine=self.engine)
-		time = oa.Matrix.new_from_f32( [2], [0.5, 0.25], engine=self.engine)
+		clean = oa.Matrix.new_from_f32( [2, 4], [0.0] * 8, runtime=self.runtime)
+		noise = oa.Matrix.new_from_f32( [2, 4], [1.0] * 8, runtime=self.runtime)
+		time = oa.Matrix.new_from_f32( [2], [0.5, 0.25], runtime=self.runtime)
 		batch = oa.ml.flow_linear_match(clean, noise, time)
 		self.assertIsInstance(batch, oa.ml.FlowMatchBatch)
 		self.assertEqual(repr(batch), "FlowMatchBatch")
@@ -842,16 +748,16 @@ class FlowMatchBatchTest(unittest.TestCase):
 		self.assertEqual(velocity.shape, [2, 4])
 
 	def test_euler_step_returns_matrix_with_matching_shape(self) -> None:
-		state = oa.Matrix.new_from_f32( [2, 4], [0.5] * 8, engine=self.engine)
-		velocity = oa.Matrix.new_from_f32( [2, 4], [1.0] * 8, engine=self.engine)
+		state = oa.Matrix.new_from_f32( [2, 4], [0.5] * 8, runtime=self.runtime)
+		velocity = oa.Matrix.new_from_f32( [2, 4], [1.0] * 8, runtime=self.runtime)
 		result = oa.ml.flow_euler_step(state, velocity, delta_time=0.1)
 		self.assertIsInstance(result, oa.Matrix)
 		self.assertEqual(result.shape, [2, 4])
 
 	def test_masked_mse_returns_scalar_loss(self) -> None:
-		pred = oa.Matrix.new_from_f32( [2, 4], [0.0] * 8, engine=self.engine)
-		target = oa.Matrix.new_from_f32( [2, 4], [1.0] * 8, engine=self.engine)
-		mask = oa.Matrix.new_from_f32( [2, 4], [1.0] * 8, engine=self.engine)
+		pred = oa.Matrix.new_from_f32( [2, 4], [0.0] * 8, runtime=self.runtime)
+		target = oa.Matrix.new_from_f32( [2, 4], [1.0] * 8, runtime=self.runtime)
+		mask = oa.Matrix.new_from_f32( [2, 4], [1.0] * 8, runtime=self.runtime)
 		loss = oa.ml.flow_masked_mse(pred, target, mask)
 		self.assertIsInstance(loss, oa.Matrix)
 
@@ -1158,14 +1064,14 @@ class TrainerMetricsFromGpuTest(unittest.TestCase):
 
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def _make_actor_critic_and_adamw(self):
 		"""Helper that returns (model, optimizer) for a tiny 4→2 actor-critic."""
 		model_cfg = oa.ml.CategoricalActorCriticConfig(
 			observation_size=4, action_count=2, hidden_size=16, seed=0
 		)
-		model = oa.ml.CategoricalActorCritic( model_cfg, engine=self.engine)
+		model = oa.ml.CategoricalActorCritic( model_cfg, runtime=self.runtime)
 		params = model.all_parameters()
 		opt = oa.ml.AdamW(params, learning_rate=1e-3)
 		return model, opt
@@ -1176,7 +1082,7 @@ class TrainerMetricsFromGpuTest(unittest.TestCase):
 			rollouts=1, horizon=4, environments=1,
 			update_epochs=1, observation_shape=[4], seed=0,
 		)
-		trainer = oa.ml.PpoTrainer( model, opt, trainer_cfg, engine=self.engine)
+		trainer = oa.ml.PpoTrainer( model, opt, trainer_cfg, runtime=self.runtime)
 		m = trainer.metrics()
 		self.assertIsInstance(m, oa.ml.PpoTrainerMetrics)
 		self.assertIn("PpoTrainerMetrics", repr(m))
@@ -1188,16 +1094,16 @@ class TrainerMetricsFromGpuTest(unittest.TestCase):
 		online_cfg = oa.ml.CategoricalActorCriticConfig(
 			observation_size=4, action_count=2, hidden_size=16, seed=0
 		)
-		online = oa.ml.CategoricalActorCritic( online_cfg, engine=self.engine)
-		target = oa.ml.CategoricalActorCritic( online_cfg, engine=self.engine)
+		online = oa.ml.CategoricalActorCritic( online_cfg, runtime=self.runtime)
+		target = oa.ml.CategoricalActorCritic( online_cfg, runtime=self.runtime)
 		params = online.all_parameters()
 		opt = oa.ml.AdamW(params, learning_rate=1e-3)
 		replay = oa.ml.ReplayBuffer(
-			oa.ml.ReplayConfig(capacity=100, observation_shape=[4], action_dtype="i32"), engine=self.engine)
+			oa.ml.ReplayConfig(capacity=100, observation_shape=[4], action_dtype="i32"), runtime=self.runtime)
 		trainer_cfg = oa.ml.DqnTrainerConfig(
 			updates=1, batch_size=4, observation_shape=[4], seed=0
 		)
-		trainer = oa.ml.DqnTrainer( online, target, opt, replay, trainer_cfg, engine=self.engine)
+		trainer = oa.ml.DqnTrainer( online, target, opt, replay, trainer_cfg, runtime=self.runtime)
 		m = trainer.metrics()
 		self.assertIsInstance(m, oa.ml.DqnTrainerMetrics)
 		self.assertIn("DqnTrainerMetrics", repr(m))
@@ -1227,8 +1133,8 @@ class OptimizerConstructorsTest(unittest.TestCase):
 
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
-		cls.linear = oa.ml.Linear( input_features=4, output_features=2, seed=1, engine=cls.engine)
+		cls.runtime = oa.Runtime()
+		cls.linear = oa.ml.Linear( input_features=4, output_features=2, seed=1, runtime=cls.runtime)
 		cls.params = cls.linear.all_parameters()
 
 	def test_sgd_constructs_and_round_trips_lr(self) -> None:
@@ -1332,15 +1238,15 @@ class EnvironmentSpecTest(unittest.TestCase):
 class EnvironmentTransitionTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def test_round_trips_all_five_matrices(self) -> None:
-		e = self.engine
-		obs = oa.Matrix.new_from_f32([2, 4], [0.0] * 8, engine=e)
-		nobs = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, engine=e)
-		rew = oa.Matrix.new_from_f32([2], [0.5, 0.5], engine=e)
-		term = oa.Matrix.new_from_u8([2], [0, 1], engine=e)
-		trunc = oa.Matrix.new_from_u8([2], [0, 0], engine=e)
+		e = self.runtime
+		obs = oa.Matrix.new_from_f32([2, 4], [0.0] * 8, runtime=e)
+		nobs = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, runtime=e)
+		rew = oa.Matrix.new_from_f32([2], [0.5, 0.5], runtime=e)
+		term = oa.Matrix.new_from_u8([2], [0, 1], runtime=e)
+		trunc = oa.Matrix.new_from_u8([2], [0, 0], runtime=e)
 		t = oa.ml.EnvironmentTransition(obs, nobs, rew, term, trunc)
 		self.assertIsInstance(t, oa.ml.EnvironmentTransition)
 		self.assertEqual(t.observation.shape, [2, 4])
@@ -1357,25 +1263,25 @@ class EnvironmentTransitionTest(unittest.TestCase):
 class EnvironmentFunctionsTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def test_normalize_observation_preserves_shape(self) -> None:
-		e = self.engine
-		obs = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, engine=e)
-		mean = oa.Matrix.new_from_f32([4], [0.0] * 4, engine=e)
-		std = oa.Matrix.new_from_f32([4], [1.0] * 4, engine=e)
+		e = self.runtime
+		obs = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, runtime=e)
+		mean = oa.Matrix.new_from_f32([4], [0.0] * 4, runtime=e)
+		std = oa.Matrix.new_from_f32([4], [1.0] * 4, runtime=e)
 		result = oa.ml.normalize_observation(obs, mean, std, 1e-5, 5.0)
 		self.assertEqual(result.shape, [2, 4])
 
 	def test_scale_action_clamps_and_rescales(self) -> None:
-		e = self.engine
-		action = oa.Matrix.new_from_f32([2, 2], [0.5, -0.5, 1.0, -1.0], engine=e)
+		e = self.runtime
+		action = oa.Matrix.new_from_f32([2, 2], [0.5, -0.5, 1.0, -1.0], runtime=e)
 		result = oa.ml.scale_action(action, -1.0, 1.0, 0.0, 1.0, clamp_source=True)
 		self.assertEqual(result.shape, [2, 2])
 
 	def test_clip_reward_preserves_shape(self) -> None:
-		e = self.engine
-		reward = oa.Matrix.new_from_f32([4], [5.0, -5.0, 0.1, -0.1], engine=e)
+		e = self.runtime
+		reward = oa.Matrix.new_from_f32([4], [5.0, -5.0, 0.1, -0.1], runtime=e)
 		result = oa.ml.clip_reward(reward, -1.0, 1.0)
 		self.assertEqual(result.shape, [4])
 
@@ -1386,16 +1292,16 @@ class EnvironmentFunctionsTest(unittest.TestCase):
 class ReplayTransitionTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def test_round_trips_all_six_matrices(self) -> None:
-		e = self.engine
-		obs = oa.Matrix.new_from_f32([1, 4], [0.0] * 4, engine=e)
-		act = oa.Matrix.new_from_i32([1, 1], [0], engine=e)
-		nobs = oa.Matrix.new_from_f32([1, 4], [1.0] * 4, engine=e)
-		rew = oa.Matrix.new_from_f32([1], [1.0], engine=e)
-		term = oa.Matrix.new_from_u8([1], [0], engine=e)
-		trunc = oa.Matrix.new_from_u8([1], [0], engine=e)
+		e = self.runtime
+		obs = oa.Matrix.new_from_f32([1, 4], [0.0] * 4, runtime=e)
+		act = oa.Matrix.new_from_i32([1, 1], [0], runtime=e)
+		nobs = oa.Matrix.new_from_f32([1, 4], [1.0] * 4, runtime=e)
+		rew = oa.Matrix.new_from_f32([1], [1.0], runtime=e)
+		term = oa.Matrix.new_from_u8([1], [0], runtime=e)
+		trunc = oa.Matrix.new_from_u8([1], [0], runtime=e)
 		t = oa.ml.ReplayTransition(obs, act, nobs, rew, term, trunc)
 		self.assertEqual(t.observation.shape, [1, 4])
 		self.assertEqual(t.action.shape, [1, 1])
@@ -1409,22 +1315,22 @@ class ReplayTransitionTest(unittest.TestCase):
 class ReplayBufferTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def _make_buffer(self, capacity: int = 10):
 		cfg = oa.ml.ReplayConfig(
 			capacity=capacity, observation_shape=[4], action_shape=[1], action_dtype="i32"
 		)
-		return oa.ml.ReplayBuffer( cfg, engine=self.engine)
+		return oa.ml.ReplayBuffer( cfg, runtime=self.runtime)
 
 	def _make_transition(self):
-		e = self.engine
-		obs = oa.Matrix.new_from_f32([1, 4], [0.0] * 4, engine=e)
-		act = oa.Matrix.new_from_i32([1, 1], [0], engine=e)  # batch=1, action_shape=[1]
-		nobs = oa.Matrix.new_from_f32([1, 4], [1.0] * 4, engine=e)
-		rew = oa.Matrix.new_from_f32([1], [1.0], engine=e)
-		term = oa.Matrix.new_from_u8([1], [0], engine=e)
-		trunc = oa.Matrix.new_from_u8([1], [0], engine=e)
+		e = self.runtime
+		obs = oa.Matrix.new_from_f32([1, 4], [0.0] * 4, runtime=e)
+		act = oa.Matrix.new_from_i32([1, 1], [0], runtime=e)  # batch=1, action_shape=[1]
+		nobs = oa.Matrix.new_from_f32([1, 4], [1.0] * 4, runtime=e)
+		rew = oa.Matrix.new_from_f32([1], [1.0], runtime=e)
+		term = oa.Matrix.new_from_u8([1], [0], runtime=e)
+		trunc = oa.Matrix.new_from_u8([1], [0], runtime=e)
 		return oa.ml.ReplayTransition(obs, act, nobs, rew, term, trunc)
 
 	def test_empty_buffer_len_and_capacity(self) -> None:
@@ -1468,18 +1374,18 @@ class ReplayBufferTest(unittest.TestCase):
 class RolloutTransitionTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def test_round_trips_all_eight_matrices(self) -> None:
-		e = self.engine
-		obs = oa.Matrix.new_from_f32([1, 4], [0.0] * 4, engine=e)
-		act = oa.Matrix.new_from_i32([1], [0], engine=e)
-		rew = oa.Matrix.new_from_f32([1], [0.5], engine=e)
-		val = oa.Matrix.new_from_f32([1], [0.1], engine=e)
-		nval = oa.Matrix.new_from_f32([1], [0.2], engine=e)
-		logp = oa.Matrix.new_from_f32([1], [-1.0], engine=e)
-		term = oa.Matrix.new_from_u8([1], [0], engine=e)
-		trunc = oa.Matrix.new_from_u8([1], [0], engine=e)
+		e = self.runtime
+		obs = oa.Matrix.new_from_f32([1, 4], [0.0] * 4, runtime=e)
+		act = oa.Matrix.new_from_i32([1], [0], runtime=e)
+		rew = oa.Matrix.new_from_f32([1], [0.5], runtime=e)
+		val = oa.Matrix.new_from_f32([1], [0.1], runtime=e)
+		nval = oa.Matrix.new_from_f32([1], [0.2], runtime=e)
+		logp = oa.Matrix.new_from_f32([1], [-1.0], runtime=e)
+		term = oa.Matrix.new_from_u8([1], [0], runtime=e)
+		trunc = oa.Matrix.new_from_u8([1], [0], runtime=e)
 		t = oa.ml.RolloutTransition(obs, act, rew, val, nval, logp, term, trunc)
 		self.assertEqual(t.observation.shape, [1, 4])
 		self.assertEqual(t.action.shape, [1])
@@ -1496,22 +1402,22 @@ class RolloutTransitionTest(unittest.TestCase):
 class RolloutBufferTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def _make_buffer(self):
 		cfg = oa.ml.RolloutConfig(time=4, environments=1, observation_shape=[4])
-		return oa.ml.RolloutBuffer( cfg, engine=self.engine)
+		return oa.ml.RolloutBuffer( cfg, runtime=self.runtime)
 
 	def _make_transition(self):
-		e = self.engine
-		obs = oa.Matrix.new_from_f32([1, 4], [0.0] * 4, engine=e)
-		act = oa.Matrix.new_from_i32([1], [0], engine=e)
-		rew = oa.Matrix.new_from_f32([1], [0.5], engine=e)
-		val = oa.Matrix.new_from_f32([1], [0.1], engine=e)
-		nval = oa.Matrix.new_from_f32([1], [0.2], engine=e)
-		logp = oa.Matrix.new_from_f32([1], [-1.0], engine=e)
-		term = oa.Matrix.new_from_u8([1], [0], engine=e)
-		trunc = oa.Matrix.new_from_u8([1], [0], engine=e)
+		e = self.runtime
+		obs = oa.Matrix.new_from_f32([1, 4], [0.0] * 4, runtime=e)
+		act = oa.Matrix.new_from_i32([1], [0], runtime=e)
+		rew = oa.Matrix.new_from_f32([1], [0.5], runtime=e)
+		val = oa.Matrix.new_from_f32([1], [0.1], runtime=e)
+		nval = oa.Matrix.new_from_f32([1], [0.2], runtime=e)
+		logp = oa.Matrix.new_from_f32([1], [-1.0], runtime=e)
+		term = oa.Matrix.new_from_u8([1], [0], runtime=e)
+		trunc = oa.Matrix.new_from_u8([1], [0], runtime=e)
 		return oa.ml.RolloutTransition(obs, act, rew, val, nval, logp, term, trunc)
 
 	def test_empty_buffer_properties(self) -> None:
@@ -1541,32 +1447,32 @@ class RolloutBufferTest(unittest.TestCase):
 class PolicyAndLossFunctionsTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def test_masked_cross_entropy_ignores_the_masked_row(self) -> None:
-		e = self.engine
-		logits = oa.Matrix.new_from_f32([2, 2], [0.0, 0.0, 1000.0, -1000.0], engine=e)
-		targets = oa.Matrix.new_from_u32([2], [0, 1], engine=e)
-		mask = oa.Matrix.new_from_f32([2], [1.0, 0.0], engine=e)
+		e = self.runtime
+		logits = oa.Matrix.new_from_f32([2, 2], [0.0, 0.0, 1000.0, -1000.0], runtime=e)
+		targets = oa.Matrix.new_from_u32([2], [0, 1], runtime=e)
+		mask = oa.Matrix.new_from_f32([2], [1.0, 0.0], runtime=e)
 		loss = oa.ml.loss.masked_cross_entropy(logits, targets, mask, 1)
 		self.assertEqual(loss.shape, [])
 		self.assertAlmostEqual(loss.read_f32()[0], math.log(2.0), places=6)
 
 	def test_advantage_normalize_preserves_shape(self) -> None:
-		e = self.engine
-		adv = oa.Matrix.new_from_f32([8], [1.0, -1.0, 2.0, -2.0, 0.5, -0.5, 3.0, -3.0], engine=e)
+		e = self.runtime
+		adv = oa.Matrix.new_from_f32([8], [1.0, -1.0, 2.0, -2.0, 0.5, -0.5, 3.0, -3.0], runtime=e)
 		result = oa.ml.advantage_normalize(adv, epsilon=1e-8)
 		self.assertIsInstance(result, oa.Matrix)
 		self.assertEqual(result.shape, [8])
 
 	def test_advantage_gae_returns_result_with_correct_fields(self) -> None:
-		e = self.engine
+		e = self.runtime
 		shape = [4, 1]
-		reward = oa.Matrix.new_from_f32(shape, [1.0, 0.5, 2.0, 0.0], engine=e)
-		value = oa.Matrix.new_from_f32(shape, [0.5, 0.3, 0.8, 0.1], engine=e)
-		next_value = oa.Matrix.new_from_f32(shape, [0.3, 0.8, 0.1, 0.0], engine=e)
-		terminated = oa.Matrix.new_from_u8(shape, [0] * 4, engine=e)
-		truncated = oa.Matrix.new_from_u8(shape, [0] * 4, engine=e)
+		reward = oa.Matrix.new_from_f32(shape, [1.0, 0.5, 2.0, 0.0], runtime=e)
+		value = oa.Matrix.new_from_f32(shape, [0.5, 0.3, 0.8, 0.1], runtime=e)
+		next_value = oa.Matrix.new_from_f32(shape, [0.3, 0.8, 0.1, 0.0], runtime=e)
+		terminated = oa.Matrix.new_from_u8(shape, [0] * 4, runtime=e)
+		truncated = oa.Matrix.new_from_u8(shape, [0] * 4, runtime=e)
 		cfg = oa.ml.GaeConfig(0.99, 0.95)
 		result = oa.ml.advantage_gae(reward, value, next_value, terminated, truncated, cfg)
 		self.assertIsInstance(result, oa.ml.GaeResult)
@@ -1575,15 +1481,15 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 		self.assertEqual(repr(result), "GaeResult")
 
 	def test_clip_reward_clamps_values(self) -> None:
-		e = self.engine
-		reward = oa.Matrix.new_from_f32([4], [10.0, -10.0, 0.5, -0.5], engine=e)
+		e = self.runtime
+		reward = oa.Matrix.new_from_f32([4], [10.0, -10.0, 0.5, -0.5], runtime=e)
 		clipped = oa.ml.clip_reward(reward, -1.0, 1.0)
 		self.assertEqual(clipped.shape, [4])
 
 	def test_policy_sample_categorical_returns_policy_result(self) -> None:
-		e = self.engine
-		logits = oa.Matrix.new_from_f32([2, 4], [0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.1], engine=e)
-		value = oa.Matrix.new_from_f32([2], [0.5, 0.3], engine=e)
+		e = self.runtime
+		logits = oa.Matrix.new_from_f32([2, 4], [0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.1], runtime=e)
+		value = oa.Matrix.new_from_f32([2], [0.5, 0.3], runtime=e)
 		result = oa.ml.policy_sample_categorical(logits, value, 42)
 		self.assertIsInstance(result, oa.ml.PolicyResult)
 		self.assertEqual(result.action.shape, [2])
@@ -1593,19 +1499,19 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 		self.assertEqual(repr(result), "PolicyResult")
 
 	def test_policy_evaluate_categorical_returns_policy_result(self) -> None:
-		e = self.engine
-		logits = oa.Matrix.new_from_f32([2, 4], [0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.1], engine=e)
-		action = oa.Matrix.new_from_i32([2], [1, 2], engine=e)
-		value = oa.Matrix.new_from_f32([2], [0.5, 0.3], engine=e)
+		e = self.runtime
+		logits = oa.Matrix.new_from_f32([2, 4], [0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.1], runtime=e)
+		action = oa.Matrix.new_from_i32([2], [1, 2], runtime=e)
+		value = oa.Matrix.new_from_f32([2], [0.5, 0.3], runtime=e)
 		result = oa.ml.policy_evaluate_categorical(logits, action, value)
 		self.assertIsInstance(result, oa.ml.PolicyResult)
 		self.assertEqual(result.action.shape, [2])
 
 	def test_policy_sample_tanh_normal_returns_continuous_result(self) -> None:
-		e = self.engine
-		mean = oa.Matrix.new_from_f32([2, 2], [0.0] * 4, engine=e)
-		log_std = oa.Matrix.new_from_f32([2, 2], [-0.5] * 4, engine=e)
-		value = oa.Matrix.new_from_f32([2], [0.5, 0.3], engine=e)
+		e = self.runtime
+		mean = oa.Matrix.new_from_f32([2, 2], [0.0] * 4, runtime=e)
+		log_std = oa.Matrix.new_from_f32([2, 2], [-0.5] * 4, runtime=e)
+		value = oa.Matrix.new_from_f32([2], [0.5, 0.3], runtime=e)
 		result = oa.ml.policy_sample_tanh_normal(mean, log_std, value, -1.0, 1.0, 42, 1e-6)
 		self.assertIsInstance(result, oa.ml.ContinuousPolicyResult)
 		self.assertEqual(result.action.shape, [2, 2])
@@ -1616,31 +1522,31 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 		self.assertEqual(repr(result), "ContinuousPolicyResult")
 
 	def test_policy_evaluate_tanh_normal_returns_continuous_result(self) -> None:
-		e = self.engine
-		mean = oa.Matrix.new_from_f32([2, 2], [0.0] * 4, engine=e)
-		log_std = oa.Matrix.new_from_f32([2, 2], [-0.5] * 4, engine=e)
-		raw_action = oa.Matrix.new_from_f32([2, 2], [0.1, -0.1, 0.2, -0.2], engine=e)
-		value = oa.Matrix.new_from_f32([2], [0.5, 0.3], engine=e)
+		e = self.runtime
+		mean = oa.Matrix.new_from_f32([2, 2], [0.0] * 4, runtime=e)
+		log_std = oa.Matrix.new_from_f32([2, 2], [-0.5] * 4, runtime=e)
+		raw_action = oa.Matrix.new_from_f32([2, 2], [0.1, -0.1, 0.2, -0.2], runtime=e)
+		value = oa.Matrix.new_from_f32([2], [0.5, 0.3], runtime=e)
 		result = oa.ml.policy_evaluate_tanh_normal(mean, log_std, raw_action, value, -1.0, 1.0, 1e-6)
 		self.assertIsInstance(result, oa.ml.ContinuousPolicyResult)
 
 	def test_loss_ppo_clipped_policy_returns_matrix(self) -> None:
-		e = self.engine
-		new_lp = oa.Matrix.new_from_f32([4], [-0.5, -0.3, -0.7, -0.4], engine=e)
-		old_lp = oa.Matrix.new_from_f32([4], [-0.6, -0.4, -0.6, -0.5], engine=e)
-		adv = oa.Matrix.new_from_f32([4], [1.0, -1.0, 0.5, -0.5], engine=e)
+		e = self.runtime
+		new_lp = oa.Matrix.new_from_f32([4], [-0.5, -0.3, -0.7, -0.4], runtime=e)
+		old_lp = oa.Matrix.new_from_f32([4], [-0.6, -0.4, -0.6, -0.5], runtime=e)
+		adv = oa.Matrix.new_from_f32([4], [1.0, -1.0, 0.5, -0.5], runtime=e)
 		result = oa.ml.loss_ppo_clipped_policy(new_lp, old_lp, adv, 0.2)
 		self.assertIsInstance(result, oa.Matrix)
 		self.assertEqual(result.shape, [])
 
 	def test_loss_ppo_returns_ppo_loss_result(self) -> None:
-		e = self.engine
-		new_lp = oa.Matrix.new_from_f32([4], [-0.5, -0.3, -0.7, -0.4], engine=e)
-		old_lp = oa.Matrix.new_from_f32([4], [-0.6, -0.4, -0.6, -0.5], engine=e)
-		adv = oa.Matrix.new_from_f32([4], [1.0, -1.0, 0.5, -0.5], engine=e)
-		value = oa.Matrix.new_from_f32([4], [0.5, 0.3, 0.8, 0.1], engine=e)
-		target = oa.Matrix.new_from_f32([4], [0.6, 0.4, 0.9, 0.2], engine=e)
-		entropy = oa.Matrix.new_from_f32([4], [0.5, 0.6, 0.4, 0.5], engine=e)
+		e = self.runtime
+		new_lp = oa.Matrix.new_from_f32([4], [-0.5, -0.3, -0.7, -0.4], runtime=e)
+		old_lp = oa.Matrix.new_from_f32([4], [-0.6, -0.4, -0.6, -0.5], runtime=e)
+		adv = oa.Matrix.new_from_f32([4], [1.0, -1.0, 0.5, -0.5], runtime=e)
+		value = oa.Matrix.new_from_f32([4], [0.5, 0.3, 0.8, 0.1], runtime=e)
+		target = oa.Matrix.new_from_f32([4], [0.6, 0.4, 0.9, 0.2], runtime=e)
+		entropy = oa.Matrix.new_from_f32([4], [0.5, 0.6, 0.4, 0.5], runtime=e)
 		cfg = oa.ml.PpoLossConfig(clip_epsilon=0.2)
 		result = oa.ml.loss_ppo(new_lp, old_lp, adv, value, target, entropy, cfg)
 		self.assertIsInstance(result, oa.ml.PpoLossResult)
@@ -1651,13 +1557,13 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 		self.assertIsInstance(result.total_loss, oa.Matrix)
 
 	def test_loss_dqn_returns_dqn_loss_result(self) -> None:
-		e = self.engine
-		q = oa.Matrix.new_from_f32([4, 2], [0.5, 0.3, 0.7, 0.2, 0.6, 0.4, 0.8, 0.1], engine=e)
-		action = oa.Matrix.new_from_i32([4], [0, 1, 0, 1], engine=e)
-		reward = oa.Matrix.new_from_f32([4], [1.0, 0.0, 0.5, -0.5], engine=e)
-		next_q = oa.Matrix.new_from_f32([4, 2], [0.4, 0.6, 0.3, 0.7, 0.5, 0.5, 0.2, 0.8], engine=e)
-		terminated = oa.Matrix.new_from_u8([4], [0, 0, 0, 1], engine=e)
-		truncated = oa.Matrix.new_from_u8([4], [0] * 4, engine=e)
+		e = self.runtime
+		q = oa.Matrix.new_from_f32([4, 2], [0.5, 0.3, 0.7, 0.2, 0.6, 0.4, 0.8, 0.1], runtime=e)
+		action = oa.Matrix.new_from_i32([4], [0, 1, 0, 1], runtime=e)
+		reward = oa.Matrix.new_from_f32([4], [1.0, 0.0, 0.5, -0.5], runtime=e)
+		next_q = oa.Matrix.new_from_f32([4, 2], [0.4, 0.6, 0.3, 0.7, 0.5, 0.5, 0.2, 0.8], runtime=e)
+		terminated = oa.Matrix.new_from_u8([4], [0, 0, 0, 1], runtime=e)
+		truncated = oa.Matrix.new_from_u8([4], [0] * 4, runtime=e)
 		cfg = oa.ml.DqnLossConfig(discount=0.99)
 		result = oa.ml.loss_dqn(q, action, reward, next_q, terminated, truncated, cfg)
 		self.assertIsInstance(result, oa.ml.DqnLossResult)
@@ -1667,15 +1573,15 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 		self.assertIsInstance(result.loss, oa.Matrix)
 
 	def test_loss_sac_critic_returns_sac_critic_loss_result(self) -> None:
-		e = self.engine
-		q1 = oa.Matrix.new_from_f32([4], [0.5, 0.3, 0.7, 0.2], engine=e)
-		q2 = oa.Matrix.new_from_f32([4], [0.4, 0.35, 0.65, 0.25], engine=e)
-		reward = oa.Matrix.new_from_f32([4], [1.0, 0.0, 0.5, -0.5], engine=e)
-		next_q1 = oa.Matrix.new_from_f32([4], [0.4, 0.3, 0.6, 0.1], engine=e)
-		next_q2 = oa.Matrix.new_from_f32([4], [0.45, 0.25, 0.55, 0.15], engine=e)
-		next_lp = oa.Matrix.new_from_f32([4], [-0.5, -0.4, -0.6, -0.3], engine=e)
-		terminated = oa.Matrix.new_from_u8([4], [0, 0, 0, 1], engine=e)
-		truncated = oa.Matrix.new_from_u8([4], [0] * 4, engine=e)
+		e = self.runtime
+		q1 = oa.Matrix.new_from_f32([4], [0.5, 0.3, 0.7, 0.2], runtime=e)
+		q2 = oa.Matrix.new_from_f32([4], [0.4, 0.35, 0.65, 0.25], runtime=e)
+		reward = oa.Matrix.new_from_f32([4], [1.0, 0.0, 0.5, -0.5], runtime=e)
+		next_q1 = oa.Matrix.new_from_f32([4], [0.4, 0.3, 0.6, 0.1], runtime=e)
+		next_q2 = oa.Matrix.new_from_f32([4], [0.45, 0.25, 0.55, 0.15], runtime=e)
+		next_lp = oa.Matrix.new_from_f32([4], [-0.5, -0.4, -0.6, -0.3], runtime=e)
+		terminated = oa.Matrix.new_from_u8([4], [0, 0, 0, 1], runtime=e)
+		truncated = oa.Matrix.new_from_u8([4], [0] * 4, runtime=e)
 		cfg = oa.ml.SacLossConfig(discount=0.99, entropy_coefficient=0.2)
 		result = oa.ml.loss_sac_critic(q1, q2, reward, next_q1, next_q2, next_lp, terminated, truncated, cfg)
 		self.assertIsInstance(result, oa.ml.SacCriticLossResult)
@@ -1686,10 +1592,10 @@ class PolicyAndLossFunctionsTest(unittest.TestCase):
 		self.assertIsInstance(result.total_loss, oa.Matrix)
 
 	def test_loss_sac_actor_returns_matrix(self) -> None:
-		e = self.engine
-		q1 = oa.Matrix.new_from_f32([4], [0.5, 0.3, 0.7, 0.2], engine=e)
-		q2 = oa.Matrix.new_from_f32([4], [0.4, 0.35, 0.65, 0.25], engine=e)
-		lp = oa.Matrix.new_from_f32([4], [-0.5, -0.4, -0.6, -0.3], engine=e)
+		e = self.runtime
+		q1 = oa.Matrix.new_from_f32([4], [0.5, 0.3, 0.7, 0.2], runtime=e)
+		q2 = oa.Matrix.new_from_f32([4], [0.4, 0.35, 0.65, 0.25], runtime=e)
+		lp = oa.Matrix.new_from_f32([4], [-0.5, -0.4, -0.6, -0.3], runtime=e)
 		result = oa.ml.loss_sac_actor(q1, q2, lp, 0.2)
 		self.assertIsInstance(result, oa.Matrix)
 		self.assertEqual(result.shape, [])
@@ -1703,163 +1609,163 @@ class NnLayerSmokeTest(unittest.TestCase):
 
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def test_embedding_forward(self) -> None:
-		e = self.engine
-		layer = oa.ml.Embedding(num_embeddings=10, embedding_dim=4, seed=0, engine=e)
-		tokens = oa.Matrix.new_from_u32([2, 3], [0, 1, 2, 3, 4, 5], engine=e)
+		e = self.runtime
+		layer = oa.ml.Embedding(num_embeddings=10, embedding_dim=4, seed=0, runtime=e)
+		tokens = oa.Matrix.new_from_u32([2, 3], [0, 1, 2, 3, 4, 5], runtime=e)
 		out = layer(tokens)
 		self.assertEqual(out.shape, [2, 3, 4])
 		self.assertIn("Embedding", repr(layer))
 
 	def test_layer_norm_forward(self) -> None:
-		e = self.engine
-		layer = oa.ml.LayerNorm(normalized_shape=[4], seed=0, engine=e)
-		x = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, engine=e)
+		e = self.runtime
+		layer = oa.ml.LayerNorm(normalized_shape=[4], seed=0, runtime=e)
+		x = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, runtime=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4])
 		self.assertIn("LayerNorm", repr(layer))
 
 	def test_rms_norm_forward(self) -> None:
-		e = self.engine
-		layer = oa.ml.RmsNorm(features=4, seed=0, engine=e)
-		x = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, engine=e)
+		e = self.runtime
+		layer = oa.ml.RmsNorm(features=4, seed=0, runtime=e)
+		x = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, runtime=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4])
 		self.assertIn("RmsNorm", repr(layer))
 
 	def test_dropout_forward(self) -> None:
-		e = self.engine
+		e = self.runtime
 		layer = oa.ml.Dropout(probability=0.1, seed=0)
-		x = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, engine=e)
+		x = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, runtime=e)
 		out = layer.forward(x)
 		self.assertEqual(out.shape, [2, 4])
 		self.assertIn("Dropout", repr(layer))
 
 	def test_rnn_cell_forward(self) -> None:
-		e = self.engine
-		layer = oa.ml.RnnCell(input_size=4, hidden_size=8, seed=0, engine=e)
-		x = oa.Matrix.new_from_f32([2, 4], [0.5] * 8, engine=e)
-		h = oa.Matrix.new_from_f32([2, 8], [0.0] * 16, engine=e)
+		e = self.runtime
+		layer = oa.ml.RnnCell(input_size=4, hidden_size=8, seed=0, runtime=e)
+		x = oa.Matrix.new_from_f32([2, 4], [0.5] * 8, runtime=e)
+		h = oa.Matrix.new_from_f32([2, 8], [0.0] * 16, runtime=e)
 		out = layer(x, h)
 		self.assertEqual(out.shape, [2, 8])
 		self.assertIn("RnnCell", repr(layer))
 
 	def test_rnn_forward(self) -> None:
-		e = self.engine
-		layer = oa.ml.Rnn(input_size=4, hidden_size=8, seed=0, engine=e)
-		x = oa.Matrix.new_from_f32([2, 3, 4], [0.5] * 24, engine=e)
-		h = oa.Matrix.new_from_f32([2, 8], [0.0] * 16, engine=e)
+		e = self.runtime
+		layer = oa.ml.Rnn(input_size=4, hidden_size=8, seed=0, runtime=e)
+		x = oa.Matrix.new_from_f32([2, 3, 4], [0.5] * 24, runtime=e)
+		h = oa.Matrix.new_from_f32([2, 8], [0.0] * 16, runtime=e)
 		out = layer(x, h)
 		self.assertEqual(out.shape, [2, 3, 8])
 		self.assertIn("Rnn", repr(layer))
 
 	def test_gru_cell_forward(self) -> None:
-		e = self.engine
-		layer = oa.ml.GruCell(input_size=4, hidden_size=8, seed=0, engine=e)
-		x = oa.Matrix.new_from_f32([2, 4], [0.5] * 8, engine=e)
-		h = oa.Matrix.new_from_f32([2, 8], [0.0] * 16, engine=e)
+		e = self.runtime
+		layer = oa.ml.GruCell(input_size=4, hidden_size=8, seed=0, runtime=e)
+		x = oa.Matrix.new_from_f32([2, 4], [0.5] * 8, runtime=e)
+		h = oa.Matrix.new_from_f32([2, 8], [0.0] * 16, runtime=e)
 		out = layer(x, h)
 		self.assertEqual(out.shape, [2, 8])
 		self.assertIn("GruCell", repr(layer))
 
 	def test_gru_forward(self) -> None:
-		e = self.engine
-		layer = oa.ml.Gru(input_size=4, hidden_size=8, seed=0, engine=e)
-		x = oa.Matrix.new_from_f32([2, 3, 4], [0.5] * 24, engine=e)
-		h = oa.Matrix.new_from_f32([2, 8], [0.0] * 16, engine=e)
+		e = self.runtime
+		layer = oa.ml.Gru(input_size=4, hidden_size=8, seed=0, runtime=e)
+		x = oa.Matrix.new_from_f32([2, 3, 4], [0.5] * 24, runtime=e)
+		h = oa.Matrix.new_from_f32([2, 8], [0.0] * 16, runtime=e)
 		out = layer(x, h)
 		self.assertEqual(out.shape, [2, 3, 8])
 		self.assertIn("Gru", repr(layer))
 
 	def test_transformer_block_forward(self) -> None:
-		e = self.engine
+		e = self.runtime
 		block = oa.ml.TransformerBlock(
-			dim=8, heads=2, seq_len=4, seed=0, engine=e
+			dim=8, heads=2, seq_len=4, seed=0, runtime=e
 		)
 		# forward expects [B*S, D] input, so [4, 8] for batch=1, seq=4, dim=8
-		x = oa.Matrix.new_from_f32([4, 8], [0.0] * 32, engine=e)
+		x = oa.Matrix.new_from_f32([4, 8], [0.0] * 32, runtime=e)
 		out = block(x)
 		self.assertEqual(out.shape, [4, 8])
 		self.assertIn("TransformerBlock", repr(block))
 
 	def test_relu_forward(self) -> None:
-		e = self.engine
+		e = self.runtime
 		layer = oa.ml.Relu()
-		x = oa.Matrix.new_from_f32([4], [-1.0, 0.0, 1.0, 2.0], engine=e)
+		x = oa.Matrix.new_from_f32([4], [-1.0, 0.0, 1.0, 2.0], runtime=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [4])
 		self.assertIn("Relu", repr(layer))
 
 	def test_gelu_forward(self) -> None:
-		e = self.engine
+		e = self.runtime
 		layer = oa.ml.Gelu()
-		x = oa.Matrix.new_from_f32([4], [-1.0, 0.0, 1.0, 2.0], engine=e)
+		x = oa.Matrix.new_from_f32([4], [-1.0, 0.0, 1.0, 2.0], runtime=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [4])
 		self.assertIn("Gelu", repr(layer))
 
 	def test_silu_forward(self) -> None:
-		e = self.engine
+		e = self.runtime
 		layer = oa.ml.Silu()
-		x = oa.Matrix.new_from_f32([4], [-1.0, 0.0, 1.0, 2.0], engine=e)
+		x = oa.Matrix.new_from_f32([4], [-1.0, 0.0, 1.0, 2.0], runtime=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [4])
 
 	def test_softmax_forward(self) -> None:
-		e = self.engine
+		e = self.runtime
 		layer = oa.ml.Softmax(dim=1)
-		x = oa.Matrix.new_from_f32([2, 4], [1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5], engine=e)
+		x = oa.Matrix.new_from_f32([2, 4], [1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5], runtime=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4])
 		self.assertIn("Softmax", repr(layer))
 
 	def test_log_softmax_forward(self) -> None:
-		e = self.engine
+		e = self.runtime
 		layer = oa.ml.LogSoftmax(dim=1)
-		x = oa.Matrix.new_from_f32([2, 4], [1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5], engine=e)
+		x = oa.Matrix.new_from_f32([2, 4], [1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5], runtime=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4])
 
 	def test_identity_forward(self) -> None:
-		e = self.engine
+		e = self.runtime
 		layer = oa.ml.Identity()
-		x = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, engine=e)
+		x = oa.Matrix.new_from_f32([2, 4], [1.0] * 8, runtime=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4])
 		self.assertIn("Identity", repr(layer))
 
 	def test_flatten_forward(self) -> None:
-		e = self.engine
+		e = self.runtime
 		layer = oa.ml.Flatten()
-		x = oa.Matrix.new_from_f32([2, 3, 4], [1.0] * 24, engine=e)
+		x = oa.Matrix.new_from_f32([2, 3, 4], [1.0] * 24, runtime=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 12])
 		self.assertIn("Flatten", repr(layer))
 
 	def test_swiglu_forward(self) -> None:
-		e = self.engine
-		layer = oa.ml.Swiglu(input_dim=4, hidden_dim=8, output_dim=4, seed=0, engine=e)
-		x = oa.Matrix.new_from_f32([2, 4], [0.5] * 8, engine=e)
+		e = self.runtime
+		layer = oa.ml.Swiglu(input_dim=4, hidden_dim=8, output_dim=4, seed=0, runtime=e)
+		x = oa.Matrix.new_from_f32([2, 4], [0.5] * 8, runtime=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4])
 		self.assertIn("Swiglu", repr(layer))
 
 	def test_ffn_forward(self) -> None:
-		e = self.engine
-		layer = oa.ml.Ffn(dim=4, hidden_dim=8, seed=0, engine=e)
-		x = oa.Matrix.new_from_f32([2, 4, 4], [0.5] * 32, engine=e)
+		e = self.runtime
+		layer = oa.ml.Ffn(dim=4, hidden_dim=8, seed=0, runtime=e)
+		x = oa.Matrix.new_from_f32([2, 4, 4], [0.5] * 32, runtime=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [2, 4, 4])
 		self.assertIn("Ffn", repr(layer))
 
 	def test_sequential_forward(self) -> None:
-		e = self.engine
-		linear1 = oa.ml.Linear(input_features=4, output_features=8, seed=0, engine=e)
-		linear2 = oa.ml.Linear(input_features=8, output_features=2, seed=1, engine=e)
+		e = self.runtime
+		linear1 = oa.ml.Linear(input_features=4, output_features=8, seed=0, runtime=e)
+		linear2 = oa.ml.Linear(input_features=8, output_features=2, seed=1, runtime=e)
 		seq = oa.ml.Sequential([linear1, linear2])
-		x = oa.Matrix.new_from_f32([2, 4], [0.5] * 8, engine=e)
+		x = oa.Matrix.new_from_f32([2, 4], [0.5] * 8, runtime=e)
 		out = seq(x)
 		self.assertEqual(out.shape, [2, 2])
 		self.assertIn("Sequential", repr(seq))
@@ -1872,10 +1778,10 @@ class NnLayerSmokeTest(unittest.TestCase):
 		self.assertIn("Mamba3Config", repr(cfg))
 
 	def test_rope_forward(self) -> None:
-		e = self.engine
+		e = self.runtime
 		# Rope(dim=4) → num_heads=1, head_dim=4; input must be [tokens, 4]
 		layer = oa.ml.Rope(dim=4, seq_len=8)
-		x = oa.Matrix.new_from_f32([8, 4], [0.5] * 32, engine=e)
+		x = oa.Matrix.new_from_f32([8, 4], [0.5] * 32, runtime=e)
 		out = layer(x)
 		self.assertEqual(out.shape, [8, 4])
 		self.assertIn("Rope", repr(layer))
@@ -1889,8 +1795,8 @@ class CheckpointFunctionsTest(unittest.TestCase):
 
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
-		cls.linear = oa.ml.Linear( input_features=4, output_features=2, seed=0, engine=cls.engine)
+		cls.runtime = oa.Runtime()
+		cls.linear = oa.ml.Linear( input_features=4, output_features=2, seed=0, runtime=cls.runtime)
 		cls.optimizer = oa.ml.AdamW(cls.linear.all_parameters(), learning_rate=1e-3)
 
 	def test_save_and_load_checkpoint_roundtrip(self) -> None:
@@ -1902,9 +1808,9 @@ class CheckpointFunctionsTest(unittest.TestCase):
 			oa.ml.save_checkpoint(path, self.linear.all_parameters(), self.optimizer)
 			self.assertTrue(os.path.exists(path))
 			# Load into a fresh model/optimizer with the same shape.
-			linear2 = oa.ml.Linear( input_features=4, output_features=2, seed=99, engine=self.engine)
+			linear2 = oa.ml.Linear( input_features=4, output_features=2, seed=99, runtime=self.runtime)
 			opt2 = oa.ml.AdamW(linear2.all_parameters(), learning_rate=1e-3)
-			oa.ml.load_checkpoint( path, linear2.all_parameters(), opt2, engine=self.engine)
+			oa.ml.load_checkpoint( path, linear2.all_parameters(), opt2, runtime=self.runtime)
 		finally:
 			try:
 				os.unlink(path)
@@ -1912,13 +1818,13 @@ class CheckpointFunctionsTest(unittest.TestCase):
 				pass
 
 	def test_clip_grad_norm_clips_gradients(self) -> None:
-		e = self.engine
+		e = self.runtime
 		# Run a forward+backward to accumulate gradients.
-		linear = oa.ml.Linear(input_features=4, output_features=1, seed=0, engine=e)
+		linear = oa.ml.Linear(input_features=4, output_features=1, seed=0, runtime=e)
 		params = linear.all_parameters()
 		opt = oa.ml.AdamW(params, learning_rate=1e-3)
-		x = oa.Matrix.new_from_f32([1, 4], [1.0, 2.0, 3.0, 4.0], engine=e)
-		target = oa.Matrix.new_from_f32([1, 1], [0.0], engine=e)
+		x = oa.Matrix.new_from_f32([1, 4], [1.0, 2.0, 3.0, 4.0], runtime=e)
+		target = oa.Matrix.new_from_f32([1, 1], [0.0], runtime=e)
 		with oa.ml.GradientTape() as tape:
 			pred = linear(x)
 			loss = oa.ml.loss.mse(pred, target)
@@ -1972,11 +1878,11 @@ class SubmoduleExportTest(unittest.TestCase):
 class ParameterAndGradientTapeTest(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
+		cls.runtime = oa.Runtime()
 
 	def test_parameter_is_accessible_on_ml_and_has_value_attr(self) -> None:
-		e = self.engine
-		linear = oa.ml.Linear(input_features=4, output_features=2, seed=0, engine=e)
+		e = self.runtime
+		linear = oa.ml.Linear(input_features=4, output_features=2, seed=0, runtime=e)
 		params = linear.all_parameters()
 		self.assertGreater(len(params), 0)
 		for p in params:
@@ -1984,12 +1890,12 @@ class ParameterAndGradientTapeTest(unittest.TestCase):
 			self.assertIsInstance(p.value, oa.Matrix)
 
 	def test_categorical_actor_critic_output_has_logits_and_value(self) -> None:
-		e = self.engine
+		e = self.runtime
 		cfg = oa.ml.CategoricalActorCriticConfig(
 			observation_size=4, action_count=2, hidden_size=8, seed=0
 		)
-		model = oa.ml.CategoricalActorCritic(cfg, engine=e)
-		obs = oa.Matrix.new_from_f32([1, 4], [0.1, 0.2, 0.3, 0.4], engine=e)
+		model = oa.ml.CategoricalActorCritic(cfg, runtime=e)
+		obs = oa.Matrix.new_from_f32([1, 4], [0.1, 0.2, 0.3, 0.4], runtime=e)
 		output = model.evaluate(obs)
 		self.assertIsInstance(output, oa.ml.CategoricalActorCriticOutput)
 		self.assertEqual(output.logits.shape, [1, 2])
@@ -2006,57 +1912,7 @@ class ParameterAndGradientTapeTest(unittest.TestCase):
 			self.assertTrue(hasattr(snap_cls, attr), f"TrainingSessionSnapshot.{attr} missing")
 
 
-# ── NLP presets: BpeSampler and BpeMamba3/BpeTransformer family (GPU) ─────────
 
-@require_gpu
-class BpeSamplerTest(unittest.TestCase):
-	@classmethod
-	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
-
-	def test_bpe_sampler_constructs_and_produces_paired_sequences(self) -> None:
-		tok = oa.ml.BpeTokenizer(target_vocab=300)
-		corpus = b"hello world " * 300
-		tok.train(corpus, num_merges=20)
-		sampler = oa.ml.BpeSampler(batch_size=1, tokenizer=tok)
-		self.assertIn("BpeSampler", repr(sampler))
-		inputs, targets = sampler.next_values()
-		self.assertEqual(len(inputs), len(targets))
-		self.assertGreater(len(inputs), 0)
-
-	def test_bpe_sampler_last_batch_bytes_is_positive(self) -> None:
-		tok = oa.ml.BpeTokenizer(target_vocab=300)
-		corpus = b"hello world " * 300
-		tok.train(corpus, num_merges=20)
-		sampler = oa.ml.BpeSampler(batch_size=1, tokenizer=tok)
-		sampler.next_values()
-		self.assertGreater(sampler.last_batch_bytes, 0)
-
-
-@require_gpu
-class BpeNlpPresetsSmoke(unittest.TestCase):
-	"""Smoke-test for BPE model presets (require GPU to construct)."""
-
-	@classmethod
-	def setUpClass(cls) -> None:
-		cls.engine = oa.Engine()
-
-	def test_bpe_rnn_constructs(self) -> None:
-		model = oa.ml.BpeRnn(engine=self.engine)
-		self.assertIn("BpeRnn", repr(model))
-		self.assertGreater(len(model.all_parameters()), 0)
-
-	def test_bpe_gru_constructs(self) -> None:
-		model = oa.ml.BpeGru(engine=self.engine)
-		self.assertIn("BpeGru", repr(model))
-
-	def test_bpe_transformer_constructs(self) -> None:
-		model = oa.ml.BpeTransformer(engine=self.engine)
-		self.assertIn("BpeTransformer", repr(model))
-
-	def test_byte_empyrealm_constructs(self) -> None:
-		model = oa.ml.ByteEmpyrealm(engine=self.engine)
-		self.assertIn("ByteEmpyrealm", repr(model))
 
 
 if __name__ == "__main__":

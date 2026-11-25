@@ -2,15 +2,15 @@
 //!
 //! Three terminal sinks:
 //! - `show()` — compose once and open the figure in the image viewer.
-//! - `save_to(engine, path)` — headless GPU render → image file (Experimental).
-//! - `render_on(engine)` — return the composition as an `oa::Image` (Experimental).
+//! - `save_to(runtime, path)` — headless GPU render → image file (Experimental).
+//! - `render_on(runtime)` — return the composition as an `oa::Image` (Experimental).
 //!
 //! Donor reference: `oa/ui/plot/figure.h`, `oa/ui/plot/figure.cpp`
 
 use super::axes::{Axes, AxesLayout, Scale, TickFormat, legend_row_rect, scale_value};
 pub use super::types::FigureConfig;
 use crate::ui::{TextLayoutConfig, Ui, UiGridConfig, UiStyle, types::PixelRect};
-use crate::{Color, Engine, Error, Image, Result, Texture};
+use crate::{Color, Error, Image, Result, Runtime, Texture};
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
@@ -71,7 +71,7 @@ pub struct CellRect {
 
 /// Grid figure container.
 ///
-/// Created without an Engine; the Engine is supplied only at sink time.
+/// Created without an Runtime; the Runtime is supplied only at sink time.
 pub struct Figure {
 	config: FigureConfig,
 	axes: Vec<Axes>,
@@ -179,27 +179,27 @@ impl Figure {
 	// ── Sinks ─────────────────────────────────────────────────────────────────
 
 	pub fn save_to(&self, path: &str) -> Result<()> {
-		self.save_to_on(&Engine::current()?, path)
+		self.save_to_on(&Runtime::current()?, path)
 	}
 
 	/// Headless GPU render → PNG/JPEG/WebP file.
 	///
 	/// GPU composition → file encode is Experimental.  The current
 	/// implementation produces a composed Texture and saves it.
-	pub fn save_to_on(&self, engine: &Engine, path: &str) -> Result<()> {
-		let texture = self.render_to_texture(engine)?;
+	pub fn save_to_on(&self, runtime: &Runtime, path: &str) -> Result<()> {
+		let texture = self.render_to_texture(runtime)?;
 		crate::render::save_texture_file(&texture, std::path::Path::new(path), 90)
 	}
 
 	pub fn render(&self) -> Result<Image> {
-		self.render_on(&Engine::current()?)
+		self.render_on(&Runtime::current()?)
 	}
 
 	/// Headless GPU render → `oa::Image` (normalized Float32 `[1, 4, H, W]`).
 	///
 	/// GPU→Image readback is Experimental.
-	pub fn render_on(&self, engine: &Engine) -> Result<Image> {
-		let texture = self.render_to_texture(engine)?;
+	pub fn render_on(&self, runtime: &Runtime) -> Result<Image> {
+		let texture = self.render_to_texture(runtime)?;
 		let rgba8 = texture.read_rgba8()?;
 		let w = texture.width();
 		let h = texture.height();
@@ -212,28 +212,28 @@ impl Figure {
 			data[count * 2 + i] = rgba8[i * 4 + 2] as f32 / 255.0;
 			data[count * 3 + i] = rgba8[i * 4 + 3] as f32 / 255.0;
 		}
-		let matrix = crate::Matrix::new_from_f32_on(engine, [1, 4, h, w], &data)?;
+		let matrix = crate::Matrix::new_from_f32_on(runtime, [1, 4, h, w], &data)?;
 		Image::new(matrix, crate::ImageLayout::Nchw, crate::ImageFormat::Rgba)
 	}
 
 	pub fn show(&self) -> Result<()> {
-		self.show_on(&Engine::current()?)
+		self.show_on(&Runtime::current()?)
 	}
 
 	/// Compose the figure once and open it in the OA image viewer.
 	///
 	/// The window uses the image canvas with pan, zoom and fit controls.
-	/// The supplied engine must support desktop presentation. This call
+	/// The supplied runtime must support desktop presentation. This call
 	/// returns when the viewer closes.
 	///
 	/// # Errors
 	///
 	/// Returns an error if composition fails or the viewer cannot open or
-	/// present the texture on the supplied engine.
-	pub fn show_on(&self, engine: &Engine) -> Result<()> {
-		let texture = self.render_to_texture(engine)?;
+	/// present the texture on the supplied runtime.
+	pub fn show_on(&self, runtime: &Runtime) -> Result<()> {
+		let texture = self.render_to_texture(runtime)?;
 		crate::viewer::Viewer::show_with_config(
-			engine,
+			runtime,
 			&texture,
 			crate::viewer::ViewerConfig {
 				title: self.config.title.clone(),
@@ -271,10 +271,10 @@ impl Figure {
 	///
 	/// Commands are lowered through the UI GPU compositor and copied through
 	/// its explicit blocking headless readback boundary.
-	fn render_to_texture(&self, engine: &Engine) -> Result<Texture> {
+	fn render_to_texture(&self, runtime: &Runtime) -> Result<Texture> {
 		let w = self.config.width;
 		let h = self.config.height;
-		let mut ui = Ui::init(engine, w, h)?;
+		let mut ui = Ui::init(runtime, w, h)?;
 		ui.begin_frame(0.0);
 		let mut render_result = (|| -> Result<Vec<u8>> {
 			self.record_into(&mut ui, PixelRect::new(0, 0, w, h))?;
@@ -287,7 +287,7 @@ impl Figure {
 			render_result = Err(close_error);
 		}
 		let rgba = render_result?;
-		crate::render::texture_from_rgba8_on(engine, &rgba, w as usize, h as usize)
+		crate::render::texture_from_rgba8_on(runtime, &rgba, w as usize, h as usize)
 	}
 
 	/// Replay retained artists into an already-open UI frame, translated to
@@ -487,7 +487,7 @@ impl Figure {
 						(heatmap.style.v_min, heatmap.style.v_max)
 					};
 					let values = crate::Matrix::new_from_f32_on(
-						ui.engine(),
+						ui.runtime(),
 						[heatmap.rows.max(1) as usize, heatmap.cols.max(1) as usize],
 						&heatmap.values,
 					)?;
@@ -885,7 +885,7 @@ impl Figure {
 						10,
 						rect.h.saturating_sub(16).max(1),
 					);
-					let values = crate::Matrix::new_from_f32_on(ui.engine(), [RAMP, 1], &ramp)?;
+					let values = crate::Matrix::new_from_f32_on(ui.runtime(), [RAMP, 1], &ramp)?;
 					ui.heatmap_matrix_at(&values, strip, [v_min, v_max], colormap, false)?;
 					let step = ((v_max - v_min).abs() / 4.0).max(f32::EPSILON);
 					for (fraction, value) in [(0.0, v_max), (0.5, (v_min + v_max) * 0.5), (1.0, v_min)] {

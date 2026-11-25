@@ -15,7 +15,7 @@ const BIQUAD_BLOCK_SIZE: u32 = 256;
 
 fn allocate_like(input: &Audio) -> Result<Matrix> {
 	Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		input.as_matrix().num_elements(),
 		crate::DType::F32,

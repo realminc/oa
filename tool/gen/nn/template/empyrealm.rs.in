@@ -203,7 +203,7 @@ impl {{name}} {
 		config: {{config_type}},
 		seed: u64,
 	) -> Result<Self> {
-		Self::new_with_seed_on(&Engine::current()?, vocab_size, config, seed)	}
+		Self::new_with_seed_on(&Runtime::current()?, vocab_size, config, seed)	}
 
 	/// Construct a deterministic token embedding and hybrid mixer stack.
 	///
@@ -212,7 +212,7 @@ impl {{name}} {
 	/// Returns an error for invalid schedule/width/routing configuration or
 	/// when a child module cannot be constructed or registered.
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		vocab_size: usize,
 		config: {{config_type}},
 		seed: u64,
@@ -249,7 +249,7 @@ impl {{name}} {
 		}
 		let model_width = config.mamba.model_width;
 		let embedding = Rc::new({{embedding_constructor}}(
-			engine,
+			runtime,
 			vocab_size,
 			model_width,
 			seed,
@@ -264,11 +264,11 @@ impl {{name}} {
 				.wrapping_add((index as u64).wrapping_mul(64));
 			let is_attention = config.attention_every > 0
 				&& index % config.attention_every == config.attention_every - 1;
-			let norm = Rc::new({{norm_constructor}}(engine, model_width, config.epsilon)?);
+			let norm = Rc::new({{norm_constructor}}(runtime, model_width, config.epsilon)?);
 			let mixer = if is_attention {
 				attention_indices.push(index);
 				{{mixer_type}}::Attention(Rc::new({{attention_constructor}}(
-					engine,
+					runtime,
 					model_width,
 					config.attention_heads,
 					config.sequence_length,
@@ -276,12 +276,12 @@ impl {{name}} {
 				)?))
 			} else {
 				{{mixer_type}}::Mamba(Rc::new({{mamba_constructor}}(
-					engine, config.mamba, block_seed,
+					runtime, config.mamba, block_seed,
 				)?))
 			};
 			let ffn = if config.moe_experts > 0 {
 				{{ffn_type}}::Routed(Rc::new({{moe_constructor}}(
-					engine,
+					runtime,
 					model_width,
 					config.ffn_hidden,
 					config.moe_experts,
@@ -291,7 +291,7 @@ impl {{name}} {
 				)?))
 			} else {
 				{{ffn_type}}::Dense(Rc::new({{ffn_constructor}}(
-					engine,
+					runtime,
 					model_width,
 					config.ffn_hidden,
 					config.epsilon,
@@ -326,7 +326,7 @@ impl {{name}} {
 			registry.register_module(format!("{{block_prefix}}{index}"), block.clone())?;
 			blocks.push(block);
 		}
-		let norm = Rc::new({{norm_constructor}}(engine, model_width, config.epsilon)?);
+		let norm = Rc::new({{norm_constructor}}(runtime, model_width, config.epsilon)?);
 		registry.register_module("{{tail_norm_name}}", norm.clone())?;
 		Ok(Self {
 			registry,

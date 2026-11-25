@@ -20,7 +20,7 @@
 		})
 		.ok_or_else(|| Error::out_of_range("image::calc_hist output size exceeds u32"))?;
 	let histogram = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		shape,
 		histogram_elements as usize,
 		DType::U32,
@@ -46,7 +46,7 @@
 		},
 	];
 	let attributes = [{{attributes}}];
-	input.engine_handle().record_image_split_semantic(
+	input.runtime().record_image_split_semantic(
 		&dispatches,
 		ImageSemanticDispatch {
 			contract: {{contract}},
@@ -67,15 +67,15 @@
 			count.checked_mul(u32::try_from(*value).ok()?)
 		})
 		.ok_or_else(|| Error::out_of_range("image::equalize_hist workspace exceeds u32"))?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let histogram = Matrix::allocate(
-		engine,
+		runtime,
 		histogram_shape.clone(),
 		histogram_elements as usize,
 		DType::U32,
 	)?;
 	let lut = Matrix::allocate(
-		engine,
+		runtime,
 		histogram_shape,
 		histogram_elements as usize,
 		DType::F32,
@@ -119,7 +119,7 @@
 			indirect: None,
 		},
 	];
-	input.engine_handle().record_image_split_semantic(
+	input.runtime().record_image_split_semantic(
 		&dispatches,
 		ImageSemanticDispatch {
 			contract: {{contract}},
@@ -133,10 +133,10 @@
 	if first.dtype() != DType::U32
 		|| second.dtype() != DType::U32
 		|| first.shape() != second.shape()
-		|| !first.engine_handle().same_as(second.engine_handle())
+		|| !first.runtime().same_as(second.runtime())
 	{
 		return Err(Error::invalid_argument(
-			"image::compare_hist requires same-shape same-engine U32 histograms",
+			"image::compare_hist requires same-shape same-runtime U32 histograms",
 		));
 	}
 	let shape = first.shape();
@@ -154,12 +154,12 @@
 		})
 		.ok_or_else(|| Error::out_of_range("image::compare_hist row count exceeds u32"))?;
 	let output = Matrix::allocate(
-		first.engine_handle(),
+		first.runtime(),
 		shape[..shape.len() - 1].to_vec(),
 		row_count as usize,
 		DType::F32,
 	)?;
-	first.engine_handle().record_image_semantic(
+	first.runtime().record_image_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			buffers: &[{{bindings:0}}],
@@ -178,3 +178,1349 @@
 		},
 	)?;
 	Ok(output)
+// @operation threshold_auto
+	if !max_value.is_finite() {
+		return Err(Error::invalid_argument(
+			"image::threshold_auto requires a finite max_value",
+		));
+	}
+	let (batch, channels, image_height, image_width) =
+		image_extent(input, "image::threshold_auto")?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::threshold_auto plane count exceeds u32"))?;
+	let histogram_elements = plane_count
+		.checked_mul(256)
+		.ok_or_else(|| Error::out_of_range("image::threshold_auto workspace exceeds u32"))?;
+	let runtime = input.runtime();
+	let mut histogram_shape = input.as_matrix().shape().to_vec();
+	histogram_shape.truncate(histogram_shape.len() - 2);
+	histogram_shape.push(256);
+	let histogram = Matrix::allocate(
+		runtime,
+		histogram_shape,
+		histogram_elements as usize,
+		DType::U32,
+	)?;
+	let thresholds_shape = input.as_matrix().shape()[..input.as_matrix().shape().len() - 2].to_vec();
+	let thresholds = Matrix::allocate(
+		runtime,
+		thresholds_shape,
+		plane_count as usize,
+		DType::F32,
+	)?;
+	let output = allocate_like(input, "image::threshold_auto")?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let {{binding_name:2}} = [{{bindings:2}}];
+	let {{push_name:2}} = [{{push:2}}];
+	let {{binding_name:3}} = [{{bindings:3}}];
+	let {{push_name:3}} = [{{push:3}}];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups: {{workgroups:1}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:2}},
+			buffers: &{{binding_name:2}},
+			push_constants: &{{push_name:2}},
+			workgroups: {{workgroups:2}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:3}},
+			buffers: &{{binding_name:3}},
+			push_constants: &{{push_name:3}},
+			workgroups: {{workgroups:3}},
+			indirect: None,
+		},
+	];
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[
+				ImageSemanticOutput::Image(&output),
+				ImageSemanticOutput::Matrix(&thresholds),
+			],
+			attributes: &attributes,
+		},
+	)?;
+	Ok((output, thresholds))
+// @operation integral
+	let (batch, channels, image_height, image_width) = image_extent(input, "image::integral")?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::integral plane count exceeds u32"))?;
+	let mut shape = input.as_matrix().shape().to_vec();
+	let rank = shape.len();
+	shape[rank - 2] += 1;
+	shape[rank - 1] += 1;
+	let elements = shape
+		.iter()
+		.try_fold(1u32, |count, value| {
+			count.checked_mul(u32::try_from(*value).ok()?)
+		})
+		.ok_or_else(|| Error::out_of_range("image::integral output size exceeds u32"))?;
+	let output = Matrix::allocate(
+		input.runtime(),
+		shape,
+		elements as usize,
+		DType::F32,
+	)?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups: {{workgroups:1}},
+			indirect: None,
+		},
+	];
+	input.runtime().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Matrix(&output)],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation calc_back_project
+	let (batch, channels, image_height, image_width) =
+		image_extent(input, "image::calc_back_project")?;
+	if histogram.dtype() != DType::U32 || histogram.shape().is_empty() {
+		return Err(Error::invalid_argument(
+			"image::calc_back_project requires a nonempty U32 histogram",
+		));
+	}
+	let image_shape = input.as_matrix().shape();
+	let histogram_shape = histogram.shape();
+	if histogram_shape.len() != image_shape.len() - 1
+		|| histogram_shape[..histogram_shape.len() - 1] != image_shape[..image_shape.len() - 2]
+	{
+		return Err(Error::invalid_argument(
+			"image::calc_back_project histogram leading shape must match the image planes",
+		));
+	}
+	let bins = u32::try_from(histogram_shape[histogram_shape.len() - 1])
+		.map_err(|_| Error::out_of_range("image::calc_back_project bins exceed u32"))?;
+	if bins == 0 || bins > 256 {
+		return Err(Error::invalid_argument(
+			"image::calc_back_project histogram bins must be in 1..=256",
+		));
+	}
+	if !lower.is_finite() || !upper.is_finite() || lower >= upper {
+		return Err(Error::invalid_argument(
+			"image::calc_back_project requires finite bounds with lower < upper",
+		));
+	}
+	let output = allocate_like(input, "image::calc_back_project")?;
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[
+				ImageSemanticInput::Image(input),
+				ImageSemanticInput::Matrix(histogram),
+			],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation clahe
+	let (batch, channels, image_height, image_width) = image_extent(input, "image::clahe")?;
+	if !clip_limit.is_finite() || clip_limit <= 0.0 {
+		return Err(Error::invalid_argument(
+			"image::clahe requires a finite positive clip_limit",
+		));
+	}
+	if tile_width == 0 || tile_height == 0 {
+		return Err(Error::invalid_argument(
+			"image::clahe requires nonzero tile extents",
+		));
+	}
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::clahe plane count exceeds u32"))?;
+	let tiles_x = image_width.div_ceil(tile_width);
+	let tiles_y = image_height.div_ceil(tile_height);
+	let tile_count = plane_count
+		.checked_mul(tiles_x)
+		.and_then(|count| count.checked_mul(tiles_y))
+		.ok_or_else(|| Error::out_of_range("image::clahe tile count exceeds u32"))?;
+	let histogram_elements = tile_count
+		.checked_mul(256)
+		.ok_or_else(|| Error::out_of_range("image::clahe histogram size exceeds u32"))?;
+	let runtime = input.runtime();
+	let histogram = Matrix::allocate(
+		runtime,
+		vec![histogram_elements as usize],
+		histogram_elements as usize,
+		DType::U32,
+	)?;
+	let lut = Matrix::allocate(
+		runtime,
+		vec![histogram_elements as usize],
+		histogram_elements as usize,
+		DType::F32,
+	)?;
+	let output = allocate_like(input, "image::clahe")?;
+	let tile_area = tile_width as f32 * tile_height as f32;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let {{binding_name:2}} = [{{bindings:2}}];
+	let {{push_name:2}} = [{{push:2}}];
+	let {{binding_name:3}} = [{{bindings:3}}];
+	let {{push_name:3}} = [{{push:3}}];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups: {{workgroups:1}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:2}},
+			buffers: &{{binding_name:2}},
+			push_constants: &{{push_name:2}},
+			workgroups: {{workgroups:2}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:3}},
+			buffers: &{{binding_name:3}},
+			push_constants: &{{push_name:3}},
+			workgroups: {{workgroups:3}},
+			indirect: None,
+		},
+	];
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation accumulate
+	let (batch, channels, image_height, image_width) =
+		validate_accumulation_pair(input, accumulator, "image::accumulate")?;
+	let output = allocate_like(input, "image::accumulate")?;
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[
+				ImageSemanticInput::Image(input),
+				ImageSemanticInput::Image(accumulator),
+			],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation accumulate_weighted
+	let (batch, channels, image_height, image_width) =
+		validate_accumulation_pair(input, accumulator, "image::accumulate_weighted")?;
+	if !alpha.is_finite() {
+		return Err(Error::invalid_argument(
+			"image::accumulate_weighted requires a finite alpha",
+		));
+	}
+	let output = allocate_like(input, "image::accumulate_weighted")?;
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[
+				ImageSemanticInput::Image(input),
+				ImageSemanticInput::Image(accumulator),
+			],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation moments
+	let (batch, channels, image_height, image_width) = image_extent(input, "image::moments")?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::moments plane count exceeds u32"))?;
+	let mut shape = input.as_matrix().shape().to_vec();
+	shape.truncate(shape.len() - 2);
+	shape.push(10);
+	let output = Matrix::allocate(
+		input.runtime(),
+		shape,
+		plane_count
+			.checked_mul(10)
+			.ok_or_else(|| Error::out_of_range("image::moments output size exceeds u32"))?
+			as usize,
+		DType::F32,
+	)?;
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Matrix(&output)],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation psnr
+	let (batch, channels, image_height, image_width) =
+		validate_accumulation_pair(first, second, "image::psnr")?;
+	if !peak_value.is_finite() || peak_value <= 0.0 {
+		return Err(Error::invalid_argument(
+			"image::psnr requires a finite positive peak_value",
+		));
+	}
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::psnr plane count exceeds u32"))?;
+	let mut shape = first.as_matrix().shape().to_vec();
+	shape.truncate(shape.len() - 2);
+	let output = Matrix::allocate(
+		first.runtime(),
+		shape,
+		plane_count as usize,
+		DType::F32,
+	)?;
+	let attributes = [{{attributes}}];
+	first.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[
+				ImageSemanticInput::Image(first),
+				ImageSemanticInput::Image(second),
+			],
+			outputs: &[ImageSemanticOutput::Matrix(&output)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation ssim
+	let (batch, channels, image_height, image_width) =
+		validate_accumulation_pair(first, second, "image::ssim")?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::ssim plane count exceeds u32"))?;
+	let mut shape = first.as_matrix().shape().to_vec();
+	shape.truncate(shape.len() - 2);
+	let output = Matrix::allocate(
+		first.runtime(),
+		shape,
+		plane_count as usize,
+		DType::F32,
+	)?;
+	first.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[
+				ImageSemanticInput::Image(first),
+				ImageSemanticInput::Image(second),
+			],
+			outputs: &[ImageSemanticOutput::Matrix(&output)],
+			attributes: &[{{attributes}}],
+		},
+	)?;
+	Ok(output)
+// @operation match_template
+	let (batch, channels, image_height, image_width) =
+		image_extent(input, "image::match_template")?;
+	if template.dtype() != DType::F32
+		|| !matches!(template.layout(), ImageLayout::Nchw | ImageLayout::Chw)
+		|| template.batch_size() != 1
+		|| template.channels() != input.channels()
+	{
+		return Err(Error::invalid_argument(
+			"image::match_template requires a single-plane FP32 template with matching channels",
+		));
+	}
+	let template_height = u32::try_from(template.height())
+		.map_err(|_| Error::out_of_range("image::match_template template height exceeds u32"))?;
+	let template_width = u32::try_from(template.width())
+		.map_err(|_| Error::out_of_range("image::match_template template width exceeds u32"))?;
+	if template_height == 0
+		|| template_width == 0
+		|| template_height > image_height
+		|| template_width > image_width
+	{
+		return Err(Error::invalid_argument(
+			"image::match_template requires a nonempty template no larger than the image planes",
+		));
+	}
+	let output_height = image_height - template_height + 1;
+	let output_width = image_width - template_width + 1;
+	let mut shape = input.as_matrix().shape().to_vec();
+	let rank = shape.len();
+	shape[rank - 2] = output_height as usize;
+	shape[rank - 1] = output_width as usize;
+	let elements = shape
+		.iter()
+		.try_fold(1u32, |count, value| {
+			count.checked_mul(u32::try_from(*value).ok()?)
+		})
+		.ok_or_else(|| Error::out_of_range("image::match_template output size exceeds u32"))?;
+	let output = Matrix::allocate(
+		input.runtime(),
+		shape,
+		elements as usize,
+		DType::F32,
+	)?;
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[
+				ImageSemanticInput::Image(input),
+				ImageSemanticInput::Image(template),
+			],
+			outputs: &[ImageSemanticOutput::Matrix(&output)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation connected_components
+	if !threshold.is_finite() {
+		return Err(Error::invalid_argument(
+			"image::connected_components threshold must be finite",
+		));
+	}
+	let contract = {{contract}};
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::connected_components plane count exceeds u32"))?;
+	let plane_elements = plane_count
+		.checked_mul(image_height)
+		.and_then(|count| count.checked_mul(image_width))
+		.ok_or_else(|| Error::out_of_range("image::connected_components label count exceeds u32"))?;
+	let relax_passes = if propagation_passes == 0 {
+		image_height
+			.checked_add(image_width)
+			.ok_or_else(|| Error::out_of_range("image::connected_components propagation bound exceeds u32"))?
+	} else {
+		propagation_passes
+	};
+	let labels = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, image_height as usize, image_width as usize],
+		plane_elements as usize,
+		DType::U32,
+	)?;
+	let mut workgroups = KernelId::ImageConnectedComponentsInitU32
+		.output_workgroups(image_width, image_height);
+	workgroups[2] = plane_count;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let mut dispatches = Vec::with_capacity(1 + relax_passes as usize);
+	dispatches.push(ComputeDispatch {
+		kernel: {{kernel:0}},
+		buffers: &{{binding_name:0}},
+		push_constants: &{{push_name:0}},
+		workgroups,
+		indirect: None,
+	});
+	for _ in 0..relax_passes {
+		dispatches.push(ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups,
+			indirect: None,
+		});
+	}
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Matrix(&labels)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(labels)
+// @operation distance_transform
+	if !threshold.is_finite() {
+		return Err(Error::invalid_argument(
+			"image::distance_transform threshold must be finite",
+		));
+	}
+	let contract = {{contract}};
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::distance_transform plane count exceeds u32"))?;
+	let plane_elements = plane_count
+		.checked_mul(image_height)
+		.and_then(|count| count.checked_mul(image_width))
+		.ok_or_else(|| Error::out_of_range("image::distance_transform element count exceeds u32"))?;
+	let relax_passes = if propagation_passes == 0 {
+		image_height
+			.checked_add(image_width)
+			.ok_or_else(|| Error::out_of_range("image::distance_transform propagation bound exceeds u32"))?
+	} else {
+		propagation_passes
+	};
+	let distances = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, image_height as usize, image_width as usize],
+		plane_elements as usize,
+		DType::F32,
+	)?;
+	let mut workgroups = KernelId::ImageDistanceTransformInitF32
+		.output_workgroups(image_width, image_height);
+	workgroups[2] = plane_count;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let mut dispatches = Vec::with_capacity(1 + relax_passes as usize);
+	dispatches.push(ComputeDispatch {
+		kernel: {{kernel:0}},
+		buffers: &{{binding_name:0}},
+		push_constants: &{{push_name:0}},
+		workgroups,
+		indirect: None,
+	});
+	for _ in 0..relax_passes {
+		dispatches.push(ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups,
+			indirect: None,
+		});
+	}
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Matrix(&distances)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(distances)
+// @operation hough_lines
+	if !edge_threshold.is_finite()
+		|| !rho_step.is_finite()
+		|| !theta_step.is_finite()
+		|| rho_step <= 0.0
+		|| theta_step <= 0.0
+		|| theta_step > 180.0
+	{
+		return Err(Error::invalid_argument(
+			"image::hough_lines steps must be finite, positive, and theta_step <= 180",
+		));
+	}
+	if max_lines == 0 {
+		return Err(Error::invalid_argument(
+			"image::hough_lines max_lines must be nonzero",
+		));
+	}
+	let contract = {{contract}};
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::hough_lines plane count exceeds u32"))?;
+	let num_theta = (180.0f32 / theta_step).ceil() as u32;
+	let span = (image_width as f64)
+		.hypot(image_height as f64)
+		.ceil();
+	let num_rho = ((2.0 * span) / rho_step as f64).ceil() as u32 + 1;
+	let bins = num_theta
+		.checked_mul(num_rho)
+		.ok_or_else(|| Error::out_of_range("image::hough_lines accumulator size exceeds u32"))?;
+	let acc_stride = bins
+		.checked_add(1)
+		.ok_or_else(|| Error::out_of_range("image::hough_lines accumulator stride exceeds u32"))?;
+	let acc_elements = plane_count
+		.checked_mul(acc_stride)
+		.ok_or_else(|| Error::out_of_range("image::hough_lines accumulator elements exceed u32"))?;
+	let line_elements = plane_count
+		.checked_mul(max_lines)
+		.and_then(|count| count.checked_mul(3))
+		.ok_or_else(|| Error::out_of_range("image::hough_lines output elements exceed u32"))?;
+	let acc_cells = plane_count
+		.checked_mul(bins)
+		.ok_or_else(|| Error::out_of_range("image::hough_lines accumulator cells exceed u32"))?;
+	let accumulator = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, acc_stride as usize],
+		acc_elements as usize,
+		DType::U32,
+	)?;
+	let lines = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, max_lines as usize, 3],
+		line_elements as usize,
+		DType::F32,
+	)?;
+	let mut workgroups = KernelId::ImageHoughLinesAccumulateF32
+		.output_workgroups(image_width, image_height);
+	workgroups[2] = plane_count;
+	let rho_span = span as f32;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let {{binding_name:2}} = [{{bindings:2}}];
+	let {{push_name:2}} = [{{push:2}}];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups,
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:2}},
+			buffers: &{{binding_name:2}},
+			push_constants: &{{push_name:2}},
+			workgroups: {{workgroups:2}},
+			indirect: None,
+		},
+	];
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Matrix(&lines)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(lines)
+// @operation hough_lines_p
+	if !edge_threshold.is_finite()
+		|| !rho_step.is_finite()
+		|| !theta_step.is_finite()
+		|| !min_line_length.is_finite()
+		|| rho_step <= 0.0
+		|| theta_step <= 0.0
+		|| theta_step > 180.0
+		|| min_line_length < 0.0
+	{
+		return Err(Error::invalid_argument(
+			"image::hough_lines_p steps must be finite/positive, theta_step <= 180, min_line_length >= 0",
+		));
+	}
+	if max_lines == 0 {
+		return Err(Error::invalid_argument(
+			"image::hough_lines_p max_lines must be nonzero",
+		));
+	}
+	let contract = {{contract}};
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::hough_lines_p plane count exceeds u32"))?;
+	let num_theta = (180.0f32 / theta_step).ceil() as u32;
+	let span = (image_width as f64).hypot(image_height as f64).ceil();
+	let num_rho = ((2.0 * span) / rho_step as f64).ceil() as u32 + 1;
+	let bins = num_theta
+		.checked_mul(num_rho)
+		.ok_or_else(|| Error::out_of_range("image::hough_lines_p accumulator size exceeds u32"))?;
+	let acc_stride = bins
+		.checked_add(1)
+		.ok_or_else(|| Error::out_of_range("image::hough_lines_p accumulator stride exceeds u32"))?;
+	let acc_elements = plane_count
+		.checked_mul(acc_stride)
+		.ok_or_else(|| Error::out_of_range("image::hough_lines_p accumulator elements exceed u32"))?;
+	let acc_cells = plane_count
+		.checked_mul(bins)
+		.ok_or_else(|| Error::out_of_range("image::hough_lines_p accumulator cells exceed u32"))?;
+	let line_elements = plane_count
+		.checked_mul(max_lines)
+		.and_then(|count| count.checked_mul(3))
+		.ok_or_else(|| Error::out_of_range("image::hough_lines_p line elements exceed u32"))?;
+	let segment_elements = plane_count
+		.checked_mul(max_lines)
+		.and_then(|count| count.checked_mul(4))
+		.ok_or_else(|| Error::out_of_range("image::hough_lines_p segment elements exceed u32"))?;
+	let line_slots = plane_count
+		.checked_mul(max_lines)
+		.ok_or_else(|| Error::out_of_range("image::hough_lines_p line slots exceed u32"))?;
+	let accumulator = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, acc_stride as usize],
+		acc_elements as usize,
+		DType::U32,
+	)?;
+	let lines = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, max_lines as usize, 3],
+		line_elements as usize,
+		DType::F32,
+	)?;
+	let segments = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, max_lines as usize, 4],
+		segment_elements as usize,
+		DType::F32,
+	)?;
+	let mut workgroups = KernelId::ImageHoughLinesAccumulateF32
+		.output_workgroups(image_width, image_height);
+	workgroups[2] = plane_count;
+	let rho_span = span as f32;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let {{binding_name:2}} = [{{bindings:2}}];
+	let {{push_name:2}} = [{{push:2}}];
+	let {{binding_name:3}} = [{{bindings:3}}];
+	let {{push_name:3}} = [{{push:3}}];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups,
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:2}},
+			buffers: &{{binding_name:2}},
+			push_constants: &{{push_name:2}},
+			workgroups: {{workgroups:2}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:3}},
+			buffers: &{{binding_name:3}},
+			push_constants: &{{push_name:3}},
+			workgroups: {{workgroups:3}},
+			indirect: None,
+		},
+	];
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Matrix(&segments)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(segments)
+// @operation find_contours
+	if !threshold.is_finite() {
+		return Err(Error::invalid_argument(
+			"image::find_contours threshold must be finite",
+		));
+	}
+	if max_contours == 0 {
+		return Err(Error::invalid_argument(
+			"image::find_contours max_contours must be nonzero",
+		));
+	}
+	let contract = {{contract}};
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::find_contours plane count exceeds u32"))?;
+	let plane_elements = image_height
+		.checked_mul(image_width)
+		.ok_or_else(|| Error::out_of_range("image::find_contours plane size exceeds u32"))?;
+	let label_elements = plane_count
+		.checked_mul(plane_elements)
+		.ok_or_else(|| Error::out_of_range("image::find_contours label count exceeds u32"))?;
+	let relax_passes = if propagation_passes == 0 {
+		image_height
+			.checked_add(image_width)
+			.ok_or_else(|| Error::out_of_range("image::find_contours propagation bound exceeds u32"))?
+	} else {
+		propagation_passes
+	};
+	let resolved_max_points = if max_points == 0 {
+		image_height
+			.checked_add(image_width)
+			.and_then(|sum| sum.checked_mul(4))
+			.ok_or_else(|| Error::out_of_range("image::find_contours point bound exceeds u32"))?
+	} else {
+		max_points
+	};
+	let labels = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, image_height as usize, image_width as usize],
+		label_elements as usize,
+		DType::U32,
+	)?;
+	let seed_stride = max_contours
+		.checked_add(1)
+		.ok_or_else(|| Error::out_of_range("image::find_contours seed stride exceeds u32"))?;
+	let seed_elements = plane_count
+		.checked_mul(seed_stride)
+		.ok_or_else(|| Error::out_of_range("image::find_contours seed count exceeds u32"))?;
+	let point_elements = plane_count
+		.checked_mul(max_contours)
+		.and_then(|count| count.checked_mul(resolved_max_points))
+		.and_then(|count| count.checked_mul(2))
+		.ok_or_else(|| Error::out_of_range("image::find_contours point count exceeds u32"))?;
+	let length_elements = plane_count
+		.checked_mul(max_contours)
+		.ok_or_else(|| Error::out_of_range("image::find_contours length count exceeds u32"))?;
+	let seeds = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, seed_stride as usize],
+		seed_elements as usize,
+		DType::U32,
+	)?;
+	let points = Matrix::allocate(
+		input.runtime(),
+		vec![
+			plane_count as usize,
+			max_contours as usize,
+			resolved_max_points as usize,
+			2,
+		],
+		point_elements as usize,
+		DType::F32,
+	)?;
+	let lengths = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, max_contours as usize],
+		length_elements as usize,
+		DType::U32,
+	)?;
+	let clear_elements = seed_elements
+		.max(point_elements)
+		.max(length_elements);
+	let trace_slots = plane_count
+		.checked_mul(max_contours)
+		.ok_or_else(|| Error::out_of_range("image::find_contours slot count exceeds u32"))?;
+	let mut workgroups = KernelId::ImageFindContoursInitU32
+		.output_workgroups(image_width, image_height);
+	workgroups[2] = plane_count;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let {{binding_name:2}} = [{{bindings:2}}];
+	let {{push_name:2}} = [{{push:2}}];
+	let {{binding_name:3}} = [{{bindings:3}}];
+	let {{push_name:3}} = [{{push:3}}];
+	let {{binding_name:4}} = [{{bindings:4}}];
+	let {{push_name:4}} = [{{push:4}}];
+	let mut dispatches = Vec::with_capacity(4 + relax_passes as usize);
+	dispatches.push(ComputeDispatch {
+		kernel: {{kernel:0}},
+		buffers: &{{binding_name:0}},
+		push_constants: &{{push_name:0}},
+		workgroups: {{workgroups:0}},
+		indirect: None,
+	});
+	dispatches.push(ComputeDispatch {
+		kernel: {{kernel:1}},
+		buffers: &{{binding_name:1}},
+		push_constants: &{{push_name:1}},
+		workgroups,
+		indirect: None,
+	});
+	for _ in 0..relax_passes {
+		dispatches.push(ComputeDispatch {
+			kernel: {{kernel:2}},
+			buffers: &{{binding_name:2}},
+			push_constants: &{{push_name:2}},
+			workgroups,
+			indirect: None,
+		});
+	}
+	dispatches.push(ComputeDispatch {
+		kernel: {{kernel:3}},
+		buffers: &{{binding_name:3}},
+		push_constants: &{{push_name:3}},
+		workgroups,
+		indirect: None,
+	});
+	dispatches.push(ComputeDispatch {
+		kernel: {{kernel:4}},
+		buffers: &{{binding_name:4}},
+		push_constants: &{{push_name:4}},
+		workgroups: {{workgroups:4}},
+		indirect: None,
+	});
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[
+				ImageSemanticOutput::Matrix(&points),
+				ImageSemanticOutput::Matrix(&lengths),
+			],
+			attributes: &attributes,
+		},
+	)?;
+	Ok((points, lengths))
+// @operation corner_score
+	if !k.is_finite() {
+		return Err(Error::invalid_argument("image::corner_score k must be finite"));
+	}
+	if block_size < 3 || block_size.is_multiple_of(2) {
+		return Err(Error::invalid_argument(
+			"image::corner_score block_size must be odd and at least 3",
+		));
+	}
+	let contract = {{contract}};
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::corner_score plane count exceeds u32"))?;
+	let product_elements = plane_count
+		.checked_mul(image_height)
+		.and_then(|count| count.checked_mul(image_width))
+		.and_then(|count| count.checked_mul(3))
+		.ok_or_else(|| Error::out_of_range("image::corner_score scratch size exceeds u32"))?;
+	let products = Matrix::allocate(
+		input.runtime(),
+		vec![product_elements as usize],
+		product_elements as usize,
+		DType::F32,
+	)?;
+	let output = allocate_like(input, contract.name())?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let dispatches = [
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &{{binding_name:0}},
+			push_constants: &{{push_name:0}},
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: &{{binding_name:1}},
+			push_constants: &{{push_name:1}},
+			workgroups: {{workgroups:1}},
+			indirect: None,
+		},
+	];
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation corner_fast
+	if !(9..=16).contains(&arc_length) {
+		return Err(Error::invalid_argument(
+			"image::corner_fast arc_length must be in 9..=16",
+		));
+	}
+	let contract = {{contract}};
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let output = allocate_like(input, contract.name())?;
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[ImageSemanticOutput::Image(&output)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation bf_match
+	if query.dtype() != DType::U8 || train.dtype() != DType::U8 {
+		return Err(Error::invalid_argument(
+			"image::bf_match requires U8 descriptor matrices",
+		));
+	}
+	if query.shape().len() != 2 || train.shape().len() != 2 {
+		return Err(Error::invalid_argument(
+			"image::bf_match requires [N, D] descriptor matrices",
+		));
+	}
+	let desc_len = query.shape()[1];
+	if desc_len == 0 || train.shape()[1] != desc_len {
+		return Err(Error::invalid_argument(
+			"image::bf_match descriptor widths must match and be nonzero",
+		));
+	}
+	let query_count = query.shape()[0];
+	let train_count = train.shape()[0];
+	if query_count == 0 || train_count == 0 {
+		return Err(Error::invalid_argument(
+			"image::bf_match requires nonempty descriptor sets",
+		));
+	}
+	let query_count_u32 = u32::try_from(query_count)
+		.map_err(|_| Error::out_of_range("image::bf_match query count exceeds u32"))?;
+	let train_count_u32 = u32::try_from(train_count)
+		.map_err(|_| Error::out_of_range("image::bf_match train count exceeds u32"))?;
+	let desc_len_u32 = u32::try_from(desc_len)
+		.map_err(|_| Error::out_of_range("image::bf_match descriptor width exceeds u32"))?;
+	let output = Matrix::allocate(
+		query.runtime(),
+		vec![query_count, 4],
+		query_count
+			.checked_mul(4)
+			.ok_or_else(|| Error::out_of_range("image::bf_match output size exceeds u32"))?,
+		DType::F32,
+	)?;
+	let attributes = [{{attributes}}];
+	query.runtime().record_image_semantic(
+		ComputeDispatch {
+			kernel: {{kernel:0}},
+			buffers: &[{{bindings:0}}],
+			push_constants: &[{{push:0}}],
+			workgroups: {{workgroups:0}},
+			indirect: None,
+		},
+		ImageSemanticDispatch {
+			contract: {{contract}},
+			inputs: &[
+				ImageSemanticInput::Matrix(query),
+				ImageSemanticInput::Matrix(train),
+			],
+			outputs: &[ImageSemanticOutput::Matrix(&output)],
+			attributes: &attributes,
+		},
+	)?;
+	Ok(output)
+// @operation good_features_to_track
+	if !quality.is_finite() || !(0.0..=1.0).contains(&quality) || !min_distance.is_finite() || min_distance < 0.0 {
+		return Err(Error::invalid_argument(
+			"image::good_features_to_track requires quality in [0, 1] and finite min_distance >= 0",
+		));
+	}
+	let contract = {{contract}};
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::good_features_to_track plane count exceeds u32"))?;
+	let corner_cap = if max_corners == 0 {
+		image_height
+			.checked_mul(image_width)
+			.ok_or_else(|| Error::out_of_range("image::good_features_to_track plane size exceeds u32"))?
+	} else {
+		max_corners
+	};
+	let row_elements = plane_count
+		.checked_mul(image_height)
+		.ok_or_else(|| Error::out_of_range("image::good_features_to_track scratch size exceeds u32"))?;
+	let row_max = Matrix::allocate(
+		input.runtime(),
+		vec![row_elements as usize],
+		row_elements as usize,
+		DType::F32,
+	)?;
+	let thresholds = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize],
+		plane_count as usize,
+		DType::F32,
+	)?;
+	let counts = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize],
+		plane_count as usize,
+		DType::U32,
+	)?;
+	let keypoints = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, corner_cap as usize, 3],
+		plane_count
+			.checked_mul(corner_cap)
+			.and_then(|count| count.checked_mul(3))
+			.ok_or_else(|| Error::out_of_range("image::good_features_to_track keypoint size exceeds u32"))? as usize,
+		DType::F32,
+	)?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let {{binding_name:1}} = [{{bindings:1}}];
+	let {{push_name:1}} = [{{push:1}}];
+	let {{binding_name:2}} = [{{bindings:2}}];
+	let {{push_name:2}} = [{{push:2}}];
+	let {{binding_name:3}} = [{{bindings:3}}];
+	let {{push_name:3}} = [{{push:3}}];
+	let attributes = [{{attributes}}];
+	input.runtime().record_image_split_semantic(
+		&[
+			ComputeDispatch {
+				kernel: {{kernel:0}},
+				buffers: &{{binding_name:0}},
+				push_constants: &{{push_name:0}},
+				workgroups: {{workgroups:0}},
+				indirect: None,
+			},
+			ComputeDispatch {
+				kernel: {{kernel:1}},
+				buffers: &{{binding_name:1}},
+				push_constants: &{{push_name:1}},
+				workgroups: {{workgroups:1}},
+				indirect: None,
+			},
+			ComputeDispatch {
+				kernel: {{kernel:2}},
+				buffers: &{{binding_name:2}},
+				push_constants: &{{push_name:2}},
+				workgroups: {{workgroups:2}},
+				indirect: None,
+			},
+			ComputeDispatch {
+				kernel: {{kernel:3}},
+				buffers: &{{binding_name:3}},
+				push_constants: &{{push_name:3}},
+				workgroups: {{workgroups:3}},
+				indirect: None,
+			},
+		],
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[
+				ImageSemanticOutput::Matrix(&keypoints),
+				ImageSemanticOutput::Matrix(&counts),
+			],
+			attributes: &attributes,
+		},
+	)?;
+	Ok((keypoints, counts))
+
+// @operation orb
+	if !quality.is_finite() || !(0.0..=1.0).contains(&quality) || !min_distance.is_finite() || min_distance < 0.0 {
+		return Err(Error::invalid_argument(
+			"image::orb requires quality in [0, 1] and finite min_distance >= 0",
+		));
+	}
+	if levels == 0 || edge < 18 {
+		return Err(Error::invalid_argument(
+			"image::orb requires levels >= 1 and edge >= 18 for the rotated BRIEF support",
+		));
+	}
+	let contract = {{contract}};
+	let (batch, channels, image_height, image_width) = image_extent(input, contract.name())?;
+	let plane_count = batch
+		.checked_mul(channels)
+		.ok_or_else(|| Error::out_of_range("image::orb plane count exceeds u32"))?;
+	let feature_cap = if max_features == 0 {
+		image_height
+			.checked_mul(image_width)
+			.ok_or_else(|| Error::out_of_range("image::orb plane size exceeds u32"))?
+	} else {
+		max_features
+	};
+	let level_cap = feature_cap;
+	let keypoints = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, feature_cap as usize, 6],
+		plane_count
+			.checked_mul(feature_cap)
+			.and_then(|count| count.checked_mul(6))
+			.ok_or_else(|| Error::out_of_range("image::orb keypoint size exceeds u32"))? as usize,
+		DType::F32,
+	)?;
+	let descriptors = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize, feature_cap as usize, 8],
+		plane_count
+			.checked_mul(feature_cap)
+			.and_then(|count| count.checked_mul(8))
+			.ok_or_else(|| Error::out_of_range("image::orb descriptor size exceeds u32"))? as usize,
+		DType::U32,
+	)?;
+	let counts = Matrix::allocate(
+		input.runtime(),
+		vec![plane_count as usize],
+		plane_count as usize,
+		DType::U32,
+	)?;
+	let {{binding_name:0}} = [{{bindings:0}}];
+	let {{push_name:0}} = [{{push:0}}];
+	let mut level_images = Vec::with_capacity(levels as usize);
+	let mut level_dims = Vec::with_capacity(levels as usize);
+	let mut level_states = Vec::with_capacity(levels as usize);
+	level_images.push(input.clone());
+	level_dims.push((image_width, image_height, 1.0f32));
+	for _ in 1..levels {
+		let next = crate::image::pyr_down(
+			level_images
+				.last()
+				.ok_or_else(|| Error::internal("image::orb pyramid level missing"))?,
+		)?;
+		let (width, height, scale) = level_dims[level_dims.len() - 1];
+		level_dims.push((width.div_ceil(2), height.div_ceil(2), scale * 2.0));
+		level_images.push(next);
+	}
+	for level_image in &level_images {
+		let score_map = crate::image::corner_fast(level_image, 9)?;
+		let (level_keypoints, level_counts) =
+			crate::image::good_features_to_track(&score_map, level_cap, quality, min_distance)?;
+		level_states.push((level_keypoints, level_counts));
+	}
+	let mut describe_sets = Vec::with_capacity(levels as usize);
+	let mut describe_pushes = Vec::with_capacity(levels as usize);
+	for level in 0..levels {
+		let level_image = &level_images[level as usize];
+		let level_keypoints = &level_states[level as usize].0;
+		let level_counts = &level_states[level as usize].1;
+		let (level_width, level_height, level_scale) = level_dims[level as usize];
+		let {{binding_name:1}} = [{{bindings:1}}];
+		let {{push_name:1}} = [{{push:1}}];
+		describe_sets.push({{binding_name:1}});
+		describe_pushes.push({{push_name:1}});
+	}
+	let attributes = [{{attributes}}];
+	let mut dispatches = Vec::with_capacity(describe_sets.len() + 1);
+	dispatches.push(ComputeDispatch {
+		kernel: {{kernel:0}},
+		buffers: &{{binding_name:0}},
+		push_constants: &{{push_name:0}},
+		workgroups: {{workgroups:0}},
+		indirect: None,
+	});
+	for (buffers, push_constants) in describe_sets.iter().zip(describe_pushes.iter()) {
+		dispatches.push(ComputeDispatch {
+			kernel: {{kernel:1}},
+			buffers: buffers.as_slice(),
+			push_constants: push_constants.as_slice(),
+			workgroups: {{workgroups:1}},
+			indirect: None,
+		});
+	}
+	input.runtime().record_image_split_semantic(
+		&dispatches,
+		ImageSemanticDispatch {
+			contract,
+			inputs: &[ImageSemanticInput::Image(input)],
+			outputs: &[
+				ImageSemanticOutput::Matrix(&keypoints),
+				ImageSemanticOutput::Matrix(&descriptors),
+				ImageSemanticOutput::Matrix(&counts),
+			],
+			attributes: &attributes,
+		},
+	)?;
+	Ok((keypoints, descriptors, counts))

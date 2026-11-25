@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 // ── FlowMatchBatch ────────────────────────────────────────────────────────────
 
@@ -135,10 +135,10 @@ pub(crate) fn ml_metric_accuracy(logits: &PythonMatrix, labels: &PythonMatrix) -
 #[pyfunction]
 pub(crate) fn ml_byte_encode(
 	bytes: Vec<u8>,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonMatrix> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::ml::byte::encode_on(&engine, &bytes)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::ml::byte::encode_on(&runtime, &bytes)
 		.map(PythonMatrix::wrap)
 		.map_err(python_error)
 }
@@ -146,10 +146,10 @@ pub(crate) fn ml_byte_encode(
 #[pyfunction]
 pub(crate) fn ml_byte_encode_batched(
 	bytes: Vec<u8>,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonMatrix> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::ml::byte::encode_batched_on(&engine, &bytes)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::ml::byte::encode_batched_on(&runtime, &bytes)
 		.map(PythonMatrix::wrap)
 		.map_err(python_error)
 }
@@ -157,10 +157,10 @@ pub(crate) fn ml_byte_encode_batched(
 #[pyfunction]
 pub(crate) fn ml_byte_encode_text(
 	text: &str,
-	engine: Option<&PythonEngine>,
+	runtime: Option<&PythonRuntime>,
 ) -> PyResult<PythonMatrix> {
-	let engine = PythonEngine::resolve(engine)?;
-	oa::ml::byte::encode_text_on(&engine, text)
+	let runtime = PythonRuntime::resolve(runtime)?;
+	oa::ml::byte::encode_text_on(&runtime, text)
 		.map(PythonMatrix::wrap)
 		.map_err(python_error)
 }

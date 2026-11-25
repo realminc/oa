@@ -10,12 +10,12 @@ except ImportError:
     from _pqc_harness import ROOT
 
 class PqcAcvpProvenance(unittest.TestCase):
-    def test_mlkem_engine_fixture_matches_independent_oracle(self):
+    def test_mlkem_runtime_fixture_matches_independent_oracle(self):
         try:
             from ._mlkem_oracle import kem
         except ImportError:
             from _mlkem_oracle import kem
-        fixture = json.loads((ROOT / "test/fixtures/crypto/mlkem/engine-roundtrip.json").read_text())
+        fixture = json.loads((ROOT / "test/fixtures/crypto/mlkem/runtime-roundtrip.json").read_text())
         self.assertEqual(fixture["parameter"], "ML-KEM-512")
         oracle_hash = hashlib.sha256((ROOT / fixture["oracle"]).read_bytes()).hexdigest()
         self.assertEqual(oracle_hash, fixture["oracle_sha256"])

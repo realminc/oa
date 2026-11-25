@@ -119,7 +119,7 @@ fn masked_cross_entropy_oracle(
 
 test_vk!(
 	core_losses_match_donor_forward_and_prediction_adjoint_contracts,
-	engine,
+	runtime,
 	{
 		for kind in [
 			LossKind::SmoothL1,
@@ -153,11 +153,11 @@ test_vk!(
 
 test_vk!(
 	core_loss_capture_has_one_semantic_op_and_two_classified_dispatches,
-	engine,
+	runtime,
 	{
 		let prediction = oa::Matrix::new_from_f32([2, 3], &[0.2, -0.7, 1.4, 0.5, -1.2, 0.9])?;
 		let target = oa::Matrix::new_from_f32([2, 3], &[0.0, -0.2, 0.4, 0.9, -0.2, -0.1])?;
-		let (plan, output) = engine.capture(|| oa::ml::loss::mse(&prediction, &target))?;
+		let (plan, output) = runtime.capture(|| oa::ml::loss::mse(&prediction, &target))?;
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("MSE"))
 			.expect("loss execution report must be valid JSON");
@@ -171,16 +171,16 @@ test_vk!(
 			.collect::<Vec<_>>();
 		assert_eq!(kernels, ["ml.loss.mse.f32", "ml.sum_scale.f32"]);
 		assert!(nodes.iter().all(|node| !node["physical_write"].is_null()));
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_close(&output.read_f32()?, &[LossKind::Mse.value()], 3.0e-6);
 		Ok(())
 	}
 );
 
-test_vk!(smooth_l1_selects_the_donor_fused_mean_candidate, engine, {
+test_vk!(smooth_l1_selects_the_donor_fused_mean_candidate, runtime, {
 	let prediction = oa::Matrix::new_from_f32([2, 3], &[0.2, -0.7, 1.4, 0.5, -1.2, 0.9])?;
 	let target = oa::Matrix::new_from_f32([2, 3], &[0.0, -0.2, 0.4, 0.9, -0.2, -0.1])?;
-	let (plan, output) = engine.capture(|| oa::ml::loss::smooth_l1(&prediction, &target))?;
+	let (plan, output) = runtime.capture(|| oa::ml::loss::smooth_l1(&prediction, &target))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		plan.semantic_graph().operations()[0].name(),
@@ -195,14 +195,14 @@ test_vk!(smooth_l1_selects_the_donor_fused_mean_candidate, engine, {
 	assert_eq!(nodes.len(), 1);
 	assert_eq!(nodes[0]["kernel"], "ml.smooth_l1_mean.f32");
 	assert!(!nodes[0]["physical_write"].is_null());
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	assert_close(&output.read_f32()?, &[LossKind::SmoothL1.value()], 3.0e-6);
 	Ok(())
 });
 
 test_vk!(
 	composed_scalar_loss_scales_and_accumulates_adjoint,
-	engine,
+	runtime,
 	{
 		let embedding =
 			oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([3, 1], &[1.0, -2.0, 0.5])?)?;
@@ -228,7 +228,7 @@ test_vk!(
 	}
 );
 
-test_vk!(broadcast_mul_reverse_reduces_expanded_axes, engine, {
+test_vk!(broadcast_mul_reverse_reduces_expanded_axes, runtime, {
 	let left =
 		oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32([2, 1], &[2.0, -1.0])?)?;
 	let right =
@@ -263,7 +263,7 @@ test_vk!(broadcast_mul_reverse_reduces_expanded_axes, engine, {
 
 test_vk!(
 	core_losses_reject_invalid_inputs_before_recording,
-	engine,
+	runtime,
 	{
 		let prediction = oa::Matrix::new_from_f32([2], &[0.2, 0.8])?;
 		let wrong_shape = oa::Matrix::new_from_f32([1], &[0.2])?;
@@ -282,7 +282,7 @@ test_vk!(
 
 test_vk!(
 	masked_cross_entropy_matches_donor_mask_and_autograd_contract,
-	engine,
+	runtime,
 	{
 		let logits = [1.0, 2.0, 3.0, 3.0, 1.0, 0.0, 9.0, 8.0, 7.0, -2.0, 0.0, 2.0];
 		let targets = [2_u32, 0, 0, 1];
@@ -311,13 +311,13 @@ test_vk!(
 
 test_vk!(
 	masked_cross_entropy_preserves_invalid_target_and_capture_evidence,
-	engine,
+	runtime,
 	{
 		let logits = oa::Matrix::new_from_f32([2, 3], &[2.0, -1.0, 0.5, -0.5, 1.25, 0.75])?;
 		let targets = oa::Matrix::new_from_slice([2], &[3_i32, -1])?;
 		let mask = oa::Matrix::new_from_f32([2], &[1.0, 0.0])?;
 		let (plan, loss) =
-			engine.capture(|| oa::ml::loss::cross_entropy_masked(&logits, &targets, &mask, 1))?;
+			runtime.capture(|| oa::ml::loss::cross_entropy_masked(&logits, &targets, &mask, 1))?;
 		let operation = &plan.semantic_graph().operations()[0];
 		assert_eq!(operation.name(), "oa::FnLoss::maskedCrossEntropy");
 		assert_eq!(
@@ -336,7 +336,7 @@ test_vk!(
 		assert_eq!(nodes.len(), 2);
 		assert_eq!(nodes[0]["kernel"], "ml.loss.masked_cross_entropy.f32");
 		assert!(nodes.iter().all(|node| !node["physical_write"].is_null()));
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert!(loss.read_f32()?[0].is_nan());
 
 		let embedding = oa::ml::nn::Embedding::new_from_matrix(logits)?;
@@ -359,7 +359,7 @@ test_vk!(
 
 test_vk!(
 	masked_cross_entropy_rejects_invalid_mask_and_count,
-	engine,
+	runtime,
 	{
 		let logits = oa::Matrix::new_from_f32([2, 3], &[0.0; 6])?;
 		let targets = oa::Matrix::new_from_slice([2], &[0_u32, 1])?;
@@ -377,8 +377,8 @@ test_vk!(
 	}
 );
 
-test_vk!(composed_losses_match_host_oracles, engine, {
-	let _ = engine;
+test_vk!(composed_losses_match_host_oracles, runtime, {
+	let _ = runtime;
 	// margin_ranking: max(0, -y*(x1-x2)+m); x1=[2,1], x2=[1,3], y=[1,-1], m=0.5
 	// row0: -1*(1)+0.5 = -0.5 -> 0; row1: +1*(1-3)+0.5 = -1.5 -> 0? y=-1: -(-1)*(x1-x2)= (x1-x2)= -2 +0.5 -> -1.5 -> 0
 	let x1 = oa::Matrix::new_from_f32([1, 2], &[2.0, 1.0])?;
@@ -413,9 +413,9 @@ test_vk!(composed_losses_match_host_oracles, engine, {
 
 test_vk!(
 	composed_distance_and_probabilistic_losses_match_host_oracles,
-	engine,
+	runtime,
 	{
-		let _ = engine;
+		let _ = runtime;
 		// triplet_margin: a=[0,0], p=[1,0], n=[3,4]; d_ap=1, d_an=5, m=1 -> max(0,1-5+1)=0? use m=10 -> 6
 		let anchor = oa::Matrix::new_from_f32([1, 2], &[0.0, 0.0])?;
 		let positive = oa::Matrix::new_from_f32([1, 2], &[1.0, 0.0])?;
@@ -468,7 +468,7 @@ test_vk!(
 
 test_vk!(
 	composed_loss_adjoints_reach_prediction_parameters,
-	engine,
+	runtime,
 	{
 		// kl_div gradient on input: d mean(t*ln t - t*x)/dx = -t/N
 		let embedding = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
@@ -554,7 +554,7 @@ fn ctc_oracle_item_nll(
 	-total.ln()
 }
 
-test_vk!(ml_loss_ctc_matches_enumerated_alignments, engine, {
+test_vk!(ml_loss_ctc_matches_enumerated_alignments, runtime, {
 	// [T, N, C] = [3, 2, 4]; arbitrary log-domain values.
 	let log_probs = [
 		-0.4, -1.1, -2.0, -0.7, // t0 n0
@@ -612,7 +612,7 @@ fn item_frames(
 		.collect()
 }
 
-test_vk!(ml_loss_ctc_backward_matches_finite_difference, engine, {
+test_vk!(ml_loss_ctc_backward_matches_finite_difference, runtime, {
 	let times = 3usize;
 	let batch = 2usize;
 	let classes = 4usize;

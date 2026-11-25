@@ -4,7 +4,7 @@
 //!
 //! The target API is organized as a language-like semantic surface:
 //! - Semantic value types are re-exported at the root.
-//! - Engine and, once admitted, Device and Event are runtime types.
+//! - Runtime and, once admitted, Device and Event are runtime types.
 //! - Stateless operations live in matrix, image, audio, video, vision, render,
 //!   ml, and crypto modules.
 //!
@@ -74,10 +74,10 @@ pub use input::{
 };
 pub use runtime::{
 	CapturedResourceDesc, ClockCalibration, DeviceHardwareInfo, DeviceInfo, DeviceKind,
-	DeviceSelection, DeviceSoftwareInfo, DeviceSummary, Engine, EngineBuilder, EngineRequirements,
-	Event, ExecutionBindingDesc, ExecutionBindingRole, ExecutionPlan, ExecutionPlanDiagnostics,
-	FusionStats, HostClockDomain, LogComponent, LogLevel, LogOptions, Presenter, SdlWindow,
-	SemanticAccessMode, SemanticAliasDesc, SemanticAutogradDesc, SemanticGraph,
+	DeviceSelection, DeviceSoftwareInfo, DeviceSummary, Event, ExecutionBindingDesc,
+	ExecutionBindingRole, ExecutionPlan, ExecutionPlanDiagnostics, FusionStats, HostClockDomain,
+	LogComponent, LogLevel, LogOptions, Presenter, Runtime, RuntimeBuilder, RuntimeRequirements,
+	SdlWindow, SemanticAccessMode, SemanticAliasDesc, SemanticAutogradDesc, SemanticGraph,
 	SemanticLoweringAnalysis, SemanticOpDesc, SemanticOpId, SemanticStorageBinding,
 	SemanticValueAccess, SemanticValueDesc, SemanticValueId, Timer, TimerDomain,
 };

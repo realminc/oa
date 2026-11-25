@@ -340,7 +340,7 @@ fn mpeg_ts_streams_donor_h264_and_h265_pes() -> oa::Result<()> {
 #[test]
 #[ignore = "requires a hardware Vulkan Video device and OA donor video fixtures"]
 fn demuxed_profiles_drive_exact_device_queries() -> oa::Result<()> {
-	let engine = oa::Engine::new()?;
+	let runtime = oa::Runtime::new()?;
 	for name in [
 		"shibuya_720p_30fps_h264_high_8bit_420.mp4",
 		"shibuya_720p_30fps_h265_main_8bit_420.mp4",
@@ -352,9 +352,9 @@ fn demuxed_profiles_drive_exact_device_queries() -> oa::Result<()> {
 			.info()
 			.decode_profile()
 			.expect("the admitted donor stream must expose a typed decode profile");
-		let capabilities = oa::video::query_decode_capabilities(&engine, profile)?;
+		let capabilities = oa::video::query_decode_capabilities(&runtime, profile)?;
 		assert_eq!(capabilities.profile(), profile);
-		let formats = oa::video::query_decode_formats(&engine, profile)?;
+		let formats = oa::video::query_decode_formats(&runtime, profile)?;
 		assert_eq!(formats.profile(), profile);
 		assert!(!formats.output().is_empty() || formats.unrecognized_output_formats() > 0);
 		assert!(!formats.dpb().is_empty() || formats.unrecognized_dpb_formats() > 0);

@@ -59,7 +59,7 @@ pub(in crate::runtime) enum LaneReduce {
 	Min,
 }
 
-/// The `mat_mul_nt_bias*` donors' fixed epilogue activation — spelled
+/// The `matmul_nt_bias*` donors' fixed epilogue activation — spelled
 /// with each donor's literal constants so the emitted store is
 /// bit-identical, unlike the `apply_act` push-dispatch helper.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -634,7 +634,7 @@ pub(in crate::runtime) enum TileOp {
 		/// donors' `first_expert * output_features` bias base.
 		bias_origin: Option<usize>,
 		/// Fixed activation applied to `acc + bias` at the single
-		/// store — the `mat_mul_nt_bias*` donors' inline variants, as
+		/// store — the `matmul_nt_bias*` donors' inline variants, as
 		/// opposed to `StoreTileAct`'s separate `apply_act` output.
 		act: Option<BiasAct>,
 	},
@@ -1716,7 +1716,7 @@ impl BlockProgram {
 	}
 
 	/// Tiled `C[m,n] = A[m,k] · B[n,k]ᵀ` template — the tile-IR
-	/// re-expression of `mat_mul_nt_tiled`'s schedule: one workgroup per
+	/// re-expression of `matmul_nt_tiled`'s schedule: one workgroup per
 	/// output tile, cooperative `vec`-wide staging into padded shared
 	/// tiles, per-lane fragment FMA, masked tails on every boundary.
 	///
@@ -1726,7 +1726,7 @@ impl BlockProgram {
 	/// `Err` rejects geometry the emitted schedule cannot honor: the
 	/// fragment grid must exactly cover the output tile, and a `vec`
 	/// group may never straddle a staged row.
-	pub(in crate::runtime) fn mat_mul_nt(
+	pub(in crate::runtime) fn matmul(
 		tile_rows: u32,
 		tile_columns: u32,
 		tile_k: u32,
@@ -1775,12 +1775,12 @@ impl BlockProgram {
 		})
 	}
 
-	/// Tiled `mat_mul_nt_bias*` template — the `mat_mul_nt` schedule
+	/// Tiled `matmul_nt_bias*` template — the `matmul` schedule
 	/// with the BLAS epilogue donors' `[left, right, bias, output]`
 	/// binding order and `[m, n, k]` push ABI. `act` selects the
 	/// donor's fixed inline activation (`bias_relu`/`bias_gelu`/
 	/// `bias_silu`); `None` is the plain bias store.
-	pub(in crate::runtime) fn mat_mul_nt_bias(
+	pub(in crate::runtime) fn matmul_nt_bias(
 		tile_rows: u32,
 		tile_columns: u32,
 		tile_k: u32,
@@ -1828,7 +1828,7 @@ impl BlockProgram {
 		})
 	}
 
-	/// Tiled `linear` template — the same schedule as `mat_mul_nt`
+	/// Tiled `linear` template — the same schedule as `matmul`
 	/// with the `linear.slang` ABI: `[batch, input_features,
 	/// output_features]` scalars, a third bias input and a
 	/// `bias + acc` epilogue store.
@@ -10744,12 +10744,12 @@ impl BlockProgram {
 		})
 	}
 
-	/// The `mat_mul_nt_gemv` donor re-expression: one workgroup per output
+	/// The `matmul_nt_gemv` donor re-expression: one workgroup per output
 	/// element (`group_id.x` row, `group_id.y` column), every lane strides
 	/// the K extent into a private accumulator, and a shared-memory tree
 	/// sums the lanes for lane 0's scalar store. `lanes` is the workgroup
 	/// width — the donor ships 256.
-	pub(in crate::runtime) fn mat_mul_nt_gemv(lanes: u32) -> Result<Self> {
+	pub(in crate::runtime) fn matmul_nt_gemv(lanes: u32) -> Result<Self> {
 		if !lanes.is_power_of_two() || lanes > 1024 {
 			return Err(Error::invalid_argument(
 				"gemv lanes must be a power of two within the workgroup floor",

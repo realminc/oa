@@ -5,7 +5,7 @@ use super::{
 	GemmEpilogue, GemmKernel, GemmPrecision, INVALID_MATMUL_VARIANT_ID, KernelSelectionKind,
 	MatmulDeviceContract, MatmulPreference, MatmulProblem, MatmulRejection, MatmulRouteCache,
 	MatmulRouteKey, MatmulRouteValue, StoragePrecision, VARIANTS, caps_satisfy, classify_selection,
-	device_contract_hash, find_variant, lower_mat_mul_nt_plan, matmul_variant_id_from_name, plan,
+	device_contract_hash, find_variant, lower_matmul_nt_plan, matmul_variant_id_from_name, plan,
 	problem_contract_hash, registry_build_id, route_key, validate_plan, variant_legal,
 };
 use crate::runtime::{BufferAccess, KernelId, PushConstant};
@@ -63,7 +63,7 @@ fn measured(winner: u64) -> MatmulRouteValue {
 #[test]
 fn registry_pins_exact_kernel_artifact_identity() {
 	let variant = tiled();
-	assert_eq!(variant.kernel_id, KernelId::MatrixMatMulNtTiledF32);
+	assert_eq!(variant.kernel_id, KernelId::MatrixMatmulNtTiledF32);
 	assert_eq!(variant.kernel, GemmKernel::TiledF32);
 	assert_eq!(variant.tile_m(), 64);
 	assert_eq!(variant.tile_n(), 64);
@@ -77,7 +77,7 @@ fn registry_pins_exact_kernel_artifact_identity() {
 #[test]
 fn naive_candidate_pins_exact_artifact_identity() {
 	let variant = naive();
-	assert_eq!(variant.kernel_id, KernelId::MatrixMatMulNtNaiveF32);
+	assert_eq!(variant.kernel_id, KernelId::MatrixMatmulNtNaiveF32);
 	assert_eq!(variant.kernel, GemmKernel::Naive);
 	assert_eq!(variant.tile_m(), 1);
 	assert_eq!(variant.tile_n(), 1);
@@ -90,7 +90,7 @@ fn naive_candidate_pins_exact_artifact_identity() {
 #[test]
 fn gemv_candidate_pins_exact_artifact_identity() {
 	let variant = small_m();
-	assert_eq!(variant.kernel_id, KernelId::MatrixMatMulNtGemvF32);
+	assert_eq!(variant.kernel_id, KernelId::MatrixMatmulNtGemvF32);
 	assert_eq!(variant.kernel, GemmKernel::SmallMF32);
 	assert_eq!(variant.tile_m(), 1);
 	assert_eq!(variant.tile_n(), 1);
@@ -107,7 +107,7 @@ fn small_m_problem_prefers_the_gemv_candidate() {
 	let problem = MatmulProblem::contiguous(1, 512, 512);
 	let planned = plan(&contract, &problem, &MatmulPreference::default(), None).unwrap();
 	assert_eq!(planned.variant, matmul_variant_id_from_name("GemmSmallM"));
-	assert_eq!(planned.kernel_id, KernelId::MatrixMatMulNtGemvF32);
+	assert_eq!(planned.kernel_id, KernelId::MatrixMatmulNtGemvF32);
 	assert_eq!(planned.grid, [1, 512, 1]);
 	assert_eq!(planned.selection, KernelSelectionKind::Direct);
 	assert!(validate_plan(&contract, &planned, &problem));
@@ -130,7 +130,7 @@ fn small_m_problem_prefers_the_gemv_candidate() {
 		let routed = plan(&contract, &problem, &MatmulPreference::default(), None).unwrap();
 		assert_eq!(
 			routed.kernel_id,
-			KernelId::MatrixMatMulNtTiledF32,
+			KernelId::MatrixMatmulNtTiledF32,
 			"m={m} n={n} k={k}"
 		);
 	}
@@ -163,7 +163,7 @@ fn small_m_bound_falls_through_to_tiled() {
 		Some(MatmulRejection::MaxMExceeded)
 	);
 	let plan = plan(&contract, &problem, &MatmulPreference::default(), None).unwrap();
-	assert_eq!(plan.kernel_id, KernelId::MatrixMatMulNtTiledF32);
+	assert_eq!(plan.kernel_id, KernelId::MatrixMatmulNtTiledF32);
 }
 
 #[test]
@@ -172,7 +172,7 @@ fn missing_small_m_capability_falls_back_to_tiled() {
 	contract.caps_mask &= !CAP_SMALLM_F32;
 	let problem = MatmulProblem::contiguous(1, 512, 512);
 	let plan = plan(&contract, &problem, &MatmulPreference::default(), None).unwrap();
-	assert_eq!(plan.kernel_id, KernelId::MatrixMatMulNtTiledF32);
+	assert_eq!(plan.kernel_id, KernelId::MatrixMatmulNtTiledF32);
 }
 
 #[test]
@@ -180,7 +180,7 @@ fn tiny_problem_prefers_the_naive_candidate() {
 	let contract = contract();
 	let problem = MatmulProblem::contiguous(4, 4, 16);
 	let plan = plan(&contract, &problem, &MatmulPreference::default(), None).unwrap();
-	assert_eq!(plan.kernel_id, KernelId::MatrixMatMulNtNaiveF32);
+	assert_eq!(plan.kernel_id, KernelId::MatrixMatmulNtNaiveF32);
 	assert_eq!(plan.selection, KernelSelectionKind::NaiveFallback);
 	assert_eq!(plan.grid, [1, 1, 1]);
 }
@@ -191,7 +191,7 @@ fn missing_tiled_capability_falls_back_to_naive() {
 	contract.caps_mask = CAP_NAIVE_F32;
 	let problem = MatmulProblem::contiguous(128, 256, 64);
 	let plan = plan(&contract, &problem, &MatmulPreference::default(), None).unwrap();
-	assert_eq!(plan.kernel_id, KernelId::MatrixMatMulNtNaiveF32);
+	assert_eq!(plan.kernel_id, KernelId::MatrixMatmulNtNaiveF32);
 	assert_eq!(plan.selection, KernelSelectionKind::NaiveFallback);
 	assert_eq!(plan.grid, [128, 1, 1]);
 }
@@ -206,7 +206,7 @@ fn required_variant_pins_naive_for_diagnostics() {
 	};
 	let problem = MatmulProblem::contiguous(128, 256, 64);
 	let plan = plan(&contract, &problem, &preference, None).unwrap();
-	assert_eq!(plan.kernel_id, KernelId::MatrixMatMulNtNaiveF32);
+	assert_eq!(plan.kernel_id, KernelId::MatrixMatmulNtNaiveF32);
 }
 
 #[test]
@@ -219,7 +219,7 @@ fn canonical_problem_is_legal_and_plans_direct_tiled() {
 	);
 	let plan = plan(&contract(), &problem, &MatmulPreference::default(), None).unwrap();
 	assert_eq!(plan.variant, matmul_variant_id_from_name("GemmTiled"));
-	assert_eq!(plan.kernel_id, KernelId::MatrixMatMulNtTiledF32);
+	assert_eq!(plan.kernel_id, KernelId::MatrixMatmulNtTiledF32);
 	assert_eq!(plan.grid, [2, 4, 1]);
 	assert_eq!(plan.workspace_bytes, 0);
 	assert_eq!(plan.split_k, 1);
@@ -285,7 +285,7 @@ fn non_canonical_layout_is_rejected() {
 #[test]
 fn strided_variants_pin_exact_artifact_identity() {
 	let tiled = strided_tiled();
-	assert_eq!(tiled.kernel_id, KernelId::MatrixMatMulNtStridedTiledF32);
+	assert_eq!(tiled.kernel_id, KernelId::MatrixMatmulNtStridedTiledF32);
 	assert_eq!(tiled.kernel, GemmKernel::StridedTiledF32);
 	assert_eq!(tiled.tile_m(), 64);
 	assert_eq!(tiled.tile_n(), 64);
@@ -294,7 +294,7 @@ fn strided_variants_pin_exact_artifact_identity() {
 	assert!(tiled.supports_batch);
 	assert_eq!(tiled.required_caps_mask, CAP_TILED_F32);
 	let scalar = strided_scalar();
-	assert_eq!(scalar.kernel_id, KernelId::MatrixMatMulNtStridedF32);
+	assert_eq!(scalar.kernel_id, KernelId::MatrixMatmulNtStridedF32);
 	assert_eq!(scalar.kernel, GemmKernel::StridedF32);
 	assert_eq!(scalar.tile_m(), 1);
 	assert_eq!(scalar.tile_n(), 1);
@@ -343,7 +343,7 @@ fn strided_lowering_carries_the_full_layout_push_contract() {
 	let plan = plan(&contract(), &problem, &MatmulPreference::default(), None)
 		.expect("the strided families admit batched views");
 	assert_eq!(plan.grid[2], 2);
-	let launch = lower_mat_mul_nt_plan(&plan, &problem).expect("strided lowering");
+	let launch = lower_matmul_nt_plan(&plan, &problem).expect("strided lowering");
 	assert_eq!(launch.buffer_count, 3);
 	assert_eq!(&launch.buffer_order[..3], &[0, 1, 2]);
 	assert_eq!(launch.push_count, 15);
@@ -370,12 +370,12 @@ fn strided_lowering_carries_the_full_layout_push_contract() {
 #[test]
 fn split_k_variant_pins_exact_artifact_identity() {
 	let variant = split_k();
-	assert_eq!(variant.kernel_id, KernelId::MatrixMatMulNtSplitKF32);
+	assert_eq!(variant.kernel_id, KernelId::MatrixMatmulNtSplitKF32);
 	assert_eq!(variant.kernel, GemmKernel::SplitKF32);
 	assert_eq!(variant.split_k, 4);
 	assert_eq!(
 		variant.reduction_kernel_id,
-		Some(KernelId::MatrixMatMulNtSplitKReduceF32)
+		Some(KernelId::MatrixMatmulNtSplitKReduceF32)
 	);
 	assert_eq!(variant.reduction_workgroup_invocations, 256);
 	assert_eq!(variant.tile_m(), 1);
@@ -405,7 +405,7 @@ fn split_k_plan_requires_an_explicit_workspace_budget() {
 	assert_eq!(split_plan.split_k, 4);
 	assert_eq!(
 		split_plan.reduction_kernel_id,
-		Some(KernelId::MatrixMatMulNtSplitKReduceF32)
+		Some(KernelId::MatrixMatmulNtSplitKReduceF32)
 	);
 }
 
@@ -440,8 +440,8 @@ fn split_k_lowering_emits_partial_and_reduction_launches() {
 	};
 	let split_plan = plan(&contract(), &problem, &pinned, None).unwrap();
 	// The partial binds [A, B, workspace] and carries the K-slice extent.
-	let launch = lower_mat_mul_nt_plan(&split_plan, &problem).expect("partial lowering");
-	assert_eq!(launch.kernel_id, KernelId::MatrixMatMulNtSplitKF32);
+	let launch = lower_matmul_nt_plan(&split_plan, &problem).expect("partial lowering");
+	assert_eq!(launch.kernel_id, KernelId::MatrixMatmulNtSplitKF32);
 	assert_eq!(launch.buffer_count, 3);
 	assert_eq!(&launch.buffer_order[..3], &[0, 1, 3]);
 	assert_eq!(launch.buffer_accesses[2], BufferAccess::Write);
@@ -455,10 +455,10 @@ fn split_k_lowering_emits_partial_and_reduction_launches() {
 		]
 	);
 	// The reduction binds [workspace, C] and sums the four slices.
-	let reduction = super::lower_mat_mul_nt_reduction(&split_plan, &problem)
+	let reduction = super::lower_matmul_nt_reduction(&split_plan, &problem)
 		.expect("reduction lowering")
 		.expect("split-K plans carry a reduction launch");
-	assert_eq!(reduction.kernel_id, KernelId::MatrixMatMulNtSplitKReduceF32);
+	assert_eq!(reduction.kernel_id, KernelId::MatrixMatmulNtSplitKReduceF32);
 	assert_eq!(reduction.buffer_count, 2);
 	assert_eq!(&reduction.buffer_order[..2], &[3, 2]);
 	assert_eq!(reduction.buffer_accesses[0], BufferAccess::Read);
@@ -472,7 +472,7 @@ fn split_k_lowering_emits_partial_and_reduction_launches() {
 	let canonical = MatmulProblem::contiguous(64, 64, 64);
 	let canonical_plan = plan(&contract(), &canonical, &MatmulPreference::default(), None).unwrap();
 	assert!(
-		super::lower_mat_mul_nt_reduction(&canonical_plan, &canonical)
+		super::lower_matmul_nt_reduction(&canonical_plan, &canonical)
 			.unwrap()
 			.is_none()
 	);
@@ -720,7 +720,7 @@ fn measured_winner_replays_only_when_opted_in_and_legal() {
 	// Canonical shape: structural policy selects tiled.
 	let problem = MatmulProblem::contiguous(128, 256, 64);
 	let structural = plan(&contract(), &problem, &MatmulPreference::default(), None).unwrap();
-	assert_eq!(structural.kernel_id, KernelId::MatrixMatMulNtTiledF32);
+	assert_eq!(structural.kernel_id, KernelId::MatrixMatmulNtTiledF32);
 
 	// A legal measured winner overrides structural selection.
 	let naive_id = matmul_variant_id_from_name("GemmNaive");
@@ -741,7 +741,7 @@ fn measured_winner_replays_only_when_opted_in_and_legal() {
 		..MatmulPreference::default()
 	};
 	let opted_out = plan(&contract(), &problem, &disabled, Some(naive_id)).unwrap();
-	assert_eq!(opted_out.kernel_id, KernelId::MatrixMatMulNtTiledF32);
+	assert_eq!(opted_out.kernel_id, KernelId::MatrixMatmulNtTiledF32);
 }
 
 #[test]
@@ -960,8 +960,8 @@ fn persisted_route_cache_fails_closed_on_corruption() {
 fn lowering_produces_the_standard_abi_for_registered_candidates() {
 	let problem = MatmulProblem::contiguous(128, 256, 64);
 	let planned = plan(&contract(), &problem, &MatmulPreference::default(), None).unwrap();
-	let launch = super::lower_mat_mul_nt_plan(&planned, &problem).unwrap();
-	assert_eq!(launch.kernel_id, KernelId::MatrixMatMulNtTiledF32);
+	let launch = super::lower_matmul_nt_plan(&planned, &problem).unwrap();
+	assert_eq!(launch.kernel_id, KernelId::MatrixMatmulNtTiledF32);
 	assert_eq!(launch.grid, planned.grid);
 	assert_eq!(launch.buffer_count, 3);
 	assert_eq!(&launch.buffer_order[..3], &[0, 1, 2]);
@@ -984,17 +984,17 @@ fn lowering_rejects_empty_plans_and_unlowered_kernels() {
 	let problem = MatmulProblem::contiguous(64, 64, 64);
 	let mut plan = plan(&contract(), &problem, &MatmulPreference::default(), None).unwrap();
 	plan.variant = INVALID_MATMUL_VARIANT_ID;
-	assert!(super::lower_mat_mul_nt_plan(&plan, &problem).is_err());
+	assert!(super::lower_matmul_nt_plan(&plan, &problem).is_err());
 
 	plan.variant = matmul_variant_id_from_name("GemmTiled");
 	plan.kernel = GemmKernel::GemmCmWgBf16;
-	assert!(super::lower_mat_mul_nt_plan(&plan, &problem).is_err());
+	assert!(super::lower_matmul_nt_plan(&plan, &problem).is_err());
 }
 
 #[test]
 #[ignore = "requires a Vulkan device; measured route publication proof"]
 fn tuner_benchmark_shape_qualifies_and_publishes_the_winner() {
-	let Ok(engine) = crate::Engine::new() else {
+	let Ok(runtime) = crate::Runtime::new() else {
 		return;
 	};
 
@@ -1010,7 +1010,7 @@ fn tuner_benchmark_shape_qualifies_and_publishes_the_winner() {
 		epilogue: GemmEpilogue::None,
 		max_workspace_bytes: 0,
 	};
-	let result = super::gemm_tuner::benchmark_shape(&engine, &shape, 2, 8).unwrap();
+	let result = super::gemm_tuner::benchmark_shape(&runtime, &shape, 2, 8).unwrap();
 	assert_eq!(result.ranked_candidates.len(), 3);
 	for candidate in &result.ranked_candidates {
 		assert!(!candidate.name.is_empty());
@@ -1027,20 +1027,20 @@ fn tuner_benchmark_shape_qualifies_and_publishes_the_winner() {
 	assert!(result.best_gflops.is_finite());
 	assert_eq!(result.best_kernel, result.ranked_candidates[0].kernel);
 
-	// A subsequent plan through the engine must replay the measured winner
+	// A subsequent plan through the runtime must replay the measured winner
 	// for the exact tuned problem.
 	let replayed =
-		crate::runtime::plan_mat_mul_nt(&engine.handle(), shape.m, shape.n, shape.k).unwrap();
+		crate::runtime::plan_matmul_nt(&runtime.handle(), shape.m, shape.n, shape.k).unwrap();
 	assert_eq!(replayed.variant, result.best_variant);
 }
 
 #[test]
 #[ignore = "requires a Vulkan device; runs the complete default shape suite"]
 fn tuner_run_sweeps_the_default_shapes() {
-	let Ok(engine) = crate::Engine::new() else {
+	let Ok(runtime) = crate::Runtime::new() else {
 		return;
 	};
-	let results = super::gemm_tuner::run(&engine, 3, 10).unwrap();
+	let results = super::gemm_tuner::run(&runtime, 3, 10).unwrap();
 	// Every qualified shape publishes a finite winner timing; epilogue
 	// shapes have no registered candidates yet and report FAILED.
 	assert!(!results.is_empty());

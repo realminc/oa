@@ -52,7 +52,7 @@ fn nv12_planes(width: usize, height: usize) -> Vec<Vec<u8>> {
 
 test_vk!(
 	p010_odd_plane_extents_and_color_match_fp64_oracle,
-	engine,
+	runtime,
 	{
 		// Odd luma width and height leave the last sample in a half-full word.
 		let luma = [0, 63, 64, 255, 511, 512, 767, 939, 940];
@@ -378,7 +378,7 @@ fn assert_close(actual: &[f32], expected: &[f64], context: &str) {
 // ── Vulkan contract tests ────────────────────────────────────────────────
 
 fn upload_i420(
-	_engine: &oa::Engine,
+	_runtime: &oa::Runtime,
 	width: usize,
 	height: usize,
 	color: VideoColorInfo,
@@ -441,9 +441,9 @@ fn run_oracle_check(
 	Ok(())
 }
 
-test_vk!(to_matrix_bt709_limited_i420_matches_oracle, engine, {
+test_vk!(to_matrix_bt709_limited_i420_matches_oracle, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -461,7 +461,7 @@ test_vk!(to_matrix_bt709_limited_i420_matches_oracle, engine, {
 	)
 });
 
-test_vk!(to_matrix_bt601_full_nv12_matches_oracle, engine, {
+test_vk!(to_matrix_bt601_full_nv12_matches_oracle, runtime, {
 	let frame = oa::VideoFrame::upload_planes(
 		VideoPixelFormat::Nv12,
 		nv12_planes(10, 6),
@@ -485,10 +485,10 @@ test_vk!(to_matrix_bt601_full_nv12_matches_oracle, engine, {
 
 test_vk!(
 	to_matrix_crop_letterbox_nearest_nhwc_matches_oracle,
-	engine,
+	runtime,
 	{
 		let frame = upload_i420(
-			&engine,
+			&runtime,
 			16,
 			12,
 			color(VideoColorMatrix::Bt2020, VideoColorRange::Limited),
@@ -522,15 +522,15 @@ test_vk!(
 	}
 );
 
-test_vk!(to_matrix_batch_of_two_frames_matches_oracle, engine, {
+test_vk!(to_matrix_batch_of_two_frames_matches_oracle, runtime, {
 	let first = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
 	)?;
 	let second = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -558,9 +558,9 @@ test_vk!(to_matrix_batch_of_two_frames_matches_oracle, engine, {
 	)
 });
 
-test_vk!(to_matrix_luma_channel_matches_oracle, engine, {
+test_vk!(to_matrix_luma_channel_matches_oracle, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt601, VideoColorRange::Limited),
@@ -582,9 +582,9 @@ test_vk!(to_matrix_luma_channel_matches_oracle, engine, {
 	)
 });
 
-test_vk!(to_matrix_rejects_invalid_arguments, engine, {
+test_vk!(to_matrix_rejects_invalid_arguments, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -687,9 +687,9 @@ fn shared_color_modules_have_single_importers() -> oa::Result<()> {
 
 // ── VNV-03 geometry ops ──────────────────────────────────────────────────
 
-test_vk!(crop_extracts_exact_subregion_per_plane, engine, {
+test_vk!(crop_extracts_exact_subregion_per_plane, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		16,
 		12,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -733,9 +733,9 @@ test_vk!(crop_extracts_exact_subregion_per_plane, engine, {
 	Ok(())
 });
 
-test_vk!(flip_horizontal_mirrors_each_plane, engine, {
+test_vk!(flip_horizontal_mirrors_each_plane, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -752,15 +752,15 @@ test_vk!(flip_horizontal_mirrors_each_plane, engine, {
 	Ok(())
 });
 
-test_vk!(stack_places_frames_side_by_side, engine, {
+test_vk!(stack_places_frames_side_by_side, runtime, {
 	let first = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		4,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
 	)?;
 	let second = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		4,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -779,9 +779,9 @@ test_vk!(stack_places_frames_side_by_side, engine, {
 	Ok(())
 });
 
-test_vk!(rotate90_transposes_each_plane, engine, {
+test_vk!(rotate90_transposes_each_plane, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		4,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -799,9 +799,9 @@ test_vk!(rotate90_transposes_each_plane, engine, {
 	Ok(())
 });
 
-test_vk!(pad_fills_border_and_preserves_content, engine, {
+test_vk!(pad_fills_border_and_preserves_content, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -833,9 +833,9 @@ test_vk!(pad_fills_border_and_preserves_content, engine, {
 	Ok(())
 });
 
-test_vk!(convert_format_nv12_i420_round_trip_is_exact, engine, {
+test_vk!(convert_format_nv12_i420_round_trip_is_exact, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -940,9 +940,9 @@ fn resample_expected(
 
 // ── Additional operation contract tests ──────────────────────────────────
 
-test_vk!(resize_downscale_nearest_subsamples_each_plane, engine, {
+test_vk!(resize_downscale_nearest_subsamples_each_plane, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -977,9 +977,9 @@ test_vk!(resize_downscale_nearest_subsamples_each_plane, engine, {
 	Ok(())
 });
 
-test_vk!(resize_bilinear_upscale_stays_within_one_code, engine, {
+test_vk!(resize_bilinear_upscale_stays_within_one_code, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -1014,9 +1014,9 @@ test_vk!(resize_bilinear_upscale_stays_within_one_code, engine, {
 	Ok(())
 });
 
-test_vk!(letterbox_fills_bars_and_maps_content, engine, {
+test_vk!(letterbox_fills_bars_and_maps_content, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -1078,15 +1078,15 @@ test_vk!(letterbox_fills_bars_and_maps_content, engine, {
 	Ok(())
 });
 
-test_vk!(stack_vertical_concatenates_each_plane, engine, {
+test_vk!(stack_vertical_concatenates_each_plane, runtime, {
 	let first = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		4,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
 	)?;
 	let second = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		4,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -1107,9 +1107,9 @@ test_vk!(stack_vertical_concatenates_each_plane, engine, {
 	Ok(())
 });
 
-test_vk!(overlay_mask_stencils_fill_at_plane_resolution, engine, {
+test_vk!(overlay_mask_stencils_fill_at_plane_resolution, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -1161,9 +1161,9 @@ test_vk!(overlay_mask_stencils_fill_at_plane_resolution, engine, {
 	Ok(())
 });
 
-test_vk!(composite_blends_each_component_with_rounding, engine, {
+test_vk!(composite_blends_each_component_with_rounding, runtime, {
 	let back = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -1231,9 +1231,9 @@ fn pack_full(code: u8, luma: bool) -> f32 {
 	}
 }
 
-test_vk!(convert_range_expands_packs_and_copies, engine, {
+test_vk!(convert_range_expands_packs_and_copies, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -1292,7 +1292,7 @@ test_vk!(convert_range_expands_packs_and_copies, engine, {
 	Ok(())
 });
 
-test_vk!(convert_range_covers_nv12_chroma_pair, engine, {
+test_vk!(convert_range_covers_nv12_chroma_pair, runtime, {
 	let frame = oa::VideoFrame::upload_planes(
 		VideoPixelFormat::Nv12,
 		nv12_planes(8, 8),
@@ -1314,9 +1314,9 @@ test_vk!(convert_range_covers_nv12_chroma_pair, engine, {
 	Ok(())
 });
 
-test_vk!(threshold_maps_luma_and_copies_chroma, engine, {
+test_vk!(threshold_maps_luma_and_copies_chroma, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -1343,9 +1343,9 @@ test_vk!(threshold_maps_luma_and_copies_chroma, engine, {
 	Ok(())
 });
 
-test_vk!(overlay_boxes_border_draws_a_hollow_ring, engine, {
+test_vk!(overlay_boxes_border_draws_a_hollow_ring, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		16,
 		16,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -1376,9 +1376,9 @@ test_vk!(overlay_boxes_border_draws_a_hollow_ring, engine, {
 	Ok(())
 });
 
-test_vk!(geometry_ops_reject_invalid_arguments, engine, {
+test_vk!(geometry_ops_reject_invalid_arguments, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		8,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -1429,7 +1429,7 @@ test_vk!(geometry_ops_reject_invalid_arguments, engine, {
 	);
 	assert!(oa::video::stack(&[], oa::video::VideoAxis::Horizontal).is_err());
 	let narrow = upload_i420(
-		&engine,
+		&runtime,
 		4,
 		8,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),
@@ -1479,9 +1479,9 @@ test_vk!(geometry_ops_reject_invalid_arguments, engine, {
 	Ok(())
 });
 
-test_vk!(overlay_boxes_writes_fill_in_yuv, engine, {
+test_vk!(overlay_boxes_writes_fill_in_yuv, runtime, {
 	let frame = upload_i420(
-		&engine,
+		&runtime,
 		16,
 		16,
 		color(VideoColorMatrix::Bt709, VideoColorRange::Limited),

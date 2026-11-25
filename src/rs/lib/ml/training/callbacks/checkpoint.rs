@@ -13,8 +13,8 @@ use super::super::{TrainingCallback, TrainingCallbackContext, TrainingControl, T
 use super::{ValidationMetric, write_stdout};
 
 /// Epoch, interval, best-model, and restore-best checkpoint policy.
-pub struct Checkpoint<'owner, 'engine> {
-	manager: &'owner mut CheckpointManager<'engine>,
+pub struct Checkpoint<'owner, 'runtime> {
+	manager: &'owner mut CheckpointManager<'runtime>,
 	model: &'owner dyn Module,
 	save_every: u64,
 	validation_metric: Option<ValidationMetric>,
@@ -25,9 +25,9 @@ pub struct Checkpoint<'owner, 'engine> {
 	last_epoch: u64,
 }
 
-impl<'owner, 'engine> Checkpoint<'owner, 'engine> {
+impl<'owner, 'runtime> Checkpoint<'owner, 'runtime> {
 	/// Borrow the checkpoint manager and model for one training lifecycle.
-	pub fn new(manager: &'owner mut CheckpointManager<'engine>, model: &'owner dyn Module) -> Self {
+	pub fn new(manager: &'owner mut CheckpointManager<'runtime>, model: &'owner dyn Module) -> Self {
 		Self {
 			manager,
 			model,
@@ -214,4 +214,4 @@ impl TrainingCallback for Checkpoint<'_, '_> {
 }
 
 /// OA C++ compatibility spelling for [`Checkpoint`].
-pub type CbCheckpoint<'owner, 'engine> = Checkpoint<'owner, 'engine>;
+pub type CbCheckpoint<'owner, 'runtime> = Checkpoint<'owner, 'runtime>;

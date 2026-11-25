@@ -8,10 +8,10 @@ use oa::ml::{
 
 test_vk!(
 	environment_timed_submission_preserves_exact_pending_and_rollback,
-	engine,
+	runtime,
 	{
-		let mut environment = TestEnvironment::new(&engine, 2)?;
-		engine.checkpoint()?.wait()?;
+		let mut environment = TestEnvironment::new(&runtime, 2)?;
+		runtime.checkpoint()?.wait()?;
 		assert!(environment.submit_timed().is_err());
 		for seed in [1, 2] {
 			environment.reset(seed)?;
@@ -22,7 +22,7 @@ test_vk!(
 			assert!(!event.device_duration()?.is_zero());
 			// Reading timestamps doesn't consume the environment's exact wait contract.
 			assert!(environment.execution().has_pending_event());
-			let foreign = engine.checkpoint()?;
+			let foreign = runtime.checkpoint()?;
 			assert!(environment.wait(&foreign).is_err());
 			environment.wait(&event)?;
 			assert!(environment.wait(&event).is_err());
@@ -45,8 +45,8 @@ test_vk!(
 	}
 );
 
-struct TestEnvironment<'engine> {
-	engine: &'engine oa::Engine,
+struct TestEnvironment<'runtime> {
+	runtime: &'runtime oa::Runtime,
 	execution: EnvironmentExecution,
 	spec: EnvironmentSpec,
 	environments: u32,
@@ -56,16 +56,16 @@ struct TestEnvironment<'engine> {
 	boundary: oa::Matrix,
 }
 
-impl<'engine> TestEnvironment<'engine> {
-	fn new(engine: &'engine oa::Engine, environments: u32) -> oa::Result<Self> {
+impl<'runtime> TestEnvironment<'runtime> {
+	fn new(runtime: &'runtime oa::Runtime, environments: u32) -> oa::Result<Self> {
 		let spec = cart_pole_spec()?;
 		let observation = oa::Matrix::new_from_f32(
 			[environments as usize, 4],
 			&vec![0.0; environments as usize * 4],
 		)?;
 		Ok(Self {
-			engine,
-			execution: EnvironmentExecution::new(engine),
+			runtime,
+			execution: EnvironmentExecution::new(runtime),
 			spec,
 			environments,
 			committed_observation: observation.clone(),
@@ -80,8 +80,8 @@ impl<'engine> TestEnvironment<'engine> {
 }
 
 impl Environment for TestEnvironment<'_> {
-	fn engine(&self) -> &oa::Engine {
-		self.engine
+	fn runtime(&self) -> &oa::Runtime {
+		self.runtime
 	}
 
 	fn spec(&self) -> &EnvironmentSpec {
@@ -222,7 +222,7 @@ fn environment_spaces_preserve_donor_shape_and_dtype_contracts() -> oa::Result<(
 
 test_vk!(
 	environment_spec_validates_complete_batched_transition,
-	engine,
+	runtime,
 	{
 		let spec = cart_pole_spec()?;
 		let observation = oa::Matrix::new_from_f32([3, 4], &[0.0; 12])?;
@@ -267,7 +267,7 @@ test_vk!(
 	}
 );
 
-test_vk!(environment_transforms_match_donor_values, engine, {
+test_vk!(environment_transforms_match_donor_values, runtime, {
 	let observation = oa::Matrix::new_from_f32([2, 2], &[1.0, 4.0, 5.0, -8.0])?;
 	let mean = oa::Matrix::new_from_f32([2], &[1.0, 0.0])?;
 	let stddev = oa::Matrix::new_from_f32([2], &[2.0, 2.0])?;
@@ -289,7 +289,7 @@ test_vk!(environment_transforms_match_donor_values, engine, {
 	Ok(())
 });
 
-test_vk!(environment_transforms_reject_invalid_policy, engine, {
+test_vk!(environment_transforms_reject_invalid_policy, runtime, {
 	let value = oa::Matrix::new_from_f32([2], &[0.0, 1.0])?;
 	assert!(oa::ml::environment::normalize_observation(&value, &value, &value, 0.0, 1.0).is_err());
 	assert!(oa::ml::environment::scale_action(&value, 1.0, 1.0, 0.0, 1.0, true).is_err());
@@ -299,9 +299,9 @@ test_vk!(environment_transforms_reject_invalid_policy, engine, {
 
 test_vk!(
 	environment_execution_owns_exact_transaction_lifecycle,
-	engine,
+	runtime,
 	{
-		let mut environment = TestEnvironment::new(&engine, 2)?;
+		let mut environment = TestEnvironment::new(&runtime, 2)?;
 		assert!(environment.execution().is_open());
 		assert_eq!(environment.execution().submission_count(), 0);
 		environment.reset(7)?;
@@ -333,9 +333,9 @@ test_vk!(
 
 test_vk!(
 	rollout_collector_submits_one_complete_environment_transaction,
-	engine,
+	runtime,
 	{
-		let mut environment = TestEnvironment::new(&engine, 2)?;
+		let mut environment = TestEnvironment::new(&runtime, 2)?;
 		let model = CategoricalActorCritic::new(CategoricalActorCriticConfig {
 			observation_size: 4,
 			action_count: 2,
@@ -343,7 +343,7 @@ test_vk!(
 			seed: 19,
 		})?;
 		let mut rollout = RolloutBuffer::new(
-			&engine,
+			&runtime,
 			RolloutConfig {
 				time: 2,
 				environments: 2,
@@ -382,9 +382,9 @@ test_vk!(
 
 test_vk!(
 	policy_evaluator_uses_one_exact_environment_completion,
-	engine,
+	runtime,
 	{
-		let mut environment = TestEnvironment::new(&engine, 2)?;
+		let mut environment = TestEnvironment::new(&runtime, 2)?;
 		let model = CategoricalActorCritic::new(CategoricalActorCriticConfig {
 			observation_size: 4,
 			action_count: 2,

@@ -3,7 +3,7 @@
 	"family": "attention",
 	"imports": [
 		"use std::{ cell::{Cell, RefCell}, rc::Rc, };",
-		"use crate::{DType, Engine, Error, Matrix, Result, matrix as core_matrix};",
+		"use crate::{DType, Runtime, Error, Matrix, Result, matrix as core_matrix};",
 		"use super::super::{ Module, ModuleRegistry, autograd, matrix::{ bmm, bmm_nt, bmm_tn, flash_attention_causal, merge_heads, scaled_dot_product_attention, softmax_scaled_masked, split_heads, }, };",
 		"use super::Linear;"
 	],

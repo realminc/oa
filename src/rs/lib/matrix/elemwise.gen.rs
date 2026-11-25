@@ -134,10 +134,10 @@ pub fn add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			right.dtype().token()
 		)));
 	}
-	let engine = left.engine_handle();
-	if !engine.same_as(right.engine_handle()) {
+	let runtime = left.runtime();
+	if !runtime.same_as(right.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let output = if left.shape() == right.shape() {
@@ -152,7 +152,7 @@ pub fn add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		let element_count = u32::try_from(left.element_count())
 			.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 		let output = Matrix::allocate(
-			engine,
+			runtime,
 			left.shape().to_vec(),
 			left.element_count(),
 			left.dtype(),
@@ -166,7 +166,7 @@ pub fn add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			let push_constants = [PushConstant::U32(element_count)];
 			let inputs = [left, right];
 			let outputs = [&output];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -197,7 +197,7 @@ pub fn add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		let output_count = usize::try_from(layout.element_count)
 			.expect("u32 element count always fits the supported Rust targets");
 		let output = Matrix::allocate(
-			left.engine_handle(),
+			left.runtime(),
 			layout.output_shape,
 			output_count,
 			left.dtype(),
@@ -219,7 +219,7 @@ pub fn add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			});
 			let inputs = [left, right];
 			let outputs = [&output];
-			left.engine_handle().record_semantic(
+			left.runtime().record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -268,10 +268,10 @@ pub fn bias_add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			right.dtype().token()
 		)));
 	}
-	let engine = left.engine_handle();
-	if !engine.same_as(right.engine_handle()) {
+	let runtime = left.runtime();
+	if !runtime.same_as(right.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let output = if left.shape() == right.shape() {
@@ -283,7 +283,7 @@ pub fn bias_add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		let element_count = u32::try_from(left.element_count())
 			.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 		let output = Matrix::allocate(
-			engine,
+			runtime,
 			left.shape().to_vec(),
 			left.element_count(),
 			left.dtype(),
@@ -297,7 +297,7 @@ pub fn bias_add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			let push_constants = [PushConstant::U32(element_count)];
 			let inputs = [left, right];
 			let outputs = [&output];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -325,7 +325,7 @@ pub fn bias_add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		let output_count = usize::try_from(layout.element_count)
 			.expect("u32 element count always fits the supported Rust targets");
 		let output = Matrix::allocate(
-			left.engine_handle(),
+			left.runtime(),
 			layout.output_shape,
 			output_count,
 			left.dtype(),
@@ -347,7 +347,7 @@ pub fn bias_add(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			});
 			let inputs = [left, right];
 			let outputs = [&output];
-			left.engine_handle().record_semantic(
+			left.runtime().record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -396,10 +396,10 @@ pub fn sub(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			right.dtype().token()
 		)));
 	}
-	let engine = left.engine_handle();
-	if !engine.same_as(right.engine_handle()) {
+	let runtime = left.runtime();
+	if !runtime.same_as(right.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let output = if left.shape() == right.shape() {
@@ -411,7 +411,7 @@ pub fn sub(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		let element_count = u32::try_from(left.element_count())
 			.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 		let output = Matrix::allocate(
-			engine,
+			runtime,
 			left.shape().to_vec(),
 			left.element_count(),
 			left.dtype(),
@@ -425,7 +425,7 @@ pub fn sub(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			let push_constants = [PushConstant::U32(element_count)];
 			let inputs = [left, right];
 			let outputs = [&output];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -453,7 +453,7 @@ pub fn sub(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		let output_count = usize::try_from(layout.element_count)
 			.expect("u32 element count always fits the supported Rust targets");
 		let output = Matrix::allocate(
-			left.engine_handle(),
+			left.runtime(),
 			layout.output_shape,
 			output_count,
 			left.dtype(),
@@ -475,7 +475,7 @@ pub fn sub(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			});
 			let inputs = [left, right];
 			let outputs = [&output];
-			left.engine_handle().record_semantic(
+			left.runtime().record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -524,10 +524,10 @@ pub fn mul(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			right.dtype().token()
 		)));
 	}
-	let engine = left.engine_handle();
-	if !engine.same_as(right.engine_handle()) {
+	let runtime = left.runtime();
+	if !runtime.same_as(right.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let output = if left.shape() == right.shape() {
@@ -539,7 +539,7 @@ pub fn mul(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		let element_count = u32::try_from(left.element_count())
 			.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 		let output = Matrix::allocate(
-			engine,
+			runtime,
 			left.shape().to_vec(),
 			left.element_count(),
 			left.dtype(),
@@ -553,7 +553,7 @@ pub fn mul(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			let push_constants = [PushConstant::U32(element_count)];
 			let inputs = [left, right];
 			let outputs = [&output];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -581,7 +581,7 @@ pub fn mul(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		let output_count = usize::try_from(layout.element_count)
 			.expect("u32 element count always fits the supported Rust targets");
 		let output = Matrix::allocate(
-			left.engine_handle(),
+			left.runtime(),
 			layout.output_shape,
 			output_count,
 			left.dtype(),
@@ -603,7 +603,7 @@ pub fn mul(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			});
 			let inputs = [left, right];
 			let outputs = [&output];
-			left.engine_handle().record_semantic(
+			left.runtime().record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -652,10 +652,10 @@ pub fn div(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			right.dtype().token()
 		)));
 	}
-	let engine = left.engine_handle();
-	if !engine.same_as(right.engine_handle()) {
+	let runtime = left.runtime();
+	if !runtime.same_as(right.runtime()) {
 		return Err(Error::invalid_argument(format!(
-			"{operation} inputs must belong to the same engine"
+			"{operation} inputs must belong to the same runtime"
 		)));
 	}
 	let output = if left.shape() == right.shape() {
@@ -667,7 +667,7 @@ pub fn div(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		let element_count = u32::try_from(left.element_count())
 			.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 		let output = Matrix::allocate(
-			engine,
+			runtime,
 			left.shape().to_vec(),
 			left.element_count(),
 			left.dtype(),
@@ -681,7 +681,7 @@ pub fn div(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			let push_constants = [PushConstant::U32(element_count)];
 			let inputs = [left, right];
 			let outputs = [&output];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -709,7 +709,7 @@ pub fn div(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 		let output_count = usize::try_from(layout.element_count)
 			.expect("u32 element count always fits the supported Rust targets");
 		let output = Matrix::allocate(
-			left.engine_handle(),
+			left.runtime(),
 			layout.output_shape,
 			output_count,
 			left.dtype(),
@@ -731,7 +731,7 @@ pub fn div(left: &Matrix, right: &Matrix) -> Result<Matrix> {
 			});
 			let inputs = [left, right];
 			let outputs = [&output];
-			left.engine_handle().record_semantic(
+			left.runtime().record_semantic(
 				ComputeDispatch {
 					kernel,
 					buffers: &buffers,
@@ -776,11 +776,11 @@ pub fn scale(input: &Matrix, scalar: f32) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixScaleF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -797,7 +797,7 @@ pub fn scale(input: &Matrix, scalar: f32) -> Result<Matrix> {
 			name: contract.attribute_specs()[0].name().into(),
 			value: f64::from(scalar),
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -832,11 +832,11 @@ pub fn neg(input: &Matrix) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixNegF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -849,7 +849,7 @@ pub fn neg(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(element_count)];
 		let inputs = [input];
 		let outputs = [&output];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -884,11 +884,11 @@ pub fn abs(input: &Matrix) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixAbsF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -901,7 +901,7 @@ pub fn abs(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(element_count)];
 		let inputs = [input];
 		let outputs = [&output];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -936,11 +936,11 @@ pub fn log(input: &Matrix) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixLogF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -953,7 +953,7 @@ pub fn log(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(element_count)];
 		let inputs = [input];
 		let outputs = [&output];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -988,11 +988,11 @@ pub fn sqrt(input: &Matrix) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixSqrtF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -1005,7 +1005,7 @@ pub fn sqrt(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(element_count)];
 		let inputs = [input];
 		let outputs = [&output];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1040,11 +1040,11 @@ pub fn pow(input: &Matrix, exponent: f32) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixPowF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -1064,7 +1064,7 @@ pub fn pow(input: &Matrix, exponent: f32) -> Result<Matrix> {
 			name: contract.attribute_specs()[0].name().into(),
 			value: f64::from(exponent),
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1099,11 +1099,11 @@ pub fn add_scalar(input: &Matrix, scalar: f32) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixAddScalarF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -1120,7 +1120,7 @@ pub fn add_scalar(input: &Matrix, scalar: f32) -> Result<Matrix> {
 			name: contract.attribute_specs()[0].name().into(),
 			value: f64::from(scalar),
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1155,11 +1155,11 @@ pub fn sub_scalar(input: &Matrix, scalar: f32) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixSubScalarF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -1176,7 +1176,7 @@ pub fn sub_scalar(input: &Matrix, scalar: f32) -> Result<Matrix> {
 			name: contract.attribute_specs()[0].name().into(),
 			value: f64::from(scalar),
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1211,11 +1211,11 @@ pub fn div_scalar(input: &Matrix, scalar: f32) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixDivScalarF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -1232,7 +1232,7 @@ pub fn div_scalar(input: &Matrix, scalar: f32) -> Result<Matrix> {
 			name: contract.attribute_specs()[0].name().into(),
 			value: f64::from(scalar),
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1267,11 +1267,11 @@ pub fn exp(input: &Matrix) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixExpF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -1284,7 +1284,7 @@ pub fn exp(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(element_count)];
 		let inputs = [input];
 		let outputs = [&output];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1319,11 +1319,11 @@ pub fn sin(input: &Matrix) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixSinF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -1336,7 +1336,7 @@ pub fn sin(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(element_count)];
 		let inputs = [input];
 		let outputs = [&output];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1371,11 +1371,11 @@ pub fn cos(input: &Matrix) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixCosF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -1388,7 +1388,7 @@ pub fn cos(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(element_count)];
 		let inputs = [input];
 		let outputs = [&output];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1423,11 +1423,11 @@ pub fn reciprocal(input: &Matrix) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixReciprocalF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -1440,7 +1440,7 @@ pub fn reciprocal(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(element_count)];
 		let inputs = [input];
 		let outputs = [&output];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1475,11 +1475,11 @@ pub fn clamp_max(input: &Matrix, max: f32) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixClampMaxF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -1496,7 +1496,7 @@ pub fn clamp_max(input: &Matrix, max: f32) -> Result<Matrix> {
 			name: contract.attribute_specs()[0].name().into(),
 			value: f64::from(max),
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1531,11 +1531,11 @@ pub fn clamp_min(input: &Matrix, min: f32) -> Result<Matrix> {
 		&[(DType::F32, KernelId::MatrixClampMinF32)],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -1552,7 +1552,7 @@ pub fn clamp_min(input: &Matrix, min: f32) -> Result<Matrix> {
 			name: contract.attribute_specs()[0].name().into(),
 			value: f64::from(min),
 		}];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,
@@ -1592,11 +1592,11 @@ pub fn copy(input: &Matrix) -> Result<Matrix> {
 		],
 		operation,
 	)?;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.element_count())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.element_count(),
 		input.dtype(),
@@ -1609,7 +1609,7 @@ pub fn copy(input: &Matrix) -> Result<Matrix> {
 		let push_constants = [PushConstant::U32(element_count)];
 		let inputs = [input];
 		let outputs = [&output];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel,
 				buffers: &buffers,

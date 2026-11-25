@@ -2,7 +2,7 @@
 	"version": 1,
 	"family": "swiglu",
 	"imports": [
-		"use crate::{Engine, Error, Matrix, Result};",
+		"use crate::{Runtime, Error, Matrix, Result};",
 		"use super::super::{Module, ModuleRegistry, Parameter, autograd, matrix, random};"
 	],
 	"helper": "",

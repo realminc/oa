@@ -37,10 +37,14 @@ fn fusion_stats_default_is_zero_and_formats_every_counter() {
 
 test_vk!(
 	fusion_stats_account_for_every_examined_eager_node,
-	engine,
+	runtime,
 	{
-		let before = engine.fusion_stats();
-		assert_eq!(before, engine.fusion_stats(), "an idle query must not fuse");
+		let before = runtime.fusion_stats();
+		assert_eq!(
+			before,
+			runtime.fusion_stats(),
+			"an idle query must not fuse"
+		);
 		let elements = 1024;
 		let input = Matrix::new_from_f32([1, elements], &values(elements))?;
 		let chain = matrix::exp(&matrix::scale(&matrix::add(&input, &input)?, 0.25)?)?;
@@ -55,7 +59,7 @@ test_vk!(
 				"element {index}: {actual} != {expected}"
 			);
 		}
-		let after = engine.fusion_stats();
+		let after = runtime.fusion_stats();
 		assert!(after.pass_count() > before.pass_count());
 		let examined = after.examined_node_count() - before.examined_node_count();
 		assert!(examined >= 3, "three elementwise nodes were offered");
@@ -75,14 +79,14 @@ test_vk!(
 	}
 );
 
-test_vk!(fusion_stats_attribute_a_lone_elementwise_node, engine, {
+test_vk!(fusion_stats_attribute_a_lone_elementwise_node, runtime, {
 	let elements = 512;
 	let input = Matrix::new_from_f32([1, elements], &values(elements))?;
 	input.read_f32()?;
-	let before = engine.fusion_stats();
+	let before = runtime.fusion_stats();
 	let output = matrix::exp(&input)?;
 	output.read_f32()?;
-	let after = engine.fusion_stats();
+	let after = runtime.fusion_stats();
 	let lone = (after.isolated_node_count() + after.extent_boundary_node_count())
 		- (before.isolated_node_count() + before.extent_boundary_node_count());
 	assert!(lone >= 1, "a single exp has no fusible neighbour: {after}");
@@ -93,17 +97,17 @@ test_vk!(fusion_stats_attribute_a_lone_elementwise_node, engine, {
 	Ok(())
 });
 
-test_vk!(fusion_stats_do_not_change_on_plan_replay, engine, {
+test_vk!(fusion_stats_do_not_change_on_plan_replay, runtime, {
 	let elements = 1024;
 	let input = Matrix::new_from_f32([1, elements], &values(elements))?;
 	input.read_f32()?;
 	let (plan, output) =
-		engine.capture(|| matrix::exp(&matrix::scale(&matrix::add(&input, &input)?, 0.5)?))?;
-	let captured = engine.fusion_stats();
+		runtime.capture(|| matrix::exp(&matrix::scale(&matrix::add(&input, &input)?, 0.5)?))?;
+	let captured = runtime.fusion_stats();
 	for _ in 0..3 {
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 	}
 	output.read_f32()?;
-	assert_eq!(engine.fusion_stats(), captured);
+	assert_eq!(runtime.fusion_stats(), captured);
 	Ok(())
 });

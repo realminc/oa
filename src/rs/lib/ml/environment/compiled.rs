@@ -1,7 +1,7 @@
 //! Compiled-environment contract (OA-CC-20).
 //!
 //! A compiled environment declares reset, step and observation programs that
-//! `Engine::capture` records once and `CompiledRollout` replays across a fixed
+//! `Runtime::capture` records once and `CompiledRollout` replays across a fixed
 //! PPO horizon without per-step host recording. The design record is
 //! `oaCompiledEnvironment.md`.
 //!

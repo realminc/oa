@@ -5,11 +5,11 @@
 use super::config::ViewerConfig;
 use crate::input::Navigation;
 use crate::ui::{Ui, types::PixelRect};
-use crate::{Engine, MediaPlayer, Result};
+use crate::{MediaPlayer, Result, Runtime};
 
 /// Open video with its default embedded audio track when available.
-pub(super) fn open(engine: &Engine, config: &ViewerConfig) -> Result<MediaPlayer> {
-	let mut player = MediaPlayer::open_viewer(engine, std::path::Path::new(&config.path))?;
+pub(super) fn open(runtime: &Runtime, config: &ViewerConfig) -> Result<MediaPlayer> {
+	let mut player = MediaPlayer::open_viewer(runtime, std::path::Path::new(&config.path))?;
 	player.set_looping(config.loop_media);
 	if config.start_playing {
 		player.play()?;

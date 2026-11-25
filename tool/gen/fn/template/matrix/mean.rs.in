@@ -6,9 +6,9 @@
 		usize::try_from(axis.group_count)
 			.map_err(|_| Error::invalid_argument(format!("{operation} output count exceeds usize")))?
 	};
-	let engine = input.engine_handle();
-	let partial = Matrix::allocate(engine, output_shape.clone(), output_count, DType::F32)?;
-	let output = Matrix::allocate(engine, output_shape, output_count, DType::F32)?;
+	let runtime = input.runtime();
+	let partial = Matrix::allocate(runtime, output_shape.clone(), output_count, DType::F32)?;
+	let output = Matrix::allocate(runtime, output_shape, output_count, DType::F32)?;
 	let sum_buffers = [
 		BufferBinding::read(input.storage()),
 		BufferBinding::write(partial.storage()),
@@ -28,7 +28,7 @@
 			[axis.group_count.div_ceil(256), 1, 1],
 		)
 	};
-	let lowering = engine.begin_semantic_lowering()?;
+	let lowering = runtime.begin_semantic_lowering()?;
 	lowering.record_physical(ComputeDispatch {
 		kernel: sum_kernel,
 		buffers: &sum_buffers,

@@ -5,7 +5,7 @@ pub(in crate::ml) fn {{name}}(
 ) -> Result<Matrix> {
 	let contract = {{contract}};
 	let operation = contract.name();
-	let engine = {{saved_param}}.engine_handle();
+	let runtime = {{saved_param}}.runtime();
 	for matrix in &[{{saved_param}}, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -13,9 +13,9 @@ pub(in crate::ml) fn {{name}}(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -27,7 +27,7 @@ pub(in crate::ml) fn {{name}}(
 	let element_count = u32::try_from({{saved_param}}.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let gradient = Matrix::allocate(
-		engine,
+		runtime,
 		{{saved_param}}.shape().to_vec(),
 		{{saved_param}}.num_elements(),
 		DType::F32,
@@ -46,7 +46,7 @@ pub(in crate::ml) fn {{name}}(
 			PushConstant::U32(element_count),
 			PushConstant::F32({{scalar}}),
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::{{kernel}},
 				buffers: &buffers,

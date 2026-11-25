@@ -1,4 +1,4 @@
-//! Engine construction, execution ownership, storage, and completion.
+//! Runtime construction, execution ownership, storage, and completion.
 
 mod clock_calibration;
 mod device;
@@ -6,7 +6,6 @@ mod dispatch;
 mod dna;
 #[doc(hidden)]
 pub use dna::fusion::{EpilogueFusionDisabled, SingleHeadSdpaFusionEnabled};
-mod engine;
 mod event;
 mod graph;
 mod instance;
@@ -14,6 +13,8 @@ mod log;
 mod plan;
 mod presentation;
 mod presenter;
+#[allow(clippy::module_inception)]
+mod runtime;
 mod session;
 mod storage;
 mod timer;
@@ -32,18 +33,12 @@ pub(crate) use dispatch::{
 };
 pub(crate) use dna::kernel::KernelId;
 pub(in crate::runtime) use dna::provider::blas::{
-	GemmEpilogue, MatmulPreference, MatmulProblem, lower_mat_mul_nt_plan, plan_mat_mul_nt_problem,
+	GemmEpilogue, MatmulPreference, MatmulProblem, lower_matmul_nt_plan, plan_matmul_nt_problem,
 };
-pub(crate) use dna::provider::blas::{lower_mat_mul_nt, plan_mat_mul_nt, plan_mat_mul_nt_lowered};
+pub(crate) use dna::provider::blas::{lower_matmul_nt, plan_matmul_nt, plan_matmul_nt_lowered};
 pub(crate) use dna::provider::precision::{
-	record_linear_f16, record_mat_mul_nt_f16, record_sum_f16,
+	record_linear_f16, record_matmul_nt_f16, record_sum_f16,
 };
-pub(crate) use engine::{
-	CaptureAttempt, EngineHandle, MlDsaDeviceKey, MlKemDeviceKey, MlKemSharedSecret,
-	RecordingTransaction, SecretLoweringScope, SemanticLoweringScope, VideoDecoderBackend,
-	VideoEncoderBackend,
-};
-pub use engine::{DeviceSelection, Engine, EngineBuilder};
 pub use event::Event;
 pub use graph::semantic::{
 	SemanticAccessMode, SemanticAliasDesc, SemanticAutogradDesc, SemanticGraph,
@@ -58,11 +53,17 @@ pub use plan::{
 	ExecutionPlanDiagnostics, SemanticStorageBinding,
 };
 pub use presenter::Presenter;
+pub(crate) use runtime::{
+	CaptureAttempt, MlDsaDeviceKey, MlKemDeviceKey, MlKemSharedSecret, RecordingTransaction,
+	RuntimeHandle, SecretLoweringScope, SemanticLoweringScope, VideoDecoderBackend,
+	VideoEncoderBackend,
+};
+pub use runtime::{DeviceSelection, Runtime, RuntimeBuilder};
 pub(crate) use storage::Storage;
 pub use timer::{Timer, TimerDomain};
 pub use types::{
-	DeviceHardwareInfo, DeviceInfo, DeviceSoftwareInfo, EngineRequirements, FusionStats,
-	PresentationCapabilities,
+	DeviceHardwareInfo, DeviceInfo, DeviceSoftwareInfo, FusionStats, PresentationCapabilities,
+	RuntimeRequirements,
 };
 
 pub use window::SdlWindow;
@@ -101,8 +102,8 @@ pub(crate) use device::logical::image::{NativeRgbaImage, RenderTarget};
 mod bounded_add_unit;
 
 #[cfg(test)]
-#[path = "../../../test/rs/runtime/compatibility_engine_unit.rs"]
-mod compatibility_engine_unit;
+#[path = "../../../test/rs/runtime/compatibility_runtime_unit.rs"]
+mod compatibility_runtime_unit;
 
 #[path = "runtime/parity.gen.rs"]
 mod parity;

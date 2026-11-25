@@ -17,13 +17,13 @@
 	"operations": [
 		{
 			"stable_id": 21,
-			"name": "mat_mul_nt",
+			"name": "matmul",
 			"fusion_class": "gemm",
 			"donor_op": "oa::FnMatrix::matMulNt",
 			"autograd": {
 				"mode": "generated",
 				"family": "blas",
-				"node": "MatMulNt",
+				"node": "MatmulNt",
 				"saved_fields": [
 					[
 						"left",
@@ -39,11 +39,11 @@
 					]
 				]
 			},
-			"kind": "mat_mul_nt",
+			"kind": "matmul_nt",
 			"doc": "Multiply A by the transpose of B using the OA weight-layout convention.",
-			"kernel_id": "MatrixMatMulNtTiledF32",
-			"kernel_name": "mat_mul_nt",
-			"source_stem": "mat_mul_nt_tiled",
+			"kernel_id": "MatrixMatmulNtTiledF32",
+			"kernel_name": "matmul",
+			"source_stem": "matmul_nt_tiled",
 			"variant": "tiled",
 			"dnn": {
 				"role": "matmul",
@@ -133,154 +133,154 @@
 	],
 	"candidate_kernels": [
 		{
-			"name": "mat_mul_nt_naive",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_naive",
+			"kind": "matmul_nt",
 			"variant": "naive",
 			"stable_id": 614,
-			"kernel_id": "MatrixMatMulNtNaiveF32",
-			"kernel_name": "mat_mul_nt_naive",
-			"source_stem": "mat_mul_nt_naive",
+			"kernel_id": "MatrixMatmulNtNaiveF32",
+			"kernel_name": "matmul_nt_naive",
+			"source_stem": "matmul_nt_naive",
 			"dispatch_tile_size": [
 				1,
 				1,
 				1
 			],
-			"semantic_operation": "mat_mul_nt"
+			"semantic_operation": "matmul"
 		},
 		{
-			"name": "mat_mul_nt_gemv",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_gemv",
+			"kind": "matmul_nt",
 			"variant": "gemv",
 			"stable_id": 636,
-			"kernel_id": "MatrixMatMulNtGemvF32",
-			"kernel_name": "mat_mul_nt_gemv",
-			"source_stem": "mat_mul_nt_gemv",
+			"kernel_id": "MatrixMatmulNtGemvF32",
+			"kernel_name": "matmul_nt_gemv",
+			"source_stem": "matmul_nt_gemv",
 			"dispatch_tile_size": [
 				1,
 				1,
 				1
 			],
-			"semantic_operation": "mat_mul_nt"
+			"semantic_operation": "matmul"
 		},
 		{
-			"name": "mat_mul_nt_bias",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_bias",
+			"kind": "matmul_nt",
 			"variant": "bias",
 			"stable_id": 617,
-			"kernel_id": "MatrixMatMulNtBiasF32",
-			"kernel_name": "mat_mul_nt_bias",
-			"source_stem": "mat_mul_nt_bias",
+			"kernel_id": "MatrixMatmulNtBiasF32",
+			"kernel_name": "matmul_nt_bias",
+			"source_stem": "matmul_nt_bias",
 			"dispatch_tile_size": [
 				64,
 				64,
 				1
 			],
-			"semantic_operation": "mat_mul_nt"
+			"semantic_operation": "matmul"
 		},
 		{
-			"name": "mat_mul_nt_bias_relu",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_bias_relu",
+			"kind": "matmul_nt",
 			"variant": "bias_relu",
 			"stable_id": 618,
-			"kernel_id": "MatrixMatMulNtBiasReluF32",
-			"kernel_name": "mat_mul_nt_bias_relu",
-			"source_stem": "mat_mul_nt_bias_relu",
+			"kernel_id": "MatrixMatmulNtBiasReluF32",
+			"kernel_name": "matmul_nt_bias_relu",
+			"source_stem": "matmul_nt_bias_relu",
 			"dispatch_tile_size": [
 				64,
 				64,
 				1
 			],
-			"semantic_operation": "mat_mul_nt"
+			"semantic_operation": "matmul"
 		},
 		{
-			"name": "mat_mul_nt_bias_gelu",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_bias_gelu",
+			"kind": "matmul_nt",
 			"variant": "bias_gelu",
 			"stable_id": 619,
-			"kernel_id": "MatrixMatMulNtBiasGeluF32",
-			"kernel_name": "mat_mul_nt_bias_gelu",
-			"source_stem": "mat_mul_nt_bias_gelu",
+			"kernel_id": "MatrixMatmulNtBiasGeluF32",
+			"kernel_name": "matmul_nt_bias_gelu",
+			"source_stem": "matmul_nt_bias_gelu",
 			"dispatch_tile_size": [
 				64,
 				64,
 				1
 			],
-			"semantic_operation": "mat_mul_nt"
+			"semantic_operation": "matmul"
 		},
 		{
-			"name": "mat_mul_nt_bias_silu",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_bias_silu",
+			"kind": "matmul_nt",
 			"variant": "bias_silu",
 			"stable_id": 620,
-			"kernel_id": "MatrixMatMulNtBiasSiluF32",
-			"kernel_name": "mat_mul_nt_bias_silu",
-			"source_stem": "mat_mul_nt_bias_silu",
+			"kernel_id": "MatrixMatmulNtBiasSiluF32",
+			"kernel_name": "matmul_nt_bias_silu",
+			"source_stem": "matmul_nt_bias_silu",
 			"dispatch_tile_size": [
 				64,
 				64,
 				1
 			],
-			"semantic_operation": "mat_mul_nt"
+			"semantic_operation": "matmul"
 		},
 		{
-			"name": "mat_mul_nt_strided",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_strided",
+			"kind": "matmul_nt",
 			"variant": "strided",
 			"stable_id": 700,
-			"kernel_id": "MatrixMatMulNtStridedF32",
-			"kernel_name": "mat_mul_nt_strided",
-			"source_stem": "mat_mul_nt_strided",
+			"kernel_id": "MatrixMatmulNtStridedF32",
+			"kernel_name": "matmul_nt_strided",
+			"source_stem": "matmul_nt_strided",
 			"dispatch_tile_size": [
 				1,
 				1,
 				1
 			],
-			"semantic_operation": "mat_mul_nt"
+			"semantic_operation": "matmul"
 		},
 		{
-			"name": "mat_mul_nt_strided_tiled",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_strided_tiled",
+			"kind": "matmul_nt",
 			"variant": "strided_tiled",
 			"stable_id": 701,
-			"kernel_id": "MatrixMatMulNtStridedTiledF32",
-			"kernel_name": "mat_mul_nt_strided_tiled",
-			"source_stem": "mat_mul_nt_strided_tiled",
+			"kernel_id": "MatrixMatmulNtStridedTiledF32",
+			"kernel_name": "matmul_nt_strided_tiled",
+			"source_stem": "matmul_nt_strided_tiled",
 			"dispatch_tile_size": [
 				64,
 				64,
 				1
 			],
-			"semantic_operation": "mat_mul_nt"
+			"semantic_operation": "matmul"
 		},
 		{
-			"name": "mat_mul_nt_split_k",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_split_k",
+			"kind": "matmul_nt",
 			"variant": "split_k",
 			"stable_id": 702,
-			"kernel_id": "MatrixMatMulNtSplitKF32",
-			"kernel_name": "mat_mul_nt_split_k",
-			"source_stem": "mat_mul_nt_split_k",
+			"kernel_id": "MatrixMatmulNtSplitKF32",
+			"kernel_name": "matmul_nt_split_k",
+			"source_stem": "matmul_nt_split_k",
 			"dispatch_tile_size": [
 				1,
 				1,
 				1
 			],
-			"semantic_operation": "mat_mul_nt"
+			"semantic_operation": "matmul"
 		},
 		{
-			"name": "mat_mul_nt_split_k_reduce",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_split_k_reduce",
+			"kind": "matmul_nt",
 			"variant": "split_k_reduce",
 			"stable_id": 703,
-			"kernel_id": "MatrixMatMulNtSplitKReduceF32",
-			"kernel_name": "mat_mul_nt_split_k_reduce",
-			"source_stem": "mat_mul_nt_split_k_reduce",
+			"kernel_id": "MatrixMatmulNtSplitKReduceF32",
+			"kernel_name": "matmul_nt_split_k_reduce",
+			"source_stem": "matmul_nt_split_k_reduce",
 			"dispatch_tile_size": [
 				1,
 				1,
 				1
 			],
-			"semantic_operation": "mat_mul_nt"
+			"semantic_operation": "matmul"
 		},
 		{
 			"name": "cast_f32_f16",
@@ -295,7 +295,7 @@
 				1,
 				1
 			],
-			"semantic_operation": "mat_mul_nt",
+			"semantic_operation": "matmul",
 			"source_stem": "cast_f32_f16",
 			"dtype": "f16"
 		},
@@ -312,28 +312,28 @@
 				1,
 				1
 			],
-			"semantic_operation": "mat_mul_nt",
+			"semantic_operation": "matmul",
 			"source_stem": "cast_f16_f32",
 			"dtype": "f16"
 		},
 		{
-			"name": "mat_mul_nt_f16",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_f16",
+			"kind": "matmul_nt",
 			"variant": "f16",
 			"stable_id": 706,
-			"kernel_id": "MatrixMatMulNtF16",
-			"kernel_name": "mat_mul_nt_f16",
-			"source": "src/slang/matrix/blas/mat_mul_nt_f16.slang",
+			"kernel_id": "MatrixMatmulNtF16",
+			"kernel_name": "matmul_nt_f16",
+			"source": "src/slang/matrix/blas/matmul_nt_f16.slang",
 			"dispatch_tile_size": [
 				64,
 				64,
 				1
 			],
-			"semantic_operation": "mat_mul_nt",
+			"semantic_operation": "matmul",
 			"semantic_operations": [
 				"ml::linear"
 			],
-			"source_stem": "mat_mul_nt_f16",
+			"source_stem": "matmul_nt_f16",
 			"dtype": "f16"
 		},
 		{
@@ -354,37 +354,37 @@
 			"dtype": "f16"
 		},
 		{
-			"name": "mat_mul_nt_tiled_wide",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_tiled_wide",
+			"kind": "matmul_nt",
 			"variant": "tiled_wide",
 			"stable_id": 708,
-			"kernel_id": "MatrixMatMulNtTiledWideF32",
-			"kernel_name": "mat_mul_nt_tiled_wide",
-			"source": "src/slang/matrix/blas/mat_mul_nt_tiled_wide.slang",
-			"source_stem": "mat_mul_nt_tiled_wide",
+			"kernel_id": "MatrixMatmulNtTiledWideF32",
+			"kernel_name": "matmul_nt_tiled_wide",
+			"source": "src/slang/matrix/blas/matmul_nt_tiled_wide.slang",
+			"source_stem": "matmul_nt_tiled_wide",
 			"dispatch_tile_size": [
 				128,
 				64,
 				1
 			],
-			"semantic_operation": "mat_mul_nt",
+			"semantic_operation": "matmul",
 			"dtype": "f32"
 		},
 		{
-			"name": "mat_mul_nt_tiled_wide_f16",
-			"kind": "mat_mul_nt",
+			"name": "matmul_nt_tiled_wide_f16",
+			"kind": "matmul_nt",
 			"variant": "tiled_wide_f16",
 			"stable_id": 709,
-			"kernel_id": "MatrixMatMulNtTiledWideF16",
-			"kernel_name": "mat_mul_nt_tiled_wide_f16",
-			"source": "src/slang/matrix/blas/mat_mul_nt_tiled_wide_f16.slang",
-			"source_stem": "mat_mul_nt_tiled_wide_f16",
+			"kernel_id": "MatrixMatmulNtTiledWideF16",
+			"kernel_name": "matmul_nt_tiled_wide_f16",
+			"source": "src/slang/matrix/blas/matmul_nt_tiled_wide_f16.slang",
+			"source_stem": "matmul_nt_tiled_wide_f16",
 			"dispatch_tile_size": [
 				128,
 				64,
 				1
 			],
-			"semantic_operation": "mat_mul_nt",
+			"semantic_operation": "matmul",
 			"dtype": "f16"
 		}
 	]

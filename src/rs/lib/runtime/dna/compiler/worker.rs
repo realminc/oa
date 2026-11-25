@@ -23,7 +23,7 @@ pub(in crate::runtime) struct CompileResult {
 
 /// Bounded background compiler: Slang compilation, `spirv-val` and ABI
 /// reflection run off the admission path on one worker that owns the compiler
-/// session. The worker never borrows the thread-affine Engine and never
+/// session. The worker never borrows the thread-affine Runtime and never
 /// touches command recording, device state or GPU resources.
 pub(in crate::runtime) struct CompileWorker {
 	pub(in crate::runtime) requests: std::sync::mpsc::SyncSender<CompileRequest>,

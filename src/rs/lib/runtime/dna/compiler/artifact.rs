@@ -94,7 +94,7 @@ impl JitArtifacts {
 	/// Emitter generation matching `Program::artifact_key`'s `v1` prefix.
 	const EMITTER_VERSION: u32 = 1;
 
-	/// Encode every artifact into `.vkcache` section updates for the Engine's
+	/// Encode every artifact into `.vkcache` section updates for the Runtime's
 	/// single atomic commit. The index is useless without its SPIR-V table and
 	/// vice versa, so both are produced or neither is.
 	pub(in crate::runtime) fn section_updates(

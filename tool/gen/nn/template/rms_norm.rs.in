@@ -8,7 +8,7 @@ pub struct {{name}} {
 
 impl {{name}} {
 	pub fn new(dimension: usize, epsilon: f32) -> Result<Self> {
-		Self::new_on(&Engine::current()?, dimension, epsilon)	}
+		Self::new_on(&Runtime::current()?, dimension, epsilon)	}
 
 	/// Construct RMSNorm with unit weight.
 	///
@@ -16,11 +16,11 @@ impl {{name}} {
 	///
 	/// Returns an error when `dimension` is zero, `epsilon` is not finite and
 	/// positive, or parameter allocation/upload fails.
-	pub fn new_on(engine: &Engine, dimension: usize, epsilon: f32) -> Result<Self> {
+	pub fn new_on(runtime: &Runtime, dimension: usize, epsilon: f32) -> Result<Self> {
 		if dimension == 0 {
 			return Err(Error::invalid_argument("RMSNorm dimension must be nonzero"));
 		}
-		let weight = Matrix::new_from_f32_on(engine, [dimension], &vec![1.0; dimension])?;
+		let weight = Matrix::new_from_f32_on(runtime, [dimension], &vec![1.0; dimension])?;
 		Self::new_from_matrix(weight, epsilon)
 	}
 

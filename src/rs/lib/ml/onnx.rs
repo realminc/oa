@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::{Engine, Error, Matrix, Result, matrix};
+use crate::{Error, Matrix, Result, Runtime, matrix};
 
 const ONNX_TENSOR_FLOAT: i64 = 1;
 
@@ -119,25 +119,25 @@ pub struct OnnxGraph {
 }
 
 impl OnnxGraph {
-	/// Load an ONNX model from disk onto the current engine.
+	/// Load an ONNX model from disk onto the current runtime.
 	///
 	/// # Errors
 	///
 	/// Returns an error for unreadable files, malformed protobuf payloads,
 	/// non-F32 tensors, or unsupported operators in the node list.
 	pub fn load(path: impl AsRef<Path>) -> Result<Self> {
-		Self::load_on(&Engine::current()?, path)
+		Self::load_on(&Runtime::current()?, path)
 	}
 
-	/// Load an ONNX model from disk onto `engine`.
+	/// Load an ONNX model from disk onto `runtime`.
 	///
 	/// # Errors
 	///
 	/// Returns an error under the [`Self::load`] contract.
-	pub fn load_on(engine: &Engine, path: impl AsRef<Path>) -> Result<Self> {
+	pub fn load_on(runtime: &Runtime, path: impl AsRef<Path>) -> Result<Self> {
 		let bytes =
 			std::fs::read(path.as_ref()).map_err(|source| Error::io("ONNX model read", source))?;
-		Self::from_bytes_on(engine, &bytes)
+		Self::from_bytes_on(runtime, &bytes)
 	}
 
 	/// Import an ONNX model from its protobuf wire encoding in memory.
@@ -145,7 +145,7 @@ impl OnnxGraph {
 	/// # Errors
 	///
 	/// Returns an error under the [`Self::load`] contract.
-	pub fn from_bytes_on(engine: &Engine, bytes: &[u8]) -> Result<Self> {
+	pub fn from_bytes_on(runtime: &Runtime, bytes: &[u8]) -> Result<Self> {
 		let mut graph_bytes = None;
 		read_fields(bytes, |number, wire| {
 			if number == 7 {
@@ -183,7 +183,7 @@ impl OnnxGraph {
 							tensor.values.len(),
 						)));
 					}
-					let matrix = Matrix::new_from_f32_on(engine, tensor.dims.clone(), &tensor.values)
+					let matrix = Matrix::new_from_f32_on(runtime, tensor.dims.clone(), &tensor.values)
 						.map_err(|source| {
 							Error::data_loss(format!(
 								"ONNX initializer {} upload failed: {source}",
@@ -321,7 +321,7 @@ impl OnnxGraph {
 		match node.op_type.as_str() {
 			"MatMul" => {
 				let right = matrix::transpose(operand(1)?, -2, -1)?;
-				matrix::mat_mul_nt(operand(0)?, &right)
+				matrix::matmul(operand(0)?, &right)
 			}
 			"Gemm" => {
 				let mut left = operand(0)?.clone();
@@ -332,7 +332,7 @@ impl OnnxGraph {
 				if attr_i("transB", 0) != 1 {
 					right = matrix::transpose(&right, -2, -1)?;
 				}
-				let mut product = matrix::mat_mul_nt(&left, &right)?;
+				let mut product = matrix::matmul(&left, &right)?;
 				let alpha = attr_f("alpha", 1.0);
 				let beta = attr_f("beta", 1.0);
 				if alpha != 1.0 {

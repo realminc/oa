@@ -6,7 +6,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use crate::{Engine, Error, Result};
+use crate::{Error, Result, Runtime};
 
 use super::{
 	CheckpointProgress, load_checkpoint_at_step, load_checkpoint_on, save_checkpoint_with_progress,
@@ -35,20 +35,20 @@ struct SavedCheckpoint {
 }
 
 /// Stateful checkpoint selection and bounded incremental-retention policy.
-pub struct CheckpointManager<'engine> {
-	engine: &'engine Engine,
+pub struct CheckpointManager<'runtime> {
+	runtime: &'runtime Runtime,
 	config: CheckpointManagerConfig,
 	best_metric: f64,
 	saved: Vec<SavedCheckpoint>,
 }
 
-impl<'engine> CheckpointManager<'engine> {
+impl<'runtime> CheckpointManager<'runtime> {
 	/// Construct a manager around the one execution owner.
 	///
 	/// # Errors
 	///
 	/// Returns an error when a filename component or metric name is invalid.
-	pub fn new(engine: &'engine Engine, config: CheckpointManagerConfig) -> Result<Self> {
+	pub fn new(runtime: &'runtime Runtime, config: CheckpointManagerConfig) -> Result<Self> {
 		validate_component(&config.model_name, "model name")?;
 		if !config.context.is_empty() {
 			validate_component(&config.context, "checkpoint context")?;
@@ -60,7 +60,7 @@ impl<'engine> CheckpointManager<'engine> {
 			f64::NEG_INFINITY
 		};
 		Ok(Self {
-			engine,
+			runtime,
 			config,
 			best_metric,
 			saved: Vec::new(),
@@ -195,7 +195,7 @@ impl<'engine> CheckpointManager<'engine> {
 		model: &dyn Module,
 		optimizer: &mut dyn CheckpointOptimizer,
 	) -> Result<()> {
-		load_checkpoint_on(self.engine, self.master_path(), model, optimizer)
+		load_checkpoint_on(self.runtime, self.master_path(), model, optimizer)
 	}
 
 	/// Restore the highest-step incremental checkpoint into existing owners.
@@ -220,7 +220,7 @@ impl<'engine> CheckpointManager<'engine> {
 		})?;
 		let step = parse_step(&path)
 			.ok_or_else(|| Error::failed_precondition("latest checkpoint has no valid step segment"))?;
-		load_checkpoint_at_step(self.engine, &path, model, optimizer, step)?;
+		load_checkpoint_at_step(self.runtime, &path, model, optimizer, step)?;
 		Ok(step)
 	}
 

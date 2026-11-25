@@ -1,11 +1,11 @@
 //! Exact target-network synchronization shared by off-policy trainers.
 
-use crate::{Engine, Error, Result, matrix};
+use crate::{Error, Result, Runtime, matrix};
 
 use crate::ml::Module;
 
 pub(super) fn sync_exact(
-	engine: &Engine,
+	runtime: &Runtime,
 	pairs: &[(&dyn Module, &dyn Module)],
 	algorithm: &'static str,
 ) -> Result<()> {
@@ -27,8 +27,8 @@ pub(super) fn sync_exact(
 				|| source_parameter.same_as(&destination_parameter)
 				|| source_data.shape() != destination_data.shape()
 				|| source_data.dtype() != destination_data.dtype()
-				|| !engine.owns_matrix(&source_data)
-				|| !engine.owns_matrix(&destination_data)
+				|| !runtime.owns_matrix(&source_data)
+				|| !runtime.owns_matrix(&destination_data)
 			{
 				return Err(Error::invalid_argument(format!(
 					"{algorithm} source and target module schemas do not match"
@@ -46,5 +46,5 @@ pub(super) fn sync_exact(
 		destination.replace_data(copied)?;
 		destination.set_requires_grad(false);
 	}
-	engine.checkpoint()?.wait()
+	runtime.checkpoint()?.wait()
 }

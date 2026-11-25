@@ -13,7 +13,7 @@ use super::common::{mean_pointwise_loss, pointwise_loss_backward};
 ///
 /// # Errors
 ///
-/// Returns an error for empty, mismatched, non-FP32, or cross-engine inputs, or
+/// Returns an error for empty, mismatched, non-FP32, or cross-runtime inputs, or
 /// when allocation or runtime recording fails.
 pub fn mse(prediction: &Matrix, target: &Matrix) -> Result<Matrix> {
 	let output = mean_pointwise_loss(

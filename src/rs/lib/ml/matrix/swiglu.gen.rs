@@ -13,12 +13,12 @@ use crate::{
 ///
 /// # Errors
 ///
-/// Returns an error unless both inputs are equal-shape F32 on the same engine,
+/// Returns an error unless both inputs are equal-shape F32 on the same runtime,
 /// or runtime recording fails.
 pub fn swiglu(gate: &Matrix, up: &Matrix) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::SWIGLU;
 	let operation = contract.name();
-	let engine = gate.engine_handle();
+	let runtime = gate.runtime();
 	for matrix in &[gate, up] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -26,9 +26,9 @@ pub fn swiglu(gate: &Matrix, up: &Matrix) -> Result<Matrix> {
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -40,7 +40,7 @@ pub fn swiglu(gate: &Matrix, up: &Matrix) -> Result<Matrix> {
 	let element_count = u32::try_from(gate.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		gate.shape().to_vec(),
 		gate.num_elements(),
 		DType::F32,
@@ -52,7 +52,7 @@ pub fn swiglu(gate: &Matrix, up: &Matrix) -> Result<Matrix> {
 			BufferBinding::write(output.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlSwigluF32,
 				buffers: &buffers,
@@ -79,7 +79,7 @@ pub(in crate::ml) fn swiglu_backward(
 ) -> Result<(Matrix, Matrix)> {
 	let contract = crate::core::operation::ml::SWIGLU_BACKWARD;
 	let operation = contract.name();
-	let engine = gate.engine_handle();
+	let runtime = gate.runtime();
 	for matrix in &[gate, up, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -87,9 +87,9 @@ pub(in crate::ml) fn swiglu_backward(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -101,13 +101,13 @@ pub(in crate::ml) fn swiglu_backward(
 	let element_count = u32::try_from(gate.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let gate_gradient = Matrix::allocate(
-		engine,
+		runtime,
 		gate.shape().to_vec(),
 		gate.num_elements(),
 		DType::F32,
 	)?;
 	let up_gradient = Matrix::allocate(
-		engine,
+		runtime,
 		gate.shape().to_vec(),
 		gate.num_elements(),
 		DType::F32,
@@ -121,7 +121,7 @@ pub(in crate::ml) fn swiglu_backward(
 			BufferBinding::write(up_gradient.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlSwigluBackwardF32,
 				buffers: &buffers,
@@ -149,7 +149,7 @@ pub(in crate::ml) fn swiglu_backward(
 pub fn silu_mul(input: &Matrix, intermediate_size: usize) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::SILU_MUL;
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires F32 matrices; found {}",
@@ -177,7 +177,7 @@ pub fn silu_mul(input: &Matrix, intermediate_size: usize) -> Result<Matrix> {
 		.map_err(|_| Error::invalid_argument(format!("{operation} intermediate size exceeds u32")))?;
 	let mut output_shape = input.shape().to_vec();
 	*output_shape.last_mut().expect("validated nonempty shape") = intermediate_size;
-	let output = Matrix::allocate(engine, output_shape, output_count, DType::F32)?;
+	let output = Matrix::allocate(runtime, output_shape, output_count, DType::F32)?;
 	let buffers = [
 		BufferBinding::read(input.storage()),
 		BufferBinding::write(output.storage()),
@@ -191,7 +191,7 @@ pub fn silu_mul(input: &Matrix, intermediate_size: usize) -> Result<Matrix> {
 		PushConstant::U32(output_count_u32),
 		PushConstant::U32(intermediate_u32),
 	];
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlSiluMulF32,
 			buffers: &buffers,
@@ -217,7 +217,7 @@ pub(in crate::ml) fn silu_mul_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::SILU_MUL_BACKWARD;
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	for matrix in &[input, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -225,9 +225,9 @@ pub(in crate::ml) fn silu_mul_backward(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -260,7 +260,7 @@ pub(in crate::ml) fn silu_mul_backward(
 	let intermediate_u32 = u32::try_from(intermediate_size)
 		.map_err(|_| Error::invalid_argument(format!("{operation} intermediate size exceeds u32")))?;
 	let input_gradient = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -279,7 +279,7 @@ pub(in crate::ml) fn silu_mul_backward(
 		PushConstant::U32(output_count_u32),
 		PushConstant::U32(intermediate_u32),
 	];
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MlSiluMulBackwardF32,
 			buffers: &buffers,

@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::{DType, Engine, Error, Matrix, Result, matrix};
+use crate::{DType, Error, Matrix, Result, Runtime, matrix};
 
 use super::super::{Module, ModuleRegistry};
 use super::Linear;
@@ -31,7 +31,7 @@ pub struct AdaptiveLogSoftmaxWithLoss {
 }
 
 impl AdaptiveLogSoftmaxWithLoss {
-	/// Construct on the current engine with the thread-local seed source.
+	/// Construct on the current runtime with the thread-local seed source.
 	///
 	/// # Errors
 	///
@@ -40,7 +40,7 @@ impl AdaptiveLogSoftmaxWithLoss {
 		Self::new_with_seed(in_features, n_classes, cutoffs, 0)
 	}
 
-	/// Construct on the current engine with an explicit seed.
+	/// Construct on the current runtime with an explicit seed.
 	///
 	/// Uses `div_value` 4.0 and a bias-free head, matching the torch defaults.
 	///
@@ -54,7 +54,7 @@ impl AdaptiveLogSoftmaxWithLoss {
 		seed: u64,
 	) -> Result<Self> {
 		Self::new_with_seed_on(
-			&Engine::current()?,
+			&Runtime::current()?,
 			in_features,
 			n_classes,
 			cutoffs,
@@ -76,7 +76,7 @@ impl AdaptiveLogSoftmaxWithLoss {
 	/// Returns an error when the contract or initialization fails.
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_seed_on(
-		engine: &Engine,
+		runtime: &Runtime,
 		in_features: usize,
 		n_classes: usize,
 		cutoffs: &[usize],
@@ -97,7 +97,7 @@ impl AdaptiveLogSoftmaxWithLoss {
 			)));
 		}
 		let head = Rc::new(Linear::new_with_seed_and_bias_on(
-			engine,
+			runtime,
 			in_features,
 			head_size,
 			head_bias,
@@ -109,14 +109,14 @@ impl AdaptiveLogSoftmaxWithLoss {
 				.round()
 				.max(1.0) as usize;
 			let projection = Rc::new(Linear::new_with_seed_and_bias_on(
-				engine,
+				runtime,
 				in_features,
 				hidden,
 				true,
 				seed + 1 + index as u64,
 			)?);
 			let output = Rc::new(Linear::new_with_seed_and_bias_on(
-				engine,
+				runtime,
 				hidden,
 				*size,
 				true,
@@ -218,9 +218,9 @@ impl AdaptiveLogSoftmaxWithLoss {
 				"{OPERATION} target must have shape [N] matching the input rows"
 			)));
 		}
-		if !target.engine_handle().same_as(input.engine_handle()) {
+		if !target.runtime().same_as(input.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{OPERATION} input and target must belong to the same engine"
+				"{OPERATION} input and target must belong to the same runtime"
 			)));
 		}
 		let target_f32 = match target.dtype() {
@@ -314,7 +314,7 @@ impl AdaptiveLogSoftmaxWithLoss {
 		let rows = head_log_probs.shape()[0];
 		let column = self.cutoffs[0] + index;
 		let index =
-			head_log_probs.new_from_slice_on_same_engine(vec![rows, 1], &vec![column as i32; rows])?;
+			head_log_probs.new_from_slice_on_same_runtime(vec![rows, 1], &vec![column as i32; rows])?;
 		matrix::gather_last_dim(head_log_probs, &index)
 	}
 

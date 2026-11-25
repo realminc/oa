@@ -220,7 +220,7 @@ fn root_exports_are_cryptography_value_identities() {
 // qualify this test or the larger suite.
 test_vk!(
 	batch_shake128_empty_message_isolated,
-	engine,
+	runtime,
 	"requires a recovered hardware Vulkan compute device",
 	{
 		let input = oa::Matrix::new_from_slice([1, 0], &[] as &[u8])?;
@@ -234,7 +234,7 @@ test_vk!(
 
 test_vk!(
 	batch_shake_variant_transition,
-	engine,
+	runtime,
 	"requires a recovered hardware Vulkan compute device",
 	{
 		let input = oa::Matrix::new_from_slice([3, 0], &[] as &[u8])?;
@@ -259,7 +259,7 @@ test_vk!(
 
 test_vk!(
 	batch_shake256_short_message_isolated,
-	engine,
+	runtime,
 	"requires a recovered hardware Vulkan compute device",
 	{
 		let values = [11_u8, 48, 85, 122, 159, 196, 233, 14, 51];
@@ -275,7 +275,7 @@ test_vk!(
 	}
 );
 
-test_vk!(batch_shake_matches_cpu_across_rate_boundaries, engine, {
+test_vk!(batch_shake_matches_cpu_across_rate_boundaries, runtime, {
 	eprintln!("SHAKE: recording default-length outputs");
 	let empty = oa::Matrix::new_from_slice([2, 0], &[] as &[u8])?;
 	assert_eq!(oa::crypto::hash::shake128(&empty, 0)?.shape(), [2, 16]);
@@ -332,7 +332,7 @@ test_vk!(batch_shake_matches_cpu_across_rate_boundaries, engine, {
 	Ok(())
 });
 
-test_vk!(batch_keccak_matches_cpu_permutation, engine, {
+test_vk!(batch_keccak_matches_cpu_permutation, runtime, {
 	let rows = 5;
 	let values = (0_usize..rows * 200)
 		.map(|index| (index.wrapping_mul(29).wrapping_add(7) & 0xff) as u8)
@@ -355,7 +355,7 @@ test_vk!(batch_keccak_matches_cpu_permutation, engine, {
 
 test_vk!(
 	batch_merkle_matches_cpu_and_supports_deferred_hashes,
-	engine,
+	runtime,
 	{
 		for leaf_count in [1, 2, 3, 4, 5, 7, 9, 16, 33, 1024] {
 			let leaves = (0_usize..leaf_count)
@@ -387,10 +387,10 @@ test_vk!(
 
 test_vk!(
 	batch_hash_chain_replays_and_rebinds_without_host_intermediates,
-	engine,
+	runtime,
 	{
 		let input = oa::Matrix::new_from_slice([4, 3], b"abcdefghijkl")?;
-		let (mut plan, root) = engine.capture(|| {
+		let (mut plan, root) = runtime.capture(|| {
 			let leaves = oa::crypto::hash::shake256(&input, 32)?;
 			oa::crypto::hash::merkle_root(&leaves)
 		})?;
@@ -449,8 +449,8 @@ test_vk!(
 				}
 				_ => {}
 			}
-			let first = engine.submit(&plan)?;
-			let second = engine.submit(&plan)?;
+			let first = runtime.submit(&plan)?;
+			let second = runtime.submit(&plan)?;
 			first.wait()?;
 			second.wait()?;
 			let leaves = messages
@@ -470,9 +470,9 @@ test_vk!(
 	}
 );
 
-test_vk!(multi_level_merkle_has_one_semantic_identity, engine, {
+test_vk!(multi_level_merkle_has_one_semantic_identity, runtime, {
 	let input = oa::Matrix::new_from_slice([4, 32], &[0_u8; 128])?;
-	let (plan, _root) = engine.capture(|| oa::crypto::hash::merkle_root(&input))?;
+	let (plan, _root) = runtime.capture(|| oa::crypto::hash::merkle_root(&input))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	assert_eq!(
 		plan.semantic_graph().operations()[0].name(),
@@ -482,7 +482,7 @@ test_vk!(multi_level_merkle_has_one_semantic_identity, engine, {
 	Ok(())
 });
 
-test_vk!(batch_hash_rejects_invalid_contracts, engine, {
+test_vk!(batch_hash_rejects_invalid_contracts, runtime, {
 	let f32_input = oa::Matrix::new_from_f32([1, 32], &[0.0; 32])?;
 	let rank_one = oa::Matrix::new_from_slice([32], &[0_u8; 32])?;
 	let wrong_state = oa::Matrix::new_from_slice([1, 199], &[0_u8; 199])?;
@@ -525,7 +525,7 @@ fn nist_public_key<P: ml_dsa::MlDsaParams>(
 	key.encode().to_vec()
 }
 
-test_vk_slow!(ml_dsa_all_parameters_nist_batch_capture, engine, {
+test_vk_slow!(ml_dsa_all_parameters_nist_batch_capture, runtime, {
 	use oa::crypto::pqc::{MlDsaParameters, verify_batch_with_parameters};
 
 	let prompt: serde_json::Value = serde_json::from_str(include_str!(
@@ -614,7 +614,7 @@ test_vk_slow!(ml_dsa_all_parameters_nist_batch_capture, engine, {
 		let lengths = oa::Matrix::new_from_slice([lengths.len()], &lengths)?;
 		let signatures = oa::Matrix::new_from_slice([signatures.len()], &signatures)?;
 		let keys = oa::Matrix::new_from_slice([keys.len()], &keys)?;
-		let (plan, results) = engine.capture(|| {
+		let (plan, results) = runtime.capture(|| {
 			verify_batch_with_parameters(parameter, &messages, &offsets, &lengths, &signatures, &keys)
 		})?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
@@ -623,7 +623,7 @@ test_vk_slow!(ml_dsa_all_parameters_nist_batch_capture, engine, {
 			oa::ErrorKind::NotReady
 		);
 		for _ in 0..2 {
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			assert_eq!(results.read::<u32>()?, expected, "{name} NIST batch");
 		}
 		let wrong_parameter = if parameter == MlDsaParameters::MlDsa44 {
@@ -661,7 +661,7 @@ test_vk_slow!(ml_dsa_all_parameters_nist_batch_capture, engine, {
 	Ok(())
 });
 
-test_vk_slow!(ml_dsa_all_parameters_context_capture, engine, {
+test_vk_slow!(ml_dsa_all_parameters_context_capture, runtime, {
 	use oa::crypto::pqc::{MlDsaParameters, verify_batch_with_context};
 	let prompt: serde_json::Value = serde_json::from_str(include_str!(
 		"../../fixtures/crypto/mldsa/sigGen-prompt.json"
@@ -730,7 +730,7 @@ test_vk_slow!(ml_dsa_all_parameters_context_capture, engine, {
 			let lengths = oa::Matrix::new_from_slice([1], &[u32::try_from(message.len()).unwrap()])?;
 			let signatures = oa::Matrix::new_from_slice([signature.len()], &signature)?;
 			let keys = oa::Matrix::new_from_slice([key.len()], &key)?;
-			let (mut plan, result) = engine.capture(|| {
+			let (mut plan, result) = runtime.capture(|| {
 				verify_batch_with_context(
 					parameter,
 					&messages,
@@ -746,14 +746,14 @@ test_vk_slow!(ml_dsa_all_parameters_context_capture, engine, {
 				oa::ErrorKind::NotReady
 			);
 			for _ in 0..2 {
-				engine.submit(&plan)?.wait()?;
+				runtime.submit(&plan)?.wait()?;
 				assert_eq!(result.read::<u32>()?, [1], "{name} exact NIST context");
 			}
 			// The shared context is retained and rebound with the semantic message input.
 			bytes[1] ^= 1;
 			let changed = oa::Matrix::new_from_slice([bytes.len()], &bytes)?;
 			plan.bind_matrix_input(&messages, &changed)?;
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			assert_eq!(result.read::<u32>()?, [0], "{name} changed context");
 			let wrong_context = verify_batch_with_context(
 				parameter,
@@ -821,7 +821,7 @@ test_vk_slow!(ml_dsa_all_parameters_context_capture, engine, {
 	Ok(())
 });
 
-test_vk_slow!(ml_dsa_65_gpu_batch_verify_matches_cpu_oracle, engine, {
+test_vk_slow!(ml_dsa_65_gpu_batch_verify_matches_cpu_oracle, runtime, {
 	// Odd batch: four valid signatures and one tampered signature.
 	let batch_size: usize = 5;
 	let messages: Vec<&[u8]> = vec![
@@ -899,7 +899,7 @@ test_vk_slow!(ml_dsa_65_gpu_batch_verify_matches_cpu_oracle, engine, {
 
 test_vk_slow!(
 	ml_dsa_65_batch_capture_checks_logical_ranges_and_rebinds,
-	engine,
+	runtime,
 	{
 		let kp = generate_keypair()?;
 		let mut bytes = vec![0xA5_u8]; // force non-word-aligned message starts
@@ -942,7 +942,7 @@ test_vk_slow!(
 		let signatures = oa::Matrix::new_from_slice([signatures.len()], &signatures)?;
 		let keys = oa::Matrix::new_from_slice([keys.len()], &keys)?;
 		let (mut plan, output) =
-			engine.capture(|| verify_batch(&messages, &offsets, &lengths, &signatures, &keys))?;
+			runtime.capture(|| verify_batch(&messages, &offsets, &lengths, &signatures, &keys))?;
 		assert_eq!(
 			output.try_read::<u32>().unwrap_err().kind(),
 			oa::ErrorKind::NotReady
@@ -950,7 +950,7 @@ test_vk_slow!(
 		assert_eq!(plan.semantic_graph().operations().len(), 1);
 		let expected = [1_u32, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0];
 		for _ in 0..2 {
-			engine.submit(&plan)?.wait()?;
+			runtime.submit(&plan)?.wait()?;
 			assert_eq!(output.read::<u32>()?, expected);
 		}
 		let replacement = oa::Matrix::new_from_slice(
@@ -958,7 +958,7 @@ test_vk_slow!(
 			&vec![0_u8; count * SIGNATURE_SIZE],
 		)?;
 		plan.bind_matrix_input(&signatures, &replacement)?;
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_eq!(output.read::<u32>()?, vec![0_u32; count]);
 		assert_eq!(plan.diagnostics().input_rebinding_count(), 1);
 		// Empty batch has a typed empty result and no shader invocation.
@@ -996,7 +996,7 @@ test_vk_slow!(
 	}
 );
 
-test_vk!(ml_dsa_65_gpu_verify_batch_rejects_bad_inputs, engine, {
+test_vk!(ml_dsa_65_gpu_verify_batch_rejects_bad_inputs, runtime, {
 	let empty_u8 = oa::Matrix::new_from_slice([0_usize], &[] as &[u8])?;
 	let offsets_u32 = oa::Matrix::new_from_slice([1_usize], &[0_u32])?;
 	let lengths_u32 = oa::Matrix::new_from_slice([1_usize], &[0_u32])?;

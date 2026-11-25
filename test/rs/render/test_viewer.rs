@@ -3,7 +3,7 @@
 use oa::viewer::{Viewer, ViewerAudioView, ViewerConfig, ViewerMode};
 
 fn run_until_quit(run: impl FnOnce() -> oa::Result<()>) -> Result<(), Box<dyn std::error::Error>> {
-	// Retain SDL while the viewer initializes its own window and engine. A queued
+	// Retain SDL while the viewer initializes its own window and runtime. A queued
 	// quit is handled in the loop that still composes and presents its final frame.
 	let sdl = sdl3::init()?;
 	let events = sdl.event()?;
@@ -26,11 +26,11 @@ fn preview_until_quit(config: ViewerConfig) -> Result<(), Box<dyn std::error::Er
 #[ignore = "requires Vulkan presentation and a live SDL display"]
 fn figure_show_opens_image_viewer_and_closes() -> Result<(), Box<dyn std::error::Error>> {
 	let probe = oa::SdlWindow::new("Figure presentation probe", 1, 1)?;
-	let engine = oa::Engine::builder()
-		.requirements(oa::EngineRequirements::default().presentation())
+	let runtime = oa::Runtime::builder()
+		.requirements(oa::RuntimeRequirements::default().presentation())
 		.instance_extensions(probe.required_instance_extensions()?)
 		.build()?;
-	oa::Engine::set_default(engine.clone());
+	oa::Runtime::set_default(runtime.clone());
 	drop(probe);
 
 	let mut figure = oa::plot::Figure::new(oa::plot::FigureConfig {
@@ -40,7 +40,7 @@ fn figure_show_opens_image_viewer_and_closes() -> Result<(), Box<dyn std::error:
 		..Default::default()
 	});
 	figure.ax(0, 0).plot(&[5.0, 2.0, 1.0], Default::default());
-	run_until_quit(|| figure.show_on(&engine))
+	run_until_quit(|| figure.show_on(&runtime))
 }
 
 #[test]

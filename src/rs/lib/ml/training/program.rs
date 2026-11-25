@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use crate::{
-	DType, Engine, Event, ExecutionPlan, ExecutionPlanDiagnostics, Matrix, Result, SemanticGraph,
+	DType, Event, ExecutionPlan, ExecutionPlanDiagnostics, Matrix, Result, Runtime, SemanticGraph,
 	runtime::CaptureAttempt,
 };
 
@@ -21,7 +21,7 @@ pub enum TrainingCompilationStage {
 	Decomposition,
 	/// Analyze candidate DNN partitions and fusion regions.
 	Fusion,
-	/// Resolve execution placement inherited from the originating engine.
+	/// Resolve execution placement inherited from the originating runtime.
 	Placement,
 	/// Resolve precision policy inherited from recorded operations.
 	Precision,
@@ -151,11 +151,11 @@ impl TrainingProgram {
 	/// recording, or when the returned value is not a scalar F32 loss or every
 	/// optimizer parameter did not receive a stable gradient.
 	pub fn capture(
-		engine: &Engine,
+		runtime: &Runtime,
 		optimizer: &mut AdamW,
 		step: impl FnOnce() -> Result<Matrix>,
 	) -> Result<Self> {
-		let (plan, loss) = engine.capture_observed_matrix(|| {
+		let (plan, loss) = runtime.capture_observed_matrix(|| {
 			optimizer.zero_grad();
 			let loss = step()?;
 			if !loss.shape().is_empty() || loss.dtype() != DType::F32 {
@@ -179,11 +179,11 @@ impl TrainingProgram {
 	}
 
 	pub(super) fn capture_preserving_recording(
-		engine: &Engine,
+		runtime: &Runtime,
 		optimizer: &mut AdamW,
 		step: impl FnOnce() -> Result<Matrix>,
 	) -> Result<TrainingProgramCapture> {
-		let attempt = engine.capture_observed_training_matrix_preserving(|| {
+		let attempt = runtime.capture_observed_training_matrix_preserving(|| {
 			optimizer.zero_grad();
 			let loss = step()?;
 			if !loss.shape().is_empty() || loss.dtype() != DType::F32 {
@@ -262,10 +262,10 @@ impl TrainingProgram {
 	///
 	/// # Errors
 	///
-	/// Returns an error when the engine or optimizer differs, stable captured state
+	/// Returns an error when the runtime or optimizer differs, stable captured state
 	/// was replaced, a counter is exhausted, or submission fails.
-	pub fn replay(&mut self, engine: &Engine, optimizer: &mut AdamW) -> Result<Event> {
-		self.replay_impl(engine, optimizer, false)
+	pub fn replay(&mut self, runtime: &Runtime, optimizer: &mut AdamW) -> Result<Event> {
+		self.replay_impl(runtime, optimizer, false)
 	}
 
 	/// Submit one replay with device timestamps around the complete program.
@@ -274,11 +274,16 @@ impl TrainingProgram {
 	///
 	/// Returns the errors from [`TrainingProgram::replay`], or
 	/// `MissingCapability` when the selected queue cannot provide timestamps.
-	pub fn replay_timed(&mut self, engine: &Engine, optimizer: &mut AdamW) -> Result<Event> {
-		self.replay_impl(engine, optimizer, true)
+	pub fn replay_timed(&mut self, runtime: &Runtime, optimizer: &mut AdamW) -> Result<Event> {
+		self.replay_impl(runtime, optimizer, true)
 	}
 
-	fn replay_impl(&mut self, engine: &Engine, optimizer: &mut AdamW, timed: bool) -> Result<Event> {
+	fn replay_impl(
+		&mut self,
+		runtime: &Runtime,
+		optimizer: &mut AdamW,
+		timed: bool,
+	) -> Result<Event> {
 		let expected_step = self
 			.optimizer
 			.base_step
@@ -289,9 +294,9 @@ impl TrainingProgram {
 			.ok_or_else(|| crate::Error::resource_exhausted("training step counter exhausted"))?;
 		optimizer.validate_program_replay(&self.optimizer, expected_step, logical_step)?;
 		let event = if timed {
-			engine.submit_timed(&self.plan)?
+			runtime.submit_timed(&self.plan)?
 		} else {
-			engine.submit(&self.plan)?
+			runtime.submit(&self.plan)?
 		};
 		optimizer.complete_program_replay(&self.optimizer, logical_step)?;
 		self.replays = self
@@ -306,8 +311,8 @@ impl TrainingProgram {
 	/// # Errors
 	///
 	/// Returns the replay, completion, or loss-read error.
-	pub fn replay_and_wait(&mut self, engine: &Engine, optimizer: &mut AdamW) -> Result<f32> {
-		self.replay(engine, optimizer)?.wait()?;
+	pub fn replay_and_wait(&mut self, runtime: &Runtime, optimizer: &mut AdamW) -> Result<f32> {
+		self.replay(runtime, optimizer)?.wait()?;
 		Ok(self.loss.read_f32()?[0])
 	}
 
@@ -318,10 +323,10 @@ impl TrainingProgram {
 	/// Returns the timed replay, completion, timestamp, or loss-read error.
 	pub fn replay_timed_and_wait(
 		&mut self,
-		engine: &Engine,
+		runtime: &Runtime,
 		optimizer: &mut AdamW,
 	) -> Result<(f32, Duration)> {
-		let event = self.replay_timed(engine, optimizer)?;
+		let event = self.replay_timed(runtime, optimizer)?;
 		let duration = event.device_duration()?;
 		Ok((self.loss.read_f32()?[0], duration))
 	}
@@ -384,7 +389,7 @@ impl TrainingProgram {
 	/// # Errors
 	///
 	/// Returns an error from [`TrainingProgram::wait`]. Submitted resources remain
-	/// protected by engine retirement if the wait fails.
+	/// protected by runtime retirement if the wait fails.
 	pub fn reset(self) -> Result<()> {
 		self.plan.reset()
 	}

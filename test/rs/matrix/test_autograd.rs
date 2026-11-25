@@ -23,7 +23,7 @@ fn scalar_sum(input: &oa::Matrix) -> oa::Result<oa::Matrix> {
 	result.reshape([])
 }
 
-test_vk!(matrix_unary_adjoints_match_analytic_oracles, engine, {
+test_vk!(matrix_unary_adjoints_match_analytic_oracles, runtime, {
 	let values = [0.5_f32, 1.5, 2.5];
 	for operation in [
 		"copy",
@@ -86,7 +86,7 @@ test_vk!(matrix_unary_adjoints_match_analytic_oracles, engine, {
 
 test_vk!(
 	matrix_binary_adjoints_reduce_broadcast_axes_and_shared_inputs,
-	engine,
+	runtime,
 	{
 		for operation in ["add", "sub", "mul", "div"] {
 			let left = oa::ml::nn::Linear::new_from_matrices(
@@ -131,7 +131,7 @@ test_vk!(
 
 test_vk!(
 	matrix_mean_and_max_adjoints_match_analytic_oracles,
-	engine,
+	runtime,
 	{
 		let layer = oa::ml::nn::Linear::new_from_matrices(
 			oa::Matrix::new_from_f32([3, 1], &[0.0; 3])?,
@@ -149,7 +149,7 @@ test_vk!(
 
 test_vk!(
 	matrix_max_adjoint_routes_the_upstream_scalar_to_the_maximum,
-	engine,
+	runtime,
 	{
 		let layer = oa::ml::nn::Linear::new_from_matrices(
 			oa::Matrix::new_from_f32([3, 1], &[0.0; 3])?,
@@ -167,7 +167,7 @@ test_vk!(
 
 test_vk!(
 	matrix_causal_mask_adjoint_zeroes_above_diagonal_gradients,
-	engine,
+	runtime,
 	{
 		let layer = oa::ml::nn::Linear::new_from_matrices(
 			oa::Matrix::new_from_f32([6, 1], &[0.0; 6])?,
@@ -188,7 +188,7 @@ test_vk!(
 
 test_vk!(
 	matrix_split_adjoint_routes_gradients_to_the_consumed_segment,
-	engine,
+	runtime,
 	{
 		let layer = oa::ml::nn::Linear::new_from_matrices(
 			oa::Matrix::new_from_f32([6, 1], &[0.0; 6])?,
@@ -209,7 +209,7 @@ test_vk!(
 
 test_vk!(
 	matrix_matmul_concat_transpose_and_view_adjoints_preserve_lineage,
-	engine,
+	runtime,
 	{
 		let layer = oa::ml::nn::Linear::new_from_matrices(
 			oa::Matrix::new_from_f32([3, 2], &[1.0, 4.0, 2.0, 5.0, 3.0, 6.0])?,
@@ -220,7 +220,7 @@ test_vk!(
 		let empty = oa::Matrix::new_from_f32([0, 2], &[])?;
 		let tape = oa::ml::GradientTape::new();
 		let left = layer.forward(&input)?;
-		let product = oa::matrix::mat_mul_nt(&left, &right)?;
+		let product = oa::matrix::matmul(&left, &right)?;
 		let combined = oa::matrix::concat(&[product.clone(), empty, product], 0)?;
 		let transposed = oa::matrix::transpose(&combined, 0, 1)?;
 		let flattened = transposed.reshape([8])?;
@@ -233,7 +233,7 @@ test_vk!(
 
 test_vk!(
 	matrix_compact_rows_adjoint_reconstructs_the_source_rows,
-	engine,
+	runtime,
 	{
 		let layer = oa::ml::nn::Linear::new_from_matrices(
 			oa::Matrix::new_from_f32([8, 1], &[0.0; 8])?,
@@ -255,7 +255,7 @@ test_vk!(
 
 test_vk!(
 	matrix_scatter_rows_adjoint_gathers_source_and_flows_base,
-	engine,
+	runtime,
 	{
 		let base_layer = oa::ml::nn::Linear::new_from_matrices(
 			oa::Matrix::new_from_f32([8, 1], &[0.0; 8])?,
@@ -284,7 +284,7 @@ test_vk!(
 
 test_vk!(
 	matrix_scatter_rows_indirect_adjoint_uses_the_gpu_authored_plan,
-	engine,
+	runtime,
 	{
 		let base_layer = oa::ml::nn::Linear::new_from_matrices(
 			oa::Matrix::new_from_f32([8, 1], &[0.0; 8])?,

@@ -1,17 +1,21 @@
-test_vk!(metric_host_observations_match_the_device_scalars, engine, {
-	let loss = oa::Matrix::new_from_f32([1], &[0.375])?;
-	assert_eq!(oa::ml::metric::scalar_loss(&loss)?, 0.375);
+test_vk!(
+	metric_host_observations_match_the_device_scalars,
+	runtime,
+	{
+		let loss = oa::Matrix::new_from_f32([1], &[0.375])?;
+		assert_eq!(oa::ml::metric::scalar_loss(&loss)?, 0.375);
 
-	let logits = oa::Matrix::new_from_f32(
-		[4, 3],
-		&[4.0, 4.0, 1.0, 0.0, 2.0, 1.0, 0.0, 1.0, 3.0, 3.0, 1.0, 0.0],
-	)?;
-	let labels = oa::Matrix::new_from_slice([4], &[0_u32, 1, 0, 0])?;
-	assert_eq!(oa::ml::metric::accuracy(&logits, &labels)?, 0.75);
-	Ok(())
-});
+		let logits = oa::Matrix::new_from_f32(
+			[4, 3],
+			&[4.0, 4.0, 1.0, 0.0, 2.0, 1.0, 0.0, 1.0, 3.0, 3.0, 1.0, 0.0],
+		)?;
+		let labels = oa::Matrix::new_from_slice([4], &[0_u32, 1, 0, 0])?;
+		assert_eq!(oa::ml::metric::accuracy(&logits, &labels)?, 0.75);
+		Ok(())
+	}
+);
 
-test_vk!(metric_rejects_non_scalar_loss, engine, {
+test_vk!(metric_rejects_non_scalar_loss, runtime, {
 	let loss = oa::Matrix::new_from_f32([2], &[0.25, 0.5])?;
 	let error = oa::ml::metric::scalar_loss(&loss).expect_err("vector loss was accepted");
 	assert_eq!(error.kind(), oa::ErrorKind::InvalidArgument);
@@ -20,7 +24,7 @@ test_vk!(metric_rejects_non_scalar_loss, engine, {
 
 test_vk!(
 	precision_recall_f1_and_macro_f1_match_hand_computed_counts,
-	engine,
+	runtime,
 	{
 		// 4 samples, 3 classes. Predictions: argmax rows = [2,1,0,0].
 		let logits = oa::Matrix::new_from_f32(
@@ -44,7 +48,7 @@ test_vk!(
 	}
 );
 
-test_vk!(roc_auc_matches_the_rank_sum_oracle_with_ties, engine, {
+test_vk!(roc_auc_matches_the_rank_sum_oracle_with_ties, runtime, {
 	// Perfect separation → 1.0; reversed → 0.0; ties → 0.5 partial credit.
 	let perfect = oa::Matrix::new_from_f32([4], &[0.1, 0.2, 0.8, 0.9])?;
 	let labels = oa::Matrix::new_from_slice([4], &[0_u32, 0, 1, 1])?;

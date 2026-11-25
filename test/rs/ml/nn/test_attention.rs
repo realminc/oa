@@ -8,10 +8,10 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 	}
 }
 
-test_vk!(split_and_merge_heads_match_donor_permutation, engine, {
+test_vk!(split_and_merge_heads_match_donor_permutation, runtime, {
 	let values = (0..24).map(|value| value as f32).collect::<Vec<_>>();
 	let input = oa::Matrix::new_from_f32([6, 4], &values)?;
-	let (plan, (split, merged)) = engine.capture(|| {
+	let (plan, (split, merged)) = runtime.capture(|| {
 		let split = oa::ml::matrix::split_heads(&input, 2, 3, 2)?;
 		let merged = oa::ml::matrix::merge_heads(&split, 2, 3, 2)?;
 		Ok((split, merged))
@@ -32,7 +32,7 @@ test_vk!(split_and_merge_heads_match_donor_permutation, engine, {
 	assert_eq!(report["nodes"][0]["kernel"], "ml.matrix.split_heads.f32");
 	assert_eq!(report["nodes"][1]["kernel"], "ml.matrix.merge_heads.f32");
 
-	let _event = engine.submit(&plan)?;
+	let _event = runtime.submit(&plan)?;
 	plan.wait()?;
 	assert_eq!(
 		split.read_f32()?,
@@ -45,7 +45,7 @@ test_vk!(split_and_merge_heads_match_donor_permutation, engine, {
 	Ok(())
 });
 
-test_vk!(one_head_transform_is_a_differentiable_view, engine, {
+test_vk!(one_head_transform_is_a_differentiable_view, runtime, {
 	let values = [0.1_f32, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8];
 	let input = oa::Matrix::new_from_f32([2, 4], &values)?;
 	let split = oa::ml::matrix::split_heads(&input, 1, 2, 1)?;
@@ -56,7 +56,7 @@ test_vk!(one_head_transform_is_a_differentiable_view, engine, {
 	Ok(())
 });
 
-test_vk!(head_transform_reverse_is_the_exact_inverse, engine, {
+test_vk!(head_transform_reverse_is_the_exact_inverse, runtime, {
 	let values = [0.1_f32, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8];
 	for num_heads in [1, 2] {
 		let embedding =
@@ -80,7 +80,7 @@ test_vk!(head_transform_reverse_is_the_exact_inverse, engine, {
 	Ok(())
 });
 
-test_vk!(head_transforms_reject_invalid_geometry, engine, {
+test_vk!(head_transforms_reject_invalid_geometry, runtime, {
 	let input = oa::Matrix::new_from_f32([6, 4], &[0.0; 24])?;
 	let split = oa::ml::matrix::split_heads(&input, 2, 4, 2)
 		.err()
@@ -124,7 +124,7 @@ fn host_softmax_scaled_masked(
 
 test_vk!(
 	scaled_masked_softmax_matches_both_donor_schedules,
-	engine,
+	runtime,
 	{
 		for (rows, columns, expected_kernel) in [
 			(3, 13, "ml.softmax_scaled_masked_n32.f32"),
@@ -147,11 +147,11 @@ test_vk!(
 			let scores = oa::Matrix::new_from_f32([rows, columns], &scores)?;
 			let mask = oa::Matrix::new_from_f32([rows, columns], &mask)?;
 			let (plan, output) =
-				engine.capture(|| oa::ml::matrix::softmax_scaled_masked(&scores, &mask, 0.7))?;
+				runtime.capture(|| oa::ml::matrix::softmax_scaled_masked(&scores, &mask, 0.7))?;
 			let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("softmax"))
 				.expect("scaled-masked Softmax report must be valid JSON");
 			assert_eq!(report["nodes"][0]["kernel"], expected_kernel);
-			let _event = engine.submit(&plan)?;
+			let _event = runtime.submit(&plan)?;
 			plan.wait()?;
 			assert_close(&output.read_f32()?, &expected, 2.0e-5);
 		}
@@ -161,7 +161,7 @@ test_vk!(
 
 test_vk!(
 	scaled_masked_softmax_reverse_matches_host_and_detaches_mask,
-	engine,
+	runtime,
 	{
 		let scores = [0.2_f32, -0.3, 0.7, 0.1, -0.6, 0.5, 0.4, -0.2];
 		let mask = [0.0_f32, 0.0, -1.0, -1.0, 0.0, -0.5, 0.0, -0.5];
@@ -270,7 +270,7 @@ fn host_sdpa(
 
 test_vk!(
 	standard_sdpa_matches_causal_and_additive_mask_oracles,
-	engine,
+	runtime,
 	{
 		let query = [
 			0.2_f32, -0.1, 0.4, 0.6, 0.3, -0.2, -0.5, 0.7, 0.1, 0.8, -0.4, 0.2,
@@ -303,7 +303,7 @@ test_vk!(
 					causal,
 				},
 			);
-			let (plan, output) = engine.capture(|| {
+			let (plan, output) = runtime.capture(|| {
 				oa::ml::matrix::scaled_dot_product_attention(
 					&query_matrix,
 					&key_matrix,
@@ -333,7 +333,7 @@ test_vk!(
 					"ml.matrix.bmm.f32",
 				]
 			);
-			let _event = engine.submit(&plan)?;
+			let _event = runtime.submit(&plan)?;
 			plan.wait()?;
 			assert_close(&output.read_f32()?, &expected, 4.0e-5);
 		}
@@ -364,7 +364,7 @@ fn numerical_gradient(mut values: Vec<f32>, loss: impl Fn(&[f32]) -> f32) -> Vec
 		.collect()
 }
 
-test_vk!(standard_sdpa_reverse_matches_finite_differences, engine, {
+test_vk!(standard_sdpa_reverse_matches_finite_differences, runtime, {
 	let query = vec![0.2_f32, -0.1, 0.4, 0.6];
 	let key = vec![0.3_f32, 0.2, -0.2, 0.1];
 	let value = vec![0.5_f32, -0.2, 0.1, 0.4];
@@ -436,7 +436,7 @@ test_vk!(standard_sdpa_reverse_matches_finite_differences, engine, {
 	Ok(())
 });
 
-test_vk!(flash_sdpa_matches_the_standard_causal_route, engine, {
+test_vk!(flash_sdpa_matches_the_standard_causal_route, runtime, {
 	let batch_heads = 2;
 	let sequence_length = 5;
 	let head_dim = 4;
@@ -468,7 +468,7 @@ test_vk!(flash_sdpa_matches_the_standard_causal_route, engine, {
 	let key = oa::Matrix::new_from_f32([batch_heads, sequence_length, head_dim], &key)?;
 	let value = oa::Matrix::new_from_f32([batch_heads, sequence_length, head_dim], &value)?;
 	let (plan, output) =
-		engine.capture(|| oa::ml::matrix::flash_attention_causal(&query, &key, &value, scale))?;
+		runtime.capture(|| oa::ml::matrix::flash_attention_causal(&query, &key, &value, scale))?;
 	assert_eq!(plan.semantic_graph().operations().len(), 1);
 	let operation = &plan.semantic_graph().operations()[0];
 	assert_eq!(operation.name(), "oa::FnMatrix::scaledDotProductAttention");
@@ -479,13 +479,13 @@ test_vk!(flash_sdpa_matches_the_standard_causal_route, engine, {
 		report["nodes"][0]["kernel"],
 		"ml.flash_attention_causal.f32"
 	);
-	let _event = engine.submit(&plan)?;
+	let _event = runtime.submit(&plan)?;
 	plan.wait()?;
 	assert_close(&output.read_f32()?, &expected, 2.0e-5);
 	Ok(())
 });
 
-test_vk!(flash_sdpa_reverse_matches_finite_differences, engine, {
+test_vk!(flash_sdpa_reverse_matches_finite_differences, runtime, {
 	let query = vec![0.2_f32, -0.1, 0.4, 0.6];
 	let key = vec![0.3_f32, 0.2, -0.2, 0.1];
 	let value = vec![0.5_f32, -0.2, 0.1, 0.4];
@@ -517,7 +517,7 @@ test_vk!(flash_sdpa_reverse_matches_finite_differences, engine, {
 	let value_parameter = parameter(&value)?;
 	let indices = oa::Matrix::new_from_slice([2], &[0_u32, 1])?;
 	let target = oa::Matrix::new_from_f32([1, 2, 2], &target)?;
-	let (plan, _) = engine.capture(|| {
+	let (plan, _) = runtime.capture(|| {
 		let tape = oa::ml::GradientTape::new();
 		let query = query_parameter.forward(&indices)?.reshape([1, 2, 2])?;
 		let key = key_parameter.forward(&indices)?.reshape([1, 2, 2])?;
@@ -537,7 +537,7 @@ test_vk!(flash_sdpa_reverse_matches_finite_differences, engine, {
 		.collect::<Vec<_>>();
 	assert!(kernels.contains(&"ml.matrix.scaled_dot_product_attention_backward.f32"));
 	assert!(kernels.contains(&"ml.flash_attention_causal_backward_kv.f32"));
-	let _event = engine.submit(&plan)?;
+	let _event = runtime.submit(&plan)?;
 	plan.wait()?;
 	for (parameter, expected) in [
 		(&query_parameter, &expected[0]),
@@ -554,7 +554,7 @@ test_vk!(flash_sdpa_reverse_matches_finite_differences, engine, {
 	Ok(())
 });
 
-test_vk!(flash_sdpa_rejects_the_unverified_long_sequence, engine, {
+test_vk!(flash_sdpa_rejects_the_unverified_long_sequence, runtime, {
 	let values = vec![0.0_f32; 1025];
 	let input = oa::Matrix::new_from_f32([1, 1025, 1], &values)?;
 	let error = oa::ml::matrix::flash_attention_causal(&input, &input, &input, 1.0)
@@ -564,7 +564,7 @@ test_vk!(flash_sdpa_rejects_the_unverified_long_sequence, engine, {
 	Ok(())
 });
 
-test_vk!(multi_head_attention_backend_policy_is_explicit, engine, {
+test_vk!(multi_head_attention_backend_policy_is_explicit, runtime, {
 	use oa::ml::nn::{AttentionBackend, MultiHeadAttention};
 
 	let input_values = (0..64)
@@ -590,7 +590,7 @@ test_vk!(multi_head_attention_backend_policy_is_explicit, engine, {
 
 test_vk!(
 	multi_head_attention_visibility_and_masks_are_explicit,
-	engine,
+	runtime,
 	{
 		use oa::ml::nn::{AttentionBackend, AttentionMode, MultiHeadAttention};
 
@@ -650,36 +650,40 @@ test_vk!(
 	}
 );
 
-test_vk!(transformer_block_propagates_attention_visibility, engine, {
-	use oa::ml::nn::{AttentionMode, TransformerBlock};
+test_vk!(
+	transformer_block_propagates_attention_visibility,
+	runtime,
+	{
+		use oa::ml::nn::{AttentionMode, TransformerBlock};
 
-	let block = TransformerBlock::new_with_seed(8, 16, 3, 2, 1.0e-5, 0x424c_4f43)?;
-	assert_eq!(block.attention_mode(), AttentionMode::Causal);
-	block.set_attention_mode(AttentionMode::Bidirectional);
-	assert_eq!(block.attention_mode(), AttentionMode::Bidirectional);
-	let input = oa::Matrix::new_from_f32([6, 8], &[0.25; 48])?;
-	assert_eq!(block.forward(&input)?.shape(), [6, 8]);
-	block.set_sequence_length(2)?;
-	assert_eq!(block.sequence_length(), 2);
-	let shorter = oa::Matrix::new_from_f32([4, 8], &[0.25; 32])?;
-	let unmasked = block.forward(&shorter)?.read_f32()?;
-	let zero_mask = oa::Matrix::new_from_f32([8, 2], &[0.0; 16])?;
-	let masked = block.forward_masked(&shorter, &zero_mask)?.read_f32()?;
-	assert_close(&masked, &unmasked, 1.0e-6);
-	assert_eq!(
-		block
-			.set_sequence_length(0)
-			.expect_err("zero sequence length was accepted")
-			.kind(),
-		oa::ErrorKind::InvalidArgument
-	);
-	assert_eq!(block.sequence_length(), 2);
-	Ok(())
-});
+		let block = TransformerBlock::new_with_seed(8, 16, 3, 2, 1.0e-5, 0x424c_4f43)?;
+		assert_eq!(block.attention_mode(), AttentionMode::Causal);
+		block.set_attention_mode(AttentionMode::Bidirectional);
+		assert_eq!(block.attention_mode(), AttentionMode::Bidirectional);
+		let input = oa::Matrix::new_from_f32([6, 8], &[0.25; 48])?;
+		assert_eq!(block.forward(&input)?.shape(), [6, 8]);
+		block.set_sequence_length(2)?;
+		assert_eq!(block.sequence_length(), 2);
+		let shorter = oa::Matrix::new_from_f32([4, 8], &[0.25; 32])?;
+		let unmasked = block.forward(&shorter)?.read_f32()?;
+		let zero_mask = oa::Matrix::new_from_f32([8, 2], &[0.0; 16])?;
+		let masked = block.forward_masked(&shorter, &zero_mask)?.read_f32()?;
+		assert_close(&masked, &unmasked, 1.0e-6);
+		assert_eq!(
+			block
+				.set_sequence_length(0)
+				.expect_err("zero sequence length was accepted")
+				.kind(),
+			oa::ErrorKind::InvalidArgument
+		);
+		assert_eq!(block.sequence_length(), 2);
+		Ok(())
+	}
+);
 
 test_vk!(
 	bias_free_attention_registers_only_projection_weights,
-	engine,
+	runtime,
 	{
 		use oa::ml::{Module, nn::MultiHeadAttention};
 
@@ -706,7 +710,7 @@ test_vk!(
 
 test_vk!(
 	attention_dropout_obeys_train_eval_and_reverse_contracts,
-	engine,
+	runtime,
 	{
 		use oa::ml::{
 			Module,
@@ -723,7 +727,7 @@ test_vk!(
 			],
 		)?;
 		let target = oa::Matrix::new_from_f32([3, 4], &[0.0; 12])?;
-		let (training_plan, _) = engine.capture(|| {
+		let (training_plan, _) = runtime.capture(|| {
 			let tape = oa::ml::GradientTape::new();
 			let output = attention.forward(&input)?;
 			let loss = oa::ml::loss::mse(&output, &target)?;
@@ -741,13 +745,13 @@ test_vk!(
 			.collect::<Vec<_>>();
 		assert!(training_kernels.contains(&"matrix.dropout_replay.f32"));
 		assert!(training_kernels.contains(&"matrix.dropout_backward_replay.f32"));
-		engine.submit(&training_plan)?.wait()?;
+		runtime.submit(&training_plan)?.wait()?;
 		for parameter in attention.all_parameters()? {
 			assert!(parameter.gradient().is_some());
 		}
 
 		attention.eval();
-		let (eval_plan, _) = engine.capture(|| attention.forward(&input))?;
+		let (eval_plan, _) = runtime.capture(|| attention.forward(&input))?;
 		let eval_report: serde_json::Value =
 			serde_json::from_str(&eval_plan.debug_report_json("attention_eval"))
 				.expect("attention-eval report must be valid JSON");
@@ -774,42 +778,46 @@ test_vk!(
 	}
 );
 
-test_vk!(multi_head_attention_step_matches_the_causal_scan, engine, {
-	use oa::ml::nn::MultiHeadAttention;
+test_vk!(
+	multi_head_attention_step_matches_the_causal_scan,
+	runtime,
+	{
+		use oa::ml::nn::MultiHeadAttention;
 
-	let attention = MultiHeadAttention::new_with_seed(8, 2, 4, 0x4b56_4348)?;
-	let host = (0..64)
-		.map(|index| 0.35 * (0.37 * index as f32 + 0.11).sin())
-		.collect::<Vec<f32>>();
-	// Two packed length-4 sequences: batch 0 occupies rows 0..4, batch 1 rows 4..8.
-	let packed = oa::Matrix::new_from_f32([8, 8], &host)?;
-	let scan = attention.forward(&packed)?.read_f32()?;
+		let attention = MultiHeadAttention::new_with_seed(8, 2, 4, 0x4b56_4348)?;
+		let host = (0..64)
+			.map(|index| 0.35 * (0.37 * index as f32 + 0.11).sin())
+			.collect::<Vec<f32>>();
+		// Two packed length-4 sequences: batch 0 occupies rows 0..4, batch 1 rows 4..8.
+		let packed = oa::Matrix::new_from_f32([8, 8], &host)?;
+		let scan = attention.forward(&packed)?.read_f32()?;
 
-	let mut cache = attention.new_cache(2)?;
-	assert_eq!(cache.batch_size(), 2);
-	assert!(cache.is_empty());
-	for time in 0..4 {
-		let step_input = oa::Matrix::new_from_f32(
-			[2, 8],
-			&[
-				&host[time * 8..time * 8 + 8],
-				&host[32 + time * 8..32 + time * 8 + 8],
-			]
-			.concat(),
-		)?;
-		let stepped = attention.step(&step_input, &mut cache)?.read_f32()?;
-		assert_eq!(cache.len(), time + 1);
-		let mut expected = Vec::with_capacity(16);
-		expected.extend_from_slice(&scan[time * 8..time * 8 + 8]);
-		expected.extend_from_slice(&scan[32 + time * 8..32 + time * 8 + 8]);
-		assert_close(&stepped, &expected, 2.0e-4);
+		let mut cache = attention.new_cache(2)?;
+		assert_eq!(cache.batch_size(), 2);
+		assert!(cache.is_empty());
+		for time in 0..4 {
+			let step_input = oa::Matrix::new_from_f32(
+				[2, 8],
+				&[
+					&host[time * 8..time * 8 + 8],
+					&host[32 + time * 8..32 + time * 8 + 8],
+				]
+				.concat(),
+			)?;
+			let stepped = attention.step(&step_input, &mut cache)?.read_f32()?;
+			assert_eq!(cache.len(), time + 1);
+			let mut expected = Vec::with_capacity(16);
+			expected.extend_from_slice(&scan[time * 8..time * 8 + 8]);
+			expected.extend_from_slice(&scan[32 + time * 8..32 + time * 8 + 8]);
+			assert_close(&stepped, &expected, 2.0e-4);
+		}
+		Ok(())
 	}
-	Ok(())
-});
+);
 
 test_vk!(
 	multi_head_attention_cache_enforces_ownership_and_contracts,
-	engine,
+	runtime,
 	{
 		use oa::ml::nn::MultiHeadAttention;
 
@@ -872,7 +880,7 @@ test_vk!(
 
 test_vk!(
 	grouped_query_attention_rejects_invalid_head_grouping,
-	engine,
+	runtime,
 	{
 		use oa::ml::nn::MultiHeadAttention;
 
@@ -880,7 +888,7 @@ test_vk!(
 		for num_kv_heads in [0_usize, 3, 5] {
 			assert_eq!(
 				MultiHeadAttention::new_with_seed_and_options_grouped_on(
-					&engine,
+					&runtime,
 					8,
 					4,
 					num_kv_heads,
@@ -901,7 +909,7 @@ test_vk!(
 
 test_vk!(
 	grouped_query_attention_degenerates_to_multi_head_when_counts_match,
-	engine,
+	runtime,
 	{
 		use oa::ml::nn::MultiHeadAttention;
 
@@ -909,9 +917,9 @@ test_vk!(
 			.map(|index| 0.3 * (0.29 * index as f32 + 0.07).sin())
 			.collect::<Vec<f32>>();
 		let input = oa::Matrix::new_from_f32([8, 8], &host)?;
-		let plain = MultiHeadAttention::new_with_seed_on(&engine, 8, 4, 4, 0x4d48_4145)?;
+		let plain = MultiHeadAttention::new_with_seed_on(&runtime, 8, 4, 4, 0x4d48_4145)?;
 		let grouped = MultiHeadAttention::new_with_seed_and_options_grouped_on(
-			&engine,
+			&runtime,
 			8,
 			4,
 			4,
@@ -933,14 +941,14 @@ test_vk!(
 
 test_vk!(
 	grouped_and_multi_query_attention_own_compact_key_value_projections,
-	engine,
+	runtime,
 	{
 		use oa::ml::{Module, nn::MultiHeadAttention};
 
 		let input = oa::Matrix::new_from_f32([4, 8], &[0.15; 32])?;
 		// GQA: four query heads share two key/value heads (K/V width 4).
 		let gqa = MultiHeadAttention::new_with_seed_and_options_grouped_on(
-			&engine,
+			&runtime,
 			8,
 			4,
 			2,
@@ -973,7 +981,7 @@ test_vk!(
 
 		// MQA: one shared key/value head (K/V width 2).
 		let mqa = MultiHeadAttention::new_with_seed_and_options_grouped_on(
-			&engine,
+			&runtime,
 			8,
 			4,
 			1,
@@ -999,12 +1007,12 @@ test_vk!(
 
 test_vk!(
 	grouped_query_attention_cross_attends_unequal_source_lengths,
-	engine,
+	runtime,
 	{
 		use oa::ml::nn::MultiHeadAttention;
 
 		let attention = MultiHeadAttention::new_with_seed_and_options_grouped_on(
-			&engine,
+			&runtime,
 			8,
 			4,
 			2,
@@ -1023,13 +1031,13 @@ test_vk!(
 
 test_vk!(
 	grouped_query_attention_step_matches_the_causal_scan,
-	engine,
+	runtime,
 	{
 		use oa::ml::nn::MultiHeadAttention;
 
 		for num_kv_heads in [2_usize, 1] {
 			let attention = MultiHeadAttention::new_with_seed_and_options_grouped_on(
-				&engine,
+				&runtime,
 				8,
 				4,
 				num_kv_heads,
@@ -1068,12 +1076,12 @@ test_vk!(
 
 test_vk!(
 	grouped_query_attention_backpropagates_through_head_sharing,
-	engine,
+	runtime,
 	{
 		use oa::ml::{Module, nn::MultiHeadAttention};
 
 		let attention = MultiHeadAttention::new_with_seed_and_options_grouped_on(
-			&engine,
+			&runtime,
 			8,
 			4,
 			2,

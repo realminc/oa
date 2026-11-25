@@ -3,7 +3,7 @@
 	"family": "rnn",
 	"imports": [
 		"use std::rc::Rc;",
-		"use crate::{DType, Engine, Error, Matrix, Result};",
+		"use crate::{DType, Runtime, Error, Matrix, Result};",
 		"use super::super::{Module, ModuleRegistry, Parameter, autograd, matrix, random};"
 	],
 	"helper": "",

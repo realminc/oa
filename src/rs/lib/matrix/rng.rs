@@ -20,7 +20,7 @@ pub fn set_rng_seed(seed: u64) {
 
 /// Generate uniformly distributed FP32 values with `input`'s shape.
 ///
-/// `input` supplies shape, dtype, engine, and semantic lineage; its values are
+/// `input` supplies shape, dtype, runtime, and semantic lineage; its values are
 /// not read. A nonzero `seed` is exact. Zero consumes the thread-local seed
 /// sequence controlled by [`set_rng_seed`].
 ///
@@ -43,12 +43,12 @@ pub fn philox_uniform(input: &Matrix, low: f32, high: f32, seed: u64) -> Result<
 	let contract = crate::core::operation::matrix::PHILOX_UNIFORM;
 	let eager_kernel = KernelId::MatrixPhiloxUniformF32;
 	let replay_kernel = KernelId::MatrixPhiloxUniformReplayF32;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.num_elements()).map_err(|_| {
 		Error::invalid_argument(format!("{} element count exceeds u32", contract.name()))
 	})?;
 	let output = Matrix::allocate_output(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -80,14 +80,14 @@ pub fn philox_uniform(input: &Matrix, low: f32, high: f32, seed: u64) -> Result<
 	];
 	let inputs = [input];
 	let outputs = [&output];
-	if engine.capture_active() {
-		let state = Matrix::new_from_slice_handle(engine, vec![1], &[0_u32])?;
+	if runtime.capture_active() {
+		let state = Matrix::new_from_slice_handle(runtime, vec![1], &[0_u32])?;
 		let buffers = [
 			BufferBinding::read(input.storage()),
 			BufferBinding::write(output.storage()),
 			BufferBinding::read(state.storage()),
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: replay_kernel,
 				buffers: &buffers,
@@ -108,7 +108,7 @@ pub fn philox_uniform(input: &Matrix, low: f32, high: f32, seed: u64) -> Result<
 			BufferBinding::read(input.storage()),
 			BufferBinding::write(output.storage()),
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: eager_kernel,
 				buffers: &buffers,
@@ -148,12 +148,12 @@ pub fn philox_normal(input: &Matrix, mean: f32, stddev: f32, seed: u64) -> Resul
 	let contract = crate::core::operation::matrix::PHILOX_NORMAL;
 	let eager_kernel = KernelId::MatrixPhiloxNormalF32;
 	let replay_kernel = KernelId::MatrixPhiloxNormalReplayF32;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.num_elements()).map_err(|_| {
 		Error::invalid_argument(format!("{} element count exceeds u32", contract.name()))
 	})?;
 	let output = Matrix::allocate_output(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -185,14 +185,14 @@ pub fn philox_normal(input: &Matrix, mean: f32, stddev: f32, seed: u64) -> Resul
 	];
 	let inputs = [input];
 	let outputs = [&output];
-	if engine.capture_active() {
-		let state = Matrix::new_from_slice_handle(engine, vec![1], &[0_u32])?;
+	if runtime.capture_active() {
+		let state = Matrix::new_from_slice_handle(runtime, vec![1], &[0_u32])?;
 		let buffers = [
 			BufferBinding::read(input.storage()),
 			BufferBinding::write(output.storage()),
 			BufferBinding::read(state.storage()),
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: replay_kernel,
 				buffers: &buffers,
@@ -213,7 +213,7 @@ pub fn philox_normal(input: &Matrix, mean: f32, stddev: f32, seed: u64) -> Resul
 			BufferBinding::read(input.storage()),
 			BufferBinding::write(output.storage()),
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: eager_kernel,
 				buffers: &buffers,
@@ -287,7 +287,7 @@ pub fn sample_logits(
 	} else {
 		seed
 	};
-	let output = Matrix::allocate(logits.engine_handle(), vec![rows], rows, DType::I32)?;
+	let output = Matrix::allocate(logits.runtime(), vec![rows], rows, DType::I32)?;
 	let attributes = [
 		OpAttribute::Float {
 			name: "temperature".into(),
@@ -323,7 +323,7 @@ pub fn sample_logits(
 			PushConstant::U32(rows_u32),
 			PushConstant::U32(vocabulary_u32),
 		];
-		logits.engine_handle().record_semantic(
+		logits.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MatrixSampleLogitsGreedyF32,
 				buffers: &buffers,
@@ -341,7 +341,7 @@ pub fn sample_logits(
 			"{operation} top-k/top-p candidate count exceeds 1024"
 		)));
 	}
-	let random = Matrix::allocate(logits.engine_handle(), vec![rows], rows, DType::F32)?;
+	let random = Matrix::allocate(logits.runtime(), vec![rows], rows, DType::F32)?;
 	let random_payload = [
 		PushConstant::U32(rows_u32),
 		PushConstant::U32(effective_seed as u32),
@@ -365,9 +365,9 @@ pub fn sample_logits(
 			PushConstant::U32(vocabulary_u32),
 			PushConstant::F32(temperature),
 		];
-		let engine = logits.engine_handle();
-		if engine.capture_active() {
-			let state = Matrix::new_from_slice_handle(engine, vec![1], &[0_u32])?;
+		let runtime = logits.runtime();
+		if runtime.capture_active() {
+			let state = Matrix::new_from_slice_handle(runtime, vec![1], &[0_u32])?;
 			let random_buffers = [
 				BufferBinding::read(logits.storage()),
 				BufferBinding::write(random.storage()),
@@ -397,7 +397,7 @@ pub fn sample_logits(
 					indirect: None,
 				},
 			];
-			engine.record_split_semantic(&dispatches, semantic)
+			runtime.record_split_semantic(&dispatches, semantic)
 		} else {
 			let dispatches = [
 				ComputeDispatch {
@@ -415,7 +415,7 @@ pub fn sample_logits(
 					indirect: None,
 				},
 			];
-			engine.record_split_semantic(&dispatches, semantic)
+			runtime.record_split_semantic(&dispatches, semantic)
 		}?;
 	} else {
 		let operation = semantic.contract.name();
@@ -426,13 +426,13 @@ pub fn sample_logits(
 			.checked_mul(candidates)
 			.ok_or_else(|| Error::invalid_argument(format!("{operation} candidate size overflows")))?;
 		let values = Matrix::allocate(
-			logits.engine_handle(),
+			logits.runtime(),
 			vec![rows_u32 as usize, candidates],
 			candidate_count,
 			DType::F32,
 		)?;
 		let indices = Matrix::allocate(
-			logits.engine_handle(),
+			logits.runtime(),
 			vec![rows_u32 as usize, candidates],
 			candidate_count,
 			DType::I32,
@@ -463,9 +463,9 @@ pub fn sample_logits(
 			PushConstant::F32(temperature),
 			PushConstant::F32(normalized_top_p),
 		];
-		let engine = logits.engine_handle();
-		if engine.capture_active() {
-			let state = Matrix::new_from_slice_handle(engine, vec![1], &[0_u32])?;
+		let runtime = logits.runtime();
+		if runtime.capture_active() {
+			let state = Matrix::new_from_slice_handle(runtime, vec![1], &[0_u32])?;
 			let random_buffers = [
 				BufferBinding::read(logits.storage()),
 				BufferBinding::write(random.storage()),
@@ -502,7 +502,7 @@ pub fn sample_logits(
 					indirect: None,
 				},
 			];
-			engine.record_split_semantic(&dispatches, semantic)
+			runtime.record_split_semantic(&dispatches, semantic)
 		} else {
 			let dispatches = [
 				ComputeDispatch {
@@ -527,7 +527,7 @@ pub fn sample_logits(
 					indirect: None,
 				},
 			];
-			engine.record_split_semantic(&dispatches, semantic)
+			runtime.record_split_semantic(&dispatches, semantic)
 		}?;
 	}
 	Ok(output)
@@ -561,12 +561,12 @@ pub fn dropout(input: &Matrix, probability: f32, seed: u64) -> Result<Matrix> {
 	let contract = crate::core::operation::matrix::DROPOUT;
 	let eager_kernel = KernelId::MatrixDropoutF32;
 	let replay_kernel = KernelId::MatrixDropoutReplayF32;
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	let element_count = u32::try_from(input.num_elements()).map_err(|_| {
 		Error::invalid_argument(format!("{} element count exceeds u32", contract.name()))
 	})?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -592,14 +592,14 @@ pub fn dropout(input: &Matrix, probability: f32, seed: u64) -> Result<Matrix> {
 		];
 		let inputs = [input];
 		let outputs = [&output];
-		if engine.capture_active() {
-			let state = Matrix::new_from_slice_handle(engine, vec![1], &[0_u32])?;
+		if runtime.capture_active() {
+			let state = Matrix::new_from_slice_handle(runtime, vec![1], &[0_u32])?;
 			let buffers = [
 				BufferBinding::read(input.storage()),
 				BufferBinding::write(output.storage()),
 				BufferBinding::read(state.storage()),
 			];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel: replay_kernel,
 					buffers: &buffers,
@@ -620,7 +620,7 @@ pub fn dropout(input: &Matrix, probability: f32, seed: u64) -> Result<Matrix> {
 				BufferBinding::read(input.storage()),
 				BufferBinding::write(output.storage()),
 			];
-			engine.record_semantic(
+			runtime.record_semantic(
 				ComputeDispatch {
 					kernel: eager_kernel,
 					buffers: &buffers,
@@ -646,12 +646,12 @@ pub(crate) fn dropout_backward(gradient: &Matrix, probability: f32, seed: u64) -
 	let contract = crate::core::operation::matrix::DROPOUT_BACKWARD;
 	let eager_kernel = KernelId::MatrixDropoutBackwardF32;
 	let replay_kernel = KernelId::MatrixDropoutBackwardReplayF32;
-	let engine = gradient.engine_handle();
+	let runtime = gradient.runtime();
 	let element_count = u32::try_from(gradient.num_elements()).map_err(|_| {
 		Error::invalid_argument(format!("{} element count exceeds u32", contract.name()))
 	})?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		gradient.shape().to_vec(),
 		gradient.num_elements(),
 		DType::F32,
@@ -678,14 +678,14 @@ pub(crate) fn dropout_backward(gradient: &Matrix, probability: f32, seed: u64) -
 	];
 	let inputs = [gradient];
 	let outputs = [&output];
-	if engine.capture_active() {
-		let state = Matrix::new_from_slice_handle(engine, vec![1], &[0_u32])?;
+	if runtime.capture_active() {
+		let state = Matrix::new_from_slice_handle(runtime, vec![1], &[0_u32])?;
 		let buffers = [
 			BufferBinding::read(gradient.storage()),
 			BufferBinding::write(output.storage()),
 			BufferBinding::read(state.storage()),
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: replay_kernel,
 				buffers: &buffers,
@@ -706,7 +706,7 @@ pub(crate) fn dropout_backward(gradient: &Matrix, probability: f32, seed: u64) -
 			BufferBinding::read(gradient.storage()),
 			BufferBinding::write(output.storage()),
 		];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: eager_kernel,
 				buffers: &buffers,
@@ -729,7 +729,7 @@ fn advance_replay_state(state: &Matrix) -> Result<()> {
 	let buffers = [BufferBinding::read_write(state.storage())];
 	let inputs = [state];
 	let outputs = [state];
-	state.engine_handle().record_semantic(
+	state.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixPhiloxReplayAdvanceU32,
 			buffers: &buffers,

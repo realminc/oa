@@ -21,7 +21,7 @@ pub(super) fn optional_bias(
 				)));
 			};
 			Matrix::allocate(
-				weight_hh.engine_handle(),
+				weight_hh.runtime(),
 				vec![*gate_count],
 				*gate_count,
 				crate::DType::F32,

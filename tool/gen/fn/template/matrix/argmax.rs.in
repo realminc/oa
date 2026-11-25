@@ -11,7 +11,7 @@
 	}
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
-	let output = Matrix::allocate(input.engine_handle(), vec![1], 1, DType::U32)?;
+	let output = Matrix::allocate(input.runtime(), vec![1], 1, DType::U32)?;
 	let buffers = [
 		BufferBinding::read(input.storage()),
 		BufferBinding::write(output.storage()),
@@ -19,7 +19,7 @@
 	let push_constants = [PushConstant::U32(element_count)];
 	let inputs = [input];
 	let outputs = [&output];
-	input.engine_handle().record_semantic(
+	input.runtime().record_semantic(
 		ComputeDispatch {
 			kernel: KernelId::MatrixArgmaxF32,
 			buffers: &buffers,

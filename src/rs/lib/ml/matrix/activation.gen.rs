@@ -17,7 +17,7 @@ use crate::{
 pub fn gelu(input: &Matrix) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::GELU;
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires F32 matrices; found {}",
@@ -27,7 +27,7 @@ pub fn gelu(input: &Matrix) -> Result<Matrix> {
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -38,7 +38,7 @@ pub fn gelu(input: &Matrix) -> Result<Matrix> {
 			BufferBinding::write(output.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlGeluF32,
 				buffers: &buffers,
@@ -64,7 +64,7 @@ pub(in crate::ml) fn gelu_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::GELU_BACKWARD;
 	let operation = contract.name();
-	let engine = saved_input.engine_handle();
+	let runtime = saved_input.runtime();
 	for matrix in &[saved_input, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -72,9 +72,9 @@ pub(in crate::ml) fn gelu_backward(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -86,7 +86,7 @@ pub(in crate::ml) fn gelu_backward(
 	let element_count = u32::try_from(saved_input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let gradient = Matrix::allocate(
-		engine,
+		runtime,
 		saved_input.shape().to_vec(),
 		saved_input.num_elements(),
 		DType::F32,
@@ -98,7 +98,7 @@ pub(in crate::ml) fn gelu_backward(
 			BufferBinding::write(gradient.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlGeluBackwardF32,
 				buffers: &buffers,
@@ -125,7 +125,7 @@ pub(in crate::ml) fn gelu_backward(
 pub fn silu(input: &Matrix) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::SILU;
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires F32 matrices; found {}",
@@ -135,7 +135,7 @@ pub fn silu(input: &Matrix) -> Result<Matrix> {
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -146,7 +146,7 @@ pub fn silu(input: &Matrix) -> Result<Matrix> {
 			BufferBinding::write(output.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlSiluF32,
 				buffers: &buffers,
@@ -172,7 +172,7 @@ pub(in crate::ml) fn silu_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::SILU_BACKWARD;
 	let operation = contract.name();
-	let engine = saved_input.engine_handle();
+	let runtime = saved_input.runtime();
 	for matrix in &[saved_input, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -180,9 +180,9 @@ pub(in crate::ml) fn silu_backward(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -194,7 +194,7 @@ pub(in crate::ml) fn silu_backward(
 	let element_count = u32::try_from(saved_input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let gradient = Matrix::allocate(
-		engine,
+		runtime,
 		saved_input.shape().to_vec(),
 		saved_input.num_elements(),
 		DType::F32,
@@ -206,7 +206,7 @@ pub(in crate::ml) fn silu_backward(
 			BufferBinding::write(gradient.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlSiluBackwardF32,
 				buffers: &buffers,
@@ -233,7 +233,7 @@ pub(in crate::ml) fn silu_backward(
 pub fn relu(input: &Matrix) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::RELU;
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires F32 matrices; found {}",
@@ -243,7 +243,7 @@ pub fn relu(input: &Matrix) -> Result<Matrix> {
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -254,7 +254,7 @@ pub fn relu(input: &Matrix) -> Result<Matrix> {
 			BufferBinding::write(output.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlReluF32,
 				buffers: &buffers,
@@ -280,7 +280,7 @@ pub(in crate::ml) fn relu_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::RELU_BACKWARD;
 	let operation = contract.name();
-	let engine = saved_output.engine_handle();
+	let runtime = saved_output.runtime();
 	for matrix in &[saved_output, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -288,9 +288,9 @@ pub(in crate::ml) fn relu_backward(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -302,7 +302,7 @@ pub(in crate::ml) fn relu_backward(
 	let element_count = u32::try_from(saved_output.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let gradient = Matrix::allocate(
-		engine,
+		runtime,
 		saved_output.shape().to_vec(),
 		saved_output.num_elements(),
 		DType::F32,
@@ -314,7 +314,7 @@ pub(in crate::ml) fn relu_backward(
 			BufferBinding::write(gradient.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlReluBackwardF32,
 				buffers: &buffers,
@@ -341,7 +341,7 @@ pub(in crate::ml) fn relu_backward(
 pub fn tanh(input: &Matrix) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::TANH;
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires F32 matrices; found {}",
@@ -351,7 +351,7 @@ pub fn tanh(input: &Matrix) -> Result<Matrix> {
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -362,7 +362,7 @@ pub fn tanh(input: &Matrix) -> Result<Matrix> {
 			BufferBinding::write(output.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlTanhF32,
 				buffers: &buffers,
@@ -388,7 +388,7 @@ pub(in crate::ml) fn tanh_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::TANH_BACKWARD;
 	let operation = contract.name();
-	let engine = saved_output.engine_handle();
+	let runtime = saved_output.runtime();
 	for matrix in &[saved_output, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -396,9 +396,9 @@ pub(in crate::ml) fn tanh_backward(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -410,7 +410,7 @@ pub(in crate::ml) fn tanh_backward(
 	let element_count = u32::try_from(saved_output.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let gradient = Matrix::allocate(
-		engine,
+		runtime,
 		saved_output.shape().to_vec(),
 		saved_output.num_elements(),
 		DType::F32,
@@ -422,7 +422,7 @@ pub(in crate::ml) fn tanh_backward(
 			BufferBinding::write(gradient.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlTanhBackwardF32,
 				buffers: &buffers,
@@ -449,7 +449,7 @@ pub(in crate::ml) fn tanh_backward(
 pub fn sigmoid(input: &Matrix) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::SIGMOID;
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires F32 matrices; found {}",
@@ -459,7 +459,7 @@ pub fn sigmoid(input: &Matrix) -> Result<Matrix> {
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -470,7 +470,7 @@ pub fn sigmoid(input: &Matrix) -> Result<Matrix> {
 			BufferBinding::write(output.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlSigmoidF32,
 				buffers: &buffers,
@@ -496,7 +496,7 @@ pub(in crate::ml) fn sigmoid_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::SIGMOID_BACKWARD;
 	let operation = contract.name();
-	let engine = saved_output.engine_handle();
+	let runtime = saved_output.runtime();
 	for matrix in &[saved_output, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -504,9 +504,9 @@ pub(in crate::ml) fn sigmoid_backward(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -518,7 +518,7 @@ pub(in crate::ml) fn sigmoid_backward(
 	let element_count = u32::try_from(saved_output.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let gradient = Matrix::allocate(
-		engine,
+		runtime,
 		saved_output.shape().to_vec(),
 		saved_output.num_elements(),
 		DType::F32,
@@ -530,7 +530,7 @@ pub(in crate::ml) fn sigmoid_backward(
 			BufferBinding::write(gradient.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlSigmoidBackwardF32,
 				buffers: &buffers,
@@ -557,7 +557,7 @@ pub(in crate::ml) fn sigmoid_backward(
 pub fn leaky_relu(input: &Matrix, alpha: f32) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::LEAKY_RELU;
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires F32 matrices; found {}",
@@ -567,7 +567,7 @@ pub fn leaky_relu(input: &Matrix, alpha: f32) -> Result<Matrix> {
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -582,7 +582,7 @@ pub fn leaky_relu(input: &Matrix, alpha: f32) -> Result<Matrix> {
 			value: f64::from(alpha),
 		}];
 		let push_constants = [PushConstant::U32(element_count), PushConstant::F32(alpha)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlLeakyReluF32,
 				buffers: &buffers,
@@ -609,7 +609,7 @@ pub(in crate::ml) fn leaky_relu_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::LEAKY_RELU_BACKWARD;
 	let operation = contract.name();
-	let engine = saved_input.engine_handle();
+	let runtime = saved_input.runtime();
 	for matrix in &[saved_input, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -617,9 +617,9 @@ pub(in crate::ml) fn leaky_relu_backward(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -631,7 +631,7 @@ pub(in crate::ml) fn leaky_relu_backward(
 	let element_count = u32::try_from(saved_input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let gradient = Matrix::allocate(
-		engine,
+		runtime,
 		saved_input.shape().to_vec(),
 		saved_input.num_elements(),
 		DType::F32,
@@ -647,7 +647,7 @@ pub(in crate::ml) fn leaky_relu_backward(
 			value: f64::from(alpha),
 		}];
 		let push_constants = [PushConstant::U32(element_count), PushConstant::F32(alpha)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlLeakyReluBackwardF32,
 				buffers: &buffers,
@@ -674,7 +674,7 @@ pub(in crate::ml) fn leaky_relu_backward(
 pub fn elu(input: &Matrix, alpha: f32) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::ELU;
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires F32 matrices; found {}",
@@ -684,7 +684,7 @@ pub fn elu(input: &Matrix, alpha: f32) -> Result<Matrix> {
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -699,7 +699,7 @@ pub fn elu(input: &Matrix, alpha: f32) -> Result<Matrix> {
 			value: f64::from(alpha),
 		}];
 		let push_constants = [PushConstant::U32(element_count), PushConstant::F32(alpha)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlEluF32,
 				buffers: &buffers,
@@ -726,7 +726,7 @@ pub(in crate::ml) fn elu_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::ELU_BACKWARD;
 	let operation = contract.name();
-	let engine = saved_output.engine_handle();
+	let runtime = saved_output.runtime();
 	for matrix in &[saved_output, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -734,9 +734,9 @@ pub(in crate::ml) fn elu_backward(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -748,7 +748,7 @@ pub(in crate::ml) fn elu_backward(
 	let element_count = u32::try_from(saved_output.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let gradient = Matrix::allocate(
-		engine,
+		runtime,
 		saved_output.shape().to_vec(),
 		saved_output.num_elements(),
 		DType::F32,
@@ -764,7 +764,7 @@ pub(in crate::ml) fn elu_backward(
 			value: f64::from(alpha),
 		}];
 		let push_constants = [PushConstant::U32(element_count), PushConstant::F32(alpha)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlEluBackwardF32,
 				buffers: &buffers,
@@ -791,7 +791,7 @@ pub(in crate::ml) fn elu_backward(
 pub fn mish(input: &Matrix) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::MISH;
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires F32 matrices; found {}",
@@ -801,7 +801,7 @@ pub fn mish(input: &Matrix) -> Result<Matrix> {
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -812,7 +812,7 @@ pub fn mish(input: &Matrix) -> Result<Matrix> {
 			BufferBinding::write(output.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlMishF32,
 				buffers: &buffers,
@@ -838,7 +838,7 @@ pub(in crate::ml) fn mish_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::MISH_BACKWARD;
 	let operation = contract.name();
-	let engine = saved_input.engine_handle();
+	let runtime = saved_input.runtime();
 	for matrix in &[saved_input, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -846,9 +846,9 @@ pub(in crate::ml) fn mish_backward(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -860,7 +860,7 @@ pub(in crate::ml) fn mish_backward(
 	let element_count = u32::try_from(saved_input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let gradient = Matrix::allocate(
-		engine,
+		runtime,
 		saved_input.shape().to_vec(),
 		saved_input.num_elements(),
 		DType::F32,
@@ -872,7 +872,7 @@ pub(in crate::ml) fn mish_backward(
 			BufferBinding::write(gradient.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlMishBackwardF32,
 				buffers: &buffers,
@@ -899,7 +899,7 @@ pub(in crate::ml) fn mish_backward(
 pub fn softplus(input: &Matrix) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::SOFTPLUS;
 	let operation = contract.name();
-	let engine = input.engine_handle();
+	let runtime = input.runtime();
 	if input.dtype() != DType::F32 {
 		return Err(Error::invalid_argument(format!(
 			"{operation} requires F32 matrices; found {}",
@@ -909,7 +909,7 @@ pub fn softplus(input: &Matrix) -> Result<Matrix> {
 	let element_count = u32::try_from(input.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		input.shape().to_vec(),
 		input.num_elements(),
 		DType::F32,
@@ -920,7 +920,7 @@ pub fn softplus(input: &Matrix) -> Result<Matrix> {
 			BufferBinding::write(output.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlSoftplusF32,
 				buffers: &buffers,
@@ -946,7 +946,7 @@ pub(in crate::ml) fn softplus_backward(
 ) -> Result<Matrix> {
 	let contract = crate::core::operation::ml::SOFTPLUS_BACKWARD;
 	let operation = contract.name();
-	let engine = saved_output.engine_handle();
+	let runtime = saved_output.runtime();
 	for matrix in &[saved_output, output_gradient] {
 		if matrix.dtype() != DType::F32 {
 			return Err(Error::invalid_argument(format!(
@@ -954,9 +954,9 @@ pub(in crate::ml) fn softplus_backward(
 				matrix.dtype().token()
 			)));
 		}
-		if !engine.same_as(matrix.engine_handle()) {
+		if !runtime.same_as(matrix.runtime()) {
 			return Err(Error::invalid_argument(format!(
-				"{operation} inputs must belong to the same engine"
+				"{operation} inputs must belong to the same runtime"
 			)));
 		}
 	}
@@ -968,7 +968,7 @@ pub(in crate::ml) fn softplus_backward(
 	let element_count = u32::try_from(saved_output.num_elements())
 		.map_err(|_| Error::invalid_argument(format!("{operation} element count exceeds u32")))?;
 	let gradient = Matrix::allocate(
-		engine,
+		runtime,
 		saved_output.shape().to_vec(),
 		saved_output.num_elements(),
 		DType::F32,
@@ -980,7 +980,7 @@ pub(in crate::ml) fn softplus_backward(
 			BufferBinding::write(gradient.storage()),
 		];
 		let push_constants = [PushConstant::U32(element_count)];
-		engine.record_semantic(
+		runtime.record_semantic(
 			ComputeDispatch {
 				kernel: KernelId::MlSoftplusBackwardF32,
 				buffers: &buffers,

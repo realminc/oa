@@ -12,21 +12,21 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 
 test_vk!(
 	clipped_policy_and_explicit_adjoint_match_cpp_oracle,
-	engine,
+	runtime,
 	{
 		let ratios = [1.3_f32, 0.5, 1.1, 0.9];
 		let new_log = oa::Matrix::new_from_f32([4], &ratios.map(f32::ln))?;
 		let old_log = oa::Matrix::new_from_f32([4], &[0.0; 4])?;
 		let advantage = oa::Matrix::new_from_f32([4], &[1.0, -1.0, 2.0, -2.0])?;
 		let (plan, loss) =
-			engine.capture(|| ppo_clipped_policy(&new_log, &old_log, &advantage, 0.2))?;
+			runtime.capture(|| ppo_clipped_policy(&new_log, &old_log, &advantage, 0.2))?;
 		assert_eq!(plan.diagnostics().semantic_operation_count(), 1);
 		assert_eq!(plan.diagnostics().node_count(), 2);
 		assert_eq!(
 			plan.semantic_graph().operations()[0].name(),
 			"oa::FnLoss::ppoClippedPolicy"
 		);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_close(&loss.read_f32()?, &[-0.2], 1.0e-6);
 		assert_close(
 			&ppo_clipped_policy_backward(&new_log, &old_log, &advantage, 0.2)?.read_f32()?,
@@ -39,7 +39,7 @@ test_vk!(
 
 test_vk!(
 	ppo_composition_and_reverse_match_independent_oracle,
-	engine,
+	runtime,
 	{
 		let new_log_parameter = oa::ml::nn::Embedding::new_from_matrix(oa::Matrix::new_from_f32(
 			[1, 4],
@@ -61,9 +61,9 @@ test_vk!(
 		let new_log = new_log_parameter.forward(&row)?;
 		let value = value_parameter.forward(&row)?;
 		let entropy = entropy_parameter.forward(&row)?;
-		engine.checkpoint()?.wait()?;
+		runtime.checkpoint()?.wait()?;
 		let config = PpoLossConfig::default();
-		let (plan, result) = engine.capture(|| {
+		let (plan, result) = runtime.capture(|| {
 			ppo(
 				&new_log,
 				&old_log,
@@ -80,7 +80,7 @@ test_vk!(
 			"oa::FnLoss::ppo"
 		);
 		assert_eq!(plan.semantic_graph().operations()[0].attributes().len(), 3);
-		engine.submit(&plan)?.wait()?;
+		runtime.submit(&plan)?.wait()?;
 		assert_close(&result.policy_loss.read_f32()?, &[-0.2], 1.0e-6);
 		assert_close(&result.value_loss.read_f32()?, &[0.625], 1.0e-6);
 		assert_close(&result.entropy.read_f32()?, &[0.5], 1.0e-6);
@@ -118,7 +118,7 @@ test_vk!(
 	}
 );
 
-test_vk!(ppo_rejects_invalid_contracts, engine, {
+test_vk!(ppo_rejects_invalid_contracts, runtime, {
 	let values = oa::Matrix::new_from_f32([2], &[0.0; 2])?;
 	let short = oa::Matrix::new_from_f32([1], &[0.0])?;
 	assert!(ppo_clipped_policy(&values, &short, &values, 0.2).is_err());

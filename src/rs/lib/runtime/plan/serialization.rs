@@ -155,7 +155,7 @@ fn write_resource_contract(plan: &ExecutionPlan, out: &mut DescriptorWriter) -> 
 }
 
 fn write_device_contract(plan: &ExecutionPlan, out: &mut DescriptorWriter) {
-	let info = plan.engine.device_info();
+	let info = plan.runtime.device_info();
 	out.u32(info.hardware.vendor_id);
 	out.u32(info.hardware.device_id);
 	out.u8(info.hardware.kind as u8);

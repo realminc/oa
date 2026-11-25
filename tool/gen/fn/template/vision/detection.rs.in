@@ -3,10 +3,10 @@
 // @operation box_iou
 	let rows_a = box_rows(left, "boxes_a")?;
 	let rows_b = box_rows(right, "boxes_b")?;
-	let engine = left.engine_handle();
-	if !engine.same_as(right.engine_handle()) {
+	let runtime = left.runtime();
+	if !runtime.same_as(right.runtime()) {
 		return Err(Error::invalid_argument(
-			"vision::box_iou inputs must belong to the same engine",
+			"vision::box_iou inputs must belong to the same runtime",
 		));
 	}
 	let pair_count = rows_a
@@ -15,7 +15,7 @@
 	let output_elements = usize::try_from(pair_count)
 		.map_err(|_| Error::out_of_range("vision::box_iou pair count exceeds usize"))?;
 	let output = Matrix::allocate(
-		engine,
+		runtime,
 		vec![rows_a as usize, rows_b as usize],
 		output_elements,
 		DType::F32,
@@ -24,7 +24,7 @@
 	let {{push_name:0}} = [{{push:0}}];
 	let inputs = [left, right];
 	let outputs = [&output];
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			{{binding_name:0}}: &{{binding_name:0}},
@@ -45,7 +45,7 @@
 	let count = box_rows(boxes, "boxes")?;
 	vector(scores, "scores", count as usize, DType::F32)?;
 	vector(classes, "classes", count as usize, DType::I32)?;
-	validate_same_engine(boxes, &[scores, classes], "vision::nms")?;
+	validate_same_runtime(boxes, &[scores, classes], "vision::nms")?;
 	if !config.iou_threshold.is_finite() || !(0.0..=1.0).contains(&config.iou_threshold) {
 		return Err(Error::invalid_argument(
 			"vision::nms iou_threshold must be finite and in [0, 1]",
@@ -64,15 +64,15 @@
 			"vision::nms max_detections must be positive",
 		));
 	}
-	let engine = boxes.engine_handle();
-	let indices = Matrix::allocate(engine, vec![maximum as usize], maximum as usize, DType::I32)?;
-	let selected_count = Matrix::allocate(engine, vec![1], 1, DType::U32)?;
+	let runtime = boxes.runtime();
+	let indices = Matrix::allocate(runtime, vec![maximum as usize], maximum as usize, DType::I32)?;
+	let selected_count = Matrix::allocate(runtime, vec![1], 1, DType::U32)?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
 	let inputs = [boxes, scores, classes];
 	let outputs = [&indices, &selected_count];
 	let attributes = [{{attributes}}];
-	engine.record_semantic(
+	runtime.record_semantic(
 		ComputeDispatch {
 			kernel: {{kernel:0}},
 			{{binding_name:0}}: &{{binding_name:0}},
@@ -105,7 +105,7 @@
 		.checked_mul(classes)
 		.ok_or_else(|| Error::out_of_range("vision::confusion_matrix output exceeds u32"))?;
 	let output = Matrix::allocate(
-		predicted.engine_handle(),
+		predicted.runtime(),
 		vec![classes as usize, classes as usize],
 		output_elements as usize,
 		DType::U32,
@@ -134,7 +134,7 @@
 	let inputs = [predicted, target];
 	let outputs = [&output];
 	let attributes = [{{attributes}}];
-	predicted.engine_handle().record_split_semantic(
+	predicted.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: {{contract}},
@@ -147,7 +147,7 @@
 
 // @operation binary_mask_counts
 	let element_count = equal_nonempty(predicted, target, DType::U8, "vision::binary_mask_counts")?;
-	let output = Matrix::allocate(predicted.engine_handle(), vec![4], 4, DType::U32)?;
+	let output = Matrix::allocate(predicted.runtime(), vec![4], 4, DType::U32)?;
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
 	let {{binding_name:1}} = [{{bindings:1}}];
@@ -170,7 +170,7 @@
 	];
 	let inputs = [predicted, target];
 	let outputs = [&output];
-	predicted.engine_handle().record_split_semantic(
+	predicted.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: {{contract}},
@@ -221,7 +221,7 @@
 			"vision::evaluate score_threshold must be finite",
 		));
 	}
-	validate_same_engine(
+	validate_same_runtime(
 		predicted_boxes,
 		&[
 			predicted_scores,
@@ -253,33 +253,33 @@
 	let metrics_elements = pair_count
 		.checked_mul(4)
 		.ok_or_else(|| Error::out_of_range("vision::evaluate metrics output exceeds u32"))?;
-	let engine = predicted_boxes.engine_handle();
+	let runtime = predicted_boxes.runtime();
 	let state = allocate(
-		engine,
+		runtime,
 		&[pair_count, state_stride],
 		state_elements,
 		DType::U32,
 	)?;
 	let curve = allocate(
-		engine,
+		runtime,
 		&[pair_count, predicted, 2],
 		curve_elements,
 		DType::F32,
 	)?;
 	let counts = allocate(
-		engine,
+		runtime,
 		&[threshold_count, classes, 3],
 		counts_elements,
 		DType::U32,
 	)?;
 	let per_class = allocate(
-		engine,
+		runtime,
 		&[threshold_count, classes, 4],
 		metrics_elements,
 		DType::F32,
 	)?;
-	let map_by_threshold = allocate(engine, &[threshold_count], threshold_count, DType::F32)?;
-	let mean_average_precision = allocate(engine, &[1], 1, DType::F32)?;
+	let map_by_threshold = allocate(runtime, &[threshold_count], threshold_count, DType::F32)?;
+	let mean_average_precision = allocate(runtime, &[1], 1, DType::F32)?;
 
 	let {{binding_name:0}} = [{{bindings:0}}];
 	let {{push_name:0}} = [{{push:0}}];
@@ -327,7 +327,7 @@
 		&mean_average_precision,
 	];
 	let attributes = [{{attributes}}];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: {{contract}},
@@ -357,11 +357,11 @@
 	let per_class_elements = classes
 		.checked_mul(4)
 		.ok_or_else(|| Error::out_of_range("vision::evaluate_segmentation metrics exceed u32"))?;
-	let engine = predicted.engine_handle();
-	let confusion = allocate(engine, &[classes, classes], confusion_elements, DType::U32)?;
-	let per_class = allocate(engine, &[classes, 4], per_class_elements, DType::F32)?;
-	let mean_iou = allocate(engine, &[1], 1, DType::F32)?;
-	let pixel_accuracy = allocate(engine, &[1], 1, DType::F32)?;
+	let runtime = predicted.runtime();
+	let confusion = allocate(runtime, &[classes, classes], confusion_elements, DType::U32)?;
+	let per_class = allocate(runtime, &[classes, 4], per_class_elements, DType::F32)?;
+	let mean_iou = allocate(runtime, &[1], 1, DType::F32)?;
+	let pixel_accuracy = allocate(runtime, &[1], 1, DType::F32)?;
 	let {{binding_name:1}} = [{{bindings:1}}];
 	let {{push_name:1}} = [{{push:1}}];
 	let {{binding_name:0}} = [{{bindings:0}}];
@@ -394,7 +394,7 @@
 	let inputs = [predicted, target];
 	let outputs = [&confusion, &per_class, &mean_iou, &pixel_accuracy];
 	let attributes = [{{attributes}}];
-	engine.record_split_semantic(
+	runtime.record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: {{contract}},

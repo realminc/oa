@@ -121,7 +121,7 @@ impl Parameter {
 		let mut state = self.inner.borrow_mut();
 		if state.data.shape() != data.shape()
 			|| state.data.dtype() != data.dtype()
-			|| !state.data.engine_handle().same_as(data.engine_handle())
+			|| !state.data.runtime().same_as(data.runtime())
 		{
 			return Err(Error::invalid_argument(format!(
 				"replacement data does not match parameter {}",
@@ -155,7 +155,7 @@ impl Parameter {
 	}
 
 	pub(crate) fn restore_gradient(&self, gradient: Matrix) {
-		// Only compiled training owns this route; shapes/Engine are fixed by capture.
+		// Only compiled training owns this route; shapes/Runtime are fixed by capture.
 		self.inner.borrow_mut().gradient = Some(gradient);
 	}
 

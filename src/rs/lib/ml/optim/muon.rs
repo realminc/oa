@@ -1,12 +1,12 @@
 //! Muon optimizer with Nesterov momentum and NS5 orthogonalization.
 
 use crate::ml::Parameter;
-use crate::ml::validation::{shader_u32, validate_f32_same_engine};
+use crate::ml::validation::{shader_u32, validate_f32_same_runtime};
 use crate::runtime::{
-	BufferAccess, BufferBinding, ComputeDispatch, EngineHandle, KernelId, PushConstant,
+	BufferAccess, BufferBinding, ComputeDispatch, KernelId, PushConstant, RuntimeHandle,
 	SemanticDispatch,
 };
-use crate::{DType, Engine, Error, Matrix, OpAttribute, Result};
+use crate::{DType, Error, Matrix, OpAttribute, Result, Runtime};
 
 use super::optimizer::{
 	MuonParameterState, Optimizer, OptimizerCheckpoint, OptimizerRestore, checkpoint_capability,
@@ -43,7 +43,7 @@ fn muon(
 	scalars: MuonScalars,
 ) -> Result<()> {
 	const OPERATION: &str = crate::core::operation::ml::MUON.name();
-	validate_f32_same_engine(OPERATION, &[parameter, gradient, momentum])?;
+	validate_f32_same_runtime(OPERATION, &[parameter, gradient, momentum])?;
 	for candidate in [gradient, momentum] {
 		if candidate.shape() != parameter.shape() {
 			return Err(Error::invalid_argument(format!(
@@ -86,11 +86,11 @@ fn muon(
 					dispatch.kernel.report_name()
 				))
 			})?;
-			let engine = inputs
+			let runtime = inputs
 				.first()
 				.ok_or_else(|| Error::internal("semantic ML dispatch requires an input"))?
-				.engine_handle();
-			engine.record_semantic(
+				.runtime();
+			runtime.record_semantic(
 				dispatch,
 				SemanticDispatch {
 					contract,
@@ -188,8 +188,8 @@ fn muon_matrix(
 			&[operation_rows, operation_rows],
 			&mut temporaries,
 		)?;
-		stages.push(muon_mat_mul_nt_stage(
-			parameter.engine_handle(),
+		stages.push(muon_matmul_nt_stage(
+			parameter.runtime(),
 			z,
 			z,
 			a,
@@ -208,7 +208,7 @@ fn muon_matrix(
 				&[operation_rows, operation_rows],
 				&mut temporaries,
 			)?;
-			stages.push(muon_mat_mul_axpby_stage(
+			stages.push(muon_matmul_axpby_stage(
 				a,
 				a,
 				a,
@@ -219,7 +219,7 @@ fn muon_matrix(
 				NS_C,
 				NS_B,
 			));
-			stages.push(muon_mat_mul_axpby_stage(
+			stages.push(muon_matmul_axpby_stage(
 				b,
 				z,
 				z,
@@ -236,8 +236,8 @@ fn muon_matrix(
 				&[operation_rows, operation_rows],
 				&mut temporaries,
 			)?;
-			stages.push(muon_mat_mul_nt_stage(
-				parameter.engine_handle(),
+			stages.push(muon_matmul_nt_stage(
+				parameter.runtime(),
 				a,
 				a,
 				aa,
@@ -274,8 +274,8 @@ fn muon_matrix(
 				&[operation_rows, operation_columns],
 				&mut temporaries,
 			)?;
-			stages.push(muon_mat_mul_nt_stage(
-				parameter.engine_handle(),
+			stages.push(muon_matmul_nt_stage(
+				parameter.runtime(),
 				b,
 				z_transpose,
 				bz,
@@ -347,7 +347,7 @@ fn muon_matrix(
 		.collect::<Vec<_>>();
 	let inputs = [parameter, gradient, momentum];
 	let outputs = [parameter, momentum];
-	parameter.engine_handle().record_split_semantic(
+	parameter.runtime().record_split_semantic(
 		&dispatches,
 		SemanticDispatch {
 			contract: crate::core::operation::ml::MUON,
@@ -373,7 +373,7 @@ fn allocate_muon_temp(
 			.ok_or_else(|| Error::invalid_argument("ml.muon temporary size overflows usize"))
 	})?;
 	temporaries.push(Matrix::allocate(
-		parameter.engine_handle(),
+		parameter.runtime(),
 		shape,
 		count,
 		DType::F32,
@@ -416,8 +416,8 @@ fn muon_transpose_stage(input: MuonSlot, output: MuonSlot, rows: u32, columns: u
 	}
 }
 
-fn muon_mat_mul_nt_stage(
-	engine: &EngineHandle,
+fn muon_matmul_nt_stage(
+	runtime: &RuntimeHandle,
 	left: MuonSlot,
 	right: MuonSlot,
 	output: MuonSlot,
@@ -425,8 +425,8 @@ fn muon_mat_mul_nt_stage(
 	n: u32,
 	k: u32,
 ) -> Result<MuonStage> {
-	let plan = crate::runtime::plan_mat_mul_nt(engine, m, n, k)?;
-	let launch = crate::runtime::lower_mat_mul_nt(&plan, m, n, k)?;
+	let plan = crate::runtime::plan_matmul_nt(runtime, m, n, k)?;
+	let launch = crate::runtime::lower_matmul_nt(&plan, m, n, k)?;
 	let problem_slots = [left, right, output];
 	let mut bindings = Vec::with_capacity(launch.buffer_count);
 	for slot in 0..launch.buffer_count {
@@ -447,7 +447,7 @@ fn muon_mat_mul_nt_stage(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn muon_mat_mul_axpby_stage(
+fn muon_matmul_axpby_stage(
 	a: MuonSlot,
 	b: MuonSlot,
 	residual: MuonSlot,
@@ -459,7 +459,7 @@ fn muon_mat_mul_axpby_stage(
 	beta: f32,
 ) -> MuonStage {
 	MuonStage {
-		kernel: KernelId::MlMuonMatMulAxpbyF32,
+		kernel: KernelId::MlMuonMatmulAxpbyF32,
 		bindings: vec![
 			(a, BufferAccess::Read),
 			(b, BufferAccess::Read),
@@ -473,7 +473,7 @@ fn muon_mat_mul_axpby_stage(
 			PushConstant::F32(alpha),
 			PushConstant::F32(beta),
 		],
-		workgroups: KernelId::MlMuonMatMulAxpbyF32.output_workgroups(m, n),
+		workgroups: KernelId::MlMuonMatmulAxpbyF32.output_workgroups(m, n),
 	}
 }
 
@@ -533,7 +533,7 @@ impl Muon {
 	/// # Errors
 	///
 	/// Returns an error for invalid scalars, an empty or duplicate parameter set,
-	/// non-F32 parameters, mixed-engine ownership, or momentum allocation failure.
+	/// non-F32 parameters, mixed-runtime ownership, or momentum allocation failure.
 	pub fn new_with_hyperparameters(
 		parameters: impl IntoIterator<Item = Parameter>,
 		learning_rate: f32,
@@ -579,20 +579,20 @@ impl Muon {
 				));
 			}
 		}
-		let engine = parameters[0].data().engine_handle().clone();
+		let runtime = parameters[0].data().runtime().clone();
 		if parameters
 			.iter()
-			.any(|parameter| !engine.same_as(parameter.data().engine_handle()))
+			.any(|parameter| !runtime.same_as(parameter.data().runtime()))
 		{
 			return Err(Error::invalid_argument(
-				"Muon parameters must belong to one engine",
+				"Muon parameters must belong to one runtime",
 			));
 		}
 		let mut states = Vec::with_capacity(parameters.len());
 		for parameter in parameters {
 			let data = parameter.data();
 			let momentum = Matrix::allocate(
-				data.engine_handle(),
+				data.runtime(),
 				data.shape().to_vec(),
 				data.num_elements(),
 				DType::F32,
@@ -686,8 +686,8 @@ impl Muon {
 		self.step
 	}
 
-	pub(super) fn belongs_to_engine(&self, engine: &Engine) -> bool {
-		engine.same_as_handle(self.parameters[0].parameter.data().engine_handle())
+	pub(super) fn belongs_to_runtime(&self, runtime: &Runtime) -> bool {
+		runtime.same_as_handle(self.parameters[0].parameter.data().runtime())
 	}
 
 	pub(super) fn checkpoint(&self) -> Result<OptimizerCheckpoint> {
@@ -733,7 +733,7 @@ impl Muon {
 			let data = parameter_state.parameter.data();
 			if momentum.shape() != data.shape()
 				|| momentum.dtype() != DType::F32
-				|| !momentum.engine_handle().same_as(data.engine_handle())
+				|| !momentum.runtime().same_as(data.runtime())
 			{
 				return Err(Error::invalid_argument(
 					"Muon checkpoint momentum contract mismatch",
@@ -778,8 +778,8 @@ impl Optimizer for Muon {
 		Self::step_count(self)
 	}
 
-	fn belongs_to(&self, engine: &Engine) -> bool {
-		self.belongs_to_engine(engine)
+	fn belongs_to(&self, runtime: &Runtime) -> bool {
+		self.belongs_to_runtime(runtime)
 	}
 }
 

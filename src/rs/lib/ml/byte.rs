@@ -1,6 +1,6 @@
 //! Raw-byte model inputs and logit decoding.
 
-use crate::{DType, Engine, Error, Matrix, Result};
+use crate::{DType, Error, Matrix, Result, Runtime};
 
 /// Fixed vocabulary cardinality for one token per byte value.
 pub const VOCAB_SIZE: usize = 256;
@@ -13,65 +13,65 @@ pub const EOS: u8 = 0x02;
 /// Optional sequence-separator byte.
 pub const SEP: u8 = 0x03;
 
-/// Upload raw bytes as a rank-one U8 Matrix on this thread's default engine.
+/// Upload raw bytes as a rank-one U8 Matrix on this thread's default runtime.
 ///
 /// # Errors
 ///
-/// Returns an error when the default engine cannot be initialized or when
+/// Returns an error when the default runtime cannot be initialized or when
 /// allocation or upload fails.
 pub fn encode(bytes: &[u8]) -> Result<Matrix> {
-	encode_on(&Engine::current()?, bytes)
+	encode_on(&Runtime::current()?, bytes)
 }
 
-/// Upload raw bytes as a rank-one U8 Matrix on a particular engine.
+/// Upload raw bytes as a rank-one U8 Matrix on a particular runtime.
 ///
 /// # Errors
 ///
 /// Returns an error when allocation or upload fails.
-pub fn encode_on(engine: &Engine, bytes: &[u8]) -> Result<Matrix> {
-	Matrix::new_from_slice_on(engine, [bytes.len()], bytes)
+pub fn encode_on(runtime: &Runtime, bytes: &[u8]) -> Result<Matrix> {
+	Matrix::new_from_slice_on(runtime, [bytes.len()], bytes)
 }
 
 /// Upload raw bytes as one batched U8 sequence `[1, S]` on this thread's
-/// default engine.
+/// default runtime.
 ///
 /// # Errors
 ///
-/// Returns an error when the default engine cannot be initialized or when
+/// Returns an error when the default runtime cannot be initialized or when
 /// allocation or upload fails.
 pub fn encode_batched(bytes: &[u8]) -> Result<Matrix> {
-	encode_batched_on(&Engine::current()?, bytes)
+	encode_batched_on(&Runtime::current()?, bytes)
 }
 
 /// Upload raw bytes as one batched U8 sequence `[1, S]` on a particular
-/// engine.
+/// runtime.
 ///
 /// # Errors
 ///
 /// Returns an error when allocation or upload fails.
-pub fn encode_batched_on(engine: &Engine, bytes: &[u8]) -> Result<Matrix> {
-	Matrix::new_from_slice_on(engine, [1, bytes.len()], bytes)
+pub fn encode_batched_on(runtime: &Runtime, bytes: &[u8]) -> Result<Matrix> {
+	Matrix::new_from_slice_on(runtime, [1, bytes.len()], bytes)
 }
 
 /// Upload UTF-8 text without tokenization or normalization on this thread's
-/// default engine.
+/// default runtime.
 ///
 /// # Errors
 ///
-/// Returns an error when the default engine cannot be initialized or when
+/// Returns an error when the default runtime cannot be initialized or when
 /// allocation or upload fails.
 pub fn encode_text(text: &str) -> Result<Matrix> {
-	encode_text_on(&Engine::current()?, text)
+	encode_text_on(&Runtime::current()?, text)
 }
 
 /// Upload UTF-8 text without tokenization or normalization on a particular
-/// engine.
+/// runtime.
 ///
 /// # Errors
 ///
 /// Returns an error when allocation or upload fails.
-pub fn encode_text_on(engine: &Engine, text: &str) -> Result<Matrix> {
-	encode_on(engine, text.as_bytes())
+pub fn encode_text_on(runtime: &Runtime, text: &str) -> Result<Matrix> {
+	encode_on(runtime, text.as_bytes())
 }
 
 /// Greedily decode one byte from each FP32 logit row.

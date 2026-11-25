@@ -147,7 +147,7 @@ fn crypto_bigint_shift_right(left: &PythonMatrix, shift: u32) -> PyResult<Python
 ///
 /// Public U32 limb rows, 32..=4096 bits; no secret-execution contract.
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 #[pyfunction]
 fn crypto_bigint_reduce_mod(
@@ -163,7 +163,7 @@ fn crypto_bigint_reduce_mod(
 ///
 /// Public U32 limb rows, 32..=4096 bits; no secret-execution contract.
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 #[pyfunction]
 fn crypto_bigint_add_mod(
@@ -181,7 +181,7 @@ fn crypto_bigint_add_mod(
 ///
 /// Public U32 limb rows, 32..=4096 bits; no secret-execution contract.
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 #[pyfunction]
 fn crypto_bigint_subtract_mod(
@@ -199,7 +199,7 @@ fn crypto_bigint_subtract_mod(
 ///
 /// Public U32 limb rows, 32..=4096 bits; no secret-execution contract.
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 #[pyfunction]
 fn crypto_bigint_multiply_mod(
@@ -217,7 +217,7 @@ fn crypto_bigint_multiply_mod(
 ///
 /// Public U32 limb rows, 32..=4096 bits; no secret-execution contract.
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 #[pyfunction]
 fn crypto_bigint_square_mod(
@@ -233,7 +233,7 @@ fn crypto_bigint_square_mod(
 ///
 /// Public U32 limb rows, 32..=4096 bits; no secret-execution contract.
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 /// Non-invertible values also return status 0 and zero output. Odd/even and composite moduli are accepted.
 #[pyfunction]
@@ -250,7 +250,7 @@ fn crypto_bigint_inverse_mod(
 ///
 /// Public U32 limb rows, 32..=4096 bits; no secret-execution contract.
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 /// `right` is the unsigned exponent; zero exponents yield 1 modulo m, including 0^0.
 #[pyfunction]
@@ -269,7 +269,7 @@ fn crypto_bigint_pow_mod(
 ///
 /// Public U32 limb rows, 32..=4096 bits; no secret-execution contract.
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 /// Montgomery operations require an odd modulus; even moduli return status 0 and zero output.
 /// R = 2^(32*words). Conversion multiplies by R or R^-1; multiplication computes a*b*R^-1 modulo m.
@@ -288,7 +288,7 @@ fn crypto_bigint_to_montgomery(
 ///
 /// Public U32 limb rows, 32..=4096 bits; no secret-execution contract.
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 /// Montgomery operations require an odd modulus; even moduli return status 0 and zero output.
 /// R = 2^(32*words). Conversion multiplies by R or R^-1; multiplication computes a*b*R^-1 modulo m.
@@ -307,7 +307,7 @@ fn crypto_bigint_from_montgomery(
 ///
 /// Public U32 limb rows, 32..=4096 bits; no secret-execution contract.
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 /// Montgomery operations require an odd modulus; even moduli return status 0 and zero output.
 /// R = 2^(32*words). Conversion multiplies by R or R^-1; multiplication computes a*b*R^-1 modulo m.
@@ -327,7 +327,7 @@ fn crypto_bigint_montgomery_multiply(
 ///
 /// Public U32 limb rows, 32..=4096 bits; no secret-execution contract.
 /// Returns `(output, status)` with U32 `[batch]` status flags.
-/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Engine ownership.
+/// `modulus` is U32 `[1, words]` or `[batch, words]`, with matching Runtime ownership.
 /// A zero modulus returns status 0 and zero output; valid rows return status 1.
 #[pyfunction]
 fn crypto_bigint_barrett_multiply(

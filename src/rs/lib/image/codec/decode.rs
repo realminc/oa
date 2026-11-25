@@ -2,7 +2,7 @@
 
 use std::{fs, path::Path};
 
-use crate::{Engine, Error, Image, ImageFormat, ImageLayout, Matrix, Result};
+use crate::{Error, Image, ImageFormat, ImageLayout, Matrix, Result, Runtime};
 
 use super::detect_codec;
 
@@ -17,23 +17,23 @@ use super::detect_codec;
 /// malformed media, unsupported requested format, checked-size overflow, or
 /// device allocation/upload failure.
 ///
-/// This variant decodes on this thread's default engine. An engine
+/// This variant decodes on this thread's default runtime. An runtime
 /// initialization failure is returned before decoding starts.
 pub fn decode_file(path: impl AsRef<Path>, format: ImageFormat) -> Result<Image> {
 	let path = path.as_ref();
-	decode_file_on(&Engine::current()?, path, format)
+	decode_file_on(&Runtime::current()?, path, format)
 }
 /// Decode a JPEG, PNG, WebP, BMP, TGA, or TIFF file and upload normalized planar FP32
-/// pixels on a particular engine.
+/// pixels on a particular runtime.
 ///
-/// This is the [`decode_file`] contract evaluated on `engine` instead of this
-/// thread's default engine.
+/// This is the [`decode_file`] contract evaluated on `runtime` instead of this
+/// thread's default runtime.
 ///
 /// # Errors
 ///
 /// Returns the same errors as [`decode_file`].
 pub fn decode_file_on(
-	engine: &Engine,
+	runtime: &Runtime,
 	path: impl AsRef<Path>,
 	format: ImageFormat,
 ) -> Result<Image> {
@@ -42,7 +42,7 @@ pub fn decode_file_on(
 		return Err(Error::invalid_argument("image::decode_file path is empty"));
 	}
 	let encoded = fs::read(path).map_err(|source| Error::io("image file read", source))?;
-	decode_memory_on(engine, &encoded, format)
+	decode_memory_on(runtime, &encoded, format)
 }
 
 /// Decode JPEG, PNG, WebP, BMP, TGA, or TIFF bytes and upload normalized planar FP32 pixels.
@@ -56,21 +56,21 @@ pub fn decode_file_on(
 /// requested format, checked-size overflow, or device allocation/upload
 /// failure.
 ///
-/// This variant decodes on this thread's default engine. An engine
+/// This variant decodes on this thread's default runtime. An runtime
 /// initialization failure is returned before decoding starts.
 pub fn decode_memory(encoded: &[u8], format: ImageFormat) -> Result<Image> {
-	decode_memory_on(&Engine::current()?, encoded, format)
+	decode_memory_on(&Runtime::current()?, encoded, format)
 }
 
 /// Decode JPEG, PNG, WebP, BMP, TGA, or TIFF bytes and upload normalized planar FP32
-/// pixels on a particular engine.
+/// pixels on a particular runtime.
 ///
 /// # Errors
 ///
 /// Returns an error for empty, unsupported, or malformed media, unsupported
 /// requested format, checked-size overflow, or device allocation/upload
 /// failure.
-pub fn decode_memory_on(engine: &Engine, encoded: &[u8], format: ImageFormat) -> Result<Image> {
+pub fn decode_memory_on(runtime: &Runtime, encoded: &[u8], format: ImageFormat) -> Result<Image> {
 	if encoded.is_empty() {
 		return Err(Error::invalid_argument(
 			"image::decode_memory input buffer is empty",
@@ -107,11 +107,11 @@ pub fn decode_memory_on(engine: &Engine, encoded: &[u8], format: ImageFormat) ->
 		ImageFormat::Rgba => decoded.to_rgba8().into_raw(),
 		_ => unreachable!("requested output format was validated"),
 	};
-	upload_packed(engine, &packed, width, height, format)
+	upload_packed(runtime, &packed, width, height, format)
 }
 
 fn upload_packed(
-	engine: &Engine,
+	runtime: &Runtime,
 	packed: &[u8],
 	width: usize,
 	height: usize,
@@ -139,6 +139,6 @@ fn upload_packed(
 			planar[channel * pixels + pixel] = f32::from(packed[pixel * channels + channel]) / 255.0;
 		}
 	}
-	let matrix = Matrix::new_from_slice_on(engine, [1, channels, height, width], &planar)?;
+	let matrix = Matrix::new_from_slice_on(runtime, [1, channels, height, width], &planar)?;
 	Image::new(matrix, ImageLayout::Nchw, format)
 }

@@ -31,7 +31,7 @@ fn encode_settings_defaults_match_the_donor_profile() {
 
 test_vk!(
 	hevc_repeated_720p_sessions_preserve_completion_and_packets,
-	engine,
+	runtime,
 	"requires HEVC Main/Main10/Rext encode at 720p; repeated-session GPU stress",
 	{
 		const WIDTH: usize = 1280;
@@ -53,11 +53,11 @@ test_vk!(
 				chroma_bit_depth: VideoComponentBitDepth::Ten,
 			},
 		] {
-			oa::video::query_encode_capabilities(&engine, profile)?;
+			oa::video::query_encode_capabilities(&runtime, profile)?;
 			let wide = profile != VideoEncodeProfile::h265_main_420_8bit();
 			for session in 0..32 {
 				let config = VideoEncodeConfig::new(profile, WIDTH as u32, HEIGHT as u32);
-				let mut encoder = VideoEncoder::new(&engine, config)?;
+				let mut encoder = VideoEncoder::new(&runtime, config)?;
 				for frame in 0..60 {
 					for y in 0..HEIGHT {
 						for x in 0..WIDTH {
@@ -103,12 +103,12 @@ fn recorder_config_defaults_keep_the_donor_shape() {
 
 test_vk!(
 	video_encoder_session_is_capability_gated_and_encodes,
-	engine,
+	runtime,
 	{
-		let caps = oa::video::query_device_capabilities(&engine)?;
+		let caps = oa::video::query_device_capabilities(&runtime)?;
 		let settings = VideoEncodeConfig::new(VideoEncodeProfile::h264_high_420_8bit(), 320, 240);
 		if !caps.encoder_sessions_available() || !caps.supports_h264_encode() {
-			let err = match VideoEncoder::new(&engine, settings) {
+			let err = match VideoEncoder::new(&runtime, settings) {
 				Ok(_) => panic!("session creation must fail without H.264 encode"),
 				Err(err) => err,
 			};
@@ -122,7 +122,7 @@ test_vk!(
 			return Ok(());
 		}
 
-		let mut encoder = VideoEncoder::new(&engine, settings)?;
+		let mut encoder = VideoEncoder::new(&runtime, settings)?;
 		assert!(encoder.is_open());
 		assert_eq!(
 			encoder.visible_extent(),
@@ -141,7 +141,7 @@ test_vk!(
 		);
 
 		let rgba = vec![0x7f_u8; 320 * 240 * 4];
-		let capture_error = engine
+		let capture_error = runtime
 			.capture(|| encoder.encode(&rgba, 0))
 			.expect_err("immediate encode must fail before changing the session in capture");
 		assert_eq!(capture_error.kind(), ErrorKind::FailedPrecondition);
@@ -179,12 +179,12 @@ test_vk!(
 
 test_vk!(
 	video_encoder_capture_replays_conversion_and_encode,
-	engine,
+	runtime,
 	{
-		let caps = oa::video::query_device_capabilities(&engine)?;
+		let caps = oa::video::query_device_capabilities(&runtime)?;
 		let settings = VideoEncodeConfig::new(VideoEncodeProfile::h264_high_420_8bit(), 320, 240);
 		if !caps.encoder_sessions_available() || !caps.supports_h264_encode() {
-			let err = match VideoEncoder::new(&engine, settings) {
+			let err = match VideoEncoder::new(&runtime, settings) {
 				Ok(_) => panic!("session creation must fail without H.264 encode"),
 				Err(err) => err,
 			};
@@ -198,7 +198,7 @@ test_vk!(
 			return Ok(());
 		}
 
-		let mut encoder = VideoEncoder::new(&engine, settings)?;
+		let mut encoder = VideoEncoder::new(&runtime, settings)?;
 		let mut rgba = vec![0_u8; 320 * 240 * 4];
 		for y in 0..240_u32 {
 			for x in 0..320_u32 {
@@ -212,7 +212,7 @@ test_vk!(
 		let frames: Vec<(&[u8], u64)> = (0..4_u64)
 			.map(|frame| (rgba.as_slice(), frame * 33_333))
 			.collect();
-		let (plan, ()) = engine.capture(|| encoder.record_frames(&frames))?;
+		let (plan, ()) = runtime.capture(|| encoder.record_frames(&frames))?;
 		let report: serde_json::Value =
 			serde_json::from_str(&plan.debug_report_json("h264-capture")).unwrap();
 		let encode_commands = report["nodes"]
@@ -227,8 +227,8 @@ test_vk!(
 		// Two replays on the timeline: each emits conversion on the compute
 		// family then the encode picture, with packets materializing at the
 		// event boundary.
-		let first = engine.submit(&plan)?;
-		let second = engine.submit(&plan)?;
+		let first = runtime.submit(&plan)?;
+		let second = runtime.submit(&plan)?;
 		let first_packets = first.encoded_packets()?;
 		let second_packets = second.encoded_packets()?;
 		for (label, packets) in [("first", first_packets), ("second", second_packets)] {
@@ -261,12 +261,12 @@ test_vk!(
 
 test_vk!(
 	video_recorder_validates_and_writes_a_demuxable_mp4,
-	engine,
+	runtime,
 	{
 		let path = temporary_mp4("recorder");
 		let settings = VideoEncodeConfig::new(VideoEncodeProfile::h264_high_420_8bit(), 320, 240);
 		let unsupported = match VideoRecorder::new(
-			&engine,
+			&runtime,
 			VideoRecorderConfig {
 				output_path: String::new(),
 				encode: settings,
@@ -279,7 +279,7 @@ test_vk!(
 		assert_eq!(unsupported.kind(), ErrorKind::InvalidArgument);
 
 		let zero_extent = match VideoRecorder::new(
-			&engine,
+			&runtime,
 			VideoRecorderConfig {
 				output_path: path.to_string_lossy().into_owned(),
 				encode: VideoEncodeConfig::new(VideoEncodeProfile::h264_high_420_8bit(), 0, 0),
@@ -291,9 +291,9 @@ test_vk!(
 		};
 		assert_eq!(zero_extent.kind(), ErrorKind::InvalidArgument);
 
-		let caps = oa::video::query_device_capabilities(&engine)?;
+		let caps = oa::video::query_device_capabilities(&runtime)?;
 		let mut recorder = match VideoRecorder::new(
-			&engine,
+			&runtime,
 			VideoRecorderConfig {
 				output_path: path.to_string_lossy().into_owned(),
 				encode: settings,
@@ -333,13 +333,13 @@ test_vk!(
 
 test_vk!(
 	abandoned_recordings_retire_in_flight_encode_resources,
-	engine,
+	runtime,
 	{
 		let rgba = vec![96; 320 * 240 * 4];
 		for explicit_close in [false, true] {
 			let path = temporary_mp4("abandoned");
 			let mut recorder = VideoRecorder::new(
-				&engine,
+				&runtime,
 				VideoRecorderConfig {
 					output_path: path.to_string_lossy().into_owned(),
 					encode: VideoEncodeConfig::new(VideoEncodeProfile::h264_high_420_8bit(), 320, 240),
@@ -351,7 +351,7 @@ test_vk!(
 				recorder.close();
 			}
 			drop(recorder);
-			engine.checkpoint()?.wait()?;
+			runtime.checkpoint()?.wait()?;
 			std::fs::remove_file(path).expect("delete abandoned recording");
 		}
 		Ok(())
@@ -360,10 +360,10 @@ test_vk!(
 
 test_vk!(
 	h264_and_h265_recordings_match_independent_ffmpeg_pixels,
-	engine,
+	runtime,
 	"requires both H.264/H.265 hardware encode profiles and FFmpeg",
 	{
-		let caps = oa::video::query_device_capabilities(&engine)?;
+		let caps = oa::video::query_device_capabilities(&runtime)?;
 		assert!(caps.supports_h264_encode() && caps.supports_h265_encode());
 		for (profile, codec) in [
 			(VideoEncodeProfile::h264_high_420_8bit(), VideoCodec::H264),
@@ -376,7 +376,7 @@ test_vk!(
 			// defects rather than the default encoder's lossy quantization.
 			encode.constant_qp = 10;
 			let mut recorder = VideoRecorder::new(
-				&engine,
+				&runtime,
 				VideoRecorderConfig {
 					output_path: path.to_string_lossy().into_owned(),
 					encode,
@@ -432,7 +432,7 @@ test_vk!(
 
 test_vk!(
 	h265_ten_bit_encode_matches_independent_ffmpeg_pixels,
-	engine,
+	runtime,
 	"requires H.265 wide-component hardware encode and FFmpeg",
 	{
 		for (codec_profile, expected) in [
@@ -445,17 +445,17 @@ test_vk!(
 				luma_bit_depth: VideoComponentBitDepth::Ten,
 				chroma_bit_depth: VideoComponentBitDepth::Ten,
 			};
-			if oa::video::query_encode_capabilities(&engine, profile).is_err() {
+			if oa::video::query_encode_capabilities(&runtime, profile).is_err() {
 				continue;
 			}
-			assert_ten_bit_encode_oracle(&engine, profile, expected)?;
+			assert_ten_bit_encode_oracle(&runtime, profile, expected)?;
 		}
 		Ok(())
 	}
 );
 
 fn assert_ten_bit_encode_oracle(
-	engine: &oa::Engine,
+	runtime: &oa::Runtime,
 	profile: VideoEncodeProfile,
 	expected_profile: &str,
 ) -> oa::Result<()> {
@@ -463,7 +463,7 @@ fn assert_ten_bit_encode_oracle(
 		let mut encode = VideoEncodeConfig::new(profile, 320, 240);
 		encode.gop_size = 2;
 		encode.constant_qp = 10;
-		let mut encoder = VideoEncoder::new(engine, encode)?;
+		let mut encoder = VideoEncoder::new(runtime, encode)?;
 		// Mid-range 10-bit grays stay inside the limited-range encode window.
 		let levels = [128_u16, 256, 384, 512, 640, 768, 896];
 		let mut bitstream = Vec::new();
@@ -558,10 +558,10 @@ fn temporary_stream(label: &str, extension: &str) -> PathBuf {
 
 test_vk!(
 	captured_decode_planes_feed_encode_in_one_plan,
-	engine,
+	runtime,
 	"requires Vulkan H.264 decode and encode hardware plus the OA donor fixture",
 	{
-		let caps = oa::video::query_device_capabilities(&engine)?;
+		let caps = oa::video::query_device_capabilities(&runtime)?;
 		if !(caps.decoder_sessions_available()
 			&& caps.supports_h264_decode()
 			&& caps.encoder_sessions_available()
@@ -583,9 +583,9 @@ test_vk!(
 		}
 		assert!(packets.len() >= 2, "fixture must carry a decodable run");
 
-		let mut decoder = VideoDecoder::new(&engine, info)?;
+		let mut decoder = VideoDecoder::new(&runtime, info)?;
 		let mut encoder = VideoEncoder::new(
-			&engine,
+			&runtime,
 			VideoEncodeConfig::new(
 				VideoEncodeProfile::h264_high_420_8bit(),
 				info.width(),
@@ -597,7 +597,7 @@ test_vk!(
 		// staged through the compute family, encode-input copies on compute,
 		// and encode pictures on the encode family — timeline-chained with no
 		// host waits inside the graph.
-		let (plan, frame_count) = engine.capture(|| {
+		let (plan, frame_count) = runtime.capture(|| {
 			let frames = decoder.record_to_planes(&packets)?;
 			let inputs = frames
 				.iter()
@@ -641,8 +641,8 @@ test_vk!(
 		);
 		plan.validate_serialized_descriptor(&plan.serialize_descriptor()?)?;
 
-		let first = engine.submit(&plan)?;
-		let second = engine.submit(&plan)?;
+		let first = runtime.submit(&plan)?;
+		let second = runtime.submit(&plan)?;
 		for (label, packets) in [
 			("first", first.encoded_packets()?),
 			("second", second.encoded_packets()?),
@@ -669,10 +669,10 @@ test_vk!(
 
 test_vk!(
 	decoded_planes_flow_through_model_scores_into_encode,
-	engine,
+	runtime,
 	"requires Vulkan video decode/encode hardware plus FFmpeg",
 	{
-		let caps = oa::video::query_device_capabilities(&engine)?;
+		let caps = oa::video::query_device_capabilities(&runtime)?;
 		let decodes = [
 			(
 				"shibuya_720p_30fps_h264_high_8bit_420.mp4",
@@ -718,7 +718,7 @@ test_vk!(
 					continue;
 				}
 				eprintln!("pipeline {fixture} -> {ffmpeg_codec}");
-				run_model_scores_pipeline(&engine, fixture, codec, *profile, ffmpeg_codec)?;
+				run_model_scores_pipeline(&runtime, fixture, codec, *profile, ffmpeg_codec)?;
 				covered += 1;
 			}
 		}
@@ -732,7 +732,7 @@ test_vk!(
 /// encodes on the encode queue — one captured plan, two replays, verified
 /// against an independently decoded reference composite through FFmpeg.
 fn run_model_scores_pipeline(
-	engine: &oa::Engine,
+	runtime: &oa::Runtime,
 	fixture: &str,
 	codec: VideoCodec,
 	profile: VideoEncodeProfile,
@@ -757,7 +757,7 @@ fn run_model_scores_pipeline(
 
 	// Independent reference planes: the same packets decoded on a second
 	// session, harvested to packed I420 for the expected-composite oracle.
-	let mut reference_decoder = VideoDecoder::new(engine, info)?;
+	let mut reference_decoder = VideoDecoder::new(runtime, info)?;
 	let mut reference = Vec::new();
 	for packet in &packets {
 		if let Some(frame) = reference_decoder.decode_native(packet)? {
@@ -778,24 +778,24 @@ fn run_model_scores_pipeline(
 
 	// Encode input buffers must cover the codec's coded extent (block
 	// granularity), which can exceed the visible extent — pad when needed.
-	let enc_caps = oa::video::query_encode_capabilities(engine, profile)?;
+	let enc_caps = oa::video::query_encode_capabilities(runtime, profile)?;
 	let gran = enc_caps.picture_access_granularity();
 	let gw = gran.width.max(16) as usize;
 	let gh = gran.height.max(16) as usize;
 	let coded_w = width.div_ceil(gw) * gw;
 	let coded_h = height.div_ceil(gh) * gh;
 
-	let mut decoder = VideoDecoder::new(engine, info)?;
+	let mut decoder = VideoDecoder::new(runtime, info)?;
 	let mut encode = VideoEncodeConfig::new(profile, info.width(), info.height());
 	encode.gop_size = 4;
 	encode.constant_qp = 10;
-	let mut encoder = VideoEncoder::new(engine, encode)?;
+	let mut encoder = VideoEncoder::new(runtime, encode)?;
 
 	// One captured plan: decode on the video queue, the CC-30 conversion
 	// region plus a 1x1 affine score head and the score-driven stencil on
 	// compute, encode-input staging and encode pictures on their families —
 	// timeline-chained with no host waits.
-	let (plan, expected_pts) = engine.capture(|| {
+	let (plan, expected_pts) = runtime.capture(|| {
 		let frames = decoder.record_to_planes(&packets)?;
 		let mut overlaid = Vec::with_capacity(frames.len());
 		for frame in &frames {
@@ -854,8 +854,8 @@ fn run_model_scores_pipeline(
 		"{codec:?}/{ffmpeg_codec}: decode/compute/encode must split into multiple queue runs"
 	);
 
-	let first = engine.submit(&plan)?;
-	let second = engine.submit(&plan)?;
+	let first = runtime.submit(&plan)?;
+	let second = runtime.submit(&plan)?;
 	let first_packets = first.encoded_packets()?;
 	let second_packets = second.encoded_packets()?;
 	let check_packets = |packets: &[oa::video::EncodedVideoPacket]| {
@@ -968,7 +968,7 @@ fn run_model_scores_pipeline(
 	}
 
 	crate::bench_media::record(
-		engine,
+		runtime,
 		&plan,
 		serde_json::json!({
 			"kind": "decode_model_encode",

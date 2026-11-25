@@ -43,7 +43,7 @@ fn allocate_like(input: &Image, operation: &str) -> Result<Image> {
 	u32::try_from(elements)
 		.map_err(|_| Error::out_of_range(format!("{operation} output size exceeds u32")))?;
 	let matrix = Matrix::allocate(
-		input.engine_handle(),
+		input.runtime(),
 		input.as_matrix().shape().to_vec(),
 		elements,
 		DType::F32,
@@ -68,4 +68,22 @@ fn enumeration(name: &str, value: &str) -> OpAttribute {
 		name: name.into(),
 		value: value.into(),
 	}
+}
+
+fn validate_accumulation_pair(
+	first: &Image,
+	second: &Image,
+	operation: &str,
+) -> Result<(u32, u32, u32, u32)> {
+	let extent = image_extent(first, operation)?;
+	if second.as_matrix().shape() != first.as_matrix().shape()
+		|| second.layout() != first.layout()
+		|| second.format() != first.format()
+		|| second.dtype() != first.dtype()
+	{
+		return Err(Error::invalid_argument(format!(
+			"{operation} requires identically shaped FP32 images"
+		)));
+	}
+	Ok(extent)
 }

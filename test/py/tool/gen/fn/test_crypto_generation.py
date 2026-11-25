@@ -31,7 +31,7 @@ class CryptographyGenerationTests(unittest.TestCase):
 			self.assertFalse((ROOT / f"src/rs/lib/crypto/{family}/lowering.rs").exists())
 			for api in self.schemas[family]["rust_api"]:
 				self.assertEqual(text.count(f"fn {api['name']}("), 1)
-		self.assertEqual(self.render("pqc").count("engine.record_split_semantic("), 3)
+		self.assertEqual(self.render("pqc").count("runtime.record_split_semantic("), 3)
 		self.assertIn('mod host;', (ROOT / "src/rs/lib/crypto/pqc.rs").read_text())
 
 	def test_map_order_does_not_change_abi(self):

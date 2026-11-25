@@ -11,7 +11,7 @@ use oa::video::{
 use oa::viewer::{ViewerLiveCapabilities, ViewerLiveSource};
 use oa::vision::{CameraCapture, CameraCaptureConfig};
 use oa::vision::{ScreenCapture, ScreenCaptureConfig, ScreenCaptureCursor, ScreenCaptureTarget};
-use oa::{Color, Engine, Error, Result, Texture, Viewer, ViewerConfig};
+use oa::{Color, Error, Result, Runtime, Texture, Viewer, ViewerConfig};
 
 type SaveResult = std::result::Result<Vec<PathBuf>, sdl3::dialog::DialogError>;
 
@@ -96,11 +96,11 @@ impl RecordingSource {
 		}
 	}
 
-	fn start(&mut self, engine: &Engine) -> Result<()> {
-		self.start_to(engine, recording_path()?)
+	fn start(&mut self, runtime: &Runtime) -> Result<()> {
+		self.start_to(runtime, recording_path()?)
 	}
 
-	fn start_to(&mut self, engine: &Engine, path: PathBuf) -> Result<()> {
+	fn start_to(&mut self, runtime: &Runtime, path: PathBuf) -> Result<()> {
 		let (width, height) = if let Some(texture) = &self.texture {
 			(texture.width() as u32, texture.height() as u32)
 		} else if let Some(camera) = &self.camera {
@@ -117,7 +117,7 @@ impl RecordingSource {
 			|c| c.frame_rate().round().max(1.0) as u32,
 		);
 		let recorder = VideoRecorder::new(
-			engine,
+			runtime,
 			VideoRecorderConfig {
 				output_path: path
 					.to_str()
@@ -239,11 +239,11 @@ impl ViewerLiveSource for RecordingSource {
 			..Default::default()
 		}
 	}
-	fn open(&mut self, engine: &Engine) -> Result<()> {
+	fn open(&mut self, runtime: &Runtime) -> Result<()> {
 		if let Some(config) = &self.screen_config {
-			self.screen = Some(ScreenCapture::open(engine, config)?);
+			self.screen = Some(ScreenCapture::open(runtime, config)?);
 		} else {
-			self.camera = Some(CameraCapture::open(engine, &self.config)?);
+			self.camera = Some(CameraCapture::open(runtime, &self.config)?);
 		}
 		Ok(())
 	}
@@ -335,7 +335,7 @@ impl ViewerLiveSource for RecordingSource {
 			let result = if self.recorder.is_some() {
 				self.stop()
 			} else {
-				self.start(ui.engine())
+				self.start(ui.runtime())
 			};
 			if let Err(error) = result {
 				self.status = error.to_string();

@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonEngine};
+use crate::{error::python_error, matrix::PythonMatrix, runtime::PythonRuntime};
 
 use super::super::autograd::PythonParameter;
 
@@ -67,7 +67,7 @@ pub(crate) struct PythonMoe {
 impl PythonMoe {
 	/// Construct a deterministically initialized sparse MoE.
 	#[new]
-	#[pyo3(signature = (model_width, hidden_width, num_experts, experts_per_token, epsilon = 1e-5, seed = 0, engine=None))]
+	#[pyo3(signature = (model_width, hidden_width, num_experts, experts_per_token, epsilon = 1e-5, seed = 0, runtime=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		model_width: usize,
@@ -76,11 +76,11 @@ impl PythonMoe {
 		experts_per_token: usize,
 		epsilon: f32,
 		seed: u64,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		oa::ml::nn::Moe::new_with_seed_on(
-			&engine,
+			&runtime,
 			model_width,
 			hidden_width,
 			num_experts,
@@ -94,7 +94,7 @@ impl PythonMoe {
 
 	/// Construct with always-on shared SwiGLU experts alongside the routed set.
 	#[staticmethod]
-	#[pyo3(signature = (model_width, hidden_width, num_experts, experts_per_token, num_shared_experts, epsilon = 1e-5, seed = 0, engine=None))]
+	#[pyo3(signature = (model_width, hidden_width, num_experts, experts_per_token, num_shared_experts, epsilon = 1e-5, seed = 0, runtime=None))]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new_with_shared_experts(
 		model_width: usize,
@@ -104,11 +104,11 @@ impl PythonMoe {
 		num_shared_experts: usize,
 		epsilon: f32,
 		seed: u64,
-		engine: Option<&PythonEngine>,
+		runtime: Option<&PythonRuntime>,
 	) -> PyResult<Self> {
-		let engine = PythonEngine::resolve(engine)?;
+		let runtime = PythonRuntime::resolve(runtime)?;
 		oa::ml::nn::Moe::new_with_seed_and_shared_experts_on(
-			&engine,
+			&runtime,
 			model_width,
 			hidden_width,
 			num_experts,

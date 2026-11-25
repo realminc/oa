@@ -104,49 +104,53 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 	}
 }
 
-test_vk!(bmm_family_matches_generic_and_tiled_host_oracles, engine, {
-	for layout in [Layout::Nn, Layout::Nt, Layout::Tn] {
-		for (batch, rows, inner, columns, expected_kernel, tolerance) in [
-			(2, 3, 5, 4, layout.generic_kernel(), 3.0e-5),
-			(2, 9, 11, 10, layout.tiled_kernel(), 5.0e-5),
-		] {
-			let (left_shape, right_shape) = input_shapes(layout, batch, rows, inner, columns);
-			let left_values = values(left_shape.iter().product(), 1);
-			let right_values = values(right_shape.iter().product(), 2);
-			let expected = host_bmm(
-				layout,
-				&left_values,
-				&right_values,
-				batch,
-				rows,
-				inner,
-				columns,
-			);
-			let left = oa::Matrix::new_from_f32(left_shape, &left_values)?;
-			let right = oa::Matrix::new_from_f32(right_shape, &right_values)?;
-			let (plan, output) = engine.capture(|| layout.apply(&left, &right))?;
+test_vk!(
+	bmm_family_matches_generic_and_tiled_host_oracles,
+	runtime,
+	{
+		for layout in [Layout::Nn, Layout::Nt, Layout::Tn] {
+			for (batch, rows, inner, columns, expected_kernel, tolerance) in [
+				(2, 3, 5, 4, layout.generic_kernel(), 3.0e-5),
+				(2, 9, 11, 10, layout.tiled_kernel(), 5.0e-5),
+			] {
+				let (left_shape, right_shape) = input_shapes(layout, batch, rows, inner, columns);
+				let left_values = values(left_shape.iter().product(), 1);
+				let right_values = values(right_shape.iter().product(), 2);
+				let expected = host_bmm(
+					layout,
+					&left_values,
+					&right_values,
+					batch,
+					rows,
+					inner,
+					columns,
+				);
+				let left = oa::Matrix::new_from_f32(left_shape, &left_values)?;
+				let right = oa::Matrix::new_from_f32(right_shape, &right_values)?;
+				let (plan, output) = runtime.capture(|| layout.apply(&left, &right))?;
 
-			assert_eq!(output.shape(), [batch, rows, columns]);
-			assert_eq!(plan.semantic_graph().operations().len(), 1);
-			assert_eq!(
-				plan.semantic_graph().operations()[0].name(),
-				layout.operation()
-			);
-			let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("bmm"))
-				.expect("BMM report must be valid JSON");
-			assert_eq!(report["nodes"][0]["kernel"], expected_kernel);
-			assert!(!report["nodes"][0]["physical_write"].is_null());
+				assert_eq!(output.shape(), [batch, rows, columns]);
+				assert_eq!(plan.semantic_graph().operations().len(), 1);
+				assert_eq!(
+					plan.semantic_graph().operations()[0].name(),
+					layout.operation()
+				);
+				let report: serde_json::Value = serde_json::from_str(&plan.debug_report_json("bmm"))
+					.expect("BMM report must be valid JSON");
+				assert_eq!(report["nodes"][0]["kernel"], expected_kernel);
+				assert!(!report["nodes"][0]["physical_write"].is_null());
 
-			let _event = engine.submit(&plan)?;
-			plan.wait()?;
-			assert_close(&output.read_f32()?, &expected, tolerance);
+				let _event = runtime.submit(&plan)?;
+				plan.wait()?;
+				assert_close(&output.read_f32()?, &expected, tolerance);
+			}
 		}
+		Ok(())
 	}
-	Ok(())
-});
+);
 
 fn loss_and_gradients(
-	_engine: &oa::Engine,
+	_runtime: &oa::Runtime,
 	layout: Layout,
 	left_value: f32,
 	right_value: f32,
@@ -184,18 +188,18 @@ fn loss_and_gradients(
 	Ok((loss_value, gradients))
 }
 
-test_vk!(bmm_family_reverse_matches_finite_differences, engine, {
+test_vk!(bmm_family_reverse_matches_finite_differences, runtime, {
 	const EPSILON: f32 = 1.0e-3;
 	for layout in [Layout::Nn, Layout::Nt, Layout::Tn] {
 		let values = [0.7_f32, -0.4];
-		let (_, actual) = loss_and_gradients(&engine, layout, values[0], values[1], true)?;
+		let (_, actual) = loss_and_gradients(&runtime, layout, values[0], values[1], true)?;
 		for parameter in 0..2 {
 			let mut below = values;
 			let mut above = values;
 			below[parameter] -= EPSILON;
 			above[parameter] += EPSILON;
-			let below = loss_and_gradients(&engine, layout, below[0], below[1], false)?.0;
-			let above = loss_and_gradients(&engine, layout, above[0], above[1], false)?.0;
+			let below = loss_and_gradients(&runtime, layout, below[0], below[1], false)?.0;
+			let above = loss_and_gradients(&runtime, layout, above[0], above[1], false)?.0;
 			let numerical = (above - below) / (2.0 * EPSILON);
 			assert!(
 				(actual[parameter] - numerical).abs() <= 8.0e-4,
@@ -207,7 +211,7 @@ test_vk!(bmm_family_reverse_matches_finite_differences, engine, {
 	Ok(())
 });
 
-test_vk!(bmm_family_rejects_invalid_contracts, engine, {
+test_vk!(bmm_family_rejects_invalid_contracts, runtime, {
 	let valid_left = oa::Matrix::new_from_f32([2, 3, 4], &[0.0; 24])?;
 	let valid_right = oa::Matrix::new_from_f32([2, 4, 5], &[0.0; 40])?;
 	let rank_two = oa::Matrix::new_from_f32([3, 4], &[0.0; 12])?;

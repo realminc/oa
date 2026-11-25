@@ -45,7 +45,7 @@ use crate::input::{
 };
 use crate::{
 	Error, Result,
-	runtime::{EngineHandle, RenderingCommands, SyncCommands},
+	runtime::{RenderingCommands, RuntimeHandle, SyncCommands},
 };
 use command::{UiCmd, UiCmdList};
 use compose_image::ComposeImage;
@@ -72,10 +72,10 @@ pub use viewport::{RenderLayer, ScissorDesc, Viewport, ViewportDesc, ViewportMod
 
 /// GPU-retained UI compositor.
 ///
-/// Borrows one `Engine` for its lifetime; must be closed explicitly before
-/// the engine or any resource it references is released.
-pub struct Ui<'engine> {
-	engine: &'engine crate::Engine,
+/// Borrows one `Runtime` for its lifetime; must be closed explicitly before
+/// the runtime or any resource it references is released.
+pub struct Ui<'runtime> {
+	runtime: &'runtime crate::Runtime,
 	pub(crate) state: Option<UiState>,
 }
 
@@ -88,8 +88,8 @@ struct WidgetMotion {
 }
 
 pub(crate) struct UiState {
-	pub(crate) engine_handle: EngineHandle,
-	/// Immutable core/KHR dispatch tables; Engine retains the device lifetime.
+	pub(crate) runtime: RuntimeHandle,
+	/// Immutable core/KHR dispatch tables; Runtime retains the device lifetime.
 	sync_commands: SyncCommands,
 	rendering_commands: RenderingCommands,
 	pipelines: std::rc::Rc<UiPipelines>,
@@ -147,17 +147,17 @@ pub(crate) struct UiState {
 	scroll_offsets: std::collections::HashMap<u64, i32>,
 }
 
-impl<'engine> Ui<'engine> {
+impl<'runtime> Ui<'runtime> {
 	/// Initialise the UI layer.  Creates pipelines and the compose image.
 	///
 	/// `width` and `height` should match the presentation surface extent.
-	pub fn init(engine: &'engine crate::Engine, width: u32, height: u32) -> Result<Self> {
-		Self::init_with_style(engine, width, height, UiStyle::default())
+	pub fn init(runtime: &'runtime crate::Runtime, width: u32, height: u32) -> Result<Self> {
+		Self::init_with_style(runtime, width, height, UiStyle::default())
 	}
 
 	/// Initialise with an explicit style theme.
 	pub fn init_with_style(
-		engine: &'engine crate::Engine,
+		runtime: &'runtime crate::Runtime,
 		width: u32,
 		height: u32,
 		style: UiStyle,
@@ -167,7 +167,7 @@ impl<'engine> Ui<'engine> {
 				"Ui compose extent must be non-zero",
 			));
 		}
-		let handle = engine.handle();
+		let handle = runtime.handle();
 		handle.require_ui_bindings()?;
 		let compose = {
 			let device = handle.raw_device();
@@ -178,7 +178,7 @@ impl<'engine> Ui<'engine> {
 			UiState {
 				sync_commands: handle.ui_sync_commands(),
 				rendering_commands: handle.ui_rendering_commands(),
-				engine_handle: handle,
+				runtime: handle,
 				pipelines,
 				compose,
 				text_atlas,
@@ -215,7 +215,7 @@ impl<'engine> Ui<'engine> {
 			}
 		};
 		Ok(Self {
-			engine,
+			runtime,
 			state: Some(compose),
 		})
 	}
@@ -231,7 +231,7 @@ impl<'engine> Ui<'engine> {
 			.state
 			.as_mut()
 			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
-		let new_compose = ComposeImage::new(&state.engine_handle, width, height)?;
+		let new_compose = ComposeImage::new(&state.runtime, width, height)?;
 		state.compose = std::rc::Rc::new(new_compose);
 		Ok(())
 	}
@@ -600,9 +600,9 @@ impl<'engine> Ui<'engine> {
 		payload.clone().downcast::<T>().ok()
 	}
 
-	/// Borrow the Engine that owns this UI's composition resources.
-	pub fn engine(&self) -> &'engine crate::Engine {
-		self.engine
+	/// Borrow the Runtime that owns this UI's composition resources.
+	pub fn runtime(&self) -> &'runtime crate::Runtime {
+		self.runtime
 	}
 
 	// ── Style ──────────────────────────────────────────────────────────────────
@@ -1932,7 +1932,7 @@ impl<'engine> Ui<'engine> {
 	/// Single-series GPU line plot of a CPU F32 slice.
 	///
 	/// The data must already be uploaded into the bindless heap as a storage
-	/// buffer.  Callers uploading host data should use the engine's buffer
+	/// buffer.  Callers uploading host data should use the runtime's buffer
 	/// upload path and pass the resulting bindless index.
 	pub fn plot_line_bindless(
 		&mut self,
@@ -1967,7 +1967,7 @@ impl<'engine> Ui<'engine> {
 
 	/// Draw one F32 line series into an explicit pixel rectangle.
 	///
-	/// The samples are uploaded through this UI's Engine and retained until the
+	/// The samples are uploaded through this UI's Runtime and retained until the
 	/// exact composition submission completes; callers never handle descriptor
 	/// indices or Vulkan objects.
 	pub fn plot_line_at(
@@ -1992,9 +1992,9 @@ impl<'engine> Ui<'engine> {
 				"UI line width must be finite and positive",
 			));
 		}
-		let matrix = crate::Matrix::new_from_f32_on(self.engine, [values.len()], values)?;
+		let matrix = crate::Matrix::new_from_f32_on(self.runtime, [values.len()], values)?;
 		let descriptor = matrix
-			.engine_handle()
+			.runtime()
 			.storage_descriptor_index(matrix.storage())?;
 		let state = self
 			.state
@@ -2057,9 +2057,9 @@ impl<'engine> Ui<'engine> {
 		let mut packed: Vec<f32> = Vec::with_capacity(y_lo.len() * 2);
 		packed.extend_from_slice(y_lo);
 		packed.extend_from_slice(y_hi);
-		let matrix = crate::Matrix::new_from_f32_on(self.engine, [packed.len()], &packed)?;
+		let matrix = crate::Matrix::new_from_f32_on(self.runtime, [packed.len()], &packed)?;
 		let descriptor = matrix
-			.engine_handle()
+			.runtime()
 			.storage_descriptor_index(matrix.storage())?;
 		let state = self
 			.state
@@ -2096,7 +2096,7 @@ impl<'engine> Ui<'engine> {
 	/// finite samples when `auto_scale` is set; a degenerate resolved range is
 	/// expanded by a small margin. `show_grid`/`draw_surface` paint the chart
 	/// grid first; `fill` shades under the series. The samples are uploaded
-	/// through this UI's Engine and retained until the exact composition
+	/// through this UI's Runtime and retained until the exact composition
 	/// submission completes.
 	///
 	/// A series whose auto-scaled range contains no finite sample draws
@@ -2158,9 +2158,9 @@ impl<'engine> Ui<'engine> {
 				),
 			);
 		}
-		let matrix = crate::Matrix::new_from_f32_on(self.engine, [values.len()], values)?;
+		let matrix = crate::Matrix::new_from_f32_on(self.runtime, [values.len()], values)?;
 		let descriptor = matrix
-			.engine_handle()
+			.runtime()
 			.storage_descriptor_index(matrix.storage())?;
 		let state = self
 			.state
@@ -2257,7 +2257,7 @@ impl<'engine> Ui<'engine> {
 			VideoColorMatrix::Bt709 | VideoColorMatrix::Unspecified => 1,
 			VideoColorMatrix::Bt2020 => 2,
 		};
-		let planes_idx = state.engine_handle.storage_descriptor_index(planes)?;
+		let planes_idx = state.runtime.storage_descriptor_index(planes)?;
 		state.cmds.push(UiCmd::BlitYuv {
 			planes_idx,
 			dst,
@@ -2301,9 +2301,9 @@ impl<'engine> Ui<'engine> {
 				"UI image rectangle must be positive",
 			));
 		}
-		if !texture.engine_handle().same_as(&self.engine.handle()) {
+		if !texture.runtime().same_as(&self.runtime.handle()) {
 			return Err(Error::invalid_argument(
-				"UI Texture belongs to a different Engine",
+				"UI Texture belongs to a different Runtime",
 			));
 		}
 		let view = texture
@@ -2475,8 +2475,8 @@ impl<'engine> Ui<'engine> {
 
 	/// Upload one 48-byte-record glyph batch and emit its `Glyphs` command.
 	fn emit_glyph_records(state: &mut UiState, bytes: Vec<u8>, clip: PixelRect) -> Result<()> {
-		let storage = state.engine_handle.create_storage(&bytes)?;
-		let glyph_idx = state.engine_handle.storage_descriptor_index(&storage)?;
+		let storage = state.runtime.create_storage(&bytes)?;
+		let glyph_idx = state.runtime.storage_descriptor_index(&storage)?;
 		let count = u32::try_from(bytes.len() / 48)
 			.map_err(|_| Error::out_of_range("glyph count exceeds u32"))?;
 		state.cmds.push(UiCmd::Glyphs {
@@ -2619,9 +2619,9 @@ impl<'engine> Ui<'engine> {
 		color: Color,
 		thickness: u32,
 	) -> Result<()> {
-		if !detections.engine_handle().same_as(&self.engine.handle()) {
+		if !detections.runtime().same_as(&self.runtime.handle()) {
 			return Err(Error::invalid_argument(
-				"Ui::rect_outlines requires a DetectionBuffer from its engine",
+				"Ui::rect_outlines requires a DetectionBuffer from its runtime",
 			));
 		}
 		if detections.count() == 0 || dst.w == 0 || dst.h == 0 || clip.w == 0 || clip.h == 0 {
@@ -2658,9 +2658,9 @@ impl<'engine> Ui<'engine> {
 	/// bounds rasterization and is intersected with `dst`. Donor:
 	/// `oa::Ui::glyphs`.
 	pub fn glyphs(&mut self, buffer: &GlyphBuffer, dst: PixelRect, clip: PixelRect) -> Result<()> {
-		if !buffer.engine_handle().same_as(&self.engine.handle()) {
+		if !buffer.runtime().same_as(&self.runtime.handle()) {
 			return Err(Error::invalid_argument(
-				"Ui::glyphs requires a GlyphBuffer from its engine",
+				"Ui::glyphs requires a GlyphBuffer from its runtime",
 			));
 		}
 		if buffer.count() == 0 || dst.w == 0 || dst.h == 0 || clip.w == 0 || clip.h == 0 {
@@ -4421,7 +4421,7 @@ impl<'engine> Ui<'engine> {
 		if values.dtype() != crate::DType::F32
 			|| values.shape().len() != 2
 			|| values.shape().contains(&0)
-			|| !values.engine_handle().same_as(&state.engine_handle)
+			|| !values.runtime().same_as(&state.runtime)
 			|| !range.iter().all(|v| v.is_finite())
 			|| range[0] >= range[1]
 			|| colormap > 3
@@ -4464,9 +4464,7 @@ impl<'engine> Ui<'engine> {
 			.top()
 			.map_or(viewport, |panel| viewport.clip(&panel.clip()))
 			.clip(&rect);
-		let values_idx = state
-			.engine_handle
-			.storage_descriptor_index(values.storage())?;
+		let values_idx = state.runtime.storage_descriptor_index(values.storage())?;
 		let push = [
 			values_idx,
 			rows,
@@ -4514,7 +4512,7 @@ impl<'engine> Ui<'engine> {
 			|| values.shape().len() != 2
 			|| values.shape()[1] != 2
 			|| values.shape()[0] == 0
-			|| !values.engine_handle().same_as(&state.engine_handle)
+			|| !values.runtime().same_as(&state.runtime)
 			|| !fraction.is_finite()
 			|| !played
 				.to_array()
@@ -4557,9 +4555,7 @@ impl<'engine> Ui<'engine> {
 			.top()
 			.map_or(viewport, |panel| viewport.clip(&panel.clip()))
 			.clip(&rect);
-		let values_idx = state
-			.engine_handle
-			.storage_descriptor_index(values.storage())?;
+		let values_idx = state.runtime.storage_descriptor_index(values.storage())?;
 		let push = [
 			values_idx,
 			bins,
@@ -4946,9 +4942,9 @@ impl<'engine> Ui<'engine> {
 			.state
 			.as_mut()
 			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
-		if !planes.is_valid() || !planes.engine_handle().same_as(&state.engine_handle) {
+		if !planes.is_valid() || !planes.runtime().same_as(&state.runtime) {
 			return Err(Error::invalid_argument(
-				"UI image_planar requires valid planes from its engine",
+				"UI image_planar requires valid planes from its runtime",
 			));
 		}
 		let mut slots = [u32::MAX; crate::ui::IMAGE_MAX_PLANES];
@@ -4983,11 +4979,11 @@ impl<'engine> Ui<'engine> {
 			.as_mut()
 			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
 		if !planes.is_valid()
-			|| !planes.engine_handle().same_as(&state.engine_handle)
+			|| !planes.runtime().same_as(&state.runtime)
 			|| channel >= planes.channel_count()
 		{
 			return Err(Error::invalid_argument(
-				"UI image_plane requires a valid channel from its engine",
+				"UI image_plane requires a valid channel from its runtime",
 			));
 		}
 		let index = planes.plane_index(channel)?;
@@ -5108,7 +5104,7 @@ impl<'engine> Ui<'engine> {
 	///
 	/// The samples are packed as one contiguous X block followed by the Y
 	/// block — the `draw_plot_line` explicit-XY ABI — and uploaded through
-	/// this UI's Engine with retention until the composition submission
+	/// this UI's Runtime with retention until the composition submission
 	/// completes. Values outside the declared limits clamp to the rectangle
 	/// edge; non-finite points break the polyline.
 	#[allow(clippy::too_many_arguments)]
@@ -5149,9 +5145,9 @@ impl<'engine> Ui<'engine> {
 		let mut packed: Vec<f32> = Vec::with_capacity(x.len() * 2);
 		packed.extend_from_slice(x);
 		packed.extend_from_slice(y);
-		let matrix = crate::Matrix::new_from_f32_on(self.engine, [packed.len()], &packed)?;
+		let matrix = crate::Matrix::new_from_f32_on(self.runtime, [packed.len()], &packed)?;
 		let descriptor = matrix
-			.engine_handle()
+			.runtime()
 			.storage_descriptor_index(matrix.storage())?;
 		let state = self
 			.state
@@ -5228,7 +5224,7 @@ impl<'engine> Ui<'engine> {
 			));
 		}
 		let descriptor = values
-			.engine_handle()
+			.runtime()
 			.storage_descriptor_index(values.storage())?;
 		let count =
 			u32::try_from(shape[1]).map_err(|_| Error::out_of_range("sample count exceeds u32"))?;
@@ -5296,7 +5292,7 @@ impl<'engine> Ui<'engine> {
 			));
 		}
 		let descriptor = values
-			.engine_handle()
+			.runtime()
 			.storage_descriptor_index(values.storage())?;
 		let count =
 			u32::try_from(shape[0]).map_err(|_| Error::out_of_range("sample count exceeds u32"))?;
@@ -5464,8 +5460,8 @@ impl<'engine> Ui<'engine> {
 			return Ok(());
 		}
 		let clip = rect;
-		let storage = state.engine_handle.create_storage(&bytes)?;
-		let glyph_idx = state.engine_handle.storage_descriptor_index(&storage)?;
+		let storage = state.runtime.create_storage(&bytes)?;
+		let glyph_idx = state.runtime.storage_descriptor_index(&storage)?;
 		let count = u32::try_from(bytes.len() / 48)
 			.map_err(|_| Error::out_of_range("glyph count exceeds u32"))?;
 		state.cmds.push(UiCmd::Glyphs {
@@ -5496,8 +5492,8 @@ impl<'engine> Ui<'engine> {
 	}
 
 	fn frame_bindings(state: &UiState) -> Result<std::rc::Rc<UiFrameBindings>> {
-		state.engine_handle.prepare_ui_sources()?;
-		let engine = &state.engine_handle;
+		state.runtime.prepare_ui_sources()?;
+		let runtime = &state.runtime;
 		let storages = state
 			.frame_storages
 			.iter()
@@ -5506,12 +5502,12 @@ impl<'engine> Ui<'engine> {
 		let mut buffers = std::collections::HashMap::new();
 		for storage in storages {
 			buffers.insert(
-				engine.storage_descriptor_index(storage)?,
-				engine.ui_buffer_info(storage)?,
+				runtime.storage_descriptor_index(storage)?,
+				runtime.ui_buffer_info(storage)?,
 			);
 		}
 		Ok(std::rc::Rc::new(UiFrameBindings::new(
-			engine,
+			runtime,
 			&state.pipelines.layouts,
 			&state.cmds.cmds,
 			|index| {
@@ -5563,7 +5559,7 @@ impl<'engine> Ui<'engine> {
 		let shader_stages = vk::PipelineStageFlagBits2::VERTEX_SHADER_BIT
 			| vk::PipelineStageFlagBits2::FRAGMENT_SHADER_BIT;
 
-		// SAFETY: the Engine supplies a recording graphics command buffer and
+		// SAFETY: the Runtime supplies a recording graphics command buffer and
 		// retains the compose image. The barrier preserves its prior layout and
 		// makes host-filled source buffers visible to vertex/fragment reads.
 		unsafe {
@@ -6154,7 +6150,7 @@ impl<'engine> Ui<'engine> {
 			.state
 			.as_ref()
 			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
-		let handle = state.engine_handle.clone();
+		let handle = state.runtime.clone();
 		let image = state.compose.raw_image();
 		let width = state.compose.width;
 		let height = state.compose.height;
@@ -6218,7 +6214,7 @@ impl<'engine> Ui<'engine> {
 			.state
 			.as_ref()
 			.ok_or_else(|| Error::failed_precondition("Ui is closed"))?;
-		presenter.validate_ui_engine(&state.engine_handle)?;
+		presenter.validate_ui_runtime(&state.runtime)?;
 		let image = state.compose.raw_image();
 		let width = state.compose.width;
 		let height = state.compose.height;

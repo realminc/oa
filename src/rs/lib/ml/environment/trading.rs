@@ -8,7 +8,7 @@ use super::{
 };
 pub use crate::ml::types::TradingConfig;
 use crate::runtime::{BufferBinding, ComputeDispatch, KernelId, PushConstant, SemanticDispatch};
-use crate::{DType, Engine, Error, Matrix, OpAttribute, Result, matrix};
+use crate::{DType, Error, Matrix, OpAttribute, Result, Runtime, matrix};
 
 /// Account observation ABI v4: exposure, equity, peak, drawdown, time left,
 /// position PnL/age/peak, pending delta/delay and margins, then pending-leg
@@ -111,13 +111,13 @@ impl TradingConfig {
 	}
 }
 
-/// Device-resident trading dynamics over one Engine and the canonical lifecycle.
+/// Device-resident trading dynamics over one Runtime and the canonical lifecycle.
 /// Observations append signed exposure, equity/capital, peak/capital, drawdown,
 /// remaining horizon, unrealized PnL/capital, position age/horizon and peak
 /// unrealized position PnL/capital.
 #[must_use]
-pub struct TradingEnvironment<'engine> {
-	engine: &'engine Engine,
+pub struct TradingEnvironment<'runtime> {
+	runtime: &'runtime Runtime,
 	execution: EnvironmentExecution,
 	config: TradingConfig,
 	spec: EnvironmentSpec,
@@ -140,7 +140,7 @@ pub struct TradingEnvironment<'engine> {
 	source: crate::crypto::Hash,
 }
 
-impl<'engine> TradingEnvironment<'engine> {
+impl<'runtime> TradingEnvironment<'runtime> {
 	/// Change the actual-notional fee between episodes without resetting lane state.
 	/// Existing captured programs retain their recorded fee; discard and recapture
 	/// the `TradingRolloutProgram` before collecting with the new configuration.
@@ -163,7 +163,7 @@ impl<'engine> TradingEnvironment<'engine> {
 				"fee changes require idle trading execution",
 			));
 		}
-		self.engine.checkpoint()?.wait()?;
+		self.runtime.checkpoint()?.wait()?;
 		if self.committed {
 			self.check_status()?;
 			let metadata = self.meta.read::<u32>()?;
@@ -191,11 +191,11 @@ impl<'engine> TradingEnvironment<'engine> {
 	/// Rejects discontinuous or invalid data, insufficient episode coverage,
 	/// overflowing extents, unsupported policy, allocation or recording failure.
 	pub fn new(
-		engine: &'engine Engine,
+		runtime: &'runtime Runtime,
 		config: TradingConfig,
 		series: &[TradingSeries],
 	) -> Result<Self> {
-		Self::new_with_row_capacity(engine, config, series, 0)
+		Self::new_with_row_capacity(runtime, config, series, 0)
 	}
 
 	/// Allocate stable table capacity for replay across changing contiguous segments.
@@ -203,7 +203,7 @@ impl<'engine> TradingEnvironment<'engine> {
 	/// # Errors
 	/// Returns the validation errors of `new` or an excessive capacity error.
 	pub fn new_with_row_capacity(
-		engine: &'engine Engine,
+		runtime: &'runtime Runtime,
 		config: TradingConfig,
 		series: &[TradingSeries],
 		capacity: usize,
@@ -263,27 +263,27 @@ impl<'engine> TradingEnvironment<'engine> {
 			EnvironmentSpace::binary("truncated", [])?,
 		)?;
 		Ok(Self {
-			engine,
-			execution: EnvironmentExecution::new(engine),
+			runtime,
+			execution: EnvironmentExecution::new(runtime),
 			config,
 			spec,
 			market: Matrix::new_from_f32_on(
-				engine,
+				runtime,
 				[market.len() / market_width, market_width],
 				&market,
 			)?,
-			features: Matrix::new_from_f32_on(engine, [features.len() / width, width], &features)?,
-			bounds: Matrix::new_from_slice_on(engine, [lanes, 2], &bounds)?,
-			rules: Matrix::new_from_f32_on(engine, [lanes, RULE_WIDTH], &rules)?,
+			features: Matrix::new_from_f32_on(runtime, [features.len() / width, width], &features)?,
+			bounds: Matrix::new_from_slice_on(runtime, [lanes, 2], &bounds)?,
+			rules: Matrix::new_from_f32_on(runtime, [lanes, RULE_WIDTH], &rules)?,
 			ledger: Matrix::new_from_f32_on(
-				engine,
+				runtime,
 				[lanes, TRADING_LEDGER_WIDTH],
 				&vec![0.0; lanes * TRADING_LEDGER_WIDTH],
 			)?,
-			meta: Matrix::new_from_slice_on(engine, [lanes, 4], &vec![0_u32; lanes * 4])?,
-			done: Matrix::new_from_slice_on(engine, [lanes], &vec![0_u8; lanes])?,
+			meta: Matrix::new_from_slice_on(runtime, [lanes, 4], &vec![0_u32; lanes * 4])?,
+			done: Matrix::new_from_slice_on(runtime, [lanes], &vec![0_u8; lanes])?,
 			observation: Matrix::new_from_f32_on(
-				engine,
+				runtime,
 				[lanes, observation_width],
 				&vec![0.0; lanes * observation_width],
 			)?,
@@ -343,7 +343,7 @@ impl<'engine> TradingEnvironment<'engine> {
 		}
 		market.resize(self.market.num_elements(), 0.);
 		features.resize(self.features.num_elements(), 0.);
-		self.engine.checkpoint()?.wait()?;
+		self.runtime.checkpoint()?.wait()?;
 		self.committed = false;
 		self.tables_valid = false;
 		self.market.write_values(&market)?;
@@ -518,7 +518,7 @@ impl<'engine> TradingEnvironment<'engine> {
 			value: only_done,
 		});
 
-		self.market.engine_handle().record_semantic(
+		self.market.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: if cursor.is_some() {
 					KernelId::MlTradingResetCursorF32
@@ -564,9 +564,9 @@ impl<'engine> TradingEnvironment<'engine> {
 		if !self.committed && !self.reset_pending {
 			return Err(Error::failed_precondition("trading step requires reset"));
 		}
-		if !self.engine.owns_matrix(action) {
+		if !self.runtime.owns_matrix(action) {
 			return Err(Error::invalid_argument(
-				"trading action belongs to another Engine",
+				"trading action belongs to another Runtime",
 			));
 		}
 		// Immutable snapshots survive later reset/step calls in the same transaction.
@@ -577,14 +577,14 @@ impl<'engine> TradingEnvironment<'engine> {
 		};
 		let lanes = self.config.environments as usize;
 		let next = Matrix::allocate(
-			self.market.engine_handle(),
+			self.market.runtime(),
 			self.observation.shape().to_vec(),
 			self.observation.num_elements(),
 			DType::F32,
 		)?;
-		let reward = Matrix::allocate(self.market.engine_handle(), vec![lanes], lanes, DType::F32)?;
-		let terminated = Matrix::new_from_slice_on(self.engine, [lanes], &vec![0_u8; lanes])?;
-		let truncated = Matrix::new_from_slice_on(self.engine, [lanes], &vec![0_u8; lanes])?;
+		let reward = Matrix::allocate(self.market.runtime(), vec![lanes], lanes, DType::F32)?;
+		let terminated = Matrix::new_from_slice_on(self.runtime, [lanes], &vec![0_u8; lanes])?;
+		let truncated = Matrix::new_from_slice_on(self.runtime, [lanes], &vec![0_u8; lanes])?;
 		let mut buffers = vec![
 			BufferBinding::read(self.market.storage()),
 			BufferBinding::read(self.features.storage()),
@@ -651,7 +651,7 @@ impl<'engine> TradingEnvironment<'engine> {
 			});
 		}
 
-		self.market.engine_handle().record_semantic(
+		self.market.runtime().record_semantic(
 			ComputeDispatch {
 				kernel: if cursor.is_some() {
 					KernelId::MlTradingStepCursorF32
@@ -693,8 +693,8 @@ impl<'engine> TradingEnvironment<'engine> {
 }
 
 impl Environment for TradingEnvironment<'_> {
-	fn engine(&self) -> &Engine {
-		self.engine
+	fn runtime(&self) -> &Runtime {
+		self.runtime
 	}
 
 	fn spec(&self) -> &EnvironmentSpec {

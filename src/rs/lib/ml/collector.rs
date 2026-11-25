@@ -22,7 +22,7 @@ pub struct RolloutCollectorMetrics {
 /// Environment-neutral categorical collector over borrowed owners.
 ///
 /// Collection records one complete transaction and returns its exact Event
-/// without waiting. It owns no environment, model, rollout storage, Engine, or
+/// without waiting. It owns no environment, model, rollout storage, Runtime, or
 /// queue.
 #[must_use]
 pub struct RolloutCollector<'environment, 'model> {
@@ -39,7 +39,7 @@ impl<'environment, 'model> RolloutCollector<'environment, 'model> {
 	/// # Errors
 	///
 	/// Returns an error for zero horizon/lanes, invalid environment metadata, a
-	/// non-discrete action space, or model parameters owned by another Engine.
+	/// non-discrete action space, or model parameters owned by another Runtime.
 	pub fn new(
 		environment: &'environment mut dyn Environment,
 		model: &'model dyn ActorCritic,
@@ -56,9 +56,9 @@ impl<'environment, 'model> RolloutCollector<'environment, 'model> {
 			));
 		}
 		for parameter in model.all_parameters()? {
-			if !environment.engine().owns_matrix(&parameter.data()) {
+			if !environment.runtime().owns_matrix(&parameter.data()) {
 				return Err(Error::invalid_argument(
-					"rollout collector model must belong to the environment Engine",
+					"rollout collector model must belong to the environment Runtime",
 				));
 			}
 		}

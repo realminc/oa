@@ -9,10 +9,10 @@ fn unread_timing_pool_does_not_retain_owning_device() -> crate::Result<()> {
 		.expect("explicit device")
 		.parse::<usize>()
 		.unwrap();
-	let engine = crate::Engine::builder()
+	let runtime = crate::Runtime::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	crate::Engine::set_default(engine.clone());
+	crate::Runtime::set_default(runtime.clone());
 	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
@@ -25,7 +25,7 @@ fn unread_timing_pool_does_not_retain_owning_device() -> crate::Result<()> {
 	let timings = device.route_timings(vec![(1, ObservedRoute::Tape)])?;
 	device.jit_observe_timings(timings.clone());
 	drop(timings);
-	drop(engine);
+	drop(runtime);
 	drop(device);
 	assert!(
 		weak.upgrade().is_none(),
@@ -42,10 +42,10 @@ fn negative_pipeline_admissions_stay_bounded() -> crate::Result<()> {
 		.expect("explicit device")
 		.parse::<usize>()
 		.unwrap();
-	let engine = crate::Engine::builder()
+	let runtime = crate::Runtime::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	crate::Engine::set_default(engine.clone());
+	crate::Runtime::set_default(runtime.clone());
 	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
@@ -142,10 +142,10 @@ fn block_artifacts_restore_from_vkcache() -> crate::Result<()> {
 	let var_dir = std::env::temp_dir().join(format!("oa-block-persist-{}", std::process::id()));
 	let _lib = ScopedEnv::set("OA_SLANG_LIBRARY", &library);
 	let _var = ScopedEnv::set("OA_VAR", var_dir.as_os_str());
-	let engine = crate::Engine::builder()
+	let runtime = crate::Runtime::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	crate::Engine::set_default(engine.clone());
+	crate::Runtime::set_default(runtime.clone());
 	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
@@ -155,9 +155,9 @@ fn block_artifacts_restore_from_vkcache() -> crate::Result<()> {
 		.clone();
 	drop(value);
 
-	// Session one: admit compiles through the trusted path and the Engine
+	// Session one: admit compiles through the trusted path and the Runtime
 	// snapshot serializes sections 7/8 into the scoped cache.
-	let program = crate::runtime::dna::ir::tile::BlockProgram::mat_mul_nt(64, 64, 16, 4, 4, 4)?;
+	let program = crate::runtime::dna::ir::tile::BlockProgram::matmul(64, 64, 16, 4, 4, 4)?;
 	let key = device
 		.jit_admit_tile(&program)
 		.expect("block admission compiles under the trusted compiler");
@@ -178,7 +178,7 @@ fn block_artifacts_restore_from_vkcache() -> crate::Result<()> {
 			.section(vkcache::SECTION_BLOCK_SPIRV_ARTIFACTS)
 			.is_some()
 	);
-	drop(engine);
+	drop(runtime);
 
 	// Session two: a fresh JitFusion restores without admitting — the only
 	// path that can populate `block_artifacts` — so a hit proves restore.
@@ -224,10 +224,10 @@ fn block_route_observations_record_tile_dispatches() -> crate::Result<()> {
 	let _lib = ScopedEnv::set("OA_SLANG_LIBRARY", &library);
 	let _var = ScopedEnv::set("OA_VAR", var_dir.as_os_str());
 	let _tile = ScopedEnv::set("OA_TILE_GEMM", std::ffi::OsStr::new("1"));
-	let engine = crate::Engine::builder()
+	let runtime = crate::Runtime::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	crate::Engine::set_default(engine.clone());
+	crate::Runtime::set_default(runtime.clone());
 	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
@@ -241,7 +241,7 @@ fn block_route_observations_record_tile_dispatches() -> crate::Result<()> {
 	// Each flush rebuilds the graph: admission probes the specialized route
 	// while recordings timestamp it under the block signature.
 	for _ in 0..8 {
-		crate::matrix::mat_mul_nt(&left, &right)?.read_f32()?;
+		crate::matrix::matmul(&left, &right)?.read_f32()?;
 	}
 	let updates = device.jit_section_updates();
 	let observations = updates
@@ -250,7 +250,7 @@ fn block_route_observations_record_tile_dispatches() -> crate::Result<()> {
 		.expect("tile dispatches must leave a route-observation update");
 	let payload = observations.payload.as_deref().expect("section payload");
 	let records = jit::decode_observations(payload)?;
-	let program = crate::runtime::dna::ir::tile::BlockProgram::mat_mul_nt(64, 64, 16, 4, 4, 4)?;
+	let program = crate::runtime::dna::ir::tile::BlockProgram::matmul(64, 64, 16, 4, 4, 4)?;
 	let signature = block_signature(&program);
 	let record = records
 		.iter()
@@ -340,10 +340,10 @@ fn audio_mel_normalize_tile_route_matches_incumbent() -> crate::Result<()> {
 		.unwrap();
 	let library = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit compiler library");
 	let _lib = ScopedEnv::set("OA_SLANG_LIBRARY", &library);
-	let engine = crate::Engine::builder()
+	let runtime = crate::Runtime::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	crate::Engine::set_default(engine.clone());
+	crate::Runtime::set_default(runtime.clone());
 	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
@@ -375,7 +375,7 @@ fn audio_mel_normalize_tile_route_matches_incumbent() -> crate::Result<()> {
 		})
 		.collect();
 	let input = crate::Audio::new_from_planar_f32(
-		&engine,
+		&runtime,
 		&samples,
 		2,
 		16_000,
@@ -455,10 +455,10 @@ fn audio_mel_chain_runs_as_one_post_fft_region() -> crate::Result<()> {
 		.unwrap();
 	let library = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit compiler library");
 	let _lib = ScopedEnv::set("OA_SLANG_LIBRARY", &library);
-	let engine = crate::Engine::builder()
+	let runtime = crate::Runtime::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	crate::Engine::set_default(engine.clone());
+	crate::Runtime::set_default(runtime.clone());
 	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
@@ -484,7 +484,7 @@ fn audio_mel_chain_runs_as_one_post_fft_region() -> crate::Result<()> {
 		})
 		.collect();
 	let input = crate::Audio::new_from_planar_f32(
-		&engine,
+		&runtime,
 		&samples,
 		2,
 		16_000,
@@ -504,14 +504,14 @@ fn audio_mel_chain_runs_as_one_post_fft_region() -> crate::Result<()> {
 	let mel = |input: &crate::Audio| -> crate::Result<crate::Matrix> {
 		crate::audio::mel_spectrogram(input, config)
 	};
-	let (plan, fused_output) = engine.capture(|| mel(&input))?;
+	let (plan, fused_output) = runtime.capture(|| mel(&input))?;
 	let report: serde_json::Value =
 		serde_json::from_str(&plan.debug_report_json("mel chain")).unwrap();
 	assert_eq!(
 		report["stats"]["dispatches"], 2,
 		"stft + staged mel chain must emit two dispatches: {report}"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let fused = fused_output.read_f32()?;
 	drop(tile);
 
@@ -541,10 +541,10 @@ fn image_resize_tile_route_matches_incumbent() -> crate::Result<()> {
 		.unwrap();
 	let library = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit compiler library");
 	let _lib = ScopedEnv::set("OA_SLANG_LIBRARY", &library);
-	let engine = crate::Engine::builder()
+	let runtime = crate::Runtime::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	crate::Engine::set_default(engine.clone());
+	crate::Runtime::set_default(runtime.clone());
 	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
@@ -1185,10 +1185,10 @@ fn video_to_matrix_tile_route_matches_incumbent() -> crate::Result<()> {
 		.unwrap();
 	let library = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit compiler library");
 	let _lib = ScopedEnv::set("OA_SLANG_LIBRARY", &library);
-	let engine = crate::Engine::builder()
+	let runtime = crate::Runtime::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	crate::Engine::set_default(engine.clone());
+	crate::Runtime::set_default(runtime.clone());
 	let value = crate::matrix::from_f32([1], &[1.0])?;
 	let device = value
 		.storage()
@@ -1353,10 +1353,10 @@ fn image_scalar_epilogue_folds_into_the_tile_route() -> crate::Result<()> {
 		.unwrap();
 	let library = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit compiler library");
 	let _lib = ScopedEnv::set("OA_SLANG_LIBRARY", &library);
-	let engine = crate::Engine::builder()
+	let runtime = crate::Runtime::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	crate::Engine::set_default(engine.clone());
+	crate::Runtime::set_default(runtime.clone());
 	let _tile = ScopedEnv::set("OA_TILE_IMAGE", std::ffi::OsStr::new("1"));
 
 	let shape = [2_usize, 3, 5, 7];
@@ -1377,14 +1377,14 @@ fn image_scalar_epilogue_folds_into_the_tile_route() -> crate::Result<()> {
 
 	// The captured chain must fuse into ONE dispatch: the tile gather
 	// carries both scalar ops in its store tail.
-	let (plan, fused_output) = engine.capture(|| chain(&image))?;
+	let (plan, fused_output) = runtime.capture(|| chain(&image))?;
 	let report: serde_json::Value =
 		serde_json::from_str(&plan.debug_report_json("image normalize")).unwrap();
 	assert_eq!(
 		report["stats"]["dispatches"], 1,
 		"resize + scalar normalize must emit one region: {report}"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let fused = fused_output.read_f32()?;
 
 	// The unfused reference runs the same ops on separate dispatches.
@@ -1413,14 +1413,14 @@ fn image_scalar_epilogue_folds_into_the_tile_route() -> crate::Result<()> {
 			.sqrt()?
 			.neg()
 	};
-	let (plan, fused_output) = engine.capture(|| unary(&image))?;
+	let (plan, fused_output) = runtime.capture(|| unary(&image))?;
 	let report: serde_json::Value =
 		serde_json::from_str(&plan.debug_report_json("unary tail")).unwrap();
 	assert_eq!(
 		report["stats"]["dispatches"], 1,
 		"crop + unary tail must emit one region: {report}"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let fused = fused_output.read_f32()?;
 	let unfused = {
 		let _off = ScopedEnv::set("OA_TILE_IMAGE", std::ffi::OsStr::new("0"));
@@ -1444,7 +1444,7 @@ fn image_scalar_epilogue_folds_into_the_tile_route() -> crate::Result<()> {
 		crate::ImageLayout::Nchw,
 		crate::ImageFormat::Rgb,
 	)?;
-	engine.checkpoint()?.wait()?;
+	runtime.checkpoint()?.wait()?;
 	let prologue = |image: &crate::Image| -> crate::Result<crate::Matrix> {
 		let upstream = crate::Image::new(
 			image.as_matrix().log()?,
@@ -1455,14 +1455,14 @@ fn image_scalar_epilogue_folds_into_the_tile_route() -> crate::Result<()> {
 			.as_matrix()
 			.copy()
 	};
-	let (plan, fused_output) = engine.capture(|| prologue(&positive))?;
+	let (plan, fused_output) = runtime.capture(|| prologue(&positive))?;
 	let report: serde_json::Value =
 		serde_json::from_str(&plan.debug_report_json("prologue")).unwrap();
 	assert_eq!(
 		report["stats"]["dispatches"], 1,
 		"scalar producer + elementwise consumer must emit one region: {report}"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let fused = fused_output.read_f32()?;
 	let unfused = {
 		let _off = ScopedEnv::set("OA_TILE_IMAGE", std::ffi::OsStr::new("0"));
@@ -1486,14 +1486,14 @@ fn image_scalar_epilogue_folds_into_the_tile_route() -> crate::Result<()> {
 			.as_matrix()
 			.copy()
 	};
-	let (plan, gather_output) = engine.capture(|| gather(&positive))?;
+	let (plan, gather_output) = runtime.capture(|| gather(&positive))?;
 	let report: serde_json::Value =
 		serde_json::from_str(&plan.debug_report_json("gather prologue")).unwrap();
 	assert_eq!(
 		report["stats"]["dispatches"], 2,
 		"a bilinear gather must not fold a pointwise producer: {report}"
 	);
-	engine.submit(&plan)?.wait()?;
+	runtime.submit(&plan)?.wait()?;
 	let unfused = {
 		let _off = ScopedEnv::set("OA_TILE_IMAGE", std::ffi::OsStr::new("0"));
 		gather(&positive)?.read_f32()?
@@ -1515,10 +1515,10 @@ fn tile_image_audio_families_record_device_medians() -> crate::Result<()> {
 		.unwrap();
 	let library = std::env::var_os("OA_TEST_SLANG_LIBRARY").expect("explicit compiler library");
 	let _lib = ScopedEnv::set("OA_SLANG_LIBRARY", &library);
-	let engine = crate::Engine::builder()
+	let runtime = crate::Runtime::builder()
 		.devices(crate::DeviceSelection::Index(index))
 		.build()?;
-	crate::Engine::set_default(engine.clone());
+	crate::Runtime::set_default(runtime.clone());
 
 	let shape = [2_usize, 3, 64, 96];
 	let values = (0..shape.iter().product::<usize>())
@@ -1546,7 +1546,7 @@ fn tile_image_audio_families_record_device_medians() -> crate::Result<()> {
 		})
 		.collect();
 	let audio = crate::Audio::new_from_planar_f32(
-		&engine,
+		&runtime,
 		&samples,
 		2,
 		16_000,
@@ -1594,7 +1594,7 @@ fn tile_image_audio_families_record_device_medians() -> crate::Result<()> {
 	while let Some(packet) = demuxer.read_next_packet()? {
 		packets.push(packet);
 	}
-	let decoder = crate::video::VideoDecoder::new(&engine, demuxer.info())?;
+	let decoder = crate::video::VideoDecoder::new(&runtime, demuxer.info())?;
 	let mm_audio = crate::audio::decode_file(&fixture)?;
 	let mm_config = crate::video::VideoMatrixConfig {
 		size: Some((16, 16)),
@@ -1631,12 +1631,12 @@ fn tile_image_audio_families_record_device_medians() -> crate::Result<()> {
 			let frames = decoder.record_to_planes(&packets)?;
 			let video_score = crate::video::to_matrix(&frames, &mm_config)?
 				.reshape(vec![frames.len(), video_features])?
-				.mat_mul_nt(&video_weight)?
+				.matmul(&video_weight)?
 				.mean(0)?
 				.reshape(vec![1, class_count])?;
 			let audio_score = crate::audio::mel_spectrogram(&mm_audio, mm_mel)?
 				.reshape(vec![1, audio_features])?
-				.mat_mul_nt(&audio_weight)?;
+				.matmul(&audio_weight)?;
 			video_score.add(&audio_score)?.softmax(-1)?;
 			Ok(())
 		}),
@@ -1697,13 +1697,19 @@ fn tile_image_audio_families_record_device_medians() -> crate::Result<()> {
 			let gate = ScopedEnv::set("OA_TILE_IMAGE", std::ffi::OsStr::new(enabled));
 			let audio_gate = ScopedEnv::set("OA_TILE_AUDIO", std::ffi::OsStr::new(enabled));
 			let video_gate = ScopedEnv::set("OA_TILE_VIDEO", std::ffi::OsStr::new(enabled));
-			let (plan, ()) = engine.capture(&*run)?;
+			let (plan, ()) = runtime.capture(&*run)?;
 			for _ in 0..3 {
-				engine.submit(&plan)?.wait()?;
+				runtime.submit(&plan)?.wait()?;
 			}
 			let mut samples = Vec::new();
 			for _ in 0..11 {
-				samples.push(engine.submit_timed(&plan)?.device_duration()?.as_secs_f64() * 1000.0);
+				samples.push(
+					runtime
+						.submit_timed(&plan)?
+						.device_duration()?
+						.as_secs_f64()
+						* 1000.0,
+				);
 			}
 			samples.sort_by(f64::total_cmp);
 			medians[slot] = samples[5];

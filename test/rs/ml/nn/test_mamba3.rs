@@ -61,7 +61,7 @@ impl HostInputs {
 		}
 	}
 
-	fn upload(&self, _engine: &oa::Engine, config: SsmConfig) -> oa::Result<DeviceInputs> {
+	fn upload(&self, _runtime: &oa::Runtime, config: SsmConfig) -> oa::Result<DeviceInputs> {
 		let groups = if config.num_groups == 0 {
 			config.num_heads
 		} else {
@@ -325,10 +325,10 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
 	}
 }
 
-fn gradcheck_siso(engine: &oa::Engine, config: SsmConfig, tolerance: f32) -> oa::Result<()> {
+fn gradcheck_siso(runtime: &oa::Runtime, config: SsmConfig, tolerance: f32) -> oa::Result<()> {
 	let mut host = HostInputs::deterministic(config);
 	let upstream = HostInputs::deterministic(config).x;
-	let device = host.upload(engine, config)?;
+	let device = host.upload(runtime, config)?;
 	let upstream_matrix = oa::Matrix::new_from_f32(
 		[
 			config.batch_size,
@@ -468,7 +468,7 @@ impl MimoHostInputs {
 		}
 	}
 
-	fn upload(&self, _engine: &oa::Engine, config: SsmConfig) -> oa::Result<MimoDeviceInputs> {
+	fn upload(&self, _runtime: &oa::Runtime, config: SsmConfig) -> oa::Result<MimoDeviceInputs> {
 		let groups = if config.num_groups == 0 {
 			config.num_heads
 		} else {
@@ -876,18 +876,18 @@ fn config(batch_size: usize, sequence_length: usize, num_heads: usize) -> SsmCon
 	}
 }
 
-test_vk!(mamba3_siso_matches_independent_donor_recurrence, engine, {
+test_vk!(mamba3_siso_matches_independent_donor_recurrence, runtime, {
 	let config = config(2, 6, 2);
 	let host = HostInputs::deterministic(config);
 	let expected = reference_forward(&host, config);
-	let actual = host.upload(&engine, config)?.forward(config)?.read_f32()?;
+	let actual = host.upload(&runtime, config)?.forward(config)?.read_f32()?;
 	assert_close(&actual, &expected, 1.0e-4);
 	Ok(())
 });
 
 test_vk!(
 	mamba3_mimo_matches_independent_shared_state_recurrence,
-	engine,
+	runtime,
 	{
 		let config = SsmConfig {
 			batch_size: 1,
@@ -904,13 +904,13 @@ test_vk!(
 		};
 		let host = MimoHostInputs::deterministic(config);
 		let expected = reference_mimo_forward(&host, config);
-		let actual = host.upload(&engine, config)?.forward(config)?.read_f32()?;
+		let actual = host.upload(&runtime, config)?.forward(config)?.read_f32()?;
 		assert_close(&actual, &expected, 2.0e-4);
 		Ok(())
 	}
 );
 
-test_vk!(mamba3_mimo_recurrent_steps_match_full_scan, engine, {
+test_vk!(mamba3_mimo_recurrent_steps_match_full_scan, runtime, {
 	let config = SsmConfig {
 		batch_size: 1,
 		sequence_length: 5,
@@ -962,7 +962,7 @@ test_vk!(mamba3_mimo_recurrent_steps_match_full_scan, engine, {
 	for time in 0..config.sequence_length {
 		let mut step_config = config;
 		step_config.sequence_length = 1;
-		let token = host.token(time, config).upload(&engine, step_config)?;
+		let token = host.token(time, config).upload(&runtime, step_config)?;
 		let output = oa::ml::matrix::mamba3_mimo_step(
 			&token.c,
 			&token.b,
@@ -999,7 +999,7 @@ test_vk!(mamba3_mimo_recurrent_steps_match_full_scan, engine, {
 
 test_vk!(
 	mamba3_mimo_backward_matches_all_fifteen_finite_differences,
-	engine,
+	runtime,
 	{
 		let config = SsmConfig {
 			batch_size: 1,
@@ -1018,7 +1018,7 @@ test_vk!(
 		let upstream = (0..host.x.len())
 			.map(|index| 0.4 * (0.73 * index as f32 + 0.2).cos())
 			.collect::<Vec<_>>();
-		let device = host.upload(&engine, config)?;
+		let device = host.upload(&runtime, config)?;
 		let upstream_matrix = oa::Matrix::new_from_f32(
 			[
 				config.batch_size,
@@ -1076,7 +1076,7 @@ test_vk!(
 	}
 );
 
-test_vk!(mamba3_siso_recurrent_steps_match_full_scan, engine, {
+test_vk!(mamba3_siso_recurrent_steps_match_full_scan, runtime, {
 	let config = SsmConfig {
 		batch_size: 2,
 		sequence_length: 6,
@@ -1091,7 +1091,7 @@ test_vk!(mamba3_siso_recurrent_steps_match_full_scan, engine, {
 		has_output_norm: false,
 	};
 	let host = HostInputs::deterministic(config);
-	let expected = host.upload(&engine, config)?.forward(config)?.read_f32()?;
+	let expected = host.upload(&runtime, config)?.forward(config)?.read_f32()?;
 	let mut ssm_state = oa::matrix::full(
 		[
 			config.batch_size,
@@ -1114,7 +1114,7 @@ test_vk!(mamba3_siso_recurrent_steps_match_full_scan, engine, {
 	for time in 0..config.sequence_length {
 		let mut step_config = config;
 		step_config.sequence_length = 1;
-		let token = host.token(time, config).upload(&engine, step_config)?;
+		let token = host.token(time, config).upload(&runtime, step_config)?;
 		let output = oa::ml::matrix::mamba3_siso_step(
 			&token.c,
 			&token.b,
@@ -1146,7 +1146,7 @@ test_vk!(mamba3_siso_recurrent_steps_match_full_scan, engine, {
 	Ok(())
 });
 
-test_vk!(mamba3_siso_grouped_qk_matches_expanded_heads, engine, {
+test_vk!(mamba3_siso_grouped_qk_matches_expanded_heads, runtime, {
 	let grouped_config = SsmConfig {
 		batch_size: 1,
 		sequence_length: 5,
@@ -1162,8 +1162,8 @@ test_vk!(mamba3_siso_grouped_qk_matches_expanded_heads, engine, {
 	};
 	let grouped = HostInputs::deterministic(grouped_config);
 	let (expanded, expanded_config) = expand_qk_to_heads(&grouped, grouped_config);
-	let grouped_device = grouped.upload(&engine, grouped_config)?;
-	let expanded_device = expanded.upload(&engine, expanded_config)?;
+	let grouped_device = grouped.upload(&runtime, grouped_config)?;
+	let expanded_device = expanded.upload(&runtime, expanded_config)?;
 	assert_close(
 		&grouped_device.forward(grouped_config)?.read_f32()?,
 		&expanded_device.forward(expanded_config)?.read_f32()?,
@@ -1236,10 +1236,10 @@ test_vk!(mamba3_siso_grouped_qk_matches_expanded_heads, engine, {
 	Ok(())
 });
 
-test_vk!(mamba3_siso_tape_routes_the_complete_x_adjoint, engine, {
+test_vk!(mamba3_siso_tape_routes_the_complete_x_adjoint, runtime, {
 	let config = config(1, 3, 2);
 	let host = HostInputs::deterministic(config);
-	let device = host.upload(&engine, config)?;
+	let device = host.upload(&runtime, config)?;
 	let upstream = oa::Matrix::new_from_f32(device.x.shape().to_vec(), &vec![1.0; host.x.len()])?;
 	let expected = device.backward(&upstream, config)?.x.read_f32()?;
 
@@ -1286,7 +1286,7 @@ test_vk!(mamba3_siso_tape_routes_the_complete_x_adjoint, engine, {
 
 test_vk!(
 	mamba3_siso_short_backward_matches_finite_differences,
-	engine,
+	runtime,
 	{
 		let config = SsmConfig {
 			batch_size: 1,
@@ -1301,13 +1301,13 @@ test_vk!(
 			has_d: true,
 			has_output_norm: false,
 		};
-		gradcheck_siso(&engine, config, 2.0e-2)
+		gradcheck_siso(&runtime, config, 2.0e-2)
 	}
 );
 
 test_vk!(
 	mamba3_siso_generic_backward_matches_finite_differences,
-	engine,
+	runtime,
 	{
 		let config = SsmConfig {
 			batch_size: 1,
@@ -1322,13 +1322,13 @@ test_vk!(
 			has_d: true,
 			has_output_norm: false,
 		};
-		gradcheck_siso(&engine, config, 3.0e-2)
+		gradcheck_siso(&runtime, config, 3.0e-2)
 	}
 );
 
 test_vk!(
 	mamba3_siso_chunked_backward_matches_finite_differences,
-	engine,
+	runtime,
 	{
 		let config = SsmConfig {
 			batch_size: 1,
@@ -1343,7 +1343,7 @@ test_vk!(
 			has_d: true,
 			has_output_norm: false,
 		};
-		gradcheck_siso(&engine, config, 3.0e-2)
+		gradcheck_siso(&runtime, config, 3.0e-2)
 	}
 );
 
@@ -1381,7 +1381,7 @@ impl PreprocessValues {
 
 	fn upload(
 		&self,
-		_engine: &oa::Engine,
+		_runtime: &oa::Runtime,
 		rows: usize,
 		config: Mamba3PreprocessConfig,
 	) -> oa::Result<Mamba3PreprocessResult> {
@@ -1500,7 +1500,7 @@ fn sum_weighted(value: &oa::Matrix, weight: &oa::Matrix) -> oa::Result<oa::Matri
 
 test_vk!(
 	mamba3_preprocess_matches_host_and_finite_differences,
-	engine,
+	runtime,
 	{
 		let rows = 2;
 		let config = Mamba3PreprocessConfig {
@@ -1538,7 +1538,7 @@ test_vk!(
 		}
 
 		let weights = PreprocessValues::deterministic(rows, config);
-		let gradients = weights.upload(&engine, rows, config)?;
+		let gradients = weights.upload(&runtime, rows, config)?;
 		let analytic = oa::ml::matrix::mamba3_preprocess_backward(
 			&projected_matrix,
 			&dt_bias_matrix,
@@ -1586,7 +1586,7 @@ test_vk!(
 
 test_vk!(
 	mamba3_preprocess_tape_merges_all_output_adjoints_once,
-	engine,
+	runtime,
 	{
 		let rows = 2;
 		let config = Mamba3PreprocessConfig {
@@ -1607,7 +1607,7 @@ test_vk!(
 			.collect::<Vec<_>>();
 		let dt_bias = vec![-0.07, 0.11];
 		let weights = PreprocessValues::deterministic(rows, config);
-		let weight_matrices = weights.upload(&engine, rows, config)?;
+		let weight_matrices = weights.upload(&runtime, rows, config)?;
 		let expected = oa::ml::matrix::mamba3_preprocess_backward(
 			&oa::Matrix::new_from_f32([rows, width], &projected)?,
 			&oa::Matrix::new_from_f32([config.num_heads], &dt_bias)?,
@@ -1666,7 +1666,7 @@ test_vk!(
 	}
 );
 
-test_vk!(mamba3_preprocess_tape_zero_fills_unused_outputs, engine, {
+test_vk!(mamba3_preprocess_tape_zero_fills_unused_outputs, runtime, {
 	let rows = 1;
 	let config = Mamba3PreprocessConfig {
 		inner_size: 2,
@@ -1722,7 +1722,7 @@ test_vk!(mamba3_preprocess_tape_zero_fills_unused_outputs, engine, {
 
 test_vk!(
 	mamba3_module_owns_and_differentiates_the_complete_siso_block,
-	engine,
+	runtime,
 	{
 		use oa::ml::Module as _;
 
@@ -1793,7 +1793,7 @@ test_vk!(
 
 test_vk!(
 	mamba3_module_owns_differentiates_and_steps_the_complete_mimo_block,
-	engine,
+	runtime,
 	{
 		use oa::ml::Module as _;
 
@@ -1888,7 +1888,7 @@ test_vk!(
 
 test_vk!(
 	mamba3_module_recurrent_state_matches_full_forward,
-	engine,
+	runtime,
 	{
 		let config = oa::ml::nn::Mamba3Config {
 			model_width: 4,
