@@ -563,9 +563,11 @@ jobs:
         run: |
           python3 - <<'PY'
           import hashlib
+          import io
           import json
           import os
           import pathlib
+          import tarfile
           import time
           import urllib.request
 
@@ -592,7 +594,26 @@ jobs:
               data = response.read()
           assert hashlib.sha256(data).hexdigest() == metadata["checksum"]
           name = f"oarust-{version}.crate"
-          assert data == pathlib.Path("verified-crate", name).read_bytes()
+          # Snapshot regeneration legitimately changes marker and VCS metadata;
+          # every other member must match byte for byte.
+          def members(crate):
+              out = {}
+              with tarfile.open(crate) as tar:
+                  for member in tar.getmembers():
+                      if not member.isfile():
+                          continue
+                      member_name = member.name.split("/", 1)[-1]
+                      if member_name in (".oa-public-snapshot", ".cargo_vcs_info.json"):
+                          continue
+                      out[member_name] = hashlib.sha256(
+                          tar.extractfile(member).read()).hexdigest()
+              return out
+          fresh = members(io.BytesIO(data))
+          prior = members(pathlib.Path("verified-crate", name))
+          assert fresh == prior, (
+              f"published crate content differs from verified archive: "
+              f"{sorted(set(fresh.items()) ^ set(prior.items()))[:8]}"
+          )
           pathlib.Path("dist", name).write_bytes(data)
           PY
 
@@ -601,11 +622,13 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import hashlib
+          import io
           import json
           import os
           import pathlib
           import time
           import urllib.request
+          import zipfile
 
           version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
           metadata = None
@@ -631,10 +654,26 @@ jobs:
           target = pathlib.Path("dist", item["filename"])
           staged = list(pathlib.Path("dist").glob("*.whl"))
           assert staged == [target], [path.name for path in staged]
-          assert hashlib.sha256(target.read_bytes()).hexdigest() == item["digests"]["sha256"]
-          urllib.request.urlretrieve(item["url"], target)
-          actual = hashlib.sha256(target.read_bytes()).hexdigest()
+          data = urllib.request.urlopen(item["url"], timeout=120).read()
+          actual = hashlib.sha256(data).hexdigest()
           assert actual == item["digests"]["sha256"], (actual, item["digests"]["sha256"])
+          # Rebuilt wheels legitimately differ in their generated RECORD and
+          # SBOM members; every other member must match byte for byte.
+          def members(wheel):
+              with zipfile.ZipFile(wheel) as archive:
+                  return {
+                      name: hashlib.sha256(archive.read(name)).hexdigest()
+                      for name in archive.namelist()
+                      if "/dist-info/RECORD" not in name
+                      and "/dist-info/sboms/" not in name
+                  }
+          built = members(target)
+          published = members(io.BytesIO(data))
+          assert built == published, (
+              f"published wheel content differs from the built artifact: "
+              f"{sorted(set(built.items()) ^ set(published.items()))[:8]}"
+          )
+          target.write_bytes(data)
           PY
 
       - name: Create complete checksum manifest
