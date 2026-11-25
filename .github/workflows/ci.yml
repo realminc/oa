@@ -473,6 +473,7 @@ jobs:
           import os
           import pathlib
           import subprocess
+          import tarfile
           import urllib.error
           import urllib.request
 
@@ -491,8 +492,32 @@ jobs:
           else:
               archive = pathlib.Path(f"target/package/oarust-{version}.crate")
               assert not existing["yanked"]
-              assert hashlib.sha256(archive.read_bytes()).hexdigest() == existing["checksum"]
-              print("Existing crates.io version matches the verified archive")
+              published = pathlib.Path("published.crate")
+              published.write_bytes(
+                  urllib.request.urlopen(
+                      "https://crates.io" + existing["dl_path"], timeout=60,
+                  ).read()
+              )
+              # Marker and Cargo.toml normalization lines legitimately differ
+              # between snapshots; every other member must match byte for byte.
+              def members(crate):
+                  out = {}
+                  with tarfile.open(crate) as tar:
+                      for member in tar.getmembers():
+                          if not member.isfile():
+                              continue
+                          name = member.name.split("/", 1)[-1]
+                          if name in (".oa-public-snapshot", ".cargo_vcs_info.json"):
+                              continue
+                          out[name] = hashlib.sha256(tar.extractfile(member).read()).hexdigest()
+                  return out
+              fresh = members(archive)
+              prior = members(published)
+              assert fresh == prior, (
+                  f"crates.io {version} content differs: "
+                  f"{sorted(set(fresh.items()) ^ set(prior.items()))[:8]}"
+              )
+              print("Existing crates.io version matches the verified archive content")
           PY
 
   release:

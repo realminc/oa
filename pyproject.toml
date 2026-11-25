@@ -16,7 +16,7 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Programming Language :: Rust",
-  "Topic :: Scientific/Runtimeering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
 [project.urls]
