@@ -12,6 +12,7 @@ fn apply_affine(matrix: &[f32], x: f64, y: f64) -> (f64, f64) {
 }
 
 #[test]
+#[ignore = "requires a runtime device"]
 fn rotation_matrix_2d_rotates_and_scales_about_center() -> Result<()> {
 	// 90 degrees counterclockwise about the origin at unit scale.
 	let rotation = image::rotation_matrix_2d(0.0, 0.0, 90.0, 1.0)?.read_f32()?;
@@ -29,6 +30,7 @@ fn rotation_matrix_2d_rotates_and_scales_about_center() -> Result<()> {
 }
 
 #[test]
+#[ignore = "requires a runtime device"]
 fn invert_affine_recovers_the_input_transform() -> Result<()> {
 	let forward = image::rotation_matrix_2d(1.0, -2.0, 25.0, 1.5)?.read_f32()?;
 	let inverse = image::invert_affine(&Matrix::new_from_f32([2, 3], &forward)?)?.read_f32()?;
@@ -46,6 +48,7 @@ fn invert_affine_recovers_the_input_transform() -> Result<()> {
 }
 
 #[test]
+#[ignore = "requires a runtime device"]
 fn perspective_transform_maps_all_four_points() -> Result<()> {
 	let source = Matrix::new_from_f32([4, 2], &[0.0, 0.0, 8.0, 0.0, 8.0, 4.0, 0.0, 4.0])?;
 	let destination = Matrix::new_from_f32([4, 2], &[1.0, 1.0, 7.0, 0.5, 7.5, 5.0, 0.5, 4.5])?;
@@ -73,6 +76,7 @@ fn perspective_transform_maps_all_four_points() -> Result<()> {
 }
 
 #[test]
+#[ignore = "requires a runtime device"]
 fn estimate_affine_2d_recovers_a_known_transform() -> Result<()> {
 	let forward = image::rotation_matrix_2d(-1.0, 0.5, -15.0, 1.25)?.read_f32()?;
 	let mut source = Vec::new();
