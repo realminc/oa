@@ -596,9 +596,10 @@ jobs:
           name = f"oarust-{version}.crate"
           # Snapshot regeneration legitimately changes marker and VCS metadata;
           # every other member must match byte for byte.
-          def members(crate):
+          def members(source):
               out = {}
-              with tarfile.open(crate) as tar:
+              kwargs = {"fileobj": source} if hasattr(source, "read") else {"name": source}
+              with tarfile.open(**kwargs) as tar:
                   for member in tar.getmembers():
                       if not member.isfile():
                           continue
