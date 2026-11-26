@@ -466,7 +466,7 @@ jobs:
           cmp "verified-crate/oarust-${version}.crate" "target/package/oarust-${version}.crate"
           python3 tool/oa audit crate "target/package/oarust-${version}.crate" "$version"
           # A retry may find a version published before a later job failed.
-          # Admit that version only if its registry checksum matches this archive.
+          # Admit that version only if its packaged content matches this archive.
           python3 - <<'PY'
           import hashlib
           import json
@@ -498,7 +498,7 @@ jobs:
                       "https://crates.io" + existing["dl_path"], timeout=60,
                   ).read()
               )
-              # Marker and Cargo.toml normalization lines legitimately differ
+              # Snapshot marker and Cargo VCS metadata legitimately differ
               # between snapshots; every other member must match byte for byte.
               def members(crate):
                   out = {}
@@ -660,13 +660,15 @@ jobs:
           assert actual == item["digests"]["sha256"], (actual, item["digests"]["sha256"])
           # Rebuilt wheels legitimately differ in their generated RECORD and
           # SBOM members; every other member must match byte for byte.
+          dist_info = f"oapython-{version}.dist-info"
+
           def members(wheel):
               with zipfile.ZipFile(wheel) as archive:
                   return {
                       name: hashlib.sha256(archive.read(name)).hexdigest()
                       for name in archive.namelist()
-                      if "/dist-info/RECORD" not in name
-                      and "/dist-info/sboms/" not in name
+                      if name != f"{dist_info}/RECORD"
+                      and not name.startswith(f"{dist_info}/sboms/")
                   }
           built = members(target)
           published = members(io.BytesIO(data))
@@ -701,17 +703,15 @@ jobs:
             ## OA ${{ github.ref_name }} — Rust development preview
 
             This prerelease publishes the exact tagged OA source together with the
-            verified `oarust` crate, Rust API documentation and SDK binaries/packages.
+            verified `oarust` crate, Rust API documentation and runtime CLI packages.
             Both the crates.io package and the `oapython` PyPI wheel are published
             before this release is created; their downloaded bytes are verified.
 
-            ⚠️ **Preview, not a stable API.** Read the README's honest preview
-            boundaries and the changelog for this tag before depending on
-            experimental hardware paths. See [release notes](https://github.com/realminc/oa/blob/main/RELEASE_NOTES.md).
+            See the README and [release notes](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/RELEASE_NOTES.md)
+            for the experimental API and hardware support boundaries.
 
-            ### Linux SDK binaries
-            Download the matching SDK archive or Debian/RPM/Arch package below.
-            These packages contain the Rust tutorials, examples and applications.
+            ### Linux runtime CLI
+            Download the matching `oa` archive or Debian/RPM/Arch package below.
 
             ### Rust
             ```bash
@@ -772,7 +772,8 @@ jobs:
               test -n "$digest"
               test -n "$asset"
               curl -fsSL --retry 5 --retry-delay 2 \
-                "${release_url}/${asset}" \
+                -H 'Cache-Control: no-cache' \
+                "${release_url}/${asset}?run=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
                 -o "$asset"
             done < SHA256SUMS.txt
             sha256sum -c SHA256SUMS.txt
