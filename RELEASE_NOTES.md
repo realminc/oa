@@ -1,3 +1,50 @@
+# OA v0.18.0 — Experimental Rust and Python preview
+
+## Summary
+
+Vision-estimation release on top of v0.17.0. The OpenCV-parity roadmap
+advances through the geometric-estimation and optical-flow milestones:
+`find_homography`, `solve_pnp`/`solve_pnp_ransac`, `find_fundamental`,
+`find_essential`, `recover_pose`, `triangulate_points`, `rodrigues`,
+`project_points`, `undistort_rectify_map`, `undistort_points`, and
+`calibrate_camera` ship as host-side f64 estimators returning F32
+`Matrix` outputs, with seeded-RANSAC consensus pinned to the donor PCG32
+sequence. Device-side additions include `optical_flow_pyr_lk` and
+`optical_flow_farneback` (per-level pyramid pipelines with a
+curvature-scaled update solve), `stereo_bm` SAD cost-volume disparity
+with winner-take-all subpixel refinement, `reproject_image_to_3d`,
+`fast_nl_means_denoising`, and `pyr_mean_shift_filtering`. A host-side
+`KalmanFilter` predictor/corrector lands in `oa.vision` for tracking
+workloads. Image schema contracts grow from 87 to 93.
+
+## Compatibility and migration
+
+- All additions are additive; no existing public operation is renamed or
+  removed.
+- `oa.vision.KalmanFilter` is a new Python class with `predict`/`correct`
+  and `set_*` model-matrix methods, mirroring `cv::KalmanFilter`.
+- Image slang sources now group multi-kernel operation families under
+  per-family subdirectories; this is internal layout only.
+
+## Verification
+
+`cargo test --test image -- --ignored` runs 105 device tests on Intel
+Iris Xe (ADL GT2, Vulkan) with 0 failures on the tagged commit,
+including synthetic-translation oracles for LK and Farneback flow, a
+constant-disparity oracle for `stereo_bm`, and impulse/flat-field
+oracles for NL-means. `cargo test --test vision -- --ignored` passes
+29 of 30 device tests; the single failure is `camera_poll_close_contract`,
+an environment case requiring a camera backend absent on the test
+machine. `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+and `git diff --check` are clean.
+
+## Known limitations
+
+Segmentation (`watershed`, `grabcut`), `inpaint`, SGBM multi-path
+stereo, and the KCF/meanShift/BackgroundSubtractor tracking family
+remain Planned. Compiler tile providers and hardware video stay
+Experimental. Multi-device distributed execution is not yet supported.
+
 # OA v0.17.0 — Experimental Rust and Python preview
 
 ## Summary

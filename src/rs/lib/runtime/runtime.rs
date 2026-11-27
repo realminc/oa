@@ -7,14 +7,13 @@ use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 use crate::{Error, LogComponent, LogLevel, LogOptions, Matrix, Result};
 
 use super::{
-	AudioSemanticDispatch, Buffer, BufferBinding, CanvasGridPipeline, ClockCalibration,
-	ComputeDispatch, DecodeSession, DeferredRetirement, Device, DevicePhysical, EncodeSession, Event,
-	ExecutionPlan, FlatColorPipeline, GraphicsPipeline, ImageSemanticDispatch, Instance, MeshBuffer,
-	NativeRgbaImage, OptionalSemanticDispatch, PresentationSurface, PushConstant,
-	QuantSemanticDispatch, RecordedCommandBuffer, RenderTarget, RetirementService, RetirementTicket,
-	SceneDrawCmd, SecretBinding, SecretBuffer, SecretErasure, SemanticDispatch, Storage,
-	SurfaceBlendPipeline, SurfaceDescriptorArena, SurfaceDescriptorLayouts, SurfacePipeline, Timer,
-	UnlitDescriptorArena, UnlitDescriptorLayouts, UnlitPipeline,
+	AudioSemanticDispatch, Buffer, BufferBinding, ClockCalibration, ComputeDispatch, DecodeSession,
+	DeferredRetirement, Device, DevicePhysical, EncodeSession, Event, ExecutionPlan,
+	GraphicsPipeline, ImageSemanticDispatch, Instance, MeshBuffer, NativeRgbaImage,
+	OptionalSemanticDispatch, PresentationSurface, PushConstant, QuantSemanticDispatch,
+	RecordedCommandBuffer, RenderTarget, RetirementService, RetirementTicket, SceneDrawCmd,
+	SecretBinding, SecretBuffer, SecretErasure, SemanticDispatch, Storage, SurfaceDescriptorArena,
+	SurfaceDescriptorLayouts, Timer, UnlitDescriptorArena, UnlitDescriptorLayouts,
 	device::logical::command::RecordedBatch,
 	log::{LogSelection, Logger},
 	session::{ExecutionSession, RecordedDecodeStep, RecordedEncodeStep},
@@ -2676,12 +2675,12 @@ impl RuntimeHandle {
 	}
 
 	/// Create the flat-color material Vulkan pipeline, borrowing the device.
-	pub(crate) fn create_flat_color_pipeline(&self) -> Result<FlatColorPipeline> {
+	pub(crate) fn create_flat_color_pipeline(&self) -> Result<GraphicsPipeline> {
 		self.state.borrow().device.create_flat_color_pipeline()
 	}
 
 	/// Create the procedural canvas-grid Vulkan pipeline, borrowing the device.
-	pub(crate) fn create_canvas_grid_pipeline(&self) -> Result<CanvasGridPipeline> {
+	pub(crate) fn create_canvas_grid_pipeline(&self) -> Result<GraphicsPipeline> {
 		self.state.borrow().device.create_canvas_grid_pipeline()
 	}
 
@@ -2730,7 +2729,7 @@ impl RuntimeHandle {
 	pub(crate) fn create_unlit_pipeline(
 		&self,
 		sampler_layout: vk::DescriptorSetLayout,
-	) -> Result<UnlitPipeline> {
+	) -> Result<GraphicsPipeline> {
 		self
 			.state
 			.borrow()
@@ -2743,7 +2742,7 @@ impl RuntimeHandle {
 		&self,
 		scene_layout: vk::DescriptorSetLayout,
 		material_layout: vk::DescriptorSetLayout,
-	) -> Result<SurfacePipeline> {
+	) -> Result<GraphicsPipeline> {
 		self
 			.state
 			.borrow()
@@ -2753,12 +2752,12 @@ impl RuntimeHandle {
 
 	/// Create the Surface transparent-blend pipeline, borrowing the device.
 	///
-	/// Reuses the `layout` from an existing [`SurfacePipeline`] so the
+	/// Reuses the `layout` from the opaque Surface pipeline so the
 	/// descriptor sets remain compatible.
 	pub(crate) fn create_surface_blend_pipeline(
 		&self,
 		layout: vk::PipelineLayout,
-	) -> Result<SurfaceBlendPipeline> {
+	) -> Result<GraphicsPipeline> {
 		self
 			.state
 			.borrow()

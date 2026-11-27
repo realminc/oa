@@ -1215,3 +1215,535 @@ test_vk!(orb_detects_and_describes_keypoints, runtime, {
 	assert_eq!(&matched_rows[..2], &[0.0, 0.0], "self-match mismatch");
 	Ok(())
 });
+
+fn textured_plane(width: usize, height: usize) -> Vec<f32> {
+	// Deterministic texture with structure everywhere so the polynomial
+	// expansion and LK gradient windows stay well conditioned.
+	(0..height)
+		.flat_map(|y| {
+			(0..width).map(move |x| {
+				let x = x as f32;
+				let y = y as f32;
+				((x * 0.31 + y * 0.17).sin()
+					+ (x * 0.11 - y * 0.23).cos()
+					+ ((x * x + y * y).sqrt() * 0.09).sin())
+					* 0.25
+					+ 0.5
+			})
+		})
+		.collect()
+}
+
+fn shifted_plane(width: usize, height: usize, dx: i64, dy: i64) -> Vec<f32> {
+	(0..height)
+		.flat_map(|y| {
+			(0..width).map(move |x| {
+				let source_x = x as i64 - dx;
+				let source_y = y as i64 - dy;
+				if source_x < 0 || source_y < 0 || source_x >= width as i64 || source_y >= height as i64 {
+					return 0.0;
+				}
+				let x = source_x as f32;
+				let y = source_y as f32;
+				((x * 0.31 + y * 0.17).sin()
+					+ (x * 0.11 - y * 0.23).cos()
+					+ ((x * x + y * y).sqrt() * 0.09).sin())
+					* 0.25
+					+ 0.5
+			})
+		})
+		.collect()
+}
+
+test_vk!(optical_flow_pyr_lk_tracks_a_translation, runtime, {
+	let width = 64usize;
+	let height = 64usize;
+	let previous = gray_image(
+		&runtime,
+		[1, 1, height, width],
+		&textured_plane(width, height),
+	)?;
+	let next = gray_image(
+		&runtime,
+		[1, 1, height, width],
+		&shifted_plane(width, height, 3, -2),
+	)?;
+	// Interior points inside the textured support.
+	let point_rows = [32.0f32, 32.0, 20.0, 24.0, 44.0, 40.0, 16.0, 48.0];
+	let points = Matrix::new_from_f32_on(&runtime, [4, 2], &point_rows)?;
+	let (next_points, status, error) =
+		oa::image::optical_flow_pyr_lk(&previous, &next, &points, 3, 5, 20, 1e-4)?;
+	assert_eq!(next_points.shape(), &[1, 4, 2]);
+	assert_eq!(status.shape(), &[1, 4]);
+	assert_eq!(error.shape(), &[1, 4]);
+	let tracked = next_points.read_f32()?;
+	let found = status.read_f32()?;
+	let residuals = error.read_f32()?;
+	for (point, source) in [32.0f32, 32.0, 20.0, 24.0, 44.0, 40.0, 16.0, 48.0]
+		.chunks(2)
+		.enumerate()
+	{
+		assert_eq!(found[point], 1.0, "point {point} reported lost");
+		let tx = source[0] + 3.0;
+		let ty = source[1] - 2.0;
+		assert!(
+			(tracked[point * 2] - tx).abs() < 0.15 && (tracked[point * 2 + 1] - ty).abs() < 0.15,
+			"point {point} tracked to ({}, {}), expected ({tx}, {ty})",
+			tracked[point * 2],
+			tracked[point * 2 + 1],
+		);
+		assert!(residuals[point] < 0.1, "point {point} residual too large");
+	}
+	Ok(())
+});
+
+test_vk!(optical_flow_pyr_lk_reports_lost_points, runtime, {
+	let width = 64usize;
+	let height = 64usize;
+	// Flatten the top-left corner of the source so the LK gradient window
+	// there has no texture to solve against.
+	let mut source = textured_plane(width, height);
+	for y in 0..24usize {
+		for x in 0..24usize {
+			source[y * width + x] = 0.0;
+		}
+	}
+	let previous = gray_image(&runtime, [1, 1, height, width], &source)?;
+	let next = gray_image(
+		&runtime,
+		[1, 1, height, width],
+		&textured_plane(width, height),
+	)?;
+	let point_rows = [12.0f32, 12.0, 32.0, 48.0];
+	let points = Matrix::new_from_f32_on(&runtime, [2, 2], &point_rows)?;
+	let (_tracked, status, _error) =
+		oa::image::optical_flow_pyr_lk(&previous, &next, &points, 3, 5, 20, 1e-4)?;
+	let found = status.read_f32()?;
+	assert_eq!(found[0], 0.0, "flat-window point should report lost");
+	assert_eq!(found[1], 1.0, "textured point should report found");
+	Ok(())
+});
+
+test_vk!(optical_flow_pyr_lk_rejects_invalid_inputs, runtime, {
+	let width = 64usize;
+	let height = 64usize;
+	let previous = gray_image(
+		&runtime,
+		[1, 1, height, width],
+		&textured_plane(width, height),
+	)?;
+	let next = gray_image(
+		&runtime,
+		[1, 1, height, width],
+		&textured_plane(width, height),
+	)?;
+	let points = Matrix::new_from_f32_on(&runtime, [1, 2], &[32.0f32, 32.0])?;
+	for (levels, window, iterations, min_eigen) in [
+		(0, 10, 20, 1e-4),
+		(4, 0, 20, 1e-4),
+		(4, 10, 0, 1e-4),
+		(4, 10, 20, 0.0),
+		(4, 10, 20, f32::NAN),
+		// Coarsest level can no longer fit the window.
+		(16, 10, 20, 1e-4),
+	] {
+		let error = oa::image::optical_flow_pyr_lk(
+			&previous, &next, &points, levels, window, iterations, min_eigen,
+		)
+		.err()
+		.unwrap();
+		assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+	}
+	// Mismatched images and malformed point matrices.
+	let other = gray_image(
+		&runtime,
+		[1, 1, height / 2, width],
+		&textured_plane(width, height / 2),
+	)?;
+	assert_eq!(
+		oa::image::optical_flow_pyr_lk(&previous, &other, &points, 4, 10, 20, 1e-4)
+			.err()
+			.unwrap()
+			.kind(),
+		ErrorKind::InvalidArgument
+	);
+	for (shape, values) in [
+		(vec![0, 2], vec![]),
+		(vec![4, 1], vec![0.0; 4]),
+		(vec![1, 4, 2, 1], vec![0.0; 8]),
+	] {
+		let bad = Matrix::new_from_f32_on(&runtime, shape.clone(), &values)?;
+		assert_eq!(
+			oa::image::optical_flow_pyr_lk(&previous, &next, &bad, 4, 10, 20, 1e-4)
+				.err()
+				.unwrap()
+				.kind(),
+			ErrorKind::InvalidArgument,
+			"points shape {shape:?} should be rejected"
+		);
+	}
+	Ok(())
+});
+
+test_vk!(optical_flow_farneback_recovers_a_translation, runtime, {
+	let width = 64usize;
+	let height = 64usize;
+	let previous = gray_image(
+		&runtime,
+		[1, 1, height, width],
+		&textured_plane(width, height),
+	)?;
+	let next = gray_image(
+		&runtime,
+		[1, 1, height, width],
+		&shifted_plane(width, height, 2, 1),
+	)?;
+	let flow = oa::image::optical_flow_farneback(&previous, &next, 3, 7, 3, 5, 1.1)?;
+	assert_eq!(flow.shape(), &[1, 2, height, width]);
+	let field = flow.read_f32()?;
+	let plane_size = width * height;
+	// Interior region away from the shifted-in zero border and the
+	// reflect101 polynomial edges.
+	let mut deltas = Vec::new();
+	for y in 12..52usize {
+		for x in 12..52usize {
+			deltas.push((field[y * width + x], field[plane_size + y * width + x]));
+		}
+	}
+	let mut xs: Vec<f32> = deltas.iter().map(|pair| pair.0).collect();
+	let mut ys: Vec<f32> = deltas.iter().map(|pair| pair.1).collect();
+	xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+	ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
+	let median_x = xs[xs.len() / 2];
+	let median_y = ys[ys.len() / 2];
+	assert!(
+		(median_x - 2.0).abs() < 0.5 && (median_y - 1.0).abs() < 0.5,
+		"median flow ({median_x}, {median_y}), expected approximately (2, 1)"
+	);
+	let within: usize = deltas
+		.iter()
+		.filter(|&&(fx, fy)| (fx - 2.0).abs() < 0.75 && (fy - 1.0).abs() < 0.75)
+		.count();
+	assert!(
+		within * 100 > deltas.len() * 80,
+		"only {within}/{} interior vectors within tolerance",
+		deltas.len()
+	);
+	Ok(())
+});
+
+test_vk!(
+	optical_flow_farneback_returns_zero_for_identical_frames,
+	runtime,
+	{
+		let width = 48usize;
+		let height = 48usize;
+		let frame = gray_image(
+			&runtime,
+			[1, 1, height, width],
+			&textured_plane(width, height),
+		)?;
+		let flow = oa::image::optical_flow_farneback(&frame, &frame, 3, 5, 3, 5, 1.1)?;
+		let field = flow.read_f32()?;
+		let peak = field
+			.iter()
+			.fold(0.0f32, |peak, value| peak.max(value.abs()));
+		assert!(
+			peak < 0.05,
+			"identical frames produced flow magnitude {peak}"
+		);
+		Ok(())
+	}
+);
+
+test_vk!(optical_flow_farneback_rejects_invalid_inputs, runtime, {
+	let width = 64usize;
+	let height = 64usize;
+	let previous = gray_image(
+		&runtime,
+		[1, 1, height, width],
+		&textured_plane(width, height),
+	)?;
+	let next = gray_image(
+		&runtime,
+		[1, 1, height, width],
+		&textured_plane(width, height),
+	)?;
+	for (levels, window, iterations, poly_n, poly_sigma) in [
+		(0, 7, 3, 5, 1.1),
+		(4, 0, 3, 5, 1.1),
+		(4, 7, 0, 5, 1.1),
+		(4, 7, 3, 0, 1.1),
+		(4, 7, 3, 5, 0.0),
+		(4, 7, 3, 5, f32::NAN),
+		(16, 7, 3, 5, 1.1),
+	] {
+		let error = oa::image::optical_flow_farneback(
+			&previous, &next, levels, window, iterations, poly_n, poly_sigma,
+		)
+		.err()
+		.unwrap();
+		assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+	}
+	Ok(())
+});
+
+test_vk!(stereo_bm_recovers_a_disparity, runtime, {
+	let width = 64usize;
+	let height = 64usize;
+	// Constant disparity d = 8: right(y, x) = left(y, x + 8) so the
+	// match for left(x) lands at right(x - 8).
+	let disparity = 8i64;
+	let left = gray_image(
+		&runtime,
+		[1, 1, height, width],
+		&textured_plane(width, height),
+	)?;
+	let right = gray_image(
+		&runtime,
+		[1, 1, height, width],
+		&shifted_plane(width, height, -disparity, 0),
+	)?;
+	let map = oa::image::stereo_bm(&left, &right, 16, 11, 5)?;
+	assert_eq!(map.shape(), &[1, 1, height, width]);
+	let field = map.read_f32()?;
+	// Valid region starts at block_radius + num_disparities - 1 = 20.
+	for y in 6..58usize {
+		for x in 0..20usize {
+			assert_eq!(
+				field[y * width + x],
+				-1.0,
+				"border pixel ({x}, {y}) not marked invalid"
+			);
+		}
+	}
+	let mut xs: Vec<f32> = Vec::new();
+	for y in 8..56usize {
+		for x in 24..56usize {
+			xs.push(field[y * width + x]);
+		}
+	}
+	xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+	let median = xs[xs.len() / 2];
+	assert!(
+		(median - 8.0).abs() < 0.5,
+		"median disparity {median}, expected approximately 8"
+	);
+	let within = xs.iter().filter(|&&v| (v - 8.0).abs() < 0.75).count();
+	assert!(
+		within * 100 > xs.len() * 80,
+		"only {within}/{} interior disparities within tolerance",
+		xs.len()
+	);
+	Ok(())
+});
+
+test_vk!(stereo_bm_marks_ambiguous_pixels, runtime, {
+	let width = 64usize;
+	let height = 64usize;
+	// A flat plane gives identical SAD at every disparity, so the
+	// uniqueness margin rejects every interior pixel.
+	let flat = vec![0.5f32; width * height];
+	let left = gray_image(&runtime, [1, 1, height, width], &flat)?;
+	let right = gray_image(&runtime, [1, 1, height, width], &flat)?;
+	let map = oa::image::stereo_bm(&left, &right, 16, 11, 5)?;
+	let field = map.read_f32()?;
+	assert!(
+		field.iter().all(|&v| v == -1.0),
+		"flat input produced non-(-1) disparities"
+	);
+	Ok(())
+});
+
+test_vk!(stereo_bm_rejects_invalid_inputs, runtime, {
+	let width = 64usize;
+	let height = 64usize;
+	let left = gray_image(
+		&runtime,
+		[1, 1, height, width],
+		&textured_plane(width, height),
+	)?;
+	let other = gray_image(
+		&runtime,
+		[1, 1, height, width / 2],
+		&textured_plane(width / 2, height),
+	)?;
+	for (num_disparities, block_size) in [(0, 11), (16, 0), (16, 2), (16, 10), (128, 11)] {
+		let error = oa::image::stereo_bm(&left, &left, num_disparities, block_size, 5)
+			.err()
+			.unwrap();
+		assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+	}
+	let error = oa::image::stereo_bm(&left, &other, 16, 11, 5)
+		.err()
+		.unwrap();
+	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+	Ok(())
+});
+
+test_vk!(reproject_image_to_3d_projects_points, runtime, {
+	let height = 8usize;
+	let width = 8usize;
+	// Constant disparity 4 with Q that swaps/scales axes:
+	// X = x + 2d, Y = y + d, Z = 3d, W = 1.
+	let disparity = Matrix::new_from_f32_on(
+		&runtime,
+		[1, 1, height, width],
+		&vec![4.0f32; height * width],
+	)?;
+	let q = Matrix::new_from_f32_on(
+		&runtime,
+		[4, 4],
+		&[
+			1.0, 0.0, 2.0, 0.0, //
+			0.0, 1.0, 1.0, 0.0, //
+			0.0, 0.0, 3.0, 0.0, //
+			0.0, 0.0, 0.0, 1.0,
+		],
+	)?;
+	let points = oa::image::reproject_image_to_3d(&disparity, &q)?;
+	assert_eq!(points.shape(), &[1, 3, height, width]);
+	let field = points.read_f32()?;
+	let plane_size = height * width;
+	for y in 0..height {
+		for x in 0..width {
+			let index = y * width + x;
+			assert_eq!(field[index], x as f32 + 8.0);
+			assert_eq!(field[plane_size + index], y as f32 + 4.0);
+			assert_eq!(field[2 * plane_size + index], 12.0);
+		}
+	}
+	Ok(())
+});
+
+test_vk!(reproject_image_to_3d_rejects_invalid_inputs, runtime, {
+	let disparity = Matrix::new_from_f32_on(&runtime, [1, 2, 4, 4], &[0.0f32; 32])?;
+	let q = Matrix::new_from_f32_on(&runtime, [4, 4], &[0.0f32; 16])?;
+	let error = oa::image::reproject_image_to_3d(&disparity, &q)
+		.err()
+		.unwrap();
+	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+	let disparity = Matrix::new_from_f32_on(&runtime, [1, 1, 4, 4], &[0.0f32; 16])?;
+	let bad_q = Matrix::new_from_f32_on(&runtime, [3, 3], &[0.0f32; 9])?;
+	let error = oa::image::reproject_image_to_3d(&disparity, &bad_q)
+		.err()
+		.unwrap();
+	assert_eq!(error.kind(), ErrorKind::InvalidArgument);
+	Ok(())
+});
+
+// ---- fast_nl_means_denoising -------------------------------------------------
+
+test_vk!(nl_means_suppresses_an_impulse, runtime, {
+	// 16x16 zeros with a single 1.0 impulse at the center: neighbour
+	// patches disagree on the hot pixel, so its own weight collapses
+	// and the output must land near the clean zero background.
+	let mut values = vec![0.0f32; 16 * 16];
+	values[8 * 16 + 8] = 1.0;
+	let image = gray_image(&runtime, [1, 1, 16, 16], &values)?;
+	let out = oa::image::fast_nl_means_denoising(&image, 0.1, 7, 11)?;
+	let data: Vec<f32> = out.as_matrix().read_f32()?;
+	assert!(
+		data[8 * 16 + 8] < 0.4,
+		"impulse should be suppressed: got {}",
+		data[8 * 16 + 8]
+	);
+	Ok(())
+});
+
+test_vk!(nl_means_preserves_a_flat_image, runtime, {
+	let values = vec![0.375f32; 12 * 12];
+	let image = gray_image(&runtime, [1, 1, 12, 12], &values)?;
+	let out = oa::image::fast_nl_means_denoising(&image, 0.1, 5, 9)?;
+	let data: Vec<f32> = out.as_matrix().read_f32()?;
+	assert!(data.iter().all(|v| (*v - 0.375).abs() < 1e-4));
+	Ok(())
+});
+
+test_vk!(nl_means_rejects_invalid_parameters, runtime, {
+	let image = gray_image(&runtime, [1, 1, 8, 8], &vec![0.5f32; 64])?;
+	for (h, tw, sw) in [
+		(0.0, 7, 11),
+		(f32::NAN, 7, 11),
+		(0.1, 2, 11),
+		(0.1, 8, 11),
+		(0.1, 7, 10),
+	] {
+		assert!(oa::image::fast_nl_means_denoising(&image, h, tw, sw).is_err());
+	}
+	Ok(())
+});
+
+// ---- pyr_mean_shift_filtering -----------------------------------------------
+
+test_vk!(mean_shift_keeps_region_levels, runtime, {
+	// Two flat halves split vertically at x = 16. Deep-interior pixels
+	// converge inside their own region and must keep their level;
+	// the boundary column is the only place allowed to migrate.
+	let mut values = vec![0.0f32; 16 * 32];
+	for y in 0..16 {
+		for x in 16..32 {
+			values[y * 32 + x] = 0.8;
+		}
+	}
+	let image = gray_image(&runtime, [1, 1, 16, 32], &values)?;
+	let out = oa::image::pyr_mean_shift_filtering(&image, 4.0, 0.25, 1)?;
+	let data: Vec<f32> = out.as_matrix().read_f32()?;
+	for y in 2..14 {
+		assert!(
+			(data[y * 32 + 4] - 0.0).abs() < 0.05,
+			"dark interior drifted: {}",
+			data[y * 32 + 4]
+		);
+		assert!(
+			(data[y * 32 + 28] - 0.8).abs() < 0.05,
+			"bright interior drifted: {}",
+			data[y * 32 + 28]
+		);
+	}
+	Ok(())
+});
+
+test_vk!(mean_shift_smooths_zero_mean_noise, runtime, {
+	// A flat 0.5 field plus small zero-mean dither: converged colors
+	// must cluster near 0.5 rather than keep the per-pixel noise.
+	let mut values = vec![0.5f32; 16 * 16];
+	for (i, value) in values.iter_mut().enumerate() {
+		*value += ((i * 37) % 11) as f32 * 0.02 - 0.1;
+	}
+	let image = gray_image(&runtime, [1, 1, 16, 16], &values)?;
+	let out = oa::image::pyr_mean_shift_filtering(&image, 6.0, 0.5, 1)?;
+	let data: Vec<f32> = out.as_matrix().read_f32()?;
+	assert!(data.iter().all(|v| (*v - 0.5).abs() < 0.12));
+	Ok(())
+});
+
+test_vk!(mean_shift_runs_a_two_level_pyramid, runtime, {
+	let mut values = vec![0.0f32; 32 * 32];
+	for y in 0..32 {
+		for x in 16..32 {
+			values[y * 32 + x] = 0.9;
+		}
+	}
+	let image = gray_image(&runtime, [1, 1, 32, 32], &values)?;
+	let out = oa::image::pyr_mean_shift_filtering(&image, 4.0, 0.2, 2)?;
+	assert_eq!(out.as_matrix().shape(), &[1, 1, 32, 32]);
+	let data: Vec<f32> = out.as_matrix().read_f32()?;
+	assert!((data[8 * 32 + 4] - 0.0).abs() < 0.1);
+	assert!((data[8 * 32 + 28] - 0.9).abs() < 0.1);
+	Ok(())
+});
+
+test_vk!(mean_shift_rejects_invalid_parameters, runtime, {
+	let image = gray_image(&runtime, [1, 1, 16, 16], &vec![0.5f32; 16 * 16])?;
+	for (sp, sr, level) in [
+		(0.0, 10.0, 1),
+		(f32::NAN, 10.0, 1),
+		(4.0, 0.0, 1),
+		(4.0, 10.0, 0),
+		(4.0, 10.0, 5),
+	] {
+		assert!(oa::image::pyr_mean_shift_filtering(&image, sp, sr, level).is_err());
+	}
+	Ok(())
+});

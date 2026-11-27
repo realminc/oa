@@ -7,6 +7,7 @@
 //! in f64 and returns plain F32 matrices, so the helpers compose with
 //! captured plans without recording device work.
 
+use crate::linalg::solve;
 use crate::matrix::Matrix;
 use crate::{Error, Result};
 
@@ -161,35 +162,4 @@ fn read_points(matrix: &Matrix, minimum: usize, operation: &str) -> Result<Vec<[
 			.map(|pair| [pair[0] as f64, pair[1] as f64])
 			.collect(),
 	)
-}
-
-/// Solve an `n`-by-`n` dense system `a * x = b` by Gaussian elimination with
-/// partial pivoting. Returns `None` on a singular pivot.
-#[allow(clippy::needless_range_loop)]
-fn solve<const N: usize>(a: &mut [[f64; N]; N], b: &mut [f64; N], n: usize) -> Option<Vec<f64>> {
-	for column in 0..n {
-		let pivot = (column..n)
-			.max_by(|left, right| a[*left][column].abs().total_cmp(&a[*right][column].abs()))?;
-		if a[pivot][column].abs() <= 1e-12 {
-			return None;
-		}
-		a.swap(column, pivot);
-		b.swap(column, pivot);
-		for row in (column + 1)..n {
-			let factor = a[row][column] / a[column][column];
-			for entry in column..n {
-				a[row][entry] -= factor * a[column][entry];
-			}
-			b[row] -= factor * b[column];
-		}
-	}
-	let mut x = vec![0.0f64; n];
-	for row in (0..n).rev() {
-		let mut sum = b[row];
-		for entry in (row + 1)..n {
-			sum -= a[row][entry] * x[entry];
-		}
-		x[row] = sum / a[row][row];
-	}
-	Some(x)
 }

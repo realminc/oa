@@ -8,3 +8,5 @@ mod test_vk_fixture;
 mod camera;
 #[path = "vision/test_detection.rs"]
 mod detection;
+#[path = "vision/test_geometry.rs"]
+mod geometry;

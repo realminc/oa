@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{Error, Result};
 
-use super::pipeline::{RENDER_COLOR_FORMAT, RENDER_DEPTH_FORMAT};
+use super::pipeline::render::{RENDER_COLOR_FORMAT, RENDER_DEPTH_FORMAT};
 use crate::runtime::Device;
 
 /// One render target slot: device-local color (R8G8B8A8_UNORM + SAMPLED) and

@@ -23,10 +23,8 @@ use crate::{
 	Color, Error, Event, Result, Runtime,
 	render::material::{FlatColorMaterial, SurfaceMaterial, TextureHandle, UnlitMaterial},
 	runtime::{
-		CanvasGridPipeline, FlatColorPipeline, GraphicsPipeline, MeshBuffer, NativeRgbaImage,
-		RenderTarget, SceneDrawCmd, SurfaceBlendPipeline, SurfaceDescriptorArena,
-		SurfaceDescriptorLayouts, SurfacePipeline, UnlitDescriptorArena, UnlitDescriptorLayouts,
-		UnlitPipeline,
+		GraphicsPipeline, MeshBuffer, NativeRgbaImage, RenderTarget, SceneDrawCmd,
+		SurfaceDescriptorArena, SurfaceDescriptorLayouts, UnlitDescriptorArena, UnlitDescriptorLayouts,
 	},
 };
 
@@ -113,23 +111,23 @@ pub(super) struct RendererState {
 	/// Vertex-color lit pipeline (original mesh path).
 	pipeline: Option<GraphicsPipeline>,
 	/// Flat-color material pipeline.
-	flat_color_pipeline: Option<FlatColorPipeline>,
+	flat_color_pipeline: Option<GraphicsPipeline>,
 	/// Unlit textured material pipeline.
-	unlit_pipeline: Option<UnlitPipeline>,
+	unlit_pipeline: Option<GraphicsPipeline>,
 	/// One sampled-image descriptor set per target-ring slot.
 	unlit_descriptors: Option<UnlitDescriptorArena>,
 	/// Owned descriptor set layouts for the unlit pipeline (set 1).
 	/// Must be declared after `unlit_pipeline` so it drops after the pipeline.
 	_unlit_layouts: Option<UnlitDescriptorLayouts>,
 	/// Surface PBR material pipeline (opaque pass).
-	surface_pipeline: Option<SurfacePipeline>,
+	surface_pipeline: Option<GraphicsPipeline>,
 	/// Surface alpha-blend pipeline (transparent pass).
 	/// Must be declared before `_surface_layouts` so it drops before
 	/// the layout — but after `surface_pipeline` so destroy order is
 	/// opaque then blend then layouts.
-	surface_blend_pipeline: Option<SurfaceBlendPipeline>,
+	surface_blend_pipeline: Option<GraphicsPipeline>,
 	/// Procedural canvas-grid pipeline (vertexless fullscreen triangle).
-	canvas_grid_pipeline: Option<CanvasGridPipeline>,
+	canvas_grid_pipeline: Option<GraphicsPipeline>,
 	surface_descriptors: Option<SurfaceDescriptorArena>,
 	/// Owned descriptor set layouts for the Surface pipeline (sets 0+1).
 	/// Must be declared after `surface_pipeline` so it drops after.

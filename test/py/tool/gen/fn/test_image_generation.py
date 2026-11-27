@@ -24,7 +24,7 @@ class ImageGenerationTests(unittest.TestCase):
 		return next(op for op in self.schema["contracts"] if op["name"] == name)
 
 	def test_complete_categories_are_directly_declared_with_one_owner(self):
-		counts = {"pixel": 25, "filter": 21, "geometric": 12, "color": 6, "statistics": 23}
+		counts = {"pixel": 25, "filter": 21, "geometric": 12, "color": 6, "statistics": 29}
 		facade = (ROOT / "src/rs/lib/image.rs").read_text()
 		for category, count in counts.items():
 			text = oa_image.generate_image_api(self.schema, "0" * 64, category)

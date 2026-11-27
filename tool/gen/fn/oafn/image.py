@@ -109,6 +109,12 @@ def validate_image_schema(schema: dict[str, Any]) -> None:
 		"bf_match": (["matrix", "matrix"], ["matrix"]),
 		"good_features_to_track": (["image"], ["matrix", "matrix"]),
 		"orb": (["image"], ["matrix", "matrix", "matrix"]),
+		"optical_flow_pyr_lk": (["image", "image", "matrix"], ["matrix", "matrix", "matrix"]),
+		"optical_flow_farneback": (["image", "image"], ["matrix"]),
+		"stereo_bm": (["image", "image"], ["matrix"]),
+		"reproject_image_to_3d": (["matrix", "matrix"], ["matrix"]),
+		"fast_nl_means_denoising": (["image"], ["image"]),
+		"pyr_mean_shift_filtering": (["image"], ["image"]),
 	}
 	require(
 		isinstance(contracts, list)
@@ -225,6 +231,12 @@ def validate_image_generation(schema: dict[str, Any]) -> None:
 		"bf_match": "Matrix",
 		"good_features_to_track": "(Matrix, Matrix)",
 		"orb": "(Matrix, Matrix, Matrix)",
+		"optical_flow_pyr_lk": "(Matrix, Matrix, Matrix)",
+		"optical_flow_farneback": "Matrix",
+		"stereo_bm": "Matrix",
+		"reproject_image_to_3d": "Matrix",
+		"fast_nl_means_denoising": "Image",
+		"pyr_mean_shift_filtering": "Image",
 		"threshold_auto": "(Image, Matrix)",
 	}
 	validate_dispatch_generation(

@@ -20,6 +20,7 @@
 //!
 //! Donor reference: `oa/ui/ui.h`, `oa/ui/ui.cpp`
 
+mod bindings;
 pub(crate) mod command;
 mod compose_image;
 mod cv;
@@ -27,7 +28,6 @@ mod detection_overlay;
 mod icons;
 mod image;
 mod layout;
-mod pipeline;
 #[path = "ui/style.gen.rs"]
 mod style_gen;
 mod text;
@@ -43,17 +43,18 @@ use crate::input::{
 	GAMEPAD_BUTTON_DPAD_RIGHT, GAMEPAD_BUTTON_DPAD_UP, GAMEPAD_BUTTON_EAST, GAMEPAD_BUTTON_SOUTH,
 	InputEvent, InputEventKind, InputState, Key, MotionSpeed,
 };
+use crate::runtime::UiPipelines;
 use crate::{
 	Error, Result,
 	runtime::{RenderingCommands, RuntimeHandle, SyncCommands},
 };
+use bindings::UiFrameBindings;
 use command::{UiCmd, UiCmdList};
 use compose_image::ComposeImage;
 pub use cv::{CvBbox, CvFrame, CvOverlay};
 pub use detection_overlay::{DetectionOverlay, DetectionOverlayItem};
 pub use image::{IMAGE_MAX_PLANES, ImageDtype, ImagePlanes};
 use layout::{LayoutStack, PanelScope, default_item_height, resolve_width, separator_rect};
-use pipeline::{UiFrameBindings, UiPipelines};
 pub use text::{FontId, GlyphBuffer, GlyphInstance, PositionedGlyph, TextAtlas, TextLayout};
 pub use type_gen::{
 	CvBboxesConfig, DetectionOverlayConfig, GlyphInfo, TextLayoutConfig, UiDropdownConfig,
@@ -5668,7 +5669,7 @@ impl<'runtime> Ui<'runtime> {
 	unsafe fn record_draw(
 		device: &vk::Device,
 		cmd_buf: vk::CommandBuffer,
-		pipeline: &pipeline::UiPipeline,
+		pipeline: &crate::runtime::GraphicsPipeline,
 		scissor: Option<vk::Rect2D>,
 		push: &[u8],
 		vertices: u32,

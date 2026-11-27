@@ -7757,10 +7757,717 @@
         ],
         "annotations": []
       }
+    },
+    {
+      "name": "optical_flow_pyr_lk",
+      "region_read": "bordered",
+      "fusion_class": "effect",
+      "input_kinds": ["image", "image", "matrix"],
+      "output_kinds": ["matrix", "matrix", "matrix"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["levels", "unsigned_integer"], ["window", "unsigned_integer"], ["iterations", "unsigned_integer"], ["min_eigen", "float"]],
+      "python": {
+        "defaults": {
+          "levels": 4,
+          "window": 10,
+          "iterations": 20,
+          "min_eigen": 1e-4
+        }
+      },
+      "rust": {
+        "category": "statistics",
+        "parameters": [["previous", "&Image"], ["next", "&Image"], ["points", "&Matrix"], ["levels", "u32"], ["window", "u32"], ["iterations", "u32"], ["min_eigen", "f32"]],
+        "returns": "(Matrix, Matrix, Matrix)",
+        "doc": [
+          "Sparse Lucas-Kanade optical flow with image pyramids,",
+          "following `calcOpticalFlowPyrLK`. Each pyramid level runs",
+          "one `flow_lk_refine` dispatch from the coarsest level to",
+          "level 0 over `2 * window + 1` windows with the same point",
+          "set applied to every image plane; the tracked estimate",
+          "carries between levels in a `[planes, N, 2]` state buffer",
+          "and the last level writes status and error maps.",
+          "",
+          "`points` is an F32 `[N, 2]` matrix of `(x, y)` source",
+          "positions in level-0 pixel coordinates. `window` is the",
+          "half-window radius. Returns `(next_points, status, error)`:",
+          "the tracked F32 `[planes, N, 2]` positions, an F32",
+          "`[planes, N]` found/lost mask, and an F32 `[planes, N]`",
+          "RMS patch-residual error; status 0 rows carry the final",
+          "unconverged estimate.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless both images are nonempty FP32",
+          "NCHW/CHW images with identical shape, layout, and format,",
+          "`points` is a nonempty F32 `[N, 2]` matrix, `levels`,",
+          "`window`, and `iterations` are >= 1, `min_eigen` is finite",
+          "and positive, and the coarsest level still fits the full",
+          "window."
+        ],
+        "attribute_sources": {
+          "levels": {"encoding": "unsigned", "value": "levels"},
+          "window": {"encoding": "unsigned", "value": "window"},
+          "iterations": {"encoding": "unsigned", "value": "iterations"},
+          "min_eigen": {"encoding": "float", "value": "min_eigen"}
+        },
+        "bindings": [
+          {
+            "name": "refine_buffers",
+            "values": {
+              "previous_index": ["read", "previous_level"],
+              "next_index": ["read", "next_level"],
+              "points_index": ["read", "points"],
+              "state_index": ["read_write", "next_points"],
+              "status_index": ["write", "status"],
+              "error_index": ["write", "error"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "refine_push",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "count": ["U32", "point_count"],
+              "height": ["U32", "level_height"],
+              "width": ["U32", "level_width"],
+              "window": ["U32", "window"],
+              "iterations": ["U32", "iterations"],
+              "initialize": ["U32", "initialize"],
+              "finalize": ["U32", "finalize"],
+              "scale": ["F32", "level_scale"],
+              "min_eigen": ["F32", "min_eigen"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageFlowLkRefineF32"],
+            "kernel": "KernelId::ImageFlowLkRefineF32",
+            "workgroups": "KernelId::ImageFlowLkRefineF32.linear_workgroups(plane_count * point_count)"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "optical_flow_farneback",
+      "region_read": "bordered",
+      "fusion_class": "effect",
+      "input_kinds": ["image", "image"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["levels", "unsigned_integer"], ["window", "unsigned_integer"], ["iterations", "unsigned_integer"], ["poly_n", "unsigned_integer"], ["poly_sigma", "float"]],
+      "python": {
+        "defaults": {
+          "levels": 4,
+          "window": 7,
+          "iterations": 3,
+          "poly_n": 5,
+          "poly_sigma": 1.1
+        }
+      },
+      "rust": {
+        "category": "statistics",
+        "parameters": [["previous", "&Image"], ["next", "&Image"], ["levels", "u32"], ["window", "u32"], ["iterations", "u32"], ["poly_n", "u32"], ["poly_sigma", "f32"]],
+        "returns": "Matrix",
+        "doc": [
+          "Dense Farneback optical flow over a 2x image pyramid,",
+          "following `calcOpticalFlowFarneback`. Each level expands",
+          "both frames into polynomial coefficient maps through two",
+          "separable weighted-least-squares passes (`flow_expand_v`",
+          "then `flow_expand_h`), then relaxes the flow field with",
+          "`iterations` Jacobi `flow_update` dispatches over a",
+          "`2 * window + 1` averaging neighbourhood. The coarsest",
+          "level starts from a zero field; finer levels initialize",
+          "from the 2x-upsampled coarser solution.",
+          "",
+          "`window` is the half-window radius of the update",
+          "averaging neighbourhood and `poly_n` the half-support of",
+          "the gaussian-weighted polynomial fit. Returns the F32",
+          "`[planes, 2, H, W]` flow field at level-0 resolution with",
+          "x displacement in channel 0 and y displacement in",
+          "channel 1.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless both images are nonempty FP32",
+          "NCHW/CHW images with identical shape, layout, and format,",
+          "`levels`, `window`, `iterations`, and `poly_n` are >= 1,",
+          "`poly_sigma` is finite and positive, and the coarsest",
+          "level still fits the polynomial support."
+        ],
+        "attribute_sources": {
+          "levels": {"encoding": "unsigned", "value": "levels"},
+          "window": {"encoding": "unsigned", "value": "window"},
+          "iterations": {"encoding": "unsigned", "value": "iterations"},
+          "poly_n": {"encoding": "unsigned", "value": "poly_n"},
+          "poly_sigma": {"encoding": "float", "value": "poly_sigma"}
+        },
+        "bindings": [
+          {
+            "name": "expand_v_buffers",
+            "values": {
+              "input_index": ["read", "expand_input"],
+              "output_index": ["write", "expand_output"]
+            }
+          },
+          {
+            "name": "expand_h_buffers",
+            "values": {
+              "input_index": ["read", "expand_input"],
+              "output_index": ["write", "expand_output"]
+            }
+          },
+          {
+            "name": "update_buffers",
+            "values": {
+              "poly1_index": ["read", "poly1"],
+              "poly2_index": ["read", "poly2"],
+              "flow_in_index": ["read", "flow_in"],
+              "flow_out_index": ["write", "flow_out"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "expand_v_push",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "level_height"],
+              "width": ["U32", "level_width"],
+              "poly_n": ["U32", "poly_n"],
+              "poly_sigma": ["F32", "poly_sigma"]
+            }
+          },
+          {
+            "name": "expand_h_push",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "level_height"],
+              "width": ["U32", "level_width"],
+              "poly_n": ["U32", "poly_n"],
+              "poly_sigma": ["F32", "poly_sigma"]
+            }
+          },
+          {
+            "name": "update_push",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "level_height"],
+              "width": ["U32", "level_width"],
+              "in_height": ["U32", "flow_in_height"],
+              "in_width": ["U32", "flow_in_width"],
+              "win": ["U32", "window"],
+              "init_mode": ["U32", "init_mode"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageFlowExpandVF32"],
+            "kernel": "KernelId::ImageFlowExpandVF32",
+            "workgroups": "[\n\t\t\t\tlevel_width.div_ceil(16),\n\t\t\t\tlevel_height.div_ceil(16),\n\t\t\t\tplane_count,\n\t\t\t]"
+          },
+          {
+            "kernels": ["ImageFlowExpandHF32"],
+            "kernel": "KernelId::ImageFlowExpandHF32",
+            "workgroups": "[\n\t\t\t\tlevel_width.div_ceil(16),\n\t\t\t\tlevel_height.div_ceil(16),\n\t\t\t\tplane_count,\n\t\t\t]"
+          },
+          {
+            "kernels": ["ImageFlowUpdateF32"],
+            "kernel": "KernelId::ImageFlowUpdateF32",
+            "workgroups": "[\n\t\t\t\tlevel_width.div_ceil(16),\n\t\t\t\tlevel_height.div_ceil(16),\n\t\t\t\tplane_count,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "stereo_bm",
+      "region_read": "bordered",
+      "fusion_class": "effect",
+      "input_kinds": ["image", "image"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [["num_disparities", "unsigned_integer"], ["block_size", "unsigned_integer"], ["uniqueness", "unsigned_integer"]],
+      "python": {
+        "defaults": {
+          "num_disparities": 64,
+          "block_size": 15,
+          "uniqueness": 10
+        }
+      },
+      "rust": {
+        "category": "statistics",
+        "parameters": [["left", "&Image"], ["right", "&Image"], ["num_disparities", "u32"], ["block_size", "u32"], ["uniqueness", "u32"]],
+        "returns": "Matrix",
+        "doc": [
+          "Block-matching stereo disparity over the horizontal search",
+          "range [0, num_disparities), following cv::StereoBM. The",
+          "`stereo_sad` pass builds a [planes, num_disparities, H, W]",
+          "sum-of-absolute-differences volume over an odd block_size",
+          "window; `stereo_wta` then keeps the per-pixel argmin, applies",
+          "the `uniqueness` percent runner-up margin test (0 disables),",
+          "and refines the winner with a symmetric parabola on the",
+          "neighbouring costs. Pixels outside the border region where",
+          "the matching window fits for every disparity, and uniqueness",
+          "losers, are marked -1; the valid range otherwise starts at 0.",
+          "Returns the F32 [planes, 1, H, W] disparity map.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless both images are nonempty FP32",
+          "NCHW/CHW images with identical shape, layout, and format,",
+          "num_disparities >= 1, block_size is odd and >= 3, and the",
+          "image fits the combined block and disparity support."
+        ],
+        "attribute_sources": {
+          "num_disparities": {"encoding": "unsigned", "value": "num_disparities"},
+          "block_size": {"encoding": "unsigned", "value": "block_size"},
+          "uniqueness": {"encoding": "unsigned", "value": "uniqueness"}
+        },
+        "bindings": [
+          {
+            "name": "sad_buffers",
+            "values": {
+              "left_index": ["read", "left"],
+              "right_index": ["read", "right"],
+              "output_index": ["write", "cost_volume"]
+            }
+          },
+          {
+            "name": "wta_buffers",
+            "values": {
+              "cost_index": ["read", "cost_volume"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "sad_push",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "num_disparities": ["U32", "num_disparities"],
+              "block_radius": ["U32", "block_radius"]
+            }
+          },
+          {
+            "name": "wta_push",
+            "values": {
+              "batch_size": ["U32", "batch"],
+              "channels": ["U32", "channels"],
+              "height": ["U32", "image_height"],
+              "width": ["U32", "image_width"],
+              "num_disparities": ["U32", "num_disparities"],
+              "block_radius": ["U32", "block_radius"],
+              "uniqueness": ["U32", "uniqueness"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageStereoSadF32"],
+            "kernel": "KernelId::ImageStereoSadF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tdisp_count,\n\t\t\t]"
+          },
+          {
+            "kernels": ["ImageStereoWtaF32"],
+            "kernel": "KernelId::ImageStereoWtaF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tplane_count,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "reproject_image_to_3d",
+      "region_read": "elementwise",
+      "fusion_class": "pointwise",
+      "input_kinds": ["matrix", "matrix"],
+      "output_kinds": ["matrix"],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [],
+      "rust": {
+        "category": "statistics",
+        "parameters": [["disparity", "&Matrix"], ["q", "&Matrix"]],
+        "returns": "Matrix",
+        "doc": [
+          "Per-pixel reprojection of a disparity map into 3D",
+          "coordinates, following cv::reprojectImageTo3D. For each",
+          "pixel it evaluates (X, Y, Z, W) = Q * [x, y, disparity, 1]",
+          "with the row-major 4x4 F32 matrix `q`, then writes the",
+          "normalized coordinates X/W, Y/W, Z/W. `disparity` must be",
+          "F32 [planes, 1, H, W] (the stereo_bm output layout) and",
+          "`q` F32 [4, 4]; the homogeneous divide is unguarded, so a",
+          "degenerate last row surfaces as inf/NaN. Returns the F32",
+          "[planes, 3, H, W] coordinate map.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless `disparity` is F32 with shape",
+          "[planes, 1, H, W] and `q` is F32 [4, 4] on the same",
+          "runtime."
+        ],
+        "attribute_sources": {},
+        "bindings": [
+          {
+            "name": null,
+            "values": {
+              "disparity_index": ["read", "disparity"],
+              "q_index": ["read", "q"],
+              "output_index": ["write", "output"]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": ["U32", "plane_count"],
+              "channels": ["U32", "1"],
+              "height": ["U32", "height"],
+              "width": ["U32", "width"]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": ["ImageReproject3dF32"],
+            "kernel": "KernelId::ImageReproject3dF32",
+            "workgroups": "[\n\t\t\t\twidth.div_ceil(16),\n\t\t\t\theight.div_ceil(16),\n\t\t\t\tplane_count,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
     }
 
 
-
+,
+    {
+      "name": "fast_nl_means_denoising",
+      "region_read": "bordered",
+      "fusion_class": "effect",
+      "input_kinds": [
+        "image"
+      ],
+      "output_kinds": [
+        "image"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        [
+          "h",
+          "float"
+        ],
+        [
+          "template_window",
+          "unsigned_integer"
+        ],
+        [
+          "search_window",
+          "unsigned_integer"
+        ]
+      ],
+      "python": {
+        "defaults": {
+          "template_window": 7,
+          "search_window": 21
+        }
+      },
+      "rust": {
+        "category": "statistics",
+        "parameters": [
+          [
+            "input",
+            "&Image"
+          ],
+          [
+            "h",
+            "f32"
+          ],
+          [
+            "template_window",
+            "u32"
+          ],
+          [
+            "search_window",
+            "u32"
+          ]
+        ],
+        "returns": "Image",
+        "doc": [
+          "Non-local means denoising over a search window,",
+          "following cv::fastNlMeansDenoising. Each output pixel is",
+          "the weighted mean of samples in the (search_window)^2",
+          "neighbourhood with weights exp(-d / h^2), where d is the",
+          "patch SSD over an odd template_window normalized by its",
+          "area; the center weight equals the largest neighbour",
+          "weight so a uniform region stays untouched. Returns an",
+          "image with identical shape, layout, and format.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless `input` is a nonempty FP32",
+          "NCHW/CHW image, `h` is finite and positive, and both",
+          "windows are odd and at least 3."
+        ],
+        "attribute_sources": {
+          "h": {
+            "encoding": "float",
+            "value": "h"
+          },
+          "template_window": {
+            "encoding": "unsigned",
+            "value": "template_window"
+          },
+          "search_window": {
+            "encoding": "unsigned",
+            "value": "search_window"
+          }
+        },
+        "bindings": [
+          {
+            "name": null,
+            "values": {
+              "input_index": [
+                "read",
+                "input"
+              ],
+              "output_index": [
+                "write",
+                "output"
+              ]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": null,
+            "values": {
+              "batch_size": [
+                "U32",
+                "batch"
+              ],
+              "channels": [
+                "U32",
+                "channels"
+              ],
+              "height": [
+                "U32",
+                "image_height"
+              ],
+              "width": [
+                "U32",
+                "image_width"
+              ],
+              "template_radius": [
+                "U32",
+                "template_radius"
+              ],
+              "search_radius": [
+                "U32",
+                "search_radius"
+              ],
+              "h_sqr": [
+                "F32",
+                "h_sqr"
+              ]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": [
+              "ImageNlMeansDenoiseF32"
+            ],
+            "kernel": "KernelId::ImageNlMeansDenoiseF32",
+            "workgroups": "[\n\t\t\t\timage_width.div_ceil(16),\n\t\t\t\timage_height.div_ceil(16),\n\t\t\t\tbatch * channels,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    },
+    {
+      "name": "pyr_mean_shift_filtering",
+      "region_read": "bordered",
+      "fusion_class": "effect",
+      "input_kinds": [
+        "image"
+      ],
+      "output_kinds": [
+        "image"
+      ],
+      "shape_rule": "explicit",
+      "dtype_rule": "f32",
+      "attributes": [
+        [
+          "sp",
+          "float"
+        ],
+        [
+          "sr",
+          "float"
+        ],
+        [
+          "max_level",
+          "unsigned_integer"
+        ]
+      ],
+      "python": {
+        "defaults": {
+          "sp": 10.0,
+          "sr": 10.0,
+          "max_level": 1
+        }
+      },
+      "rust": {
+        "category": "statistics",
+        "parameters": [
+          [
+            "input",
+            "&Image"
+          ],
+          [
+            "sp",
+            "f32"
+          ],
+          [
+            "sr",
+            "f32"
+          ],
+          [
+            "max_level",
+            "u32"
+          ]
+        ],
+        "returns": "Image",
+        "doc": [
+          "Pyramid mean-shift edge-preserving smoothing, following",
+          "cv::pyrMeanShiftFiltering. The image is downsampled",
+          "max_level times with pyr_down; each level then runs a",
+          "per-pixel mean-shift pass that, for up to five",
+          "iterations, averages the (2*sp+1)^2 window samples whose",
+          "channel-vector distance stays below sr and adopts that",
+          "mean position and color, converging when the spatial",
+          "shift drops under one pixel. Coarse-to-fine levels seed",
+          "their starting color from the parent's converged result.",
+          "Channels participate as one color vector per plane",
+          "pixel; returns an image with identical shape, layout,",
+          "and format.",
+          "",
+          "# Errors",
+          "",
+          "Returns an error unless `input` is a nonempty FP32",
+          "NCHW/CHW image with at most 4 channels, sp/sr are finite",
+          "and positive, max_level is in [1, 4], and the coarsest",
+          "level still fits the spatial window support."
+        ],
+        "attribute_sources": {
+          "sp": {
+            "encoding": "float",
+            "value": "sp"
+          },
+          "sr": {
+            "encoding": "float",
+            "value": "sr"
+          },
+          "max_level": {
+            "encoding": "unsigned",
+            "value": "max_level"
+          }
+        },
+        "bindings": [
+          {
+            "name": "pass_buffers",
+            "values": {
+              "input_index": [
+                "read",
+                "shift_input"
+              ],
+              "seed_index": [
+                "read",
+                "shift_seed"
+              ],
+              "output_index": [
+                "write",
+                "shift_output"
+              ]
+            }
+          }
+        ],
+        "push_constants": [
+          {
+            "name": "pass_push",
+            "values": {
+              "batch_size": [
+                "U32",
+                "batch"
+              ],
+              "channels": [
+                "U32",
+                "channels"
+              ],
+              "height": [
+                "U32",
+                "level_height"
+              ],
+              "width": [
+                "U32",
+                "level_width"
+              ],
+              "seed_width": [
+                "U32",
+                "seed_width"
+              ],
+              "seed_height": [
+                "U32",
+                "seed_height"
+              ],
+              "spatial_radius": [
+                "U32",
+                "spatial_radius"
+              ],
+              "max_iterations": [
+                "U32",
+                "5"
+              ],
+              "init_mode": [
+                "U32",
+                "init_mode"
+              ],
+              "range_radius_sqr": [
+                "F32",
+                "range_radius_sqr"
+              ]
+            }
+          }
+        ],
+        "dispatches": [
+          {
+            "kernels": [
+              "ImageMeanShiftPassF32"
+            ],
+            "kernel": "KernelId::ImageMeanShiftPassF32",
+            "workgroups": "[\n\t\t\t\tlevel_width.div_ceil(16),\n\t\t\t\tlevel_height.div_ceil(16),\n\t\t\t\tbatch,\n\t\t\t]"
+          }
+        ],
+        "annotations": []
+      }
+    }
   ],
   "kernels": [
     {
@@ -7768,7 +8475,7 @@
       "name": "resize_nearest",
       "tile_program": "image_resize(true)",
       "kernel_id": "ImageResizeNearestF32",
-      "source": "src/slang/image/geometric/resize_nearest.slang",
+      "source": "src/slang/image/geometric/resize/resize_nearest.slang",
       "variant": "nearest",
       "workgroup_size": [16, 16, 1],
       "dispatch_tile_size": [16, 16, 1],
@@ -7802,7 +8509,7 @@
       "name": "resize_bilinear",
       "tile_program": "image_resize(false)",
       "kernel_id": "ImageResizeBilinearF32",
-      "source": "src/slang/image/geometric/resize_bilinear.slang",
+      "source": "src/slang/image/geometric/resize/resize_bilinear.slang",
       "variant": "bilinear_align_corners_false",
       "workgroup_size": [16, 16, 1],
       "dispatch_tile_size": [16, 16, 1],
@@ -8047,7 +8754,7 @@
       "stable_id": 143,
       "name": "warp_affine",
       "kernel_id": "ImageWarpAffineF32",
-      "source": "src/slang/image/geometric/warp_affine.slang",
+      "source": "src/slang/image/geometric/warp/warp_affine.slang",
       "variant": "inverse_2x3",
       "workgroup_size": [16, 16, 1],
       "dispatch_tile_size": [16, 16, 1],
@@ -8084,7 +8791,7 @@
       "stable_id": 144,
       "name": "warp_perspective",
       "kernel_id": "ImageWarpPerspectiveF32",
-      "source": "src/slang/image/geometric/warp_perspective.slang",
+      "source": "src/slang/image/geometric/warp/warp_perspective.slang",
       "variant": "inverse_3x3",
       "workgroup_size": [16, 16, 1],
       "dispatch_tile_size": [16, 16, 1],
@@ -8737,7 +9444,7 @@
       "stable_id": 163,
       "name": "gaussian_noise",
       "kernel_id": "ImageGaussianNoiseF32",
-      "source": "src/slang/image/pixel/gaussian_noise.slang",
+      "source": "src/slang/image/pixel/noise/gaussian_noise.slang",
       "variant": "philox_explicit_seed",
       "workgroup_size": [256, 1, 1],
       "semantic_operation": "gaussian_noise",
@@ -8768,7 +9475,7 @@
       "stable_id": 164,
       "name": "salt_pepper_noise",
       "kernel_id": "ImageSaltPepperNoiseF32",
-      "source": "src/slang/image/pixel/salt_pepper_noise.slang",
+      "source": "src/slang/image/pixel/noise/salt_pepper_noise.slang",
       "variant": "philox_explicit_seed",
       "workgroup_size": [256, 1, 1],
       "semantic_operation": "salt_pepper_noise",
@@ -9840,7 +10547,7 @@
       "name": "calc_hist_clear",
       "fusion_class": "effect",
       "kernel_id": "ImageCalcHistClearU32",
-      "source": "src/slang/image/statistics/calc_hist_clear.slang",
+      "source": "src/slang/image/statistics/calc_hist/calc_hist_clear.slang",
       "variant": "replay_safe_zero",
       "dtype": "u32",
       "workgroup_size": [256, 1, 1],
@@ -9868,7 +10575,7 @@
       "name": "calc_hist",
       "fusion_class": "reduce",
       "kernel_id": "ImageCalcHistF32",
-      "source": "src/slang/image/statistics/calc_hist.slang",
+      "source": "src/slang/image/statistics/calc_hist/calc_hist.slang",
       "variant": "atomic_u32",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
@@ -9904,7 +10611,7 @@
       "name": "equalize_hist_clear",
       "fusion_class": "effect",
       "kernel_id": "ImageEqualizeHistClearU32",
-      "source": "src/slang/image/statistics/equalize_hist_clear.slang",
+      "source": "src/slang/image/statistics/equalize_hist/equalize_hist_clear.slang",
       "variant": "replay_safe_zero",
       "dtype": "u32",
       "workgroup_size": [256, 1, 1],
@@ -9932,7 +10639,7 @@
       "name": "equalize_hist",
       "fusion_class": "reduce",
       "kernel_id": "ImageEqualizeHistF32",
-      "source": "src/slang/image/statistics/equalize_hist.slang",
+      "source": "src/slang/image/statistics/equalize_hist/equalize_hist.slang",
       "variant": "atomic_u32",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
@@ -9965,7 +10672,7 @@
       "name": "equalize_hist_lut",
       "fusion_class": "reduce",
       "kernel_id": "ImageEqualizeHistLutF32",
-      "source": "src/slang/image/statistics/equalize_hist_lut.slang",
+      "source": "src/slang/image/statistics/equalize_hist/equalize_hist_lut.slang",
       "variant": "cdf_lut",
       "dtype": "f32",
       "workgroup_size": [256, 1, 1],
@@ -9994,7 +10701,7 @@
       "name": "equalize_hist_remap",
       "fusion_class": "gather",
       "kernel_id": "ImageEqualizeHistRemapF32",
-      "source": "src/slang/image/statistics/equalize_hist_remap.slang",
+      "source": "src/slang/image/statistics/equalize_hist/equalize_hist_remap.slang",
       "variant": "lut_apply",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
@@ -10061,7 +10768,7 @@
       "fusion_class": "gather",
       "kernel_id": "ImagePyrDownF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/geometric/pyr_down.slang",
+      "source": "src/slang/image/geometric/pyr/pyr_down.slang",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
       "dispatch_tile_size": [16, 16, 1],
@@ -10087,7 +10794,7 @@
       "fusion_class": "gather",
       "kernel_id": "ImagePyrUpF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/geometric/pyr_up.slang",
+      "source": "src/slang/image/geometric/pyr/pyr_up.slang",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
       "dispatch_tile_size": [16, 16, 1],
@@ -10112,7 +10819,7 @@
       "name": "threshold_auto_clear",
       "fusion_class": "effect",
       "kernel_id": "ImageThresholdAutoClearU32",
-      "source": "src/slang/image/statistics/threshold_auto_clear.slang",
+      "source": "src/slang/image/statistics/threshold_auto/threshold_auto_clear.slang",
       "variant": "replay_safe_zero",
       "dtype": "u32",
       "workgroup_size": [256, 1, 1],
@@ -10131,7 +10838,7 @@
       "name": "threshold_auto",
       "fusion_class": "reduce",
       "kernel_id": "ImageThresholdAutoF32",
-      "source": "src/slang/image/statistics/threshold_auto.slang",
+      "source": "src/slang/image/statistics/threshold_auto/threshold_auto.slang",
       "variant": "atomic_u32",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
@@ -10156,7 +10863,7 @@
       "fusion_class": "reduce",
       "kernel_id": "ImageThresholdAutoSelectU32",
       "variant": "row_reduce",
-      "source": "src/slang/image/statistics/threshold_auto_select.slang",
+      "source": "src/slang/image/statistics/threshold_auto/threshold_auto_select.slang",
       "variant": "row_reduce",
       "dtype": "u32",
       "workgroup_size": [256, 1, 1],
@@ -10178,7 +10885,7 @@
       "fusion_class": "pointwise",
       "kernel_id": "ImageThresholdAutoApplyF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/threshold_auto_apply.slang",
+      "source": "src/slang/image/statistics/threshold_auto/threshold_auto_apply.slang",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
       "dispatch_tile_size": [16, 16, 1],
@@ -10204,7 +10911,7 @@
       "fusion_class": "scan",
       "kernel_id": "ImageIntegralRowsF32",
       "variant": "prefix_rows",
-      "source": "src/slang/image/statistics/integral_rows.slang",
+      "source": "src/slang/image/statistics/integral/integral_rows.slang",
       "dtype": "f32",
       "workgroup_size": [256, 1, 1],
       "semantic_operation": "integral",
@@ -10227,7 +10934,7 @@
       "fusion_class": "scan",
       "kernel_id": "ImageIntegralColsF32",
       "variant": "prefix_cols",
-      "source": "src/slang/image/statistics/integral_cols.slang",
+      "source": "src/slang/image/statistics/integral/integral_cols.slang",
       "dtype": "f32",
       "workgroup_size": [256, 1, 1],
       "semantic_operation": "integral",
@@ -10312,7 +11019,7 @@
       "name": "clahe_clear",
       "fusion_class": "effect",
       "kernel_id": "ImageClaheClearU32",
-      "source": "src/slang/image/statistics/clahe_clear.slang",
+      "source": "src/slang/image/statistics/clahe/clahe_clear.slang",
       "variant": "replay_safe_zero",
       "dtype": "u32",
       "workgroup_size": [256, 1, 1],
@@ -10328,7 +11035,7 @@
       "name": "clahe",
       "fusion_class": "reduce",
       "kernel_id": "ImageClaheF32",
-      "source": "src/slang/image/statistics/clahe.slang",
+      "source": "src/slang/image/statistics/clahe/clahe.slang",
       "variant": "atomic_u32",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
@@ -10350,7 +11057,7 @@
       "name": "clahe_lut",
       "fusion_class": "reduce",
       "kernel_id": "ImageClaheLutU32",
-      "source": "src/slang/image/statistics/clahe_lut.slang",
+      "source": "src/slang/image/statistics/clahe/clahe_lut.slang",
       "variant": "row_reduce",
       "dtype": "u32",
       "workgroup_size": [256, 1, 1],
@@ -10369,7 +11076,7 @@
       "name": "clahe_remap",
       "fusion_class": "gather",
       "kernel_id": "ImageClaheRemapF32",
-      "source": "src/slang/image/statistics/clahe_remap.slang",
+      "source": "src/slang/image/statistics/clahe/clahe_remap.slang",
       "variant": "nchw_or_chw",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
@@ -10392,7 +11099,7 @@
             "name": "accumulate",
             "fusion_class": "effect",
             "kernel_id": "ImageAccumulateF32",
-            "source": "src/slang/image/statistics/accumulate.slang",
+            "source": "src/slang/image/statistics/accumulate/accumulate.slang",
             "variant": "nchw_or_chw",
             "dtype": "f32",
             "workgroup_size": [
@@ -10450,7 +11157,7 @@
             "name": "accumulate_weighted",
             "fusion_class": "effect",
             "kernel_id": "ImageAccumulateWeightedF32",
-            "source": "src/slang/image/statistics/accumulate_weighted.slang",
+            "source": "src/slang/image/statistics/accumulate/accumulate_weighted.slang",
             "variant": "nchw_or_chw",
             "dtype": "f32",
             "workgroup_size": [
@@ -10762,7 +11469,7 @@
       "name": "warp_polar",
       "fusion_class": "gather",
       "kernel_id": "ImageWarpPolarF32",
-      "source": "src/slang/image/geometric/warp_polar.slang",
+      "source": "src/slang/image/geometric/warp/warp_polar.slang",
       "variant": "nchw_or_chw",
       "dtype": "f32",
       "workgroup_size": [
@@ -10857,7 +11564,7 @@
 
       "kernel_id": "ImageCannyGradientF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/filter/canny_gradient.slang",
+      "source": "src/slang/image/filter/canny/canny_gradient.slang",
       "dtype": "f32",
       "workgroup_size": [
         16,
@@ -10923,7 +11630,7 @@
 
       "kernel_id": "ImageCannyNmsF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/filter/canny_nms.slang",
+      "source": "src/slang/image/filter/canny/canny_nms.slang",
       "dtype": "f32",
       "workgroup_size": [
         16,
@@ -10981,7 +11688,7 @@
 
       "kernel_id": "ImageCannyThresholdU32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/filter/canny_threshold.slang",
+      "source": "src/slang/image/filter/canny/canny_threshold.slang",
       "dtype": "u32",
       "workgroup_size": [
         16,
@@ -11043,7 +11750,7 @@
 
       "kernel_id": "ImageCannyRelaxU32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/filter/canny_relax.slang",
+      "source": "src/slang/image/filter/canny/canny_relax.slang",
       "dtype": "u32",
       "workgroup_size": [
         16,
@@ -11093,7 +11800,7 @@
 
       "kernel_id": "ImageCannyFinalF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/filter/canny_final.slang",
+      "source": "src/slang/image/filter/canny/canny_final.slang",
       "dtype": "f32",
       "workgroup_size": [
         16,
@@ -11146,7 +11853,7 @@
       "name": "connected_components_init",
       "kernel_id": "ImageConnectedComponentsInitU32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/connected_components_init.slang",
+      "source": "src/slang/image/statistics/connected_components/connected_components_init.slang",
       "dtype": "u32",
       "workgroup_size": [
         16,
@@ -11203,7 +11910,7 @@
       "name": "connected_components_relax",
       "kernel_id": "ImageConnectedComponentsRelaxU32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/connected_components_relax.slang",
+      "source": "src/slang/image/statistics/connected_components/connected_components_relax.slang",
       "dtype": "u32",
       "workgroup_size": [
         16,
@@ -11256,7 +11963,7 @@
       "name": "distance_transform_init",
       "kernel_id": "ImageDistanceTransformInitF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/distance_transform_init.slang",
+      "source": "src/slang/image/statistics/distance_transform/distance_transform_init.slang",
       "dtype": "f32",
       "workgroup_size": [
         16,
@@ -11313,7 +12020,7 @@
       "name": "distance_transform_relax",
       "kernel_id": "ImageDistanceTransformRelaxF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/distance_transform_relax.slang",
+      "source": "src/slang/image/statistics/distance_transform/distance_transform_relax.slang",
       "dtype": "f32",
       "workgroup_size": [
         16,
@@ -11366,7 +12073,7 @@
       "name": "hough_lines_clear",
       "kernel_id": "ImageHoughLinesClearU32",
       "variant": "replay_safe_zero",
-      "source": "src/slang/image/statistics/hough_lines_clear.slang",
+      "source": "src/slang/image/statistics/hough/hough_lines_clear.slang",
       "dtype": "u32",
       "workgroup_size": [
         256,
@@ -11419,7 +12126,7 @@
       "name": "hough_lines_accumulate",
       "kernel_id": "ImageHoughLinesAccumulateF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/hough_lines_accumulate.slang",
+      "source": "src/slang/image/statistics/hough/hough_lines_accumulate.slang",
       "dtype": "f32",
       "workgroup_size": [
         16,
@@ -11496,7 +12203,7 @@
       "name": "hough_lines_extract",
       "kernel_id": "ImageHoughLinesExtractU32",
       "variant": "replay_safe_zero",
-      "source": "src/slang/image/statistics/hough_lines_extract.slang",
+      "source": "src/slang/image/statistics/hough/hough_lines_extract.slang",
       "dtype": "u32",
       "workgroup_size": [
         256,
@@ -11573,7 +12280,7 @@
       "name": "hough_lines_probe",
       "kernel_id": "ImageHoughLinesProbeF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/hough_lines_probe.slang",
+      "source": "src/slang/image/statistics/hough/hough_lines_probe.slang",
       "dtype": "f32",
       "workgroup_size": [
         256,
@@ -11642,7 +12349,7 @@
       "name": "hough_lines_p_clear",
       "kernel_id": "ImageHoughLinesPClearU32",
       "variant": "replay_safe_zero",
-      "source": "src/slang/image/statistics/hough_lines_p_clear.slang",
+      "source": "src/slang/image/statistics/hough/hough_lines_p_clear.slang",
       "dtype": "u32",
       "workgroup_size": [
         256,
@@ -11695,7 +12402,7 @@
       "name": "hough_lines_p_accumulate",
       "kernel_id": "ImageHoughLinesPAccumulateF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/hough_lines_p_accumulate.slang",
+      "source": "src/slang/image/statistics/hough/hough_lines_p_accumulate.slang",
       "dtype": "f32",
       "workgroup_size": [
         16,
@@ -11772,7 +12479,7 @@
       "name": "hough_lines_p_extract",
       "kernel_id": "ImageHoughLinesPExtractU32",
       "variant": "replay_safe_zero",
-      "source": "src/slang/image/statistics/hough_lines_p_extract.slang",
+      "source": "src/slang/image/statistics/hough/hough_lines_p_extract.slang",
       "dtype": "u32",
       "workgroup_size": [
         256,
@@ -11849,7 +12556,7 @@
       "name": "find_contours_init",
       "kernel_id": "ImageFindContoursInitU32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/find_contours_init.slang",
+      "source": "src/slang/image/statistics/find_contours/find_contours_init.slang",
       "dtype": "u32",
       "workgroup_size": [
         16,
@@ -11906,7 +12613,7 @@
       "name": "find_contours_relax",
       "kernel_id": "ImageFindContoursRelaxU32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/find_contours_relax.slang",
+      "source": "src/slang/image/statistics/find_contours/find_contours_relax.slang",
       "dtype": "u32",
       "workgroup_size": [
         16,
@@ -11959,7 +12666,7 @@
       "name": "find_contours_clear",
       "kernel_id": "ImageFindContoursClearU32",
       "variant": "replay_safe_zero",
-      "source": "src/slang/image/statistics/find_contours_clear.slang",
+      "source": "src/slang/image/statistics/find_contours/find_contours_clear.slang",
       "dtype": "u32",
       "workgroup_size": [
         256,
@@ -12028,7 +12735,7 @@
       "name": "find_contours_seeds",
       "kernel_id": "ImageFindContoursSeedsU32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/find_contours_seeds.slang",
+      "source": "src/slang/image/statistics/find_contours/find_contours_seeds.slang",
       "dtype": "u32",
       "workgroup_size": [
         16,
@@ -12085,7 +12792,7 @@
       "name": "find_contours_trace",
       "kernel_id": "ImageFindContoursTraceU32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/find_contours_trace.slang",
+      "source": "src/slang/image/statistics/find_contours/find_contours_trace.slang",
       "dtype": "u32",
       "workgroup_size": [
         256,
@@ -12158,7 +12865,7 @@
       "name": "flood_fill_init",
       "kernel_id": "ImageFloodFillInitF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/pixel/flood_fill_init.slang",
+      "source": "src/slang/image/pixel/flood_fill/flood_fill_init.slang",
       "dtype": "f32",
       "workgroup_size": [
         16,
@@ -12235,7 +12942,7 @@
       "name": "flood_fill_relax",
       "kernel_id": "ImageFloodFillRelaxF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/pixel/flood_fill_relax.slang",
+      "source": "src/slang/image/pixel/flood_fill/flood_fill_relax.slang",
       "dtype": "f32",
       "workgroup_size": [
         16,
@@ -12316,7 +13023,7 @@
       "name": "resize_area",
       "kernel_id": "ImageResizeAreaF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/geometric/resize_area.slang",
+      "source": "src/slang/image/geometric/resize/resize_area.slang",
       "dtype": "f32",
       "workgroup_size": [
         16,
@@ -12377,7 +13084,7 @@
       "name": "resize_cubic",
       "kernel_id": "ImageResizeCubicF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/geometric/resize_cubic.slang",
+      "source": "src/slang/image/geometric/resize/resize_cubic.slang",
       "dtype": "f32",
       "workgroup_size": [
         16,
@@ -12438,7 +13145,7 @@
       "name": "resize_lanczos",
       "kernel_id": "ImageResizeLanczosF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/geometric/resize_lanczos.slang",
+      "source": "src/slang/image/geometric/resize/resize_lanczos.slang",
       "dtype": "f32",
       "workgroup_size": [
         16,
@@ -12499,7 +13206,7 @@
       "name": "draw_line",
       "kernel_id": "ImageDrawLineF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/pixel/draw_line.slang",
+      "source": "src/slang/image/pixel/draw/draw_line.slang",
       "dtype": "f32",
       "workgroup_size": [
         256,
@@ -12580,7 +13287,7 @@
       "name": "draw_rectangle",
       "kernel_id": "ImageDrawRectangleF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/pixel/draw_rectangle.slang",
+      "source": "src/slang/image/pixel/draw/draw_rectangle.slang",
       "dtype": "f32",
       "workgroup_size": [
         256,
@@ -12661,7 +13368,7 @@
       "name": "draw_circle",
       "kernel_id": "ImageDrawCircleF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/pixel/draw_circle.slang",
+      "source": "src/slang/image/pixel/draw/draw_circle.slang",
       "dtype": "f32",
       "workgroup_size": [
         256,
@@ -12738,7 +13445,7 @@
       "name": "fill_polygon",
       "kernel_id": "ImageFillPolygonF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/pixel/fill_polygon.slang",
+      "source": "src/slang/image/pixel/draw/fill_polygon.slang",
       "dtype": "f32",
       "workgroup_size": [
         256,
@@ -12808,7 +13515,7 @@
 
       "kernel_id": "ImageCornerScoreGradientF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/corner_score_gradient.slang",
+      "source": "src/slang/image/statistics/corner/corner_score_gradient.slang",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
       "semantic_operation": "corner_score",
@@ -12833,7 +13540,7 @@
 
       "kernel_id": "ImageCornerScoreF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/corner_score.slang",
+      "source": "src/slang/image/statistics/corner/corner_score.slang",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
       "semantic_operation": "corner_score",
@@ -12858,7 +13565,7 @@
 
       "kernel_id": "ImageCornerFastF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/corner_fast.slang",
+      "source": "src/slang/image/statistics/corner/corner_fast.slang",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
       "semantic_operation": "corner_fast",
@@ -12908,7 +13615,7 @@
 
       "kernel_id": "ImageGoodFeaturesClearF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/good_features_clear.slang",
+      "source": "src/slang/image/statistics/good_features/good_features_clear.slang",
       "dtype": "f32",
       "workgroup_size": [64, 1, 1],
       "semantic_operation": "good_features_to_track",
@@ -12941,7 +13648,7 @@
 
       "kernel_id": "ImageGoodFeaturesRowMaxF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/good_features_row_max.slang",
+      "source": "src/slang/image/statistics/good_features/good_features_row_max.slang",
       "dtype": "f32",
       "workgroup_size": [64, 1, 1],
       "semantic_operation": "good_features_to_track",
@@ -12966,7 +13673,7 @@
 
       "kernel_id": "ImageGoodFeaturesThresholdF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/good_features_threshold.slang",
+      "source": "src/slang/image/statistics/good_features/good_features_threshold.slang",
       "dtype": "f32",
       "workgroup_size": [64, 1, 1],
       "semantic_operation": "good_features_to_track",
@@ -12991,7 +13698,7 @@
 
       "kernel_id": "ImageGoodFeaturesSelectF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/good_features_select.slang",
+      "source": "src/slang/image/statistics/good_features/good_features_select.slang",
       "dtype": "f32",
       "workgroup_size": [16, 16, 1],
       "semantic_operation": "good_features_to_track",
@@ -13023,7 +13730,7 @@
       "name": "orb_clear",
       "kernel_id": "ImageOrbClearF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/orb_clear.slang",
+      "source": "src/slang/image/statistics/orb/orb_clear.slang",
       "dtype": "f32",
       "workgroup_size": [
         64,
@@ -13053,7 +13760,7 @@
       "name": "orb_describe",
       "kernel_id": "ImageOrbDescribeF32",
       "variant": "nchw_or_chw",
-      "source": "src/slang/image/statistics/orb_describe.slang",
+      "source": "src/slang/image/statistics/orb/orb_describe.slang",
       "dtype": "f32",
       "workgroup_size": [
         64,
@@ -13086,10 +13793,354 @@
         ["level", "uint32"],
         ["scale", "float32"]
       ]
+    },
+    {
+      "stable_id": 813,
+      "name": "flow_lk_refine",
+      "kernel_id": "ImageFlowLkRefineF32",
+      "variant": "nchw_or_chw",
+      "source": "src/slang/image/statistics/flow/flow_lk_refine.slang",
+      "dtype": "f32",
+      "workgroup_size": [64, 1, 1],
+      "semantic_operation": "optical_flow_pyr_lk",
+      "physical_write": {
+        "writes": [
+          {"binding": 3, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "up_to_two_elements", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 4, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"},
+          {"binding": 5, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["previous_index", "uint32"],
+        ["next_index", "uint32"],
+        ["points_index", "uint32"],
+        ["state_index", "uint32"],
+        ["status_index", "uint32"],
+        ["error_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["count", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["window", "uint32"],
+        ["iterations", "uint32"],
+        ["initialize", "uint32"],
+        ["finalize", "uint32"],
+        ["scale", "float32"],
+        ["min_eigen", "float32"]
+      ]
+    },
+    {
+      "stable_id": 814,
+      "name": "flow_expand_v",
+      "kernel_id": "ImageFlowExpandVF32",
+      "variant": "nchw_or_chw",
+      "source": "src/slang/image/statistics/flow/flow_expand_v.slang",
+      "dtype": "f32",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "optical_flow_farneback",
+      "physical_write": {
+        "writes": [
+          {"binding": 1, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["poly_n", "uint32"],
+        ["poly_sigma", "float32"]
+      ]
+    },
+    {
+      "stable_id": 815,
+      "name": "flow_expand_h",
+      "kernel_id": "ImageFlowExpandHF32",
+      "variant": "nchw_or_chw",
+      "source": "src/slang/image/statistics/flow/flow_expand_h.slang",
+      "dtype": "f32",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "optical_flow_farneback",
+      "physical_write": {
+        "writes": [
+          {"binding": 1, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["input_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["poly_n", "uint32"],
+        ["poly_sigma", "float32"]
+      ]
+    },
+    {
+      "stable_id": 816,
+      "name": "flow_update",
+      "kernel_id": "ImageFlowUpdateF32",
+      "variant": "nchw_or_chw",
+      "source": "src/slang/image/statistics/flow/flow_update.slang",
+      "dtype": "f32",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "optical_flow_farneback",
+      "physical_write": {
+        "writes": [
+          {"binding": 3, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "up_to_two_elements", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["poly1_index", "uint32"],
+        ["poly2_index", "uint32"],
+        ["flow_in_index", "uint32"],
+        ["flow_out_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["in_height", "uint32"],
+        ["in_width", "uint32"],
+        ["win", "uint32"],
+        ["init_mode", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 817,
+      "name": "stereo_sad",
+      "kernel_id": "ImageStereoSadF32",
+      "variant": "nchw_or_chw",
+      "source": "src/slang/image/statistics/stereo/stereo_sad.slang",
+      "dtype": "f32",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "stereo_bm",
+      "physical_write": {
+        "writes": [
+          {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["left_index", "uint32"],
+        ["right_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["num_disparities", "uint32"],
+        ["block_radius", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 818,
+      "name": "stereo_wta",
+      "kernel_id": "ImageStereoWtaF32",
+      "variant": "nchw_or_chw",
+      "source": "src/slang/image/statistics/stereo/stereo_wta.slang",
+      "dtype": "f32",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "stereo_bm",
+      "physical_write": {
+        "writes": [
+          {"binding": 1, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "one_element", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["cost_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"],
+        ["num_disparities", "uint32"],
+        ["block_radius", "uint32"],
+        ["uniqueness", "uint32"]
+      ]
+    },
+    {
+      "stable_id": 819,
+      "name": "reproject_3d",
+      "kernel_id": "ImageReproject3dF32",
+      "variant": "nchw_or_chw",
+      "source": "src/slang/image/statistics/reproject_3d.slang",
+      "dtype": "f32",
+      "workgroup_size": [16, 16, 1],
+      "semantic_operation": "reproject_image_to_3d",
+      "physical_write": {
+        "writes": [
+          {"binding": 2, "domain": "output_elements", "partition": "exclusive_per_invocation", "extent": "up_to_four_elements", "collision": "exclusive", "tail": "bounds_checked"}
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        ["disparity_index", "uint32"],
+        ["q_index", "uint32"],
+        ["output_index", "uint32"],
+        ["batch_size", "uint32"],
+        ["channels", "uint32"],
+        ["height", "uint32"],
+        ["width", "uint32"]
+      ]
     }
 
 
-
+,
+    {
+      "stable_id": 820,
+      "name": "nl_means_denoise",
+      "kernel_id": "ImageNlMeansDenoiseF32",
+      "variant": "nchw_or_chw",
+      "source": "src/slang/image/statistics/nl_means_denoise.slang",
+      "dtype": "f32",
+      "workgroup_size": [
+        16,
+        16,
+        1
+      ],
+      "semantic_operation": "fast_nl_means_denoising",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 1,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "one_element",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "batch_size",
+          "uint32"
+        ],
+        [
+          "channels",
+          "uint32"
+        ],
+        [
+          "height",
+          "uint32"
+        ],
+        [
+          "width",
+          "uint32"
+        ],
+        [
+          "template_radius",
+          "uint32"
+        ],
+        [
+          "search_radius",
+          "uint32"
+        ],
+        [
+          "h_sqr",
+          "float32"
+        ]
+      ]
+    },
+    {
+      "stable_id": 821,
+      "name": "mean_shift_pass",
+      "kernel_id": "ImageMeanShiftPassF32",
+      "variant": "nchw_or_chw",
+      "source": "src/slang/image/statistics/mean_shift_pass.slang",
+      "dtype": "f32",
+      "workgroup_size": [
+        16,
+        16,
+        1
+      ],
+      "semantic_operation": "pyr_mean_shift_filtering",
+      "physical_write": {
+        "writes": [
+          {
+            "binding": 2,
+            "domain": "output_elements",
+            "partition": "exclusive_per_invocation",
+            "extent": "up_to_four_elements",
+            "collision": "exclusive",
+            "tail": "bounds_checked"
+          }
+        ],
+        "workspace": "none"
+      },
+      "push_fields": [
+        [
+          "input_index",
+          "uint32"
+        ],
+        [
+          "seed_index",
+          "uint32"
+        ],
+        [
+          "output_index",
+          "uint32"
+        ],
+        [
+          "batch_size",
+          "uint32"
+        ],
+        [
+          "channels",
+          "uint32"
+        ],
+        [
+          "height",
+          "uint32"
+        ],
+        [
+          "width",
+          "uint32"
+        ],
+        [
+          "seed_width",
+          "uint32"
+        ],
+        [
+          "seed_height",
+          "uint32"
+        ],
+        [
+          "spatial_radius",
+          "uint32"
+        ],
+        [
+          "max_iterations",
+          "uint32"
+        ],
+        [
+          "init_mode",
+          "uint32"
+        ],
+        [
+          "range_radius_sqr",
+          "float32"
+        ]
+      ]
+    }
   ],
   "types": [
     {

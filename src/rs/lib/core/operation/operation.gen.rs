@@ -12,7 +12,7 @@
 // audio_sha256=0acacb625934738cbac7eca8170ac18c3fb7f7dc2fb4b57552bf03ab04585d3b
 // cryptography_hash_sha256=346a7ffb863b1e9905cd924bf5b52ea0b452e06f9c1a0918d8d76e8ff4df2dc3
 // cryptography_pqc_sha256=ad5c52b92d5db6eea9bc0f3a0052a27bc622f590c2bf8aff4671611eeef37982
-// image_sha256=b49cf13c5c000ebf985020b5b9eb0a98ddc2d64d8757d5cc3b5cb39d7aecbf00
+// image_sha256=850fff7da094fda90deb1885822908eb59de961a0e67423335fc6de4de68b058
 // vision_detection_sha256=1d56e470ef51214370f11f870bcd94e22d378b7068a58f011c9dc160d9e13b47
 // Current OARS compatibility contracts; donor OA identities replace each row when its full contract lands.
 
@@ -8307,6 +8307,116 @@ pub mod image {
 		OpAttributeSpec::new("min_distance", OpAttributeKind::Float),
 		OpAttributeSpec::new("levels", OpAttributeKind::UnsignedInteger),
 		OpAttributeSpec::new("edge", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const OPTICAL_FLOW_PYR_LK: OperationContract = OperationContract::new(
+		"oa::image::optical_flow_pyr_lk",
+		0x650d67a85ebca1a6,
+		&[OpValueKind::Image, OpValueKind::Image, OpValueKind::Matrix],
+		&[
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+			OpValueKind::Matrix,
+		],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("levels", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("window", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("iterations", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("min_eigen", OpAttributeKind::Float),
+	]);
+
+	pub const OPTICAL_FLOW_FARNEBACK: OperationContract = OperationContract::new(
+		"oa::image::optical_flow_farneback",
+		0xd2f92de2556bff42,
+		&[OpValueKind::Image, OpValueKind::Image],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("levels", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("window", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("iterations", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("poly_n", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("poly_sigma", OpAttributeKind::Float),
+	]);
+
+	pub const STEREO_BM: OperationContract = OperationContract::new(
+		"oa::image::stereo_bm",
+		0x3e0737721ba52e56,
+		&[OpValueKind::Image, OpValueKind::Image],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("num_disparities", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("block_size", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("uniqueness", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const REPROJECT_IMAGE_TO_3D: OperationContract = OperationContract::new(
+		"oa::image::reproject_image_to_3d",
+		0x41af943168e9bde2,
+		&[OpValueKind::Matrix, OpValueKind::Matrix],
+		&[OpValueKind::Matrix],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Pointwise)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS));
+
+	pub const FAST_NL_MEANS_DENOISING: OperationContract = OperationContract::new(
+		"oa::image::fast_nl_means_denoising",
+		0xd05724e57ee94403,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("h", OpAttributeKind::Float),
+		OpAttributeSpec::new("template_window", OpAttributeKind::UnsignedInteger),
+		OpAttributeSpec::new("search_window", OpAttributeKind::UnsignedInteger),
+	]);
+
+	pub const PYR_MEAN_SHIFT_FILTERING: OperationContract = OperationContract::new(
+		"oa::image::pyr_mean_shift_filtering",
+		0x420f78749a404ed1,
+		&[OpValueKind::Image],
+		&[OpValueKind::Image],
+	)
+	.with_shape_rule(OpShapeRule::Explicit)
+	.with_dtype_rule(OpDTypeRule::MatchInput)
+	.with_differentiation(OpDifferentiation::None)
+	.with_lowering(OpLowering::Dispatch)
+	.with_fusion_class(OpFusionClass::Effect)
+	.effects(OpEffect::READ_INPUTS.union(OpEffect::WRITE_OUTPUTS))
+	.attributes(&[
+		OpAttributeSpec::new("sp", OpAttributeKind::Float),
+		OpAttributeSpec::new("sr", OpAttributeKind::Float),
+		OpAttributeSpec::new("max_level", OpAttributeKind::UnsignedInteger),
 	]);
 }
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.18.0
+
+- Add CV-4 geometric estimation to `oa.vision`: `find_homography`,
+  `solve_pnp`/`solve_pnp_ransac`, `find_fundamental`, `find_essential`,
+  `recover_pose`, `triangulate_points`, `rodrigues`, `project_points`,
+  `undistort_rectify_map`, `undistort_points`, `calibrate_camera` —
+  host-side f64 estimators with seeded RANSAC.
+- Add `optical_flow_pyr_lk` (sparse pyramidal LK) and
+  `optical_flow_farneback` (dense polynomial-expansion flow) to `oa.image`.
+- Add `stereo_bm` disparity estimation and `reproject_image_to_3d`.
+- Add `fast_nl_means_denoising` and `pyr_mean_shift_filtering`.
+- Add `oa.vision.KalmanFilter` host predict/correct tracking filter.
+- Group image slang kernels into per-family subdirectories; image
+  schema contracts now 93.
+
 ## 0.17.0
 
 - Rename `oa::Engine` to `oa::Runtime` across the public API (Python

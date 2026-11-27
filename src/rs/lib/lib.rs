@@ -13,6 +13,8 @@
 
 pub mod runtime;
 
+mod linalg;
+
 pub mod anim;
 pub mod audio;
 pub mod compute;

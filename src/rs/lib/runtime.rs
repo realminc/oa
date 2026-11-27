@@ -89,11 +89,11 @@ pub(in crate::runtime) use device::logical::video::{DecodeSession, EncodeSession
 pub(in crate::runtime) use instance::Instance;
 pub use presentation::PresentationSurface;
 
-pub(crate) use device::logical::pipeline::{
-	CanvasGridPipeline, FlatColorPipeline, GraphicsPipeline, SurfaceBlendPipeline,
-	SurfaceDescriptorArena, SurfaceDescriptorLayouts, SurfacePipeline, UnlitDescriptorArena,
-	UnlitDescriptorLayouts, UnlitPipeline, decode_spirv_bytes,
+pub(crate) use device::logical::pipeline::render::{
+	SurfaceDescriptorArena, SurfaceDescriptorLayouts, UnlitDescriptorArena, UnlitDescriptorLayouts,
 };
+pub(crate) use device::logical::pipeline::ui::{UiLayouts, UiPipelines};
+pub(crate) use device::logical::pipeline::{GraphicsPipeline, decode_spirv_bytes};
 
 pub(crate) use device::logical::image::{NativeRgbaImage, RenderTarget};
 

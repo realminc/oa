@@ -55,8 +55,9 @@ pub use statistics::{
 	AutoThreshold, Connectivity, CornerScore, DistanceType, HistogramComparison, MatchTemplate,
 	accumulate, accumulate_weighted, bf_match, calc_back_project, calc_hist, clahe, compare_hist,
 	connected_components, corner_fast, corner_score, distance_transform, equalize_hist,
-	find_contours, good_features_to_track, hough_lines, hough_lines_p, integral, match_template,
-	moments, orb, psnr, ssim, threshold_auto,
+	fast_nl_means_denoising, find_contours, good_features_to_track, hough_lines, hough_lines_p,
+	integral, match_template, moments, optical_flow_farneback, optical_flow_pyr_lk, orb, psnr,
+	pyr_mean_shift_filtering, reproject_image_to_3d, ssim, stereo_bm, threshold_auto,
 };
 pub use transform::{estimate_affine_2d, invert_affine, perspective_transform, rotation_matrix_2d};
 

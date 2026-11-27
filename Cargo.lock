@@ -965,7 +965,7 @@ dependencies = [
 
 [[package]]
 name = "oa-python"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "oarust",
  "pyo3",
@@ -973,7 +973,7 @@ dependencies = [
 
 [[package]]
 name = "oarust"
-version = "0.17.0"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -2022,9 +2022,9 @@ checksum = "03c2856837ef78f57382f06b2b8563a2f512f7185d732608fd9176cb3b8edf0e"
 
 [[package]]
 name = "vkrust"
-version = "0.13.4+1.4.365"
+version = "0.13.5+1.4.365"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40b8de5ee49a66c7b21d86e707eae6086ea3e767b1c4ec5f5741697cc7c8f20f"
+checksum = "d70d196949e979e9bc8c6ce9e4f4448bf8146e75359218da5acde60cbe97d4ac"
 dependencies = [
  "libloading",
 ]

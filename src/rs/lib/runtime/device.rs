@@ -448,34 +448,37 @@ impl Device {
 	/// Create the vertex-color lit graphics pipeline for this device.
 	pub(in crate::runtime) fn create_graphics_pipeline(&self) -> Result<pipeline::GraphicsPipeline> {
 		let cache = self.pipeline_cache()?;
-		pipeline::GraphicsPipeline::new(
-			std::sync::Arc::clone(&self.logical.handle),
-			self.physical.limits,
+		pipeline::GraphicsPipeline::create(
+			&self.logical.handle,
+			Some(self.physical.limits.max_push_constants_size),
 			cache.raw(),
+			&pipeline::render::lit_pipeline_desc(),
 		)
 	}
 
 	/// Create the flat-color material pipeline for this device.
 	pub(in crate::runtime) fn create_flat_color_pipeline(
 		&self,
-	) -> Result<pipeline::FlatColorPipeline> {
+	) -> Result<pipeline::GraphicsPipeline> {
 		let cache = self.pipeline_cache()?;
-		pipeline::FlatColorPipeline::new(
-			std::sync::Arc::clone(&self.logical.handle),
-			self.physical.limits,
+		pipeline::GraphicsPipeline::create(
+			&self.logical.handle,
+			Some(self.physical.limits.max_push_constants_size),
 			cache.raw(),
+			&pipeline::render::flat_color_pipeline_desc(),
 		)
 	}
 
 	/// Create the procedural canvas-grid pipeline for this device.
 	pub(in crate::runtime) fn create_canvas_grid_pipeline(
 		&self,
-	) -> Result<pipeline::CanvasGridPipeline> {
+	) -> Result<pipeline::GraphicsPipeline> {
 		let cache = self.pipeline_cache()?;
-		pipeline::CanvasGridPipeline::new(
-			std::sync::Arc::clone(&self.logical.handle),
-			self.physical.limits,
+		pipeline::GraphicsPipeline::create(
+			&self.logical.handle,
+			Some(self.physical.limits.max_push_constants_size),
 			cache.raw(),
+			&pipeline::render::canvas_grid_pipeline_desc(),
 		)
 	}
 
@@ -500,16 +503,16 @@ impl Device {
 	/// Create the owned descriptor set layouts for the unlit pipeline.
 	pub(in crate::runtime) fn create_unlit_descriptor_layouts(
 		&self,
-	) -> Result<pipeline::UnlitDescriptorLayouts> {
-		pipeline::UnlitDescriptorLayouts::new(std::sync::Arc::clone(&self.logical.handle))
+	) -> Result<pipeline::render::UnlitDescriptorLayouts> {
+		pipeline::render::UnlitDescriptorLayouts::new(std::sync::Arc::clone(&self.logical.handle))
 	}
 
 	pub(in crate::runtime) fn create_unlit_descriptor_arena(
 		&self,
 		layout: vk::DescriptorSetLayout,
 		set_count: u32,
-	) -> Result<pipeline::UnlitDescriptorArena> {
-		pipeline::UnlitDescriptorArena::new(
+	) -> Result<pipeline::render::UnlitDescriptorArena> {
+		pipeline::render::UnlitDescriptorArena::new(
 			std::sync::Arc::clone(&self.logical.handle),
 			layout,
 			set_count,
@@ -519,8 +522,8 @@ impl Device {
 	/// Create the owned descriptor set layouts for the Surface pipeline.
 	pub(in crate::runtime) fn create_surface_descriptor_layouts(
 		&self,
-	) -> Result<pipeline::SurfaceDescriptorLayouts> {
-		pipeline::SurfaceDescriptorLayouts::new(std::sync::Arc::clone(&self.logical.handle))
+	) -> Result<pipeline::render::SurfaceDescriptorLayouts> {
+		pipeline::render::SurfaceDescriptorLayouts::new(std::sync::Arc::clone(&self.logical.handle))
 	}
 
 	pub(in crate::runtime) fn create_surface_descriptor_arena(
@@ -529,8 +532,8 @@ impl Device {
 		material_layout: vk::DescriptorSetLayout,
 		set_count: u32,
 		max_materials_per_slot: u32,
-	) -> Result<pipeline::SurfaceDescriptorArena> {
-		pipeline::SurfaceDescriptorArena::new(
+	) -> Result<pipeline::render::SurfaceDescriptorArena> {
+		pipeline::render::SurfaceDescriptorArena::new(
 			std::sync::Arc::clone(&self.logical.handle),
 			scene_layout,
 			material_layout,
@@ -546,13 +549,13 @@ impl Device {
 	pub(in crate::runtime) fn create_unlit_pipeline(
 		&self,
 		sampler_layout: vk::DescriptorSetLayout,
-	) -> Result<pipeline::UnlitPipeline> {
+	) -> Result<pipeline::GraphicsPipeline> {
 		let cache = self.pipeline_cache()?;
-		pipeline::UnlitPipeline::new(
-			std::sync::Arc::clone(&self.logical.handle),
-			sampler_layout,
-			self.physical.limits,
+		pipeline::GraphicsPipeline::create(
+			&self.logical.handle,
+			Some(self.physical.limits.max_push_constants_size),
 			cache.raw(),
+			&pipeline::render::unlit_pipeline_desc(sampler_layout),
 		)
 	}
 
@@ -564,14 +567,13 @@ impl Device {
 		&self,
 		scene_layout: vk::DescriptorSetLayout,
 		material_layout: vk::DescriptorSetLayout,
-	) -> Result<pipeline::SurfacePipeline> {
+	) -> Result<pipeline::GraphicsPipeline> {
 		let cache = self.pipeline_cache()?;
-		pipeline::SurfacePipeline::new(
-			std::sync::Arc::clone(&self.logical.handle),
-			scene_layout,
-			material_layout,
-			self.physical.limits,
+		pipeline::GraphicsPipeline::create(
+			&self.logical.handle,
+			Some(self.physical.limits.max_push_constants_size),
 			cache.raw(),
+			&pipeline::render::surface_pipeline_desc(scene_layout, material_layout),
 		)
 	}
 
@@ -582,12 +584,13 @@ impl Device {
 	pub(in crate::runtime) fn create_surface_blend_pipeline(
 		&self,
 		layout: vk::PipelineLayout,
-	) -> Result<pipeline::SurfaceBlendPipeline> {
+	) -> Result<pipeline::GraphicsPipeline> {
 		let cache = self.pipeline_cache()?;
-		pipeline::SurfaceBlendPipeline::new(
-			std::sync::Arc::clone(&self.logical.handle),
-			layout,
+		pipeline::GraphicsPipeline::create(
+			&self.logical.handle,
+			Some(self.physical.limits.max_push_constants_size),
 			cache.raw(),
+			&pipeline::render::surface_blend_pipeline_desc(layout),
 		)
 	}
 
